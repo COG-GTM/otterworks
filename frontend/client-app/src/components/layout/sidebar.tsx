@@ -10,6 +10,7 @@ import {
   Share2,
   Trash2,
   Star,
+  TrendingUp,
   Menu,
   X,
   Plus,
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/search", label: "Search", icon: Search },
   { href: "/shared", label: "Shared with me", icon: Share2 },
   { href: "/starred", label: "Starred", icon: Star },
+  { href: "/margins", label: "Margins", icon: TrendingUp },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/trash", label: "Trash", icon: Trash2 },
 ];
