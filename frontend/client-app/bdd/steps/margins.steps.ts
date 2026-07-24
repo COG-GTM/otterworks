@@ -17,9 +17,8 @@ Given("I am logged in as a new user", async function (this: OtterWorld) {
 });
 
 Then("I should be on the {string} page", async function (this: OtterWorld, path: string) {
-  await expect(this.page).toHaveURL(new RegExp(`${path.replace("/", "\\/")}$`), {
-    timeout: 10_000,
-  });
+  await this.page.waitForURL(`**${path}`, { timeout: 10_000 });
+  await expect(this.page).toHaveURL(`${BASE_URL}${path}`);
 });
 
 Then("I should see the margins data caption", async function (this: OtterWorld) {
