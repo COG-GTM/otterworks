@@ -10,6 +10,7 @@ import {
   Share2,
   Trash2,
   Star,
+  TrendingUp,
   Menu,
   X,
   Plus,
@@ -42,6 +43,7 @@ const navGroups: NavGroup[] = [
       { href: "/files", label: "Files", icon: FolderOpen },
       { href: "/documents", label: "Documents", icon: FileText },
       { href: "/search", label: "Search", icon: Search },
+      { href: "/margins", label: "Margins", icon: TrendingUp },
     ],
   },
   {
