@@ -37,7 +37,7 @@ STORES = [f"Store-{1000 + i}" for i in range(24)]
 # Suppliers and categories come from the shared catalog (OTD-15 contract).
 SUPPLIERS = catalog.suppliers()
 CATEGORIES = catalog.categories()
-SKUS = [s.name.replace(" ", "-") for s in catalog.skus()]
+SKUS = [s.name.replace(" ", "-").replace("/", "-") for s in catalog.skus()]
 
 CAMPAIGNS = [
     "River-Days", "Salmon-Run-Sale", "Kelp-Forest-Fest", "Tidepool-Treats",

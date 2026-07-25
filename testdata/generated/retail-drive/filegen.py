@@ -57,12 +57,12 @@ try:
 except Exception:  # pragma: no cover
     Image = None
 try:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    # Object-oriented API only (no pyplot): builders run in a thread pool and
+    # pyplot's global figure registry is not thread-safe.
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
 except Exception:  # pragma: no cover
-    plt = None
+    Figure = None
 
 MIME = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -201,7 +201,7 @@ def _pptx(name: str, r: random.Random) -> bytes:
             p = body.add_paragraph()
             p.text = "• " + _lorem(r, r.randint(6, 12))
     # embedded image slide (chart if matplotlib is present, product art otherwise)
-    img = _chart_png(name, r) if plt else _product_art_png(name, r)
+    img = _chart_png(name, r) if Figure else _product_art_png(name, r)
     s = prs.slides.add_slide(prs.slide_layouts[5])
     s.shapes.title.text = "Market Chart"
     s.shapes.add_picture(io.BytesIO(img), Inches(1), Inches(1.5), width=Inches(8))
@@ -343,10 +343,12 @@ def _txt_fallback(name: str, r: random.Random) -> bytes:
 
 def _chart_png(name: str, r: random.Random) -> bytes:
     """Margin-trend / commodity-price chart from the shared market series."""
-    if plt is None:
+    if Figure is None:
         return _png(name, r)
     lower = name.lower()
-    fig, ax = plt.subplots(figsize=(8, 4.5), dpi=100)
+    fig = Figure(figsize=(8, 4.5), dpi=100)
+    FigureCanvasAgg(fig)
+    ax = fig.add_subplot(111)
     if "margin" in lower:
         skus = r.sample(catalog.skus(), k=3)
         dates = [_BASE_START + timedelta(days=i) for i in range(0, 699, 14)]
@@ -367,7 +369,6 @@ def _chart_png(name: str, r: random.Random) -> bytes:
     fig.autofmt_xdate()
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
-    plt.close(fig)
     return buf.getvalue()
 
 
