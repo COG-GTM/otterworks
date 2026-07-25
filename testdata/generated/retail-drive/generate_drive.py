@@ -272,10 +272,16 @@ def run_department(client: Client, cache: FolderCache, dept: str, scale: float,
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
-def upload_assets(client: Client, cache: FolderCache) -> int:
-    """Upload the committed media clips (idempotent, like generated files)."""
+def upload_assets(client: Client, cache: FolderCache, depts: list[str]) -> int:
+    """Upload the committed media clips (idempotent, like generated files).
+
+    Only placements whose top-level folder is in ``depts`` are uploaded, so
+    per-department shard runs never write outside their own subtree.
+    """
     uploaded = 0
     for filename, folder_parts in taxonomy.ASSET_PLACEMENTS:
+        if folder_parts[0] not in depts:
+            continue
         path = ASSETS_DIR / filename
         if not path.is_file():
             print(f"[drive] WARN missing committed asset: {path}")
@@ -335,7 +341,7 @@ def main(argv=None):
         grand_files += nf
         grand_docs += nd
         print(f"[drive] {d:28s} files={nf:4d} docs={nd:2d} ({time.time()-t0:5.1f}s)")
-    na = upload_assets(client, cache)
+    na = upload_assets(client, cache, depts)
     grand_files += na
     print(f"[drive] {'committed assets':28s} files={na:4d}")
     print(f"[drive] DONE files={grand_files} docs={grand_docs}")
