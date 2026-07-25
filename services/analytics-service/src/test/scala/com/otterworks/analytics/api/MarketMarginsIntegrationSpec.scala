@@ -261,3 +261,14 @@ class MarketMarginsIntegrationSpec
       body.rejected.head.seriesCode shouldBe "NOT_A_SERIES"
     }
   }
+
+  "GET /margins after a commodity-only partial recompute" should "still return every SKU (AC-03/BDD-03)" in {
+    val (_, repo, svc) = requireStack()
+    val tomorrow = LocalDate.now().plusDays(1).toString
+    Await.result(repo.upsertManualPrice("SUGAR_USD_KG", tomorrow, BigDecimal("0.52")), 30.seconds)
+    Await.result(svc.recompute(Set("SUGAR_USD_KG"), Some(tomorrow)), 30.seconds)
+    Get("/api/v1/analytics/margins") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[MarginsResponse].rows should have size 40
+    }
+  }

@@ -144,15 +144,21 @@ class MarketRepository(db: AnalyticsDb)(using ec: ExecutionContext):
                  margin_pct = EXCLUDED.margin_pct,
                  computed_at = NOW()"""
 
-  /** Grid rows: every product joined to its margin on the latest margin date. */
+  /** Grid rows: every product joined to its own most recent margin. */
   def marginRowsLatest(): Future[Seq[MarginRow]] =
     db.database.run(
       sql"""SELECT p.sku, p.name, p.category, p.supplier, p.list_price_usd,
                    m.commodity_cost_usd, m.freight_cost_usd, m.overhead_cost_usd,
                    m.cogs_usd, m.margin_pct
             FROM products p
-            JOIN product_margin_daily m ON m.sku = p.sku
-            WHERE m.margin_date = (SELECT MAX(margin_date) FROM product_margin_daily)
+            JOIN LATERAL (
+              SELECT commodity_cost_usd, freight_cost_usd, overhead_cost_usd,
+                     cogs_usd, margin_pct
+              FROM product_margin_daily
+              WHERE sku = p.sku
+              ORDER BY margin_date DESC
+              LIMIT 1
+            ) m ON TRUE
             ORDER BY p.sku""".as[MarginRow]
     )
 
