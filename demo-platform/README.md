@@ -38,6 +38,39 @@ it is **independent of the ephemeral infra** — it survives teardown, node chur
 restarts. The reaper reconciles desired (table) vs actual (cluster/AWS) and GCs everything,
 including **orphans** with no matching tenant record.
 
+## Two kinds of environment
+
+**One perpetual tenant, `main`** — `https://t-main.otterworks.app`, tracking the `main` branch.
+It carries `persistent: true` in the control table, which makes it the one tenant the reaper
+skips, the idle scan skips, and the dashboard refuses to check in or inject bugs into. It is
+the reference environment: whatever is on `main` is what it shows, planted bugs included. It
+bills continuously (~$15-25/mo), so the dashboard only accepts the flag for the ids in
+`PERPETUAL_TENANT_IDS` — no one can make a hundred of these by accident. Create it once:
+
+```bash
+tenant.sh checkout main main never
+```
+
+**Everything else is ephemeral** — TTL'd, idle-suspended, and reaped. That is the default and
+there is no way to opt an arbitrary id out of it.
+
+## Continuous delivery
+A push to `workshop-<id>` or `demo-<id>` builds the services that changed and ships them to
+that branch's tenant (`.github/workflows/cd-tenant.yml`). If the branch has no tenant, CD
+creates one with a **72h TTL**; if it has one, CD redeploys in place and keeps the TTL it had,
+so shipping to an environment never extends its life. `workshop-derek` and `demo-derek` both
+map to tenant `derek`, and the dashboard rejects a redeploy from a branch other than the one
+the tenant was checked out from, so the two cannot quietly overwrite each other.
+
+CD holds no cluster credentials. The workflow assumes an OIDC role
+(`infra/terraform/iam_github_actions.tf`) trusted only for `main`, `workshop-*` and `demo-*` on
+this repo, which can push to ECR and read the dashboard passcode — nothing else. Deployment
+itself is `tenant.sh sync <branch>` against the dashboard API, exactly what a human would do.
+
+Pushes to `main` deploy the perpetual tenant, and deliberately cannot create it: CD makes
+ephemeral environments only, so a missing `t-main` is an error rather than a surprise
+long-lived one.
+
 ## Provisioning tenants without cluster access
 `scripts/tenant.sh` is the dashboard's API from a shell — for people who provision demos, and
 for the agent platforms that do it on their behalf:
@@ -47,6 +80,8 @@ tenant.sh checkout derek              # -> branch workshop-derek, 8h TTL
 tenant.sh status derek
 tenant.sh checkin derek
 tenant.sh list
+tenant.sh sync workshop-derek         # what CD runs: redeploy, creating if absent
+tenant.sh persist main false          # return the perpetual tenant to the TTL regime
 ```
 
 It needs only `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for the `de-demo-provisioner`

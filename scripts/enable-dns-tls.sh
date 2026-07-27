@@ -19,6 +19,11 @@ set -euo pipefail
 DOMAIN_ROOT="${DOMAIN_ROOT:-otterworks.app}"
 DEMO_SUFFIX="${DEMO_SUFFIX:-demo.${DOMAIN_ROOT}}"
 OPS_HOST="${OPS_HOST:-ops.${DOMAIN_ROOT}}"
+# The perpetual tenant answers at the apex (t-main.<root>), not under the
+# per-attendee subdomain, so external-dns needs it named explicitly.
+PERPETUAL_ID="${PERPETUAL_ID:-main}"
+PERPETUAL_WEB_HOST="t-${PERPETUAL_ID}.${DOMAIN_ROOT}"
+PERPETUAL_API_HOST="api-t-${PERPETUAL_ID}.${DOMAIN_ROOT}"
 ISSUER="${ISSUER:-letsencrypt-staging}"   # start on staging, then re-run ISSUER=letsencrypt-prod
 TXT_OWNER="${TXT_OWNER:-otterworks-demo}"
 TF_DIR="${TF_DIR:-$(cd "$(dirname "$0")/.." && pwd)/demo-platform/infra/terraform}"
@@ -46,6 +51,8 @@ render() {  # substitute the __PLACEHOLDER__ tokens in <file> with the resolved 
   sed -e "s#__DNS_ROLE_ARN__#${DNS_ROLE_ARN}#g" \
       -e "s#__DOMAIN_FILTER__#${DEMO_SUFFIX}#g" \
       -e "s#__OPS_HOST__#${OPS_HOST}#g" \
+      -e "s#__PERPETUAL_WEB_HOST__#${PERPETUAL_WEB_HOST}#g" \
+      -e "s#__PERPETUAL_API_HOST__#${PERPETUAL_API_HOST}#g" \
       -e "s#__TXT_OWNER__#${TXT_OWNER}#g" \
       -e "s#__ACME_EMAIL__#${ACME_EMAIL}#g" \
       -e "s#__ZONE_ID__#${ZONE_ID}#g" \

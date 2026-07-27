@@ -1,0 +1,194 @@
+name: Deploy tenant environment
+
+# Continuous delivery for demo environments.
+#
+#   main            -> the perpetual tenant (t-main), the golden app everyone shares
+#   workshop-<id>   -> that attendee's ephemeral tenant, created on first push
+#   demo-<id>       -> same, for demos
+#
+# Only the services a push actually changed are rebuilt; the tenant picks up the
+# golden image for everything else (see resolve_tag in scripts/deploy-tenant.sh).
+# Deployment goes through the ops dashboard API, never straight at the cluster:
+# the dashboard runs the work as a runner Job under its own IRSA role, so this
+# workflow needs no EKS access.
+
+on:
+  push:
+    branches:
+      - main
+      - 'workshop-**'
+      - 'demo-**'
+  workflow_dispatch:
+    inputs:
+      rebuild_all:
+        description: Rebuild every service rather than only the changed ones
+        type: boolean
+        default: false
+
+# One deploy per branch at a time. Two overlapping runs would be two `helm
+# upgrade`s against the same releases; the dashboard rejects the second, which
+# would fail the run rather than simply waiting for the first.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.select.outputs.services }}
+      image_tag: ${{ steps.select.outputs.image_tag }}
+      branch_tag: ${{ steps.select.outputs.branch_tag }}
+      deploy: ${{ steps.select.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # paths-filter compares against the previous commit on push; it needs
+          # that commit present, and a shallow clone does not have it.
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api-gateway: ['services/api-gateway/**']
+            auth-service: ['services/auth-service/**']
+            file-service: ['services/file-service/**']
+            document-service: ['services/document-service/**']
+            collab-service: ['services/collab-service/**']
+            notification-service: ['services/notification-service/**']
+            search-service: ['services/search-service/**']
+            analytics-service: ['services/analytics-service/**']
+            admin-service: ['services/admin-service/**']
+            audit-service: ['services/audit-service/**']
+            report-service: ['services/report-service/**']
+            web-app: ['frontend/client-app/**']
+            admin-dashboard: ['frontend/admin-dashboard/**']
+            deployable: ['services/**', 'frontend/**', 'infrastructure/helm/**', 'scripts/**']
+
+      - name: Select services and tags
+        id: select
+        env:
+          CHANGED: ${{ steps.changes.outputs.changes }}
+          REBUILD_ALL: ${{ inputs.rebuild_all }}
+          DEPLOYABLE: ${{ steps.changes.outputs.deployable }}
+        run: |
+          set -euo pipefail
+          source scripts/lib/tenant-common.sh
+
+          slug="$(branch_tag_slug "${GITHUB_REF_NAME}")"
+          echo "branch_tag=branch-${slug}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+          if [ "${REBUILD_ALL}" = "true" ]; then
+            services="$(printf '%s\n' "${ALL_SERVICES[@]}" | jq -R . | jq -sc .)"
+          else
+            # paths-filter emits every matching filter, including the
+            # 'deployable' catch-all, which is not a service.
+            services="$(printf '%s' "${CHANGED}" | jq -c '[.[] | select(. != "deployable")]')"
+          fi
+          echo "services=${services}" >> "$GITHUB_OUTPUT"
+
+          # A docs- or CI-only push still redeploys: the tenant tracks the
+          # branch, and the runner re-checks it out. It just builds nothing.
+          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.plan.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve build context
+        id: ctx
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          case "${SERVICE}" in
+            web-app)         path=frontend/client-app ;;
+            admin-dashboard) path=frontend/admin-dashboard ;;
+            *)               path=services/${SERVICE} ;;
+          esac
+          echo "path=${path}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Each tag has a job:
+      #   <slug>-<sha>  immutable, exactly what this run built
+      #   branch-<slug> the branch's current build, what its tenant deploys
+      #   main          the golden image every other tenant falls back to
+      - name: Resolve image tags
+        id: tags
+        env:
+          REPO: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}
+          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
+          BRANCH_TAG: ${{ needs.plan.outputs.branch_tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "list<<EOF"
+            echo "${REPO}:${IMAGE_TAG}"
+            echo "${REPO}:${BRANCH_TAG}"
+            [ "${GITHUB_REF_NAME}" = "main" ] && echo "${REPO}:main"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ steps.ctx.outputs.path }}
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          tags: ${{ steps.tags.outputs.list }}
+
+  deploy:
+    needs: [plan, build]
+    # `always()` so a push that changed no service still redeploys the branch;
+    # a failed build must not deploy, hence the explicit result check.
+    if: always() && needs.plan.outputs.deploy == 'true' && needs.build.result != 'failure' && needs.build.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Creates the tenant with a 72h TTL if the branch has none, otherwise
+      # redeploys it in place. `main` is the perpetual tenant and must already
+      # exist -- CD deliberately cannot create a perpetual environment (see
+      # `tenant.sh persist`), so a missing t-main is an error, not a silent
+      # ephemeral tenant on the golden branch.
+      - name: Sync tenant environment
+        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}"

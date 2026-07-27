@@ -34,6 +34,7 @@ source "${SCRIPT_DIR}/lib/tenant-common.sh"
 ATTENDEE_ID=""
 TIER="A"
 IMAGE_TAG_OVERRIDE=""
+TENANT_BRANCH_ARG=""
 TTL="8h"
 HOST_SUFFIX="${HOST_SUFFIX:-}"
 SKIP_DB=false
@@ -45,6 +46,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --tier)        TIER="$2"; shift 2 ;;
     --image-tag)   IMAGE_TAG_OVERRIDE="$2"; shift 2 ;;
+    --branch)      TENANT_BRANCH_ARG="$2"; shift 2 ;;
     --ttl)         TTL="$2"; shift 2 ;;
     --host-suffix) HOST_SUFFIX="$2"; shift 2 ;;
     --profile)     PROFILE="$2"; shift 2 ;;
@@ -54,7 +56,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h] [--profile core|full]"; exit 1; }
+[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--branch BRANCH] [--ttl 8h|never] [--profile core|full]"; exit 1; }
 case "${TIER}" in A|B) ;; *) err "--tier must be A or B"; exit 1 ;; esac
 case "${PROFILE}" in core|full) ;; *) err "--profile must be core or full"; exit 1 ;; esac
 mapfile -t TENANT_SERVICES < <(profile_services "${PROFILE}")
@@ -76,8 +78,15 @@ T_MEILI_URL="http://meilisearch:7700"
 T_WIRE_EVENTING="false"
 # Convert a compact TTL (e.g. 8h, 30m, 2d) into an absolute UTC expiry, working
 # with both GNU date (-d "8 hours") and BSD/macOS date (-v+8H).
+# `never` marks a perpetual tenant: the reaper skips it on the control table's
+# `persistent` flag, and the ten-year stamp is the backstop for the namespace
+# label if that check ever regresses.
 ttl_to_expiry() {
   local ttl="$1" num unit gnu bsd
+  if [ "${ttl}" = "never" ]; then
+    date -u -d "+3650 days" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v+3650d +%Y-%m-%dT%H:%M:%SZ
+    return 0
+  fi
   num="${ttl%%[!0-9]*}"; unit="${ttl##*[0-9]}"
   [ -n "${num}" ] || { err "Invalid --ttl '${ttl}' (use e.g. 8h, 30m, 2d)"; exit 1; }
   case "${unit}" in
@@ -377,6 +386,31 @@ latest_tag() {
     --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags[0]' --output text 2>/dev/null
 }
 
+tag_exists() {
+  aws ecr describe-images --repository-name "${ECR_PREFIX}$1" --image-ids "imageTag=$2" \
+    --region "${AWS_REGION}" >/dev/null 2>&1
+}
+
+# CI publishes each service a branch changed as `branch-<slug>` (and `main` for
+# the golden app), so a tenant runs its branch's build of the services that
+# branch touched and the golden build of everything else. Without this the
+# fallback is "newest image pushed to the repo", which is whichever branch built
+# last -- i.e. another tenant's code.
+BRANCH_TAG=""
+[ -n "${TENANT_BRANCH_ARG}" ] &&
+  BRANCH_TAG="branch-$(branch_tag_slug "${TENANT_BRANCH_ARG}")"
+
+resolve_tag() {
+  local service="$1"
+  if [ -n "${BRANCH_TAG}" ] && tag_exists "${service}" "${BRANCH_TAG}"; then
+    echo "${BRANCH_TAG}"; return 0
+  fi
+  if tag_exists "${service}" main; then
+    echo "main"; return 0
+  fi
+  latest_tag "${service}"
+}
+
 # ---------- Deploy services via Helm ----------
 deploy_service() {
   local service=$1
@@ -387,7 +421,7 @@ deploy_service() {
   # Per-service image tag override: BUG_IMAGE_TAG_<service_with_underscores>
   local var="BUG_IMAGE_TAG_${service//-/_}"
   [ -n "${!var:-}" ] && tag="${!var}"
-  [ -z "${tag}" ] && tag="$(latest_tag "${service}")"
+  [ -z "${tag}" ] && tag="$(resolve_tag "${service}")"
   if [ -z "${tag}" ] || [ "${tag}" = "None" ]; then
     warn "No image in ECR for ${service}; skipping."
     return 0

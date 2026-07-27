@@ -213,8 +213,16 @@ reap_expired() {
   count=0
   while IFS= read -r item; do
     [ -n "${item}" ] || continue
-    local id exp
+    local id exp persistent
     id="$(echo "${item}"  | jq -r '.id.S // (.PK.S | sub("^TENANT#";""))')"
+    # Perpetual tenant (t-main and the like): shared reference infrastructure
+    # with no owner to check it back in, so it has no expiry to act on. It also
+    # carries a ten-year expires_at, but the flag is the contract.
+    persistent="$(echo "${item}" | jq -r '.persistent.BOOL // false')"
+    if [ "${persistent}" = "true" ]; then
+      log "tenant '${id}' is persistent; skipping (not reaping)"
+      continue
+    fi
     # Missing/blank expires_at => tenant is reserved or still deploying (its
     # expiry is written only by ctl_set_active on a successful deploy). Never
     # treat that as "expired at epoch 0"; skip it so an in-flight tenant is not

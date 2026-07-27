@@ -175,6 +175,15 @@ only RDS and the hosted zone (~$15/month) but costs several minutes on the first
 checkout of the day. That trade was considered and declined; see
 `scaling.md` §1 for why the system pool is one node rather than zero or two.
 
+### What the perpetual tenant adds
+
+`t-main` is exempt from both TTL reaping and idle-suspend, so it is the one
+tenant that is never asleep: ~15 pods holding roughly half a spot node,
+**~$15-25/month** on top of the floor. That is the whole reason the flag is
+allowlisted to a single id rather than offered as a checkout option — the idle
+floor is only ~$150/month because nothing else stays up, and ten perpetual
+tenants would more than double it while looking like a checkbox.
+
 ## 4. Scale limits to respect
 
 These are the failure modes that appear between 10 and 100 tenants. They are not

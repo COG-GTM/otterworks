@@ -129,3 +129,22 @@ variable "provisioner_user_name" {
   type        = string
   default     = "de-demo-provisioner"
 }
+
+variable "enable_github_actions_role" {
+  description = "Create the OIDC role GitHub Actions assumes for continuous delivery. Requires the GitHub OIDC provider to already exist in the account."
+  type        = bool
+  default     = true
+}
+
+variable "github_repository" {
+  description = "owner/repo whose workflows may assume the CD role."
+  type        = string
+  default     = "Cognition-Partner-Workshops/otterworks"
+}
+
+variable "github_actions_trusted_refs" {
+  description = "Branch patterns (git ref names, may contain *) whose workflow runs may assume the CD role."
+  type        = list(string)
+  default     = ["main", "workshop-*", "demo-*"]
+}
+

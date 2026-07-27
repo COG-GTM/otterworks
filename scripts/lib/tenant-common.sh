@@ -72,6 +72,21 @@ sanitize_id() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//'
 }
 tenant_namespace() { printf 'otterworks-%s' "$(sanitize_id "$1")"; }
+
+# Git branch -> the Docker tag CI publishes that branch's images under. Docker
+# tags allow [a-zA-Z0-9._-] only, so `feature/x` cannot be used verbatim. CI and
+# deploy-tenant.sh must agree exactly or a tenant silently falls back to the
+# golden image, so both call this.
+branch_tag_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g'
+}
+
+# Tenant id for a branch: `workshop-derek` and `demo-derek` both own tenant
+# `derek`. The dashboard rejects a redeploy whose branch does not match the one
+# the tenant was checked out from, so the collision cannot silently hijack.
+branch_tenant_id() {
+  sanitize_id "$(printf '%s' "$1" | sed -E 's#^(workshop|demo)[-/]##')"
+}
 tenant_db_name()   { printf 'otterworks_%s' "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g; s/^_*//; s/_*$//')"; }
 
 require_bins() {

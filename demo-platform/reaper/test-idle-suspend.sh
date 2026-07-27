@@ -19,7 +19,7 @@ nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
 # ---- stubs -------------------------------------------------------------------
-declare -A ITEM_COUNT ITEM_SINCE ITEM_RUNNING
+declare -A ITEM_COUNT ITEM_SINCE ITEM_RUNNING ITEM_PERSIST
 declare -A NS_RUNNING NS_CHAOS METRIC
 SUSPENDED=""
 
@@ -27,10 +27,11 @@ ctl_tenant_exists() { [ -n "${ITEM_COUNT[$1]+x}" ] || [ -n "${NS_RUNNING[otterwo
 ctl_get() {
   local id="${1#TENANT#}"
   jq -n --arg c "${ITEM_COUNT[$id]:-}" --arg s "${ITEM_SINCE[$id]:-}" \
-        --arg r "${ITEM_RUNNING[$id]:-}" \
+        --arg r "${ITEM_RUNNING[$id]:-}" --arg p "${ITEM_PERSIST[$id]:-}" \
     '{Item: ({} + (if $c=="" then {} else {req_count:{N:$c}} end)
                 + (if $s=="" then {} else {idle_since:{N:$s}} end)
-                + (if $r=="" then {} else {was_running:{N:$r}} end))}'
+                + (if $r=="" then {} else {was_running:{N:$r}} end)
+                + (if $p=="" then {} else {persistent:{BOOL:($p=="true")}} end))}'
 }
 ctl_audit() { :; }
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
@@ -66,8 +67,8 @@ eval "$(sed -n '/^tenant_namespaces()/,/^}/p;/^suspend_idle_tenants()/,/^}/p' "$
 real_src="$(sed -n '/^ingress_request_counts()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 
 reset_state() {
-  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC
-  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=()
+  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING ITEM_PERSIST NS_RUNNING NS_CHAOS METRIC
+  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() ITEM_PERSIST=() NS_RUNNING=() NS_CHAOS=() METRIC=()
   SUSPENDED=""
   SUSPEND_RC=0
 }
@@ -178,6 +179,27 @@ check "  restarts the idle clock on wake" "$([ "${ITEM_SINCE[nap]}" -ge "${NOW}"
 ITEM_SINCE[nap]=${STALE}
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and is suspended again once it goes idle" "${SUSPENDED# }" "nap"
+
+# The perpetual tenant is the always-on reference environment. Suspending it
+# would put a multi-minute cold start in front of the next person to open it,
+# and nothing wakes it automatically -- waking is check-out, which a persistent
+# tenant never gets.
+reset_state
+NS_RUNNING[otterworks-main]=13; METRIC[otterworks-main]=100
+ITEM_COUNT[main]=100; ITEM_SINCE[main]=${STALE}; ITEM_PERSIST[main]=true
+seen_running main
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "never suspends a persistent tenant" "${SUSPENDED# }" ""
+
+# ...and the exemption is the flag, not the id: an ordinary tenant that happens
+# to be idle alongside it is still suspended in the same pass.
+reset_state
+NS_RUNNING[otterworks-main]=13; ITEM_COUNT[main]=100; ITEM_SINCE[main]=${STALE}; ITEM_PERSIST[main]=true
+NS_RUNNING[otterworks-ephemeral]=13; ITEM_COUNT[ephemeral]=100; ITEM_SINCE[ephemeral]=${STALE}
+METRIC[otterworks-main]=100; METRIC[otterworks-ephemeral]=100
+seen_running main; seen_running ephemeral
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and still suspends idle tenants beside it" "${SUSPENDED# }" "ephemeral"
 
 # A refused scale-down must not be recorded as a suspension. Writing
 # was_running=0 for a tenant that is still up makes the next pass read it as a
