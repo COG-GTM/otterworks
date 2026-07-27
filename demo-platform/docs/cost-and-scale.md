@@ -151,7 +151,29 @@ cannot scale to zero do not belong in a demo platform unless a lab needs them.
 | **baseline** | **~$570/month** |
 
 Against ~$1,320/month for two tenants, that is 100 tenants for well under half
-the previous spend. Idle-only (all tenants asleep) the floor is ~$200/month.
+the previous spend.
+
+### The floor, with every tenant asleep
+
+What remains when no tenant is awake is the platform itself, and it is worth
+knowing precisely, because it is the number that bills on a weekend:
+
+| | Monthly |
+|---:|---|
+| EKS control plane | $72 |
+| System pool — **one** spot xlarge | ~$36 |
+| Shared RDS `db.t3.micro` + 20GiB | ~$15 |
+| One shared NLB | ~$18 |
+| Route53 zone + records, DynamoDB control table, Secrets Manager, EBS root, IPv4 | ~$10 |
+| **idle floor** | **~$150/month** |
+
+The control plane, one node and one NLB are ~85% of that, and each is load
+bearing: the platform has to be reachable to receive a checkout, and Karpenter
+has to be running somewhere before it can launch anything. Going below it means
+giving up the warm start — tearing the cluster down between workshops leaves
+only RDS and the hosted zone (~$15/month) but costs several minutes on the first
+checkout of the day. That trade was considered and declined; see
+`scaling.md` §1 for why the system pool is one node rather than zero or two.
 
 ## 4. Scale limits to respect
 
@@ -165,11 +187,15 @@ out. **Prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) makes the CNI
 allocate /28 prefixes instead of single IPs, raising per-node pod density by
 roughly an order of magnitude. Subnets are sized /20 to match.
 
-**RDS connections.** Connections are `pools × services × tenants`. A handful of
-Spring services with default pools of 10 exhausts a `db.t3.micro`'s ~87
-`max_connections` at fewer than 10 tenants. **PgBouncer** in transaction-pooling
-mode fronts the shared instance so hundreds of client connections map onto tens
-of server connections.
+**RDS connections.** Connections are `pools × services × tenants`, and they are
+held whether or not the tenant is being used: a live full tenant sitting idle
+measured **16 backends**, so a `db.t3.micro`'s ~112 `max_connections` runs out at
+six tenants. **PgBouncer** in transaction-pooling mode now fronts the shared
+instance, and the same idle tenant holds **one** server connection — RDS
+connections track concurrent queries rather than tenant count, capped globally at
+80 by `max_user_connections`. Migrations run through a second, session-mode port
+(6433) because their advisory locks do not survive transaction pooling; see
+[`scaling.md`](./scaling.md) §3.
 
 **Database-per-tenant.** Postgres handles hundreds of databases on one instance
 without complaint, so the isolation model itself scales; the constraint is

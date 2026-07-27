@@ -123,3 +123,9 @@ variable "sweepable_clusters" {
   type        = list(string)
   default     = []
 }
+
+variable "provisioner_user_name" {
+  description = "IAM user who provisions demo tenants through the dashboard (holds only the passcode grant)."
+  type        = string
+  default     = "de-demo-provisioner"
+}

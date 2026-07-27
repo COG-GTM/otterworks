@@ -101,6 +101,40 @@ load_infra_outputs() {
   if [ -z "${RDS_HOST}" ]; then
     warn "Terraform outputs unavailable; services will deploy without wired config."
   fi
+  resolve_db_endpoint
+}
+
+# Where the *application* services send their SQL. Distinct from RDS_HOST, which
+# stays pointed at the instance itself: creating and dropping databases is
+# administrative work that has no business going through a connection pooler
+# (CREATE/DROP DATABASE cannot run inside the transaction a pooled connection
+# may already be in).
+#
+# Each service holds its own pool, so connections grow with tenants x services
+# against a db.t3.micro that allows ~112 of them -- around ten awake tenants.
+# PgBouncer in transaction mode makes that a function of concurrent SQL instead.
+#
+# Only used when the pooler is actually up: a tenant deployed against a
+# nonexistent Service would fail every query, which is a far worse failure than
+# using more connections than we would like. Set DB_VIA_PGBOUNCER=false to force
+# services back onto the instance directly.
+resolve_db_endpoint() {
+  DB_ENDPOINT_HOST="${RDS_HOST}"
+  DB_ENDPOINT_PORT="${RDS_PORT}"
+  # Schema migrations take session-level advisory locks, which a transaction
+  # pooler breaks; they get the pooler's session-mode port instead. Same host,
+  # so this is still one bounded set of connections to RDS.
+  DB_SESSION_PORT="${RDS_PORT}"
+
+  [ "${DB_VIA_PGBOUNCER:-true}" = "true" ] || return 0
+  kubectl -n "${PGBOUNCER_NAMESPACE:-otterworks-platform}" get svc pgbouncer >/dev/null 2>&1 || {
+    warn "pgbouncer not found; wiring services straight to RDS (install with demo-platform/scripts/install-pgbouncer.sh)"
+    return 0
+  }
+
+  DB_ENDPOINT_HOST="pgbouncer.${PGBOUNCER_NAMESPACE:-otterworks-platform}.svc.cluster.local"
+  DB_ENDPOINT_PORT=6432
+  DB_SESSION_PORT=6433
 }
 
 irsa_arn() { echo "${IRSA_JSON:-{}}" | jq -r --arg s "$1" '.[$s] // empty' 2>/dev/null; }
@@ -235,8 +269,14 @@ build_helm_args() {
     api-gateway) : ;;
     auth-service)
       EXTRA_ARGS+=(--set-string "config.SPRING_PROFILES_ACTIVE=prod")
-      EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_URL=jdbc:postgresql://${RDS_HOST}:${RDS_PORT}/${T_DB_NAME}")
+      EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${T_DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_USERNAME=${DB_USER}")
+      # Flyway runs on boot and holds a session-level advisory lock for the
+      # length of the migration, so it gets its own datasource on the pooler's
+      # session port; the application's own queries stay on the transaction one.
+      EXTRA_ARGS+=(--set-string "config.SPRING_FLYWAY_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_SESSION_PORT}/${T_DB_NAME}")
+      EXTRA_ARGS+=(--set-string "config.SPRING_FLYWAY_USER=${DB_USER}")
+      add_secret SPRING_FLYWAY_PASSWORD "${DB_PASSWORD}"
       add_secret SPRING_DATASOURCE_PASSWORD "${DB_PASSWORD}" ;;
     file-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
@@ -251,7 +291,7 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_SNS_TOPIC_ARN=${sns_topic}")
-      add_secret DOC_SVC_DATABASE_URL "postgresql+asyncpg://$(urlencode "${DB_USER}"):$(urlencode "${DB_PASSWORD}")@${RDS_HOST}:${RDS_PORT}/${T_DB_NAME}" ;;
+      add_secret DOC_SVC_DATABASE_URL "postgresql+asyncpg://$(urlencode "${DB_USER}"):$(urlencode "${DB_PASSWORD}")@${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${T_DB_NAME}" ;;
     collab-service)
       EXTRA_ARGS+=(--set-string "config.HTTP_PORT=8084" --set-string "config.NODE_ENV=production")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379") ;;
@@ -274,11 +314,21 @@ build_helm_args() {
       # isolation, and just burns ResourceQuota on short-lived tenants.
       EXTRA_ARGS+=(--set cronjob.enabled=false)
       EXTRA_ARGS+=(--set-string "config.ANALYTICS_HOST=0.0.0.0" --set-string "config.PORT=8088")
-      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${RDS_HOST}:${RDS_PORT}/${T_DB_NAME}")
+      # Third migration path, and the quietest: AnalyticsDb.migrate() runs Flyway
+      # from the same DATABASE_URL as the Slick pool, and a failed migration
+      # falls back to the in-memory store instead of crashing -- so getting this
+      # wrong loses the tenant's analytics data without any pod ever going
+      # unhealthy. Session port for the whole service, as with Rails. Slick here
+      # opens connections per query rather than holding a pool, so this costs
+      # the session pooler far less than the connection count suggests.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_SESSION_PORT}/${T_DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}" ;;
     admin-service)
-      EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${RDS_HOST}" --set-string "config.DATABASE_PORT=${RDS_PORT}")
+      # Rails takes a session-level advisory lock in `db:migrate`, which runs
+      # from the image's CMD on every boot and shares one connection URL with
+      # the app -- so the whole service uses the session-mode port.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
@@ -288,7 +338,7 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")
       EXTRA_ARGS+=(--set-string "config.Aws__S3ArchiveBucket=${S3_AUDIT_BUCKET}") ;;
     report-service)
-      EXTRA_ARGS+=(--set-string "config.DB_HOST=${RDS_HOST}" --set-string "config.DB_PORT=${RDS_PORT}")
+      EXTRA_ARGS+=(--set-string "config.DB_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DB_PORT=${DB_ENDPOINT_PORT}")
       EXTRA_ARGS+=(--set-string "config.DB_NAME=${T_DB_NAME}" --set-string "config.DB_USER=${DB_USER}")
       add_secret DB_PASSWORD "${DB_PASSWORD}" ;;
   esac

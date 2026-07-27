@@ -21,3 +21,11 @@ output "dns_zone_name_servers" {
 output "dns_role_arn" {
   value = var.enable_dns ? aws_iam_role.dns[0].arn : null
 }
+
+output "provisioner_user_arn" {
+  value = aws_iam_user.provisioner.arn
+}
+
+output "dashboard_passcode_secret_arn" {
+  value = aws_secretsmanager_secret.dashboard_passcode.arn
+}

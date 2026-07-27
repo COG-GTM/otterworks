@@ -20,6 +20,7 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$
 AWS_LIST_CLUSTERS_RC=0
 AWS_LIST_CLUSTERS_OUT="otterworks-dev"
 ELB_TAG_CLUSTER="otterworks-dev"
+INSTANCE_TAG_CLUSTER="otterworks-dev"
 DELETED=""
 
 # Stub the CLI. The account is modelled as holding exactly one Classic ELB: the
@@ -39,6 +40,12 @@ aws() {
       printf '[{"Key":"kubernetes.io/cluster/%s","Value":"owned"},' "${ELB_TAG_CLUSTER}"
       printf '{"Key":"kubernetes.io/service-name","Value":"ingress-nginx/ingress-nginx-controller"}]'
       return 0 ;;
+    *"ec2 describe-instances"*"--instance-ids"*)
+      printf '[{"Key":"karpenter.sh/nodepool","Value":"tenants"},'
+      printf '{"Key":"kubernetes.io/cluster/%s","Value":"owned"}]' "${INSTANCE_TAG_CLUSTER}"
+      return 0 ;;
+    *"ec2 describe-instances"*)
+      printf 'i-000karpenter'; return 0 ;;
     *"route53 list-resource-record-sets"*"?Name=="*)
       printf '[{"Name":"%s.","Type":"A","TTL":300,"ResourceRecords":[{"Value":"10.0.0.1"}]}]' "${R53_RECORDS}"
       return 0 ;;
@@ -46,7 +53,7 @@ aws() {
       printf '%s' "${R53_RECORDS}"; return 0 ;;
     *"change-resource-record-sets"*)
       DELETED="${DELETED} route53:${R53_RECORDS}"; return 0 ;;
-    *delete*|*release-address*)
+    *delete*|*release-address*|*terminate-instances*)
       DELETED="${DELETED} ${args}"; return 0 ;;
     *) return 0 ;;
   esac
@@ -210,6 +217,34 @@ for record in t-gone.demo.otterworks.app api-t-gone.demo.otterworks.app cname-t-
   check "reclaims the record ${record} of a tenant that no longer exists" \
     "${DELETED# }" "route53:${record}"
 done
+
+# ---- Karpenter nodes ---------------------------------------------------------
+#
+# These are the most expensive orphan class the sweep handles -- an instance,
+# not an idle load balancer -- and the only thing that would otherwise terminate
+# one is a controller inside a cluster that no longer exists. The live cluster's
+# own nodes must survive regardless: they are running tenants.
+AWS_LIST_CLUSTERS_RC=0
+AWS_LIST_CLUSTERS_OUT="otterworks-dev"
+# shellcheck disable=SC2034  # read by cluster_is_ours from the sourced sweep
+SWEEPABLE_CLUSTERS="otterworks-dev otterworks-old"
+
+INSTANCE_TAG_CLUSTER="otterworks-dev"
+DELETED=""
+sweep_karpenter_instances >/dev/null 2>&1
+check "spares Karpenter nodes of the live cluster" "${DELETED# }" ""
+
+INSTANCE_TAG_CLUSTER="someone-elses-cluster"
+DELETED=""
+sweep_karpenter_instances >/dev/null 2>&1
+check "spares Karpenter nodes of a dead cluster we do not own" "${DELETED# }" ""
+
+INSTANCE_TAG_CLUSTER="otterworks-old"
+DELETED=""
+sweep_karpenter_instances >/dev/null 2>&1
+check "terminates Karpenter nodes left by a dead cluster of ours" \
+  "${DELETED##* }" "i-000karpenter"
+INSTANCE_TAG_CLUSTER="otterworks-dev"
 
 # ---- ownership set is built from the environment, not replaced by it --------
 #

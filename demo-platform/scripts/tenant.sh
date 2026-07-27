@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# ------------------------------------------------------------------------------
+# Provision demo tenants from the command line, through the dashboard.
+#
+# This is the scripted equivalent of clicking around ops.otterworks.app, and it
+# is deliberately the *only* path a provisioner needs: the dashboard runs the
+# actual work as a runner Job under the control plane's IRSA role, so the caller
+# needs no cluster access and no AWS permissions beyond reading the passcode.
+# See infra/terraform/iam_provisioner.tf for the credential this expects
+# (`de-demo-provisioner`).
+#
+# The passcode comes from Secrets Manager, or from DASHBOARD_PASSCODE if it is
+# already in the environment. It is never passed on a process argv -- not to
+# curl, and not to the jq that builds the login body: /proc/<pid>/cmdline is
+# world-readable, so on the shared container an agent platform runs this in, any
+# other local process could read it out of `ps`. It travels by environment and
+# stdin instead, and the session cookie lands in a jar with 0600 permissions
+# that is removed on exit.
+#
+# Usage:
+#   tenant.sh list
+#   tenant.sh checkout <id> [branch] [ttl]     # branch defaults to workshop-<id>
+#   tenant.sh checkin  <id>
+#   tenant.sh extend   <id> <ttl>
+#   tenant.sh status   <id>
+#
+# Examples:
+#   tenant.sh checkout derek                   # -> workshop-derek, 8h
+#   tenant.sh checkout derek workshop-derek 24h
+#   OPS_HOST=https://ops.example.app tenant.sh list
+# ------------------------------------------------------------------------------
+set -euo pipefail
+
+OPS_HOST="${OPS_HOST:-https://ops.otterworks.app}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+PASSCODE_SECRET_ID="${PASSCODE_SECRET_ID:-otterworks/dev/dashboard/passcode}"
+DEFAULT_TTL="${DEFAULT_TTL:-8h}"
+
+log()  { echo "[tenant] $*"; }
+fail() { echo "[tenant] ERROR: $*" >&2; exit 1; }
+
+for bin in curl jq; do
+  command -v "${bin}" >/dev/null 2>&1 || fail "${bin} is required"
+done
+
+JAR="$(mktemp)"
+chmod 600 "${JAR}"
+cleanup() { rm -f "${JAR}"; }
+trap cleanup EXIT
+
+# ------------------------------------------------------------------------------
+
+login() {
+  local passcode
+  passcode="${DASHBOARD_PASSCODE:-}"
+
+  if [ -z "${passcode}" ]; then
+    command -v aws >/dev/null 2>&1 ||
+      fail "aws is required to read ${PASSCODE_SECRET_ID} (or set DASHBOARD_PASSCODE)"
+    passcode="$(aws secretsmanager get-secret-value \
+                  --region "${AWS_REGION}" \
+                  --secret-id "${PASSCODE_SECRET_ID}" \
+                  --query SecretString --output text 2>/dev/null)" ||
+      fail "cannot read ${PASSCODE_SECRET_ID} -- is this credential the provisioner user?"
+  fi
+
+  [ -n "${passcode}" ] || fail "passcode is empty"
+
+  # env.PASSCODE, not --arg: an argument would be visible in `ps` for the life
+  # of the jq process. The environment of a process is readable only by its own
+  # user and root.
+  local code
+  code="$(PASSCODE="${passcode}" jq -nc '{passcode: env.PASSCODE}' |
+            curl -sS -o /dev/null -w '%{http_code}' \
+                 -c "${JAR}" -X POST "${OPS_HOST}/api/auth/login" \
+                 -H 'content-type: application/json' --data-binary @-)"
+
+  case "${code}" in
+    200|204) ;;
+    401) fail "passcode rejected by ${OPS_HOST}" ;;
+    429) fail "rate limited by ${OPS_HOST} -- too many failed logins, wait and retry" ;;
+    *)   fail "login to ${OPS_HOST} returned HTTP ${code}" ;;
+  esac
+}
+
+# Fails on any non-2xx so a rejected checkout is an error rather than a silent
+# no-op that leaves the caller believing a tenant exists.
+api() {
+  local method="$1" path="$2" body="${3:-}"
+  local out code
+
+  if [ -n "${body}" ]; then
+    out="$(printf '%s' "${body}" |
+             curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}" \
+                  -H 'content-type: application/json' --data-binary @-)"
+  else
+    out="$(curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}")"
+  fi
+
+  code="$(printf '%s' "${out}" | tail -n1)"
+  out="$(printf '%s' "${out}" | sed '$d')"
+
+  case "${code}" in
+    2*) printf '%s' "${out}" ;;
+    409) fail "conflict: $(printf '%s' "${out}" | jq -r '.error // .' 2>/dev/null || printf '%s' "${out}")" ;;
+    *)   fail "${method} ${path} returned HTTP ${code}: ${out}" ;;
+  esac
+}
+
+# Aligned without `column`, which is not in every base image (and is absent
+# from the slim images an agent platform is likely to run this in).
+#
+# Only for endpoints that return tenant objects. The mutating endpoints return
+# result objects instead ({ok, status}, {ok, expiresAt}), which have none of
+# these fields and would render as a row of dashes -- so they get their own
+# formatters below rather than being forced through this one.
+table() {
+  jq -r '(if type == "array" then . else [.] end)
+         | .[]
+         | [.id, .status, (.branch // "-"), (.url // "-")]
+         | @tsv' |
+    awk -F'\t' '{ printf "%-14s %-10s %-22s %s\n", $1, $2, $3, $4 }'
+}
+
+# A 202 from checkout or check-in means the state changed but the runner Job was
+# not enqueued -- the tenant will sit in `deploying`/`draining` forever. Silence
+# would make that look like success.
+#
+# Returns non-zero when degraded, so callers can suppress the progress messages
+# that would otherwise tell someone to wait for work that was never started.
+warn_if_degraded() {
+  local warning
+  warning="$(printf '%s' "$1" | jq -r '.warning // empty')"
+  [ -n "${warning}" ] || return 0
+
+  echo "[tenant] WARNING: ${warning}" >&2
+  return 1
+}
+
+# ------------------------------------------------------------------------------
+
+cmd="${1:-}"
+[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status> [args]"
+shift || true
+
+case "${cmd}" in
+  list)
+    login
+    api GET /api/tenants | table
+    ;;
+
+  checkout)
+    id="${1:-}"
+    [ -n "${id}" ] || fail "usage: tenant.sh checkout <id> [branch] [ttl]"
+    branch="${2:-workshop-${id}}"
+    ttl="${3:-${DEFAULT_TTL}}"
+
+    login
+    log "checking out '${id}' from ${branch} (ttl ${ttl})..."
+
+    # 201 returns the tenant; 202 wraps it as {tenant, warning}.
+    out="$(api POST /api/tenants/checkout \
+             "$(jq -nc --arg id "${id}" --arg b "${branch}" --arg t "${ttl}" \
+                     '{id:$id, branch:$b, ttl:$t, owner:"cli"}')")"
+    printf '%s' "${out}" | jq -c '.tenant // .' | table
+
+    if warn_if_degraded "${out}"; then
+      log "deploying -- takes a few minutes; watch with: tenant.sh status ${id}"
+    else
+      # The id is now reserved but nothing is building it, so leaving with a
+      # success status would strand the slot silently.
+      fail "'${id}' is reserved but not deploying -- check the runner, then 'tenant.sh checkin ${id}' to release it"
+    fi
+    ;;
+
+  checkin)
+    id="${1:-}"
+    [ -n "${id}" ] || fail "usage: tenant.sh checkin <id>"
+
+    login
+    log "checking in '${id}' (namespace, database, DNS and IRSA trust are removed)..."
+    out="$(api POST "/api/tenants/${id}/checkin" '{}')"
+    log "${id}: $(printf '%s' "${out}" | jq -r '.status // "accepted"')"
+
+    # Explicit rather than relying on set -e to trip on the return value: a
+    # teardown that was never enqueued leaves tenant resources billing, so it
+    # has to be a visible failure.
+    warn_if_degraded "${out}" ||
+      fail "'${id}' was released in the control table but its resources were not torn down"
+    ;;
+
+  extend)
+    id="${1:-}" ttl="${2:-}"
+    if [ -z "${id}" ] || [ -z "${ttl}" ]; then fail "usage: tenant.sh extend <id> <ttl>"; fi
+
+    login
+    api POST "/api/tenants/${id}/extend" "$(jq -nc --arg t "${ttl}" '{ttl:$t}')" |
+      jq -r --arg id "${id}" '"[tenant] \($id): now expires \(.expiresAt | todate)"'
+    ;;
+
+  status)
+    id="${1:-}"
+    [ -n "${id}" ] || fail "usage: tenant.sh status <id>"
+
+    login
+    api GET "/api/tenants/${id}" |
+      jq -r '"id       : \(.id)",
+             "status   : \(.status)",
+             "branch   : \(.branch // "-")",
+             "url      : \(.url // "-")",
+             "api      : \(.apiUrl // "-")",
+             "expires  : \(if .expiresAt then (.expiresAt | todate) else "-" end)",
+             "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready"'
+    ;;
+
+  *)
+    fail "unknown command '${cmd}' -- expected list, checkout, checkin, extend or status"
+    ;;
+esac
