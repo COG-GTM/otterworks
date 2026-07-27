@@ -12,8 +12,10 @@
 #   1. delete every LoadBalancer Service and WAIT for AWS to actually release
 #      the load balancers (the controller is still alive to do it)
 #   2. delete Ingresses so external-dns removes their Route53 records
-#   3. only then destroy the cluster with Terraform
-#   4. verify nothing tagged for this cluster survives
+#   3. delete Karpenter's NodeClaims, which have the same problem: the only
+#      thing that terminates those instances is the controller in this cluster
+#   4. only then destroy the cluster with Terraform
+#   5. verify nothing tagged for this cluster survives
 #
 # Usage: scripts/teardown-cluster.sh [--yes] [--skip-terraform]
 # ------------------------------------------------------------------------------
@@ -142,7 +144,26 @@ else
   done
 fi
 
-# ---------- Step 2: release the load balancers' security groups ---------------
+# ---------- Step 2: return Karpenter's nodes ----------------------------------
+
+# Karpenter launches instances that exist in no Terraform state, and its
+# controller -- running in this cluster -- is the only thing that ever
+# terminates them. Destroying the cluster first leaves them running with no
+# owner, which is the load balancer story again at instance prices.
+#
+# Deleting the NodeClaims makes Karpenter drain and terminate them while it can
+# still see them. Nothing here is fatal: if Karpenter is not installed there is
+# nothing to do, and if the drain fails the sweep in step 5 reports what is left.
+if kubectl get nodeclaims >/dev/null 2>&1; then
+  claims="$(kubectl get nodeclaims -o name 2>/dev/null | wc -l | tr -d ' ')"
+  if [ "${claims}" != "0" ]; then
+    log "Returning ${claims} Karpenter node(s) before the cluster goes away..."
+    kubectl delete nodeclaims --all --timeout="${DRAIN_TIMEOUT}s" >/dev/null 2>&1 || \
+      warn "not all NodeClaims drained; infra-sweep.sh will reclaim the instances"
+  fi
+fi
+
+# ---------- Step 3: release the load balancers' security groups ---------------
 
 # Deleting a Classic ELB leaves its `k8s-elb-<hash>` security group behind. The
 # group is free, so it is easy to miss, but it pins the VPC and makes the
@@ -164,7 +185,7 @@ for sg in $(aws ec2 describe-security-groups --region "${AWS_REGION}" \
   fi
 done
 
-# ---------- Step 3: destroy the cluster ---------------------------------------
+# ---------- Step 4: destroy the cluster ---------------------------------------
 
 if [ "${SKIP_TERRAFORM}" = true ]; then
   log "Skipping terraform destroy (--skip-terraform)."
@@ -175,7 +196,7 @@ else
     -var-file=environments/dev.tfvars -auto-approve -input=false
 fi
 
-# ---------- Step 4: verify ----------------------------------------------------
+# ---------- Step 5: verify ----------------------------------------------------
 
 log "Verifying no resources remain tagged for ${EKS_CLUSTER}..."
 left="$(cluster_lb_count)" || {
@@ -194,4 +215,15 @@ vols="$(aws ec2 describe-volumes --region "${AWS_REGION}" \
           --query 'length(Volumes)' --output text 2>/dev/null || echo 0)"
 [ "${vols}" != "0" ] && warn "${vols} unattached EBS volume(s) tagged for ${EKS_CLUSTER}; infra-sweep.sh will reclaim them."
 
-log "Teardown complete; no orphaned load balancers."
+nodes="$(aws ec2 describe-instances --region "${AWS_REGION}" \
+           --filters "Name=tag-key,Values=karpenter.sh/nodepool" \
+                     "Name=tag-key,Values=kubernetes.io/cluster/${EKS_CLUSTER}" \
+                     "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+           --query 'length(Reservations[].Instances[])' --output text 2>/dev/null || echo 0)"
+if [ "${nodes}" != "0" ]; then
+  err "${nodes} Karpenter instance(s) survived the teardown -- these bill until terminated."
+  err "Run: DRY_RUN=false demo-platform/reaper/infra-sweep.sh"
+  exit 1
+fi
+
+log "Teardown complete; no orphaned load balancers or nodes."

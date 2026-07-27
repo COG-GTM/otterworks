@@ -124,6 +124,7 @@ data "aws_iam_policy_document" "dashboard" {
       "ec2:DescribeAddresses",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeInstances",
     ]
     resources = ["*"]
   }
@@ -156,6 +157,46 @@ data "aws_iam_policy_document" "dashboard" {
         test     = "StringEquals"
         variable = "aws:ResourceTag/kubernetes.io/cluster/${statement.value}"
         values   = ["owned", "shared"]
+      }
+    }
+  }
+
+  # Terminating instances is held apart from the deletes above, and deliberately
+  # excludes var.cluster_name. Everything else on that list is inert once its
+  # cluster is gone, so a cluster tag is a sufficient bound; an instance is not
+  # -- the live cluster's own nodes, Karpenter's and the managed group's alike,
+  # carry `kubernetes.io/cluster/<name>=owned` while serving tenants. Granting
+  # terminate on that tag alone would leave `cluster_is_dead_and_ours` in the
+  # shell script as the only thing standing between a bug and every running
+  # node, which is precisely the arrangement the block above exists to avoid.
+  #
+  # Nothing is lost by the exclusion: the sweep only terminates instances whose
+  # cluster no longer exists, and the cluster it is running in does. Instances
+  # stranded by a cluster that was destroyed and rebuilt under the same name are
+  # likewise not reclaimable here -- the live cluster answers to that tag -- and
+  # are the sweep's ownership rules working as intended. A rebuild under a *new*
+  # name adds the old one to var.sweepable_clusters, which is where the orphans
+  # of a previous incarnation are meant to be reclaimed from.
+  #
+  # The second condition narrows it further to Karpenter's own nodes: a managed
+  # node group's instances are Terraform's to remove, and the sweep has no
+  # business terminating them even in a dead cluster.
+  dynamic "statement" {
+    for_each = toset(var.sweepable_clusters)
+    content {
+      sid       = "InfraOrphanSweepTerminateKarpenter${replace(title(replace(statement.value, "-", " ")), " ", "")}"
+      effect    = "Allow"
+      actions   = ["ec2:TerminateInstances"]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:ResourceTag/kubernetes.io/cluster/${statement.value}"
+        values   = ["owned", "shared"]
+      }
+      condition {
+        test     = "StringLike"
+        variable = "aws:ResourceTag/karpenter.sh/nodepool"
+        values   = ["*"]
       }
     }
   }

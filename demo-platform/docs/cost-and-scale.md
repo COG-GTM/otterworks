@@ -165,11 +165,15 @@ out. **Prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) makes the CNI
 allocate /28 prefixes instead of single IPs, raising per-node pod density by
 roughly an order of magnitude. Subnets are sized /20 to match.
 
-**RDS connections.** Connections are `pools × services × tenants`. A handful of
-Spring services with default pools of 10 exhausts a `db.t3.micro`'s ~87
-`max_connections` at fewer than 10 tenants. **PgBouncer** in transaction-pooling
-mode fronts the shared instance so hundreds of client connections map onto tens
-of server connections.
+**RDS connections.** Connections are `pools × services × tenants`, and they are
+held whether or not the tenant is being used: a live full tenant sitting idle
+measured **16 backends**, so a `db.t3.micro`'s ~112 `max_connections` runs out at
+six tenants. **PgBouncer** in transaction-pooling mode now fronts the shared
+instance, and the same idle tenant holds **one** server connection — RDS
+connections track concurrent queries rather than tenant count, capped globally at
+80 by `max_user_connections`. Migrations run through a second, session-mode port
+(6433) because their advisory locks do not survive transaction pooling; see
+[`scaling.md`](./scaling.md) §3.
 
 **Database-per-tenant.** Postgres handles hundreds of databases on one instance
 without complaint, so the isolation model itself scales; the constraint is

@@ -27,6 +27,7 @@
 #   (d) Unassociated Elastic IPs tagged for a dead cluster.
 #   (e) Route53 A/TXT records under the demo host suffix with no live tenant.
 #   (f) k8s-elb-* security groups with no attached ENI (these block VPC deletes).
+#   (g) EC2 instances Karpenter launched for a cluster that no longer exists.
 #
 # DRY_RUN=true (default) reports only. Set DRY_RUN=false to actually delete.
 # ------------------------------------------------------------------------------
@@ -327,6 +328,36 @@ sweep_elb_security_groups() {
   done
 }
 
+# ------------------------------------------------------------------------------
+# (g) Karpenter nodes whose cluster is gone
+#
+# Karpenter nodes are the same hazard as load balancers, and a more expensive
+# one: nothing in Terraform state knows they exist, and the only thing that ever
+# terminates them is the Karpenter controller running inside the cluster. Delete
+# the cluster and the instances keep running -- a c5.4xlarge at roughly $250 a
+# month each, indefinitely. teardown-cluster.sh drains them first for that
+# reason; this is the backstop for when it was not used, or died partway.
+#
+# Managed node group instances are deliberately not covered: those belong to a
+# node group Terraform destroys with the cluster, and terminating one that is
+# merely between health checks would be destructive.
+# ------------------------------------------------------------------------------
+sweep_karpenter_instances() {
+  local id cluster
+  for id in $(aws ec2 describe-instances --region "${AWS_REGION}" \
+                --filters "Name=tag-key,Values=karpenter.sh/nodepool" \
+                          "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+                --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null); do
+    [ -n "${id}" ] || continue
+    cluster="$(aws ec2 describe-instances --region "${AWS_REGION}" --instance-ids "${id}" \
+                 --query 'Reservations[0].Instances[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
+    [ -n "${cluster}" ] || { sweep_log "Karpenter instance ${id} has no cluster tag; reporting only"; continue; }
+    cluster_is_dead_and_ours "${cluster}" || continue
+    sweep_warn "orphan Karpenter instance ${id} (cluster '${cluster}' no longer exists)"
+    act aws ec2 terminate-instances --region "${AWS_REGION}" --instance-ids "${id}"
+  done
+}
+
 infra_sweep() {
   sweep_log "infrastructure orphan sweep starting (region=${AWS_REGION}, dry_run=${DRY_RUN})"
   # Without a trustworthy live-cluster list there is no safe way to tell an
@@ -342,6 +373,9 @@ infra_sweep() {
   sweep_target_groups
   # After the load balancers are gone, their security groups become deletable.
   sweep_elb_security_groups
+  sweep_karpenter_instances
+  # Ordered after the instances: terminating one releases its root volume, which
+  # this then finds unattached.
   sweep_ebs_volumes
   sweep_eips
   sweep_route53
