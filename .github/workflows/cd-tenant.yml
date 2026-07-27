@@ -6,6 +6,12 @@ name: Deploy tenant environment
 #   workshop-<id>   -> that attendee's ephemeral tenant, created on first push
 #   demo-<id>       -> same, for demos
 #
+# Forks share the registry and the control plane with this repo, so they set a
+# TENANT_PREFIX repository variable: their `demo-x` is tenant `<prefix>-x`, with
+# its own namespace, database, hostname and image tag. A fork does not own
+# `main` either -- the golden app and the perpetual environment belong to this
+# repo -- so a fork's main pushes publish no golden image and deploy nothing.
+#
 # Only the services a push actually changed are rebuilt; the tenant picks up the
 # golden image for everything else (see resolve_tag in scripts/deploy-tenant.sh).
 # Deployment goes through the ops dashboard API, never straight at the cluster:
@@ -45,7 +51,8 @@ jobs:
     outputs:
       services: ${{ steps.select.outputs.services }}
       image_tag: ${{ steps.select.outputs.image_tag }}
-      branch_tag: ${{ steps.select.outputs.branch_tag }}
+      tenant_tag: ${{ steps.select.outputs.tenant_tag }}
+      golden: ${{ steps.select.outputs.golden }}
       deploy: ${{ steps.select.outputs.deploy }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -79,13 +86,20 @@ jobs:
           CHANGED: ${{ steps.changes.outputs.changes }}
           REBUILD_ALL: ${{ inputs.rebuild_all }}
           DEPLOYABLE: ${{ steps.changes.outputs.deployable }}
+          TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
         run: |
           set -euo pipefail
           source scripts/lib/tenant-common.sh
 
           slug="$(branch_tag_slug "${GITHUB_REF_NAME}")"
-          echo "branch_tag=branch-${slug}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "tenant_tag=$(tenant_image_tag "$(branch_tenant_id "${GITHUB_REF_NAME}")")" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${TENANT_PREFIX:+${TENANT_PREFIX}-}${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+          # Only this repository's main is the golden app. A fork publishing to
+          # `:main` would replace the image every other tenant falls back to.
+          golden=false
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
+          echo "golden=${golden}" >> "$GITHUB_OUTPUT"
 
           if [ "${REBUILD_ALL}" = "true" ]; then
             services="$(printf '%s\n' "${ALL_SERVICES[@]}" | jq -R . | jq -sc .)"
@@ -98,12 +112,17 @@ jobs:
 
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
-          # back byte-identical, minutes later, for no reason.
+          # back byte-identical, minutes later, for no reason. Neither does a
+          # fork's main: the perpetual environment tracks this repository.
+          deploy=false
           if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            deploy=true
           fi
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
+            echo "::notice::TENANT_PREFIX is set, so main is not deployed from this repository"
+            deploy=false
+          fi
+          echo "deploy=${deploy}" >> "$GITHUB_OUTPUT"
 
   build:
     needs: plan
@@ -143,21 +162,22 @@ jobs:
 
       # Each tag has a job:
       #   <slug>-<sha>  immutable, exactly what this run built
-      #   branch-<slug> the branch's current build, what its tenant deploys
+      #   tenant-<id>   the environment's current build, what it deploys
       #   main          the golden image every other tenant falls back to
       - name: Resolve image tags
         id: tags
         env:
           REPO: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}
           IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
-          BRANCH_TAG: ${{ needs.plan.outputs.branch_tag }}
+          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
+          GOLDEN: ${{ needs.plan.outputs.golden }}
         run: |
           set -euo pipefail
           {
             echo "list<<EOF"
             echo "${REPO}:${IMAGE_TAG}"
-            echo "${REPO}:${BRANCH_TAG}"
-            if [ "${GITHUB_REF_NAME}" = "main" ]; then echo "${REPO}:main"; fi
+            echo "${REPO}:${TENANT_TAG}"
+            if [ "${GOLDEN}" = "true" ]; then echo "${REPO}:main"; fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -192,4 +212,6 @@ jobs:
       # `tenant.sh persist`), so a missing t-main is an error, not a silent
       # ephemeral tenant on the golden branch.
       - name: Sync tenant environment
+        env:
+          TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
         run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}"

@@ -71,6 +71,25 @@ Pushes to `main` deploy the perpetual tenant, and deliberately cannot create it:
 ephemeral environments only, so a missing `t-main` is an error rather than a surprise
 long-lived one.
 
+### Shipping from a fork
+A fork ships to the same registry and the same control plane, so it needs three things:
+
+1. Its `owner/repo` added to `github_actions_trusted_repos` (`infra/terraform/variables.tf`),
+   then `terraform apply`. OIDC subjects name the repository, so the role refuses a fork until
+   it is listed. Forks are trusted for `workshop-*` and `demo-*` only: `main` is the golden app
+   and the perpetual environment, which this repo owns.
+2. The same two Actions settings this repo has — the `AWS_ROLE_ARN` secret and the
+   `AWS_ACCOUNT_ID` variable. GitHub also disables Actions on new forks; turn them on.
+3. A `TENANT_PREFIX` repository **variable**, e.g. `gtm`. Without it, a `demo-derek` branch in
+   either repo means tenant `derek` — the same namespace, database and hostname, redeployed
+   out from under whoever is using it, with no branch mismatch for the dashboard to catch.
+   With it, the fork's `demo-derek` is tenant `gtm-derek` at `t-gtm-derek.demo.otterworks.app`,
+   and its images are tagged `tenant-gtm-derek` rather than colliding on `tenant-derek`.
+
+What a fork changes is service **images**. The runner deploys from the tree in its own image
+and checks out the tenant's branch from this repo, which a fork's branch is not in, so charts
+and deploy scripts come from `main` here. Changing those is a PR upstream, not a fork branch.
+
 ## Provisioning tenants without cluster access
 `scripts/tenant.sh` is the dashboard's API from a shell — for people who provision demos, and
 for the agent platforms that do it on their behalf:

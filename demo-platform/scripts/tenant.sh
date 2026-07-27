@@ -26,6 +26,9 @@
 #   tenant.sh sync     <branch> [image-tag]    # CD: redeploy, creating if absent
 #   tenant.sh persist  <id> true|false
 #
+# TENANT_PREFIX namespaces the ids `sync` derives, so that a fork of this repo
+# drives its own environments off branch names identical to this one's.
+#
 # Examples:
 #   tenant.sh checkout derek                   # -> workshop-derek, 8h
 #   tenant.sh checkout derek workshop-derek 24h
@@ -249,7 +252,13 @@ case "${cmd}" in
     # refuses a redeploy from a branch other than the one the tenant was
     # checked out from, so the second branch fails loudly instead of
     # overwriting the first branch's environment.
-    id="$(printf '%s' "${branch}" | sed -E 's#^(workshop|demo)[-/]##' |
+    #
+    # TENANT_PREFIX scopes ids to one repository, so a fork's demo-derek is a
+    # separate environment rather than the same one under two owners. Identical
+    # branch names in two repositories are the case the branch check cannot
+    # catch, because the branch names match.
+    id="$(printf '%s' "${branch}" | sed -E 's#^(workshop|demo)[-/]##')"
+    id="$(printf '%s' "${TENANT_PREFIX:+${TENANT_PREFIX}-}${id}" |
             tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
     [ -n "${id}" ] || fail "cannot derive a tenant id from branch '${branch}'"
 

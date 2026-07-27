@@ -400,19 +400,19 @@ tag_exists() {
     --region "${AWS_REGION}" >/dev/null 2>&1
 }
 
-# CI publishes each service a branch changed as `branch-<slug>` (and `main` for
+# CI publishes each service a branch changed as `tenant-<id>` (and `main` for
 # the golden app), so a tenant runs its branch's build of the services that
 # branch touched and the golden build of everything else. Without this the
 # fallback is "newest image pushed to the repo", which is whichever branch built
 # last -- i.e. another tenant's code.
-BRANCH_TAG=""
+TENANT_TAG=""
 [ -n "${TENANT_BRANCH_ARG}" ] &&
-  BRANCH_TAG="branch-$(branch_tag_slug "${TENANT_BRANCH_ARG}")"
+  TENANT_TAG="$(tenant_image_tag "${ATTENDEE_ID}")"
 
 resolve_tag() {
   local service="$1"
-  if [ -n "${BRANCH_TAG}" ] && tag_exists "${service}" "${BRANCH_TAG}"; then
-    echo "${BRANCH_TAG}"; return 0
+  if [ -n "${TENANT_TAG}" ] && tag_exists "${service}" "${TENANT_TAG}"; then
+    echo "${TENANT_TAG}"; return 0
   fi
   if tag_exists "${service}" main; then
     echo "main"; return 0

@@ -36,14 +36,19 @@ data "aws_iam_policy_document" "github_actions_trust" {
     # Ref-scoped, not `repo:<org>/<repo>:*`. The wildcard form would let any
     # branch -- including one pushed by a workshop attendee with write access --
     # assume this role and publish images the golden app then serves. Only the
-    # branches CD actually deploys are trusted. `pull_request`, `environment`
-    # and tag subjects are excluded by the same token: a fork PR never gets
-    # credentials, and neither does a pushed tag (release builds run from main
-    # via workflow_dispatch -- see .github/workflows/docker-build.yml).
+    # branches CD actually deploys are trusted, per repository, so a fork gets
+    # credentials for its own ephemeral environments and not for main.
+    # `pull_request`, `environment` and tag subjects are excluded by the same
+    # token: a fork PR never gets credentials, and neither does a pushed tag
+    # (release builds run from main via workflow_dispatch -- see
+    # .github/workflows/docker-build.yml).
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [for ref in var.github_actions_trusted_refs : "repo:${var.github_repository}:ref:refs/heads/${ref}"]
+      values = flatten([
+        for repo, refs in var.github_actions_trusted_repos :
+        [for ref in refs : "repo:${repo}:ref:refs/heads/${ref}"]
+      ])
     }
   }
 }

@@ -136,15 +136,20 @@ variable "enable_github_actions_role" {
   default     = true
 }
 
-variable "github_repository" {
-  description = "owner/repo whose workflows may assume the CD role."
-  type        = string
-  default     = "Cognition-Partner-Workshops/otterworks"
-}
-
-variable "github_actions_trusted_refs" {
-  description = "Branch patterns (git ref names, may contain *) whose workflow runs may assume the CD role."
-  type        = list(string)
-  default     = ["main", "workshop-*", "demo-*"]
+# owner/repo => the branch patterns (git ref names, may contain *) whose workflow
+# runs in that repository may assume the CD role.
+#
+# Downstream forks ship the same environments from the same registry, so they
+# are trusted too -- but only for the ephemeral branch prefixes. `main` is the
+# golden app and the perpetual environment, which this repository owns: a fork's
+# main is a copy of it, and deploying that copy would let anyone with write
+# access to a fork replace the environment everyone else demos from.
+variable "github_actions_trusted_repos" {
+  description = "Repositories (owner/repo) and the branch patterns whose workflow runs may assume the CD role."
+  type        = map(list(string))
+  default = {
+    "Cognition-Partner-Workshops/otterworks" = ["main", "workshop-*", "demo-*"]
+    "COG-GTM/otterworks"                     = ["workshop-*", "demo-*"]
+  }
 }
 
