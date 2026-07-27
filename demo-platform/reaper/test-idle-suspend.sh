@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "  ok   - $1"; }
 nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
-check() { [ "$2" = "$3" ] && ok "$1" || nope "$1 (expected '$3', got '$2')"; }
+check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
 # ---- stubs -------------------------------------------------------------------
 declare -A ITEM_COUNT ITEM_SINCE
