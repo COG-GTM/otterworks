@@ -24,8 +24,9 @@
 #       kubernetes.io/service-name=<ns>/<svc> where that Service is gone.
 #   (b) ELBv2 target groups with no load balancer attached.
 #   (c) Available (unattached) EBS volumes tagged for a dead cluster.
-#   (d) Unassociated Elastic IPs.
+#   (d) Unassociated Elastic IPs tagged for a dead cluster.
 #   (e) Route53 A/TXT records under the demo host suffix with no live tenant.
+#   (f) k8s-elb-* security groups with no attached ENI (these block VPC deletes).
 #
 # DRY_RUN=true (default) reports only. Set DRY_RUN=false to actually delete.
 # ------------------------------------------------------------------------------
@@ -37,16 +38,16 @@ HOST_SUFFIX="${HOST_SUFFIX:-demo.otterworks.app}"
 DNS_ZONE_ID="${DNS_ZONE_ID:-}"
 DRY_RUN="${DRY_RUN:-true}"
 
-log()  { echo "[infra-sweep] $*"; }
-warn() { echo "[infra-sweep] WARN: $*" >&2; }
+sweep_log()  { echo "[infra-sweep] $*"; }
+sweep_warn() { echo "[infra-sweep] WARN: $*" >&2; }
 
 # Emit the action, and only perform it when DRY_RUN=false.
 act() {
   if [ "${DRY_RUN}" = "false" ]; then
-    log "DELETE $*"
-    "$@" >/dev/null 2>&1 || warn "delete failed: $*"
+    sweep_log "DELETE $*"
+    "$@" >/dev/null 2>&1 || sweep_warn "delete failed: $*"
   else
-    log "DRY-RUN would delete: $*"
+    sweep_log "DRY-RUN would delete: $*"
   fi
 }
 
@@ -56,7 +57,7 @@ LIVE_CLUSTERS=""
 load_live_clusters() {
   LIVE_CLUSTERS="$(aws eks list-clusters --region "${AWS_REGION}" \
                      --query 'clusters[]' --output text 2>/dev/null || true)"
-  log "live EKS clusters: ${LIVE_CLUSTERS:-<none>}"
+  sweep_log "live EKS clusters: ${LIVE_CLUSTERS:-<none>}"
 }
 
 cluster_is_live() {
@@ -96,10 +97,10 @@ sweep_classic_elbs() {
     if ! cluster_is_live "${cluster}"; then
       backends="$(aws elb describe-load-balancers --region "${AWS_REGION}" --load-balancer-names "${lb}" \
                     --query 'length(Instances)' --output text 2>/dev/null)"
-      warn "orphan classic ELB ${lb} (cluster '${cluster}' no longer exists, svc=${svc:-?}, backends=${backends:-?})"
+      sweep_warn "orphan classic ELB ${lb} (cluster '${cluster}' no longer exists, svc=${svc:-?}, backends=${backends:-?})"
       act aws elb delete-load-balancer --region "${AWS_REGION}" --load-balancer-name "${lb}"
     elif [ -n "${svc}" ] && ! service_is_live "${svc}"; then
-      warn "orphan classic ELB ${lb} (Service ${svc} is gone)"
+      sweep_warn "orphan classic ELB ${lb} (Service ${svc} is gone)"
       act aws elb delete-load-balancer --region "${AWS_REGION}" --load-balancer-name "${lb}"
     fi
   done
@@ -120,10 +121,10 @@ sweep_v2_elbs() {
     [ -n "${cluster}" ] || continue
 
     if ! cluster_is_live "${cluster}"; then
-      warn "orphan ELBv2 ${name} (cluster '${cluster}' no longer exists, svc=${svc:-?})"
+      sweep_warn "orphan ELBv2 ${name} (cluster '${cluster}' no longer exists, svc=${svc:-?})"
       act aws elbv2 delete-load-balancer --region "${AWS_REGION}" --load-balancer-arn "${arn}"
     elif [ -n "${svc}" ] && ! service_is_live "${svc}"; then
-      warn "orphan ELBv2 ${name} (Service ${svc} is gone)"
+      sweep_warn "orphan ELBv2 ${name} (Service ${svc} is gone)"
       act aws elbv2 delete-load-balancer --region "${AWS_REGION}" --load-balancer-arn "${arn}"
     fi
   done
@@ -144,7 +145,7 @@ sweep_target_groups() {
     aws elbv2 describe-tags --region "${AWS_REGION}" --resource-arns "${tg}" \
       --query "TagDescriptions[0].Tags[?starts_with(Key, 'kubernetes.io/')]" --output text 2>/dev/null \
       | grep -q . || continue
-    warn "orphan target group ${name} (no load balancer attached)"
+    sweep_warn "orphan target group ${name} (no load balancer attached)"
     act aws elbv2 delete-target-group --region "${AWS_REGION}" --target-group-arn "${tg}"
   done
 }
@@ -159,9 +160,9 @@ sweep_ebs_volumes() {
                  --query 'Volumes[].VolumeId' --output text 2>/dev/null); do
     cluster="$(aws ec2 describe-volumes --region "${AWS_REGION}" --volume-ids "${vol}" \
                  --query 'Volumes[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
-    [ -n "${cluster}" ] || { log "unattached EBS ${vol} has no cluster tag; reporting only"; continue; }
+    [ -n "${cluster}" ] || { sweep_log "unattached EBS ${vol} has no cluster tag; reporting only"; continue; }
     cluster_is_live "${cluster}" && continue
-    warn "orphan EBS volume ${vol} (cluster '${cluster}' no longer exists)"
+    sweep_warn "orphan EBS volume ${vol} (cluster '${cluster}' no longer exists)"
     act aws ec2 delete-volume --region "${AWS_REGION}" --volume-id "${vol}"
   done
 }
@@ -180,11 +181,11 @@ sweep_eips() {
     cluster="$(aws ec2 describe-addresses --region "${AWS_REGION}" --allocation-ids "${alloc}" \
                  --query 'Addresses[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
     if [ -z "${cluster}" ]; then
-      log "unassociated Elastic IP ${alloc} has no cluster tag; reporting only"
+      sweep_log "unassociated Elastic IP ${alloc} has no cluster tag; reporting only"
       continue
     fi
     cluster_is_live "${cluster}" && continue
-    warn "orphan Elastic IP ${alloc} (cluster '${cluster}' no longer exists)"
+    sweep_warn "orphan Elastic IP ${alloc} (cluster '${cluster}' no longer exists)"
     act aws ec2 release-address --region "${AWS_REGION}" --allocation-id "${alloc}"
   done
 }
@@ -198,8 +199,8 @@ sweep_eips() {
 # when the control plane is not sourced.
 # ------------------------------------------------------------------------------
 sweep_route53() {
-  [ -n "${DNS_ZONE_ID}" ] || { log "DNS_ZONE_ID unset; skipping Route53 sweep"; return 0; }
-  command -v ctl_tenant_exists >/dev/null 2>&1 || { log "control plane not sourced; skipping Route53 sweep"; return 0; }
+  [ -n "${DNS_ZONE_ID}" ] || { sweep_log "DNS_ZONE_ID unset; skipping Route53 sweep"; return 0; }
+  command -v ctl_tenant_exists >/dev/null 2>&1 || { sweep_log "control plane not sourced; skipping Route53 sweep"; return 0; }
 
   local records name id batch
   records="$(aws route53 list-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
@@ -215,30 +216,61 @@ sweep_route53() {
     id="${id#cname-}"; id="${id#api-}"; id="${id#t-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
-      warn "orphan Route53 record ${name} (no TENANT# item for '${id}')"
+      sweep_warn "orphan Route53 record ${name} (no TENANT# item for '${id}')"
       if [ "${DRY_RUN}" = "false" ]; then
         batch="$(aws route53 list-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
                    --query "ResourceRecordSets[?Name=='${name}.']" --output json 2>/dev/null \
                  | jq -c '{Changes: [.[] | {Action:"DELETE", ResourceRecordSet: .}]}')"
         if [ "$(printf '%s' "${batch}" | jq '.Changes | length')" -gt 0 ]; then
           aws route53 change-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
-            --change-batch "${batch}" >/dev/null 2>&1 || warn "failed deleting ${name}"
+            --change-batch "${batch}" >/dev/null 2>&1 || sweep_warn "failed deleting ${name}"
         fi
       fi
     fi
   done
 }
 
+# ------------------------------------------------------------------------------
+# (f) Security groups left behind by deleted Kubernetes load balancers
+#
+# Deleting a Classic ELB does NOT delete the `k8s-elb-<hash>` security group the
+# cloud-controller created for it. These cost nothing, which is why they go
+# unnoticed -- but they hold a reference to the VPC and will block `terraform
+# destroy` on it indefinitely. Three of them stalled a teardown of this very
+# cluster after the orphan ELBs above were removed.
+#
+# Deleted only when the group has no attached network interface, so a group
+# still in use by a live resource is never touched.
+# ------------------------------------------------------------------------------
+sweep_elb_security_groups() {
+  local sg name attached
+  for sg in $(aws ec2 describe-security-groups --region "${AWS_REGION}" \
+                --filters "Name=group-name,Values=k8s-elb-*" \
+                --query 'SecurityGroups[].GroupId' --output text 2>/dev/null); do
+    [ -n "${sg}" ] || continue
+    name="$(aws ec2 describe-security-groups --region "${AWS_REGION}" --group-ids "${sg}" \
+              --query 'SecurityGroups[0].GroupName' --output text 2>/dev/null)"
+    attached="$(aws ec2 describe-network-interfaces --region "${AWS_REGION}" \
+                  --filters "Name=group-id,Values=${sg}" \
+                  --query 'length(NetworkInterfaces)' --output text 2>/dev/null)"
+    [ "${attached}" = "0" ] || continue
+    sweep_warn "orphan load balancer security group ${sg} (${name}, no attached ENI)"
+    act aws ec2 delete-security-group --region "${AWS_REGION}" --group-id "${sg}"
+  done
+}
+
 infra_sweep() {
-  log "infrastructure orphan sweep starting (region=${AWS_REGION}, dry_run=${DRY_RUN})"
+  sweep_log "infrastructure orphan sweep starting (region=${AWS_REGION}, dry_run=${DRY_RUN})"
   load_live_clusters
   sweep_classic_elbs
   sweep_v2_elbs
   sweep_target_groups
+  # After the load balancers are gone, their security groups become deletable.
+  sweep_elb_security_groups
   sweep_ebs_volumes
   sweep_eips
   sweep_route53
-  log "infrastructure orphan sweep complete."
+  sweep_log "infrastructure orphan sweep complete."
 }
 
 # Allow direct execution as well as sourcing from reaper.sh.

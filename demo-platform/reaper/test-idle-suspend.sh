@@ -92,6 +92,19 @@ ITEM_COUNT[restart]=900; ITEM_SINCE[restart]=${STALE}
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "still suspends after an ingress counter reset" "${SUSPENDED# }" "restart"
 
+# A restart re-baselines to the real (low) count. Persisting the stale-high
+# value instead would keep matching the reset branch after the tenant woke,
+# so a tenant in active use would be suspended out from under its user.
+reset_state
+NS_RUNNING[otterworks-woken]=13; METRIC[otterworks-woken]=5
+ITEM_COUNT[woken]=900; ITEM_SINCE[woken]=${STALE}
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and persists the real count, not the stale one" "${ITEM_COUNT[woken]}" "5"
+# Woken and now serving traffic: must be seen as active, not re-suspended.
+NS_RUNNING[otterworks-woken]=13; METRIC[otterworks-woken]=60; SUSPENDED=""
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  so a woken, busy tenant is not immediately re-suspended" "${SUSPENDED# }" ""
+
 reset_state
 NS_RUNNING[otterworks-lab]=13; METRIC[otterworks-lab]=100
 ITEM_COUNT[lab]=100; ITEM_SINCE[lab]=${STALE}; NS_CHAOS[otterworks-lab]=yes

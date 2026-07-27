@@ -169,7 +169,6 @@ suspend_idle_tenants() {
       # activity would let a cycling controller keep tenants awake forever.
       idle_log "${id}: ingress counter reset (${prev} -> ${count}); keeping idle clock"
       record_activity "${id}" "${count}" "${since}"
-      count="${prev}"
     fi
 
     if [ $(( now - since )) -lt "${IDLE_AFTER_SECONDS}" ]; then
