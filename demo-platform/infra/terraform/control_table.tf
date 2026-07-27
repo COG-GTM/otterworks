@@ -77,6 +77,7 @@ resource "aws_dynamodb_table_item" "reaper_config" {
     suspend_idle       = { BOOL = true }
     idle_after_seconds = { N = tostring(var.reaper_idle_after_seconds) }
     sweep_infra        = { BOOL = false }
+    sweep_infra_delete = { BOOL = false }
     updated_at         = { N = "0" }
     updated_by         = { S = "terraform" }
   })

@@ -191,6 +191,8 @@ total, and orphans impossible by construction rather than by cleanup.
   `otterworks:component` and `Environment` via provider `default_tags`, so
   anything untagged in this account is by definition not ours.
 - The reaper's infrastructure sweep defaults to `DRY_RUN=true` and is armed
-  separately from the tenant sweep (`CONFIG#reaper.sweep_infra`).
+  separately from the tenant sweep, in two stages: `CONFIG#reaper.sweep_infra` runs it
+  report-only, and `CONFIG#reaper.sweep_infra_delete` arms it. Look at a report-only run
+  before arming, since the account also holds resources this platform did not create.
 - An AWS Budgets alarm on the account catches a regression in days rather than
   at the end of the month.

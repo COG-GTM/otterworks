@@ -258,6 +258,7 @@ const DEFAULT_REAPER: ReaperConfig = {
   suspendIdle: false,
   idleAfterSeconds: 3600,
   sweepInfra: false,
+  sweepInfraDelete: false,
 };
 
 export async function getReaperConfig(): Promise<ReaperConfig> {
@@ -274,6 +275,7 @@ export async function getReaperConfig(): Promise<ReaperConfig> {
     suspendIdle: Boolean(it.suspend_idle ?? DEFAULT_REAPER.suspendIdle),
     idleAfterSeconds: Number(it.idle_after_seconds ?? DEFAULT_REAPER.idleAfterSeconds),
     sweepInfra: Boolean(it.sweep_infra ?? DEFAULT_REAPER.sweepInfra),
+    sweepInfraDelete: Boolean(it.sweep_infra_delete ?? DEFAULT_REAPER.sweepInfraDelete),
     updatedAt: it.updated_at as number | undefined,
     updatedBy: it.updated_by as string | undefined,
   };
@@ -297,6 +299,7 @@ export async function putReaperConfig(
         suspend_idle: cfg.suspendIdle,
         idle_after_seconds: cfg.idleAfterSeconds,
         sweep_infra: cfg.sweepInfra,
+        sweep_infra_delete: cfg.sweepInfraDelete,
         updated_at: now,
         updated_by: updatedBy,
       },

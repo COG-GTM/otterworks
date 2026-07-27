@@ -52,7 +52,8 @@ enabled             bool
 sweep_orphans       bool     # also GC resources with no matching TENANT# item
 suspend_idle        bool     # scale tenants with no ingress traffic to zero
 idle_after_seconds  number   # how long zero traffic must last before suspending
-sweep_infra         bool     # also GC the AWS resources Kubernetes created implicitly
+sweep_infra         bool     # also run the AWS-layer sweep (report-only on its own)
+sweep_infra_delete  bool     # let that sweep actually delete what it finds
 updated_at          number
 updated_by          string
 ```

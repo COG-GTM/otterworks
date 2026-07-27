@@ -101,5 +101,18 @@ arn="arn:aws:elasticloadbalancing:us-east-1:000000000000:loadbalancer/net/otterw
 name="${arn##*loadbalancer/}"; name="${name#*/}"; name="${name%%/*}"
 check "parses the load balancer name out of an ELBv2 ARN" "${name}" "otterworks-shared-ingress"
 
+# The scheduled path is the one that matters: the CronJob sets no DRY_RUN, so if
+# the reaper does not set it from the control table the sweep reports forever
+# while the dashboard shows it as on. Assert both states reach act().
+DRY_RUN=true
+DELETED=""
+act aws elb delete-load-balancer --load-balancer-name stale-elb >/dev/null 2>&1
+check "report-only mode deletes nothing" "${DELETED# }" ""
+
+DRY_RUN=false
+DELETED=""
+act aws elb delete-load-balancer --load-balancer-name stale-elb >/dev/null 2>&1
+check "armed mode performs the deletion" "${DELETED# }" "elb delete-load-balancer --load-balancer-name stale-elb"
+
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

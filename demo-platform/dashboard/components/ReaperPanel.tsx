@@ -44,6 +44,7 @@ export default function ReaperPanel() {
         suspend_idle: cfg.suspendIdle,
         idle_after_seconds: cfg.idleAfterSeconds,
         sweep_infra: cfg.sweepInfra,
+        sweep_infra_delete: cfg.sweepInfraDelete,
       });
       setCfg(updated);
       setSaved(true);
@@ -128,9 +129,22 @@ export default function ReaperPanel() {
             <span className="font-medium text-slate-700">Sweep AWS infrastructure orphans</span>
           </label>
           <p className="text-xs text-slate-500">
-            The infrastructure sweep deletes load balancers, volumes, addresses and security
-            groups that Kubernetes created and no longer owns. It only ever touches resources
-            carrying an OtterWorks or cluster ownership tag.
+            Finds load balancers, volumes, addresses and security groups that Kubernetes
+            created and no longer owns. Only resources carrying an OtterWorks or cluster
+            ownership tag are ever considered; anything untagged is reported, never touched.
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              disabled={!cfg.sweepInfra}
+              checked={cfg.sweepInfraDelete}
+              onChange={(e) => setCfg({ ...cfg, sweepInfraDelete: e.target.checked })}
+            />
+            <span className="font-medium text-slate-700">…and delete what it finds</span>
+          </label>
+          <p className="text-xs text-slate-500">
+            Off, the sweep only reports. Review a report-only run before arming this: the
+            account holds resources this platform did not create.
           </p>
         </div>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

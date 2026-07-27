@@ -362,12 +362,13 @@ sweep_orphans() {
 # ------------------------------------------------------------------------------
 main() {
   log "reaper v2 run at $(date -u +%Y-%m-%dT%H:%M:%SZ) (table=${CONTROL_TABLE})"
-  local cfg enabled grace sweep infra idle
+  local cfg enabled grace sweep infra infra_delete idle
   cfg="$(ctl_get "CONFIG#reaper" "CONFIG")"
   enabled="$(echo "${cfg}" | jq -r --arg d "${REAPER_ENABLED_DEFAULT}" '.Item.enabled.BOOL // ($d=="true")')"
   grace="$(echo "${cfg}"   | jq -r '.Item.grace_seconds.N // "0"')"
   sweep="$(echo "${cfg}"   | jq -r '.Item.sweep_orphans.BOOL // false')"
   infra="$(echo "${cfg}"   | jq -r '.Item.sweep_infra.BOOL // false')"
+  infra_delete="$(echo "${cfg}" | jq -r '.Item.sweep_infra_delete.BOOL // false')"
   idle="$(echo "${cfg}"    | jq -r '.Item.suspend_idle.BOOL // false')"
   IDLE_AFTER_SECONDS="$(echo "${cfg}" | jq -r --arg d "${IDLE_AFTER_SECONDS}" '.Item.idle_after_seconds.N // $d')"
 
@@ -375,7 +376,7 @@ main() {
     log "CONFIG#reaper disabled (or absent); nothing to do. Exiting."
     exit 0
   fi
-  log "config: enabled=${enabled} grace_seconds=${grace} sweep_orphans=${sweep} sweep_infra=${infra} suspend_idle=${idle}"
+  log "config: enabled=${enabled} grace_seconds=${grace} sweep_orphans=${sweep} sweep_infra=${infra} sweep_infra_delete=${infra_delete} suspend_idle=${idle}"
 
   # Load shared infra outputs (RDS endpoint, bucket/table names) for GC.
   load_infra_outputs
@@ -396,9 +397,25 @@ main() {
     log "sweep_orphans disabled; skipping orphan sweep."
   fi
 
-  # The infra sweep deletes AWS resources that belong to no tenant, so it is
-  # gated separately from the tenant sweep and honors DRY_RUN independently.
+  # The infra sweep deletes AWS resources rather than Kubernetes ones, so it is
+  # gated separately from the tenant sweep and in two stages: sweep_infra runs
+  # it, sweep_infra_delete arms it. Running it report-only first is the intended
+  # workflow, because this account also holds resources this platform did not
+  # create.
+  #
+  # DRY_RUN is set from the control table on both paths rather than left to
+  # infra-sweep.sh's own default. Otherwise the scheduled run could never delete
+  # anything -- the CronJob sets no DRY_RUN, so it would report forever while
+  # the dashboard showed the sweep as on.
   if [ "${infra}" = "true" ]; then
+    # shellcheck disable=SC2034  # read by act() in the sourced infra-sweep.sh
+    if [ "${infra_delete}" = "true" ]; then
+      DRY_RUN=false
+      log "infrastructure sweep armed: orphans matching an ownership tag will be deleted."
+    else
+      DRY_RUN=true
+      log "infrastructure sweep in report-only mode (set sweep_infra_delete to arm it)."
+    fi
     infra_sweep
   else
     log "sweep_infra disabled; skipping infrastructure orphan sweep."
