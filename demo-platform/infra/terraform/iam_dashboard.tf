@@ -133,6 +133,12 @@ data "aws_iam_policy_document" "dashboard" {
   # satisfy. Keep local.sweepable_clusters in step with SWEEPABLE_CLUSTERS in the
   # reaper CronJob -- a cluster in one and not the other means the sweep either
   # cannot delete its orphans, or reports them and is refused by IAM.
+  #
+  # This covers Classic ELB as well as ELBv2. The 2012-06-01 Classic API is
+  # widely documented as having no resource-level permissions, which is no
+  # longer true; verified against the live API with a role holding only the
+  # conditioned delete below: an untagged Classic ELB returns AccessDenied, a
+  # tagged one is deleted. So there is no reason to exempt it.
   dynamic "statement" {
     for_each = local.sweepable_clusters
     content {
@@ -152,20 +158,6 @@ data "aws_iam_policy_document" "dashboard" {
         values   = ["owned", "shared"]
       }
     }
-  }
-
-  # Classic ELB is the one exception: its API predates resource-level
-  # permissions, so DeleteLoadBalancer on a Classic LB cannot be conditioned on
-  # tags at all -- attaching the condition above would deny every call. Split
-  # out and left unconditioned, deliberately and visibly, rather than silently
-  # widening the statement above to cover it. The three orphaned Classic ELBs
-  # that motivated this sweep came from per-service type=LoadBalancer Services,
-  # which this PR removes, so this should be reclaiming a closed class.
-  statement {
-    sid       = "InfraOrphanSweepDeleteClassicElb"
-    effect    = "Allow"
-    actions   = ["elasticloadbalancing:DeleteLoadBalancer"]
-    resources = ["*"]
   }
 
   # Teardown maintains IRSA trust on the shared per-service roles (add/remove the

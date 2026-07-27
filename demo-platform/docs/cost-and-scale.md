@@ -68,9 +68,10 @@ this account holds unrelated workloads.
 Ownership is enforced twice, because a sweep that deletes the wrong thing cannot
 be undone. The script checks the tag; the reaper's IAM role is then *only*
 granted the deletes for those same cluster tags, so a bug or a misconfiguration
-in the script is refused by AWS rather than acted on. The one gap is Classic
-ELB, whose API cannot express a tag condition — the script's check stands alone
-there. Keep `reaper.sweepableClusters` (Helm) and `var.sweepable_clusters`
+in the script is refused by AWS rather than acted on. That includes Classic
+ELB: its API is widely documented as having no resource-level permissions, but
+that is out of date, and the condition was verified against the live API.
+Keep `reaper.sweepableClusters` (Helm) and `var.sweepable_clusters`
 (Terraform) in step; a name in one but not the other means the sweep either
 cannot clean its own orphans or reports them and is denied.
 
