@@ -10,9 +10,12 @@
 # (`de-demo-provisioner`).
 #
 # The passcode comes from Secrets Manager, or from DASHBOARD_PASSCODE if it is
-# already in the environment. It is never passed on a process argv: the login
-# body is written to curl on stdin, and the session cookie lands in a jar with
-# 0600 permissions that is removed on exit.
+# already in the environment. It is never passed on a process argv -- not to
+# curl, and not to the jq that builds the login body: /proc/<pid>/cmdline is
+# world-readable, so on the shared container an agent platform runs this in, any
+# other local process could read it out of `ps`. It travels by environment and
+# stdin instead, and the session cookie lands in a jar with 0600 permissions
+# that is removed on exit.
 #
 # Usage:
 #   tenant.sh list
@@ -63,8 +66,11 @@ login() {
 
   [ -n "${passcode}" ] || fail "passcode is empty"
 
+  # env.PASSCODE, not --arg: an argument would be visible in `ps` for the life
+  # of the jq process. The environment of a process is readable only by its own
+  # user and root.
   local code
-  code="$(jq -nc --arg p "${passcode}" '{passcode:$p}' |
+  code="$(PASSCODE="${passcode}" jq -nc '{passcode: env.PASSCODE}' |
             curl -sS -o /dev/null -w '%{http_code}' \
                  -c "${JAR}" -X POST "${OPS_HOST}/api/auth/login" \
                  -H 'content-type: application/json' --data-binary @-)"
