@@ -62,14 +62,21 @@ ingress_request_counts() {
 }
 
 # Persist the observed counter and the time it was first seen at this value.
+# Key attributes are PK/SK, matching control-common.sh -- DynamoDB rejects an
+# update whose key names differ from the table schema.
 record_activity() {
-  local id="$1" count="$2" since="$3"
-  aws dynamodb update-item --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
-    --key "$(jq -n --arg id "TENANT#${id}" '{pk:{S:$id}, sk:{S:"META"}}')" \
-    --update-expression "SET req_count = :c, idle_since = :s" \
-    --expression-attribute-values \
-      "$(jq -n --arg c "${count}" --arg s "${since}" '{":c":{N:$c},":s":{N:$s}}')" \
-    >/dev/null 2>&1 || idle_warn "could not record activity for ${id}"
+  local id="$1" count="$2" since="$3" out
+  # Report the AWS error rather than discarding it. A silently-dropped write
+  # here disables suspension entirely while looking healthy, because the next
+  # scan reads no previous counter and restarts the idle clock forever.
+  if ! out="$(aws dynamodb update-item --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
+                --key "$(jq -n --arg id "TENANT#${id}" '{PK:{S:$id}, SK:{S:"META"}}')" \
+                --update-expression "SET req_count = :c, idle_since = :s" \
+                --expression-attribute-values \
+                  "$(jq -n --arg c "${count}" --arg s "${since}" '{":c":{N:$c},":s":{N:$s}}')" 2>&1)"; then
+    idle_warn "could not record activity for ${id}: ${out}"
+    return 1
+  fi
 }
 
 # Number of Deployments currently running at least one replica.
@@ -82,7 +89,7 @@ suspend_tenant() {
   local id="$1" ns="$2"
   idle_log "suspending ${id}: no ingress requests for >= ${IDLE_AFTER_SECONDS}s"
   if kubectl -n "${ns}" scale deployment --all --replicas=0 >/dev/null 2>&1; then
-    ctl_audit "suspend" "${id}" "idle for ${IDLE_AFTER_SECONDS}s" 2>/dev/null || true
+    ctl_audit "${id}" "suspend" "idle for ${IDLE_AFTER_SECONDS}s" 2>/dev/null || true
   else
     idle_warn "failed to scale down ${ns}"
   fi
