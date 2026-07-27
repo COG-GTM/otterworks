@@ -112,7 +112,29 @@ else
   done
 fi
 
-# ---------- Step 2: destroy the cluster ---------------------------------------
+# ---------- Step 2: release the load balancers' security groups ---------------
+
+# Deleting a Classic ELB leaves its `k8s-elb-<hash>` security group behind. The
+# group is free, so it is easy to miss, but it pins the VPC and makes the
+# destroy below hang until it times out. Clear the ones nothing is using now
+# that the load balancers (and their ENIs) are gone.
+log "Releasing security groups left by deleted load balancers..."
+for sg in $(aws ec2 describe-security-groups --region "${AWS_REGION}" \
+              --filters "Name=group-name,Values=k8s-elb-*" \
+              --query 'SecurityGroups[].GroupId' --output text 2>/dev/null); do
+  [ -n "${sg}" ] || continue
+  attached="$(aws ec2 describe-network-interfaces --region "${AWS_REGION}" \
+                --filters "Name=group-id,Values=${sg}" \
+                --query 'length(NetworkInterfaces)' --output text 2>/dev/null || echo 1)"
+  [ "${attached}" = "0" ] || continue
+  if aws ec2 delete-security-group --region "${AWS_REGION}" --group-id "${sg}" >/dev/null 2>&1; then
+    log "  released ${sg}"
+  else
+    warn "  could not release ${sg}; it may still be referenced"
+  fi
+done
+
+# ---------- Step 3: destroy the cluster ---------------------------------------
 
 if [ "${SKIP_TERRAFORM}" = true ]; then
   log "Skipping terraform destroy (--skip-terraform)."
@@ -123,7 +145,7 @@ else
     -var-file=environments/dev.tfvars -auto-approve -input=false
 fi
 
-# ---------- Step 3: verify ----------------------------------------------------
+# ---------- Step 4: verify ----------------------------------------------------
 
 log "Verifying no resources remain tagged for ${EKS_CLUSTER}..."
 left="$(cluster_lb_count)"

@@ -19,7 +19,7 @@ nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
 # ---- stubs -------------------------------------------------------------------
-declare -A ITEM_COUNT ITEM_SINCE
+declare -A ITEM_COUNT ITEM_SINCE ITEM_RUNNING
 declare -A NS_RUNNING NS_CHAOS METRIC
 SUSPENDED=""
 
@@ -27,11 +27,14 @@ ctl_tenant_exists() { [ -n "${ITEM_COUNT[$1]+x}" ] || [ -n "${NS_RUNNING[otterwo
 ctl_get() {
   local id="${1#TENANT#}"
   jq -n --arg c "${ITEM_COUNT[$id]:-}" --arg s "${ITEM_SINCE[$id]:-}" \
+        --arg r "${ITEM_RUNNING[$id]:-}" \
     '{Item: ({} + (if $c=="" then {} else {req_count:{N:$c}} end)
-                + (if $s=="" then {} else {idle_since:{N:$s}} end))}'
+                + (if $s=="" then {} else {idle_since:{N:$s}} end)
+                + (if $r=="" then {} else {was_running:{N:$r}} end))}'
 }
 ctl_audit() { :; }
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
+record_running() { ITEM_RUNNING["$1"]="$2"; }
 running_deployments() { echo "${NS_RUNNING[$1]:-0}"; }
 tenant_has_chaos() { [ "${NS_CHAOS[$1]:-no}" = "yes" ]; }
 # METRICS_UP=false models an unreachable metrics endpoint, which is distinct
@@ -54,10 +57,13 @@ kubectl() {
 eval "$(sed -n '/^tenant_namespaces()/,/^}/p;/^suspend_idle_tenants()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 
 reset_state() {
-  unset ITEM_COUNT ITEM_SINCE NS_RUNNING NS_CHAOS METRIC
-  declare -gA ITEM_COUNT=() ITEM_SINCE=() NS_RUNNING=() NS_CHAOS=() METRIC=()
+  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC
+  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=()
   SUSPENDED=""
 }
+# A tenant the reaper has already seen up. Without this the first pass just
+# records the run state, which is not what most cases below are exercising.
+seen_running() { ITEM_RUNNING["$1"]=1; }
 NOW="$(date -u +%s)"
 STALE=$(( NOW - 7200 ))   # idle well past the 3600s threshold
 FRESH=$(( NOW - 60 ))
@@ -69,6 +75,7 @@ echo "idle-suspend decision logic"
 reset_state
 NS_RUNNING[otterworks-busy]=13
 ITEM_COUNT[busy]=500; ITEM_SINCE[busy]=${STALE}
+seen_running busy
 METRICS_UP=false
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "suspends nothing when ingress metrics are unreachable" "${SUSPENDED# }" ""
@@ -79,12 +86,14 @@ METRICS_UP=true
 # counter series for a namespace it has never routed to.
 reset_state
 NS_RUNNING[otterworks-never]=13; ITEM_COUNT[never]=0; ITEM_SINCE[never]=${STALE}
+seen_running never
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "suspends a tenant that has no metric series at all" "${SUSPENDED# }" "never"
 
 reset_state
 NS_RUNNING[otterworks-busy]=13; METRIC[otterworks-busy]=500
 ITEM_COUNT[busy]=100; ITEM_SINCE[busy]=${STALE}
+seen_running busy
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "leaves a tenant serving traffic running" "${SUSPENDED# }" ""
 check "  and resets its idle clock" "$([ "${ITEM_SINCE[busy]}" -ge "${NOW}" ] && echo reset)" "reset"
@@ -92,22 +101,36 @@ check "  and resets its idle clock" "$([ "${ITEM_SINCE[busy]}" -ge "${NOW}" ] &&
 reset_state
 NS_RUNNING[otterworks-quiet]=13; METRIC[otterworks-quiet]=100
 ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
+seen_running quiet
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "suspends a tenant whose counter has not moved" "${SUSPENDED# }" "quiet"
 
 reset_state
 NS_RUNNING[otterworks-recent]=13; METRIC[otterworks-recent]=100
 ITEM_COUNT[recent]=100; ITEM_SINCE[recent]=${FRESH}
+seen_running recent
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "waits while the tenant is under the threshold" "${SUSPENDED# }" ""
 
-# A restarted controller resets counters to zero. Treating that as traffic would
-# keep every tenant awake forever on Spot capacity.
+# A restarted controller resets counters to zero. Treating the restart itself as
+# traffic would keep every tenant awake forever on Spot capacity, so an idle
+# tenant with no series after the restart is still suspended.
 reset_state
-NS_RUNNING[otterworks-restart]=13; METRIC[otterworks-restart]=5
+NS_RUNNING[otterworks-restart]=13
 ITEM_COUNT[restart]=900; ITEM_SINCE[restart]=${STALE}
+seen_running restart
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "still suspends after an ingress counter reset" "${SUSPENDED# }" "restart"
+
+# But a non-zero counter after a reset is traffic served since the restart,
+# however small next to the pre-restart total.
+reset_state
+NS_RUNNING[otterworks-served]=13; METRIC[otterworks-served]=5
+ITEM_COUNT[served]=900; ITEM_SINCE[served]=${STALE}
+seen_running served
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "treats post-restart requests as activity" "${SUSPENDED# }" ""
+check "  and restarts the idle clock" "$([ "${ITEM_SINCE[served]}" -ge "${NOW}" ] && echo reset)" "reset"
 
 # A restart re-baselines to the real (low) count. Persisting the stale-high
 # value instead would keep matching the reset branch after the tenant woke,
@@ -115,6 +138,7 @@ check "still suspends after an ingress counter reset" "${SUSPENDED# }" "restart"
 reset_state
 NS_RUNNING[otterworks-woken]=13; METRIC[otterworks-woken]=5
 ITEM_COUNT[woken]=900; ITEM_SINCE[woken]=${STALE}
+seen_running woken
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and persists the real count, not the stale one" "${ITEM_COUNT[woken]}" "5"
 # Woken and now serving traffic: must be seen as active, not re-suspended.
@@ -122,9 +146,33 @@ NS_RUNNING[otterworks-woken]=13; METRIC[otterworks-woken]=60; SUSPENDED=""
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  so a woken, busy tenant is not immediately re-suspended" "${SUSPENDED# }" ""
 
+# The full check-out story, which is what makes suspension safe to leave on:
+# a tenant sleeps past the idle window, someone checks it out, and the wake
+# path touches only Kubernetes. If the reaper did not treat the tenant being up
+# again as activity, the stale clock would scale it straight back down and the
+# attendee would find a dead environment minutes after opening it.
+reset_state
+NS_RUNNING[otterworks-nap]=0
+ITEM_COUNT[nap]=100; ITEM_SINCE[nap]=${STALE}
+seen_running nap
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "records a sleeping tenant as scaled down" "${ITEM_RUNNING[nap]}" "0"
+
+NS_RUNNING[otterworks-nap]=13     # checked out; no traffic yet
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  does not re-suspend it the moment it is woken" "${SUSPENDED# }" ""
+check "  restarts the idle clock on wake" "$([ "${ITEM_SINCE[nap]}" -ge "${NOW}" ] && echo reset)" "reset"
+
+# ...and it must still be suspendable once it goes idle again, or the wake
+# exemption would simply disable the cost control.
+ITEM_SINCE[nap]=${STALE}
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and is suspended again once it goes idle" "${SUSPENDED# }" "nap"
+
 reset_state
 NS_RUNNING[otterworks-lab]=13; METRIC[otterworks-lab]=100
 ITEM_COUNT[lab]=100; ITEM_SINCE[lab]=${STALE}; NS_CHAOS[otterworks-lab]=yes
+seen_running lab
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "never suspends a tenant with an injected scenario" "${SUSPENDED# }" ""
 
@@ -142,7 +190,9 @@ check "  and persists a baseline" "${ITEM_COUNT[new]:-unset}" "0"
 reset_state
 NS_RUNNING[otterworks-platform]=3; NS_RUNNING[otterworks-system]=2
 ITEM_COUNT[platform]=0; ITEM_SINCE[platform]=${STALE}
+seen_running platform
 ITEM_COUNT[system]=0; ITEM_SINCE[system]=${STALE}
+seen_running system
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "never suspends the platform's own namespaces" "${SUSPENDED# }" ""
 

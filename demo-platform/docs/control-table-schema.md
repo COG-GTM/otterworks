@@ -25,8 +25,20 @@ checked_out_at number?
 expires_at    number    # epoch seconds (TTL) — reaper compares against now
 last_seen_at  number    # last reconcile timestamp
 note          string?
+
+# written by the idle scan only (demo-platform/reaper/idle-suspend.sh)
+req_count     number?  # ingress request counter at the last scan
+idle_since    number?  # epoch seconds the counter was first seen at req_count
+was_running   number?  # 1 if the tenant had replicas up at the last scan, else 0
 ```
 `expires_at` is also the DynamoDB **TTL attribute** (informational; the reaper is the actor).
+
+`was_running` is how a wake is detected. Nothing on the wake path writes to this table —
+`tenant-scale.sh up`, dashboard check-out and a manual `kubectl scale` all only touch
+Deployments — so a woken tenant still carries the `idle_since` it had before it was
+suspended. The `0 -> running` transition is the reaper's only evidence that someone came
+back, and it restarts the clock; without it the next pass would scale the tenant straight
+back down.
 
 ### Checkout lock — `PK=LOCK#<id>`, `SK=LOCK`
 Written with `ConditionExpression="attribute_not_exists(PK)"` for **atomic checkout**. Holds

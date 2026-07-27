@@ -15,7 +15,12 @@
 #
 #   counter increased        -> tenant is in use; record it and reset the clock
 #   counter unchanged/absent -> tenant took zero requests since the last run
-#   counter decreased        -> controller restarted; re-baseline, keep the clock
+#   counter decreased to >0  -> controller restarted, but has served this tenant
+#                               since; that is real traffic, reset the clock
+#   counter decreased to 0   -> controller restarted and served nothing; keep
+#                               the clock, or a cycling controller would keep
+#                               idle tenants awake forever
+#   scaled up since last run -> just woken; reset the clock (see was_running)
 #   idle for IDLE_AFTER      -> scale every Deployment in the namespace to zero
 #
 # Suspending preserves the namespace, config, secrets and the tenant's database
@@ -91,6 +96,22 @@ record_activity() {
   fi
 }
 
+# Remember whether the tenant had any replicas up at the end of a pass. This is
+# what makes a wake detectable: nothing on the wake path (tenant-scale.sh, the
+# dashboard, a manual kubectl scale) writes to the control table, so the
+# transition 0 -> running is the only evidence the reaper gets.
+record_running() {
+  local id="$1" running="$2" out
+  if ! out="$(aws dynamodb update-item --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
+                --key "$(jq -n --arg id "TENANT#${id}" '{PK:{S:$id}, SK:{S:"META"}}')" \
+                --update-expression "SET was_running = :r" \
+                --expression-attribute-values \
+                  "$(jq -n --arg r "${running}" '{":r":{N:$r}}')" 2>&1)"; then
+    idle_warn "could not record run state for ${id}: ${out}"
+    return 1
+  fi
+}
+
 # Number of Deployments currently running at least one replica.
 running_deployments() {
   kubectl -n "$1" get deploy -o jsonpath='{range .items[*]}{.spec.replicas}{"\n"}{end}' 2>/dev/null \
@@ -149,10 +170,6 @@ suspend_idle_tenants() {
     [ -n "${id}" ] || continue
     ctl_tenant_exists "${id}" || continue
 
-    # Nothing to suspend if the tenant is already asleep.
-    running="$(running_deployments "${ns}")"
-    [ "${running}" -gt 0 ] || continue
-
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
     count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
@@ -161,6 +178,28 @@ suspend_idle_tenants() {
     item="$(ctl_get "TENANT#${id}" "META")"
     prev="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
     since="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
+    was_running="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"
+
+    running="$(running_deployments "${ns}")"
+    if [ "${running}" -eq 0 ]; then
+      # Asleep: nothing to suspend. Record that, so the tenant coming back is
+      # recognisable as a wake on a later pass.
+      [ "${was_running}" = "0" ] || record_running "${id}" 0
+      continue
+    fi
+
+    # Waking is just `kubectl scale` -- tenant-scale.sh, the dashboard check-out
+    # and a manual scale-up all leave the control table untouched, so the idle
+    # clock still reads from before the tenant was scaled down and every one of
+    # those paths would otherwise be undone by the next pass. Treat the tenant
+    # running again as the activity that the wake itself represents.
+    if [ "${was_running}" = "0" ]; then
+      idle_log "${id}: running again after being scaled down; restarting the idle clock"
+      record_activity "${id}" "${count}" "${now}"
+      record_running "${id}" 1
+      continue
+    fi
+    [ "${was_running}" = "1" ] || record_running "${id}" 1
 
     if [ -z "${prev}" ] || [ -z "${since}" ]; then
       # First observation: start the clock, decide on the next pass.
@@ -176,8 +215,15 @@ suspend_idle_tenants() {
 
     if [ "${count}" -lt "${prev}" ]; then
       # Counters only ever increase, so a drop means the controller restarted.
-      # Re-baseline, but keep the existing idle clock: crediting a restart as
-      # activity would let a cycling controller keep tenants awake forever.
+      if [ "${count}" -gt 0 ]; then
+        # It has already served this tenant since coming back, which is real
+        # traffic in the recent past however high the pre-restart total was.
+        record_activity "${id}" "${count}" "${now}"
+        continue
+      fi
+      # Nothing served since the restart. Re-baseline but keep the existing idle
+      # clock: crediting a restart alone as activity would let a cycling
+      # controller keep genuinely idle tenants awake forever.
       idle_log "${id}: ingress counter reset (${prev} -> ${count}); keeping idle clock"
       record_activity "${id}" "${count}" "${since}"
     fi
@@ -194,6 +240,7 @@ suspend_idle_tenants() {
 
     suspend_tenant "${id}" "${ns}"
     record_activity "${id}" "${count}" "${now}"
+    record_running "${id}" 0
   done <<< "$(tenant_namespaces)"
 
   idle_log "idle scan complete."
