@@ -39,6 +39,9 @@ export const env = {
   // clean it up: that is a standing cost decision, not something any dashboard
   // caller should be able to make for an arbitrary id. Everything else is TTL'd.
   get perpetualTenantIds(): Set<string> {
+    // Unset defaults to `main`; explicitly empty means no id may be perpetual,
+    // which fails closed -- a checkout asking for one is refused rather than
+    // quietly given an environment that never expires.
     const raw = process.env.PERPETUAL_TENANT_IDS ?? "main";
     return new Set(
       raw

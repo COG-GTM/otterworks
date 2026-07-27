@@ -96,8 +96,9 @@ jobs:
           fi
           echo "services=${services}" >> "$GITHUB_OUTPUT"
 
-          # A docs- or CI-only push still redeploys: the tenant tracks the
-          # branch, and the runner re-checks it out. It just builds nothing.
+          # A push that touches nothing deployable -- docs, CI config, the
+          # control plane itself -- does not redeploy. The tenant would come
+          # back byte-identical, minutes later, for no reason.
           if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
           else
@@ -156,7 +157,7 @@ jobs:
             echo "list<<EOF"
             echo "${REPO}:${IMAGE_TAG}"
             echo "${REPO}:${BRANCH_TAG}"
-            [ "${GITHUB_REF_NAME}" = "main" ] && echo "${REPO}:main"
+            if [ "${GITHUB_REF_NAME}" = "main" ]; then echo "${REPO}:main"; fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
