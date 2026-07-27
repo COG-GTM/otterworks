@@ -21,6 +21,10 @@ ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 ECR_PREFIX="otterworks/"
 IMAGE_TAG="${IMAGE_TAG:-$(git -C "$(dirname "$0")/.." rev-parse --short HEAD)-$(date +%s)}"
 DB_PASSWORD="${DB_PASSWORD:-}"
+# Host suffix for the golden app's ingress records. The frontends and the API
+# are published through the SHARED ingress controller (one NLB for the whole
+# cluster) rather than a LoadBalancer Service each -- see build_helm_args.
+GOLDEN_HOST_SUFFIX="${GOLDEN_HOST_SUFFIX:-otterworks.app}"
 # Shared JWT signing secret. MUST be identical across the gateway and every
 # service that validates tokens. Generated once if not supplied; pass a stable
 # value (JWT_SECRET=...) across redeploys so previously issued tokens stay valid.
@@ -222,6 +226,32 @@ add_secret() { SECRET_KV+=("$1" "$2"); }
 # contain @ : / # % ? in a connection string). Uses jq's @uri filter.
 urlencode() { jq -rn --arg s "$1" '$s|@uri'; }
 
+# Public hostname for a golden-app service on the shared ingress.
+golden_host() {
+  case "$1" in
+    web-app)         echo "app.${GOLDEN_HOST_SUFFIX}" ;;
+    admin-dashboard) echo "admin.${GOLDEN_HOST_SUFFIX}" ;;
+    api-gateway)     echo "api.${GOLDEN_HOST_SUFFIX}" ;;
+    *)               echo "$1.${GOLDEN_HOST_SUFFIX}" ;;
+  esac
+}
+
+# Fail the deploy if anything in this namespace owns a LoadBalancer Service.
+# Those create ELBs outside Terraform's knowledge, which is how load balancers
+# get stranded when a Service or cluster goes away. The single shared
+# ingress-nginx controller (in its own namespace) is the only allowed exception.
+assert_no_loadbalancer_services() {
+  local found
+  found="$(kubectl -n "${NAMESPACE}" get svc -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.name}{"\n"}{end}' 2>/dev/null)"
+  if [ -n "${found}" ]; then
+    err "LoadBalancer Services found in ${NAMESPACE}; these create untracked ELBs:"
+    err "${found}"
+    err "Route them through the shared ingress controller instead, then delete them:"
+    err "  kubectl -n ${NAMESPACE} delete svc ${found//$'\n'/ }"
+    return 1
+  fi
+}
+
 # Build the per-service Helm --set flags into the global EXTRA_ARGS array, and
 # secret values into the global SECRET_KV array.
 build_helm_args() {
@@ -234,11 +264,27 @@ build_helm_args() {
     EXTRA_ARGS+=(--set resources.requests.memory=512Mi --set resources.limits.memory=1024Mi --set resources.limits.cpu=1000m)
   fi
 
+  # Frontends are reached through the shared ingress controller. They must never
+  # be LoadBalancer Services: each one would mint a Classic ELB that Terraform
+  # does not track and that outlives the cluster if the Service is removed while
+  # the cloud-controller is down (this stranded 3 ELBs + 1 NLB in the past).
   case "$service" in
     web-app|admin-dashboard)
-      EXTRA_ARGS+=(--set service.type=LoadBalancer --set ingress.enabled=false)
+      EXTRA_ARGS+=(--set service.type=ClusterIP)
+      EXTRA_ARGS+=(--set ingress.enabled=true --set ingress.className=nginx)
+      EXTRA_ARGS+=(--set-string "ingress.hosts[0].host=$(golden_host "${service}")")
+      EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].path=/')
+      EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].pathType=Prefix')
+      EXTRA_ARGS+=(--set 'ingress.tls=null')
       EXTRA_ARGS+=(--set-string config.API_GATEWAY_URL=http://api-gateway:8080)
       return 0 ;;
+    api-gateway)
+      EXTRA_ARGS+=(--set service.type=ClusterIP)
+      EXTRA_ARGS+=(--set ingress.enabled=true --set ingress.className=nginx)
+      EXTRA_ARGS+=(--set-string "ingress.hosts[0].host=$(golden_host "${service}")")
+      EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].path=/')
+      EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].pathType=Prefix')
+      EXTRA_ARGS+=(--set 'ingress.tls=null') ;;
   esac
 
   local port="${CONTAINER_PORT[$service]:-}"
@@ -426,7 +472,14 @@ if [ ${#FAILED[@]} -gt 0 ]; then
   exit 1
 fi
 
+assert_no_loadbalancer_services || exit 1
+
 log "Deployment complete! All services deployed to ${EKS_CLUSTER}/${NAMESPACE}"
+echo ""
+log "Golden app URLs (shared ingress):"
+echo "  web-app:         https://$(golden_host web-app)"
+echo "  admin-dashboard: https://$(golden_host admin-dashboard)"
+echo "  api-gateway:     https://$(golden_host api-gateway)"
 echo ""
 log "Useful commands:"
 echo "  kubectl get pods -n ${NAMESPACE}"

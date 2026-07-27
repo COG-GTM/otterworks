@@ -17,7 +17,8 @@
 #
 # Usage:
 #   ./scripts/deploy-tenant.sh <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] \
-#       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db]
+#       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
+#       [--profile core|full]
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
@@ -36,20 +37,26 @@ IMAGE_TAG_OVERRIDE=""
 TTL="8h"
 HOST_SUFFIX="${HOST_SUFFIX:-}"
 SKIP_DB=false
+# Deploy only the services the lab needs. At 100 tenants the difference between
+# "core" and "full" is roughly 100 vCPU of requests, so "full" is opt-in.
+PROFILE="${TENANT_PROFILE:-full}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --tier)        TIER="$2"; shift 2 ;;
     --image-tag)   IMAGE_TAG_OVERRIDE="$2"; shift 2 ;;
     --ttl)         TTL="$2"; shift 2 ;;
     --host-suffix) HOST_SUFFIX="$2"; shift 2 ;;
+    --profile)     PROFILE="$2"; shift 2 ;;
     --skip-db)     SKIP_DB=true; shift ;;
     -*)            err "Unknown flag: $1"; exit 1 ;;
     *)             if [ -z "${ATTENDEE_ID}" ]; then ATTENDEE_ID="$1"; else err "Unexpected arg: $1"; exit 1; fi; shift ;;
   esac
 done
 
-[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h]"; exit 1; }
+[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h] [--profile core|full]"; exit 1; }
 case "${TIER}" in A|B) ;; *) err "--tier must be A or B"; exit 1 ;; esac
+case "${PROFILE}" in core|full) ;; *) err "--profile must be core or full"; exit 1 ;; esac
+mapfile -t TENANT_SERVICES < <(profile_services "${PROFILE}")
 
 require_bins aws kubectl helm terraform jq
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text 2>/dev/null)}"
@@ -110,6 +117,7 @@ metadata:
     platform/team: otterworks
     demo/tenant: "$(sanitize_id "${ATTENDEE_ID}")"
     demo/tier: "${TIER}"
+    demo/profile: "${PROFILE}"
     kubernetes.io/metadata.name: ${NS}
   annotations:
     demo/expires-at: "${EXPIRES_AT}"
@@ -403,9 +411,9 @@ deploy_service() {
   return 0
 }
 
-log "Deploying services into ${NS}..."
+log "Deploying services into ${NS} (profile=${PROFILE}, ${#TENANT_SERVICES[@]} services)..."
 FAILED=()
-for service in "${ALL_SERVICES[@]}"; do
+for service in "${TENANT_SERVICES[@]}"; do
   deploy_service "${service}" || FAILED+=("${service}")
 done
 

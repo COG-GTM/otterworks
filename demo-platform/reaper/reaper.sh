@@ -26,6 +26,9 @@
 #        (g) delete TENANT#<id> + LOCK#<id> control items and append an AUDIT reap
 #   3. if sweep_orphans: independently list live namespaces / DBs / S3 prefixes /
 #      DynamoDB partitions and GC any with NO matching TENANT# control item.
+#   4. if sweep_infra: sweep the AWS resources Kubernetes creates implicitly and
+#      Terraform therefore does not track (load balancers, target groups,
+#      unattached EBS, idle EIPs, stale Route53 records). See infra-sweep.sh.
 #
 # Everything here is idempotent and retry-safe: re-running against an
 # already-clean tenant is a series of no-ops. Secrets are read from the env only
@@ -42,6 +45,12 @@ export REPO_ROOT
 source "${REPO_ROOT}/scripts/lib/tenant-common.sh"
 # shellcheck source=/dev/null
 source "${REPO_ROOT}/demo-platform/lib/control-common.sh"
+# Infrastructure-layer orphan GC (load balancers, target groups, EBS, EIP, DNS).
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/infra-sweep.sh"
+# Scale-to-zero for tenants taking no ingress traffic.
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/idle-suspend.sh"
 
 CONTROL_TABLE="${CONTROL_TABLE:-otterworks-demo-control}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
@@ -353,27 +362,46 @@ sweep_orphans() {
 # ------------------------------------------------------------------------------
 main() {
   log "reaper v2 run at $(date -u +%Y-%m-%dT%H:%M:%SZ) (table=${CONTROL_TABLE})"
-  local cfg enabled grace sweep
+  local cfg enabled grace sweep infra idle
   cfg="$(ctl_get "CONFIG#reaper" "CONFIG")"
   enabled="$(echo "${cfg}" | jq -r --arg d "${REAPER_ENABLED_DEFAULT}" '.Item.enabled.BOOL // ($d=="true")')"
   grace="$(echo "${cfg}"   | jq -r '.Item.grace_seconds.N // "0"')"
   sweep="$(echo "${cfg}"   | jq -r '.Item.sweep_orphans.BOOL // false')"
+  infra="$(echo "${cfg}"   | jq -r '.Item.sweep_infra.BOOL // false')"
+  idle="$(echo "${cfg}"    | jq -r '.Item.suspend_idle.BOOL // false')"
+  IDLE_AFTER_SECONDS="$(echo "${cfg}" | jq -r --arg d "${IDLE_AFTER_SECONDS}" '.Item.idle_after_seconds.N // $d')"
 
   if [ "${enabled}" != "true" ]; then
     log "CONFIG#reaper disabled (or absent); nothing to do. Exiting."
     exit 0
   fi
-  log "config: enabled=${enabled} grace_seconds=${grace} sweep_orphans=${sweep}"
+  log "config: enabled=${enabled} grace_seconds=${grace} sweep_orphans=${sweep} sweep_infra=${infra} suspend_idle=${idle}"
 
   # Load shared infra outputs (RDS endpoint, bucket/table names) for GC.
   load_infra_outputs
 
   reap_expired "${grace}"
 
+  # Suspend before sweeping: a tenant that is merely idle should be scaled to
+  # zero, not deleted. Only TTL expiry deletes a tenant.
+  if [ "${idle}" = "true" ]; then
+    suspend_idle_tenants
+  else
+    log "suspend_idle disabled; skipping idle scan."
+  fi
+
   if [ "${sweep}" = "true" ]; then
     sweep_orphans
   else
     log "sweep_orphans disabled; skipping orphan sweep."
+  fi
+
+  # The infra sweep deletes AWS resources that belong to no tenant, so it is
+  # gated separately from the tenant sweep and honours DRY_RUN independently.
+  if [ "${infra}" = "true" ]; then
+    infra_sweep
+  else
+    log "sweep_infra disabled; skipping infrastructure orphan sweep."
   fi
 
   log "reaper v2 run complete."
