@@ -36,6 +36,10 @@ if [ "${INSTALL_INGRESS}" = true ]; then
   log "Installing/upgrading shared ingress-nginx..."
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
   helm repo update ingress-nginx >/dev/null 2>&1 || true
+  # controller.metrics.enabled is off in the chart by default, but the reaper
+  # decides which tenants are idle from this controller's per-namespace request
+  # counter -- with no metrics endpoint the idle scan fails closed and nothing
+  # is ever scaled to zero. It costs one port and one ClusterIP Service.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     --set controller.service.type=LoadBalancer \
@@ -43,6 +47,7 @@ if [ "${INSTALL_INGRESS}" = true ]; then
     --set controller.replicaCount=1 \
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \
+    --set controller.metrics.enabled=true \
     --wait --timeout 5m || warn "ingress-nginx install reported an issue; continuing."
   kubectl label namespace "${INGRESS_NAMESPACE}" kubernetes.io/metadata.name="${INGRESS_NAMESPACE}" --overwrite >/dev/null 2>&1 || true
   log "ingress-nginx address:"
