@@ -45,18 +45,33 @@ command -v aws >/dev/null 2>&1     || { err "aws CLI not found"; exit 1; }
 command -v kubectl >/dev/null 2>&1 || { err "kubectl not found"; exit 1; }
 
 # Count AWS load balancers still tagged as owned by this cluster.
+#
+# This number is the sole evidence that destroying the cluster is safe, so it
+# must never be produced by guessing. A throttled or unauthorised describe
+# returns nothing, and "nothing" is indistinguishable from "none left" -- which
+# would clear the drain wait instantly and destroy the cluster while its load
+# balancers were still live, causing exactly the orphans this script exists to
+# prevent. Failures therefore return non-zero and the callers stop.
 cluster_lb_count() {
-  local n=0 lb arn
+  local n=0 lb arn out
 
-  for lb in $(aws elb describe-load-balancers --region "${AWS_REGION}" \
-                --query 'LoadBalancerDescriptions[].LoadBalancerName' --output text 2>/dev/null); do
+  out="$(aws elb describe-load-balancers --region "${AWS_REGION}" \
+           --query 'LoadBalancerDescriptions[].LoadBalancerName' --output text 2>&1)" || {
+    err "could not list Classic ELBs: ${out}"
+    return 1
+  }
+  for lb in ${out}; do
     aws elb describe-tags --region "${AWS_REGION}" --load-balancer-names "${lb}" \
       --query "TagDescriptions[0].Tags[?Key=='kubernetes.io/cluster/${EKS_CLUSTER}']" \
       --output text 2>/dev/null | grep -q . && n=$((n + 1))
   done
 
-  for arn in $(aws elbv2 describe-load-balancers --region "${AWS_REGION}" \
-                 --query 'LoadBalancers[].LoadBalancerArn' --output text 2>/dev/null); do
+  out="$(aws elbv2 describe-load-balancers --region "${AWS_REGION}" \
+           --query 'LoadBalancers[].LoadBalancerArn' --output text 2>&1)" || {
+    err "could not list ALB/NLBs: ${out}"
+    return 1
+  }
+  for arn in ${out}; do
     aws elbv2 describe-tags --region "${AWS_REGION}" --resource-arns "${arn}" \
       --query "TagDescriptions[0].Tags[?Key=='kubernetes.io/cluster/${EKS_CLUSTER}']" \
       --output text 2>/dev/null | grep -q . && n=$((n + 1))
@@ -79,7 +94,11 @@ if ! aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" 
   warn "Any load balancers it owned are already orphaned -- run:"
   warn "  DRY_RUN=false demo-platform/reaper/infra-sweep.sh"
 else
-  before="$(cluster_lb_count)"
+  before="$(cluster_lb_count)" || {
+    err "cannot inventory this cluster's load balancers, so cannot tell whether"
+    err "the teardown would strand them. Fix the AWS access above and re-run."
+    exit 1
+  }
   log "AWS load balancers tagged for ${EKS_CLUSTER}: ${before}"
 
   log "Deleting Ingresses so external-dns removes their DNS records..."
@@ -100,10 +119,21 @@ else
   log "Waiting up to ${DRAIN_TIMEOUT}s for AWS to release them..."
   deadline=$(( $(date +%s) + DRAIN_TIMEOUT ))
   while :; do
-    remaining="$(cluster_lb_count)"
-    [ "${remaining}" -eq 0 ] && { log "all load balancers released."; break; }
+    # A failed lookup here is not "zero remaining"; keep waiting and let the
+    # deadline below decide, so a transient throttle does not wave the
+    # teardown through.
+    if ! remaining="$(cluster_lb_count)"; then
+      remaining="unknown"
+    elif [ "${remaining}" -eq 0 ]; then
+      log "all load balancers released."
+      break
+    fi
     if [ "$(date +%s)" -ge "${deadline}" ]; then
-      err "${remaining} load balancer(s) still tagged for ${EKS_CLUSTER} after ${DRAIN_TIMEOUT}s."
+      if [ "${remaining}" = "unknown" ]; then
+        err "still cannot inventory ${EKS_CLUSTER}'s load balancers after ${DRAIN_TIMEOUT}s."
+      else
+        err "${remaining} load balancer(s) still tagged for ${EKS_CLUSTER} after ${DRAIN_TIMEOUT}s."
+      fi
       err "Destroying the cluster now would orphan them. Investigate, or force cleanup with:"
       err "  DRY_RUN=false demo-platform/reaper/infra-sweep.sh"
       exit 1
@@ -148,7 +178,11 @@ fi
 # ---------- Step 4: verify ----------------------------------------------------
 
 log "Verifying no resources remain tagged for ${EKS_CLUSTER}..."
-left="$(cluster_lb_count)"
+left="$(cluster_lb_count)" || {
+  err "could not verify the teardown left nothing behind. Check by hand:"
+  err "  DRY_RUN=true demo-platform/reaper/infra-sweep.sh"
+  exit 1
+}
 if [ "${left}" -ne 0 ]; then
   err "${left} load balancer(s) survived the teardown -- these are now orphans."
   err "Run: DRY_RUN=false demo-platform/reaper/infra-sweep.sh"
