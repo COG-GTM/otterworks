@@ -47,7 +47,10 @@ spec:
                 # so rendering it verbatim would drop the live platform out of its
                 # own sweep as soon as an operator added one.
                 - name: SWEEPABLE_CLUSTERS
-                  value: {{ join " " (concat (list .Values.eksCluster) .Values.reaper.sweepableClusters) | quote }}
+                  # `default (list)` because an upgrade with --reuse-values on a
+                  # release installed before this value existed passes nil here,
+                  # and concat dereferences it.
+                  value: {{ join " " (concat (list .Values.eksCluster) (default (list) .Values.reaper.sweepableClusters)) | quote }}
                 {{- if .Values.reaper.dnsZoneId }}
                 - name: DNS_ZONE_ID
                   value: {{ .Values.reaper.dnsZoneId | quote }}
