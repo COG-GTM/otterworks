@@ -19,6 +19,7 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$
 
 AWS_LIST_CLUSTERS_RC=0
 AWS_LIST_CLUSTERS_OUT="otterworks-dev"
+ELB_TAG_CLUSTER="otterworks-dev"
 DELETED=""
 
 # Stub the CLI. The account is modelled as holding exactly one Classic ELB: the
@@ -35,7 +36,7 @@ aws() {
     *"elb describe-load-balancers"*)
       printf 'shared-ingress'; return 0 ;;
     *"elb describe-tags"*)
-      printf '[{"Key":"kubernetes.io/cluster/otterworks-dev","Value":"owned"},'
+      printf '[{"Key":"kubernetes.io/cluster/%s","Value":"owned"},' "${ELB_TAG_CLUSTER}"
       printf '{"Key":"kubernetes.io/service-name","Value":"ingress-nginx/ingress-nginx-controller"}]'
       return 0 ;;
     *delete*|*release-address*)
@@ -113,6 +114,40 @@ DRY_RUN=false
 DELETED=""
 act aws elb delete-load-balancer --load-balancer-name stale-elb >/dev/null 2>&1
 check "armed mode performs the deletion" "${DELETED# }" "elb delete-load-balancer --load-balancer-name stale-elb"
+
+# "Tagged for a cluster that no longer exists" is not ownership on its own. This
+# account holds unrelated workloads, and another team's dead cluster is theirs to
+# clean up -- the IAM conditions on the reaper's role refuse these deletes too,
+# so a sweep that tried would only produce AccessDenied noise.
+DRY_RUN=false
+AWS_LIST_CLUSTERS_RC=0
+AWS_LIST_CLUSTERS_OUT="otterworks-dev"
+# shellcheck disable=SC2034  # read by cluster_is_ours from the sourced sweep
+SWEEPABLE_CLUSTERS="otterworks-dev"
+
+ELB_TAG_CLUSTER="someone-elses-cluster"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "spares a dead cluster this platform does not own" "${DELETED# }" ""
+
+ELB_TAG_CLUSTER="otterworks-old"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "spares a dead cluster missing from the sweepable list" "${DELETED# }" ""
+
+# ...and once that name is declared sweepable, the same orphan is reclaimed.
+# shellcheck disable=SC2034  # read by cluster_is_ours from the sourced sweep
+SWEEPABLE_CLUSTERS="otterworks-dev otterworks-old"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "reclaims a dead cluster the platform used to run under" \
+  "${DELETED##* }" "shared-ingress"
+
+# The live cluster's own ingress stays untouched even though it is sweepable.
+ELB_TAG_CLUSTER="otterworks-dev"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "spares the live cluster's ingress when that cluster is sweepable" "${DELETED# }" ""
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

@@ -29,6 +29,12 @@ resource "aws_iam_role" "dashboard" {
   assume_role_policy = data.aws_iam_policy_document.dashboard_trust.json
 }
 
+locals {
+  # The platform's own cluster is always sweepable; var.sweepable_clusters adds
+  # names it used to run under, whose orphans still need reclaiming.
+  sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+}
+
 data "aws_iam_policy_document" "dashboard" {
   # Full control of the control table (+ any indexes).
   statement {
@@ -92,32 +98,73 @@ data "aws_iam_policy_document" "dashboard" {
   # The infrastructure sweep (infra-sweep.sh) reclaims the AWS resources
   # Kubernetes creates implicitly and does not clean up when a cluster is
   # replaced -- load balancers, target groups, volumes, addresses, the
-  # k8s-elb-* security groups. None of these calls accept a resource-level
-  # condition, so the safety gate is in the sweep itself: it deletes only what
-  # carries an ownership tag naming a cluster that no longer exists, and the
-  # deletes stay behind DRY_RUN until CONFIG#reaper.sweep_infra_delete is set.
+  # k8s-elb-* security groups.
+  #
+  # Reading the estate has to be account-wide: finding an orphan means looking
+  # at resources whose owner is not yet known. Deleting does not, and must not
+  # -- this account also holds unrelated workloads, including a reserved address
+  # that an early version of this sweep would have released. The deletes below
+  # are therefore conditioned on the resource carrying the ownership tag of a
+  # cluster this platform is responsible for, so the account-wide blast radius
+  # of the sweep script being wrong, misconfigured or abused is bounded by IAM
+  # rather than by the script's own DRY_RUN and tag checks.
   #
   # eks:ListClusters is what decides which clusters are live. Without it the
   # sweep cannot tell an orphan from a running platform, and it correctly
   # refuses to run at all.
   statement {
-    sid    = "InfraOrphanSweep"
+    sid    = "InfraOrphanSweepRead"
     effect = "Allow"
     actions = [
       "eks:ListClusters",
       "elasticloadbalancing:DescribeLoadBalancers",
       "elasticloadbalancing:DescribeTargetGroups",
       "elasticloadbalancing:DescribeTags",
-      "elasticloadbalancing:DeleteLoadBalancer",
-      "elasticloadbalancing:DeleteTargetGroup",
       "ec2:DescribeVolumes",
       "ec2:DescribeAddresses",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeNetworkInterfaces",
-      "ec2:DeleteVolume",
-      "ec2:ReleaseAddress",
-      "ec2:DeleteSecurityGroup",
     ]
+    resources = ["*"]
+  }
+
+  # One statement per sweepable cluster: IAM matches a tag key exactly, and
+  # several keys in a single condition are ANDed, which no resource would
+  # satisfy. Keep local.sweepable_clusters in step with SWEEPABLE_CLUSTERS in the
+  # reaper CronJob -- a cluster in one and not the other means the sweep either
+  # cannot delete its orphans, or reports them and is refused by IAM.
+  dynamic "statement" {
+    for_each = local.sweepable_clusters
+    content {
+      sid    = "InfraOrphanSweepDelete${replace(title(replace(statement.value, "-", " ")), " ", "")}"
+      effect = "Allow"
+      actions = [
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "ec2:DeleteVolume",
+        "ec2:ReleaseAddress",
+        "ec2:DeleteSecurityGroup",
+      ]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:ResourceTag/kubernetes.io/cluster/${statement.value}"
+        values   = ["owned", "shared"]
+      }
+    }
+  }
+
+  # Classic ELB is the one exception: its API predates resource-level
+  # permissions, so DeleteLoadBalancer on a Classic LB cannot be conditioned on
+  # tags at all -- attaching the condition above would deny every call. Split
+  # out and left unconditioned, deliberately and visibly, rather than silently
+  # widening the statement above to cover it. The three orphaned Classic ELBs
+  # that motivated this sweep came from per-service type=LoadBalancer Services,
+  # which this PR removes, so this should be reclaiming a closed class.
+  statement {
+    sid       = "InfraOrphanSweepDeleteClassicElb"
+    effect    = "Allow"
+    actions   = ["elasticloadbalancing:DeleteLoadBalancer"]
     resources = ["*"]
   }
 

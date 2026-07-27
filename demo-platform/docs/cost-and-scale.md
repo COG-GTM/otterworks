@@ -60,9 +60,22 @@ more chances to strand a resource on every teardown.
 
 The sweep is the backstop for the case the other three cannot cover: someone
 deletes a cluster by hand, or the controller dies mid-teardown. It only deletes
-a resource that (a) carries a Kubernetes/OtterWorks ownership tag and (b) whose
-owner is provably gone — untagged resources are reported, never deleted, because
+a resource that (a) carries the ownership tag of a cluster listed as sweepable
+and (b) whose owner is provably gone — untagged resources, and resources owned
+by a cluster this platform never ran, are reported and never deleted, because
 this account holds unrelated workloads.
+
+Ownership is enforced twice, because a sweep that deletes the wrong thing cannot
+be undone. The script checks the tag; the reaper's IAM role is then *only*
+granted the deletes for those same cluster tags, so a bug or a misconfiguration
+in the script is refused by AWS rather than acted on. The one gap is Classic
+ELB, whose API cannot express a tag condition — the script's check stands alone
+there. Keep `reaper.sweepableClusters` (Helm) and `var.sweepable_clusters`
+(Terraform) in step; a name in one but not the other means the sweep either
+cannot clean its own orphans or reports them and is denied.
+
+Deletion is off by default even so: `sweep_infra` runs the sweep report-only,
+and `sweep_infra_delete` arms it. Read a report before arming it.
 
 ## 3. What 100 tenants actually costs
 

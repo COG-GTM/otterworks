@@ -81,6 +81,28 @@ cluster_is_live() {
   case " ${LIVE_CLUSTERS} " in *" ${name} "*) return 0 ;; *) return 1 ;; esac
 }
 
+# Which clusters' leftovers this platform is entitled to delete. "Tagged for a
+# cluster that no longer exists" alone is not ownership: this account also holds
+# unrelated workloads, and another team's dead cluster is not ours to clean up.
+#
+# The same list is expressed as IAM conditions on the reaper's role (see
+# iam_dashboard.tf), so a bug here cannot widen the blast radius beyond it --
+# IAM refuses the call. Keeping both in step is why this is a list rather than
+# an implicit "anything not live".
+SWEEPABLE_CLUSTERS="${SWEEPABLE_CLUSTERS:-${EKS_CLUSTER}}"
+
+cluster_is_ours() {
+  local name="$1"
+  case " ${SWEEPABLE_CLUSTERS} " in *" ${name} "*) return 0 ;; *) return 1 ;; esac
+}
+
+# An orphan is a resource tagged for a cluster we own that no longer exists.
+cluster_is_dead_and_ours() {
+  local name="$1"
+  cluster_is_ours "${name}" || return 1
+  ! cluster_is_live "${name}"
+}
+
 # A k8s Service still exists (and so still owns its load balancer). Only
 # meaningful when we can reach the cluster; if we cannot, report "exists" so the
 # sweep never deletes on the basis of an unreachable API server.
@@ -110,7 +132,7 @@ sweep_classic_elbs() {
     # Not Kubernetes-owned -> not ours to reap.
     [ -n "${cluster}" ] || continue
 
-    if ! cluster_is_live "${cluster}"; then
+    if cluster_is_dead_and_ours "${cluster}"; then
       backends="$(aws elb describe-load-balancers --region "${AWS_REGION}" --load-balancer-names "${lb}" \
                     --query 'length(Instances)' --output text 2>/dev/null)"
       sweep_warn "orphan classic ELB ${lb} (cluster '${cluster}' no longer exists, svc=${svc:-?}, backends=${backends:-?})"
@@ -137,7 +159,7 @@ sweep_v2_elbs() {
     svc="$(printf '%s' "${tags}" | jq -r '.[]? | select(.Key=="kubernetes.io/service-name") | .Value' 2>/dev/null)"
     [ -n "${cluster}" ] || continue
 
-    if ! cluster_is_live "${cluster}"; then
+    if cluster_is_dead_and_ours "${cluster}"; then
       sweep_warn "orphan ELBv2 ${name} (cluster '${cluster}' no longer exists, svc=${svc:-?})"
       act aws elbv2 delete-load-balancer --region "${AWS_REGION}" --load-balancer-arn "${arn}"
     elif [ -n "${svc}" ] && ! service_is_live "${svc}"; then
@@ -151,17 +173,20 @@ sweep_v2_elbs() {
 # (b) Target groups left behind by a deleted load balancer
 # ------------------------------------------------------------------------------
 sweep_target_groups() {
-  local tg name lbs
+  local tg name lbs cluster
   for tg in $(aws elbv2 describe-target-groups --region "${AWS_REGION}" \
                 --query 'TargetGroups[].TargetGroupArn' --output text 2>/dev/null); do
     lbs="$(aws elbv2 describe-target-groups --region "${AWS_REGION}" --target-group-arns "${tg}" \
              --query 'length(TargetGroups[0].LoadBalancerArns)' --output text 2>/dev/null)"
     [ "${lbs}" = "0" ] || continue
     name="${tg##*/}"
-    # Only reap Kubernetes-created target groups.
-    aws elbv2 describe-tags --region "${AWS_REGION}" --resource-arns "${tg}" \
-      --query "TagDescriptions[0].Tags[?starts_with(Key, 'kubernetes.io/')]" --output text 2>/dev/null \
-      | grep -q . || continue
+    # Only reap target groups Kubernetes created for a cluster we own. A target
+    # group with no load balancer is garbage whether or not its cluster still
+    # runs, but whose garbage it is still decides if we may touch it.
+    cluster="$(aws elbv2 describe-tags --region "${AWS_REGION}" --resource-arns "${tg}" \
+                 --query 'TagDescriptions[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
+    [ -n "${cluster}" ] || continue
+    cluster_is_ours "${cluster}" || continue
     sweep_warn "orphan target group ${name} (no load balancer attached)"
     act aws elbv2 delete-target-group --region "${AWS_REGION}" --target-group-arn "${tg}"
   done
@@ -178,7 +203,7 @@ sweep_ebs_volumes() {
     cluster="$(aws ec2 describe-volumes --region "${AWS_REGION}" --volume-ids "${vol}" \
                  --query 'Volumes[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
     [ -n "${cluster}" ] || { sweep_log "unattached EBS ${vol} has no cluster tag; reporting only"; continue; }
-    cluster_is_live "${cluster}" && continue
+    cluster_is_dead_and_ours "${cluster}" || continue
     sweep_warn "orphan EBS volume ${vol} (cluster '${cluster}' no longer exists)"
     act aws ec2 delete-volume --region "${AWS_REGION}" --volume-id "${vol}"
   done
@@ -201,7 +226,7 @@ sweep_eips() {
       sweep_log "unassociated Elastic IP ${alloc} has no cluster tag; reporting only"
       continue
     fi
-    cluster_is_live "${cluster}" && continue
+    cluster_is_dead_and_ours "${cluster}" || continue
     sweep_warn "orphan Elastic IP ${alloc} (cluster '${cluster}' no longer exists)"
     act aws ec2 release-address --region "${AWS_REGION}" --allocation-id "${alloc}"
   done
@@ -260,13 +285,17 @@ sweep_route53() {
 # still in use by a live resource is never touched.
 # ------------------------------------------------------------------------------
 sweep_elb_security_groups() {
-  local sg name attached
+  local sg name attached cluster
   for sg in $(aws ec2 describe-security-groups --region "${AWS_REGION}" \
                 --filters "Name=group-name,Values=k8s-elb-*" \
                 --query 'SecurityGroups[].GroupId' --output text 2>/dev/null); do
     [ -n "${sg}" ] || continue
     name="$(aws ec2 describe-security-groups --region "${AWS_REGION}" --group-ids "${sg}" \
               --query 'SecurityGroups[0].GroupName' --output text 2>/dev/null)"
+    cluster="$(aws ec2 describe-security-groups --region "${AWS_REGION}" --group-ids "${sg}" \
+                 --query 'SecurityGroups[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
+    [ -n "${cluster}" ] || { sweep_log "security group ${sg} has no cluster tag; reporting only"; continue; }
+    cluster_is_ours "${cluster}" || continue
     attached="$(aws ec2 describe-network-interfaces --region "${AWS_REGION}" \
                   --filters "Name=group-id,Values=${sg}" \
                   --query 'length(NetworkInterfaces)' --output text 2>/dev/null)"

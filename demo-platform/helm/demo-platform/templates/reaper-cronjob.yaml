@@ -42,6 +42,10 @@ spec:
                   value: {{ .Values.eksCluster | quote }}
                 - name: HOST_SUFFIX
                   value: {{ .Values.reaper.hostSuffix | quote }}
+                {{- if .Values.reaper.sweepableClusters }}
+                - name: SWEEPABLE_CLUSTERS
+                  value: {{ join " " .Values.reaper.sweepableClusters | quote }}
+                {{- end }}
                 {{- if .Values.reaper.dnsZoneId }}
                 - name: DNS_ZONE_ID
                   value: {{ .Values.reaper.dnsZoneId | quote }}

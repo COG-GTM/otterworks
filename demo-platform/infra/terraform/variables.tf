@@ -110,3 +110,16 @@ variable "reaper_idle_after_seconds" {
   type        = number
   default     = 3600
 }
+
+# Whose leftovers the infrastructure sweep may delete. Mirrored into the reaper
+# as SWEEPABLE_CLUSTERS and into the IAM conditions in iam_dashboard.tf, so the
+# script and the role agree on ownership. Add a name here when a cluster is
+# replaced under a new name and its orphans still need reclaiming; a cluster
+# absent from this list is another team's problem, not ours.
+#
+# Empty means "just this platform's own cluster" -- see local.sweepable_clusters.
+variable "sweepable_clusters" {
+  description = "Extra EKS cluster names whose orphaned AWS resources the sweep may delete, beyond cluster_name."
+  type        = list(string)
+  default     = []
+}

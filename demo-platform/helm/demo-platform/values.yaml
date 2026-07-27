@@ -71,6 +71,11 @@ reaper:
   schedule: "*/15 * * * *"
   # Host suffix used when GC-ing tenant Route53 records / building URLs.
   hostSuffix: demo.otterworks.app
+  # Clusters whose orphaned AWS resources the sweep may delete. Defaults to the
+  # cluster the platform runs on; add names it previously ran under so their
+  # leftovers stay reclaimable. Must match var.sweepable_clusters in Terraform,
+  # which grants the matching IAM conditions.
+  sweepableClusters: []
   # Hosted zone the infrastructure sweep reconciles tenant records against.
   # Unset, the sweep skips Route53 entirely and records for long-gone tenants
   # accumulate in the zone. Read from `terraform output dns_zone_id`.
