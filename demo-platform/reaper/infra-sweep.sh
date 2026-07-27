@@ -89,7 +89,14 @@ cluster_is_live() {
 # iam_dashboard.tf), so a bug here cannot widen the blast radius beyond it --
 # IAM refuses the call. Keeping both in step is why this is a list rather than
 # an implicit "anything not live".
-SWEEPABLE_CLUSTERS="${SWEEPABLE_CLUSTERS:-${EKS_CLUSTER}}"
+#
+# The platform's own cluster is always ours; the variable adds names it used to
+# run under. Unioned rather than overridden, because a caller that passes only
+# the extra names -- which is what "keep this in step with the Terraform
+# variable" invites, since that one holds extras only -- would otherwise silence
+# the sweep for the live platform's own orphans, the ones it exists to catch.
+# The Terraform local concats cluster_name the same way.
+SWEEPABLE_CLUSTERS="${EKS_CLUSTER} ${SWEEPABLE_CLUSTERS:-}"
 
 cluster_is_ours() {
   local name="$1"

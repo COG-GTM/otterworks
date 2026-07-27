@@ -42,10 +42,12 @@ spec:
                   value: {{ .Values.eksCluster | quote }}
                 - name: HOST_SUFFIX
                   value: {{ .Values.reaper.hostSuffix | quote }}
-                {{- if .Values.reaper.sweepableClusters }}
+                # The running cluster first: sweepableClusters holds only the
+                # *extra*, previously-run names (matching var.sweepable_clusters),
+                # so rendering it verbatim would drop the live platform out of its
+                # own sweep as soon as an operator added one.
                 - name: SWEEPABLE_CLUSTERS
-                  value: {{ join " " .Values.reaper.sweepableClusters | quote }}
-                {{- end }}
+                  value: {{ join " " (concat (list .Values.eksCluster) .Values.reaper.sweepableClusters) | quote }}
                 {{- if .Values.reaper.dnsZoneId }}
                 - name: DNS_ZONE_ID
                   value: {{ .Values.reaper.dnsZoneId | quote }}

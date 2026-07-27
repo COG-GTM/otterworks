@@ -211,5 +211,27 @@ for record in t-gone.demo.otterworks.app api-t-gone.demo.otterworks.app cname-t-
     "${DELETED# }" "route53:${record}"
 done
 
+# ---- ownership set is built from the environment, not replaced by it --------
+#
+# The Terraform variable and the Helm value both hold the *extra*, previously-run
+# cluster names, so SWEEPABLE_CLUSTERS can legitimately arrive holding only
+# those. If it replaced the default instead of adding to it, the live platform's
+# own cluster would stop being ours and the sweep would go quiet for exactly the
+# orphans it exists to catch -- while still looking like it ran.
+ownership() {
+  ( export EKS_CLUSTER="otterworks-dev" SWEEPABLE_CLUSTERS="$1"
+    # shellcheck source=/dev/null
+    . "${SCRIPT_DIR}/infra-sweep.sh"
+    cluster_is_ours "$2" && echo ours || echo "not ours" )
+}
+check "owns the live cluster when only extra names are configured" \
+  "$(ownership "otterworks-old" otterworks-dev)" "ours"
+check "  and still owns the extra name" \
+  "$(ownership "otterworks-old" otterworks-old)" "ours"
+check "owns the live cluster when nothing is configured" \
+  "$(ownership "" otterworks-dev)" "ours"
+check "never owns a cluster nobody declared" \
+  "$(ownership "otterworks-old" someone-elses-cluster)" "not ours"
+
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
