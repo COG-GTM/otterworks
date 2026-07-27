@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { withSession, json, error } from "@/lib/api";
 import { appendAudit, extend, getTenant } from "@/lib/control";
-import { ttlToSeconds } from "@/lib/util";
+import { NEVER_TTL_SECONDS, ttlToSeconds } from "@/lib/util";
 import type { ExtendRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -15,6 +15,12 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const ttlStr = typeof body.ttl === "string" ? body.ttl : "";
   const ttlSeconds = ttlToSeconds(ttlStr);
   if (ttlSeconds === null) return error(400, "invalid ttl");
+  // `never` is a decade, and granting it here would leave a tenant the reaper
+  // never collects with `persistent` still false -- immortal, and outside the
+  // PERPETUAL_TENANT_IDS allowlist that is meant to be the only way there.
+  if (ttlSeconds >= NEVER_TTL_SECONDS) {
+    return error(400, `ttl '${ttlStr}' is perpetual; POST /api/tenants/${id}/persist to make a tenant perpetual`);
+  }
 
   const tenant = await getTenant(id);
   if (!tenant) return error(404, "not found");
