@@ -78,6 +78,7 @@ check "runs normally when the lookup succeeds" "$?" "0"
 check "  and spares the live cluster's shared ingress" "${DELETED# }" ""
 
 # A live cluster must never be treated as an orphan.
+# shellcheck disable=SC2034  # read by cluster_is_live from the sourced sweep
 LIVE_CLUSTERS="otterworks-dev"
 cluster_is_live "otterworks-dev" && r=live || r=dead
 check "recognises a live cluster" "${r}" "live"
