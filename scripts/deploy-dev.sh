@@ -382,7 +382,10 @@ build_helm_args() {
     analytics-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.ANALYTICS_HOST=0.0.0.0" --set-string "config.PORT=8088")
-      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${DB_NAME}")
+      # Flyway again, from the same URL as the Slick pool (AnalyticsDb.migrate),
+      # and a failed migration silently falls back to the in-memory store --
+      # so the session port for the whole service, as with Rails.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_SESSION_PORT}/${DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}" ;;
     admin-service)

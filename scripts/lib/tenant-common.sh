@@ -314,7 +314,14 @@ build_helm_args() {
       # isolation, and just burns ResourceQuota on short-lived tenants.
       EXTRA_ARGS+=(--set cronjob.enabled=false)
       EXTRA_ARGS+=(--set-string "config.ANALYTICS_HOST=0.0.0.0" --set-string "config.PORT=8088")
-      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${T_DB_NAME}")
+      # Third migration path, and the quietest: AnalyticsDb.migrate() runs Flyway
+      # from the same DATABASE_URL as the Slick pool, and a failed migration
+      # falls back to the in-memory store instead of crashing -- so getting this
+      # wrong loses the tenant's analytics data without any pod ever going
+      # unhealthy. Session port for the whole service, as with Rails. Slick here
+      # opens connections per query rather than holding a pool, so this costs
+      # the session pooler far less than the connection count suggests.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_SESSION_PORT}/${T_DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}" ;;
     admin-service)

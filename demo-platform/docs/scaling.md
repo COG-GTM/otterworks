@@ -54,17 +54,22 @@ nodes or IPs.
   nothing is configured per tenant.
 - **Measured:** the same idle tenant, rewired, holds **1** server connection instead of 16 —
   16 client connections multiplexed onto it. Redeploy with `DB_VIA_PGBOUNCER=false` to compare.
-- **Ceiling:** `max_user_connections` (30 × 2 replicas transaction + 10 × 2 session = 80) is
+- **Ceiling:** `max_user_connections` (25 × 2 replicas transaction + 15 × 2 session = 80) is
   what bounds RDS, not the tenant count — server connections now track *concurrent queries*.
   Raise it when the instance is resized; it is sized to leave RDS's reserved superuser slots
   and room for `psql`/deploy jobs.
 - **Two ports, on purpose:** `6432` is transaction pooling, `6433` the same pooler in session
-  mode. Schema migrations take *session*-level advisory locks — Flyway on auth-service boot,
-  `rails db:migrate` on admin-service boot — and a transaction pooler hands the next
-  transaction a different server connection, so the lock is released on a connection that
-  never held it. Migrations use `6433`; admin-service uses it throughout because Rails has one
-  connection URL for both. Anything else needing session state (`LISTEN`/`NOTIFY`, session
-  `SET`, advisory locks) belongs on `6433` too.
+  mode. Schema migrations take *session*-level advisory locks — Flyway on auth-service and
+  analytics-service boot, `rails db:migrate` on admin-service boot — and a transaction pooler
+  hands the next transaction a different server connection, so the lock is released on a
+  connection that never held it (and Flyway's per-connection `search_path` goes with it).
+  Migrations use `6433`. Only auth-service takes a separate migration URL
+  (`SPRING_FLYWAY_URL`); admin-service and analytics-service migrate from the same URL their
+  queries use, so those two sit on `6433` in full. **Adding a SQL service, or a migration
+  runner to an existing one, means deciding which port it belongs on** — anything holding
+  session state (advisory locks, session `SET`, `LISTEN`/`NOTIFY`, cursors across
+  transactions) needs `6433`. analytics-service is the cautionary case: a failed migration
+  there falls back to an in-memory store rather than crashing, so it fails silently.
 - **Not through the pooler:** `CREATE`/`DROP DATABASE` cannot run inside a transaction, so
   tenant provisioning and teardown keep talking to the RDS endpoint directly.
 - **Fallback:** if the pooler is not installed the deploy scripts wire straight to RDS and warn

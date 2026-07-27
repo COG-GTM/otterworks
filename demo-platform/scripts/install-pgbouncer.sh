@@ -72,17 +72,20 @@ stringData:
     "${DB_USER}" "${DB_PASSWORD}"
 EOF
 
-# PgBouncer reads its config and userlist only at startup, so a rotated password
-# would otherwise leave the running pods authenticating with the old one until
-# something unrelated restarted them. The checksum covers both.
-checksum="$(printf '%s|%s|%s|%s' "${RDS_HOST}" "${RDS_PORT}" "${DB_USER}" "${DB_PASSWORD}" | sha256sum | cut -c1-16)"
+# PgBouncer reads its config and userlist only at startup, and a ConfigMap or
+# Secret changing underneath a running pod restarts nothing. Without this the
+# pods keep serving the previous pool sizes, or authenticating with a rotated
+# password, until something unrelated happens to restart them. Checksum the
+# rendered config as well as the credential: pool_mode and the connection caps
+# are exactly the kind of edit that looks applied and is not.
+rendered="$(sed -e "s#__RDS_HOST__#${RDS_HOST}#g" \
+                -e "s#__RDS_PORT__#${RDS_PORT}#g" \
+                -e "s#__DB_USER__#${DB_USER}#g" \
+                "${HERE}/../k8s/pgbouncer.yaml")"
+checksum="$(printf '%s|%s' "${rendered}" "${DB_PASSWORD}" | sha256sum | cut -c1-16)"
 
 log "applying pooler (host=${RDS_HOST} port=${RDS_PORT} user=${DB_USER})..."
-sed -e "s#__RDS_HOST__#${RDS_HOST}#g" \
-    -e "s#__RDS_PORT__#${RDS_PORT}#g" \
-    -e "s#__DB_USER__#${DB_USER}#g" \
-    -e "s#__CONFIG_CHECKSUM__#${checksum}#g" \
-    "${HERE}/../k8s/pgbouncer.yaml" | kubectl apply -f -
+printf '%s' "${rendered}" | sed -e "s#__CONFIG_CHECKSUM__#${checksum}#g" | kubectl apply -f -
 
 kubectl -n "${NS}" rollout status deploy/pgbouncer --timeout=180s
 log "ready at pgbouncer.${NS}:6432 (transaction pooling, wildcard database routing)"

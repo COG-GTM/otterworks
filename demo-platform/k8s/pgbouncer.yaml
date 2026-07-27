@@ -59,12 +59,12 @@ data:
     reserve_pool_timeout = 3
 
     # The actual ceiling. Every service connects as the same RDS master user, so
-    # a per-user cap is a global cap: 30 per replica x 2 replicas = 60 server
-    # connections here, plus 20 from the session pooler below = 80, under the
+    # a per-user cap is a global cap: 25 per replica x 2 replicas = 50 server
+    # connections here, plus 30 from the session pooler below = 80, under the
     # ~112 a db.t3.micro allows and leaving room for psql, deploy jobs and RDS's
     # own reserved superuser slots. This is the number to revisit when the
     # instance is resized -- not default_pool_size.
-    max_user_connections = 30
+    max_user_connections = 25
 
     # Idle tenants are the normal state here (the reaper scales them to zero),
     # so hand server connections back quickly rather than holding them open for
@@ -76,7 +76,12 @@ data:
     # track; without this the pooler rejects those startup packets outright.
     ignore_startup_parameters = extra_float_digits,options
 
-    server_tls_sslmode = prefer
+    # require, not prefer: prefer silently falls back to plaintext, and every
+    # tenant's SQL crosses this hop authenticated as the RDS master user. RDS
+    # always offers TLS, so there is nothing to fall back for. Not verify-full,
+    # which additionally needs the RDS CA bundle mounted here -- worth doing,
+    # but it is a separate change with its own rotation story.
+    server_tls_sslmode = require
     admin_users = __DB_USER__
     stats_users = __DB_USER__
 
@@ -86,18 +91,26 @@ data:
     log_disconnections = 0
 
   # A second pooler, in SESSION mode, for the things transaction pooling cannot
-  # serve: anything whose state outlives a transaction. Concretely, both schema
-  # migrations in this app take a *session*-level advisory lock -- Flyway when
-  # auth-service boots, `rails db:migrate` when admin-service does -- and such a
-  # lock taken through a transaction pooler is released onto whichever server
-  # connection the next transaction happens to get, not the one holding it. The
-  # lock leaks and the migration loses its mutual exclusion. admin-service runs
-  # its migration from the image's CMD and cannot be pointed at a second URL, so
-  # the endpoint is what has to differ.
+  # serve: anything whose state outlives a transaction. Concretely, every schema
+  # migration in this app takes a *session*-level advisory lock -- Flyway when
+  # auth-service and analytics-service boot, `rails db:migrate` when
+  # admin-service does -- and such a lock taken through a transaction pooler is
+  # released onto whichever server connection the next transaction happens to
+  # get, not the one holding it. The lock leaks, the migration loses its mutual
+  # exclusion, and Flyway's per-connection search_path goes with it. Only
+  # auth-service can be pointed at a separate migration URL; the other two
+  # migrate from the same URL their queries use, so the endpoint is what has to
+  # differ and those services sit here in full.
   #
   # Routing this here rather than at the instance keeps it inside the connection
-  # budget; it just holds a server connection for a client's whole session, so
-  # it gets the smaller share.
+  # budget; it holds a server connection for a client's whole session, which is
+  # affordable because the two services on it open connections per query rather
+  # than parking a pool.
+  #
+  # A migration that cannot get a connection is worse than a slow query -- it
+  # boots admin-service into a crash loop and analytics-service into its silent
+  # in-memory fallback -- so this pool is not the leftovers: 15 per replica x 2
+  # replicas = 30 of the 80-connection budget.
   pgbouncer-session.ini: |
     [databases]
     * = host=__RDS_HOST__ port=__RDS_PORT__
@@ -110,13 +123,13 @@ data:
     auth_file = /etc/pgbouncer/userlist.txt
     pool_mode = session
     max_client_conn = 500
-    default_pool_size = 10
+    default_pool_size = 15
     min_pool_size = 0
-    max_user_connections = 10
+    max_user_connections = 15
     server_idle_timeout = 60
     server_lifetime = 900
     ignore_startup_parameters = extra_float_digits,options
-    server_tls_sslmode = prefer
+    server_tls_sslmode = require
     admin_users = __DB_USER__
     stats_users = __DB_USER__
     log_connections = 0
