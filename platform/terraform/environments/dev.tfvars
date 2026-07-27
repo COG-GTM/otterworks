@@ -12,19 +12,24 @@ vpc_cidr           = "10.0.0.0/16"
 az_count           = 2
 enable_nat_gateway = false
 
-# Node sizing for a multi-tenant workshop cluster. Tenants are scaled to zero
-# when idle (see demo-platform/reaper/idle-suspend.sh), so capacity should track
-# the handful of tenants that are actually awake rather than the number
-# provisioned. Fewer, larger nodes bin-pack many small tenant pods far better
-# than many small nodes, and SPOT keeps the rate ~70% below on-demand.
+# This group is the SYSTEM pool, not the tenant pool. Tenant capacity comes and
+# goes with Karpenter (demo-platform/scripts/install-karpenter.sh), which the
+# managed node group cannot do: its size is a fixed number, so it neither grows
+# for pending tenant pods nor gives anything back when the reaper scales an idle
+# tenant to zero -- the node it emptied keeps billing.
 #
-# max_size 4 was a hard ceiling that two tenants already hit. It is raised to
-# cover ~100 provisioned tenants at realistic concurrency; the autoscaler only
-# grows the group when pods are actually pending.
+# What stays here is the platform itself: the Karpenter controller (which needs
+# somewhere to run that Karpenter does not own), ingress-nginx, cert-manager,
+# external-dns, CoreDNS and the ops dashboard. Two nodes for availability across
+# both AZs, and a small ceiling for headroom -- it is deliberately no longer the
+# thing that scales.
+#
+# SPOT keeps the rate ~70% below on-demand; xlarge because a few large nodes
+# bin-pack many small pods far better than many small ones.
 node_instance_types = ["m6a.xlarge", "m6i.xlarge", "m5.xlarge", "t3.xlarge"]
 node_capacity_type  = "SPOT"
 node_desired_size   = 2
-node_min_size       = 1
-node_max_size       = 20
+node_min_size       = 2
+node_max_size       = 4
 
 ecr_prefix = "otterworks/"

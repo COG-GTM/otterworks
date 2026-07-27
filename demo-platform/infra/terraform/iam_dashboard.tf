@@ -124,6 +124,7 @@ data "aws_iam_policy_document" "dashboard" {
       "ec2:DescribeAddresses",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeInstances",
     ]
     resources = ["*"]
   }
@@ -150,6 +151,10 @@ data "aws_iam_policy_document" "dashboard" {
         "ec2:DeleteVolume",
         "ec2:ReleaseAddress",
         "ec2:DeleteSecurityGroup",
+        # Karpenter nodes outlive their cluster; see sweep_karpenter_instances.
+        # The cluster tag below is what keeps this off every other instance in
+        # the account, including the unrelated stopped ones.
+        "ec2:TerminateInstances",
       ]
       resources = ["*"]
       condition {

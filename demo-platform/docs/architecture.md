@@ -124,9 +124,9 @@ Replaces the current TTL reaper (which deletes namespaces but **leaves orphan DB
 
 ## 7. Scaling to high-tens of tenants
 
-- **Nodes/cost:** ~15 pods per tenant (~2 nodes at t3.medium). Current node group `maxSize=4` → hard wall. Add **Karpenter** (or Cluster Autoscaler) + raise max; keep SPOT; rely on **scale-to-zero** for idle tenants; consider deploying only the services a lab needs.
+- **Nodes/cost:** ~15 pods per tenant. **Karpenter** owns tenant capacity (Spot, consolidation on idle); the managed node group is only the system pool. Rely on **scale-to-zero** for idle tenants and `--profile core` for labs that do not need all 13 services.
 - **VPC IP exhaustion (VPC-CNI):** every pod takes a subnet IP. High-tens × 15 pods can exhaust subnets / per-node ENI caps → hard failure. **Enable prefix delegation** and/or widen subnets *before* scaling.
-- **RDS connections:** pools × services × tenants can exhaust `max_connections`. Add **PgBouncer** (or size the instance up).
+- **RDS connections:** pools × services × tenants exhausts `max_connections` (measured: 16 idle backends per tenant, ~112 available). **PgBouncer** now fronts the instance — same tenant, 1 server connection — with a session-mode port for migrations.
 - **ingress-nginx:** each tenant adds Ingress objects → nginx config reloads; fine for dozens, watch reload time in the high-tens.
 - **Least-privilege DB:** give each tenant DB its own restricted user instead of the RDS master (rotate via the control plane).
 
@@ -166,7 +166,7 @@ I recommend (A) now and (B) only if you specifically want the consolidation. **N
 4. ⑂ **Dashboard frontend** (table UI + reaper panel + audit).
 5. **deploy/teardown refactor** to read/write the control table + emit audit + host-based ingress by default.
 6. **Reaper v2** + orphan sweeper (schedule from control table).
-7. **Autoscaling + prefix delegation + PgBouncer** (scale hardening).
+7. **Autoscaling + PgBouncer** (done) **+ prefix delegation** (scale hardening).
 8. Deploy dashboard to `otterworks-platform`, wire `ops.otterworks.app`, end-to-end test, PR(s).
 
 ---
