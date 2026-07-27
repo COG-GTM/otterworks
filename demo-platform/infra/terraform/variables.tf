@@ -65,3 +65,15 @@ variable "ecr_repo_prefix" {
   type    = string
   default = "otterworks"
 }
+
+variable "monthly_budget_usd" {
+  description = "Monthly cost budget for the otterworks platform, in USD. See demo-platform/docs/cost-and-scale.md for how this figure is derived."
+  type        = number
+  default     = 700
+}
+
+variable "budget_alert_emails" {
+  description = "Addresses notified when spend crosses the budget thresholds. No budget is created when empty."
+  type        = list(string)
+  default     = []
+}
