@@ -68,8 +68,15 @@ JVM_SERVICES=" auth-service report-service notification-service analytics-servic
 
 # Naming ----------------------------------------------------------------------
 # Namespace must be RFC-1123 (lowercase alnum + '-'); DB name uses '_'.
+#
+# Must match sanitizeId() in demo-platform/dashboard/lib/util.ts exactly, down
+# to the collapsing and the 40-character cut: the dashboard creates the tenant
+# under its own version of this id, and a tag or namespace derived from a
+# different one points at nothing.
 sanitize_id() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//'
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' |
+    sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' |
+    cut -c1-40 | sed 's/-*$//'
 }
 tenant_namespace() { printf 'otterworks-%s' "$(sanitize_id "$1")"; }
 

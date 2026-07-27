@@ -257,9 +257,14 @@ case "${cmd}" in
     # separate environment rather than the same one under two owners. Identical
     # branch names in two repositories are the case the branch check cannot
     # catch, because the branch names match.
+    # Sanitized exactly as sanitizeId() in the dashboard does it, so that the
+    # id CD asks for is the id the tenant is created under -- and so the image
+    # tag CI pushed for it is the one the deploy then looks up.
     id="$(printf '%s' "${branch}" | sed -E 's#^(workshop|demo)[-/]##')"
     id="$(printf '%s' "${TENANT_PREFIX:+${TENANT_PREFIX}-}${id}" |
-            tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//')"
+            tr '[:upper:]' '[:lower:]' |
+            sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' |
+            cut -c1-40 | sed 's/-*$//')"
     [ -n "${id}" ] || fail "cannot derive a tenant id from branch '${branch}'"
 
     login
