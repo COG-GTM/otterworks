@@ -29,6 +29,12 @@ KARPENTER_NAMESPACE="${KARPENTER_NAMESPACE:-kube-system}"
 # component that creates and deletes nodes is not something a workshop cluster
 # should do on its own. Karpenter >= 1.6 is required for Kubernetes 1.34.
 KARPENTER_VERSION="${KARPENTER_VERSION:-1.13.0}"
+# One replica, matching the single-node system pool. The chart defaults to two
+# with required anti-affinity on hostname, so on a one-node pool the second is
+# unschedulable forever. Leader election means only one is ever reconciling
+# anyway; the second only shortens failover, which is HA this environment has
+# deliberately given up. Raise it if the system pool ever grows.
+KARPENTER_REPLICAS="${KARPENTER_REPLICAS:-1}"
 TF_DIR="${TF_DIR:-${REPO_ROOT}/platform/terraform}"
 
 log()  { echo "[karpenter] $*"; }
@@ -79,6 +85,7 @@ helm upgrade --install karpenter "oci://public.ecr.aws/karpenter/karpenter" \
   --set "settings.clusterName=${EKS_CLUSTER}" \
   --set "settings.interruptionQueue=${KARPENTER_QUEUE}" \
   --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${KARPENTER_ROLE_ARN}" \
+  --set replicas="${KARPENTER_REPLICAS}" \
   --set controller.resources.requests.cpu=200m \
   --set controller.resources.requests.memory=512Mi \
   --set controller.resources.limits.cpu=1 \

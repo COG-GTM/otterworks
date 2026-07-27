@@ -10,8 +10,17 @@ force-applied to the live cluster (they recycle nodes and would disturb running 
 - **Done:** **Karpenter** owns tenant capacity — `scripts/install-karpenter.sh` (controller,
   `EC2NodeClass`, `NodePool`) on top of `platform/terraform/modules/eks/karpenter.tf` (IRSA
   role, node instance profile, Spot interruption queue, discovery tags). The managed node
-  group is now only the **system pool** (2 nodes: Karpenter itself, ingress-nginx,
-  cert-manager, external-dns, CoreDNS, dashboard) and no longer scales.
+  group is now only the **system pool** — **one** node carrying Karpenter itself,
+  ingress-nginx, cert-manager, external-dns, CoreDNS, PgBouncer and the dashboard — and no
+  longer scales.
+- **Why one and not zero, or two:** the platform has to be up to receive the checkout that
+  creates a tenant, and Karpenter has to be running somewhere before it can launch anything,
+  so zero would mean a multi-minute cold start on the first checkout of the day. Two bought AZ
+  redundancy that a demo environment does not need and paid for it around the clock. At one,
+  losing the node means ingress is down until the group replaces it rather than failing over;
+  nothing that must survive it lives in the cluster (control table in DynamoDB, tenant data in
+  RDS). Everything above the platform itself is Karpenter's, so this node does not grow with
+  tenants.
 - **Why not Cluster Autoscaler:** CA moves one fixed node group's `desiredSize`, so instance
   type is decided up front and a partly-used node is only removed when *entirely* empty.
   Karpenter picks the instance that fits the pending pods, and its
