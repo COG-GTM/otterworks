@@ -119,10 +119,16 @@ table() {
 # A 202 from checkout or check-in means the state changed but the runner Job was
 # not enqueued -- the tenant will sit in `deploying`/`draining` forever. Silence
 # would make that look like success.
+#
+# Returns non-zero when degraded, so callers can suppress the progress messages
+# that would otherwise tell someone to wait for work that was never started.
 warn_if_degraded() {
   local warning
   warning="$(printf '%s' "$1" | jq -r '.warning // empty')"
-  [ -z "${warning}" ] || echo "[tenant] WARNING: ${warning}" >&2
+  [ -n "${warning}" ] || return 0
+
+  echo "[tenant] WARNING: ${warning}" >&2
+  return 1
 }
 
 # ------------------------------------------------------------------------------
@@ -151,9 +157,14 @@ case "${cmd}" in
              "$(jq -nc --arg id "${id}" --arg b "${branch}" --arg t "${ttl}" \
                      '{id:$id, branch:$b, ttl:$t, owner:"cli"}')")"
     printf '%s' "${out}" | jq -c '.tenant // .' | table
-    warn_if_degraded "${out}"
 
-    log "deploying -- takes a few minutes; watch with: tenant.sh status ${id}"
+    if warn_if_degraded "${out}"; then
+      log "deploying -- takes a few minutes; watch with: tenant.sh status ${id}"
+    else
+      # The id is now reserved but nothing is building it, so leaving with a
+      # success status would strand the slot silently.
+      fail "'${id}' is reserved but not deploying -- check the runner, then 'tenant.sh checkin ${id}' to release it"
+    fi
     ;;
 
   checkin)
@@ -164,7 +175,12 @@ case "${cmd}" in
     log "checking in '${id}' (namespace, database, DNS and IRSA trust are removed)..."
     out="$(api POST "/api/tenants/${id}/checkin" '{}')"
     log "${id}: $(printf '%s' "${out}" | jq -r '.status // "accepted"')"
-    warn_if_degraded "${out}"
+
+    # Explicit rather than relying on set -e to trip on the return value: a
+    # teardown that was never enqueued leaves tenant resources billing, so it
+    # has to be a visible failure.
+    warn_if_degraded "${out}" ||
+      fail "'${id}' was released in the control table but its resources were not torn down"
     ;;
 
   extend)
