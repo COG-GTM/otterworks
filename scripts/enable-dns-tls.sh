@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # enable-dns-tls.sh — turn on the AWS-native DNS + wildcard-TLS stack for the
 # demo platform. Run ONCE, after otterworks.app is registered in Route53 and
-# `terraform apply -var enable_dns=true` has created the hosted zone + IRSA role.
+# `terraform apply` has created the DNS automation IRSA role (enable_dns, on by default).
 #
 # It replaces the temporary nip.io IP-based hostnames with real, self-contained
 # AWS records:
@@ -36,7 +36,7 @@ echo "==> Reading Terraform outputs from ${TF_DIR}"
 DNS_ROLE_ARN="$(terraform -chdir="${TF_DIR}" output -raw dns_role_arn)"
 ZONE_ID="$(terraform -chdir="${TF_DIR}" output -raw dns_zone_id)"
 if [ -z "${DNS_ROLE_ARN}" ] || [ "${DNS_ROLE_ARN}" = "null" ] || [ -z "${ZONE_ID}" ] || [ "${ZONE_ID}" = "null" ]; then
-  echo "dns_role_arn / dns_zone_id are empty — run 'terraform apply -var enable_dns=true' first." >&2
+  echo "dns_role_arn / dns_zone_id are empty — run 'terraform apply' in demo-platform/infra/terraform first." >&2
   exit 1
 fi
 echo "    dns_role_arn=${DNS_ROLE_ARN}"
@@ -56,6 +56,19 @@ render() {  # substitute the __PLACEHOLDER__ tokens in <file> with the resolved 
 
 echo "==> Installing external-dns"
 render "${MANIFEST_DIR}/external-dns.yaml" | kubectl apply -f -
+
+# cert-manager is a platform prerequisite rather than something this script owns,
+# but assuming it is present makes a blank-slate cluster fail here, halfway
+# through, with external-dns already applied. Install it when missing so the
+# rebuild is one command; an existing release is left at its current version.
+if ! kubectl get namespace cert-manager >/dev/null 2>&1; then
+  echo "==> Installing cert-manager (not present)"
+  helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+  helm repo update jetstack >/dev/null 2>&1 || true
+  helm upgrade --install cert-manager jetstack/cert-manager \
+    --namespace cert-manager --create-namespace \
+    --set crds.enabled=true --wait --timeout 5m
+fi
 
 echo "==> Annotating cert-manager ServiceAccount for Route53 IRSA + restarting"
 kubectl -n cert-manager annotate serviceaccount cert-manager \

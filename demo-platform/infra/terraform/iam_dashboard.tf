@@ -29,6 +29,12 @@ resource "aws_iam_role" "dashboard" {
   assume_role_policy = data.aws_iam_policy_document.dashboard_trust.json
 }
 
+locals {
+  # The platform's own cluster is always sweepable; var.sweepable_clusters adds
+  # names it used to run under, whose orphans still need reclaiming.
+  sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+}
+
 data "aws_iam_policy_document" "dashboard" {
   # Full control of the control table (+ any indexes).
   statement {
@@ -87,6 +93,71 @@ data "aws_iam_policy_document" "dashboard" {
     effect    = "Allow"
     actions   = ["eks:DescribeCluster"]
     resources = [data.aws_eks_cluster.this.arn]
+  }
+
+  # The infrastructure sweep (infra-sweep.sh) reclaims the AWS resources
+  # Kubernetes creates implicitly and does not clean up when a cluster is
+  # replaced -- load balancers, target groups, volumes, addresses, the
+  # k8s-elb-* security groups.
+  #
+  # Reading the estate has to be account-wide: finding an orphan means looking
+  # at resources whose owner is not yet known. Deleting does not, and must not
+  # -- this account also holds unrelated workloads, including a reserved address
+  # that an early version of this sweep would have released. The deletes below
+  # are therefore conditioned on the resource carrying the ownership tag of a
+  # cluster this platform is responsible for, so the account-wide blast radius
+  # of the sweep script being wrong, misconfigured or abused is bounded by IAM
+  # rather than by the script's own DRY_RUN and tag checks.
+  #
+  # eks:ListClusters is what decides which clusters are live. Without it the
+  # sweep cannot tell an orphan from a running platform, and it correctly
+  # refuses to run at all.
+  statement {
+    sid    = "InfraOrphanSweepRead"
+    effect = "Allow"
+    actions = [
+      "eks:ListClusters",
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "elasticloadbalancing:DescribeTargetGroups",
+      "elasticloadbalancing:DescribeTags",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeNetworkInterfaces",
+    ]
+    resources = ["*"]
+  }
+
+  # One statement per sweepable cluster: IAM matches a tag key exactly, and
+  # several keys in a single condition are ANDed, which no resource would
+  # satisfy. Keep local.sweepable_clusters in step with SWEEPABLE_CLUSTERS in the
+  # reaper CronJob -- a cluster in one and not the other means the sweep either
+  # cannot delete its orphans, or reports them and is refused by IAM.
+  #
+  # This covers Classic ELB as well as ELBv2. The 2012-06-01 Classic API is
+  # widely documented as having no resource-level permissions, which is no
+  # longer true; verified against the live API with a role holding only the
+  # conditioned delete below: an untagged Classic ELB returns AccessDenied, a
+  # tagged one is deleted. So there is no reason to exempt it.
+  dynamic "statement" {
+    for_each = local.sweepable_clusters
+    content {
+      sid    = "InfraOrphanSweepDelete${replace(title(replace(statement.value, "-", " ")), " ", "")}"
+      effect = "Allow"
+      actions = [
+        "elasticloadbalancing:DeleteLoadBalancer",
+        "elasticloadbalancing:DeleteTargetGroup",
+        "ec2:DeleteVolume",
+        "ec2:ReleaseAddress",
+        "ec2:DeleteSecurityGroup",
+      ]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:ResourceTag/kubernetes.io/cluster/${statement.value}"
+        values   = ["owned", "shared"]
+      }
+    }
   }
 
   # Teardown maintains IRSA trust on the shared per-service roles (add/remove the

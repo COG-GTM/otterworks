@@ -25,8 +25,20 @@ checked_out_at number?
 expires_at    number    # epoch seconds (TTL) — reaper compares against now
 last_seen_at  number    # last reconcile timestamp
 note          string?
+
+# written by the idle scan only (demo-platform/reaper/idle-suspend.sh)
+req_count     number?  # ingress request counter at the last scan
+idle_since    number?  # epoch seconds the counter was first seen at req_count
+was_running   number?  # 1 if the tenant had replicas up at the last scan, else 0
 ```
 `expires_at` is also the DynamoDB **TTL attribute** (informational; the reaper is the actor).
+
+`was_running` is how a wake is detected. Nothing on the wake path writes to this table —
+`tenant-scale.sh up`, dashboard check-out and a manual `kubectl scale` all only touch
+Deployments — so a woken tenant still carries the `idle_since` it had before it was
+suspended. The `0 -> running` transition is the reaper's only evidence that someone came
+back, and it restarts the clock; without it the next pass would scale the tenant straight
+back down.
 
 ### Checkout lock — `PK=LOCK#<id>`, `SK=LOCK`
 Written with `ConditionExpression="attribute_not_exists(PK)"` for **atomic checkout**. Holds
@@ -34,17 +46,23 @@ Written with `ConditionExpression="attribute_not_exists(PK)"` for **atomic check
 
 ### Reaper config — `PK=CONFIG#reaper`, `SK=CONFIG`
 ```
-schedule_cron  string   # e.g. "*/15 * * * *"
-grace_seconds  number    # extra grace beyond expires_at before reaping
-enabled        bool
-sweep_orphans  bool      # also GC resources with no matching TENANT# item
-updated_at     number
-updated_by     string
+schedule_cron       string   # e.g. "*/15 * * * *"
+grace_seconds       number   # extra grace beyond expires_at before reaping
+enabled             bool
+sweep_orphans       bool     # also GC resources with no matching TENANT# item
+suspend_idle        bool     # scale tenants with no ingress traffic to zero
+idle_after_seconds  number   # how long zero traffic must last before suspending
+sweep_infra         bool     # also run the AWS-layer sweep (report-only on its own)
+sweep_infra_delete  bool     # let that sweep actually delete what it finds
+updated_at          number
+updated_by          string
 ```
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, deploy_ok, deploy_fail, reap, inject,
-reset, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+`suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
+destroys nothing, so a suspended tenant is still checked out and still in the table.
 
 ## Access patterns
 - List all tenants: `Query`/`Scan` `begins_with(PK,"TENANT#")` (small N; scan is fine at high-tens).
@@ -52,6 +70,10 @@ reset, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
 - Atomic checkout: conditional `PutItem LOCK#<id>` then upsert `TENANT#<id>`.
 - Audit trail for a tenant: `Query PK=AUDIT#<id>` (reverse chronological).
 - Reaper reads `CONFIG#reaper` + scans `TENANT#` for expired items.
+- Every flag is absent-means-false in the reaper, so the item is seeded by Terraform
+  (`control_table.tf`); without it a fresh platform silently does no reaping and no idle
+  suspension. Terraform sets `ignore_changes` on the item, so the dashboard owns it after
+  install.
 
 ## Reconciliation (dashboard + reaper)
 The table is *desired state*; the cluster/AWS is *actual*. On each list/reaper pass we join the

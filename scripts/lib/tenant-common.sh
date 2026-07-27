@@ -38,6 +38,25 @@ BACKEND_SERVICES=(
 FRONTEND_SERVICES=(web-app admin-dashboard)
 ALL_SERVICES=("${BACKEND_SERVICES[@]}" "${FRONTEND_SERVICES[@]}")
 
+# Service profiles. A full tenant is ~1.5 vCPU / 3.5GiB of requests, which does
+# not multiply to 100 tenants affordably -- but few labs exercise all 13
+# services. "core" is the subset a browser session actually touches (~0.5 vCPU).
+#
+# "full" remains the default: "core" deliberately omits admin-service, whose
+# planted crash-loop bug is the subject of the bug-hunt labs, so switching the
+# default would silently break them. Opt in with --profile core when a lab is
+# known not to need the whole estate.
+PROFILE_CORE_SERVICES=(api-gateway auth-service file-service document-service web-app)
+
+# Echo the service list for a profile.
+profile_services() {
+  case "$1" in
+    core) printf '%s\n' "${PROFILE_CORE_SERVICES[@]}" ;;
+    full) printf '%s\n' "${ALL_SERVICES[@]}" ;;
+    *)    err "unknown profile '$1' (expected core or full)"; return 1 ;;
+  esac
+}
+
 # The gateway proxies each route to http://<service>:<containerPort>, so every
 # backend Service must be exposed on its container port (mirrors deploy-dev.sh).
 declare -A CONTAINER_PORT=(

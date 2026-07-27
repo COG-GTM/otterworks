@@ -28,11 +28,18 @@ variable "control_table_name" {
   default = "otterworks-demo-control"
 }
 
-# DNS/TLS is gated until the domain is registered. Flip to true and set
-# dns_zone_name once otterworks.app exists in Route53.
+# This gate existed only while the domain was unregistered. It now defaults on,
+# because every tenant URL and the wildcard certificate depend on the IRSA role
+# it creates: with the old default, an apply that simply forgot
+# `-var enable_dns=true` deleted that role out from under external-dns and
+# cert-manager, leaving tenant DNS and certificate renewal broken while the
+# existing records made it look fine.
+#
+# Safe to default on now that the hosted zone is a data lookup (see dns.tf) --
+# turning this off tears down the automation role, never the zone.
 variable "enable_dns" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "dns_zone_name" {
@@ -64,4 +71,55 @@ variable "terraform_state_bucket" {
 variable "ecr_repo_prefix" {
   type    = string
   default = "otterworks"
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly cost budget for the otterworks platform, in USD. See demo-platform/docs/cost-and-scale.md for how this figure is derived."
+  type        = number
+  default     = 700
+}
+
+variable "budget_alert_emails" {
+  description = "Addresses notified when spend crosses the budget thresholds. No budget is created when empty."
+  type        = list(string)
+  default     = []
+}
+
+# Seed values for the CONFIG#reaper control item. These apply at install only --
+# the dashboard owns the item from then on (see control_table.tf).
+variable "reaper_enabled" {
+  description = "Whether the reaper acts on its schedule. Off means no TTL reaping and no idle suspension."
+  type        = bool
+  default     = true
+}
+
+variable "reaper_schedule_cron" {
+  description = "Cron schedule the reaper CronJob runs on."
+  type        = string
+  default     = "*/15 * * * *"
+}
+
+variable "reaper_grace_seconds" {
+  description = "Extra grace beyond a tenant's expires_at before it is reaped."
+  type        = number
+  default     = 300
+}
+
+variable "reaper_idle_after_seconds" {
+  description = "Zero ingress requests for this long scales a tenant to zero. Its namespace, config and database survive."
+  type        = number
+  default     = 3600
+}
+
+# Whose leftovers the infrastructure sweep may delete. Mirrored into the reaper
+# as SWEEPABLE_CLUSTERS and into the IAM conditions in iam_dashboard.tf, so the
+# script and the role agree on ownership. Add a name here when a cluster is
+# replaced under a new name and its orphans still need reclaiming; a cluster
+# absent from this list is another team's problem, not ours.
+#
+# Empty means "just this platform's own cluster" -- see local.sweepable_clusters.
+variable "sweepable_clusters" {
+  description = "Extra EKS cluster names whose orphaned AWS resources the sweep may delete, beyond cluster_name."
+  type        = list(string)
+  default     = []
 }

@@ -52,7 +52,12 @@ Route53 (registered otterworks.app)
 `infra/terraform/dns.tf` creates the hosted zone and a single IRSA role
 (`otterworks-demo-dns-<env>`) trusted by both the `external-dns` and
 `cert-manager` ServiceAccounts, scoped to `route53:ChangeResourceRecordSets` on
-that zone. It is gated behind `-var enable_dns=true` so nothing is created until
+that zone. The hosted zone itself is a data lookup, never managed here: it carries the
+registrar's NS delegation and must outlive any rebuild of the platform. `enable_dns`
+defaults on and gates only the IRSA role -- turning it off (or applying with it unset,
+as it once defaulted) deletes the role external-dns and cert-manager assume, which stops
+new tenant records and certificate renewal while existing records still resolve. It was
+gated off originally so nothing was created until
 the domain exists.
 
 ## Rollout steps
@@ -72,7 +77,7 @@ the domain exists.
 2. **Create the zone + DNS IAM:**
 
    ```bash
-   terraform -chdir=demo-platform/infra/terraform apply -var enable_dns=true
+   terraform -chdir=demo-platform/infra/terraform apply
    ```
 
    If the domain was registered *outside* Route53, point its registrar

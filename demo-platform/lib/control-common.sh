@@ -67,7 +67,7 @@ ctl_set_active() {
 
 # Append an append-only AUDIT#<id> event. `action` must be one of the values in
 # control-table-schema.md (checkout, checkin, extend, deploy_ok, deploy_fail,
-# reap, inject, reset, login_ok, login_fail).
+# reap, inject, reset, suspend, login_ok, login_fail).
 ctl_audit() {
   local id="$1" action="$2" detail="${3:-}" actor="${ACTOR:-runner}"
   # `ts` MUST be epoch-milliseconds to match the sort key and the dashboard
