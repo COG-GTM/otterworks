@@ -10,16 +10,23 @@
 #
 # Idleness is measured from real HTTP traffic, not from a timer: ingress-nginx
 # exports a per-namespace request counter on its metrics port, and every tenant
-# is reached exclusively through that controller. Each run compares the current
-# counter against the value stored on the tenant's control-table item:
+# is reached exclusively through that controller. Each run walks every tenant
+# namespace and compares its counter against the value on the control-table item:
 #
-#   counter moved            -> tenant is in use; record the new value, reset idle
-#   counter unchanged        -> tenant took zero requests since the last run
-#   unchanged for IDLE_AFTER -> scale every Deployment in the namespace to zero
+#   counter increased        -> tenant is in use; record it and reset the clock
+#   counter unchanged/absent -> tenant took zero requests since the last run
+#   counter decreased        -> controller restarted; re-baseline, keep the clock
+#   idle for IDLE_AFTER      -> scale every Deployment in the namespace to zero
 #
-# Suspending preserves the namespace, config, secrets, Redis/MeiliSearch data
-# and the tenant's database, so waking is `tenant-scale.sh <id> up` (which the
-# dashboard calls on check-out) and takes seconds.
+# Suspending preserves the namespace, config, secrets and the tenant's database
+# (RDS is external), so waking is `tenant-scale.sh <id> up` (which the dashboard
+# calls on check-out) and takes seconds.
+#
+# It does NOT preserve the tenant's in-cluster Redis or MeiliSearch: both run
+# without persistence, so scaling them to zero discards sessions, the search
+# index (rebuilt on use) and any injected chaos flag. Because a cleared chaos
+# flag would silently un-plant the bug an attendee is hunting, a tenant with an
+# active scenario is never auto-suspended -- see tenant_has_chaos below.
 #
 # Sourced by reaper.sh; also runnable standalone.
 # ------------------------------------------------------------------------------
@@ -85,6 +92,15 @@ running_deployments() {
     | awk '$1 > 0 { n++ } END { print n + 0 }'
 }
 
+# Does the tenant have an injected chaos scenario running? Such a tenant is a
+# lab in progress: its Redis holds the bug, and Redis has no persistence, so
+# suspending would quietly un-inject the scenario the attendee is debugging.
+tenant_has_chaos() {
+  local ns="$1"
+  # Same access path inject-bug.sh uses, so the two agree on what "injected" means.
+  kubectl -n "${ns}" exec deploy/redis -- redis-cli --scan --pattern 'chaos:*' 2>/dev/null | grep -q .
+}
+
 suspend_tenant() {
   local id="$1" ns="$2"
   idle_log "suspending ${id}: no ingress requests for >= ${IDLE_AFTER_SECONDS}s"
@@ -95,48 +111,80 @@ suspend_tenant() {
   fi
 }
 
+# Every tenant namespace that currently exists, as "<id> <namespace>" lines.
+# The scan is driven from this list rather than from the metrics, because
+# ingress-nginx only exports a counter series for a namespace once it has served
+# a request since the controller started. A tenant nobody ever opened -- exactly
+# the one worth suspending -- has no series at all, and a controller restart
+# (routine on Spot) drops the series for every idle tenant.
+tenant_namespaces() {
+  kubectl get ns -l demo/tenant -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | while read -r ns; do
+        [ -n "${ns}" ] || continue
+        case "${ns}" in
+          otterworks-platform|otterworks-system) continue ;;
+          otterworks-*) printf '%s %s\n' "${ns#otterworks-}" "${ns}" ;;
+        esac
+      done
+}
+
 suspend_idle_tenants() {
   idle_log "idle scan starting (threshold=${IDLE_AFTER_SECONDS}s)"
-  local counts now ns id count prev since running
+  local counts now ns id count prev since running item
   counts="$(ingress_request_counts)"
-  if [ -z "${counts}" ]; then
-    idle_warn "no ingress metrics available; skipping idle scan"
-    return 0
-  fi
   now="$(date -u +%s)"
 
-  while read -r ns count; do
-    [ -n "${ns}" ] || continue
-    case "${ns}" in
-      otterworks-*) ;;
-      *) continue ;;
-    esac
-    case "${ns}" in otterworks-platform|otterworks-system) continue ;; esac
-    id="${ns#otterworks-}"
+  while read -r id ns; do
+    [ -n "${id}" ] || continue
     ctl_tenant_exists "${id}" || continue
 
     # Nothing to suspend if the tenant is already asleep.
     running="$(running_deployments "${ns}")"
     [ "${running}" -gt 0 ] || continue
 
-    prev="$(ctl_get "TENANT#${id}" "META" | jq -r '.Item.req_count.N // empty')"
-    since="$(ctl_get "TENANT#${id}" "META" | jq -r '.Item.idle_since.N // empty')"
+    # No counter series means the controller has routed nothing to this tenant,
+    # which is zero traffic -- not a reason to skip it.
+    count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
+    [ -n "${count}" ] || count=0
 
-    if [ -z "${prev}" ] || [ "${prev}" != "${count}" ]; then
-      # First observation, or traffic since the last run: tenant is in use.
+    item="$(ctl_get "TENANT#${id}" "META")"
+    prev="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
+    since="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
+
+    if [ -z "${prev}" ] || [ -z "${since}" ]; then
+      # First observation: start the clock, decide on the next pass.
       record_activity "${id}" "${count}" "${now}"
       continue
     fi
 
-    # Counter unchanged. Suspend once it has been unchanged long enough.
-    [ -n "${since}" ] || { record_activity "${id}" "${count}" "${now}"; continue; }
-    if [ $(( now - since )) -ge "${IDLE_AFTER_SECONDS}" ]; then
-      suspend_tenant "${id}" "${ns}"
+    if [ "${count}" -gt "${prev}" ]; then
+      # Requests served since the last run: tenant is in use, reset the clock.
       record_activity "${id}" "${count}" "${now}"
-    else
-      idle_log "${id} idle for $(( now - since ))s (threshold ${IDLE_AFTER_SECONDS}s)"
+      continue
     fi
-  done <<< "${counts}"
+
+    if [ "${count}" -lt "${prev}" ]; then
+      # Counters only ever increase, so a drop means the controller restarted.
+      # Re-baseline, but keep the existing idle clock: crediting a restart as
+      # activity would let a cycling controller keep tenants awake forever.
+      idle_log "${id}: ingress counter reset (${prev} -> ${count}); keeping idle clock"
+      record_activity "${id}" "${count}" "${since}"
+      count="${prev}"
+    fi
+
+    if [ $(( now - since )) -lt "${IDLE_AFTER_SECONDS}" ]; then
+      idle_log "${id} idle for $(( now - since ))s (threshold ${IDLE_AFTER_SECONDS}s)"
+      continue
+    fi
+
+    if tenant_has_chaos "${ns}"; then
+      idle_log "${id} is idle but has an injected scenario; leaving it running"
+      continue
+    fi
+
+    suspend_tenant "${id}" "${ns}"
+    record_activity "${id}" "${count}" "${now}"
+  done <<< "$(tenant_namespaces)"
 
   idle_log "idle scan complete."
 }
