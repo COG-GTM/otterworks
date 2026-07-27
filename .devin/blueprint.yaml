@@ -151,18 +151,9 @@ initialize: |
   # Python 3.12 (document-service pins ^3.12; the base image ships 3.10) + linters/auditors
   uv python install 3.12
   uv tool install ruff && uv tool install pip-audit
-  # Infra tooling for make tf-*, scripts/deploy-*.sh and demo-platform (helm/k8s)
+  # trivy for make security-scan. terraform/kubectl/helm/aws-cli v2 come from the org-wide
+  # blueprint (pinned to demo-platform/runner/Dockerfile) - do not shadow them here.
   mkdir -p $HOME/.local/bin
-  curl -sfLo /tmp/terraform.zip https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
-  unzip -oq /tmp/terraform.zip -d $HOME/.local/bin && rm /tmp/terraform.zip
-  curl -sfLo /tmp/kubectl https://dl.k8s.io/release/v1.30.4/bin/linux/amd64/kubectl
-  install -m755 /tmp/kubectl $HOME/.local/bin/kubectl && rm /tmp/kubectl
-  curl -sfL https://get.helm.sh/helm-v3.15.4-linux-amd64.tar.gz -o /tmp/helm.tgz
-  tar -xzf /tmp/helm.tgz -C /tmp && install -m755 /tmp/linux-amd64/helm $HOME/.local/bin/helm && rm -rf /tmp/helm.tgz /tmp/linux-amd64
-  # AWS CLI v2 (base image only has v1) and trivy for make security-scan
-  curl -sfLo /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
-  rm -rf /tmp/aws-cli-v2 && mkdir /tmp/aws-cli-v2 && unzip -q /tmp/awscliv2.zip -d /tmp/aws-cli-v2
-  /tmp/aws-cli-v2/aws/install --install-dir $HOME/.local/aws-cli --bin-dir $HOME/.local/bin --update
   curl -sfLo /tmp/trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_Linux-64bit.tar.gz
   tar -xzf /tmp/trivy.tgz -C /tmp trivy && install -m755 /tmp/trivy $HOME/.local/bin/trivy && rm -f /tmp/trivy.tgz /tmp/trivy
   echo 'PATH=$HOME/.local/bin:$PATH' >> $ENVRC
@@ -268,8 +259,10 @@ knowledge:
       # already populated; run `mvn dependency:resolve` in services/report-service first.
   - name: infra / deploy tooling
     contents: |
-      terraform, kubectl, helm and AWS CLI v2 are installed for make tf-*,
-      scripts/deploy-dev.sh, scripts/deploy-tenant.sh and demo-platform/.
+      terraform, kubectl, helm and AWS CLI v2 come from the org-wide blueprint (in
+      /usr/local/bin) and cover make tf-*, scripts/deploy-dev.sh, scripts/deploy-tenant.sh
+      and demo-platform/. `terraform fmt -check -recursive` and `terraform init
+      -backend=false && terraform validate` both pass in infrastructure/terraform.
       AWS credentials are not provisioned, so deploys need them supplied per session.
   - name: golden app policy
     contents: |
