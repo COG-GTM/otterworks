@@ -106,6 +106,10 @@ cluster_is_dead_and_ours() {
 # A k8s Service still exists (and so still owns its load balancer). Only
 # meaningful when we can reach the cluster; if we cannot, report "exists" so the
 # sweep never deletes on the basis of an unreachable API server.
+#
+# This asks OUR cluster. A Service belonging to someone else's cluster is
+# trivially absent here, so callers must establish ownership first -- the answer
+# is meaningless otherwise.
 service_is_live() {
   local ns="${1%%/*}" svc="${1##*/}"
   [ -n "${ns}" ] && [ -n "${svc}" ] || return 0
@@ -137,7 +141,7 @@ sweep_classic_elbs() {
                     --query 'length(Instances)' --output text 2>/dev/null)"
       sweep_warn "orphan classic ELB ${lb} (cluster '${cluster}' no longer exists, svc=${svc:-?}, backends=${backends:-?})"
       act aws elb delete-load-balancer --region "${AWS_REGION}" --load-balancer-name "${lb}"
-    elif [ -n "${svc}" ] && ! service_is_live "${svc}"; then
+    elif cluster_is_ours "${cluster}" && [ -n "${svc}" ] && ! service_is_live "${svc}"; then
       sweep_warn "orphan classic ELB ${lb} (Service ${svc} is gone)"
       act aws elb delete-load-balancer --region "${AWS_REGION}" --load-balancer-name "${lb}"
     fi
@@ -162,7 +166,7 @@ sweep_v2_elbs() {
     if cluster_is_dead_and_ours "${cluster}"; then
       sweep_warn "orphan ELBv2 ${name} (cluster '${cluster}' no longer exists, svc=${svc:-?})"
       act aws elbv2 delete-load-balancer --region "${AWS_REGION}" --load-balancer-arn "${arn}"
-    elif [ -n "${svc}" ] && ! service_is_live "${svc}"; then
+    elif cluster_is_ours "${cluster}" && [ -n "${svc}" ] && ! service_is_live "${svc}"; then
       sweep_warn "orphan ELBv2 ${name} (Service ${svc} is gone)"
       act aws elbv2 delete-load-balancer --region "${AWS_REGION}" --load-balancer-arn "${arn}"
     fi
@@ -244,7 +248,7 @@ sweep_route53() {
   [ -n "${DNS_ZONE_ID}" ] || { sweep_log "DNS_ZONE_ID unset; skipping Route53 sweep"; return 0; }
   command -v ctl_tenant_exists >/dev/null 2>&1 || { sweep_log "control plane not sourced; skipping Route53 sweep"; return 0; }
 
-  local records name id batch
+  local records name label id batch
   records="$(aws route53 list-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
                --query "ResourceRecordSets[?Type=='A' || Type=='TXT'].Name" --output text 2>/dev/null)"
   for name in ${records}; do
@@ -253,9 +257,20 @@ sweep_route53() {
       *".${HOST_SUFFIX}") ;;
       *) continue ;;
     esac
-    # t-<id>.<suffix> / api-t-<id>.<suffix> / cname-t-<id>.<suffix> (external-dns TXT)
-    id="${name%%".${HOST_SUFFIX}"}"
-    id="${id#cname-}"; id="${id#api-}"; id="${id#t-}"
+    label="${name%%".${HOST_SUFFIX}"}"
+    # Only the shapes a tenant deploy actually produces: t-<id> / api-t-<id>,
+    # plus the cname-/txt- ownership records external-dns writes alongside them.
+    #
+    # Matching "anything under the suffix" and inferring a tenant id from what
+    # is left would make every platform record look like a tenant that does not
+    # exist. cert-manager's _acme-challenge record lives here during a wildcard
+    # renewal, and deleting it mid-challenge fails the renewal -- losing TLS for
+    # every tenant at once, to reclaim nothing.
+    case "${label}" in
+      t-*|api-t-*|cname-t-*|cname-api-t-*|txt-t-*|txt-api-t-*) ;;
+      *) sweep_log "skipping ${name}: not a tenant record"; continue ;;
+    esac
+    id="${label#cname-}"; id="${id#txt-}"; id="${id#api-}"; id="${id#t-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
       sweep_warn "orphan Route53 record ${name} (no TENANT# item for '${id}')"

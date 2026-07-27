@@ -39,12 +39,30 @@ aws() {
       printf '[{"Key":"kubernetes.io/cluster/%s","Value":"owned"},' "${ELB_TAG_CLUSTER}"
       printf '{"Key":"kubernetes.io/service-name","Value":"ingress-nginx/ingress-nginx-controller"}]'
       return 0 ;;
+    *"route53 list-resource-record-sets"*"?Name=="*)
+      printf '[{"Name":"%s.","Type":"A","TTL":300,"ResourceRecords":[{"Value":"10.0.0.1"}]}]' "${R53_RECORDS}"
+      return 0 ;;
+    *"route53 list-resource-record-sets"*)
+      printf '%s' "${R53_RECORDS}"; return 0 ;;
+    *"change-resource-record-sets"*)
+      DELETED="${DELETED} route53:${R53_RECORDS}"; return 0 ;;
     *delete*|*release-address*)
       DELETED="${DELETED} ${args}"; return 0 ;;
     *) return 0 ;;
   esac
 }
-kubectl() { return 0; }
+
+# `kubectl get svc` answering "gone" is the interesting case: it is what the
+# service-name branch acts on, and a Service in someone else's cluster is always
+# absent from ours. A stub that always succeeds hides that branch entirely.
+KUBECTL_RC=0
+kubectl() {
+  case "$*" in
+    version) return 0 ;;
+    *) return "${KUBECTL_RC}" ;;
+  esac
+}
+R53_RECORDS=""
 
 # Armed, so that any deletion the sweep decides on is actually recorded by the
 # stub. A prefix assignment would be reverted once `source` returns.
@@ -148,6 +166,50 @@ ELB_TAG_CLUSTER="otterworks-dev"
 DELETED=""
 infra_sweep >/dev/null 2>&1
 check "spares the live cluster's ingress when that cluster is sweepable" "${DELETED# }" ""
+
+# The service-name branch is the other way a load balancer gets deleted, and it
+# asks *our* cluster whether the Service exists. Another cluster's Service is
+# necessarily absent from ours, so without an ownership check that branch reads
+# every foreign load balancer as an orphan -- and Classic ELB has no IAM
+# condition to fall back on.
+KUBECTL_RC=1
+# shellcheck disable=SC2034  # read by cluster_is_ours from the sourced sweep
+SWEEPABLE_CLUSTERS="otterworks-dev"
+AWS_LIST_CLUSTERS_OUT="otterworks-dev someone-elses-cluster"
+ELB_TAG_CLUSTER="someone-elses-cluster"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "spares a live foreign load balancer whose Service is not in our cluster" "${DELETED# }" ""
+
+# ...while our own cluster's abandoned Service is still reclaimed.
+ELB_TAG_CLUSTER="otterworks-dev"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "reclaims our own load balancer once its Service is gone" "${DELETED##* }" "shared-ingress"
+KUBECTL_RC=0
+
+# Route53: the zone holds platform records as well as tenant ones. cert-manager
+# writes _acme-challenge here during a wildcard renewal, and it matches no
+# tenant -- deleting it mid-challenge costs every tenant its TLS.
+ctl_tenant_exists() { return 1; }   # no tenant exists, the worst case
+# shellcheck disable=SC2034  # read by sweep_route53 from the sourced sweep
+DNS_ZONE_ID="Z0TEST"
+AWS_LIST_CLUSTERS_OUT="otterworks-dev"
+
+for record in _acme-challenge.demo.otterworks.app ops.demo.otterworks.app; do
+  R53_RECORDS="${record}"
+  DELETED=""
+  sweep_route53 >/dev/null 2>&1
+  check "spares the non-tenant record ${record}" "${DELETED# }" ""
+done
+
+for record in t-gone.demo.otterworks.app api-t-gone.demo.otterworks.app cname-t-gone.demo.otterworks.app; do
+  R53_RECORDS="${record}"
+  DELETED=""
+  sweep_route53 >/dev/null 2>&1
+  check "reclaims the record ${record} of a tenant that no longer exists" \
+    "${DELETED# }" "route53:${record}"
+done
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
