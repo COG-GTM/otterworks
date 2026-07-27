@@ -13,9 +13,29 @@
 # and revoking it is a single key deletion rather than an audit of what the
 # holder might have created out of band.
 
+# A dedicated CMK rather than the AWS-managed secretsmanager key, so that access
+# to the passcode is auditable and revocable at the key as well as at the
+# secret, and rotates on a schedule this module controls. Deliberately not the
+# control table's key: the two have different readers, and sharing one would
+# quietly widen the control table's key policy to the provisioner.
+resource "aws_kms_key" "dashboard_passcode" {
+  description             = "Encrypts the Demo Ops dashboard passcode secret"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  tags = {
+    Name = "otterworks-dashboard-passcode-${var.environment}"
+  }
+}
+
+resource "aws_kms_alias" "dashboard_passcode" {
+  name          = "alias/otterworks-dashboard-passcode-${var.environment}"
+  target_key_id = aws_kms_key.dashboard_passcode.key_id
+}
+
 resource "aws_secretsmanager_secret" "dashboard_passcode" {
   name        = "otterworks/${var.environment}/dashboard/passcode"
   description = "Passcode for the Demo Ops dashboard (${var.dns_zone_name != "" ? "ops.${var.dns_zone_name}" : "ops dashboard"})"
+  kms_key_id  = aws_kms_key.dashboard_passcode.arn
 
   # Long enough to undo an accidental delete, short enough that the name can be
   # reused inside a workshop cycle.
@@ -50,6 +70,24 @@ data "aws_iam_policy_document" "provisioner" {
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
     resources = [aws_secretsmanager_secret.dashboard_passcode.arn]
+  }
+
+  # Secrets Manager decrypts on the caller's behalf, so a customer-managed key
+  # means the grant above is not sufficient by itself. Narrowed with ViaService
+  # so the key cannot be used for anything but reading that secret -- a
+  # provisioner holding raw kms:Decrypt could otherwise decrypt any ciphertext
+  # produced under this key.
+  statement {
+    sid       = "DecryptDashboardPasscode"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = [aws_kms_key.dashboard_passcode.arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
+    }
   }
 
   # Nothing else. In particular: no eks:DescribeCluster, so this key cannot

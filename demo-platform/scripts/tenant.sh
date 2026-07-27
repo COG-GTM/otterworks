@@ -103,12 +103,26 @@ api() {
 
 # Aligned without `column`, which is not in every base image (and is absent
 # from the slim images an agent platform is likely to run this in).
+#
+# Only for endpoints that return tenant objects. The mutating endpoints return
+# result objects instead ({ok, status}, {ok, expiresAt}), which have none of
+# these fields and would render as a row of dashes -- so they get their own
+# formatters below rather than being forced through this one.
 table() {
   jq -r '(if type == "array" then . else [.] end)
          | .[]
          | [.id, .status, (.branch // "-"), (.url // "-")]
          | @tsv' |
     awk -F'\t' '{ printf "%-14s %-10s %-22s %s\n", $1, $2, $3, $4 }'
+}
+
+# A 202 from checkout or check-in means the state changed but the runner Job was
+# not enqueued -- the tenant will sit in `deploying`/`draining` forever. Silence
+# would make that look like success.
+warn_if_degraded() {
+  local warning
+  warning="$(printf '%s' "$1" | jq -r '.warning // empty')"
+  [ -z "${warning}" ] || echo "[tenant] WARNING: ${warning}" >&2
 }
 
 # ------------------------------------------------------------------------------
@@ -131,9 +145,13 @@ case "${cmd}" in
 
     login
     log "checking out '${id}' from ${branch} (ttl ${ttl})..."
-    api POST /api/tenants/checkout \
-      "$(jq -nc --arg id "${id}" --arg b "${branch}" --arg t "${ttl}" \
-              '{id:$id, branch:$b, ttl:$t, owner:"cli"}')" | table
+
+    # 201 returns the tenant; 202 wraps it as {tenant, warning}.
+    out="$(api POST /api/tenants/checkout \
+             "$(jq -nc --arg id "${id}" --arg b "${branch}" --arg t "${ttl}" \
+                     '{id:$id, branch:$b, ttl:$t, owner:"cli"}')")"
+    printf '%s' "${out}" | jq -c '.tenant // .' | table
+    warn_if_degraded "${out}"
 
     log "deploying -- takes a few minutes; watch with: tenant.sh status ${id}"
     ;;
@@ -144,7 +162,9 @@ case "${cmd}" in
 
     login
     log "checking in '${id}' (namespace, database, DNS and IRSA trust are removed)..."
-    api POST "/api/tenants/${id}/checkin" '{}' | table
+    out="$(api POST "/api/tenants/${id}/checkin" '{}')"
+    log "${id}: $(printf '%s' "${out}" | jq -r '.status // "accepted"')"
+    warn_if_degraded "${out}"
     ;;
 
   extend)
@@ -152,7 +172,8 @@ case "${cmd}" in
     if [ -z "${id}" ] || [ -z "${ttl}" ]; then fail "usage: tenant.sh extend <id> <ttl>"; fi
 
     login
-    api POST "/api/tenants/${id}/extend" "$(jq -nc --arg t "${ttl}" '{ttl:$t}')" | table
+    api POST "/api/tenants/${id}/extend" "$(jq -nc --arg t "${ttl}" '{ttl:$t}')" |
+      jq -r --arg id "${id}" '"[tenant] \($id): now expires \(.expiresAt | todate)"'
     ;;
 
   status)
