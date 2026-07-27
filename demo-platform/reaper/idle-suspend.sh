@@ -47,6 +47,11 @@ idle_warn() { echo "[idle-suspend] WARN: $*" >&2; }
 # Total ingress requests per tenant namespace, as "<namespace> <count>" lines.
 # Uses the reaper pod's own network; falls back to exec-ing the controller pod
 # when the metrics Service is not exposed.
+#
+# Returns non-zero if the scrape itself failed. That is NOT the same as a scrape
+# that succeeded and contained no tenant series: the first means traffic is
+# unknown, the second means there was none. Conflating them would let a metrics
+# outage read as "every tenant is idle" and suspend the whole workshop at once.
 ingress_request_counts() {
   local raw=""
   raw="$(curl -sf --max-time 10 "${INGRESS_METRICS_URL}" 2>/dev/null)"
@@ -55,11 +60,11 @@ ingress_request_counts() {
     pod="$(kubectl -n "${INGRESS_NAMESPACE}" get pod \
              -l app.kubernetes.io/component=controller \
              -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
-    [ -n "${pod}" ] || return 0
+    [ -n "${pod}" ] || return 1
     raw="$(kubectl -n "${INGRESS_NAMESPACE}" exec "${pod}" -- \
              curl -sf --max-time 10 http://127.0.0.1:10254/metrics 2>/dev/null)"
   fi
-  [ -n "${raw}" ] || return 0
+  [ -n "${raw}" ] || return 1
 
   # nginx_ingress_controller_requests{...,namespace="otterworks-x",...} 12345
   printf '%s\n' "${raw}" \
@@ -131,7 +136,13 @@ tenant_namespaces() {
 suspend_idle_tenants() {
   idle_log "idle scan starting (threshold=${IDLE_AFTER_SECONDS}s)"
   local counts now ns id count prev since running item
-  counts="$(ingress_request_counts)"
+  # Traffic is the only evidence of use, so without it there is nothing to
+  # decide on. Skipping the pass delays suspension until the next run; guessing
+  # scales every attendee's environment to zero mid-workshop.
+  if ! counts="$(ingress_request_counts)"; then
+    idle_warn "skipping idle scan: could not read ingress metrics"
+    return 1
+  fi
   now="$(date -u +%s)"
 
   while read -r id ns; do

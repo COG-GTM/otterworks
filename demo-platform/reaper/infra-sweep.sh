@@ -124,7 +124,8 @@ sweep_v2_elbs() {
   local arn name tags cluster svc
   for arn in $(aws elbv2 describe-load-balancers --region "${AWS_REGION}" \
                  --query 'LoadBalancers[].LoadBalancerArn' --output text 2>/dev/null); do
-    name="${arn##*/}"; name="${name%%/*}"
+    # .../loadbalancer/net/<name>/<id> -- the last segment is the id, not the name.
+    name="${arn##*loadbalancer/}"; name="${name#*/}"; name="${name%%/*}"
     tags="$(aws elbv2 describe-tags --region "${AWS_REGION}" --resource-arns "${arn}" \
               --query 'TagDescriptions[0].Tags' --output json 2>/dev/null)"
     cluster="$(printf '%s' "${tags}" | cluster_from_tags)"

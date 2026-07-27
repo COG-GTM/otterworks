@@ -85,5 +85,12 @@ check "recognises a live cluster" "${r}" "live"
 cluster_is_live "otterworks-deleted" && r=live || r=dead
 check "recognises a cluster that is gone" "${r}" "dead"
 
+# ELBv2 ARNs end in .../loadbalancer/<type>/<name>/<id>. Real ARN of the shared
+# ingress NLB; the name is what `describe-load-balancers` reports and what an
+# operator can actually look up, the trailing segment is an opaque id.
+arn="arn:aws:elasticloadbalancing:us-east-1:000000000000:loadbalancer/net/otterworks-shared-ingress/a589c9578aa918fa"
+name="${arn##*loadbalancer/}"; name="${name#*/}"; name="${name%%/*}"
+check "parses the load balancer name out of an ELBv2 ARN" "${name}" "otterworks-shared-ingress"
+
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

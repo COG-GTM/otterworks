@@ -34,7 +34,13 @@ ctl_audit() { :; }
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
 running_deployments() { echo "${NS_RUNNING[$1]:-0}"; }
 tenant_has_chaos() { [ "${NS_CHAOS[$1]:-no}" = "yes" ]; }
-ingress_request_counts() { for ns in "${!METRIC[@]}"; do echo "${ns} ${METRIC[$ns]}"; done; }
+# METRICS_UP=false models an unreachable metrics endpoint, which is distinct
+# from a reachable one reporting no series for any tenant.
+METRICS_UP=true
+ingress_request_counts() {
+  [ "${METRICS_UP}" = "true" ] || return 1
+  for ns in "${!METRIC[@]}"; do echo "${ns} ${METRIC[$ns]}"; done
+}
 suspend_tenant() { SUSPENDED="${SUSPENDED} $1"; NS_RUNNING["$2"]=0; }
 
 # tenant_namespaces is the real implementation (its exclusion list is under
@@ -57,6 +63,17 @@ STALE=$(( NOW - 7200 ))   # idle well past the 3600s threshold
 FRESH=$(( NOW - 60 ))
 
 echo "idle-suspend decision logic"
+
+# A metrics outage means traffic is unknown, not absent. Reading it as "nobody
+# used anything" would scale every attendee's environment to zero at once.
+reset_state
+NS_RUNNING[otterworks-busy]=13
+ITEM_COUNT[busy]=500; ITEM_SINCE[busy]=${STALE}
+METRICS_UP=false
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "suspends nothing when ingress metrics are unreachable" "${SUSPENDED# }" ""
+check "  and leaves the stored counter untouched" "${ITEM_COUNT[busy]}" "500"
+METRICS_UP=true
 
 # The regression that made the whole feature inert: ingress-nginx exports no
 # counter series for a namespace it has never routed to.
