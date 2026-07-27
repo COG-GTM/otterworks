@@ -282,6 +282,15 @@ spec:
                 psql "\$CONN" -c "CREATE DATABASE \"${T_DB_NAME}\""
                 echo "created database ${T_DB_NAME}"
               fi
+              # analytics-service keeps its tables in an \`analytics\` schema and
+              # asks for it with the JDBC \`currentSchema\` option, which the
+              # driver sends as a search_path startup parameter. PgBouncer never
+              # forwards that parameter to the server, so through the pooler the
+              # service would query \`public\` and find none of its own tables.
+              # A database-level default is applied by the server itself and so
+              # survives pooling. public stays first: everything else in this
+              # app, including the other services' migrations, lives there.
+              psql "\$CONN" -c 'ALTER DATABASE "${T_DB_NAME}" SET search_path = public, analytics'
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 200m, memory: 128Mi }
