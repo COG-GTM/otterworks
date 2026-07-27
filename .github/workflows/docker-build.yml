@@ -14,7 +14,51 @@ permissions:
   contents: read
 
 jobs:
+  # Java test gate - images are not built or pushed unless these pass
+  auth-service-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/auth-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+      - run: gradle check --no-daemon
+
+  report-service-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/report-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - run: mvn test -B
+
+  legacy-portal-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/legacy-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - run: ./mvnw test -B
+
   build-and-push:
+    needs: [auth-service-tests, report-service-tests, legacy-portal-tests]
     runs-on: ubuntu-latest
     strategy:
       matrix:
