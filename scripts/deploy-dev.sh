@@ -289,7 +289,12 @@ build_helm_args() {
 
   local port="${CONTAINER_PORT[$service]:-}"
   if [ -n "$port" ]; then EXTRA_ARGS+=(--set "service.port=${port}" --set "service.targetPort=${port}"); fi
-  EXTRA_ARGS+=(--set ingress.enabled=false)
+  # Backends are cluster-internal. api-gateway falls through the case above to
+  # pick up its JWT secret but keeps the Ingress that block gave it; Helm honors
+  # the last --set, so disabling here unconditionally would silently strip it.
+  if [ "$service" != "api-gateway" ]; then
+    EXTRA_ARGS+=(--set ingress.enabled=false)
+  fi
 
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in

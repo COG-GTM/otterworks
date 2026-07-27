@@ -38,7 +38,8 @@ TTL="8h"
 HOST_SUFFIX="${HOST_SUFFIX:-}"
 SKIP_DB=false
 # Deploy only the services the lab needs. At 100 tenants the difference between
-# "core" and "full" is roughly 100 vCPU of requests, so "full" is opt-in.
+# "core" and "full" is roughly 100 vCPU of requests. Defaults to "full" so no
+# existing lab loses a service; see profile_services in lib/tenant-common.sh.
 PROFILE="${TENANT_PROFILE:-full}"
 while [ $# -gt 0 ]; do
   case "$1" in

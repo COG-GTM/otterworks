@@ -170,11 +170,21 @@ sweep_ebs_volumes() {
 # (d) Unassociated Elastic IPs (billed hourly while idle)
 # ------------------------------------------------------------------------------
 sweep_eips() {
-  local alloc
+  local alloc cluster
   for alloc in $(aws ec2 describe-addresses --region "${AWS_REGION}" \
                    --query 'Addresses[?AssociationId==null].AllocationId' --output text 2>/dev/null); do
     [ -n "${alloc}" ] || continue
-    warn "unassociated Elastic IP ${alloc}"
+    # An unassociated EIP is not evidence of an orphan: other workloads in this
+    # account legitimately reserve addresses for stopped instances. Release only
+    # what a dead cluster left behind.
+    cluster="$(aws ec2 describe-addresses --region "${AWS_REGION}" --allocation-ids "${alloc}" \
+                 --query 'Addresses[0].Tags' --output json 2>/dev/null | cluster_from_tags)"
+    if [ -z "${cluster}" ]; then
+      log "unassociated Elastic IP ${alloc} has no cluster tag; reporting only"
+      continue
+    fi
+    cluster_is_live "${cluster}" && continue
+    warn "orphan Elastic IP ${alloc} (cluster '${cluster}' no longer exists)"
     act aws ec2 release-address --region "${AWS_REGION}" --allocation-id "${alloc}"
   done
 }

@@ -102,8 +102,9 @@ dashboard wakes a tenant on check-out.
 **2. Slim service profiles (≈2.5× on active tenants).**
 Almost no lab needs all 13 services. `--profile core` deploys the 5 that a
 browser session actually exercises (api-gateway, auth, file, document, web-app),
-taking an active tenant from ~1.5 vCPU to ~0.5 vCPU. `--profile full` remains
-available for labs that need the whole estate.
+taking an active tenant from ~1.5 vCPU to ~0.5 vCPU. `full` stays the default —
+`core` omits `admin-service`, whose planted crash-loop is the subject of the
+bug-hunt labs — so this saving is opt-in per lab rather than automatic.
 
 **3. Karpenter with consolidation instead of a fixed node group.**
 A fixed `minSize` node group pays for capacity whether tenants are awake or not,
