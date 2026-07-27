@@ -53,10 +53,21 @@ act() {
 
 # Cache of live EKS cluster names; a load balancer tagged for a cluster that is
 # not in this list can never be reclaimed by any cloud-controller.
+#
+# Every deletion in this file is justified by a cluster being absent from this
+# list, so a failed lookup must never be mistaken for "no clusters exist" --
+# that inverts the safety check and makes the entire live estate look orphaned.
+# Fail closed, the same way service_is_live does for an unreachable API server.
 LIVE_CLUSTERS=""
 load_live_clusters() {
-  LIVE_CLUSTERS="$(aws eks list-clusters --region "${AWS_REGION}" \
-                     --query 'clusters[]' --output text 2>/dev/null || true)"
+  local out status
+  out="$(aws eks list-clusters --region "${AWS_REGION}" --query 'clusters[]' --output text 2>&1)"
+  status=$?
+  if [ "${status}" -ne 0 ]; then
+    sweep_warn "could not list EKS clusters (exit ${status}): ${out}"
+    return 1
+  fi
+  LIVE_CLUSTERS="${out}"
   sweep_log "live EKS clusters: ${LIVE_CLUSTERS:-<none>}"
 }
 
@@ -261,7 +272,14 @@ sweep_elb_security_groups() {
 
 infra_sweep() {
   sweep_log "infrastructure orphan sweep starting (region=${AWS_REGION}, dry_run=${DRY_RUN})"
-  load_live_clusters
+  # Without a trustworthy live-cluster list there is no safe way to tell an
+  # orphan from a running tenant's load balancer, so do nothing at all. A
+  # skipped sweep costs a few idle resources until the next run; a sweep run on
+  # bad data deletes the shared ingress out from under every tenant.
+  if ! load_live_clusters; then
+    sweep_warn "aborting sweep: cannot confirm which clusters are live"
+    return 1
+  fi
   sweep_classic_elbs
   sweep_v2_elbs
   sweep_target_groups
