@@ -42,6 +42,10 @@ spec:
                   value: {{ .Values.eksCluster | quote }}
                 - name: HOST_SUFFIX
                   value: {{ .Values.reaper.hostSuffix | quote }}
+                {{- if .Values.reaper.dnsZoneId }}
+                - name: DNS_ZONE_ID
+                  value: {{ .Values.reaper.dnsZoneId | quote }}
+                {{- end }}
                 {{- if .Values.secret.dbPassword }}
                 # DB_PASSWORD lets the reaper drop per-tenant databases + list
                 # orphan DBs (from the demo-ops-dashboard Secret; never on argv).

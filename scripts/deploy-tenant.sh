@@ -132,10 +132,18 @@ metadata:
   namespace: ${NS}
 spec:
   hard:
+    # Requests are what actually reserve node capacity, so they stay tight --
+    # this is the number that decides how many tenants fit on the cluster.
     requests.cpu: "4"
     requests.memory: 8Gi
-    limits.cpu: "8"
-    limits.memory: 16Gi
+    # Limits only cap bursting, but the quota counts them, and the full service
+    # set declares ~9.25 CPU of limits. At 8 the last two Deployments to be
+    # created were rejected by the quota and simply never appeared -- the
+    # namespace looked healthy because the failure lands on the ReplicaSet, not
+    # on a pod. Sized above the profile's total rather than by trimming limits,
+    # which would only make services throttle under load.
+    limits.cpu: "12"
+    limits.memory: 20Gi
     pods: "40"
 ---
 apiVersion: v1

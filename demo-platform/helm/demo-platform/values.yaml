@@ -71,6 +71,10 @@ reaper:
   schedule: "*/15 * * * *"
   # Host suffix used when GC-ing tenant Route53 records / building URLs.
   hostSuffix: demo.otterworks.app
+  # Hosted zone the infrastructure sweep reconciles tenant records against.
+  # Unset, the sweep skips Route53 entirely and records for long-gone tenants
+  # accumulate in the zone. Read from `terraform output dns_zone_id`.
+  dnsZoneId: ""
   resources:
     requests:
       cpu: 50m
