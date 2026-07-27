@@ -20,16 +20,28 @@ enable_nat_gateway = false
 #
 # What stays here is the platform itself: the Karpenter controller (which needs
 # somewhere to run that Karpenter does not own), ingress-nginx, cert-manager,
-# external-dns, CoreDNS and the ops dashboard. Two nodes for availability across
-# both AZs, and a small ceiling for headroom -- it is deliberately no longer the
+# external-dns, CoreDNS and the ops dashboard. It is deliberately no longer the
 # thing that scales.
+#
+# One node, not two. Two bought AZ redundancy for the platform pods, which a
+# demo environment does not need and pays for around the clock -- a second
+# always-on Spot xlarge is most of what is left of the floor once the tenants
+# themselves cost nothing while idle. The tradeoff is explicit: lose this node
+# and ingress is down until the group replaces it (a few minutes), rather than
+# failing over. Everything that has to survive a node going away already lives
+# outside the cluster -- the control table in DynamoDB, tenant data in RDS.
+#
+# Keeping it at one rather than zero is what avoids a cold start: the platform
+# has to be up to receive the checkout that creates a tenant, and Karpenter has
+# to be running somewhere before it can launch anything. The ceiling stays above
+# one so a rollout or a node replacement has somewhere to go.
 #
 # SPOT keeps the rate ~70% below on-demand; xlarge because a few large nodes
 # bin-pack many small pods far better than many small ones.
 node_instance_types = ["m6a.xlarge", "m6i.xlarge", "m5.xlarge", "t3.xlarge"]
 node_capacity_type  = "SPOT"
-node_desired_size   = 2
-node_min_size       = 2
-node_max_size       = 4
+node_desired_size   = 1
+node_min_size       = 1
+node_max_size       = 3
 
 ecr_prefix = "otterworks/"

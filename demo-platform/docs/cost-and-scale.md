@@ -151,7 +151,29 @@ cannot scale to zero do not belong in a demo platform unless a lab needs them.
 | **baseline** | **~$570/month** |
 
 Against ~$1,320/month for two tenants, that is 100 tenants for well under half
-the previous spend. Idle-only (all tenants asleep) the floor is ~$200/month.
+the previous spend.
+
+### The floor, with every tenant asleep
+
+What remains when no tenant is awake is the platform itself, and it is worth
+knowing precisely, because it is the number that bills on a weekend:
+
+| | Monthly |
+|---:|---|
+| EKS control plane | $72 |
+| System pool — **one** spot xlarge | ~$36 |
+| Shared RDS `db.t3.micro` + 20GiB | ~$15 |
+| One shared NLB | ~$18 |
+| Route53 zone + records, DynamoDB control table, Secrets Manager, EBS root, IPv4 | ~$10 |
+| **idle floor** | **~$150/month** |
+
+The control plane, one node and one NLB are ~85% of that, and each is load
+bearing: the platform has to be reachable to receive a checkout, and Karpenter
+has to be running somewhere before it can launch anything. Going below it means
+giving up the warm start — tearing the cluster down between workshops leaves
+only RDS and the hosted zone (~$15/month) but costs several minutes on the first
+checkout of the day. That trade was considered and declined; see
+`scaling.md` §1 for why the system pool is one node rather than zero or two.
 
 ## 4. Scale limits to respect
 
