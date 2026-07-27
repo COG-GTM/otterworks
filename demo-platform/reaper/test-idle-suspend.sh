@@ -55,6 +55,8 @@ kubectl() {
 
 # Load the scan and namespace enumeration; every collaborator above is stubbed.
 eval "$(sed -n '/^tenant_namespaces()/,/^}/p;/^suspend_idle_tenants()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
+# Kept for the contract tests at the bottom, which run the real implementation.
+real_src="$(sed -n '/^ingress_request_counts()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 
 reset_state() {
   unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC
@@ -195,6 +197,42 @@ ITEM_COUNT[system]=0; ITEM_SINCE[system]=${STALE}
 seen_running system
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "never suspends the platform's own namespaces" "${SUSPENDED# }" ""
+
+# ---- contract of the real ingress_request_counts -----------------------------
+# The scan cases above stub this function, and that stub is precisely what hid a
+# pipefail bug: it returned success on empty output while the real pipeline
+# returned failure, so "no traffic anywhere" read as a metrics outage. Exercise
+# the real implementation against real metrics bodies.
+eval "${real_src/ingress_request_counts()/real_counts()}"
+
+# shellcheck disable=SC2034  # both are read by real_counts from the sourced script
+INGRESS_METRICS_URL="http://ingress-metrics.test/metrics"
+# shellcheck disable=SC2034
+INGRESS_NAMESPACE="ingress-nginx"
+CURL_BODY=""; CURL_RC=0
+curl() { [ "${CURL_RC}" -eq 0 ] || return "${CURL_RC}"; printf '%s' "${CURL_BODY}"; }
+
+CURL_BODY='nginx_ingress_controller_requests{namespace="otterworks-a",path="/"} 12
+nginx_ingress_controller_requests{namespace="otterworks-a",path="/api"} 8
+nginx_ingress_controller_requests{namespace="otterworks-b",path="/"} 3
+some_other_metric{namespace="otterworks-a"} 999'
+out="$(real_counts)"; rc=$?
+check "sums every series for a namespace" "$(printf '%s\n' "${out}" | sort | tr '\n' ',')" "otterworks-a 20,otterworks-b 3,"
+check "  and succeeds" "${rc}" "0"
+
+# A controller that has proxied nothing yet exports no request series at all.
+# That is zero traffic, not an outage -- the distinction the whole scan rests on.
+CURL_BODY='# HELP nginx_ingress_controller_build_info Build info
+nginx_ingress_controller_build_info{version="1.11"} 1'
+out="$(real_counts)"; rc=$?
+check "reports no traffic when the body carries no request series" "${out}" ""
+check "  without claiming the scrape failed" "${rc}" "0"
+
+# A genuine outage: the endpoint is unreachable and there is no controller pod
+# to fall back to (the kubectl stub returns nothing for a pod lookup).
+CURL_RC=7; CURL_BODY=""
+real_counts >/dev/null 2>&1
+check "still reports failure when the scrape cannot be made" "$?" "1"
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

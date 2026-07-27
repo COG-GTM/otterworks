@@ -72,10 +72,16 @@ ingress_request_counts() {
   [ -n "${raw}" ] || return 1
 
   # nginx_ingress_controller_requests{...,namespace="otterworks-x",...} 12345
+  #
+  # `|| true` because grep exits 1 when the body carries no request series at
+  # all, and under `pipefail` that would surface as a scrape failure and skip
+  # the whole scan -- the opposite of this function's contract. The scrape has
+  # already been validated above; from here an empty result means no traffic.
   printf '%s\n' "${raw}" \
     | grep '^nginx_ingress_controller_requests{' \
     | sed -n 's/.*namespace="\([^"]*\)".*} \([0-9.e+]*\)$/\1 \2/p' \
-    | awk '{ total[$1] += $2 } END { for (ns in total) printf "%s %d\n", ns, total[ns] }'
+    | awk '{ total[$1] += $2 } END { for (ns in total) printf "%s %d\n", ns, total[ns] }' \
+    || true
 }
 
 # Persist the observed counter and the time it was first seen at this value.
