@@ -129,6 +129,16 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 log "Ensuring namespace ${NAMESPACE} exists..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
+# ---------- Step 4b: Shared ingress controller ----------
+
+# The frontends and the gateway are published as Ingresses (see build_helm_args),
+# which do nothing at all without a controller to act on them. Installing it here
+# rather than assuming it means a deploy onto a freshly built cluster is reachable
+# on the URLs this script prints, instead of silently having no entry point.
+# shellcheck source=lib/ingress-nginx.sh
+source "${SCRIPT_DIR}/lib/ingress-nginx.sh"
+ensure_ingress_nginx
+
 # ---------- Step 5: ECR Login ----------
 
 log "Logging into ECR..."
