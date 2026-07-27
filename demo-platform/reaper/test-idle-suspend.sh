@@ -44,7 +44,14 @@ ingress_request_counts() {
   [ "${METRICS_UP}" = "true" ] || return 1
   for ns in "${!METRIC[@]}"; do echo "${ns} ${METRIC[$ns]}"; done
 }
-suspend_tenant() { SUSPENDED="${SUSPENDED} $1"; NS_RUNNING["$2"]=0; }
+# SUSPEND_RC=1 models the real function's failure return: the scale-down was
+# attempted and refused, so the tenant is still running afterwards.
+SUSPEND_RC=0
+suspend_tenant() {
+  SUSPENDED="${SUSPENDED} $1"
+  [ "${SUSPEND_RC}" -eq 0 ] || return "${SUSPEND_RC}"
+  NS_RUNNING["$2"]=0
+}
 
 # tenant_namespaces is the real implementation (its exclusion list is under
 # test), so kubectl is stubbed at the boundary instead.
@@ -62,6 +69,7 @@ reset_state() {
   unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC
   declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=()
   SUSPENDED=""
+  SUSPEND_RC=0
 }
 # A tenant the reaper has already seen up. Without this the first pass just
 # records the run state, which is not what most cases below are exercising.
@@ -170,6 +178,30 @@ check "  restarts the idle clock on wake" "$([ "${ITEM_SINCE[nap]}" -ge "${NOW}"
 ITEM_SINCE[nap]=${STALE}
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and is suspended again once it goes idle" "${SUSPENDED# }" "nap"
+
+# A refused scale-down must not be recorded as a suspension. Writing
+# was_running=0 for a tenant that is still up makes the next pass read it as a
+# wake, reset the idle clock and wait the whole window again -- so a tenant
+# whose scale-down keeps failing would never be suspended, and the cost control
+# would be off for it with nothing but a warning line to say so.
+reset_state
+NS_RUNNING[otterworks-stuck]=13; METRIC[otterworks-stuck]=100
+ITEM_COUNT[stuck]=100; ITEM_SINCE[stuck]=${STALE}
+seen_running stuck
+SUSPEND_RC=1
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "tried to suspend the tenant whose scale-down fails" "${SUSPENDED# }" "stuck"
+check "  but does not record it as scaled down" "${ITEM_RUNNING[stuck]}" "1"
+check "  and leaves its idle clock alone" "${ITEM_SINCE[stuck]}" "${STALE}"
+
+# ...so the next pass retries the suspend instead of treating it as a wake.
+SUSPENDED=""
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and retries on the next pass" "${SUSPENDED# }" "stuck"
+SUSPEND_RC=0
+SUSPENDED=""
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  until it succeeds, which is then recorded" "${ITEM_RUNNING[stuck]}" "0"
 
 reset_state
 NS_RUNNING[otterworks-lab]=13; METRIC[otterworks-lab]=100

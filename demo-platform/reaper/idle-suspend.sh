@@ -133,14 +133,20 @@ tenant_has_chaos() {
   kubectl -n "${ns}" exec deploy/redis -- redis-cli --scan --pattern 'chaos:*' 2>/dev/null | grep -q .
 }
 
+# Returns non-zero if the tenant is still running afterwards. The caller records
+# the suspension only on success: writing was_running=0 for a tenant that never
+# scaled down would make the next pass read it as a wake, reset the idle clock,
+# and start the wait over -- so a persistently failing scale-down would keep the
+# tenant running forever while the platform believed it had been suspended.
 suspend_tenant() {
   local id="$1" ns="$2"
   idle_log "suspending ${id}: no ingress requests for >= ${IDLE_AFTER_SECONDS}s"
   if kubectl -n "${ns}" scale deployment --all --replicas=0 >/dev/null 2>&1; then
     ctl_audit "${id}" "suspend" "idle for ${IDLE_AFTER_SECONDS}s" 2>/dev/null || true
-  else
-    idle_warn "failed to scale down ${ns}"
+    return 0
   fi
+  idle_warn "failed to scale down ${ns}; leaving its idle clock alone so the next pass retries"
+  return 1
 }
 
 # Every tenant namespace that currently exists, as "<id> <namespace>" lines.
@@ -244,7 +250,7 @@ suspend_idle_tenants() {
       continue
     fi
 
-    suspend_tenant "${id}" "${ns}"
+    suspend_tenant "${id}" "${ns}" || continue
     record_activity "${id}" "${count}" "${now}"
     record_running "${id}" 0
   done <<< "$(tenant_namespaces)"
