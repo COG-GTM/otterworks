@@ -11,7 +11,7 @@
 # actually pending, and consolidates or removes them as pods go away. This file
 # provisions only what has to exist in AWS (controller role, node instance
 # profile, interruption queue, discovery tags); the controller and its NodePool
-# are installed by scripts/platform-autoscaling.sh.
+# are installed by demo-platform/scripts/install-karpenter.sh.
 #
 # Nodes reuse the managed node group's role, so they are already mapped in the
 # aws-auth ConfigMap this cluster authenticates with and join without a second
