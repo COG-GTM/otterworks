@@ -89,6 +89,38 @@ data "aws_iam_policy_document" "dashboard" {
     resources = [data.aws_eks_cluster.this.arn]
   }
 
+  # The infrastructure sweep (infra-sweep.sh) reclaims the AWS resources
+  # Kubernetes creates implicitly and does not clean up when a cluster is
+  # replaced -- load balancers, target groups, volumes, addresses, the
+  # k8s-elb-* security groups. None of these calls accept a resource-level
+  # condition, so the safety gate is in the sweep itself: it deletes only what
+  # carries an ownership tag naming a cluster that no longer exists, and the
+  # deletes stay behind DRY_RUN until CONFIG#reaper.sweep_infra_delete is set.
+  #
+  # eks:ListClusters is what decides which clusters are live. Without it the
+  # sweep cannot tell an orphan from a running platform, and it correctly
+  # refuses to run at all.
+  statement {
+    sid    = "InfraOrphanSweep"
+    effect = "Allow"
+    actions = [
+      "eks:ListClusters",
+      "elasticloadbalancing:DescribeLoadBalancers",
+      "elasticloadbalancing:DescribeTargetGroups",
+      "elasticloadbalancing:DescribeTags",
+      "elasticloadbalancing:DeleteLoadBalancer",
+      "elasticloadbalancing:DeleteTargetGroup",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DeleteVolume",
+      "ec2:ReleaseAddress",
+      "ec2:DeleteSecurityGroup",
+    ]
+    resources = ["*"]
+  }
+
   # Teardown maintains IRSA trust on the shared per-service roles (add/remove the
   # tenant namespace SA). Scoped to the otterworks-* service roles only.
   statement {

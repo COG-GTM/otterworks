@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # enable-dns-tls.sh — turn on the AWS-native DNS + wildcard-TLS stack for the
 # demo platform. Run ONCE, after otterworks.app is registered in Route53 and
-# `terraform apply -var enable_dns=true` has created the hosted zone + IRSA role.
+# `terraform apply` has created the DNS automation IRSA role (enable_dns, on by default).
 #
 # It replaces the temporary nip.io IP-based hostnames with real, self-contained
 # AWS records:
@@ -36,7 +36,7 @@ echo "==> Reading Terraform outputs from ${TF_DIR}"
 DNS_ROLE_ARN="$(terraform -chdir="${TF_DIR}" output -raw dns_role_arn)"
 ZONE_ID="$(terraform -chdir="${TF_DIR}" output -raw dns_zone_id)"
 if [ -z "${DNS_ROLE_ARN}" ] || [ "${DNS_ROLE_ARN}" = "null" ] || [ -z "${ZONE_ID}" ] || [ "${ZONE_ID}" = "null" ]; then
-  echo "dns_role_arn / dns_zone_id are empty — run 'terraform apply -var enable_dns=true' first." >&2
+  echo "dns_role_arn / dns_zone_id are empty — run 'terraform apply' in demo-platform/infra/terraform first." >&2
   exit 1
 fi
 echo "    dns_role_arn=${DNS_ROLE_ARN}"

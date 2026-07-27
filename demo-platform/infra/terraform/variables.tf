@@ -28,11 +28,18 @@ variable "control_table_name" {
   default = "otterworks-demo-control"
 }
 
-# DNS/TLS is gated until the domain is registered. Flip to true and set
-# dns_zone_name once otterworks.app exists in Route53.
+# This gate existed only while the domain was unregistered. It now defaults on,
+# because every tenant URL and the wildcard certificate depend on the IRSA role
+# it creates: with the old default, an apply that simply forgot
+# `-var enable_dns=true` deleted that role out from under external-dns and
+# cert-manager, leaving tenant DNS and certificate renewal broken while the
+# existing records made it look fine.
+#
+# Safe to default on now that the hosted zone is a data lookup (see dns.tf) --
+# turning this off tears down the automation role, never the zone.
 variable "enable_dns" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "dns_zone_name" {
