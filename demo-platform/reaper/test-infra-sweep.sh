@@ -77,6 +77,15 @@ infra_sweep >/dev/null 2>&1
 check "runs normally when the lookup succeeds" "$?" "0"
 check "  and spares the live cluster's shared ingress" "${DELETED# }" ""
 
+# `aws --output text` emits a flat list TAB-separated, and a single-cluster
+# account is the one case where that is indistinguishable from space-separated.
+# With a second cluster present, a word-boundary match on the raw string fails
+# for *every* name, so the live shared ingress reads as an orphan.
+AWS_LIST_CLUSTERS_OUT="$(printf 'otterworks-dev\totterworks-blue')"
+DELETED=""
+infra_sweep >/dev/null 2>&1
+check "spares the shared ingress when the account holds several clusters" "${DELETED# }" ""
+
 # A live cluster must never be treated as an orphan.
 # shellcheck disable=SC2034  # read by cluster_is_live from the sourced sweep
 LIVE_CLUSTERS="otterworks-dev"

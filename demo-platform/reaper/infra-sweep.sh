@@ -67,7 +67,12 @@ load_live_clusters() {
     sweep_warn "could not list EKS clusters (exit ${status}): ${out}"
     return 1
   fi
-  LIVE_CLUSTERS="${out}"
+  # `--output text` separates a flat list with TABS, but cluster_is_live matches
+  # on space-delimited word boundaries. Left as-is, a second cluster in the
+  # account would make *every* cluster fail that match -- including the one
+  # being swept for -- and the sweep would treat the whole live estate as
+  # orphaned. Normalise to single spaces so the boundary check holds.
+  LIVE_CLUSTERS="$(printf '%s' "${out}" | tr -s '[:space:]' ' ')"
   sweep_log "live EKS clusters: ${LIVE_CLUSTERS:-<none>}"
 }
 
