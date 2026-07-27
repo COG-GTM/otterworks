@@ -6,7 +6,7 @@
 # using costs nothing. A full tenant reserves ~1.5 vCPU / 3.5GiB; 100 of those
 # is ~$3,600/month of nodes. Suspended, a tenant costs only its database rows
 # and its DNS record, so spend tracks *active* tenants rather than provisioned
-# ones -- roughly a 10x reduction at realistic workshop utilisation.
+# ones -- roughly a 10x reduction at realistic workshop utilization.
 #
 # Idleness is measured from real HTTP traffic, not from a timer: ingress-nginx
 # exports a per-namespace request counter on its metrics port, and every tenant

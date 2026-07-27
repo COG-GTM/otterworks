@@ -397,7 +397,7 @@ main() {
   fi
 
   # The infra sweep deletes AWS resources that belong to no tenant, so it is
-  # gated separately from the tenant sweep and honours DRY_RUN independently.
+  # gated separately from the tenant sweep and honors DRY_RUN independently.
   if [ "${infra}" = "true" ]; then
     infra_sweep
   else
