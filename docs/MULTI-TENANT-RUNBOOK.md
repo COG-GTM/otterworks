@@ -14,7 +14,8 @@ cluster, one per attendee/demo run (`ATTENDEE_ID` → namespace
 | Script | Purpose |
 |---|---|
 | `scripts/tenant-platform-baseline.sh` | **Run once.** Installs the SHARED ingress-nginx (one NLB) and the namespace TTL reaper CronJob. |
-| `scripts/deploy-tenant.sh <ID> [--tier A\|B] [--image-tag TAG] [--ttl 8h] [--host-suffix DOMAIN]` | Deploy/redeploy one tenant. |
+| `scripts/deploy-tenant.sh <ID> [--tier A\|B] [--image-tag TAG] [--ttl 8h\|none] [--host-suffix DOMAIN]` | Deploy/redeploy one tenant. `--ttl none` makes it persistent. |
+| `scripts/deploy-tenant-batch.sh [NAME ...]` | Deploy one **persistent** tenant per person in `scripts/tenant-roster.txt`. |
 | `scripts/teardown-tenant.sh <ID> [--keep-db] [--keep-trust]` | Delete one tenant (namespace + per-tenant DB + IRSA trust). |
 | `scripts/inject-bug.sh <ID> <list\|reset\|scenario>` | Inject/clear a per-tenant bug (chaos flag / config / image). |
 | `scripts/tenant-scale.sh <ID> <up\|down>` | Scale a tenant's compute to zero (or back) between sessions. |
@@ -59,6 +60,40 @@ With wildcard DNS, pass `--host-suffix demo.example.com` → the tenant is serve
 at `t-a01.demo.example.com` (web) and `api-t-a01.demo.example.com` (gateway)
 through the one shared ingress/NLB.
 
+## Persistent tenants (one standing environment per person)
+
+A workshop seat is ephemeral; a per-person environment is not. `--ttl none`
+(also `never`) writes **no** `demo/expires-at*` annotation and labels the
+namespace `demo/persistent=true`. Both reapers key off the presence of an
+expiry, and `demo-platform/reaper/reaper.sh` additionally refuses to GC a
+persistent tenant's namespace, database, S3 prefix or DynamoDB partitions even
+though it has no control-table item (it would otherwise read as an orphan).
+Only `teardown-tenant.sh` removes one.
+
+Deploy the whole roster — one `firstname-lastname` tenant per line of
+`scripts/tenant-roster.txt` — with:
+
+```bash
+./scripts/deploy-tenant-batch.sh --dry-run          # resolved ids, no changes
+./scripts/deploy-tenant-batch.sh --profile core --concurrency 4
+./scripts/deploy-tenant-batch.sh "Ada Lovelace"     # just one person
+```
+
+Names are transliterated to ASCII before slugging (`João Esteves` →
+`otterworks-joao-esteves`, database `otterworks_joao_esteves`), and two names
+that collide on one id abort the run before anything is deployed. Tenants whose
+namespace already exists are skipped, so a partially-failed run is re-runnable;
+per-tenant logs land in `--log-dir` and the exit status is non-zero if any
+tenant failed.
+
+**Capacity:** a persistent tenant reserves its requests indefinitely — ~1.5 vCPU
+/ 3.5GiB on `full`, ~0.5 vCPU on `core`. A ~95-person roster is therefore ~140
+vCPU (`full`) or ~47 vCPU (`core`) of steady reservation, so size the node group
+(or Karpenter limits) accordingly and prefer `--profile core` unless a lab needs
+the whole estate. Idle scale-to-zero does **not** apply: `idle-suspend.sh` only
+considers tenants that have a control-table item, so a tenant deployed straight
+from the script stays up. Park one by hand with `./scripts/tenant-scale.sh <id> down`.
+
 ## Isolation model (what is shared vs. per-tenant)
 
 | Concern | Per-tenant mechanism |
@@ -102,7 +137,8 @@ mid-demo is the same lever scoped to the one namespace (seconds).
 - **Scale-to-zero** idle tenants: `./scripts/tenant-scale.sh <ID> down`.
 - **TTL reaper** CronJob (every 15m) deletes tenant namespaces whose
   `demo/expires-at-epoch` annotation is in the past (integer compare only, so the
-  reaper image needs nothing more than `date +%s`).
+  reaper image needs nothing more than `date +%s`). Namespaces without that
+  annotation — i.e. persistent tenants — are left alone.
 - Tenants reuse the golden ECR image tags; only variants build new images.
 
 ## Teardown

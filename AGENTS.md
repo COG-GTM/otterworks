@@ -104,7 +104,11 @@ the above changes `main`. Verify per the "Live verification" section of the runb
 
 ### Lifecycle / cleanup
 
-- Tenants are TTL-labeled (`deploy-tenant.sh <ID> --ttl 8h`). The platform reaper
+- Tenants are TTL-labeled (`deploy-tenant.sh <ID> --ttl 8h`), or persistent
+  (`--ttl none`) for standing per-person environments — those carry no expiry,
+  are labeled `demo/persistent=true`, and every reaper path skips them.
+  `scripts/deploy-tenant-batch.sh` deploys one per name in
+  `scripts/tenant-roster.txt`. The platform reaper
   (`demo-platform/reaper/reaper.sh`, scheduled from the ops dashboard) does the **full**
   teardown of an expired tenant: namespace, the `otterworks_<ID>` database, its S3 prefix
   and DynamoDB partitions, IRSA trust and DNS records. `scripts/teardown-tenant.sh <ID>`

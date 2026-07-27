@@ -157,12 +157,26 @@ $(echo "${rrs}" | jq -c '.[]')
 EOF
 }
 
+# A tenant deployed with `deploy-tenant.sh <id> --ttl none` is long-lived (a
+# standing per-person environment, not a workshop seat) and has no expiry to
+# compare against. It also has no control-table item unless the dashboard
+# created one, so without this it would read as an orphan and be swept.
+# Checked against the live namespace so the guard holds for every GC path.
+tenant_is_persistent() {
+  local ns; ns="$(tenant_namespace "$1")"
+  [ "$(kubectl get ns "${ns}" -o jsonpath='{.metadata.labels.demo/persistent}' 2>/dev/null)" = "true" ]
+}
+
 # Full idempotent GC for one tenant id. `reason` ends up in the AUDIT detail.
 gc_tenant() {
   local id="$1" reason="${2:-expired}" sid ns db
   sid="$(sanitize_id "${id}")"
   ns="$(tenant_namespace "${id}")"
   db="$(tenant_db_name "${id}")"
+  if tenant_is_persistent "${id}"; then
+    log "tenant '${id}' is persistent (demo/persistent=true); NOT reaping (${reason})"
+    return 0
+  fi
   log "reaping tenant '${id}' (${reason}) -> ns=${ns} db=${db}"
 
   # (a) namespace, (b) RDS DB, (e) legacy IRSA trust — reuse the existing
@@ -247,6 +261,7 @@ sweep_orphan_namespaces() {
     case "${ns}" in otterworks-platform|otterworks-system|otterworks) continue ;; esac
     id="${ns#otterworks-}"
     [ -n "${id}" ] || continue
+    tenant_is_persistent "${id}" && continue
     if ! ctl_tenant_exists "${id}"; then
       warn "orphan namespace ${ns} (no TENANT# item) -> GC"
       gc_tenant "${id}" "orphan-namespace"
@@ -319,7 +334,7 @@ sweep_orphan_s3() {
       [ "${p}" = "None" ] && continue
       id="${p#"${S3_TENANT_ROOT}"}"; id="${id%/}"
       [ -n "${id}" ] || continue
-      if ! ctl_tenant_exists "${id}"; then
+      if ! ctl_tenant_exists "${id}" && ! tenant_is_persistent "${id}"; then
         warn "orphan S3 prefix s3://${bucket}/${p} (no TENANT# item) -> GC"
         aws s3 rm "s3://${bucket}/${p}" --recursive >/dev/null 2>&1 || true
       fi
@@ -340,7 +355,7 @@ sweep_orphan_ddb() {
                 | jq -r --arg hk "${hk}" '.Items[]?[$hk].S // empty' \
                 | grep '#' | sed 's/#.*//' | sort -u); do
       [ -n "${id}" ] || continue
-      if ! ctl_tenant_exists "${id}"; then
+      if ! ctl_tenant_exists "${id}" && ! tenant_is_persistent "${id}"; then
         warn "orphan DDB partition '${id}' in ${table} (no TENANT# item) -> GC"
         gc_ddb_partition "${table}" "${id}"
       fi
@@ -424,4 +439,8 @@ main() {
   log "reaper v2 run complete."
 }
 
-main "$@"
+# Allow the GC helpers to be sourced (test-persistent-tenant.sh) without running
+# a reap pass; the CronJob and the runner both execute this file directly.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+  main "$@"
+fi

@@ -17,8 +17,14 @@
 #
 # Usage:
 #   ./scripts/deploy-tenant.sh <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] \
-#       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
+#       [--ttl 8h|none] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
+#
+#   --ttl none  makes the tenant PERSISTENT: no expiry annotation is written and
+#               the namespace is labelled demo/persistent=true, which both the
+#               baseline TTL reaper and the platform reaper treat as "never
+#               reap" (including its database, S3 prefix and DynamoDB items).
+#               Persistent tenants are removed only by teardown-tenant.sh.
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
@@ -54,7 +60,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h] [--profile core|full]"; exit 1; }
+[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h|none] [--profile core|full]"; exit 1; }
 case "${TIER}" in A|B) ;; *) err "--tier must be A or B"; exit 1 ;; esac
 case "${PROFILE}" in core|full) ;; *) err "--profile must be core or full"; exit 1 ;; esac
 mapfile -t TENANT_SERVICES < <(profile_services "${PROFILE}")
@@ -88,12 +94,25 @@ ttl_to_expiry() {
   esac
   date -u -d "+${gnu}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v"${bsd}" +%Y-%m-%dT%H:%M:%SZ
 }
-EXPIRES_AT="$(ttl_to_expiry "${TTL}")"
-# Epoch form for the reaper: it compares integers only (no ISO parsing), so the
-# reaper image needs nothing more than `date +%s`.
-EXPIRES_EPOCH="$(date -u -d "${EXPIRES_AT}" +%s 2>/dev/null || date -u -jf %Y-%m-%dT%H:%M:%SZ "${EXPIRES_AT}" +%s)"
+# A persistent tenant carries no expiry at all: every reaper path keys off the
+# presence of an expiry rather than its value, so "no expiry" is the encoding
+# for "never reap" -- a far-future timestamp would still be a deadline.
+PERSISTENT=false
+case "${TTL}" in none|never|infinite|persistent) PERSISTENT=true ;; esac
 
-log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> expires ${EXPIRES_AT})"
+TENANT_LABELS=""
+TENANT_ANNOTATIONS=""
+if [ "${PERSISTENT}" = true ]; then
+  TENANT_LABELS=$'\n    demo/persistent: "true"'
+  log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, persistent: no TTL, reapers skip it)"
+else
+  EXPIRES_AT="$(ttl_to_expiry "${TTL}")"
+  # Epoch form for the reaper: it compares integers only (no ISO parsing), so the
+  # reaper image needs nothing more than `date +%s`.
+  EXPIRES_EPOCH="$(date -u -d "${EXPIRES_AT}" +%s 2>/dev/null || date -u -jf %Y-%m-%dT%H:%M:%SZ "${EXPIRES_AT}" +%s)"
+  TENANT_ANNOTATIONS=$'\n    demo/expires-at: "'"${EXPIRES_AT}"$'"\n    demo/expires-at-epoch: "'"${EXPIRES_EPOCH}"'"'
+  log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> expires ${EXPIRES_AT})"
+fi
 
 # ---------- kubectl + shared infra outputs ----------
 # In-cluster (runner Job) the pod's ServiceAccount already has cluster access via
@@ -119,11 +138,9 @@ metadata:
     demo/tenant: "$(sanitize_id "${ATTENDEE_ID}")"
     demo/tier: "${TIER}"
     demo/profile: "${PROFILE}"
-    kubernetes.io/metadata.name: ${NS}
+    kubernetes.io/metadata.name: ${NS}${TENANT_LABELS}
   annotations:
-    demo/expires-at: "${EXPIRES_AT}"
-    demo/expires-at-epoch: "${EXPIRES_EPOCH}"
-    demo/attendee-id: "${ATTENDEE_ID}"
+    demo/attendee-id: "${ATTENDEE_ID}"${TENANT_ANNOTATIONS}
 ---
 apiVersion: v1
 kind: ResourceQuota
@@ -183,6 +200,16 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
 YAML
+
+# Converting a TTL'd tenant to a persistent one has to strip the annotations the
+# earlier deploy left behind: the baseline reaper reads them straight off the
+# namespace, and `kubectl apply` only prunes fields it owns (a namespace created
+# by an older deploy, or edited with `kubectl annotate`, is not owned here).
+if [ "${PERSISTENT}" = true ]; then
+  kubectl annotate namespace "${NS}" demo/expires-at- demo/expires-at-epoch- >/dev/null 2>&1 || true
+else
+  kubectl label namespace "${NS}" demo/persistent- >/dev/null 2>&1 || true
+fi
 
 # ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------
 ensure_irsa_trust() {
@@ -515,6 +542,9 @@ if [ ${#FAILED[@]} -gt 0 ]; then
   warn "Services with deploy issues: ${FAILED[*]}"
 fi
 echo ""
+if [ "${PERSISTENT}" = true ]; then
+  log "Lifetime:  persistent (no TTL) — remove with ./scripts/teardown-tenant.sh ${ATTENDEE_ID}"
+fi
 log "Inspect:   kubectl get all -n ${NS}"
 log "Reach API: kubectl -n ${NS} port-forward svc/api-gateway 8080:8080"
 log "Inject bug: ./scripts/inject-bug.sh ${ATTENDEE_ID} <scenario>"
