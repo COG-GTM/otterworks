@@ -77,3 +77,29 @@ variable "budget_alert_emails" {
   type        = list(string)
   default     = []
 }
+
+# Seed values for the CONFIG#reaper control item. These apply at install only --
+# the dashboard owns the item from then on (see control_table.tf).
+variable "reaper_enabled" {
+  description = "Whether the reaper acts on its schedule. Off means no TTL reaping and no idle suspension."
+  type        = bool
+  default     = true
+}
+
+variable "reaper_schedule_cron" {
+  description = "Cron schedule the reaper CronJob runs on."
+  type        = string
+  default     = "*/15 * * * *"
+}
+
+variable "reaper_grace_seconds" {
+  description = "Extra grace beyond a tenant's expires_at before it is reaped."
+  type        = number
+  default     = 300
+}
+
+variable "reaper_idle_after_seconds" {
+  description = "Zero ingress requests for this long scales a tenant to zero. Its namespace, config and database survive."
+  type        = number
+  default     = 3600
+}

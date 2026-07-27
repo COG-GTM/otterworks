@@ -46,12 +46,15 @@ Written with `ConditionExpression="attribute_not_exists(PK)"` for **atomic check
 
 ### Reaper config — `PK=CONFIG#reaper`, `SK=CONFIG`
 ```
-schedule_cron  string   # e.g. "*/15 * * * *"
-grace_seconds  number    # extra grace beyond expires_at before reaping
-enabled        bool
-sweep_orphans  bool      # also GC resources with no matching TENANT# item
-updated_at     number
-updated_by     string
+schedule_cron       string   # e.g. "*/15 * * * *"
+grace_seconds       number   # extra grace beyond expires_at before reaping
+enabled             bool
+sweep_orphans       bool     # also GC resources with no matching TENANT# item
+suspend_idle        bool     # scale tenants with no ingress traffic to zero
+idle_after_seconds  number   # how long zero traffic must last before suspending
+sweep_infra         bool     # also GC the AWS resources Kubernetes created implicitly
+updated_at          number
+updated_by          string
 ```
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
@@ -66,6 +69,10 @@ destroys nothing, so a suspended tenant is still checked out and still in the ta
 - Atomic checkout: conditional `PutItem LOCK#<id>` then upsert `TENANT#<id>`.
 - Audit trail for a tenant: `Query PK=AUDIT#<id>` (reverse chronological).
 - Reaper reads `CONFIG#reaper` + scans `TENANT#` for expired items.
+- Every flag is absent-means-false in the reaper, so the item is seeded by Terraform
+  (`control_table.tf`); without it a fresh platform silently does no reaping and no idle
+  suspension. Terraform sets `ignore_changes` on the item, so the dashboard owns it after
+  install.
 
 ## Reconciliation (dashboard + reaper)
 The table is *desired state*; the cluster/AWS is *actual*. On each list/reaper pass we join the

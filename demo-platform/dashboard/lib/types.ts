@@ -76,6 +76,9 @@ export interface ReaperConfig {
   graceSeconds: number;
   enabled: boolean;
   sweepOrphans: boolean;
+  suspendIdle: boolean;
+  idleAfterSeconds: number;
+  sweepInfra: boolean;
   updatedAt?: number;
   updatedBy?: string;
 }
@@ -115,4 +118,7 @@ export interface ReaperUpdateRequest {
   grace_seconds: number;
   enabled: boolean;
   sweep_orphans: boolean;
+  suspend_idle: boolean;
+  idle_after_seconds: number;
+  sweep_infra: boolean;
 }

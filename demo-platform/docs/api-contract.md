@@ -27,7 +27,8 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
 
 ## Reaper
 - `GET /api/reaper` → `CONFIG#reaper`.
-- `PUT /api/reaper` `{ schedule_cron, grace_seconds, enabled, sweep_orphans }` → update config
+- `PUT /api/reaper` `{ schedule_cron, grace_seconds, enabled, sweep_orphans, suspend_idle,
+  idle_after_seconds, sweep_infra }` → update config
   (the reaper CronJob reads this each run; changing the cron also patches the CronJob schedule).
 - `GET /api/reaper/orphans` → resources with no matching tenant (preview before sweep).
 
