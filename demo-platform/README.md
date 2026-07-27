@@ -27,6 +27,7 @@ demo-platform/
   runner/        image that runs deploy/teardown/inject Jobs (carries repo + toolchain)
   reaper/        reaper v2 CronJob + orphan sweeper (schedule from control table)
   helm/          charts to deploy the dashboard + reaper into otterworks-platform
+  scripts/       platform installers (Karpenter, PgBouncer) + tenant.sh (dashboard CLI)
 ```
 
 ## Checkout / check-in model
@@ -36,6 +37,29 @@ A **check-in** tears the tenant down and frees the id. All state lives in the co
 it is **independent of the ephemeral infra** — it survives teardown, node churn, and pod
 restarts. The reaper reconciles desired (table) vs actual (cluster/AWS) and GCs everything,
 including **orphans** with no matching tenant record.
+
+## Provisioning tenants without cluster access
+`scripts/tenant.sh` is the dashboard's API from a shell — for people who provision demos, and
+for the agent platforms that do it on their behalf:
+
+```bash
+tenant.sh checkout derek              # -> branch workshop-derek, 8h TTL
+tenant.sh status derek
+tenant.sh checkin derek
+tenant.sh list
+```
+
+It needs only `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for the `de-demo-provisioner`
+IAM user (`infra/terraform/iam_provisioner.tf`) — no kubeconfig, no passcode handling. That
+user can perform exactly one AWS action: read the dashboard passcode from Secrets Manager
+(`otterworks/<env>/dashboard/passcode`). The deploy itself runs as a runner Job under the
+control plane's IRSA role, so the authority to create namespaces, databases, DNS records and
+IRSA trust stays in the cluster and never sits on a long-lived key. A leaked provisioner key
+can create and destroy demo tenants; it cannot reach the account.
+
+Rotate by minting a new access key and deleting the old one — the grant is on the user, so
+nothing else changes. Rotating the *passcode* is a `helm upgrade` plus one
+`aws secretsmanager put-secret-value`; see the comment in `iam_provisioner.tf`.
 
 ## Scale to high-tens
 Autoscaling (Karpenter / raised node-group max), VPC **prefix delegation** (avoid pod-IP
