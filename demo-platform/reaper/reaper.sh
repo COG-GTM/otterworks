@@ -309,6 +309,15 @@ sweep_orphan_dbs() {
     warn "control-table scan failed; skipping orphan-DB sweep (fail-closed)"
     return 0
   fi
+  # An empty control table would make every otterworks_* database look like an
+  # orphan and wipe them all. That is almost always a transient/misconfigured
+  # state (mid-bootstrap, wrong table) rather than a genuine "delete everything"
+  # signal, so treat it like a failed scan and skip: the namespace/S3/DDB sweeps
+  # still run, and a real empty table simply has no databases to reap anyway.
+  if [ -z "$(printf '%s' "${ids}" | tr -d '[:space:]')" ]; then
+    warn "control table has no tenants; skipping orphan-DB sweep (fail-closed)"
+    return 0
+  fi
   known="$(while IFS= read -r id; do
              [ -n "${id}" ] || continue
              printf '%s\n' "$(tenant_db_name "${id}")"
