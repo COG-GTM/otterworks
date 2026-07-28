@@ -76,6 +76,14 @@ data:
     # track; without this the pooler rejects those startup packets outright.
     ignore_startup_parameters = extra_float_digits,options
 
+    # search_path has to be *tracked*, not ignored. analytics-service asks for
+    # its own schema (`?currentSchema=analytics`), which the JDBC driver sends
+    # as a search_path startup packet; ignoring it would answer every query
+    # from `public` instead, and rejecting it fails the connection outright.
+    # Tracking makes PgBouncer re-apply it whenever the client lands on a
+    # different server connection.
+    track_extra_parameters = IntervalStyle,search_path
+
     # require, not prefer: prefer silently falls back to plaintext, and every
     # tenant's SQL crosses this hop authenticated as the RDS master user. RDS
     # always offers TLS, so there is nothing to fall back for. Not verify-full,
@@ -129,6 +137,7 @@ data:
     server_idle_timeout = 60
     server_lifetime = 900
     ignore_startup_parameters = extra_float_digits,options
+    track_extra_parameters = IntervalStyle,search_path
     server_tls_sslmode = require
     admin_users = __DB_USER__
     stats_users = __DB_USER__

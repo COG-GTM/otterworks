@@ -188,6 +188,13 @@ suspend_idle_tenants() {
     [ -n "${count}" ] || count=0
 
     item="$(ctl_get "TENANT#${id}" "META")"
+    # A perpetual tenant is the always-on reference environment: scaling it to
+    # zero would put a multi-minute cold start in front of whoever opens it
+    # next, which is the one thing it exists to avoid.
+    if [ "$(printf '%s' "${item}" | jq -r '.Item.persistent.BOOL // false')" = "true" ]; then
+      idle_log "${id}: persistent; not suspending"
+      continue
+    fi
     prev="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
     since="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
     was_running="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"

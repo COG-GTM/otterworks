@@ -129,3 +129,27 @@ variable "provisioner_user_name" {
   type        = string
   default     = "de-demo-provisioner"
 }
+
+variable "enable_github_actions_role" {
+  description = "Create the OIDC role GitHub Actions assumes for continuous delivery. Requires the GitHub OIDC provider to already exist in the account."
+  type        = bool
+  default     = true
+}
+
+# owner/repo => the branch patterns (git ref names, may contain *) whose workflow
+# runs in that repository may assume the CD role.
+#
+# Downstream forks ship the same environments from the same registry, so they
+# are trusted too -- but only for the ephemeral branch prefixes. `main` is the
+# golden app and the perpetual environment, which this repository owns: a fork's
+# main is a copy of it, and deploying that copy would let anyone with write
+# access to a fork replace the environment everyone else demos from.
+variable "github_actions_trusted_repos" {
+  description = "Repositories (owner/repo) and the branch patterns whose workflow runs may assume the CD role."
+  type        = map(list(string))
+  default = {
+    "Cognition-Partner-Workshops/otterworks" = ["main", "workshop-*", "demo-*"]
+    "COG-GTM/otterworks"                     = ["workshop-*", "demo-*"]
+  }
+}
+

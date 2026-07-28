@@ -8,6 +8,10 @@
 #   __DOMAIN_FILTER__  tenant subdomain, e.g. demo.otterworks.app
 #   __OPS_HOST__       ops dashboard host, e.g. ops.otterworks.app (a sibling of
 #                      the tenant subdomain, so it needs its own filter entry)
+#   __PERPETUAL_WEB_HOST__ / __PERPETUAL_API_HOST__
+#                      the perpetual tenant, e.g. t-main.otterworks.app. It sits
+#                      at the apex rather than under the tenant subdomain, so it
+#                      needs filter entries too.
 #   __TXT_OWNER__      registry owner id, e.g. otterworks-demo
 #
 # The SA name/namespace MUST match the IRSA trust in infra/terraform/dns.tf
@@ -92,6 +96,8 @@ spec:
             - --txt-owner-id=__TXT_OWNER__
             - --domain-filter=__DOMAIN_FILTER__
             - --domain-filter=__OPS_HOST__
+            - --domain-filter=__PERPETUAL_WEB_HOST__
+            - --domain-filter=__PERPETUAL_API_HOST__
             # The tenant/ops filters are subdomains of the Route53 zone apex
             # (otterworks.app). Without this, external-dns filters out the parent
             # hosted zone and skips every record ("no hosted zone matching record
