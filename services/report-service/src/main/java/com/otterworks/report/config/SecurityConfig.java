@@ -27,8 +27,11 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/swagger-resources/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll())
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/swagger-resources/**",
+                                "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/v1/reports/**").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::deny)
                         .contentTypeOptions(Customizer.withDefaults())
