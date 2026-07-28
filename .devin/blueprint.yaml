@@ -13,9 +13,10 @@ initialize: |
     done
   done
 
-  # Capacitor 8 / AGP require JDK 21.
-  sudo apt-get update && sudo apt-get install -y openjdk-21-jdk-headless
-  echo "JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64" >> $ENVRC
+  # One JDK for everything: Capacitor 6 compiles at 17, as do report-service and
+  # legacy-portal (Boot 3.2). Maven is not on the base image.
+  sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless maven
+  echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $ENVRC
   sudo usermod -aG kvm "$(whoami)" || true
 
   # Vite 8 requires Node >=20.19.
@@ -30,7 +31,11 @@ initialize: |
   fi
   SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
   yes | $SDKM --licenses >/dev/null
-  $SDKM "platform-tools" "emulator" "platforms;android-36" "build-tools;36.0.0" "system-images;android-36;google_apis;x86_64"
+  # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
+  # here ("Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma") on every software
+  # renderer, since the microVM has no GPU. minSdk is 24, so the API 37 APK runs on API 36.
+  $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
+        "platforms;android-36" "system-images;android-36;google_apis;x86_64"
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
   AVD_CFG=$HOME/.android/avd/otter.avd/config.ini
@@ -55,7 +60,7 @@ initialize: |
   export ANDROID_HOME=$HOME/Android/Sdk ANDROID_SDK_ROOT=$HOME/Android/Sdk
   export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
   # JAVA_HOME is only written to $ENVRC (for later sessions), so set it for assembleDebug.
-  export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+  export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
   nvm use default
   (cd frontend/client-app && npm install && npm install --no-save @rolldown/binding-linux-x64-gnu@1.1.5 \
      && npm run build && npx cap sync android)
@@ -78,6 +83,10 @@ initialize: |
   fi
   kill $EMU_PID 2>/dev/null || true
   wait $EMU_PID 2>/dev/null || true
+
+  # Warm ~/.m2 so the Maven services resolve from cache instead of downloading Boot's tree.
+  (cd services/report-service && mvn -B -q dependency:go-offline) || echo "WARN: report-service dependency warm-up failed."
+  (cd services/legacy-portal && ./mvnw -B -q dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
 
   # Seed the "RetailCo enterprise drive" (~2,445 files / 15 departments / 60 docs) through the
   # gateway so a session only runs `make up` to come up data-rich. Postgres, DynamoDB and
