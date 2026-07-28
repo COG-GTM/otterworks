@@ -15,6 +15,8 @@ import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.validation.constraints.NotNull;
 import java.util.Date;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * JPA entity representing a generated report.
@@ -96,7 +98,9 @@ public class Report {
     @Schema(description = "Number of data rows in the report")
     private Integer rowCount;
 
+    // Hibernate 6 maps @Lob String to a Postgres large object (oid); keep the text column.
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "error_message")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
