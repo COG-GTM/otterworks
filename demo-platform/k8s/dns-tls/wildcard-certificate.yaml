@@ -4,7 +4,9 @@
 # tenant Ingress serves HTTPS with no per-namespace secret.
 #
 #   *.demo.<root>   covers  t-<id>.demo.<root>  AND  api-t-<id>.demo.<root>
-#   ops.<root>      the platform dashboard
+#   *.<root>        covers the perpetual tenant (t-main.<root>, api-t-main.<root>)
+#                   and the ops dashboard. A wildcard matches ONE label, so this
+#                   is not implied by the line above and vice versa.
 #
 # Placeholders (filled by scripts/enable-dns-tls.sh via envsubst):
 #   __DOMAIN_ROOT__  registrable domain, e.g. otterworks.app
@@ -27,4 +29,4 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - "*.demo.__DOMAIN_ROOT__"
-    - "ops.__DOMAIN_ROOT__"
+    - "*.__DOMAIN_ROOT__"

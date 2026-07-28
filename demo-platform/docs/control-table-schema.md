@@ -25,6 +25,7 @@ checked_out_at number?
 expires_at    number    # epoch seconds (TTL) — reaper compares against now
 last_seen_at  number    # last reconcile timestamp
 note          string?
+persistent    bool?     # perpetual tenant: never reaped, never idle-suspended
 
 # written by the idle scan only (demo-platform/reaper/idle-suspend.sh)
 req_count     number?  # ingress request counter at the last scan
@@ -32,6 +33,14 @@ idle_since    number?  # epoch seconds the counter was first seen at req_count
 was_running   number?  # 1 if the tenant had replicas up at the last scan, else 0
 ```
 `expires_at` is also the DynamoDB **TTL attribute** (informational; the reaper is the actor).
+
+`persistent` is the perpetual marker, and it is a boolean rather than a very distant
+`expires_at` because the two say different things: an expiry ten years out is indistinguishable
+from a typo, while the flag is something the reaper, the idle scan and the dashboard can all
+read and refuse to act on. A perpetual tenant still carries an expiry (now + 10y) so that a
+reaper reading only the expiry — an older build, or a hand-run script — still does no harm.
+Absent means false everywhere. The dashboard only sets it for ids in `PERPETUAL_TENANT_IDS`
+(`main`), because a perpetual tenant bills forever.
 
 `was_running` is how a wake is detected. Nothing on the wake path writes to this table —
 `tenant-scale.sh up`, dashboard check-out and a manual `kubectl scale` all only touch
@@ -59,8 +68,10 @@ updated_by          string
 ```
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
-Append-only. `action` ∈ {checkout, checkin, extend, deploy_ok, deploy_fail, reap, inject,
-reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_ok, deploy_fail,
+reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+`redeploy` is a deploy into a tenant that was already up (continuous delivery), as distinct
+from the `checkout` that created it.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
 destroys nothing, so a suspended tenant is still checked out and still in the table.
 

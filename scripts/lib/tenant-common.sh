@@ -68,10 +68,47 @@ JVM_SERVICES=" auth-service report-service notification-service analytics-servic
 
 # Naming ----------------------------------------------------------------------
 # Namespace must be RFC-1123 (lowercase alnum + '-'); DB name uses '_'.
+#
+# Must match sanitizeId() in demo-platform/dashboard/lib/util.ts exactly, down
+# to the collapsing and the 40-character cut: the dashboard creates the tenant
+# under its own version of this id, and a tag or namespace derived from a
+# different one points at nothing.
 sanitize_id() {
-  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g; s/^-*//; s/-*$//'
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' |
+    sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' |
+    cut -c1-40 | sed 's/-*$//'
 }
 tenant_namespace() { printf 'otterworks-%s' "$(sanitize_id "$1")"; }
+
+# Git branch -> the Docker tag CI publishes that branch's images under. Docker
+# tags allow [a-zA-Z0-9._-] only, so `feature/x` cannot be used verbatim.
+branch_tag_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g'
+}
+
+# The tag a tenant's own build is published under. Keyed by tenant id, not by
+# branch: several repositories (this one and its forks) push to one registry and
+# would otherwise both claim `branch-demo-x`, each serving the other's build.
+# Tenant ids are already namespaced per repository by TENANT_PREFIX, so keying
+# on them makes the tag say exactly which environment it belongs to. CI and
+# deploy-tenant.sh must agree exactly or a tenant silently falls back to the
+# golden image, so both call this.
+tenant_image_tag() { printf 'tenant-%s' "$(sanitize_id "$1")"; }
+
+# Tenant id for a branch: `workshop-derek` and `demo-derek` both own tenant
+# `derek`. The dashboard rejects a redeploy whose branch does not match the one
+# the tenant was checked out from, so the collision cannot silently hijack.
+#
+# TENANT_PREFIX namespaces a whole repository's environments: a fork sets it so
+# that its `demo-derek` is tenant `<prefix>-derek` with its own namespace,
+# database and hostname, rather than redeploying the upstream repo's `derek`
+# out from under whoever is using it. Unset upstream, where the bare id is the
+# one people already know.
+branch_tenant_id() {
+  local id
+  id="$(printf '%s' "$1" | sed -E 's#^(workshop|demo)[-/]##')"
+  sanitize_id "${TENANT_PREFIX:+${TENANT_PREFIX}-}${id}"
+}
 tenant_db_name()   { printf 'otterworks_%s' "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g; s/^_*//; s/_*$//')"; }
 
 require_bins() {

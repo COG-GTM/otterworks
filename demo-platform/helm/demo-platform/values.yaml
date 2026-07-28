@@ -25,6 +25,14 @@ controlTable: otterworks-demo-control
 # suffix (e.g. <nlb-ip>.nip.io) to run before otterworks.app DNS is live.
 hostSuffix: demo.otterworks.app
 
+# The perpetual tenant: never reaped, never idle-suspended, and the only id the
+# dashboard accepts `persistent: true` for. It answers at the apex
+# (t-main.otterworks.app) rather than under the per-attendee subdomain, so it
+# reads as the shared reference environment rather than one attendee's workshop.
+# Both hosts are covered by the wildcard certificate (k8s/dns-tls).
+perpetualTenantIds: main
+perpetualHostSuffix: otterworks.app
+
 # Runner image used by dashboard-launched Jobs AND the reaper CronJob (OP=reap).
 # Placeholder — override at deploy: --set runnerImage=<registry>/otterworks/demo-runner:<tag>
 runnerImage: REGISTRY/otterworks/demo-runner:latest

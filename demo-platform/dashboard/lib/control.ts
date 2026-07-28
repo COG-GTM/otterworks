@@ -46,6 +46,7 @@ interface TenantItem {
   expires_at: number;
   last_seen_at: number;
   note?: string;
+  persistent?: boolean;
 }
 
 let _doc: DynamoDBDocumentClient | null = null;
@@ -82,6 +83,7 @@ function itemToTenant(item: TenantItem): Tenant {
     expiresAt: item.expires_at,
     lastSeenAt: item.last_seen_at,
     note: item.note,
+    persistent: item.persistent === true,
   };
 }
 
@@ -126,6 +128,7 @@ export interface CheckoutInput {
   ttlSeconds: number;
   hostSuffix: string;
   lockTtlSeconds?: number;
+  persistent?: boolean;
 }
 
 /**
@@ -176,6 +179,7 @@ export async function checkout(input: CheckoutInput): Promise<Tenant> {
     checked_out_at: now,
     expires_at: expiresAt,
     last_seen_at: now,
+    persistent: input.persistent === true,
   };
 
   // Guard against re-checking-out a LIVE tenant. The lock above only serialises
@@ -228,6 +232,34 @@ export async function setStatus(id: string, status: TenantStatus): Promise<void>
 
 export async function checkin(id: string): Promise<void> {
   await setStatus(id, "draining");
+}
+
+/**
+ * Mark a tenant perpetual, or return it to the TTL regime.
+ *
+ * The flag and the expiry move together in one update on purpose: the reaper
+ * reads the flag and the expiry is the backstop, so a partial write leaves the
+ * tenant either immortal with the flag off (never reaped, nobody can tell why)
+ * or flagged perpetual over an expiry already in the past.
+ */
+export async function setPersistent(
+  id: string,
+  persistent: boolean,
+  ttlSeconds: number,
+): Promise<number> {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + ttlSeconds;
+  await doc().send(
+    new UpdateCommand({
+      TableName: table(),
+      Key: { PK: pkTenant(id), SK: SK_META },
+      UpdateExpression: "SET #p = :p, expires_at = :e, last_seen_at = :now",
+      ConditionExpression: "attribute_exists(PK)",
+      ExpressionAttributeNames: { "#p": "persistent" },
+      ExpressionAttributeValues: { ":p": persistent, ":e": expiresAt, ":now": now },
+    }),
+  );
+  return expiresAt;
 }
 
 export async function extend(id: string, ttlSeconds: number): Promise<number> {
