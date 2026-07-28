@@ -1,0 +1,32 @@
+repo: https://github.com/COG-GTM/otterworks
+module: services/report-service
+build: maven
+build_wrapper: none   # system mvn; parent BOM manages plugin versions
+current:
+  java: 8
+  spring_boot: 2.5.14
+targets:
+  java: 17
+  spring_boot: 3.2.x
+uses:
+  javax_persistence: true    # model/Report.java
+  javax_servlet: true        # explicit javax.servlet-api provided dep in pom
+  javax_validation: true     # ReportRequest, ReportController
+  javax_transaction: true    # ReportService
+  spring_security: true      # SecurityConfig extends WebSecurityConfigurerAdapter
+  junit: 4                   # junit-jupiter excluded from spring-boot-starter-test
+  mockito: 3.12.4
+  springfox: 3.0.0           # -> springdoc-openapi 2.x
+  itext: 5.5.13.3            # -> OpenPDF 1.3.x (drop-in, com.lowagie.*)
+  commons_lang: 2.6          # -> commons-lang3
+  commons_io: 2.6
+  guava: 28.0-jre
+  poi: 4.1.2
+  opencsv: 4.6
+ci_provider: github-actions
+ci_jobs:
+  - .github/workflows/ci.yml -> report-service (java 8)
+  - .github/workflows/docker-build.yml -> report-service-tests (java 8)
+demo_mode: true   # prioritize speed; skip optional steps
+out_of_scope:
+  - services/legacy-portal   # Java 11 / Boot 2.7, separate migration

@@ -1,26 +1,30 @@
 # Report Service Dependency Upgrade Guide
 
 This document describes 11 upgrade axes for migrating the report-service from its
-current legacy stack to a modern, supported baseline. Each axis lists the exact
+original legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
+
+Axes 1-5, 7 and 11 (the Java 17 / Spring Boot 3.2 cutover) are **done**; the
+remaining library bumps are independent follow-ups that the service does not need
+in order to build and run on 17.
 
 ---
 
 ## Overview
 
-| # | Axis | From | To | Files Affected |
-|---|------|------|----|----------------|
-| 1 | Java version | 1.8 | 17 | `pom.xml` |
-| 2 | Spring Boot | 2.5.14 | 3.2+ | `pom.xml` |
-| 3 | javax to jakarta | `javax.*` | `jakarta.*` | All Java source files |
-| 4 | JUnit 4 to JUnit 5 | JUnit 4 | JUnit 5 / Jupiter | All test files |
-| 5 | SpringFox to springdoc | SpringFox 3.0.0 | springdoc-openapi 2.x | `SwaggerConfig.java`, `ReportController.java`, model classes |
-| 6 | iText 5 to OpenPDF / iText 7 | iText 5.5.13.3 | OpenPDF 1.3+ or iText 7+ | `PdfReportGenerator.java` |
-| 7 | Commons Lang 2 to 3 | `commons-lang:commons-lang:2.6` | `org.apache.commons:commons-lang3:3.14+` | `ReportDateUtils.java`, `PdfReportGenerator.java`, `ExcelReportGenerator.java`, `ReportDataFetcher.java` |
-| 8 | Commons IO | 2.6 | 2.15+ | `pom.xml`, `ReportController.java` |
-| 9 | Guava | 28.0-jre | 33+ | `pom.xml`, `ReportDataFetcher.java` |
-| 10 | Apache POI | 4.1.2 | 5.2+ | `pom.xml`, `ExcelReportGenerator.java` |
-| 11 | Mockito | 3.12.4 | 5.x | `pom.xml`, all test files |
+| # | Axis | From | To | Files Affected | Status |
+|---|------|------|----|----------------|--------|
+| 1 | Java version | 1.8 | 17 | `pom.xml` | done |
+| 2 | Spring Boot | 2.5.14 | 3.2+ | `pom.xml` | done (3.2.12) |
+| 3 | javax to jakarta | `javax.*` | `jakarta.*` | All Java source files | done |
+| 4 | JUnit 4 to JUnit 5 | JUnit 4 | JUnit 5 / Jupiter | All test files | done |
+| 5 | SpringFox to springdoc | SpringFox 3.0.0 | springdoc-openapi 2.x | `SwaggerConfig.java`, `ReportController.java`, model classes | done (2.5.0) |
+| 6 | iText 5 to OpenPDF / iText 7 | iText 5.5.13.3 | OpenPDF 1.3+ or iText 7+ | `PdfReportGenerator.java` | todo |
+| 7 | Commons Lang 2 to 3 | `commons-lang:commons-lang:2.6` | `org.apache.commons:commons-lang3:3.14+` | `ReportDateUtils.java`, `PdfReportGenerator.java`, `ExcelReportGenerator.java`, `ReportDataFetcher.java` | done (BOM-managed) |
+| 8 | Commons IO | 2.6 | 2.15+ | `pom.xml`, `ReportController.java` | todo |
+| 9 | Guava | 28.0-jre | 33+ | `pom.xml`, `ReportDataFetcher.java` | todo |
+| 10 | Apache POI | 4.1.2 | 5.2+ | `pom.xml`, `ExcelReportGenerator.java` | todo |
+| 11 | Mockito | 3.12.4 | 5.x | `pom.xml`, all test files | done (BOM-managed) |
 
 ---
 

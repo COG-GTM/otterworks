@@ -41,8 +41,9 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
-      - run: mvn test -B
+          java-version: '17'
+          cache: maven
+      - run: mvn -B verify
 
   legacy-portal-tests:
     runs-on: ubuntu-latest
