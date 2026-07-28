@@ -36,6 +36,19 @@ ctl_tenant_exists() {
   [ -n "$(ctl_get "TENANT#$1" META | jq -r '.Item.PK.S // empty' 2>/dev/null)" ]
 }
 
+# Every tenant id in the control table, one per line. Returns non-zero (and no
+# output) if the scan itself fails, so callers can tell "no tenants" apart from
+# "we do not know" — deleting on the latter would be a mass wipe.
+ctl_tenant_ids() {
+  local out
+  out="$(aws dynamodb scan \
+    --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
+    --filter-expression "SK = :meta AND begins_with(PK, :tp)" \
+    --expression-attribute-values '{":meta":{"S":"META"},":tp":{"S":"TENANT#"}}' \
+    --output json 2>/dev/null)" || return 1
+  printf '%s' "${out}" | jq -r '.Items[]? | (.id.S // (.PK.S | sub("^TENANT#";"")))' 2>/dev/null
+}
+
 # UpdateItem for TENANT#<id>/META. Sets status + last_seen_at. Upserts if absent
 # (safe: the dashboard normally creates the item at checkout, but a lone runner
 # retry must never crash on a missing item).
