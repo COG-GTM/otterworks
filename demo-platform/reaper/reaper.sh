@@ -298,15 +298,40 @@ YAML
 }
 
 sweep_orphan_dbs() {
-  local db id
+  local db id ids known
+  # tenant_db_name is lossy: every character outside [a-z0-9] becomes '_', so
+  # otterworks_preston_test is what a tenant id of "preston-test" *or*
+  # "preston_test" produces. Stripping the prefix and looking the result up in
+  # the control table therefore misses live hyphenated tenants and deletes them
+  # minutes after checkout. Compare in the lossy direction instead: a database
+  # is an orphan only when no tenant in the control table maps onto its name.
+  if ! ids="$(ctl_tenant_ids)"; then
+    warn "control-table scan failed; skipping orphan-DB sweep (fail-closed)"
+    return 0
+  fi
+  # An empty control table would make every otterworks_* database look like an
+  # orphan and wipe them all. That is almost always a transient/misconfigured
+  # state (mid-bootstrap, wrong table) rather than a genuine "delete everything"
+  # signal, so treat it like a failed scan and skip: the namespace/S3/DDB sweeps
+  # still run, and a real empty table simply has no databases to reap anyway.
+  if [ -z "$(printf '%s' "${ids}" | tr -d '[:space:]')" ]; then
+    warn "control table has no tenants; skipping orphan-DB sweep (fail-closed)"
+    return 0
+  fi
+  known="$(while IFS= read -r id; do
+             [ -n "${id}" ] || continue
+             printf '%s\n' "$(tenant_db_name "${id}")"
+           done <<EOF
+${ids}
+EOF
+)"
   for db in $(list_tenant_dbs); do
     [ "${db}" = "otterworks" ] && continue
     id="${db#otterworks_}"
     [ -n "${id}" ] || continue
-    if ! ctl_tenant_exists "${id}"; then
-      warn "orphan database ${db} (no TENANT# item) -> GC"
-      gc_tenant "${id}" "orphan-database"
-    fi
+    printf '%s\n' "${known}" | grep -qxF "${db}" && continue
+    warn "orphan database ${db} (no TENANT# item) -> GC"
+    gc_tenant "${id}" "orphan-database"
   done
 }
 
