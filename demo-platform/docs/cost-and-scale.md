@@ -185,7 +185,15 @@ each instance type has a fixed ENI/IP budget. At 15 pods per tenant this
 exhausts both the per-node limit and the subnet CIDR long before compute runs
 out. **Prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) makes the CNI
 allocate /28 prefixes instead of single IPs, raising per-node pod density by
-roughly an order of magnitude. Subnets are sized /20 to match.
+roughly an order of magnitude, and `kubelet.maxPods: 110` on the `EC2NodeClass`
+is what makes Karpenter schedule to that density — it does not read the CNI
+setting and otherwise bin-packs to the plain ENI budget.
+
+Density is only half of it: the addresses have to exist. The original node
+subnets are /24s — ~500 usable across two AZs, which is ~30 `full` tenants'
+worth of pods. `aws_subnet.pods` adds a /20 per AZ (~8,700 total) tagged for
+Karpenter discovery. It is additive, so no existing subnet, node or load
+balancer is touched by the apply.
 
 **RDS connections.** Connections are `pools × services × tenants`, and they are
 held whether or not the tenant is being used: a live full tenant sitting idle
@@ -211,7 +219,42 @@ independent of the cluster, so a cluster rebuild does not lose the tenant
 inventory — and, just as important, the reaper can still identify what *should*
 exist in order to spot what should not.
 
-## 5. What is shared and what is per tenant
+## 5. Persistent tenants: what always-on costs
+
+A standing per-person environment (`deploy-tenant.sh <id> --ttl none`, or the
+whole roster via `deploy-tenant-batch.sh`) opts out of both halves of the
+lifecycle: no expiry for the reaper to act on, and — because idle suspend only
+considers tenants with a control-table item — **no scale-to-zero**. That is the
+point: the attendee types their URL and the tenant answers, with no wake step.
+It also means lever 1 above, the one worth 10×, does not apply to them.
+
+What 100 permanently-awake tenants reserve, and roughly cost in spot compute:
+
+| Profile | per tenant | 100 tenants | nodes | compute |
+|---|---:|---:|---:|---:|
+| `full` (15 pods) | ~1.5 vCPU / 3.5 GiB | ~150 vCPU / 350 GiB | ~45 × `m6a.2xlarge` | ~$3,600/mo |
+| `core` (7 pods) | ~0.5 vCPU / 1.3 GiB | ~50 vCPU / 130 GiB | ~10 × `m6a.2xlarge` | ~$800/mo |
+
+So the choice of profile is worth ~$2,800/month at this size, and it is the
+only lever left once sleeping is off the table. Deploy `--profile core` unless a
+lab needs the other eight services (`admin-service`'s planted crash-loop is the
+usual reason it does not).
+
+The ceilings to respect, in the order they bind:
+
+| Limit | Where | Persistent tenants it allows |
+|---|---|---:|
+| Pod IPs | node subnets (see §4) | ~500 `full` / ~1,000 `core` |
+| PgBouncer `max_client_conn = 2000` | `demo-platform/k8s/pgbouncer.yaml` | ~125 awake `full` |
+| NodePool `limits.cpu: "400"` | `demo-platform/k8s/karpenter/nodepool.yaml` | ~130 `full` / ~400 `core` |
+
+Two operational consequences: nothing reclaims a persistent tenant, so a roster
+that outlives its workshop bills until someone runs
+`scripts/teardown-tenant.sh <id>`; and `scripts/tenant-scale.sh <id> down` is
+the manual equivalent of the suspend they no longer get — worth doing for the
+names that never showed up.
+
+## 6. What is shared and what is per tenant
 
 | Layer | Shared (platform plane) | Per tenant |
 |---|---|---|
@@ -227,7 +270,7 @@ be created.** Everything a tenant needs either already exists (shared) or lives
 inside Kubernetes and dies with the namespace. That is what makes teardown
 total, and orphans impossible by construction rather than by cleanup.
 
-## 6. Guardrails
+## 7. Guardrails
 
 - Every Terraform-managed resource carries `otterworks:managed-by`,
   `otterworks:component` and `Environment` via provider `default_tags`, so

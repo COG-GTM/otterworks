@@ -20,6 +20,11 @@ output "private_subnet_ids" {
   value       = module.vpc.private_subnet_ids
 }
 
+output "pod_subnet_ids" {
+  description = "Wide (/20) node subnets Karpenter launches into"
+  value       = module.vpc.pod_subnet_ids
+}
+
 # --- EKS ---
 
 output "cluster_name" {

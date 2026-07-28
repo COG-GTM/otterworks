@@ -75,7 +75,7 @@ Deploy the whole roster — one `firstname-lastname` tenant per line of
 
 ```bash
 ./scripts/deploy-tenant-batch.sh --dry-run          # resolved ids, no changes
-./scripts/deploy-tenant-batch.sh --profile core --concurrency 4
+./scripts/deploy-tenant-batch.sh --concurrency 4
 ./scripts/deploy-tenant-batch.sh "Ada Lovelace"     # just one person
 ```
 
@@ -86,13 +86,36 @@ namespace already exists are skipped, so a partially-failed run is re-runnable;
 per-tenant logs land in `--log-dir` and the exit status is non-zero if any
 tenant failed.
 
-**Capacity:** a persistent tenant reserves its requests indefinitely — ~1.5 vCPU
-/ 3.5GiB on `full`, ~0.5 vCPU on `core`. A ~95-person roster is therefore ~140
-vCPU (`full`) or ~47 vCPU (`core`) of steady reservation, so size the node group
-(or Karpenter limits) accordingly and prefer `--profile core` unless a lab needs
-the whole estate. Idle scale-to-zero does **not** apply: `idle-suspend.sh` only
-considers tenants that have a control-table item, so a tenant deployed straight
-from the script stays up. Park one by hand with `./scripts/tenant-scale.sh <id> down`.
+Before deploying, the batch measures the roster against the free addresses in
+the node subnets and refuses a run that cannot fit — over the ceiling nothing
+fails fast, pods simply sit `Pending` and tenants time out one at a time,
+leaving the roster half deployed. `--no-preflight` overrides it, and the check
+is advisory (a warning) if EC2 cannot be queried.
+
+**Always on, by design.** Idle scale-to-zero does not apply to these:
+`idle-suspend.sh` only considers tenants that have a control-table item, and a
+tenant deployed straight from the script has none. Its URL therefore answers
+immediately, with no wake step (waking is `kubectl scale`, ~60–90s to ready — an
+eternity for someone who just typed their address). Park one by hand with
+`./scripts/tenant-scale.sh <id> down`; `up` brings it back.
+
+**Capacity.** A persistent tenant reserves its requests indefinitely — ~1.5 vCPU
+/ 3.5 GiB on `full`, ~0.5 vCPU / 1.3 GiB on `core` — and holds ~15 (`full`) or
+~7 (`core`) pod IPs for as long as it exists. Before deploying a roster of this
+size, check three ceilings:
+
+| Ceiling | Where | Room |
+|---|---|---|
+| Pod IPs | node subnets — the `/24`s hold ~500 total, `aws_subnet.pods` adds a `/20` per AZ | ~30 `full` before, ~500 after |
+| Node CPU | `limits.cpu` on the Karpenter NodePool | ~130 `full` / ~400 `core` |
+| DB clients | PgBouncer `max_client_conn` | ~125 awake `full` |
+
+A ~95-person roster is ~140 vCPU (`full`, the default) or ~47 vCPU (`core`) of
+permanent reservation — roughly $3,600 vs $800/month of spot compute. `full` is
+what a bug-hunt lab needs (`core` omits `admin-service`); `core` is the lever if
+the estate is larger than the lab. Either way the ceilings above are what decide
+whether the roster fits. See
+[`cost-and-scale.md`](../demo-platform/docs/cost-and-scale.md) §5.
 
 ## Isolation model (what is shared vs. per-tenant)
 

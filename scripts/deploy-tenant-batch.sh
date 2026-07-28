@@ -23,6 +23,7 @@
 #   --concurrency N     tenants to deploy in parallel (default: 4)
 #   --redeploy          also (re)deploy tenants whose namespace already exists
 #   --dry-run           print the resolved ids and commands; touch nothing
+#   --no-preflight      deploy even if the cluster cannot hold the roster
 #   --log-dir DIR       per-tenant logs (default: /tmp/otterworks-batch-<epoch>)
 #   --tier A|B | --profile core|full | --host-suffix D | --image-tag T
 #                       passed through to deploy-tenant.sh
@@ -42,7 +43,9 @@ TTL="none"
 CONCURRENCY=4
 REDEPLOY=false
 DRY_RUN=false
+PREFLIGHT=true
 LOG_DIR=""
+PROFILE="full"
 NAMES=()
 PASSTHROUGH=()
 
@@ -54,10 +57,12 @@ while [ $# -gt 0 ]; do
     --log-dir)     LOG_DIR="$2"; shift 2 ;;
     --redeploy)    REDEPLOY=true; shift ;;
     --dry-run)     DRY_RUN=true; shift ;;
+    --no-preflight) PREFLIGHT=false; shift ;;
     --tier|--profile|--host-suffix|--image-tag)
+                   [ "$1" = "--profile" ] && PROFILE="$2"
                    PASSTHROUGH+=("$1" "$2"); shift 2 ;;
     --skip-db)     PASSTHROUGH+=("$1"); shift ;;
-    -h|--help)     sed -n '2,33p' "$0"; exit 0 ;;
+    -h|--help)     sed -n '2,34p' "$0"; exit 0 ;;
     -*)            err "Unknown flag: $1"; exit 1 ;;
     *)             NAMES+=("$1"); shift ;;
   esac
@@ -117,6 +122,13 @@ done
 log "${#IDS[@]} tenant(s) from ${FROM}:"
 for id in "${IDS[@]}"; do printf '  %-28s <- %s\n' "$(tenant_namespace "${id}")" "${NAME_OF_ID[${id}]}"; done
 
+# Measured footprint of one tenant, from demo-platform/docs/cost-and-scale.md.
+case "${PROFILE}" in
+  core) PODS_EACH=7;  MILLICPU_EACH=500 ;;
+  *)    PODS_EACH=15; MILLICPU_EACH=1500 ;;
+esac
+log "Steady state: $(( ${#IDS[@]} * PODS_EACH )) pods / ~$(( (${#IDS[@]} * MILLICPU_EACH + 999) / 1000 )) vCPU reserved permanently (${PROFILE} profile, no scale-to-zero)."
+
 DEPLOY_ARGS=(--ttl "${TTL}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}")
 if [ "${DRY_RUN}" = true ]; then
   echo ""
@@ -141,6 +153,47 @@ fi
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"
 mkdir -p "${LOG_DIR}/status"
 log "Per-tenant logs: ${LOG_DIR}"
+
+# ---------- Capacity ----------
+# A persistent tenant never scales to zero -- idle-suspend only considers
+# tenants that have a control-table item, and these have none, which is what
+# keeps their URL answering without a wake step. So the roster is sized against
+# the cluster's totals rather than against how many people are using it at once,
+# and pod IPs bind first: the VPC CNI gives every pod a real subnet address, and
+# a /24 node subnet holds ~250 of them.
+capacity_preflight() {
+  local want="$1" need_ips need_cpu free_ips limit_cpu rc=0
+  need_ips=$(( want * PODS_EACH ))
+  need_cpu=$(( (want * MILLICPU_EACH + 999) / 1000 ))
+
+  # Free addresses across every subnet Karpenter may launch into. Prefix
+  # delegation books a /28 at a time, so this reads slightly pessimistic --
+  # addresses reserved for a node's next pods count as allocated.
+  free_ips="$(aws ec2 describe-subnets --region "${AWS_REGION}" \
+    --filters "Name=tag:karpenter.sh/discovery,Values=${EKS_CLUSTER}" \
+    --query 'sum(Subnets[].AvailableIpAddressCount)' --output text 2>/dev/null | sed 's/\..*//')"
+  if [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
+    log "Capacity: ${want} × ${PODS_EACH} pods = ${need_ips} pod IPs needed, ${free_ips} free in the node subnets."
+    if [ "${free_ips}" -lt "${need_ips}" ]; then
+      err "Not enough pod IPs for ${want} persistent ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."
+      err "Pods would sit Pending and the deploys would time out one by one."
+      err "Widen the node subnets first: apply aws_subnet.pods in platform/terraform (a /20 per AZ),"
+      err "or deploy fewer people at a time. --no-preflight overrides this check."
+      rc=1
+    fi
+  else
+    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
+  fi
+
+  # Advisory: the NodePool ceiling counts node capacity, not requests, so it is
+  # not a like-for-like comparison -- but being under it already means the
+  # roster cannot fit.
+  limit_cpu="$(kubectl get nodepool tenants -o jsonpath='{.spec.limits.cpu}' 2>/dev/null)"
+  if [[ "${limit_cpu}" =~ ^[0-9]+$ ]] && [ "${limit_cpu}" -lt "${need_cpu}" ]; then
+    warn "Karpenter NodePool 'tenants' is capped at ${limit_cpu} vCPU; ${want} ${PROFILE} tenants request ~${need_cpu}. Raise spec.limits.cpu."
+  fi
+  return "${rc}"
+}
 
 # ---------- Deploy ----------
 # Status is written to a file per tenant rather than a shell variable: each
@@ -167,6 +220,10 @@ for id in "${IDS[@]}"; do
   QUEUE+=("${id}")
 done
 [ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} existing tenant(s) (pass --redeploy to redeploy them)."
+
+if [ "${#QUEUE[@]}" -gt 0 ] && [ "${PREFLIGHT}" = true ]; then
+  capacity_preflight "${#QUEUE[@]}" || exit 1
+fi
 
 log "Deploying ${#QUEUE[@]} tenant(s), ${CONCURRENCY} at a time..."
 running=0

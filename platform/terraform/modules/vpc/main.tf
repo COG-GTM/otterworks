@@ -10,6 +10,11 @@ data "aws_availability_zones" "available" {
 locals {
   azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
 
+  # The /20 pod subnets take blocks 1..az_count of the VPC's /20 grid; block 6
+  # is where the /24 public subnets already sit (x.x.100.0/24), so past five AZs
+  # the two would overlap and the apply would fail on a CIDR conflict.
+  pod_subnet_az_limit = 5
+
   common_tags = {
     Module  = "vpc"
     Project = var.project
@@ -86,6 +91,44 @@ resource "aws_subnet" "private" {
   })
 }
 
+# --- Pod Subnets ---
+
+# The /24s above hold ~250 addresses each, and the VPC CNI gives every pod a
+# real subnet address: two AZs is ~500 pods, which a few dozen tenants exhaust
+# while compute is still half idle. Persistent tenants make that the binding
+# constraint rather than a transient one, because they never scale to zero.
+#
+# These are additional node subnets, /20 (4091 usable) each, carrying the same
+# discovery tag so Karpenter launches into whichever candidate has the most free
+# addresses. They are additive: the existing subnets keep their CIDRs, so no
+# subnet is replaced and no running node is disturbed by an apply.
+#
+# Deliberately not tagged `kubernetes.io/role/elb` -- load balancer placement
+# stays on the original public subnets, so the shared NLB is not recreated.
+resource "aws_subnet" "pods" { # nosemgrep: terraform.aws.security.aws-subnet-has-public-ip-address.aws-subnet-has-public-ip-address
+  count = var.az_count
+
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index + 1)
+  availability_zone = local.azs[count.index]
+
+  # Nodes land here, so egress has to work the same way it does in whichever
+  # subnet they use today: a public address when there is no NAT gateway.
+  map_public_ip_on_launch = !var.enable_nat_gateway
+
+  tags = merge(local.common_tags, local.karpenter_discovery, {
+    Name                                        = "${var.project}-pods-${local.azs[count.index]}"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  })
+
+  lifecycle {
+    precondition {
+      condition     = var.az_count <= local.pod_subnet_az_limit
+      error_message = "az_count > ${local.pod_subnet_az_limit} overlaps the public subnets; renumber the pod subnets before widening the VPC."
+    }
+  }
+}
+
 # --- NAT Gateway (single, cost-optimized for dev) ---
 
 resource "aws_eip" "nat" {
@@ -153,4 +196,14 @@ resource "aws_route_table_association" "private" {
 
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
+}
+
+# Same route table the nodes already use: private (via NAT) when there is a NAT
+# gateway, public (via the IGW) otherwise. A pod subnet on the private table
+# with no NAT would give nodes no route out.
+resource "aws_route_table_association" "pods" {
+  count = var.az_count
+
+  subnet_id      = aws_subnet.pods[count.index].id
+  route_table_id = var.enable_nat_gateway ? aws_route_table.private.id : aws_route_table.public.id
 }

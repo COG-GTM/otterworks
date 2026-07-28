@@ -47,8 +47,17 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
 - **Fix:** enable **VPC-CNI prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) → up to **110**
   pods/node and far denser IP packing (/28 prefixes instead of one IP per pod).
   `scripts/enable-prefix-delegation.sh` sets it; **new nodes** pick it up, so drain/recycle
-  nodes during a quiet window. Also confirm the private subnets have enough free CIDR space
-  (widen subnets / add a secondary CIDR if not).
+  nodes during a quiet window.
+- **Karpenter does not read that CNI setting.** It sizes a node's pod capacity from the plain
+  ENI/IP budget unless told otherwise, so `kubelet.maxPods: 110` on the `EC2NodeClass`
+  (`demo-platform/k8s/karpenter/nodepool.yaml`) is what actually lets it bin-pack to the
+  density the CNI can serve. Without it, prefix delegation buys addresses that the scheduler
+  never uses.
+- **Subnet space is the other half.** The original node subnets are `/24`s (~250 addresses
+  each, ~500 across two AZs) — under 40 full tenants' worth of pods, and prefix delegation
+  consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ
+  (~4,000 addresses each) carrying the `karpenter.sh/discovery` tag, so Karpenter prefers
+  them without any change to the existing subnets, the node group, or the shared NLB.
 
 ## 3. Shared RDS connection limits — APPLIED (PgBouncer)
 Every tenant database lives on one RDS instance, and each service holds its own pool, so raw
@@ -111,3 +120,15 @@ tenant churn, node recycles, and cluster loss — independent of the ephemeral i
 Autoscaling and PgBouncer are applied, so the remaining wall is pod IPs: high-tens (≈40–80
 tenants) needs prefix delegation, without which you exhaust pod IPs well before node cost
 becomes the limit.
+
+Those per-node numbers assume the subnets have addresses to give. Total pod IPs, not
+pods/node, is what caps a fleet of **persistent, always-on** tenants, since none of them
+ever scale to zero:
+
+| Node subnets | usable IPs | `full` tenants (15 pods) | `core` tenants (7 pods) |
+|---|---:|---:|---:|
+| 2 × `/24` (original) | ~500 | ~30 | ~70 |
+| + 2 × `/20` (`aws_subnet.pods`) | ~8,700 | ~500 | ~1,000 |
+
+Past that the order of walls is PgBouncer's `max_client_conn = 2000` (~16 client connections
+per awake full tenant → ~125 tenants) and the `cpu: "400"` ceiling on the Karpenter NodePool.
