@@ -117,6 +117,15 @@ initialize: |
      done'
   # Remove containers but KEEP the seeded volumes so they are captured in the snapshot.
   $COMPOSE down
+
+  # Cluster/IaC tooling for the multi-tenant platform scripts, which abort on a missing
+  # binary (`require_bins aws kubectl helm terraform jq`). terraform is pinned to the
+  # version CI validates with; the image already carries aws and jq.
+  curl -fsSL -o /tmp/tf.zip https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
+  sudo unzip -o -q /tmp/tf.zip -d /usr/local/bin && sudo chmod +x /usr/local/bin/terraform
+  curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sudo bash
 # Install project dependencies (runs during builds, surfaced to agent at session start).
 maintenance: |
   # file-service's Cargo.lock needs a newer Cargo than the baked-in 1.83 (edition2024).
