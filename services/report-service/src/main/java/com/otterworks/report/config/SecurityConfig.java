@@ -24,6 +24,9 @@ public class SecurityConfig {
                 .sessionManagement(management -> management
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
+                        // Security 6 filters the ERROR dispatch; without this every error
+                        // forward is denied and the real status is replaced by 403.
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/reports/**").permitAll())

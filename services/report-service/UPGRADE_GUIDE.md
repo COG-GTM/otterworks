@@ -37,6 +37,17 @@ Most of the above was produced by the OpenRewrite recipe
 - `application.properties` — dropped the SpringFox `spring.mvc.pathmatch.matching-strategy`
   workaround and the explicit Hibernate dialects (Hibernate 6 auto-detects).
 
+## Behavior notes
+
+- **Trailing slashes no longer match.** Spring Framework 6 disables trailing-slash matching by
+  default, so `GET /api/v1/reports/` now 404s where it returned 200 on Boot 2.5. No in-repo
+  client relies on it (the frontend never calls this service; the gateway routes without the
+  trailing slash). Restore with `WebMvcConfigurer.configurePathMatch(...).setUseTrailingSlashMatch(true)`
+  if an external client needs it.
+- **`/error` must be permitted.** Spring Security 6 filters the ERROR dispatch, so a
+  `SecurityFilterChain` that does not permit `/error` turns *every* error response into a 403 —
+  including errors on paths that are themselves permitted. `SecurityConfig` permits it explicitly.
+
 ## Remaining tech debt
 
 | Axis | Item | Notes |
