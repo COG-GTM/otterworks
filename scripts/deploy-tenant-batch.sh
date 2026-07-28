@@ -138,6 +138,17 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
     || { err "Could not reach EKS cluster ${EKS_CLUSTER} in ${AWS_REGION}."; exit 1; }
 fi
 
+# Warm the shared Terraform working directory ONCE, serially, before fanning
+# out: each deploy-tenant.sh calls load_infra_outputs, which runs
+# `terraform init` in infrastructure/terraform. Concurrent inits in one
+# directory race on .terraform/ (and the failure is swallowed by `|| true`), so
+# a parallel worker can then read empty outputs and deploy a tenant with no DB
+# wiring. A pre-warmed directory makes each worker's init a concurrency-safe
+# no-op re-init.
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+terraform -chdir="${REPO_ROOT}/infrastructure/terraform" init -input=false >/dev/null \
+  || { err "terraform init failed in ${REPO_ROOT}/infrastructure/terraform"; exit 1; }
+
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"
 mkdir -p "${LOG_DIR}/status"
 log "Per-tenant logs: ${LOG_DIR}"
