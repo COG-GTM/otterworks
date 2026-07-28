@@ -1,0 +1,23 @@
+repo: https://github.com/COG-GTM/otterworks
+service: services/report-service
+ticket: TTRWRKS-4          # https://cog-gtm.atlassian.net/browse/TTRWRKS-4
+build: maven
+current:
+  java: 8
+  spring_boot: 2.5.14
+targets:
+  java: 17
+  spring_boot: 3.2.x
+uses:
+  javax_persistence: true
+  javax_servlet: true
+  javax_validation: true
+  javax_annotation: true
+  spring_security: true      # WebSecurityConfigurerAdapter in config/SecurityConfig.java
+  junit: 4                   # junit-jupiter excluded from spring-boot-starter-test
+  springfox: 3.0.0           # Docket bean in config/SwaggerConfig.java
+ci_provider: github-actions
+ci_jobs:
+  - .github/workflows/ci.yml        # job: report-service (temurin 8)
+  - .github/workflows/docker-build.yml
+demo_mode: true   # prioritize speed; skip optional steps

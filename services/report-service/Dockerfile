@@ -11,7 +11,7 @@ COPY src/ src/
 RUN mvn package -DskipTests -B
 
 # LEGACY: JRE 8 runtime (target: eclipse-temurin:17-jre or 21-jre)
-FROM eclipse-temurin:8-jre
+FROM eclipse-temurin:17-jre
 
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
