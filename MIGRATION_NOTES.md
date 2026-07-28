@@ -41,6 +41,12 @@ Scope: the two Maven services still on a pre-3.x Spring Boot line.
   are removed; the Boot BOM supplies JUnit 5.10.2 / Mockito 5.7.0.
 - Dockerfile: `maven:3.9-eclipse-temurin-17` builder, `eclipse-temurin:17-jre` runtime.
 - Added a `.gitignore` for the service (`target/` was previously not ignored here).
+- Runtime-testing fallout, fixed here: Hibernate 6 maps `@Lob String` to a Postgres large object
+  (`oid`), so `Report.errorMessage` is pinned back to a text column with
+  `@JdbcTypeCode(SqlTypes.LONGVARCHAR)`; Security 6 denies unmatched requests, so `SecurityConfig`
+  now permits `/error` plus a terminal `anyRequest().permitAll()` (otherwise every 404/500 came back
+  as an empty 403) and `/swagger-ui.html` (the configured UI path, previously only `/swagger-ui/**`).
+  The explicit `hibernate.dialect` properties are dropped here too (`HHH90000025`).
 
 ## legacy-portal (13 tests green on JDK 17)
 
