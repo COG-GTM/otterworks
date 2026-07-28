@@ -67,8 +67,8 @@ Neither service needed an `--add-opens` argLine, and no MockMvc trailing-slash f
 
 - `report-service` job: Temurin 8 → Temurin 17, `mvn compile`/`test`/`package` collapsed
   into `mvn -B verify`, with `cache: maven` dependency caching.
-- New `legacy-portal` job (Temurin 17, `./mvnw -B verify`, `cache: maven`) — the service
-  previously had no CI coverage.
+- `legacy-portal` job (added on `main` while this branch was in flight): Temurin 11 → 17,
+  `./mvnw test` → `./mvnw -B verify`, with `cache: maven`.
 
 ## Follow-ups (not in this PR)
 
@@ -76,5 +76,7 @@ Neither service needed an `--add-opens` argLine, and no MockMvc trailing-slash f
   (`--skip-dirs` in `.github/workflows/security-scan.yml`) as an intentionally-legacy
   service. Its dependencies are now current, so the exclusion can be dropped once someone
   is ready to triage whatever the first full scan reports.
-- Integration/E2E verification of both services against a live stack was not run here;
-  the gate was unit tests on JDK 17.
+- Both services were booted on JDK 17 and exercised end-to-end against a `main` baseline
+  (see the verification comment on the PR). Not covered there: `USAGE_ANALYTICS` reports
+  (downstream `analytics-service` unavailable; its fallback gap pre-exists on `main`) and
+  the legacy-portal on-prem profile.
