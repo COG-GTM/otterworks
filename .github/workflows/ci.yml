@@ -346,6 +346,22 @@ jobs:
           cache: maven
       - run: ./mvnw -B verify
 
+  # Java 11 / Maven - Legacy Portal
+  legacy-portal:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.legacy-portal == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/legacy-portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - run: ./mvnw test -B
+
   # Terraform validation
   infrastructure:
     needs: detect-changes
