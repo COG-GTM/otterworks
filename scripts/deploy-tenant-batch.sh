@@ -11,6 +11,11 @@
 # namespace is labelled demo/persistent=true, which every reaper path skips.
 # They are removed only by scripts/teardown-tenant.sh.
 #
+# Persistent is not the same as awake. A standing tenant still scales to zero
+# after an hour of no ingress traffic and wakes on the next check-out; pass
+# --always-on to exempt the roster from that, which is what makes every URL
+# answer cold at the cost of holding the whole fleet's compute and pod IPs.
+#
 # Resumable: a tenant whose namespace already exists is skipped unless
 # --redeploy is passed, so a partial run can simply be re-run.
 #
@@ -23,6 +28,7 @@
 #   --concurrency N     tenants to deploy in parallel (default: 4)
 #   --redeploy          also (re)deploy tenants whose namespace already exists
 #   --dry-run           print the resolved ids and commands; touch nothing
+#   --always-on         never scale these tenants to zero when idle
 #   --no-preflight      deploy even if the cluster cannot hold the roster
 #   --log-dir DIR       per-tenant logs (default: /tmp/otterworks-batch-<epoch>)
 #   --tier A|B | --profile core|full | --host-suffix D | --image-tag T
@@ -44,6 +50,7 @@ CONCURRENCY=4
 REDEPLOY=false
 DRY_RUN=false
 PREFLIGHT=true
+ALWAYS_ON=false
 LOG_DIR=""
 PROFILE="full"
 NAMES=()
@@ -57,12 +64,13 @@ while [ $# -gt 0 ]; do
     --log-dir)     LOG_DIR="$2"; shift 2 ;;
     --redeploy)    REDEPLOY=true; shift ;;
     --dry-run)     DRY_RUN=true; shift ;;
+    --always-on)   ALWAYS_ON=true; PASSTHROUGH+=("$1"); shift ;;
     --no-preflight) PREFLIGHT=false; shift ;;
     --tier|--profile|--host-suffix|--image-tag)
                    [ "$1" = "--profile" ] && PROFILE="$2"
                    PASSTHROUGH+=("$1" "$2"); shift 2 ;;
     --skip-db)     PASSTHROUGH+=("$1"); shift ;;
-    -h|--help)     sed -n '2,34p' "$0"; exit 0 ;;
+    -h|--help)     sed -n '2,40p' "$0"; exit 0 ;;
     -*)            err "Unknown flag: $1"; exit 1 ;;
     *)             NAMES+=("$1"); shift ;;
   esac
@@ -127,7 +135,13 @@ case "${PROFILE}" in
   core) PODS_EACH=7;  MILLICPU_EACH=500 ;;
   *)    PODS_EACH=15; MILLICPU_EACH=1500 ;;
 esac
-log "Steady state: $(( ${#IDS[@]} * PODS_EACH )) pods / ~$(( (${#IDS[@]} * MILLICPU_EACH + 999) / 1000 )) vCPU reserved permanently (${PROFILE} profile, no scale-to-zero)."
+PEAK_PODS=$(( ${#IDS[@]} * PODS_EACH ))
+PEAK_CPU=$(( (${#IDS[@]} * MILLICPU_EACH + 999) / 1000 ))
+if [ "${ALWAYS_ON}" = true ]; then
+  log "Always-on: ${PEAK_PODS} pods / ~${PEAK_CPU} vCPU reserved permanently (${PROFILE} profile, no scale-to-zero)."
+else
+  log "Peak ${PEAK_PODS} pods / ~${PEAK_CPU} vCPU while the roster is awake (${PROFILE} profile); idle tenants scale to zero after an hour."
+fi
 
 DEPLOY_ARGS=(--ttl "${TTL}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}")
 if [ "${DRY_RUN}" = true ]; then
@@ -155,12 +169,10 @@ mkdir -p "${LOG_DIR}/status"
 log "Per-tenant logs: ${LOG_DIR}"
 
 # ---------- Capacity ----------
-# A persistent tenant never scales to zero -- idle-suspend only considers
-# tenants that have a control-table item, and these have none, which is what
-# keeps their URL answering without a wake step. So the roster is sized against
-# the cluster's totals rather than against how many people are using it at once,
-# and pod IPs bind first: the VPC CNI gives every pod a real subnet address, and
-# a /24 node subnet holds ~250 of them.
+# Sized against the whole roster, not against how many people use it at once:
+# a batch brings every tenant up together, and with --always-on they stay up.
+# Pod IPs bind first -- the VPC CNI gives every pod a real subnet address, and a
+# /24 node subnet holds ~250 of them.
 capacity_preflight() {
   local want="$1" need_ips need_cpu free_ips limit_cpu rc=0
   need_ips=$(( want * PODS_EACH ))
@@ -175,7 +187,7 @@ capacity_preflight() {
   if [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
     log "Capacity: ${want} × ${PODS_EACH} pods = ${need_ips} pod IPs needed, ${free_ips} free in the node subnets."
     if [ "${free_ips}" -lt "${need_ips}" ]; then
-      err "Not enough pod IPs for ${want} persistent ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."
+      err "Not enough pod IPs for ${want} ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."
       err "Pods would sit Pending and the deploys would time out one by one."
       err "Widen the node subnets first: apply aws_subnet.pods in platform/terraform (a /20 per AZ),"
       err "or deploy fewer people at a time. --no-preflight overrides this check."
@@ -251,3 +263,8 @@ if [ "${#FAILED[@]}" -gt 0 ]; then
   exit 1
 fi
 log "Tenants are persistent (ttl=${TTL}); remove one with ./scripts/teardown-tenant.sh <id>"
+if [ "${ALWAYS_ON}" = true ]; then
+  log "They are always-on: the idle scan will not scale them to zero."
+else
+  log "They scale to zero after an hour idle and wake on check-out; pass --always-on to keep them up."
+fi

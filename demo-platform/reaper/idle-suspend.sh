@@ -11,8 +11,11 @@
 # Idleness is measured from real HTTP traffic, not from a timer: ingress-nginx
 # exports a per-namespace request counter on its metrics port, and every tenant
 # is reached exclusively through that controller. Each run walks every tenant
-# namespace and compares its counter against the value on the control-table item:
+# namespace and compares its counter against the value the last run stored:
 #
+#   labelled demo/always-on  -> exempt; never suspended (deploy-tenant.sh
+#                               --always-on), for standing environments someone
+#                               must be able to open cold
 #   counter increased        -> tenant is in use; record it and reset the clock
 #   counter unchanged/absent -> tenant took zero requests since the last run
 #   counter decreased to >0  -> controller restarted, but has served this tenant
@@ -84,11 +87,64 @@ ingress_request_counts() {
     || true
 }
 
+# The namespace of a tenant id -- the inverse of tenant_namespaces below. Kept
+# local rather than taken from scripts/lib/tenant-common.sh so the scan still
+# runs standalone with only control-common.sh sourced. The ids it is called with
+# come from stripping this same prefix, so they are already sanitised.
+idle_ns() { printf 'otterworks-%s' "$1"; }
+
+# Is this tenant exempt from suspension? Set by `deploy-tenant.sh --always-on`.
+# A label rather than an inference: exemption costs ~1.5 vCPU and ~15 pod IPs
+# for as long as the tenant exists, so it should be something somebody chose.
+tenant_always_on() {
+  [ "$(kubectl get ns "$1" -o jsonpath='{.metadata.labels.demo/always-on}' 2>/dev/null)" = "true" ]
+}
+
+# Where a tenant's idle bookkeeping lives. The dashboard's tenants have a
+# control-table item; tenants deployed straight from deploy-tenant.sh do not,
+# and the scan used to skip those entirely -- which quietly made every
+# script-deployed tenant always-on, whether or not anyone wanted it. They keep
+# their counters on the namespace instead, so the same decisions apply to both.
+declare -A TENANT_HAS_ITEM=()
+tenant_has_item() {
+  local id="$1"
+  if [ -z "${TENANT_HAS_ITEM[$id]+x}" ]; then
+    if ctl_tenant_exists "${id}"; then TENANT_HAS_ITEM[$id]=yes; else TENANT_HAS_ITEM[$id]=no; fi
+  fi
+  [ "${TENANT_HAS_ITEM[$id]}" = "yes" ]
+}
+
+# "<req_count> <idle_since> <was_running>", each "-" when unset. Callers read it
+# with `read -r`, so the fields cannot be empty.
+state_read() {
+  local id="$1" ns item c s r
+  ns="$(idle_ns "${id}")"
+  if tenant_has_item "${id}"; then
+    item="$(ctl_get "TENANT#${id}" "META")"
+    c="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
+    s="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
+    r="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"
+  else
+    c="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/req-count}' 2>/dev/null)"
+    s="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/idle-since}' 2>/dev/null)"
+    r="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/was-running}' 2>/dev/null)"
+  fi
+  printf '%s %s %s\n' "${c:--}" "${s:--}" "${r:--}"
+}
+
 # Persist the observed counter and the time it was first seen at this value.
 # Key attributes are PK/SK, matching control-common.sh -- DynamoDB rejects an
 # update whose key names differ from the table schema.
 record_activity() {
   local id="$1" count="$2" since="$3" out
+  if ! tenant_has_item "${id}"; then
+    if ! out="$(kubectl annotate ns "$(idle_ns "${id}")" --overwrite \
+                  "demo/req-count=${count}" "demo/idle-since=${since}" 2>&1)"; then
+      idle_warn "could not record activity for ${id} on its namespace: ${out}"
+      return 1
+    fi
+    return 0
+  fi
   # Report the AWS error rather than discarding it. A silently-dropped write
   # here disables suspension entirely while looking healthy, because the next
   # scan reads no previous counter and restarts the idle clock forever.
@@ -108,6 +164,14 @@ record_activity() {
 # transition 0 -> running is the only evidence the reaper gets.
 record_running() {
   local id="$1" running="$2" out
+  if ! tenant_has_item "${id}"; then
+    if ! out="$(kubectl annotate ns "$(idle_ns "${id}")" --overwrite \
+                  "demo/was-running=${running}" 2>&1)"; then
+      idle_warn "could not record run state for ${id} on its namespace: ${out}"
+      return 1
+    fi
+    return 0
+  fi
   if ! out="$(aws dynamodb update-item --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
                 --key "$(jq -n --arg id "TENANT#${id}" '{PK:{S:$id}, SK:{S:"META"}}')" \
                 --update-expression "SET was_running = :r" \
@@ -168,7 +232,7 @@ tenant_namespaces() {
 
 suspend_idle_tenants() {
   idle_log "idle scan starting (threshold=${IDLE_AFTER_SECONDS}s)"
-  local counts now ns id count prev since running item
+  local counts now ns id count prev since running was_running
   # Traffic is the only evidence of use, so without it there is nothing to
   # decide on. Skipping the pass delays suspension until the next run; guessing
   # scales every attendee's environment to zero mid-workshop.
@@ -180,17 +244,20 @@ suspend_idle_tenants() {
 
   while read -r id ns; do
     [ -n "${id}" ] || continue
-    ctl_tenant_exists "${id}" || continue
+    if tenant_always_on "${ns}"; then
+      idle_log "${id}: always-on, leaving it running"
+      continue
+    fi
 
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
     count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
     [ -n "${count}" ] || count=0
 
-    item="$(ctl_get "TENANT#${id}" "META")"
-    prev="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
-    since="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
-    was_running="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"
+    read -r prev since was_running <<< "$(state_read "${id}")"
+    [ "${prev}" != "-" ] || prev=""
+    [ "${since}" != "-" ] || since=""
+    [ "${was_running}" != "-" ] || was_running=""
 
     running="$(running_deployments "${ns}")"
     if [ "${running}" -eq 0 ]; then

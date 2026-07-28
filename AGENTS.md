@@ -115,10 +115,11 @@ the above changes `main`. Verify per the "Live verification" section of the runb
   does the same thing on demand for a single tenant.
 - Idle cost control: tenants that take no ingress traffic for an hour are scaled to zero
   automatically (`demo-platform/reaper/idle-suspend.sh`); the dashboard wakes them on
-  check-out. Manually: `scripts/tenant-scale.sh <ID> down|up`. **Persistent tenants are
-  exempt** — the idle scan skips anything without a control-table item, so a standing
-  per-person environment answers its URL with no wake step, and reserves its requests
-  (and ~15 pod IPs on `full`) permanently.
+  check-out. Manually: `scripts/tenant-scale.sh <ID> down|up`. This applies to persistent
+  tenants too: no expiry is not the same as never sleeping. **`--always-on` is the opt-out**
+  — it labels the namespace `demo/always-on=true` and the idle scan leaves it alone, so the
+  URL answers with no wake step, at the cost of reserving its requests (and ~15 pod IPs on
+  `full`) permanently.
 - Deploy only what a lab needs: `deploy-tenant.sh <ID> --profile core` brings up the 5
   services a browser session exercises instead of all 13. See
   `demo-platform/docs/cost-and-scale.md` for the capacity and cost model.

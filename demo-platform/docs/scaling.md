@@ -122,8 +122,9 @@ tenants) needs prefix delegation, without which you exhaust pod IPs well before 
 becomes the limit.
 
 Those per-node numbers assume the subnets have addresses to give. Total pod IPs, not
-pods/node, is what caps a fleet of **persistent, always-on** tenants, since none of them
-ever scale to zero:
+pods/node, is what caps a roster deployed in one batch — every tenant comes up at once —
+and what caps it permanently if it was deployed `--always-on`, since those never scale to
+zero:
 
 | Node subnets | usable IPs | `full` tenants (15 pods) | `core` tenants (7 pods) |
 |---|---:|---:|---:|

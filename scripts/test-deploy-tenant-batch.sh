@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # ------------------------------------------------------------------------------
-# Tests for the batch deploy's capacity preflight.
+# Tests for the batch deploy's capacity preflight and its lifecycle flags.
 #
-# Persistent tenants never scale to zero, so a roster's pods hold their VPC
-# addresses for as long as the tenants exist and the fleet is bounded by total
-# pod IPs rather than by concurrent use. Deploying past that ceiling does not
-# fail fast -- pods sit Pending and each tenant times out in turn, half the
-# roster in and half out. These tests pin the check that stops it, and pin that
-# it stays out of the way when there is room or when the operator overrides it.
+# A batch brings the whole roster up at once, so the fleet is bounded by total
+# pod IPs rather than by concurrent use -- permanently so with --always-on,
+# where nothing ever scales back to zero. Deploying past that ceiling does not
+# fail fast: pods sit Pending and each tenant times out in turn, half the roster
+# in and half out. These tests pin the check that stops it, pin that it stays
+# out of the way when there is room or when the operator overrides it, and pin
+# that staying awake is something the operator asks for.
 #
 # The batch script is run for real, from a copy whose deploy-tenant.sh, aws and
 # kubectl are stubs; nothing here touches an account or a cluster.
@@ -30,7 +31,7 @@ cp "${SCRIPT_DIR}/lib/tenant-common.sh" "${WORK}/scripts/lib/"
 # Records the tenants a run would have deployed.
 cat > "${WORK}/scripts/deploy-tenant.sh" <<'EOS'
 #!/usr/bin/env bash
-echo "deploy:$1" >> "${DEPLOY_LOG}"
+echo "deploy:$1 $*" >> "${DEPLOY_LOG}"
 EOS
 
 # FREE_IPS is what EC2 reports across the karpenter.sh/discovery subnets; the
@@ -68,7 +69,8 @@ run_batch() {
   echo "$?"
 }
 # Sorted: the batch deploys concurrently, so completion order is not fixed.
-deployed() { sort "${DEPLOY_LOG}" | tr '\n' ' ' | sed 's/ $//'; }
+deployed() { sed 's/ .*//' "${DEPLOY_LOG}" | sort | tr '\n' ' ' | sed 's/ $//'; }
+deploy_flags() { grep -c -- '--always-on' "${DEPLOY_LOG}"; }
 
 echo "batch deploy capacity preflight"
 
@@ -94,6 +96,18 @@ said "warns that it could not measure" "Could not read subnet capacity"
 # core tenants are 7 pods, not 15, so the same subnet holds more of them.
 FREE_IPS=20; rc="$(run_batch --profile core)"
 check "sizes the roster by profile" "${rc}" "0"
+
+# Staying awake is opt-in. Without the flag a tenant idles like any other, which
+# is the whole point of it being a flag: the exemption holds its compute and pod
+# IPs whether or not anyone opens the URL.
+FREE_IPS=4000; rc="$(run_batch)"
+check "does not make tenants always-on by default" "$(deploy_flags)" "0"
+said "  and says they will idle" "scale to zero after an hour idle"
+
+rc="$(run_batch --always-on)"
+check "--always-on succeeds" "${rc}" "0"
+check "  passes the flag to every tenant" "$(deploy_flags)" "2"
+said "  and says the fleet is permanently reserved" "reserved permanently"
 
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"

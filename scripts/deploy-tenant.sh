@@ -17,14 +17,22 @@
 #
 # Usage:
 #   ./scripts/deploy-tenant.sh <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] \
-#       [--ttl 8h|none] [--host-suffix demo.example.com] [--skip-db] \
-#       [--profile core|full]
+#       [--ttl 8h|none] [--always-on] [--host-suffix demo.example.com] \
+#       [--skip-db] [--profile core|full]
 #
-#   --ttl none  makes the tenant PERSISTENT: no expiry annotation is written and
-#               the namespace is labelled demo/persistent=true, which both the
-#               baseline TTL reaper and the platform reaper treat as "never
-#               reap" (including its database, S3 prefix and DynamoDB items).
-#               Persistent tenants are removed only by teardown-tenant.sh.
+#   Lifetime and wakefulness are separate choices:
+#
+#   --ttl none    makes the tenant PERSISTENT: no expiry annotation is written
+#                 and the namespace is labelled demo/persistent=true, which both
+#                 the baseline TTL reaper and the platform reaper treat as
+#                 "never reap" (including its database, S3 prefix and DynamoDB
+#                 items). Persistent tenants are removed only by
+#                 teardown-tenant.sh. They still scale to zero when idle.
+#
+#   --always-on   exempts the tenant from idle scale-to-zero (label
+#                 demo/always-on=true). Its URL answers with no wake step, at
+#                 the cost of holding ~1.5 vCPU and ~15 pod IPs forever. Opt in
+#                 only for environments someone must be able to open cold.
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
@@ -41,6 +49,7 @@ ATTENDEE_ID=""
 TIER="A"
 IMAGE_TAG_OVERRIDE=""
 TTL="8h"
+ALWAYS_ON=false
 HOST_SUFFIX="${HOST_SUFFIX:-}"
 SKIP_DB=false
 # Deploy only the services the lab needs. At 100 tenants the difference between
@@ -54,13 +63,14 @@ while [ $# -gt 0 ]; do
     --ttl)         TTL="$2"; shift 2 ;;
     --host-suffix) HOST_SUFFIX="$2"; shift 2 ;;
     --profile)     PROFILE="$2"; shift 2 ;;
+    --always-on)   ALWAYS_ON=true; shift ;;
     --skip-db)     SKIP_DB=true; shift ;;
     -*)            err "Unknown flag: $1"; exit 1 ;;
     *)             if [ -z "${ATTENDEE_ID}" ]; then ATTENDEE_ID="$1"; else err "Unexpected arg: $1"; exit 1; fi; shift ;;
   esac
 done
 
-[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h|none] [--profile core|full]"; exit 1; }
+[ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--ttl 8h|none] [--always-on] [--profile core|full]"; exit 1; }
 case "${TIER}" in A|B) ;; *) err "--tier must be A or B"; exit 1 ;; esac
 case "${PROFILE}" in core|full) ;; *) err "--profile must be core or full"; exit 1 ;; esac
 mapfile -t TENANT_SERVICES < <(profile_services "${PROFILE}")
@@ -102,8 +112,11 @@ case "${TTL}" in none|never|infinite|persistent) PERSISTENT=true ;; esac
 
 TENANT_LABELS=""
 TENANT_ANNOTATIONS=""
+if [ "${ALWAYS_ON}" = true ]; then
+  TENANT_LABELS=$'\n    demo/always-on: "true"'
+fi
 if [ "${PERSISTENT}" = true ]; then
-  TENANT_LABELS=$'\n    demo/persistent: "true"'
+  TENANT_LABELS="${TENANT_LABELS}"$'\n    demo/persistent: "true"'
   log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, persistent: no TTL, reapers skip it)"
 else
   EXPIRES_AT="$(ttl_to_expiry "${TTL}")"
@@ -209,6 +222,13 @@ if [ "${PERSISTENT}" = true ]; then
   kubectl annotate namespace "${NS}" demo/expires-at- demo/expires-at-epoch- >/dev/null 2>&1 || true
 else
   kubectl label namespace "${NS}" demo/persistent- >/dev/null 2>&1 || true
+fi
+if [ "${ALWAYS_ON}" = true ]; then
+  log "Tenant '${ATTENDEE_ID}' is always-on: the idle scan will not scale it to zero."
+else
+  # Dropping the flag on a redeploy has to take the label with it, or the
+  # tenant keeps its exemption from a decision nobody made twice.
+  kubectl label namespace "${NS}" demo/always-on- >/dev/null 2>&1 || true
 fi
 
 # ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------

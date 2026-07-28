@@ -222,11 +222,15 @@ exist in order to spot what should not.
 ## 5. Persistent tenants: what always-on costs
 
 A standing per-person environment (`deploy-tenant.sh <id> --ttl none`, or the
-whole roster via `deploy-tenant-batch.sh`) opts out of both halves of the
-lifecycle: no expiry for the reaper to act on, and — because idle suspend only
-considers tenants with a control-table item — **no scale-to-zero**. That is the
-point: the attendee types their URL and the tenant answers, with no wake step.
-It also means lever 1 above, the one worth 10×, does not apply to them.
+whole roster via `deploy-tenant-batch.sh`) opts out of expiry only: there is no
+deadline for the reaper to act on, but the tenant still scales to zero after an
+hour of no traffic, so lever 1 above — the one worth 10× — still applies.
+
+Adding `--always-on` is what gives that up. It labels the namespace
+`demo/always-on=true`, the idle scan skips it, and the attendee's URL answers
+with no wake step (~60–90s otherwise). Reach for it only where someone must be
+able to open a cold environment; the bill below is the price of the whole roster
+being exempt.
 
 What 100 permanently-awake tenants reserve, and roughly cost in spot compute:
 
@@ -240,19 +244,22 @@ only lever left once sleeping is off the table. Deploy `--profile core` unless a
 lab needs the other eight services (`admin-service`'s planted crash-loop is the
 usual reason it does not).
 
-The ceilings to respect, in the order they bind:
+A batch deploy brings every tenant up at once whether or not the flag is set, so
+the ceilings below bind at deploy time either way — they are permanent only for
+an always-on roster.
 
-| Limit | Where | Persistent tenants it allows |
+| Limit | Where | Always-on tenants it allows |
 |---|---|---:|
 | Pod IPs | node subnets (see §4) | ~500 `full` / ~1,000 `core` |
 | PgBouncer `max_client_conn = 2000` | `demo-platform/k8s/pgbouncer.yaml` | ~125 awake `full` |
 | NodePool `limits.cpu: "400"` | `demo-platform/k8s/karpenter/nodepool.yaml` | ~130 `full` / ~400 `core` |
 
-Two operational consequences: nothing reclaims a persistent tenant, so a roster
-that outlives its workshop bills until someone runs
-`scripts/teardown-tenant.sh <id>`; and `scripts/tenant-scale.sh <id> down` is
-the manual equivalent of the suspend they no longer get — worth doing for the
-names that never showed up.
+One operational consequence holds either way: nothing reclaims a persistent
+tenant, so a roster that outlives its workshop keeps its database and S3 prefix
+(and, if always-on, its compute) until someone runs
+`scripts/teardown-tenant.sh <id>`. For an always-on roster,
+`scripts/tenant-scale.sh <id> down` is the manual equivalent of the suspend it
+no longer gets — worth doing for the names that never showed up.
 
 ## 6. What is shared and what is per tenant
 

@@ -20,21 +20,19 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$
 
 # ---- stubs -------------------------------------------------------------------
 declare -A ITEM_COUNT ITEM_SINCE ITEM_RUNNING
-declare -A NS_RUNNING NS_CHAOS METRIC
+declare -A NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON
 SUSPENDED=""
 
-ctl_tenant_exists() { [ -n "${ITEM_COUNT[$1]+x}" ] || [ -n "${NS_RUNNING[otterworks-$1]+x}" ]; }
-ctl_get() {
-  local id="${1#TENANT#}"
-  jq -n --arg c "${ITEM_COUNT[$id]:-}" --arg s "${ITEM_SINCE[$id]:-}" \
-        --arg r "${ITEM_RUNNING[$id]:-}" \
-    '{Item: ({} + (if $c=="" then {} else {req_count:{N:$c}} end)
-                + (if $s=="" then {} else {idle_since:{N:$s}} end)
-                + (if $r=="" then {} else {was_running:{N:$r}} end))}'
-}
+# The scan does not care which backend holds a tenant's counters (control-table
+# item or namespace annotations), so one store models both; state_read's own
+# two branches are covered by the contract tests at the bottom.
 ctl_audit() { :; }
+state_read() {
+  printf '%s %s %s\n' "${ITEM_COUNT[$1]:--}" "${ITEM_SINCE[$1]:--}" "${ITEM_RUNNING[$1]:--}"
+}
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
 record_running() { ITEM_RUNNING["$1"]="$2"; }
+tenant_always_on() { [ "${NS_ALWAYS_ON[$1]:-no}" = "yes" ]; }
 running_deployments() { echo "${NS_RUNNING[$1]:-0}"; }
 tenant_has_chaos() { [ "${NS_CHAOS[$1]:-no}" = "yes" ]; }
 # METRICS_UP=false models an unreachable metrics endpoint, which is distinct
@@ -66,8 +64,8 @@ eval "$(sed -n '/^tenant_namespaces()/,/^}/p;/^suspend_idle_tenants()/,/^}/p' "$
 real_src="$(sed -n '/^ingress_request_counts()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 
 reset_state() {
-  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC
-  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=()
+  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON
+  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=() NS_ALWAYS_ON=()
   SUSPENDED=""
   SUSPEND_RC=0
 }
@@ -203,6 +201,23 @@ SUSPENDED=""
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  until it succeeds, which is then recorded" "${ITEM_RUNNING[stuck]}" "0"
 
+# Exemption is opt-in and explicit: the label is what deploy-tenant.sh
+# --always-on writes, and it is the only thing that keeps an idle tenant up.
+reset_state
+NS_RUNNING[otterworks-standing]=13; METRIC[otterworks-standing]=100
+ITEM_COUNT[standing]=100; ITEM_SINCE[standing]=${STALE}; NS_ALWAYS_ON[otterworks-standing]=yes
+seen_running standing
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "never suspends an always-on tenant" "${SUSPENDED# }" ""
+
+# ...and the same tenant without the label is suspended, so the flag is doing
+# the work rather than something incidental about how it was deployed. This is
+# the regression that mattered: script-deployed tenants had no control-table
+# item, the scan skipped every one of them, and they were all silently exempt.
+NS_ALWAYS_ON[otterworks-standing]=no
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  suspends it once the label is gone" "${SUSPENDED# }" "standing"
+
 reset_state
 NS_RUNNING[otterworks-lab]=13; METRIC[otterworks-lab]=100
 ITEM_COUNT[lab]=100; ITEM_SINCE[lab]=${STALE}; NS_CHAOS[otterworks-lab]=yes
@@ -265,6 +280,63 @@ check "  without claiming the scrape failed" "${rc}" "0"
 CURL_RC=7; CURL_BODY=""
 real_counts >/dev/null 2>&1
 check "still reports failure when the scrape cannot be made" "$?" "1"
+
+# ---- contract of the real state backend --------------------------------------
+# Which store a tenant's counters live in is invisible to the scan, and getting
+# it wrong is silent in the worst way: writes that go nowhere mean the tenant
+# never accumulates idle time and is never suspended. Run the real functions
+# against both backends. Evaluated last, replacing the stubs above.
+eval "$(sed -n '/^idle_ns()/,/^}/p;/^tenant_has_item()/,/^}/p;/^state_read()/,/^}/p;/^record_activity()/,/^}/p;/^record_running()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
+# shellcheck disable=SC2034  # read by the real tenant_has_item / state_read
+declare -A TENANT_HAS_ITEM=() NS_ANNOT=()
+# These two record writes from inside `out="$(...)"`, i.e. from a subshell, so
+# they land in files rather than variables the parent would never see.
+WRITES="$(mktemp -d)"; trap 'rm -rf "${WRITES}"' EXIT
+HAS_ITEM=no
+# shellcheck disable=SC2034  # both are read by the real record_* implementations
+CONTROL_TABLE="otterworks-demo-control"
+# shellcheck disable=SC2034
+AWS_REGION="us-east-1"
+idle_warn() { echo "WARN: $*" >&2; }
+ctl_tenant_exists() { [ "${HAS_ITEM}" = "yes" ]; }
+ctl_get() { jq -n '{Item:{req_count:{N:"7"},idle_since:{N:"123"},was_running:{N:"1"}}}'; }
+aws() { echo "$2" >> "${WRITES}/aws"; printf '{}'; }
+kubectl() {
+  case "$*" in
+    *annotate*)         for a in "$@"; do case "${a}" in *=*) echo "${a}" >> "${WRITES}/annotate" ;; esac; done ;;
+    *demo/req-count*)   printf '%s' "${NS_ANNOT[req-count]:-}" ;;
+    *demo/idle-since*)  printf '%s' "${NS_ANNOT[idle-since]:-}" ;;
+    *demo/was-running*) printf '%s' "${NS_ANNOT[was-running]:-}" ;;
+  esac
+  return 0
+}
+wrote() { [ -f "${WRITES}/$1" ] || return 0; tr '\n' ' ' < "${WRITES}/$1" | sed 's/ $//'; }
+# TENANT_HAS_ITEM is the real tenant_has_item's cache; clearing it is what makes
+# a case's HAS_ITEM setting take effect.
+reset_backend() {
+  # shellcheck disable=SC2034  # the cache is read by the real tenant_has_item
+  TENANT_HAS_ITEM=(); NS_ANNOT=(); rm -f "${WRITES}/aws" "${WRITES}/annotate"
+}
+
+reset_backend; HAS_ITEM=yes
+check "reads a dashboard tenant's counters from its control item" "$(state_read dash)" "7 123 1"
+record_activity dash 42 555; record_running dash 0
+check "  and writes them back to DynamoDB" "$(wrote aws)" "update-item update-item"
+check "  never touching the namespace" "$(wrote annotate)" ""
+
+# A tenant deployed straight from the script has no item at all. Before the
+# namespace fallback existed this case was simply skipped by the scan.
+reset_backend; HAS_ITEM=no
+check "reports an unmeasured script tenant as unset, not zero" "$(state_read solo)" "- - -"
+record_activity solo 42 555
+record_running solo 0
+check "  records its counters on the namespace" "$(wrote annotate)" \
+  "demo/req-count=42 demo/idle-since=555 demo/was-running=0"
+check "  without writing to the control table" "$(wrote aws)" ""
+
+reset_backend; HAS_ITEM=no
+NS_ANNOT[req-count]=42; NS_ANNOT[idle-since]=555; NS_ANNOT[was-running]=1
+check "  and reads them back on the next pass" "$(state_read solo)" "42 555 1"
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

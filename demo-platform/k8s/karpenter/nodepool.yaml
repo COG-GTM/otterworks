@@ -32,11 +32,11 @@ spec:
         volumeType: gp3
         encrypted: true
         deleteOnTermination: true
-  # The cluster runs the CNI in prefix-delegation mode, but Karpenter does not
-  # read that setting: left alone it sizes a node's pod capacity from the
-  # instance's plain ENI/IP budget (58 on an m6a.2xlarge), so it launches new
-  # nodes for pods the ones it has could already hold. Say the number
-  # the CNI can actually serve; 110 is the upstream ceiling per node.
+  # The cluster runs the CNI in prefix-delegation mode, but Karpenter cannot see
+  # that: left alone it sizes a node's pod capacity from the instance's plain
+  # ENI/IP budget (58 on an m6a.2xlarge) and launches nodes for pods the ones it
+  # already has could hold. State the density the CNI actually serves; 110 is
+  # the upstream per-node ceiling.
   kubelet:
     maxPods: 110
   tags:
