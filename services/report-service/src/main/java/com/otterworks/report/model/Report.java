@@ -100,7 +100,7 @@ public class Report {
 
     @Lob
     @JdbcTypeCode(SqlTypes.LONGVARCHAR) // Hibernate 6 maps @Lob String to oid on PostgreSQL; the column is text
-    @Column(name = "error_message")
+    @Column(name = "error_message", columnDefinition = "text")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
 
