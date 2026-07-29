@@ -2,7 +2,7 @@ package com.otterworks.report.service;
 
 import com.otterworks.report.model.Report;
 import com.otterworks.report.util.ReportDateUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.FillPatternType;
@@ -28,18 +28,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Generates Excel (.xlsx) reports using Apache POI 4.1.2.
+ * Generates Excel (.xlsx) reports using Apache POI.
  *
- * LEGACY PATTERNS:
- * - Apache POI 4.1.2 (2020). Upgrade target: POI 5.2+
- * - POI 5.x changed several APIs: deprecated IndexedColors replaced by XSSFColor
+ * REMAINING TECH DEBT:
  * - Manual cell styling (verbose, repetitive)
  * - FileOutputStream for writing (should use OutputStream abstraction)
- *
- * UPGRADE NOTES:
- * - POI 5.x requires Java 8+ (already satisfied) but recommends Java 11+
- * - Some deprecated methods removed in POI 5.x
- * - Consider using Apache POI's SXSSFWorkbook for large datasets (streaming)
+ * - Consider SXSSFWorkbook for large datasets (streaming)
  */
 @Component
 public class ExcelReportGenerator {

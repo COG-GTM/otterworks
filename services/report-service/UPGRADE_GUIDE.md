@@ -1,7 +1,12 @@
 # Report Service Dependency Upgrade Guide
 
+> **Status: all 11 axes below are applied** (Java 17, Spring Boot 3.2.5, jakarta,
+> JUnit 5, springdoc, OpenPDF, commons-lang3, POI 5, Guava 33, Mockito 5).
+> See `MIGRATION_NOTES.md` at the repo root. Kept as the reference for what each
+> axis touched.
+
 This document describes 11 upgrade axes for migrating the report-service from its
-current legacy stack to a modern, supported baseline. Each axis lists the exact
+legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
 
 ---
