@@ -37,8 +37,7 @@ import java.util.Set;
  * - FileOutputStream for writing (should use OutputStream abstraction)
  *
  * UPGRADE NOTES:
- * - POI 5.x requires Java 8+ (already satisfied) but recommends Java 11+
- * - Some deprecated methods removed in POI 5.x
+ * - Consider XSSFColor over the deprecated IndexedColors
  * - Consider using Apache POI's SXSSFWorkbook for large datasets (streaming)
  */
 @Component
