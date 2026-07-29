@@ -14,6 +14,9 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.util.Date;
 
 /**
@@ -96,7 +99,9 @@ public class Report {
     @Schema(description = "Number of data rows in the report")
     private Integer rowCount;
 
+    // Hibernate 6 maps @Lob String to PostgreSQL oid; LONGVARCHAR keeps the existing text column.
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "error_message")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
