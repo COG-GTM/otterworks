@@ -50,6 +50,10 @@ Started from `OpenRewrite org.openrewrite.java.spring.boot3.UpgradeSpringBoot_3_
   orphaned `Info` builder).
 - Removed `spring.mvc.pathmatch.matching-strategy=ant-path-matcher` — that was the SpringFox
   workaround for Boot 2.6+, and it is actively harmful with Boot 3's `PathPatternParser`.
+- **Security 6 error dispatch:** Security 5 let unmatched requests through; Security 6's
+  `AuthorizationFilter` denies them *and* runs on the ERROR dispatch, so `/error` was denied and
+  every 400/404 came back as a bodiless 403. Restored the Security 5 behaviour with a final
+  `.anyRequest().permitAll()` (caught by the runtime check, not by any test).
 - **Hibernate 6:** `Report.errorMessage` is a `@Lob String`, which Hibernate 6 maps to a Postgres
   `oid` (the column silently reads back as a number). Added `@JdbcTypeCode(SqlTypes.LONGVARCHAR)`.
 - Dockerfile: `maven:3.8.7-eclipse-temurin-8` → `maven:3.9-eclipse-temurin-17`, runtime
@@ -98,5 +102,9 @@ Maven services.
 - `report-service` security filter chain still permits everything under `/api/v1/reports/**`
   (pre-existing `TODO: Add JWT validation`).
 - No service was moved to Java 21; `frontend/client-app/mobile` Android already builds at 21.
+- **Trailing slashes:** Spring Framework 6 no longer matches `GET /api/v1/reports/` to
+  `/api/v1/reports` — that URL is now 404 where it was 200 on `main`. No caller in this repo uses
+  the trailing-slash form; accepted as the framework default rather than re-enabled via
+  `PathPatternParser`/`setUseTrailingSlashMatch`.
 - Boot 3.2 deprecates `spring.jpa.hibernate.ddl-auto=update` style schema management in favour of
   migrations (Flyway/Liquibase) — unchanged here, still `update`.

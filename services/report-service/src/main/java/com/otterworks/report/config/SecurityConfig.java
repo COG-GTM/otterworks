@@ -24,7 +24,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll())  // TODO: Add JWT validation
+                        .requestMatchers("/api/v1/reports/**").permitAll()  // TODO: Add JWT validation
+                        // Security 6 authorizes the ERROR dispatch too; without this, /error
+                        // is denied and every 400/404 comes back as a bodiless 403.
+                        .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(frameOptions -> frameOptions.deny())
                         .xssProtection(xss -> xss
