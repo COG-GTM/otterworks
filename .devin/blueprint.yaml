@@ -86,7 +86,9 @@ initialize: |
 
   # Warm ~/.m2 so the Maven services resolve from cache instead of downloading Boot's tree.
   (cd services/report-service && mvn -B -q dependency:go-offline) || echo "WARN: report-service dependency warm-up failed."
-  (cd services/legacy-portal && ./mvnw -B -q dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
+  # System mvn, not ./mvnw: the wrapper downloads its own Maven distribution and that fetch
+  # fails here, so the wrapper form silently never warmed the cache.
+  (cd services/legacy-portal && mvn -B -q dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
 
   # Seed the "RetailCo enterprise drive" (~2,445 files / 15 departments / 60 docs) through the
   # gateway so a session only runs `make up` to come up data-rich. Postgres, DynamoDB and
