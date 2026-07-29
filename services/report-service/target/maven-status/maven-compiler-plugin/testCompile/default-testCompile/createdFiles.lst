@@ -1,0 +1,5 @@
+com/otterworks/report/service/PdfReportGeneratorTest.class
+com/otterworks/report/service/ExcelReportGeneratorTest.class
+com/otterworks/report/ReportServiceTest.class
+com/otterworks/report/service/CsvReportGeneratorTest.class
+com/otterworks/report/controller/ReportControllerIntegrationTest.class
