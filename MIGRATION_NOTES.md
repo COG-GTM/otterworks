@@ -46,6 +46,14 @@ Hand-fixed afterwards:
 - **HttpClient 5 read timeout**: `HttpComponentsClientHttpRequestFactory.setReadTimeout` is
   gone; the socket timeout now lives on the pooling connection manager's
   `ConnectionConfig`.
+- **Security 6 denies unmatched requests** where Security 5 allowed them. The translated
+  config listed `requestMatchers(...)` but no `anyRequest()`, so Boot's `/error` forward was
+  rejected and every 400/404 came back to the client as a bodyless 403 — found by runtime
+  A/B testing against `main`, not by the unit suite. Fixed with `.anyRequest().permitAll()`
+  (the service sits behind the gateway, which terminates authentication, so this matches the
+  pre-migration behaviour). `spring-security-test` was added so MockMvc actually runs the
+  filter chain — without it the suite bypassed security entirely, which is why it missed
+  this — plus a regression test asserting an unknown path returns 404 and not 403.
 - **Hibernate 6 `@Lob String`**: `Report.errorMessage` would have been remapped to a
   PostgreSQL `oid` column and broken at runtime — annotated
   `@JdbcTypeCode(SqlTypes.LONGVARCHAR)`.
@@ -54,7 +62,8 @@ Hand-fixed afterwards:
 - Dependency bumps the recipe left alone: POI 4.1.2 → 5.2.5, commons-io 2.6 → 2.15.1,
   Guava 28.0 → 33.0.0-jre, OpenCSV 4.6 → 5.9.
 
-Tests: 44 before (JUnit 4, JDK 8) → 44 after (JUnit 5, JDK 17), all passing. No
+Tests: 44 before (JUnit 4, JDK 8) → 45 after (JUnit 5, JDK 17, one added for the `/error`
+regression), all passing. No
 `--add-opens` was needed. No property-migrator warnings after the pathmatch property was
 removed.
 

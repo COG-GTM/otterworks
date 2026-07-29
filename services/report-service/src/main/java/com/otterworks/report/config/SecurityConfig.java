@@ -25,7 +25,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll())
+                        .requestMatchers("/api/v1/reports/**").permitAll()
+                        // Spring Security 6 denies unmatched requests, where 5 allowed them.
+                        // Without this, Boot's /error forward is rejected and 400s and 404s
+                        // reach the client as a bodyless 403.
+                        .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(frameOptions -> frameOptions.deny())
                         .contentTypeOptions(contentTypeOptions -> {})

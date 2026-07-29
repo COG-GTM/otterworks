@@ -188,6 +188,12 @@ public class ReportControllerIntegrationTest {
                 .andExpect(jsonPath("$.reports").isArray());
     }
 
+    @Test
+    public void unknownPathReturns404RatherThanForbidden() throws Exception {
+        mockMvc.perform(get("/does-not-exist"))
+                .andExpect(status().isNotFound());
+    }
+
     // ---- GET /api/v1/reports/{id}/download ----
 
     @Test
