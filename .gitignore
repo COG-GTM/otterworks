@@ -47,6 +47,10 @@ node_modules/
 coverage/
 *.tsbuildinfo
 
+# --- Java / Maven ---
+services/report-service/target/
+services/legacy-portal/target/
+
 # --- Kotlin ---
 services/notification-service/build/
 services/notification-service/.gradle/
