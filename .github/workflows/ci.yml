@@ -316,7 +316,7 @@ jobs:
       - run: npm test || true
       - run: npm run build
 
-  # Java 8 / Maven - Report Service (LEGACY)
+  # Java 17 / Maven - Report Service
   report-service:
     needs: detect-changes
     if: needs.detect-changes.outputs.report-service == 'true'
@@ -329,12 +329,13 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
+          cache: maven
       - run: mvn compile -B -q
       - run: mvn test -B
       - run: mvn package -DskipTests -B -q
 
-  # Java 11 / Maven - Legacy Portal
+  # Java 17 / Maven - Legacy Portal
   legacy-portal:
     needs: detect-changes
     if: needs.detect-changes.outputs.legacy-portal == 'true'
@@ -347,7 +348,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
+          cache: maven
       - run: ./mvnw test -B
 
   # Terraform validation
