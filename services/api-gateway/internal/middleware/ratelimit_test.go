@@ -100,3 +100,19 @@ func TestExtractIP(t *testing.T) {
 		})
 	}
 }
+
+func TestRateLimiter_RefillIsCappedAtMaxTokens(t *testing.T) {
+	now := time.Now()
+	rl := NewRateLimiter(2)
+	rl.now = func() time.Time { return now }
+
+	require.True(t, rl.Allow("10.0.0.1"))
+	require.True(t, rl.Allow("10.0.0.1"))
+	require.False(t, rl.Allow("10.0.0.1"), "bucket is empty")
+
+	// An hour of idling refills far more than the bucket can hold.
+	rl.now = func() time.Time { return now.Add(time.Hour) }
+	assert.True(t, rl.Allow("10.0.0.1"))
+	assert.True(t, rl.Allow("10.0.0.1"))
+	assert.False(t, rl.Allow("10.0.0.1"), "tokens are clamped to the burst size")
+}
