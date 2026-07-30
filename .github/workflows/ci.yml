@@ -331,8 +331,17 @@ jobs:
           distribution: temurin
           java-version: '8'
       - run: mvn compile -B -q
+      # Also runs the JaCoCo coverage gate (jacoco:check is bound to the test phase).
       - run: mvn test -B
       - run: mvn package -DskipTests -B -q
+      - name: Upload JaCoCo & surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-service-coverage
+          path: |
+            services/report-service/target/site/jacoco/**
+            services/report-service/target/surefire-reports/**
 
   # Java 11 / Maven - Legacy Portal
   legacy-portal:
