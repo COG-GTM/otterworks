@@ -32,11 +32,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Verifies HTTP status codes, content types, and response body structure
  * for every controller action. Uses a real Spring context with an H2
  * in-memory database (profile "test").
- *
- * Written in JUnit 4 style to match the current stack. After the JUnit 5
- * migration (Axis 4), replace:
- *   - @RunWith(SpringRunner.class) -> remove
- *   - org.junit.Test              -> org.junit.jupiter.api.Test
  */
 @SpringBootTest
 @AutoConfigureMockMvc

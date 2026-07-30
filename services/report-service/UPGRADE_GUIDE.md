@@ -26,7 +26,7 @@ Related Spring Boot 3 / Spring 6 changes that came with axis 2:
   X-XSS-Protection header is set via `headerValue(ENABLED_MODE_BLOCK)`.
 - Apache HttpClient 4 → 5 (`org.apache.hc.client5`). `HttpComponentsClientHttpRequestFactory
   .setReadTimeout(int)` was removed in Spring 6, so the socket timeout is configured on the
-  pooling connection manager via `SocketConfig`.
+  pooling connection manager via `ConnectionConfig`.
 - `spring.mvc.pathmatch.matching-strategy=ant-path-matcher` (a SpringFox workaround) and the
   explicit `hibernate.dialect` properties are gone — Boot 3 and Hibernate 6 handle both.
 - CI (`ci.yml`, `docker-build.yml`) and the Dockerfile build/runtime images are on Temurin 17.
