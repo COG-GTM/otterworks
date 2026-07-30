@@ -200,3 +200,114 @@ pub struct ActivityQuery {
 pub struct ActivityResponse {
     pub items: Vec<ActivityItem>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn share_permission_displays_lowercase() {
+        assert_eq!(SharePermission::Viewer.to_string(), "viewer");
+        assert_eq!(SharePermission::Editor.to_string(), "editor");
+    }
+
+    #[test]
+    fn share_permission_parses_case_insensitively() {
+        let cases = [
+            ("viewer", Some(SharePermission::Viewer)),
+            ("VIEWER", Some(SharePermission::Viewer)),
+            ("Editor", Some(SharePermission::Editor)),
+            ("editor", Some(SharePermission::Editor)),
+            ("owner", None),
+            ("", None),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(SharePermission::from_str_value(input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn share_permission_serializes_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&SharePermission::Editor).unwrap(),
+            "\"editor\""
+        );
+        let parsed: SharePermission = serde_json::from_str("\"viewer\"").unwrap();
+        assert_eq!(parsed, SharePermission::Viewer);
+    }
+
+    #[test]
+    fn file_metadata_round_trips_through_json() {
+        let now = Utc::now();
+        let file = FileMetadata {
+            id: Uuid::new_v4(),
+            name: "report.pdf".into(),
+            mime_type: "application/pdf".into(),
+            size_bytes: 42,
+            s3_key: "files/a/b".into(),
+            folder_id: Some(Uuid::new_v4()),
+            owner_id: Uuid::new_v4(),
+            version: 2,
+            is_trashed: false,
+            created_at: now,
+            updated_at: now,
+        };
+        let json = serde_json::to_string(&file).unwrap();
+        let back: FileMetadata = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, file.id);
+        assert_eq!(back.name, file.name);
+        assert_eq!(back.folder_id, file.folder_id);
+        assert_eq!(back.version, 2);
+    }
+
+    #[test]
+    fn file_detail_response_flattens_the_file() {
+        let now = Utc::now();
+        let file_id = Uuid::new_v4();
+        let detail = FileDetailResponse {
+            file: FileMetadata {
+                id: file_id,
+                name: "notes.txt".into(),
+                mime_type: "text/plain".into(),
+                size_bytes: 1,
+                s3_key: "files/x".into(),
+                folder_id: None,
+                owner_id: Uuid::new_v4(),
+                version: 1,
+                is_trashed: true,
+                created_at: now,
+                updated_at: now,
+            },
+            shared_with: vec![],
+        };
+        let value: serde_json::Value = serde_json::to_value(&detail).unwrap();
+        assert_eq!(value["name"], "notes.txt", "file fields are flattened");
+        assert_eq!(value["shared_with"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn list_files_query_defaults_missing_fields_to_none() {
+        let query: ListFilesQuery = serde_json::from_str("{}").unwrap();
+        assert!(query.folder_id.is_none());
+        assert!(query.owner_id.is_none());
+        assert!(query.page.is_none());
+        assert!(query.page_size.is_none());
+        assert!(query.include_trashed.is_none());
+    }
+
+    #[test]
+    fn activity_item_renames_type_field() {
+        let item = ActivityItem {
+            id: "upload-1".into(),
+            activity_type: "upload".into(),
+            description: "Uploaded a.txt".into(),
+            actor_name: "You".into(),
+            resource_name: "a.txt".into(),
+            resource_type: "file".into(),
+            resource_id: "1".into(),
+            created_at: Utc::now().to_rfc3339(),
+        };
+        let value = serde_json::to_value(&item).unwrap();
+        assert_eq!(value["type"], "upload");
+    }
+}

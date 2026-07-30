@@ -223,6 +223,202 @@ impl EventPublisher {
 }
 
 #[cfg(test)]
+mod publisher_tests {
+    use super::*;
+    use aws_sdk_sns::config::{retry::RetryConfig, BehaviorVersion, Credentials, Region};
+    use aws_smithy_runtime::client::http::test_util::{ReplayEvent, StaticReplayClient};
+    use aws_smithy_types::body::SdkBody;
+
+    const PUBLISH_OK: &str = concat!(
+        "<PublishResponse xmlns=\"http://sns.amazonaws.com/doc/2010-03-31/\">",
+        "<PublishResult><MessageId>11111111-2222-3333-4444-555555555555</MessageId></PublishResult>",
+        "<ResponseMetadata><RequestId>req-1</RequestId></ResponseMetadata></PublishResponse>"
+    );
+
+    const PUBLISH_ERR: &str = concat!(
+        "<ErrorResponse><Error><Type>Sender</Type><Code>InvalidParameter</Code>",
+        "<Message>Invalid parameter: TopicArn</Message></Error></ErrorResponse>"
+    );
+
+    /// An SNS client whose HTTP boundary is faked: `n` canned responses, no network.
+    fn replay(n: usize, status: u16, body: &'static str) -> StaticReplayClient {
+        StaticReplayClient::new(
+            (0..n)
+                .map(|_| {
+                    ReplayEvent::new(
+                        http::Request::builder()
+                            .method("POST")
+                            .uri("https://sns.us-east-1.amazonaws.com/")
+                            .body(SdkBody::empty())
+                            .unwrap(),
+                        http::Response::builder()
+                            .status(status)
+                            .body(SdkBody::from(body))
+                            .unwrap(),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    fn publisher(topic_arn: Option<&str>, http: StaticReplayClient) -> EventPublisher {
+        let conf = aws_sdk_sns::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("us-east-1"))
+            .credentials_provider(Credentials::for_tests())
+            .retry_config(RetryConfig::disabled())
+            .http_client(http)
+            .build();
+        EventPublisher {
+            client: aws_sdk_sns::Client::from_conf(conf),
+            topic_arn: topic_arn.map(str::to_string),
+        }
+    }
+
+    fn sent_bodies(http: &StaticReplayClient) -> Vec<String> {
+        http.actual_requests()
+            .map(|r| String::from_utf8_lossy(r.body().bytes().unwrap_or_default()).to_string())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn every_event_type_is_published_with_its_payload() {
+        let http = replay(7, 200, PUBLISH_OK);
+        let pubr = publisher(Some("arn:aws:sns:us-east-1:1:files"), http.clone());
+        let file = Uuid::new_v4();
+        let owner = Uuid::new_v4();
+        let folder = Uuid::new_v4();
+        let other = Uuid::new_v4();
+
+        pubr.file_uploaded(&file, &owner, Some(&folder), "a.txt", "text/plain", 12)
+            .await
+            .unwrap();
+        pubr.file_deleted(&file, &owner).await.unwrap();
+        pubr.file_shared(&file, &owner, &other).await.unwrap();
+        pubr.file_trashed(&file, &owner).await.unwrap();
+        pubr.file_restored(&file, &owner, None, "a.txt", "text/plain", 12)
+            .await
+            .unwrap();
+        pubr.file_updated(&file, &owner, Some(&folder), "b.txt", "text/plain", 12)
+            .await
+            .unwrap();
+        pubr.file_moved(&file, &owner, None).await.unwrap();
+
+        let bodies = sent_bodies(&http);
+        assert_eq!(bodies.len(), 7);
+        for expected in [
+            "file_uploaded",
+            "file_deleted",
+            "file_shared",
+            "file_trashed",
+            "file_restored",
+            "file_updated",
+            "file_moved",
+        ] {
+            assert!(
+                bodies.iter().any(|b| b.contains(expected)),
+                "no request carried {expected}"
+            );
+        }
+        assert!(bodies[0].contains("a.txt"));
+        assert!(bodies[2].contains(&other.to_string()));
+    }
+
+    #[tokio::test]
+    async fn publishing_is_skipped_when_no_topic_is_configured() {
+        let http = replay(0, 200, PUBLISH_OK);
+        let pubr = publisher(None, http.clone());
+
+        pubr.file_uploaded(
+            &Uuid::new_v4(),
+            &Uuid::new_v4(),
+            None,
+            "a.txt",
+            "text/plain",
+            1,
+        )
+        .await
+        .expect("a missing topic is not an error");
+
+        assert_eq!(http.actual_requests().count(), 0, "nothing is sent to SNS");
+    }
+
+    #[tokio::test]
+    async fn fifo_topics_get_group_and_deduplication_ids() {
+        let http = replay(1, 200, PUBLISH_OK);
+        let pubr = publisher(Some("arn:aws:sns:us-east-1:1:files.fifo"), http.clone());
+
+        pubr.file_trashed(&Uuid::new_v4(), &Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let body = &sent_bodies(&http)[0];
+        assert!(body.contains("MessageGroupId"), "{body}");
+        assert!(body.contains("MessageDeduplicationId"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn standard_topics_omit_fifo_only_parameters() {
+        let http = replay(1, 200, PUBLISH_OK);
+        let pubr = publisher(Some("arn:aws:sns:us-east-1:1:files"), http.clone());
+
+        pubr.file_moved(&Uuid::new_v4(), &Uuid::new_v4(), None)
+            .await
+            .unwrap();
+
+        let body = &sent_bodies(&http)[0];
+        assert!(!body.contains("MessageGroupId"), "{body}");
+        assert!(!body.contains("MessageDeduplicationId"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn sns_failures_surface_as_service_errors() {
+        let http = replay(1, 400, PUBLISH_ERR);
+        let pubr = publisher(Some("arn:aws:sns:us-east-1:1:files"), http);
+
+        let err = pubr
+            .file_deleted(&Uuid::new_v4(), &Uuid::new_v4())
+            .await
+            .expect_err("a 400 from SNS is an error");
+
+        assert!(matches!(err, ServiceError::SnsError(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn new_builds_a_publisher_from_config() {
+        let aws = crate::config::AwsConfig {
+            region: "us-east-1".into(),
+            endpoint_url: None,
+            s3_bucket: "b".into(),
+            dynamodb_table: "t".into(),
+            dynamodb_folders_table: "f".into(),
+            dynamodb_versions_table: "v".into(),
+            dynamodb_shares_table: "s".into(),
+        };
+
+        let default_endpoint = EventPublisher::new(&SnsConfig { topic_arn: None }, &aws).await;
+        assert!(default_endpoint.topic_arn.is_none());
+
+        let custom_endpoint = EventPublisher::new(
+            &SnsConfig {
+                topic_arn: Some("arn:aws:sns:us-east-1:1:files".into()),
+            },
+            &crate::config::AwsConfig {
+                endpoint_url: Some("http://localstack:4566".into()),
+                ..aws
+            },
+        )
+        .await;
+        assert_eq!(
+            custom_endpoint.topic_arn.as_deref(),
+            Some("arn:aws:sns:us-east-1:1:files")
+        );
+        // Clone is used when the publisher is shared across actix workers.
+        assert!(custom_endpoint.clone().topic_arn.is_some());
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
