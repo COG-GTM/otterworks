@@ -65,12 +65,17 @@ async def test_get_document_returns_403_for_other_owner(client, owner_id, jwt_se
     assert resp.status_code == 403
 
 
+# The three tests below assert the unauthenticated 401s, so they opt out of any
+# default credentials on the `client` fixture with httpx's auth=None. That is a
+# no-op today and stays correct once #32 authenticates the fixture.
 @pytest.mark.parametrize(
     ("method", "suffix"),
     [("get", ""), ("delete", ""), ("get", "/versions"), ("get", "/export")],
 )
 async def test_read_endpoints_require_authentication(client, method, suffix):
-    resp = await getattr(client, method)(f"/api/v1/documents/{uuid.uuid4()}{suffix}")
+    resp = await getattr(client, method)(
+        f"/api/v1/documents/{uuid.uuid4()}{suffix}", auth=None
+    )
 
     assert resp.status_code == 401
 
@@ -78,7 +83,9 @@ async def test_read_endpoints_require_authentication(client, method, suffix):
 @pytest.mark.parametrize("method", ["put", "patch"])
 async def test_write_endpoints_require_authentication(client, method):
     resp = await getattr(client, method)(
-        f"/api/v1/documents/{uuid.uuid4()}", json={"title": "Anonymous", "content": ""}
+        f"/api/v1/documents/{uuid.uuid4()}",
+        json={"title": "Anonymous", "content": ""},
+        auth=None,
     )
 
     assert resp.status_code == 401
@@ -86,7 +93,7 @@ async def test_write_endpoints_require_authentication(client, method):
 
 async def test_restore_version_requires_authentication(client):
     resp = await client.post(
-        f"/api/v1/documents/{uuid.uuid4()}/versions/{uuid.uuid4()}/restore"
+        f"/api/v1/documents/{uuid.uuid4()}/versions/{uuid.uuid4()}/restore", auth=None
     )
 
     assert resp.status_code == 401
