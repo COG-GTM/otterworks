@@ -267,6 +267,7 @@ async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
         "/api/v1/documents/",
         json={"title": "Header Doc"},
         headers={"X-User-Id": str(user_id)},
+        auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
 
@@ -277,5 +278,6 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
     resp = await client.post(
         "/api/v1/documents/",
         json={"title": "No Auth Doc"},
+        auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
