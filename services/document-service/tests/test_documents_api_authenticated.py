@@ -220,7 +220,8 @@ async def test_delete_document_returns_403_for_other_owner(client, owner_id, jwt
 # ---- Versions ----
 
 
-async def test_list_versions_returns_versions_in_ascending_order(client, owner_id, auth):
+async def test_list_versions_returns_every_version(client, owner_id, auth):
+    """Ordering is asserted in test_document_service_version_order.py, not here."""
     doc = await _create(client, owner_id, title="Versioned", content="v1")
     await client.put(
         f"/api/v1/documents/{doc['id']}",
@@ -231,7 +232,7 @@ async def test_list_versions_returns_versions_in_ascending_order(client, owner_i
     resp = await client.get(f"/api/v1/documents/{doc['id']}/versions", headers=auth)
 
     assert resp.status_code == 200
-    assert [v["version_number"] for v in resp.json()] == [1, 2]
+    assert sorted(v["version_number"] for v in resp.json()) == [1, 2]
 
 
 async def test_list_versions_returns_404_for_unknown_document(client, auth):

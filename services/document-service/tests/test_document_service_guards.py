@@ -38,8 +38,8 @@ async def test_update_records_the_editor_when_supplied(db_session: AsyncSession,
 
     await service.update(doc.id, DocumentUpdate(title="Shared", content="v2"), updated_by=editor)
 
-    versions = await service.list_versions(doc.id)
-    assert versions[-1].created_by == editor
+    versions = {v.version_number: v for v in await service.list_versions(doc.id)}
+    assert versions[2].created_by == editor
 
 
 async def test_patch_clearing_content_resets_the_word_count(db_session: AsyncSession, owner_id):
