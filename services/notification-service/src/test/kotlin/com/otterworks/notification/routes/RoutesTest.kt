@@ -31,6 +31,8 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
@@ -91,6 +93,14 @@ class RoutesTest {
 
     private fun ApplicationTestBuilder.installService() {
         application { notificationModule() }
+    }
+
+    /** Session cleanup runs in the server coroutine, so it can lag behind the client close. */
+    private suspend fun awaitConnectedUserCount(expected: Int) {
+        withTimeout(5_000) {
+            while (webSocketManager.getConnectedUserCount() != expected) delay(10)
+        }
+        assertEquals(expected, webSocketManager.getConnectedUserCount())
     }
 
     @Test
@@ -306,11 +316,12 @@ class RoutesTest {
             send(Frame.Text("ping"))
             assertEquals("pong", (incoming.receive() as Frame.Text).readText())
             send(Frame.Binary(true, ByteArray(1)))
+            awaitConnectedUserCount(1)
             assertTrue(webSocketManager.isUserConnected("user-1"))
             close()
         }
 
-        assertEquals(0, webSocketManager.getConnectedUserCount())
+        awaitConnectedUserCount(0)
     }
 
     @Test
@@ -346,6 +357,6 @@ class RoutesTest {
             )
         }
 
-        assertEquals(0, webSocketManager.getConnectedUserCount())
+        awaitConnectedUserCount(0)
     }
 }
