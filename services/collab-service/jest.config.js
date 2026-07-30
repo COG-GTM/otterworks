@@ -12,11 +12,12 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'clover'],
   coverageThreshold: {
+    // Ratchet: pinned to the measured numbers, floored to whole percent. Never lower these.
     global: {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
+      branches: 95,
+      functions: 100,
+      lines: 100,
+      statements: 98,
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
