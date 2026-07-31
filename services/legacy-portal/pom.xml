@@ -75,6 +75,19 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!--
+                      The default profile's H2 database is JVM-wide and never closed
+                      (DB_CLOSE_DELAY=-1), so rows a @SpringBootTest commits outlive its
+                      context and are visible to the @DataJpaTest slices. One JVM per test
+                      class keeps the suite independent of the order Surefire picks.
+                    -->
+                    <reuseForks>false</reuseForks>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.10</version>
