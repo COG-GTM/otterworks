@@ -3,7 +3,7 @@ import type { Ref } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
-import { notifyUploadComplete } from "@/lib/native-notifications";
+import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
 
 interface FileUploadDropzoneProps {
   uploadFile: (
@@ -115,6 +115,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   : f,
               ),
             );
+            void notifyUploadFailed(entry.file.name);
           }
         });
     },

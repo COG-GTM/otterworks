@@ -12,20 +12,22 @@ async function hasDisplayPermission(): Promise<boolean> {
 }
 
 // No-ops on web, where the surrounding UI already reports upload status.
-export async function notifyUploadComplete(fileName: string): Promise<void> {
+async function notify(title: string, body: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     if (!(await hasDisplayPermission())) return;
     await LocalNotifications.schedule({
-      notifications: [
-        {
-          id: ++notificationId,
-          title: "Upload complete",
-          body: `${fileName} finished uploading.`,
-        },
-      ],
+      notifications: [{ id: ++notificationId, title, body }],
     });
   } catch {
-    // A missed notification must never surface as an upload failure.
+    // A missed notification must never surface as an upload error.
   }
+}
+
+export function notifyUploadComplete(fileName: string): Promise<void> {
+  return notify("Upload complete", `${fileName} finished uploading.`);
+}
+
+export function notifyUploadFailed(fileName: string): Promise<void> {
+  return notify("Upload failed", `${fileName} could not be uploaded.`);
 }
