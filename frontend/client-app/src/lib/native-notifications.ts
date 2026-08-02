@@ -3,6 +3,10 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 
 let notificationId = 0;
 
+// Failures are routed to their own channel so users can keep upload errors
+// audible while muting routine completion notices.
+const UPLOAD_ERROR_CHANNEL_ID = "upload-errors";
+
 async function hasDisplayPermission(): Promise<boolean> {
   const { display } = await LocalNotifications.checkPermissions();
   if (display === "granted") return true;
@@ -12,12 +16,12 @@ async function hasDisplayPermission(): Promise<boolean> {
 }
 
 // No-ops on web, where the surrounding UI already reports upload status.
-async function notify(title: string, body: string): Promise<void> {
+async function notify(title: string, body: string, channelId?: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     if (!(await hasDisplayPermission())) return;
     await LocalNotifications.schedule({
-      notifications: [{ id: ++notificationId, title, body }],
+      notifications: [{ id: ++notificationId, title, body, channelId }],
     });
   } catch {
     // A missed notification must never surface as an upload error.
@@ -29,5 +33,9 @@ export function notifyUploadComplete(fileName: string): Promise<void> {
 }
 
 export function notifyUploadFailed(fileName: string): Promise<void> {
-  return notify("Upload failed", `${fileName} could not be uploaded.`);
+  return notify(
+    "Upload failed",
+    `${fileName} could not be uploaded.`,
+    UPLOAD_ERROR_CHANNEL_ID,
+  );
 }
