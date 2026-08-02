@@ -167,11 +167,18 @@ knowledge:
       DISPLAY=:0 emulator -avd otter -no-audio -gpu swiftshader_indirect -snapshot clean -no-snapshot-save &
       adb wait-for-device
       export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use default >/dev/null
+      # `make dev-android` builds the web bundle and syncs, but its final `npx cap run
+      # android` prompts "Please choose a target device" and aborts (exit 0, nothing
+      # deployed) when stdin is not a TTY. There is no ANDROID_TARGET override in the
+      # Makefile, so deploy explicitly afterwards (list ids with `adb devices`):
       make dev-android
-      # Override the deploy target for a real device (list with `adb devices`):
-      #   make dev-android ANDROID_TARGET=<device-id>
+      (cd frontend/client-app && npx cap run android --target emulator-5554 --no-sync)
       # Dismiss the "Nested virtualization" dialog on first boot or it blocks GUI interaction.
-      # The app calls the gateway at http://10.0.2.2:8080/api/v1.
+      # The app calls the gateway at http://10.0.2.2:8080/api/v1, so the backend must be up
+      # (`make dev-backend`, which the make target already does).
+      # Login fails with "Invalid email or password" if the Postgres volume came up empty -
+      # check `docker exec otterworks-postgres psql -U otterworks -d otterworks -c 'select
+      # count(*) from users;'` and re-seed per the "seeded demo data" entry (~90s).
   - name: run electron desktop app
     contents: |
       DISPLAY=:0 make dev-electron
