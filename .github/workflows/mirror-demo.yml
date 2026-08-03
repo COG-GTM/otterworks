@@ -1,0 +1,43 @@
+# Keep the perpetual COG-GTM tenant in line with main.
+#
+# The demo platform only deploys from workshop-*/demo-* branches on this fork
+# (main is reserved for the upstream repo's t-main environment). So the tenant
+# that runs COG-GTM's code is deployed from the branch `demo-coggtm`, and this
+# workflow is what keeps that branch — and therefore the tenant — always equal
+# to main:
+#
+#   merge to main
+#     -> this workflow pushes main's commit onto demo-coggtm
+#       -> that push triggers cd-tenant.yml (the deploy pipeline)
+#         -> the pipeline rebuilds the services that changed and redeploys
+#            the tenant, so t-coggtm always runs the current main
+#
+# The push MUST use a personal access token (MIRROR_TOKEN repo secret with
+# contents write access). Pushes made with the built-in GITHUB_TOKEN never
+# trigger other workflows, so the deploy pipeline would silently not run.
+name: Mirror main to demo-coggtm
+
+on:
+  push:
+    branches: [main]
+
+# Only one mirror at a time; a newer merge supersedes an in-flight one.
+concurrency:
+  group: mirror-demo-coggtm
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the commit that was just merged to main, authenticated with
+      # the PAT so the push below is attributed to it (see note above).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.MIRROR_TOKEN }}
+
+      # Point demo-coggtm at exactly this commit (creating the branch on the
+      # first run). --force-with-lease keeps the mirror authoritative even if
+      # someone pushed to demo-coggtm directly: main is the source of truth.
+      - run: git push --force-with-lease origin HEAD:demo-coggtm
