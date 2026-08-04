@@ -68,8 +68,9 @@ python3 -m venv /tmp/retail-seed-venv
   --departments all --scale 0.1 --workers 6 --no-docs --register
 ```
 
-`--scale 0.1 --no-docs` seeds all 15 departments with ~110 files in well under a minute (vs. ~2,445
-at `--scale 1.0`) and is plenty for UI testing. `--register` creates the account.
+`--scale 0.1 --no-docs` seeds all 15 departments with 107 files in well under a minute (vs. 2,172 at
+`--scale 1.0`) and is plenty for UI testing. `--register` creates the account. Check the exact counts
+for any scale with `generate_drive.py --dry-run` (it still needs `--gateway/--email/--password`).
 
 Quick credential check without the UI:
 `curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$DRIVE_EMAIL\",\"password\":\"$DRIVE_PASSWORD\"}"`
@@ -128,9 +129,11 @@ Without the media-scanner broadcast a freshly pushed file may not appear in the 
 
 **Upload into a folder, not the drive root.** At the root the client requests
 `GET /files?page=1&page_size=50` with no `folder_id`, and the backend returns an unordered page 1 of
-*all* ~2,177 seeded files, so a newly uploaded file is usually invisible there (and root uploads are
-stored with no `folder_id` at all). Navigating into a folder that has zero files (e.g.
-`Analytics & Insights`) makes the uploaded file appear immediately and gives unambiguous evidence.
+*all* seeded files (2,172 at `--scale 1.0`), so a newly uploaded file is usually invisible there (and
+root uploads are stored with no `folder_id` at all). Navigating into a folder that is empty makes the
+uploaded file appear immediately and gives unambiguous evidence. Every department gets files at both
+seed scales, so pick the folder that the UI actually shows as empty rather than assuming a
+particular one — `generate_drive.py --dry-run --scale <s>` prints the per-department counts.
 This may still be broken/unchanged in future runs — the folder workaround is the reliable path.
 
 The in-app success state ("Upload complete — closing shortly" + green check) **auto-dismisses after
