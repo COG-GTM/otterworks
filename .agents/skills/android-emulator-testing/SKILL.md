@@ -130,11 +130,12 @@ Without the media-scanner broadcast a freshly pushed file may not appear in the 
 
 **Upload into a folder, not the drive root.** At the root the client requests
 `GET /files?page=1&page_size=50` with no `folder_id`, and the backend returns an unordered page 1 of
-*all* seeded files (2,172 at `--scale 1.0`), so a newly uploaded file is usually invisible there (and
+*all* seeded files (2,175 at `--scale 1.0`), so a newly uploaded file is usually invisible there (and
 root uploads are stored with no `folder_id` at all). Navigating into a folder that is empty makes the
-uploaded file appear immediately and gives unambiguous evidence. Every department gets files at both
-seed scales, so pick the folder that the UI actually shows as empty rather than assuming a
-particular one — `generate_drive.py --dry-run --scale <s>` prints the per-department counts.
+uploaded file appear immediately and gives unambiguous evidence. Every department has files at both
+seed scales, so pick the folder the UI actually shows as empty rather than assuming a particular one;
+files sit in nested subfolders, so an empty-looking subfolder is what you want and `--dry-run` (which
+only prints per-department totals) will not find it for you.
 This may still be broken/unchanged in future runs — the folder workaround is the reliable path.
 
 The in-app success state ("Upload complete — closing shortly" + green check) **auto-dismisses after
