@@ -54,6 +54,26 @@ above is roughly `emu = (screenshot - origin) * 3.38`; when in doubt, `adb exec-
 The app starts on the marketing landing page. Credentials are the `DRIVE_EMAIL` / `DRIVE_PASSWORD`
 secrets (same account that owns the seeded drive).
 
+**First check the account actually exists.** If the Postgres volume was recreated (`make infra-up`
+after a `down -v`, a fresh box, etc.) the seeded drive account is gone and every sign-in — app *and*
+API — returns `Invalid credentials`, which looks like a typing/IME bug but is not:
+
+```bash
+docker exec otterworks-postgres psql -U otterworks -d otterworks -c 'select email from users;'
+# only admin@otterworks.dev  ->  re-seed before testing
+python3 -m venv /tmp/retail-seed-venv
+/tmp/retail-seed-venv/bin/pip install -q -r testdata/generated/retail-drive/requirements.txt
+/tmp/retail-seed-venv/bin/python testdata/generated/retail-drive/generate_drive.py \
+  --gateway http://localhost:8080 --email "$DRIVE_EMAIL" --password "$DRIVE_PASSWORD" \
+  --departments all --scale 0.1 --workers 6 --no-docs --register
+```
+
+`--scale 0.1 --no-docs` seeds all 15 departments with ~110 files in well under a minute (vs. ~2,445
+at `--scale 1.0`) and is plenty for UI testing. `--register` creates the account.
+
+Quick credential check without the UI:
+`curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$DRIVE_EMAIL\",\"password\":\"$DRIVE_PASSWORD\"}"`
+
 ```bash
 adb shell input tap 215 880          # "Sign In" on landing page
 adb shell input tap 359 739; adb shell input text "$DRIVE_EMAIL"
@@ -74,6 +94,14 @@ Gotchas:
 - After sign-in the nav drawer is open; dismiss it by tapping the scrim (e.g. `adb shell input tap
   650 900`). The header/hamburger sits *under* the status bar (y < ~50 px), so taps there hit the
   status bar instead of the web view.
+- The tap coordinates above assume the pristine form. **A failed sign-in inserts a red error banner
+  and pushes the form down**, so the old "Sign in" y no longer hits the button (it re-focuses the
+  password field and reopens the IME). After any failed attempt: `keyevent 4` to hide the IME, then
+  tap the button at its *current* position (~`360 1121` with the banner shown). Re-screenshot instead
+  of reusing coordinates across layout changes.
+- Tapping the hamburger is unreliable (status-bar overlap). A reliable way into the Files page from
+  the dashboard is the **"View all"** link at the right of the *Recent files* section
+  (~`adb shell input tap 622 1521` on a freshly loaded dashboard).
 
 ## The "Try out your stylus" popup
 
@@ -121,9 +149,17 @@ For pixel evidence (required — dumpsys is not proof a user saw it) pull the sh
 gesture so the recording looks natural:
 
 ```bash
-adb shell input swipe 360 5 360 1000 400     # open shade
+adb shell input swipe 360 2 360 1200 600     # open shade (see note)
 adb shell cmd statusbar collapse             # close shade
 ```
+
+A short/fast swipe (`360 5 360 1000 400`) often fails to latch the shade and leaves you on the app
+screen — always screenshot to confirm the shade is really open before asserting on its contents. The
+longer, slower `360 2 360 1200 600` gesture is reliable.
+
+To make an "no notification was posted" assertion unambiguous, clear the shade first (open it and tap
+**Clear all**, ~`adb shell input tap 568 1132`) and re-check `cmd notification list` shows no
+`com.otterworks.app` row before performing the action.
 
 Runtime permission prompts are one-shot per install: check `POST_NOTIFICATIONS: granted=false`
 *before* you start recording, otherwise you will never capture the prompt. Reset with
@@ -177,6 +213,28 @@ s.sendall(("auth %s\n" % tok).encode()); time.sleep(0.5); s.recv(65535)
 for cmd in sys.argv[1:]:
     s.sendall((cmd + "\n").encode()); time.sleep(0.5); print(s.recv(65535).decode())
 ```
+
+## Debugging notifications that never appear
+
+A notification can be scheduled successfully by JS and still be silently dropped by Android. The two
+lines that tell you exactly what happened are in logcat (clear the buffer with `adb logcat -c` right
+before the action):
+
+```bash
+adb logcat -d | grep -E "LocalNotifications, methodName: schedule|No Channel found"
+```
+
+- `V Capacitor: ... pluginId: LocalNotifications, methodName: schedule, methodData: {...}` — proves
+  the web layer asked for the notification and shows the exact payload (including `channelId`).
+- `E NotificationService: No Channel found for pkg=com.otterworks.app, channelId=<id>, ...` — Android
+  discarded it because that channel was never created.
+
+Any `channelId` passed to `LocalNotifications.schedule` **must** first be created with
+`LocalNotifications.createChannel`; otherwise the post is dropped with no exception, so an app-side
+`try/catch` around `schedule` will never see it. Grep the client for `createChannel` before trusting
+any channel-specific notification path. Notifications scheduled with **no** `channelId` fall back to
+the plugin's auto-created `default` channel and always work — so "some notifications appear, others
+never do" is a strong hint of a missing channel rather than a permission problem.
 
 ## Cross-checking against the backend
 
