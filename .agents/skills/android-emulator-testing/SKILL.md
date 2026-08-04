@@ -70,7 +70,8 @@ python3 -m venv /tmp/retail-seed-venv
 
 `--scale 0.1 --no-docs` seeds all 15 departments with 107 files in well under a minute (vs. 2,172 at
 `--scale 1.0`) and is plenty for UI testing. `--register` creates the account. Check the exact counts
-for any scale with `generate_drive.py --dry-run` (it still needs `--gateway/--email/--password`).
+for any scale with `generate_drive.py --dry-run` (it still needs `--gateway/--email/--password`);
+a real run also uploads the 3 committed media clips in `assets/`, which the dry-run total omits.
 
 Quick credential check without the UI:
 `curl -s -X POST http://localhost:8080/api/v1/auth/login -H 'Content-Type: application/json' -d "{\"email\":\"$DRIVE_EMAIL\",\"password\":\"$DRIVE_PASSWORD\"}"`
