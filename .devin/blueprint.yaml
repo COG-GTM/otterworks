@@ -162,8 +162,9 @@ knowledge:
       any value works:
         docker exec otterworks-redis redis-cli set chaos:document-service:slow_queries 1 EX 180
         docker exec otterworks-redis redis-cli keys 'chaos:*'
-      The client app also dupes the four scenarios in the browser (src/lib/chaos.ts), toggled
-      with `otterChaos.enable('file-service')` / `.reset()` or `?chaos=file-service`; state is
+      Once PR #68 lands (not on main yet) the client app also dupes the four scenarios in the
+      browser (frontend/client-app/src/lib/chaos.ts), toggled with
+      `otterChaos.enable('file-service')` / `.reset()` or `?chaos=file-service`; that state is
       localStorage only, so `keys 'chaos:*'` staying empty proves nothing leaked to the backend.
   - name: seeding notifications
     contents: |
