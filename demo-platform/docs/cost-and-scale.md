@@ -228,7 +228,10 @@ hour of no traffic, so lever 1 above — the one worth 10× — still applies.
 
 Adding `--always-on` is what gives that up. It labels the namespace
 `demo/always-on=true`, the idle scan skips it, and the attendee's URL answers
-with no wake step (~60–90s otherwise). Reach for it only where someone must be
+with no wake step. Otherwise a suspended tenant serves 503 until someone runs
+`scripts/tenant-scale.sh <id> up` (~60–90s to ready): the dashboard's check-out
+wake reads the control table, which a script-deployed tenant is not in, so it
+does not cover this roster. Reach for it only where someone must be
 able to open a cold environment; the bill below is the price of the whole roster
 being exempt.
 

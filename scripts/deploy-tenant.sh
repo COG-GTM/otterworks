@@ -131,7 +131,11 @@ fi
 # In-cluster (runner Job) the pod's ServiceAccount already has cluster access via
 # RBAC; writing a kubeconfig would instead auth as the IRSA IAM role, which is
 # not mapped in aws-auth. Only build a kubeconfig when running outside the cluster.
-if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
+# OTTERWORKS_KUBECONFIG_READY says a caller has already written it: the update is a
+# read-modify-write of one file, so a batch running several deploys at once would
+# have them clobber each other's kubeconfig, and a kubectl reading it mid-write
+# fails for reasons that have nothing to do with the tenant.
+if [ -z "${KUBERNETES_SERVICE_HOST:-}" ] && [ -z "${OTTERWORKS_KUBECONFIG_READY:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
 log "Loading shared application-infra Terraform outputs..."
@@ -579,12 +583,15 @@ else
 fi
 
 # ---------- Completion marker ----------
-# Reached only when every step above succeeded (set -e). The namespace itself is
-# created early, so its existence says nothing about whether the deploy finished;
-# deploy-tenant-batch.sh reads this annotation to tell a finished tenant from one
-# left half-built by an aborted run, and retries the latter.
-kubectl annotate namespace "${NS}" --overwrite \
-  "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true
+# The namespace is created in the first seconds, so its existence says nothing
+# about whether the deploy finished; deploy-tenant-batch.sh reads this annotation
+# to tell a finished tenant from one to retry. Every step above either succeeded
+# (set -e) or is in FAILED: the Helm loop collects per-service failures rather
+# than aborting the tenant, and a tenant missing services is half-built, not done.
+if [ ${#FAILED[@]} -eq 0 ]; then
+  kubectl annotate namespace "${NS}" --overwrite \
+    "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true
+fi
 
 # ---------- Summary ----------
 echo ""

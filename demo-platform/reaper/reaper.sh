@@ -186,9 +186,11 @@ gc_tenant() {
   sid="$(sanitize_id "${id}")"
   ns="$(tenant_namespace "${id}")"
   db="$(tenant_db_name "${id}")"
+  # 2, not 0: callers ignore it, except reap_expired, whose tally would otherwise
+  # report a persistent tenant as reaped.
   if tenant_is_persistent "${id}"; then
     log "tenant '${id}' is persistent (demo/persistent=true); NOT reaping (${reason})"
-    return 0
+    return 2
   fi
   log "reaping tenant '${id}' (${reason}) -> ns=${ns} db=${db}"
 
@@ -253,8 +255,8 @@ reap_expired() {
       continue
     fi
     if [ "$(( exp + grace ))" -lt "${now}" ]; then
-      count=$(( count + 1 ))
-      gc_tenant "${id}" "expired(expires_at=${exp}+grace=${grace}<now=${now})"
+      gc_tenant "${id}" "expired(expires_at=${exp}+grace=${grace}<now=${now})" \
+        && count=$(( count + 1 ))
     else
       log "tenant '${id}' not yet expired (expires_at=${exp}, grace=${grace})"
     fi

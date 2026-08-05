@@ -21,6 +21,10 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$
 # ---- stubs -------------------------------------------------------------------
 declare -A ITEM_COUNT ITEM_SINCE ITEM_RUNNING
 declare -A NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON
+# The scan reads this to spot a tenant whose backend could not be resolved; the
+# real declaration lives next to tenant_has_item, which is stubbed here.
+declare -A TENANT_HAS_ITEM=()
+tenant_has_item() { [ "${TENANT_HAS_ITEM[$1]:-yes}" = "yes" ]; }
 SUSPENDED=""
 
 # The scan does not care which backend holds a tenant's counters (control-table
@@ -64,8 +68,8 @@ eval "$(sed -n '/^tenant_namespaces()/,/^}/p;/^suspend_idle_tenants()/,/^}/p' "$
 real_src="$(sed -n '/^ingress_request_counts()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 
 reset_state() {
-  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON
-  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=() NS_ALWAYS_ON=()
+  unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON TENANT_HAS_ITEM
+  declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=() NS_ALWAYS_ON=() TENANT_HAS_ITEM=()
   SUSPENDED=""
   SUSPEND_RC=0
 }
@@ -218,6 +222,16 @@ NS_ALWAYS_ON[otterworks-standing]=no
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  suspends it once the label is gone" "${SUSPENDED# }" "standing"
 
+# A tenant whose store could not be determined is left for the next pass: writing
+# its counters to the wrong one loses them, and suspending on state read from the
+# wrong one is a scale-down decided on somebody else's numbers.
+reset_state
+NS_RUNNING[otterworks-murky]=13; METRIC[otterworks-murky]=100
+ITEM_COUNT[murky]=100; ITEM_SINCE[murky]=${STALE}; TENANT_HAS_ITEM[murky]=unknown
+seen_running murky
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "skips a tenant whose state backend is unknown" "${SUSPENDED# }" ""
+
 reset_state
 NS_RUNNING[otterworks-lab]=13; METRIC[otterworks-lab]=100
 ITEM_COUNT[lab]=100; ITEM_SINCE[lab]=${STALE}; NS_CHAOS[otterworks-lab]=yes
@@ -286,7 +300,9 @@ check "still reports failure when the scrape cannot be made" "$?" "1"
 # it wrong is silent in the worst way: writes that go nowhere mean the tenant
 # never accumulates idle time and is never suspended. Run the real functions
 # against both backends. Evaluated last, replacing the stubs above.
-eval "$(sed -n '/^idle_ns()/,/^}/p;/^tenant_has_item()/,/^}/p;/^state_read()/,/^}/p;/^record_activity()/,/^}/p;/^record_running()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
+# idle_ns is a one-liner, so it is matched as a single line: a /^}/ range from it
+# would run on to the next function's closing brace and drag that in too.
+eval "$(sed -n '/^idle_ns()/p;/^tenant_item_backend()/,/^}/p;/^tenant_has_item()/,/^}/p;/^state_read()/,/^}/p;/^record_activity()/,/^}/p;/^record_running()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 # shellcheck disable=SC2034  # read by the real tenant_has_item / state_read
 declare -A TENANT_HAS_ITEM=() NS_ANNOT=()
 # These two record writes from inside `out="$(...)"`, i.e. from a subshell, so
@@ -298,9 +314,18 @@ CONTROL_TABLE="otterworks-demo-control"
 # shellcheck disable=SC2034
 AWS_REGION="us-east-1"
 idle_warn() { echo "WARN: $*" >&2; }
-ctl_tenant_exists() { [ "${HAS_ITEM}" = "yes" ]; }
 ctl_get() { jq -n '{Item:{req_count:{N:"7"},idle_since:{N:"123"},was_running:{N:"1"}}}'; }
-aws() { echo "$2" >> "${WRITES}/aws"; printf '{}'; }
+# get-item is the backend probe, and DDB_FAILS is the table being unreadable
+# rather than empty. It is answered rather than recorded: the recorded calls are
+# the writes a case is asserting on.
+aws() {
+  if [ "$2" = "get-item" ]; then
+    [ "${DDB_FAILS:-no}" = "yes" ] && { echo "ThrottlingException" >&2; return 254; }
+    [ "${HAS_ITEM}" = "yes" ] && jq -n '{Item:{PK:{S:"TENANT#x"}}}' || printf '{}'
+    return 0
+  fi
+  echo "$2" >> "${WRITES}/aws"; printf '{}'
+}
 kubectl() {
   case "$*" in
     *annotate*)         for a in "$@"; do case "${a}" in *=*) echo "${a}" >> "${WRITES}/annotate" ;; esac; done ;;
@@ -337,6 +362,20 @@ check "  without writing to the control table" "$(wrote aws)" ""
 reset_backend; HAS_ITEM=no
 NS_ANNOT[req-count]=42; NS_ANNOT[idle-since]=555; NS_ANNOT[was-running]=1
 check "  and reads them back on the next pass" "$(state_read solo)" "42 555 1"
+
+# An unreadable control table must not read as "no item": that would send a
+# dashboard tenant's writes to its namespace, where nothing reads them again, and
+# the tenant would never accumulate idle time.
+reset_backend; HAS_ITEM=yes; DDB_FAILS=yes
+tenant_has_item dash 2>/dev/null || true
+check "a failed control-table lookup is unknown, not absent" "${TENANT_HAS_ITEM[dash]}" "unknown"
+DDB_FAILS=no
+
+# The lookup is cached in this shell, not in the subshell state_read runs in.
+reset_backend; HAS_ITEM=yes
+tenant_has_item dash
+state_read dash >/dev/null
+check "  and the resolved backend is cached for later calls" "${TENANT_HAS_ITEM[dash]}" "yes"
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

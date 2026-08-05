@@ -80,13 +80,17 @@ check "recognises an ordinary tenant" "${r}" "no"
 # reap, the orphan-namespace sweep and the orphan-database sweep alike.
 PERSISTENT_LABEL="true"
 : > "${TEARDOWN_LOG}"
-gc_tenant ada-lovelace "expired" >/dev/null 2>&1
+gc_tenant ada-lovelace "expired" >/dev/null 2>&1; rc=$?
 check "never tears down a persistent tenant" "$(cat "${TEARDOWN_LOG}")" ""
+# reap_expired tallies on this, so "skipped" has to be distinguishable from
+# "reaped" or the pass reports deletions that never happened.
+check "  and reports the skip to its caller" "${rc}" "2"
 
 PERSISTENT_LABEL=""
 : > "${TEARDOWN_LOG}"
-gc_tenant ada-lovelace "expired" >/dev/null 2>&1
+gc_tenant ada-lovelace "expired" >/dev/null 2>&1; rc=$?
 check "still tears down an expired ordinary tenant" "$(cat "${TEARDOWN_LOG}")" "teardown:ada-lovelace"
+check "  and reports it reaped" "${rc}" "0"
 
 # A persistent tenant has no TENANT# item, which is what the orphan sweep
 # deletes on -- the case that would otherwise wipe the whole roster.

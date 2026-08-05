@@ -28,10 +28,14 @@ mkdir -p "${WORK}/scripts/lib" "${WORK}/bin"
 cp "${SCRIPT_DIR}/deploy-tenant-batch.sh" "${WORK}/scripts/"
 cp "${SCRIPT_DIR}/lib/tenant-common.sh" "${WORK}/scripts/lib/"
 
-# Records the tenants a run would have deployed.
+# Records the tenants a run would have deployed. Like the real script it stamps
+# demo/deployed-at on the way out, and withholds it -- while still exiting 0 --
+# for a tenant named in INCOMPLETE, which is what a failed Helm install leaves.
 cat > "${WORK}/scripts/deploy-tenant.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "deploy:$1 $*" >> "${DEPLOY_LOG}"
+case " ${INCOMPLETE:-} " in *" $1 "*) exit 0 ;; esac
+: > "${MARKER_DIR}/otterworks-$1"
 EOS
 
 # FREE_IPS is what EC2 reports across the karpenter.sh/discovery subnets; the
@@ -53,6 +57,10 @@ matches() { for n in $1; do case "$2" in *"${n}"*) return 0 ;; esac; done; retur
 case "$*" in
   *"get nodepool"*)                    echo 400; exit 0 ;;
   *"annotations.demo/deployed-at"*)
+    for f in "${MARKER_DIR}"/*; do
+      [ -e "${f}" ] || continue
+      case "$*" in *"${f##*/}"*) echo "2026-01-01T00:00:00Z"; exit 0 ;; esac
+    done
     matches "${DEPLOYED_NS:-}" "$*" && echo "2026-01-01T00:00:00Z"; exit 0 ;;
   *"get ns"*)                          matches "${EXISTING_NS:-}" "$*"; exit $? ;;
   *)                                   exit 0 ;;
@@ -65,11 +73,13 @@ chmod +x "${WORK}/scripts/deploy-tenant.sh" "${WORK}/bin"/*
 export PATH="${WORK}/bin:${PATH}"
 export DB_PASSWORD=stub JWT_SECRET=stub SECRET_KEY_BASE=stub
 export DEPLOY_LOG="${WORK}/deploy.log"
-export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS=""
+export MARKER_DIR="${WORK}/markers"; mkdir -p "${MARKER_DIR}"
+export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS="" INCOMPLETE=""
 
 # Two full-profile tenants: 30 pod IPs.
 run_batch() {
   : > "${DEPLOY_LOG}"
+  rm -f "${MARKER_DIR}"/*
   "${WORK}/scripts/deploy-tenant-batch.sh" "$@" "Ada Lovelace" "Grace Hopper" >"${WORK}/out" 2>&1
   echo "$?"
 }
@@ -102,6 +112,11 @@ said "warns that it could not measure" "Could not read subnet capacity"
 FREE_IPS=20; rc="$(run_batch --profile core)"
 check "sizes the roster by profile" "${rc}" "0"
 
+# deploy-tenant.sh reads TENANT_PROFILE as its own default, so sizing that ignored
+# it would refuse a roster the tenants it goes on to deploy would have fitted in.
+FREE_IPS=20; rc="$(TENANT_PROFILE=core run_batch)"
+check "sizes by TENANT_PROFILE when --profile is not given" "${rc}" "0"
+
 # Staying awake is opt-in. Without the flag a tenant idles like any other, which
 # is the whole point of it being a flag: the exemption holds its compute and pod
 # IPs whether or not anyone opens the URL.
@@ -131,6 +146,15 @@ check "retries a tenant left half-built by an earlier run" "$(deployed)" \
   "deploy:ada-lovelace deploy:grace-hopper"
 said "  and says so" "Retrying 1 incomplete tenant"
 EXISTING_NS=""
+
+# A tenant whose services did not all install is not deployed, however the child
+# script exited: it is the one a re-run has to pick up, so the batch cannot call
+# the roster complete over it.
+INCOMPLETE="ada-lovelace"; rc="$(run_batch)"
+check "fails a tenant that came back without every service" "${rc}" "1"
+said "  and names it as incomplete" "services missing, tenant incomplete"
+said "  and reports the other one deployed" "1 deployed"
+INCOMPLETE=""
 
 "${WORK}/scripts/deploy-tenant-batch.sh" --profile >"${WORK}/out" 2>&1; rc="$?"
 check "rejects a flag with no value" "${rc}" "1"

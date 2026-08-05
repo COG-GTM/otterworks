@@ -53,7 +53,9 @@ DRY_RUN=false
 PREFLIGHT=true
 ALWAYS_ON=false
 LOG_DIR=""
-PROFILE="full"
+# Same default as deploy-tenant.sh, from the same place: sizing the roster as
+# `full` while the children deploy `core` would refuse rosters that do fit.
+PROFILE="${TENANT_PROFILE:-full}"
 NAMES=()
 PASSTHROUGH=()
 
@@ -172,6 +174,11 @@ require_bins aws kubectl helm terraform jq
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null \
     || { err "Could not reach EKS cluster ${EKS_CLUSTER} in ${AWS_REGION}."; exit 1; }
+  # Written once here, for everyone. Each deploy-tenant.sh would otherwise write
+  # it again, and several of them at once is a read-modify-write race on a single
+  # file: a child can read a half-written kubeconfig and fail on the cluster
+  # connection rather than on anything to do with its tenant.
+  export OTTERWORKS_KUBECONFIG_READY=1
 fi
 
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"
@@ -223,8 +230,18 @@ capacity_preflight() {
 deploy_one() {
   local id="$1" logfile="${LOG_DIR}/${id}.log"
   if "${SCRIPT_DIR}/deploy-tenant.sh" "${id}" "${DEPLOY_ARGS[@]}" >"${logfile}" 2>&1; then
-    echo ok > "${LOG_DIR}/status/${id}"
-    log "  [ok]   ${id}"
+    # deploy-tenant.sh collects per-service Helm failures instead of aborting, and
+    # still exits 0; it withholds demo/deployed-at in that case, so the marker is
+    # the only honest answer to "is this tenant complete", and the one a re-run
+    # uses to decide what to retry.
+    if tenant_deploy_finished "${id}"; then
+      echo ok > "${LOG_DIR}/status/${id}"
+      log "  [ok]   ${id}"
+    else
+      echo fail > "${LOG_DIR}/status/${id}"
+      err "  [fail] ${id} — services missing, tenant incomplete; see ${logfile}"
+      tail -3 "${logfile}" | sed 's/^/         /' >&2
+    fi
   else
     echo fail > "${LOG_DIR}/status/${id}"
     err "  [fail] ${id} — see ${logfile}"
@@ -287,7 +304,12 @@ if [ "${#FAILED[@]}" -gt 0 ]; then
   err "Re-run the same command to retry only those (successful tenants are skipped)."
   exit 1
 fi
-log "Tenants are persistent (ttl=${TTL}); remove one with ./scripts/teardown-tenant.sh <id>"
+case "${TTL}" in
+  none|never|infinite|persistent)
+    log "Tenants are persistent (ttl=${TTL}); remove one with ./scripts/teardown-tenant.sh <id>" ;;
+  *)
+    log "Tenants expire in ${TTL} and are then reaped; remove one early with ./scripts/teardown-tenant.sh <id>" ;;
+esac
 if [ "${ALWAYS_ON}" = true ]; then
   log "They are always-on: the idle scan will not scale them to zero."
 else

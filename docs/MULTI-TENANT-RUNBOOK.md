@@ -96,7 +96,10 @@ leaving the roster half deployed. `--no-preflight` overrides it, and the check
 is advisory (a warning) if EC2 cannot be queried.
 
 **Persistent is not the same as awake.** A persistent tenant still scales to
-zero after an hour with no ingress traffic, and wakes on the next check-out or
+zero after an hour with no ingress traffic, and nothing wakes it by itself:
+opening the URL of a suspended tenant returns 503 from the shared ingress, and
+the dashboard's check-out wake needs a `TENANT#<id>` control-table item, which a
+batch-deployed tenant does not have. The only wake is
 `./scripts/tenant-scale.sh <id> up` (~60–90s to ready). Pass `--always-on` to
 exempt it: that labels the namespace `demo/always-on=true` and `idle-suspend.sh`
 leaves it alone, so the URL answers cold with no wake step. It is opt-in because

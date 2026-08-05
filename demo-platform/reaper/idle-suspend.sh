@@ -105,11 +105,31 @@ tenant_always_on() {
 # and the scan used to skip those entirely -- which quietly made every
 # script-deployed tenant always-on, whether or not anyone wanted it. They keep
 # their counters on the namespace instead, so the same decisions apply to both.
+#
+# yes | no | unknown. Not ctl_tenant_exists: it reads through ctl_get, which turns
+# any API failure into '{}' and so answers "no item" for a throttled, unauthorised
+# or unreachable table. That answer sends every read and write to the namespace,
+# leaving a dashboard tenant's real counters untouched -- a scan that suspends
+# nothing while reporting nothing wrong. A failure has to stay a failure.
+tenant_item_backend() {
+  local id="$1" out
+  out="$(aws dynamodb get-item \
+           --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
+           --key "$(jq -n --arg pk "TENANT#${id}" '{PK:{S:$pk},SK:{S:"META"}}')" \
+           --output json 2>&1)" \
+    || { idle_warn "control table lookup failed for ${id}: ${out//$'\n'/ }"; printf 'unknown'; return; }
+  if [ -n "$(printf '%s' "${out}" | jq -r '.Item.PK.S // empty' 2>/dev/null)" ]; then
+    printf 'yes'
+  else
+    printf 'no'
+  fi
+}
+
 declare -A TENANT_HAS_ITEM=()
 tenant_has_item() {
   local id="$1"
   if [ -z "${TENANT_HAS_ITEM[$id]+x}" ]; then
-    if ctl_tenant_exists "${id}"; then TENANT_HAS_ITEM[$id]=yes; else TENANT_HAS_ITEM[$id]=no; fi
+    TENANT_HAS_ITEM[$id]="$(tenant_item_backend "${id}")"
   fi
   [ "${TENANT_HAS_ITEM[$id]}" = "yes" ]
 }
@@ -254,6 +274,17 @@ suspend_idle_tenants() {
     count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
     [ -n "${count}" ] || count=0
 
+    # Resolve the backend here, in this shell: state_read runs in a command
+    # substitution, so a lookup it caches is thrown away with the subshell and
+    # the record_* calls below would repeat it.
+    tenant_has_item "${id}" || true
+    if [ "${TENANT_HAS_ITEM[$id]:-}" = "unknown" ]; then
+      # Guessing costs a tenant either way: to the namespace, a dashboard tenant's
+      # counters are lost and it never suspends; to the control table, a script
+      # tenant's are written where nothing reads them. Leave it for the next pass.
+      idle_warn "skipping ${id}: cannot tell which store its idle state lives in"
+      continue
+    fi
     read -r prev since was_running <<< "$(state_read "${id}")"
     [ "${prev}" != "-" ] || prev=""
     [ "${since}" != "-" ] || since=""
