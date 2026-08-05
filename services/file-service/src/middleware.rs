@@ -114,3 +114,65 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, web, App, HttpResponse};
+
+    #[actix_web::test]
+    async fn reuses_an_inbound_request_id_and_records_the_matched_pattern() {
+        let app = test::init_service(App::new().wrap(RequestId).route(
+            "/files/{id}",
+            web::get().to(|| async { HttpResponse::Ok().body("ok") }),
+        ))
+        .await;
+
+        let resp = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/files/42")
+                .insert_header(("x-request-id", "caller-supplied"))
+                .to_request(),
+        )
+        .await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        let rendered = render_metrics();
+        assert!(rendered.contains("http_requests_total"), "{rendered}");
+        assert!(rendered.contains("/files/{id}"), "{rendered}");
+        assert!(
+            rendered.contains("http_request_duration_seconds"),
+            "{rendered}"
+        );
+    }
+
+    #[actix_web::test]
+    async fn labels_unrouted_requests_as_unmatched() {
+        let app = test::init_service(App::new().wrap(RequestId)).await;
+
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/nope").to_request()).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+        assert!(render_metrics().contains("unmatched"));
+    }
+
+    #[actix_web::test]
+    async fn counts_a_failing_handler_under_its_status_code() {
+        let app = test::init_service(App::new().wrap(RequestId).route(
+            "/boom",
+            web::get().to(|| async { HttpResponse::InternalServerError().finish() }),
+        ))
+        .await;
+
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/boom").to_request()).await;
+
+        assert_eq!(
+            resp.status(),
+            actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert!(render_metrics().contains("status=\"500\""));
+    }
+}
