@@ -98,6 +98,10 @@ tenant_id_from_name() {
 }
 
 # ---------- Build the roster ----------
+# Checked here rather than with the rest of the preflight below: ids are derived
+# next, and --dry-run (whose whole job is showing them) exits before preflight.
+require_bins iconv
+
 FROM="the command line"
 if [ "${#NAMES[@]}" -eq 0 ]; then
   FROM="${ROSTER}"
@@ -158,7 +162,7 @@ if [ "${DRY_RUN}" = true ]; then
 fi
 
 # ---------- Preflight ----------
-require_bins aws kubectl helm terraform jq iconv
+require_bins aws kubectl helm terraform jq
 [ -n "${DB_PASSWORD:-}" ] || { err "DB_PASSWORD must be set (shared RDS master password)."; exit 1; }
 # deploy-tenant.sh mints a random JWT_SECRET / SECRET_KEY_BASE when unset, which
 # is per-invocation: a redeploy would then invalidate every session and token
