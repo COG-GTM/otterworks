@@ -212,11 +212,78 @@ else
   log "Peak ${PEAK_PODS} pods / ~${PEAK_CPU} vCPU while the roster is awake (${PROFILE} profile); idle tenants scale to zero after an hour."
 fi
 
+# ---------- Capacity ----------
+# Sized against the whole roster, not against how many people use it at once:
+# a batch brings every tenant up together, and with --always-on they stay up.
+# Pod IPs bind first -- the VPC CNI gives every pod a real subnet address, and a
+# /24 node subnet holds ~250 of them.
+#
+# Defined up here so --dry-run can run it too, below.
+capacity_preflight() {
+  local want="$1" need_ips need_cpu n_subnets free_ips limit_cpu rc=0
+  need_ips=$(( want * PODS_EACH ))
+  need_cpu=$(( (want * MILLICPU_EACH + 999) / 1000 ))
+
+  # Free addresses across every subnet Karpenter may launch into. Prefix
+  # delegation books a /28 at a time, so this reads slightly pessimistic --
+  # addresses reserved for a node's next pods count as allocated.
+  #
+  # A snapshot, and only that: another batch, a waking fleet or the next /28
+  # reservation all move it between this read and the last pod scheduled. The
+  # check is not trying to win that race -- it turns a roster that cannot
+  # possibly fit into one message up front, instead of 95 deploys timing out on
+  # Pending pods one at a time.
+  #
+  # The subnet count comes back with the sum because JMESPath sum([]) is 0, not
+  # null: a cluster whose subnets carry no karpenter.sh/discovery tag would
+  # otherwise measure "0 free" and be refused outright, blaming capacity for
+  # what is a tagging or EKS_CLUSTER mismatch.
+  read -r n_subnets free_ips <<< "$(aws ec2 describe-subnets --region "${AWS_REGION}" \
+    --filters "Name=tag:karpenter.sh/discovery,Values=${EKS_CLUSTER}" \
+    --query 'join(` `, [to_string(length(Subnets)), to_string(sum(Subnets[].AvailableIpAddressCount))])' \
+    --output text 2>/dev/null | sed 's/\.[0-9]*//g')"
+  if ! [[ "${n_subnets:-}" =~ ^[0-9]+$ ]]; then
+    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
+  elif [ "${n_subnets}" -eq 0 ]; then
+    warn "No subnet is tagged karpenter.sh/discovery=${EKS_CLUSTER}; skipping the pod-IP check."
+    warn "Nodes launch into subnets this cannot see, so the roster's ${need_ips} pod IPs are unverified."
+  elif [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
+    log "Capacity: ${want} × ${PODS_EACH} pods = ${need_ips} pod IPs needed, ${free_ips} free in the node subnets."
+    if [ "${free_ips}" -lt "${need_ips}" ]; then
+      err "Not enough pod IPs for ${want} ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."
+      err "Pods would sit Pending and the deploys would time out one by one."
+      err "Widen the node subnets first: apply aws_subnet.pods in platform/terraform (a /20 per AZ),"
+      err "or deploy fewer people at a time. --no-preflight overrides this check."
+      rc=1
+    fi
+  else
+    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
+  fi
+
+  # Advisory: the NodePool ceiling counts node capacity, not requests, so it is
+  # not a like-for-like comparison -- but being under it already means the
+  # roster cannot fit.
+  limit_cpu="$(kubectl get nodepool tenants -o jsonpath='{.spec.limits.cpu}' 2>/dev/null)"
+  if [[ "${limit_cpu}" =~ ^[0-9]+$ ]] && [ "${limit_cpu}" -lt "${need_cpu}" ]; then
+    warn "Karpenter NodePool 'tenants' is capped at ${limit_cpu} vCPU; ${want} ${PROFILE} tenants request ~${need_cpu}. Raise spec.limits.cpu."
+  fi
+  return "${rc}"
+}
+
 DEPLOY_ARGS=(--ttl "${TTL}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}")
 if [ "${DRY_RUN}" = true ]; then
   echo ""
   log "--dry-run: would run, ${CONCURRENCY} at a time:"
   for id in "${IDS[@]}"; do echo "  ${SCRIPT_DIR}/deploy-tenant.sh ${id} ${DEPLOY_ARGS[*]}"; done
+  # "Will this roster fit" is most of what a dry run is asked, and the real run
+  # refuses on the answer -- finding that out here, before committing to 95
+  # deploys, is the point of the mode. Advisory: nothing is being deployed to
+  # refuse, and it sizes the whole roster rather than the queue, since which
+  # tenants are already up is not read in this mode.
+  if [ "${PREFLIGHT}" = true ] && command -v aws >/dev/null 2>&1; then
+    echo ""
+    capacity_preflight "${#IDS[@]}" || true
+  fi
   exit 0
 fi
 
@@ -270,67 +337,11 @@ resolve_image_tags() {
     export "OTTERWORKS_IMAGE_TAG_${svc//-/_}=${tag}"
   done < <(profile_services "${PROFILE}")
 }
-resolve_image_tags
 
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"
 mkdir -p "${LOG_DIR}/status"
 log "Per-tenant logs: ${LOG_DIR}"
 
-# ---------- Capacity ----------
-# Sized against the whole roster, not against how many people use it at once:
-# a batch brings every tenant up together, and with --always-on they stay up.
-# Pod IPs bind first -- the VPC CNI gives every pod a real subnet address, and a
-# /24 node subnet holds ~250 of them.
-capacity_preflight() {
-  local want="$1" need_ips need_cpu n_subnets free_ips limit_cpu rc=0
-  need_ips=$(( want * PODS_EACH ))
-  need_cpu=$(( (want * MILLICPU_EACH + 999) / 1000 ))
-
-  # Free addresses across every subnet Karpenter may launch into. Prefix
-  # delegation books a /28 at a time, so this reads slightly pessimistic --
-  # addresses reserved for a node's next pods count as allocated.
-  #
-  # A snapshot, and only that: another batch, a waking fleet or the next /28
-  # reservation all move it between this read and the last pod scheduled. The
-  # check is not trying to win that race -- it turns a roster that cannot
-  # possibly fit into one message up front, instead of 95 deploys timing out on
-  # Pending pods one at a time.
-  #
-  # The subnet count comes back with the sum because JMESPath sum([]) is 0, not
-  # null: a cluster whose subnets carry no karpenter.sh/discovery tag would
-  # otherwise measure "0 free" and be refused outright, blaming capacity for
-  # what is a tagging or EKS_CLUSTER mismatch.
-  read -r n_subnets free_ips <<< "$(aws ec2 describe-subnets --region "${AWS_REGION}" \
-    --filters "Name=tag:karpenter.sh/discovery,Values=${EKS_CLUSTER}" \
-    --query 'join(` `, [to_string(length(Subnets)), to_string(sum(Subnets[].AvailableIpAddressCount))])' \
-    --output text 2>/dev/null | sed 's/\.[0-9]*//g')"
-  if ! [[ "${n_subnets:-}" =~ ^[0-9]+$ ]]; then
-    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
-  elif [ "${n_subnets}" -eq 0 ]; then
-    warn "No subnet is tagged karpenter.sh/discovery=${EKS_CLUSTER}; skipping the pod-IP check."
-    warn "Nodes launch into subnets this cannot see, so the roster's ${need_ips} pod IPs are unverified."
-  elif [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
-    log "Capacity: ${want} × ${PODS_EACH} pods = ${need_ips} pod IPs needed, ${free_ips} free in the node subnets."
-    if [ "${free_ips}" -lt "${need_ips}" ]; then
-      err "Not enough pod IPs for ${want} ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."
-      err "Pods would sit Pending and the deploys would time out one by one."
-      err "Widen the node subnets first: apply aws_subnet.pods in platform/terraform (a /20 per AZ),"
-      err "or deploy fewer people at a time. --no-preflight overrides this check."
-      rc=1
-    fi
-  else
-    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
-  fi
-
-  # Advisory: the NodePool ceiling counts node capacity, not requests, so it is
-  # not a like-for-like comparison -- but being under it already means the
-  # roster cannot fit.
-  limit_cpu="$(kubectl get nodepool tenants -o jsonpath='{.spec.limits.cpu}' 2>/dev/null)"
-  if [[ "${limit_cpu}" =~ ^[0-9]+$ ]] && [ "${limit_cpu}" -lt "${need_cpu}" ]; then
-    warn "Karpenter NodePool 'tenants' is capped at ${limit_cpu} vCPU; ${want} ${PROFILE} tenants request ~${need_cpu}. Raise spec.limits.cpu."
-  fi
-  return "${rc}"
-}
 
 # ---------- Deploy ----------
 # Status is written to a file per tenant rather than a shell variable: each
@@ -383,8 +394,14 @@ done
 [ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} deployed tenant(s) (pass --redeploy to redeploy them)."
 [ "${#RETRYING[@]}" -eq 0 ] || warn "Retrying ${#RETRYING[@]} incomplete tenant(s) from an earlier run: ${RETRYING[*]}"
 
-if [ "${#QUEUE[@]}" -gt 0 ] && [ "${PREFLIGHT}" = true ]; then
-  capacity_preflight "${#QUEUE[@]}" || exit 1
+if [ "${#QUEUE[@]}" -gt 0 ]; then
+  if [ "${PREFLIGHT}" = true ]; then
+    capacity_preflight "${#QUEUE[@]}" || exit 1
+  fi
+  # After the partition, not before it: a re-run that finds every tenant already
+  # deployed -- the ordinary end of the "re-run until the batch is clean" loop --
+  # should not ask ECR thirteen questions in order to deploy nothing.
+  resolve_image_tags
 fi
 
 log "Deploying ${#QUEUE[@]} tenant(s), ${CONCURRENCY} at a time..."

@@ -144,6 +144,26 @@ export async function listTenantNamespaces(): Promise<string[]> {
 }
 
 /**
+ * Tenant namespaces labeled demo/persistent=true — standing per-person
+ * environments deployed with `deploy-tenant.sh --ttl none`. They carry no
+ * control-table item and no expiry, and every reaper path refuses to delete
+ * them, so they are not candidates for anything that reasons about cleanup.
+ */
+export async function listPersistentNamespaces(): Promise<Set<string>> {
+  const res = await core().listNamespace(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    `${TENANT_LABEL},demo/persistent=true`,
+  );
+  const names = res.body.items
+    .map((ns) => ns.metadata?.name)
+    .filter((n): n is string => Boolean(n));
+  return new Set(names);
+}
+
+/**
  * Stream (read) the latest logs from the newest pod of a Job whose name
  * matches the given prefix in the platform namespace. Best-effort; returns
  * undefined when nothing is found or the cluster is unreachable.

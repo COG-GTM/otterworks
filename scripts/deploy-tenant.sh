@@ -119,6 +119,10 @@ if [ "${PERSISTENT}" = true ]; then
   TENANT_LABELS="${TENANT_LABELS}"$'\n    demo/persistent: "true"'
   log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, persistent: no TTL, reapers skip it)"
 else
+  # The two flags are independent on purpose, but this pairing is nearly always a
+  # mistake: it holds the tenant's requests for the whole TTL and then deletes the
+  # tenant -- namespace, database and S3 prefix -- at the end of it.
+  [ "${ALWAYS_ON}" = false ] || warn "--always-on with --ttl ${TTL}: this reserves the tenant's compute until it expires, and it is still reaped then. Pass --ttl none for a standing environment."
   EXPIRES_AT="$(ttl_to_expiry "${TTL}")"
   # Epoch form for the reaper: it compares integers only (no ISO parsing), so the
   # reaper image needs nothing more than `date +%s`.

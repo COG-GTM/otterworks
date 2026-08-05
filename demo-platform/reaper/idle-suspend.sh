@@ -133,11 +133,17 @@ tenant_always_on() {
 # script-deployed tenant always-on, whether or not anyone wanted it. They keep
 # their counters on the namespace instead, so the same decisions apply to both.
 #
-# yes | no | unknown. Not ctl_tenant_exists: it reads through ctl_get, which turns
-# any API failure into '{}' and so answers "no item" for a throttled, unauthorised
-# or unreachable table. That answer sends every read and write to the namespace,
-# leaving a dashboard tenant's real counters untouched -- a scan that suspends
-# nothing while reporting nothing wrong. A failure has to stay a failure.
+# Sets TENANT_HAS_ITEM[id] to yes | no | unknown, and keeps the item it read in
+# TENANT_ITEM[id]: this is a GetItem on the same key state_read wants, so the
+# attributes come back with the answer and asking a second time would be a second
+# request per tenant per pass against the table whose throttling this code exists
+# to notice -- and a request that can fail on its own, one call after the check.
+#
+# Not ctl_tenant_exists: it reads through ctl_get, which turns any API failure
+# into '{}' and so answers "no item" for a throttled, unauthorised or unreachable
+# table. That answer sends every read and write to the namespace, leaving a
+# dashboard tenant's real counters untouched -- a scan that suspends nothing while
+# reporting nothing wrong. A failure has to stay a failure.
 tenant_item_backend() {
   local id="$1" out err errfile rc
   # stdout is JSON this parses, so stderr cannot share it: the CLI writes there
@@ -151,21 +157,25 @@ tenant_item_backend() {
            --output json 2>"${errfile}")"; rc=$?
   err="$(cat "${errfile}")"; rm -f "${errfile}"
   if [ "${rc}" -ne 0 ]; then
-    idle_warn "control table lookup failed for ${id}: ${err//$'\n'/ }"; printf 'unknown'; return
+    idle_warn "control table lookup failed for ${id}: ${err//$'\n'/ }"
+    TENANT_HAS_ITEM[$id]=unknown
+    return
   fi
   if [ -n "$(printf '%s' "${out}" | jq -r '.Item.PK.S // empty' 2>/dev/null)" ]; then
-    printf 'yes'
+    TENANT_HAS_ITEM[$id]=yes
+    TENANT_ITEM[$id]="${out}"
   else
-    printf 'no'
+    TENANT_HAS_ITEM[$id]=no
   fi
 }
 
 declare -A TENANT_HAS_ITEM=()
+declare -A TENANT_ITEM=()
 tenant_has_item() {
   local id="$1"
-  if [ -z "${TENANT_HAS_ITEM[$id]+x}" ]; then
-    TENANT_HAS_ITEM[$id]="$(tenant_item_backend "${id}")"
-  fi
+  # Not a command substitution: the item is cached alongside the answer, and a
+  # subshell would drop it.
+  [ -n "${TENANT_HAS_ITEM[$id]+x}" ] || tenant_item_backend "${id}"
   [ "${TENANT_HAS_ITEM[$id]}" = "yes" ]
 }
 
@@ -174,8 +184,12 @@ tenant_has_item() {
 state_read() {
   local id="$1" ns item c s r
   ns="$(idle_ns "${id}")"
+  # The item the backend probe already read, not a fresh ctl_get: that second
+  # read is one more chance to fail, and ctl_get answers a failure with '{}' --
+  # unset counters, which the scan treats as a first observation and starts the
+  # idle clock over, every pass, for as long as the table is unhappy.
   if tenant_has_item "${id}"; then
-    item="$(ctl_get "TENANT#${id}" "META")"
+    item="${TENANT_ITEM[$id]:-}"
     c="$(printf '%s' "${item}" | jq -r '.Item.req_count.N // empty')"
     s="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
     r="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"

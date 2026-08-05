@@ -396,7 +396,7 @@ check "still reports failure when the scrape cannot be made" "$?" "1"
 # would run on to the next function's closing brace and drag that in too.
 eval "$(sed -n '/^idle_ns()/p;/^tenant_item_backend()/,/^}/p;/^tenant_has_item()/,/^}/p;/^state_read()/,/^}/p;/^record_activity()/,/^}/p;/^record_running()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
 # shellcheck disable=SC2034  # read by the real tenant_has_item / state_read
-declare -A TENANT_HAS_ITEM=() NS_ANNOT=()
+declare -A TENANT_HAS_ITEM=() TENANT_ITEM=() NS_ANNOT=()
 # These two record writes from inside `out="$(...)"`, i.e. from a subshell, so
 # they land in files rather than variables the parent would never see.
 WRITES="$(mktemp -d)"; trap 'rm -rf "${WRITES}"' EXIT
@@ -406,15 +406,22 @@ CONTROL_TABLE="otterworks-demo-control"
 # shellcheck disable=SC2034
 AWS_REGION="us-east-1"
 idle_warn() { echo "WARN: $*" >&2; }
-ctl_get() { jq -n '{Item:{req_count:{N:"7"},idle_since:{N:"123"},was_running:{N:"1"}}}'; }
+# ctl_get is deliberately absent: state_read reading the counters through it
+# again would be a second GetItem, and calling an undefined function here is how
+# a reintroduced one fails the suite rather than passing quietly.
+#
 # get-item is the backend probe, and DDB_FAILS is the table being unreadable
-# rather than empty. It is answered rather than recorded: the recorded calls are
-# the writes a case is asserting on.
+# rather than empty. It answers with the whole item, as DynamoDB does -- the
+# attributes state_read wants arrive with the answer to "does this tenant have an
+# item" -- and is counted, because how many times it is asked is the point.
 aws() {
   if [ "$2" = "get-item" ]; then
+    echo get-item >> "${WRITES}/get"
     [ "${DDB_FAILS:-no}" = "yes" ] && { echo "ThrottlingException" >&2; return 254; }
     [ -z "${DDB_NOISE:-}" ] || echo "${DDB_NOISE}" >&2
-    [ "${HAS_ITEM}" = "yes" ] && jq -n '{Item:{PK:{S:"TENANT#x"}}}' || printf '{}'
+    [ "${HAS_ITEM}" = "yes" ] \
+      && jq -n '{Item:{PK:{S:"TENANT#x"},req_count:{N:"7"},idle_since:{N:"123"},was_running:{N:"1"}}}' \
+      || printf '{}'
     return 0
   fi
   echo "$2" >> "${WRITES}/aws"; printf '{}'
@@ -434,7 +441,8 @@ wrote() { [ -f "${WRITES}/$1" ] || return 0; tr '\n' ' ' < "${WRITES}/$1" | sed 
 # a case's HAS_ITEM setting take effect.
 reset_backend() {
   # shellcheck disable=SC2034  # the cache is read by the real tenant_has_item
-  TENANT_HAS_ITEM=(); NS_ANNOT=(); rm -f "${WRITES}/aws" "${WRITES}/annotate"
+  TENANT_HAS_ITEM=(); TENANT_ITEM=(); NS_ANNOT=()
+  rm -f "${WRITES}/aws" "${WRITES}/annotate" "${WRITES}/get"
 }
 
 reset_backend; HAS_ITEM=yes
@@ -485,6 +493,10 @@ reset_backend; HAS_ITEM=yes
 tenant_has_item dash
 state_read dash >/dev/null
 check "  and the resolved backend is cached for later calls" "${TENANT_HAS_ITEM[dash]}" "yes"
+# One GetItem per tenant per pass: the probe's item is what state_read reads, so
+# the counters cannot come back empty from a second lookup that failed on its own
+# -- which the scan would read as a first observation and restart the clock on.
+check "  and one lookup answers both questions" "$(wrote get)" "get-item"
 
 # --- tenant_always_on, the real implementation -------------------------------
 # The exemption read decides whether a standing environment stays up, and an

@@ -144,6 +144,23 @@ FREE_IPS=4000; rc="$(run_batch --profile core)"
 check "resolves each service's image tag once for the whole roster" "$(wc -l < "${ECR_LOG}" | tr -d ' ')" "5"
 check "  and hands it to the deploys" "$(grep -c 'tag=v1' "${DEPLOY_LOG}")" "2"
 
+# ...and not at all when the partition leaves nothing to deploy, which is how a
+# re-run of a finished roster ends.
+EXISTING_NS="otterworks-ada-lovelace otterworks-grace-hopper"
+DEPLOYED_NS="ada-lovelace grace-hopper"
+rc="$(run_batch)"
+check "asks ECR nothing when every tenant is already deployed" "$(wc -l < "${ECR_LOG}" | tr -d ' ')" "0"
+check "  and still succeeds" "${rc}" "0"
+EXISTING_NS=""; DEPLOYED_NS=""
+
+# --dry-run is where a 95-name roster is sanity-checked, and whether it fits is
+# most of that question -- but it is advisory here: refusing to print a plan
+# helps nobody.
+FREE_IPS=12; rc="$(run_batch --dry-run)"
+check "--dry-run reports a roster that will not fit" "${rc}" "0"
+said "  naming the limit the real run would refuse on" "Not enough pod IPs"
+check "  and deploys nothing" "$(deployed)" ""
+
 # Staying awake is opt-in. Without the flag a tenant idles like any other, which
 # is the whole point of it being a flag: the exemption holds its compute and pod
 # IPs whether or not anyone opens the URL.
