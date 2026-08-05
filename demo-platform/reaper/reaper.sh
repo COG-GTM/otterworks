@@ -157,6 +157,10 @@ $(echo "${rrs}" | jq -c '.[]')
 EOF
 }
 
+# Why the last tenant_is_persistent said yes: the label, or a label it could not
+# read. Both keep the tenant, but only one of them is a decision somebody made.
+PERSISTENT_REASON=""
+
 # A tenant deployed with `deploy-tenant.sh <id> --ttl none` is long-lived (a
 # standing per-person environment, not a workshop seat) and has no expiry to
 # compare against. It also has no control-table item unless the dashboard
@@ -165,6 +169,7 @@ EOF
 tenant_is_persistent() {
   local ns out err errfile rc
   ns="$(tenant_namespace "$1")"
+  PERSISTENT_REASON="demo/persistent=true"
   # The two streams are kept apart: the label decides whether the tenant is
   # deleted, and kubectl writes to stderr on a *successful* call often enough
   # (API-server Warning headers, exec-plugin deprecation notices) that folding
@@ -183,6 +188,7 @@ tenant_is_persistent() {
   # sweep_orphan_s3 and sweep_orphan_ddb delete data on this answer alone, so an
   # unreadable label has to keep the tenant.
   warn "cannot read demo/persistent on ${ns} (${err//$'\n'/ }); treating '$1' as persistent"
+  PERSISTENT_REASON="demo/persistent unreadable"
   return 0
 }
 
@@ -195,7 +201,7 @@ gc_tenant() {
   # 2, not 0: callers ignore it, except reap_expired, whose tally would otherwise
   # report a persistent tenant as reaped.
   if tenant_is_persistent "${id}"; then
-    log "tenant '${id}' is persistent (demo/persistent=true); NOT reaping (${reason})"
+    log "tenant '${id}' is persistent (${PERSISTENT_REASON}); NOT reaping (${reason})"
     return 2
   fi
   log "reaping tenant '${id}' (${reason}) -> ns=${ns} db=${db}"

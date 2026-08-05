@@ -321,6 +321,7 @@ ctl_get() { jq -n '{Item:{req_count:{N:"7"},idle_since:{N:"123"},was_running:{N:
 aws() {
   if [ "$2" = "get-item" ]; then
     [ "${DDB_FAILS:-no}" = "yes" ] && { echo "ThrottlingException" >&2; return 254; }
+    [ -z "${DDB_NOISE:-}" ] || echo "${DDB_NOISE}" >&2
     [ "${HAS_ITEM}" = "yes" ] && jq -n '{Item:{PK:{S:"TENANT#x"}}}' || printf '{}'
     return 0
   fi
@@ -370,6 +371,14 @@ reset_backend; HAS_ITEM=yes; DDB_FAILS=yes
 tenant_has_item dash 2>/dev/null || true
 check "a failed control-table lookup is unknown, not absent" "${TENANT_HAS_ITEM[dash]}" "unknown"
 DDB_FAILS=no
+
+# Nor may a notice on stderr: folded into the body it is not JSON, jq finds no
+# PK, and the same misrouting happens on a lookup that actually succeeded.
+reset_backend; HAS_ITEM=yes
+DDB_NOISE="urllib3 v2 only supports OpenSSL 1.1.1+"
+tenant_has_item dash 2>/dev/null || true
+check "a lookup that warns and succeeds still finds the item" "${TENANT_HAS_ITEM[dash]}" "yes"
+DDB_NOISE=""
 
 # The lookup is cached in this shell, not in the subshell state_read runs in.
 reset_backend; HAS_ITEM=yes

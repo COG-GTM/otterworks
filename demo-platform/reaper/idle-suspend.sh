@@ -112,12 +112,20 @@ tenant_always_on() {
 # leaving a dashboard tenant's real counters untouched -- a scan that suspends
 # nothing while reporting nothing wrong. A failure has to stay a failure.
 tenant_item_backend() {
-  local id="$1" out
+  local id="$1" out err errfile rc
+  # stdout is JSON this parses, so stderr cannot share it: the CLI writes there
+  # on plenty of successful calls (urllib3/botocore deprecation notices, config
+  # warnings), and one line of it makes jq fail and the answer come back "no" --
+  # the misrouting this function exists to prevent, arriving by another door.
+  errfile="$(mktemp)"
   out="$(aws dynamodb get-item \
            --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
            --key "$(jq -n --arg pk "TENANT#${id}" '{PK:{S:$pk},SK:{S:"META"}}')" \
-           --output json 2>&1)" \
-    || { idle_warn "control table lookup failed for ${id}: ${out//$'\n'/ }"; printf 'unknown'; return; }
+           --output json 2>"${errfile}")"; rc=$?
+  err="$(cat "${errfile}")"; rm -f "${errfile}"
+  if [ "${rc}" -ne 0 ]; then
+    idle_warn "control table lookup failed for ${id}: ${err//$'\n'/ }"; printf 'unknown'; return
+  fi
   if [ -n "$(printf '%s' "${out}" | jq -r '.Item.PK.S // empty' 2>/dev/null)" ]; then
     printf 'yes'
   else

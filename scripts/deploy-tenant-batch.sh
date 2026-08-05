@@ -191,17 +191,28 @@ log "Per-tenant logs: ${LOG_DIR}"
 # Pod IPs bind first -- the VPC CNI gives every pod a real subnet address, and a
 # /24 node subnet holds ~250 of them.
 capacity_preflight() {
-  local want="$1" need_ips need_cpu free_ips limit_cpu rc=0
+  local want="$1" need_ips need_cpu n_subnets free_ips limit_cpu rc=0
   need_ips=$(( want * PODS_EACH ))
   need_cpu=$(( (want * MILLICPU_EACH + 999) / 1000 ))
 
   # Free addresses across every subnet Karpenter may launch into. Prefix
   # delegation books a /28 at a time, so this reads slightly pessimistic --
   # addresses reserved for a node's next pods count as allocated.
-  free_ips="$(aws ec2 describe-subnets --region "${AWS_REGION}" \
+  #
+  # The subnet count comes back with the sum because JMESPath sum([]) is 0, not
+  # null: a cluster whose subnets carry no karpenter.sh/discovery tag would
+  # otherwise measure "0 free" and be refused outright, blaming capacity for
+  # what is a tagging or EKS_CLUSTER mismatch.
+  read -r n_subnets free_ips <<< "$(aws ec2 describe-subnets --region "${AWS_REGION}" \
     --filters "Name=tag:karpenter.sh/discovery,Values=${EKS_CLUSTER}" \
-    --query 'sum(Subnets[].AvailableIpAddressCount)' --output text 2>/dev/null | sed 's/\..*//')"
-  if [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
+    --query 'join(` `, [to_string(length(Subnets)), to_string(sum(Subnets[].AvailableIpAddressCount))])' \
+    --output text 2>/dev/null | sed 's/\.[0-9]*//g')"
+  if ! [[ "${n_subnets:-}" =~ ^[0-9]+$ ]]; then
+    warn "Could not read subnet capacity from EC2; skipping the pod-IP check."
+  elif [ "${n_subnets}" -eq 0 ]; then
+    warn "No subnet is tagged karpenter.sh/discovery=${EKS_CLUSTER}; skipping the pod-IP check."
+    warn "Nodes launch into subnets this cannot see, so the roster's ${need_ips} pod IPs are unverified."
+  elif [[ "${free_ips}" =~ ^[0-9]+$ ]]; then
     log "Capacity: ${want} × ${PODS_EACH} pods = ${need_ips} pod IPs needed, ${free_ips} free in the node subnets."
     if [ "${free_ips}" -lt "${need_ips}" ]; then
       err "Not enough pod IPs for ${want} ${PROFILE} tenants (need ${need_ips}, have ${free_ips})."

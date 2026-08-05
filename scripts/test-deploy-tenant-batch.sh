@@ -40,12 +40,15 @@ case " ${INCOMPLETE:-} " in *" $1 "*) exit 0 ;; esac
 : > "${MARKER_DIR}/otterworks-$1"
 EOS
 
-# FREE_IPS is what EC2 reports across the karpenter.sh/discovery subnets; the
-# sum() JMESPath expression the script uses returns a float, hence the ".0".
+# What EC2 reports across the karpenter.sh/discovery subnets: the number matched
+# and the free addresses in them. Both come back from JMESPath as floats, hence
+# the ".0"; N_SUBNETS unset means the call itself produced nothing.
 cat > "${WORK}/bin/aws" <<'EOS'
 #!/usr/bin/env bash
 case "$*" in
-  *describe-subnets*) [ -n "${FREE_IPS}" ] && printf '%s.0\n' "${FREE_IPS}"; exit 0 ;;
+  *describe-subnets*)
+    [ -n "${N_SUBNETS-}" ] || { [ -n "${FREE_IPS}" ] || exit 0; N_SUBNETS=2; }
+    printf '%s.0 %s.0\n' "${N_SUBNETS}" "${FREE_IPS:-0}"; exit 0 ;;
   *) exit 0 ;;
 esac
 EOS
@@ -112,6 +115,14 @@ check "--no-preflight still deploys everyone" "$(deployed)" "deploy:ada-lovelace
 FREE_IPS=""; rc="$(run_batch)"
 check "proceeds when EC2 capacity cannot be read" "${rc}" "0"
 said "warns that it could not measure" "Could not read subnet capacity"
+
+# JMESPath sum([]) is 0, not null, so a cluster whose subnets carry no discovery
+# tag measures "0 free" -- a number, and one no roster fits in. Refusing on it
+# blames capacity for what is a tagging or EKS_CLUSTER mismatch.
+export N_SUBNETS=0; FREE_IPS=0; rc="$(run_batch)"
+check "does not refuse a roster when no subnet carries the discovery tag" "${rc}" "0"
+said "  and says the tag is what is missing" "No subnet is tagged karpenter.sh/discovery"
+unset N_SUBNETS
 
 # core tenants are 7 pods, not 15, so the same subnet holds more of them.
 FREE_IPS=20; rc="$(run_batch --profile core)"
