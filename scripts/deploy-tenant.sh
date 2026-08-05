@@ -509,6 +509,12 @@ kubectl -n "${NS}" rollout status deployment/meilisearch --timeout=180s \
 # every concurrent child of deploy-tenant-batch.sh rewriting ~/.docker/config.json
 # at once -- for a credential none of them read.
 latest_tag() {
+  # deploy-tenant-batch.sh resolves each service's tag once and exports it here:
+  # the answer is the same for every tenant, and asking per tenant is ~1200
+  # calls for a 95-name roster with a throttled one costing that tenant a
+  # service. Unset outside the batch, where this is a single lookup anyway.
+  local cached="OTTERWORKS_IMAGE_TAG_${1//-/_}"
+  if [ -n "${!cached:-}" ]; then printf '%s' "${!cached}"; return 0; fi
   aws ecr describe-images --repository-name "${ECR_PREFIX}$1" --region "${AWS_REGION}" \
     --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags[0]' --output text 2>/dev/null
 }

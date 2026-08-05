@@ -34,7 +34,7 @@ cp "${SCRIPT_DIR}/lib/tenant-common.sh" "${WORK}/scripts/lib/"
 # failed Helm install leaves.
 cat > "${WORK}/scripts/deploy-tenant.sh" <<'EOS'
 #!/usr/bin/env bash
-echo "deploy:$1 $*" >> "${DEPLOY_LOG}"
+echo "deploy:$1 $* tag=${OTTERWORKS_IMAGE_TAG_api_gateway:-unset}" >> "${DEPLOY_LOG}"
 rm -f "${MARKER_DIR}/otterworks-$1"
 case " ${INCOMPLETE:-} " in *" $1 "*) exit 0 ;; esac
 : > "${MARKER_DIR}/otterworks-$1"
@@ -46,6 +46,9 @@ EOS
 cat > "${WORK}/bin/aws" <<'EOS'
 #!/usr/bin/env bash
 case "$*" in
+  *describe-images*)
+    echo "${*##*--repository-name }" | sed 's/ .*//' >> "${ECR_LOG}"
+    echo "v1"; exit 0 ;;
   *describe-subnets*)
     [ -n "${N_SUBNETS-}" ] || { [ -n "${FREE_IPS}" ] || exit 0; N_SUBNETS=2; }
     printf '%s.0 %s.0\n' "${N_SUBNETS}" "${FREE_IPS:-0}"; exit 0 ;;
@@ -81,10 +84,12 @@ export DB_PASSWORD=stub JWT_SECRET=stub SECRET_KEY_BASE=stub
 export DEPLOY_LOG="${WORK}/deploy.log"
 export MARKER_DIR="${WORK}/markers"; mkdir -p "${MARKER_DIR}"
 export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS="" INCOMPLETE=""
+export ECR_LOG="${WORK}/ecr.log"; : > "${ECR_LOG}"
 
 # Two full-profile tenants: 30 pod IPs.
 run_batch() {
   : > "${DEPLOY_LOG}"
+  : > "${ECR_LOG}"
   rm -f "${MARKER_DIR}"/*
   # The state an earlier run left on the cluster.
   for n in ${DEPLOYED_NS:-}; do : > "${MARKER_DIR}/otterworks-${n}"; done
@@ -132,6 +137,12 @@ check "sizes the roster by profile" "${rc}" "0"
 # it would refuse a roster the tenants it goes on to deploy would have fitted in.
 FREE_IPS=20; rc="$(TENANT_PROFILE=core run_batch)"
 check "sizes by TENANT_PROFILE when --profile is not given" "${rc}" "0"
+
+# The tag is the same for every tenant, and a throttled lookup costs the tenant
+# a service: one question per service, not per service per tenant.
+FREE_IPS=4000; rc="$(run_batch --profile core)"
+check "resolves each service's image tag once for the whole roster" "$(wc -l < "${ECR_LOG}" | tr -d ' ')" "5"
+check "  and hands it to the deploys" "$(grep -c 'tag=v1' "${DEPLOY_LOG}")" "2"
 
 # Staying awake is opt-in. Without the flag a tenant idles like any other, which
 # is the whole point of it being a flag: the exemption holds its compute and pod

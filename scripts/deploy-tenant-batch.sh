@@ -242,6 +242,30 @@ else
   warn "terraform init failed in infrastructure/terraform; each deploy will retry it on its own."
 fi
 
+# The images are the same for every tenant, so leaving latest_tag to the
+# children asks ECR one question per service per tenant -- ~1200 for this
+# roster. They are also load-bearing now: an empty answer is a service the child
+# reports as not deployed, which withholds the completion marker, so a throttled
+# lookup costs a whole tenant a re-run. Resolve each once here. It pins the
+# roster to one set of images too, which a push landing mid-batch would
+# otherwise split in half.
+resolve_image_tags() {
+  local svc tag
+  while read -r svc; do
+    [ -n "${svc}" ] || continue
+    tag="$(aws ecr describe-images --repository-name "${ECR_PREFIX}${svc}" --region "${AWS_REGION}" \
+             --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags[0]' --output text 2>/dev/null)" || tag=""
+    # A miss is left unset rather than exported: the child asks again and, if
+    # ECR really has nothing, says so per tenant the way it did before.
+    if [ -z "${tag}" ] || [ "${tag}" = "None" ]; then
+      warn "no image in ECR for ${svc}; each deploy will resolve it on its own."
+      continue
+    fi
+    export "OTTERWORKS_IMAGE_TAG_${svc//-/_}=${tag}"
+  done < <(profile_services "${PROFILE}")
+}
+resolve_image_tags
+
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"
 mkdir -p "${LOG_DIR}/status"
 log "Per-tenant logs: ${LOG_DIR}"
