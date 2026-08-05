@@ -44,13 +44,18 @@ case "$*" in
 esac
 EOS
 
-# No namespace exists yet (rc 1), and the NodePool is wide enough not to warn.
+# EXISTING_NS is the namespaces the cluster already has, DEPLOYED_NS the subset
+# that carries demo/deployed-at. Default: an empty cluster, and a NodePool wide
+# enough not to warn.
 cat > "${WORK}/bin/kubectl" <<'EOS'
 #!/usr/bin/env bash
+matches() { for n in $1; do case "$2" in *"${n}"*) return 0 ;; esac; done; return 1; }
 case "$*" in
-  *"get nodepool"*) echo 400; exit 0 ;;
-  *"get ns"*)       exit 1 ;;
-  *)                exit 0 ;;
+  *"get nodepool"*)                    echo 400; exit 0 ;;
+  *"annotations.demo/deployed-at"*)
+    matches "${DEPLOYED_NS:-}" "$*" && echo "2026-01-01T00:00:00Z"; exit 0 ;;
+  *"get ns"*)                          matches "${EXISTING_NS:-}" "$*"; exit $? ;;
+  *)                                   exit 0 ;;
 esac
 EOS
 
@@ -60,7 +65,7 @@ chmod +x "${WORK}/scripts/deploy-tenant.sh" "${WORK}/bin"/*
 export PATH="${WORK}/bin:${PATH}"
 export DB_PASSWORD=stub JWT_SECRET=stub SECRET_KEY_BASE=stub
 export DEPLOY_LOG="${WORK}/deploy.log"
-export FREE_IPS=""
+export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS=""
 
 # Two full-profile tenants: 30 pod IPs.
 run_batch() {
@@ -108,6 +113,24 @@ rc="$(run_batch --always-on)"
 check "--always-on succeeds" "${rc}" "0"
 check "  passes the flag to every tenant" "$(deploy_flags)" "2"
 said "  and says the fleet is permanently reserved" "reserved permanently"
+
+# Resuming a half-finished roster. deploy-tenant.sh creates the namespace in its
+# first seconds, so "namespace exists" is also what a deploy that died at the
+# database or Helm step leaves behind: skipping on that alone would report the
+# roster complete while leaving those people with a shell of a tenant.
+FREE_IPS=4000
+EXISTING_NS="otterworks-ada-lovelace" DEPLOYED_NS="otterworks-ada-lovelace"
+rc="$(run_batch)"
+check "skips a tenant that finished deploying" "$(deployed)" "deploy:grace-hopper"
+check "  and succeeds" "${rc}" "0"
+said "  and counts it as deployed, not attempted" "Skipping 1 deployed tenant"
+
+DEPLOYED_NS=""
+rc="$(run_batch)"
+check "retries a tenant left half-built by an earlier run" "$(deployed)" \
+  "deploy:ada-lovelace deploy:grace-hopper"
+said "  and says so" "Retrying 1 incomplete tenant"
+EXISTING_NS=""
 
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"

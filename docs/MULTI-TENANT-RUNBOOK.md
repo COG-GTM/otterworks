@@ -81,10 +81,13 @@ Deploy the whole roster — one `firstname-lastname` tenant per line of
 
 Names are transliterated to ASCII before slugging (`João Esteves` →
 `otterworks-joao-esteves`, database `otterworks_joao_esteves`), and two names
-that collide on one id abort the run before anything is deployed. Tenants whose
-namespace already exists are skipped, so a partially-failed run is re-runnable;
-per-tenant logs land in `--log-dir` and the exit status is non-zero if any
-tenant failed.
+that collide on one id abort the run before anything is deployed. Re-running is
+safe and is how a partial run is finished: a tenant whose deploy completed is
+skipped (`demo/deployed-at` on its namespace), and one left half-built by an
+aborted run is retried rather than mistaken for done — the namespace is created
+in the first seconds of a deploy, so its existence alone proves nothing.
+Per-tenant logs land in `--log-dir` and the exit status is non-zero if any tenant
+failed.
 
 Before deploying, the batch measures the roster against the free addresses in
 the node subnets and refuses a run that cannot fit — over the ceiling nothing

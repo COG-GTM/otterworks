@@ -163,8 +163,21 @@ EOF
 # created one, so without this it would read as an orphan and be swept.
 # Checked against the live namespace so the guard holds for every GC path.
 tenant_is_persistent() {
-  local ns; ns="$(tenant_namespace "$1")"
-  [ "$(kubectl get ns "${ns}" -o jsonpath='{.metadata.labels.demo/persistent}' 2>/dev/null)" = "true" ]
+  local ns out rc
+  ns="$(tenant_namespace "$1")"
+  out="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.labels.demo/persistent}' 2>&1)"; rc=$?
+  if [ "${rc}" -eq 0 ]; then
+    [ "${out}" = "true" ]
+    return
+  fi
+  # A namespace that is genuinely gone is the orphan the sweeps exist for.
+  case "${out}" in *NotFound*|*"not found"*) return 1 ;; esac
+  # Every other failure (API unreachable, throttled by ~100 sequential lookups,
+  # expired credentials, missing RBAC) means "unknown", not "not persistent".
+  # sweep_orphan_s3 and sweep_orphan_ddb delete data on this answer alone, so an
+  # unreadable label has to keep the tenant.
+  warn "cannot read demo/persistent on ${ns} (${out//$'\n'/ }); treating '$1' as persistent"
+  return 0
 }
 
 # Full idempotent GC for one tenant id. `reason` ends up in the AUDIT detail.

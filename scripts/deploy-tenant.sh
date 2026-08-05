@@ -554,6 +554,14 @@ else
   warn "Run scripts/tenant-platform-baseline.sh once to install it. Frontends are ClusterIP-only for now."
 fi
 
+# ---------- Completion marker ----------
+# Reached only when every step above succeeded (set -e). The namespace itself is
+# created early, so its existence says nothing about whether the deploy finished;
+# deploy-tenant-batch.sh reads this annotation to tell a finished tenant from one
+# left half-built by an aborted run, and retries the latter.
+kubectl annotate namespace "${NS}" --overwrite \
+  "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true
+
 # ---------- Summary ----------
 echo ""
 log "Tenant ${ATTENDEE_ID} deployed to namespace ${NS}."

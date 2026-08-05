@@ -21,11 +21,14 @@ nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
 PERSISTENT_LABEL=""     # what `kubectl get ns` reports for demo/persistent
+NS_LOOKUP_ERR=""        # when set, the namespace lookup fails with this on stderr
 DELETED=""              # every destructive call the reaper attempted
 
 kubectl() {
   case "$*" in
-    *"labels.demo/persistent"*)  printf '%s' "${PERSISTENT_LABEL}"; return 0 ;;
+    *"labels.demo/persistent"*)
+      if [ -n "${NS_LOOKUP_ERR}" ]; then echo "${NS_LOOKUP_ERR}" >&2; return 1; fi
+      printf '%s' "${PERSISTENT_LABEL}"; return 0 ;;
     *"get ns -l app.kubernetes.io/managed-by=otterworks-tenant"*)
       printf 'otterworks-ada-lovelace'; return 0 ;;
     *) return 0 ;;
@@ -109,6 +112,34 @@ DELETED=""
 sweep_orphan_s3 >/dev/null 2>&1
 check "orphan-S3 sweep still clears a genuine orphan's prefix" \
   "${DELETED# }" "s3 rm s3://otterworks-files-dev/tenants/ada-lovelace/ --recursive"
+
+# An unreadable label is not a licence to delete. The S3/DynamoDB sweeps have no
+# second opinion to fall back on -- a persistent tenant has no TENANT# item by
+# design -- so a throttled, unauthorised or unreachable API has to keep the data.
+PERSISTENT_LABEL="true"
+NS_LOOKUP_ERR="error: You must be logged in to the server (Unauthorized)"
+tenant_is_persistent ada-lovelace && r=yes || r=no
+check "treats an unreadable label as persistent" "${r}" "yes"
+
+DELETED=""
+sweep_orphan_s3 >/dev/null 2>&1
+check "orphan-S3 sweep spares a tenant it cannot read" "${DELETED# }" ""
+
+: > "${TEARDOWN_LOG}"
+gc_tenant ada-lovelace "expired" >/dev/null 2>&1
+check "never reaps a tenant it cannot read" "$(cat "${TEARDOWN_LOG}")" ""
+
+# A namespace that is genuinely gone is the orphan the sweeps exist for, so that
+# one failure mode must still read as "not persistent".
+NS_LOOKUP_ERR='Error from server (NotFound): namespaces "otterworks-ada-lovelace" not found'
+tenant_is_persistent ada-lovelace && r=yes || r=no
+check "a deleted namespace is not persistent" "${r}" "no"
+
+DELETED=""
+sweep_orphan_s3 >/dev/null 2>&1
+check "orphan-S3 sweep still clears data whose namespace is gone" \
+  "${DELETED# }" "s3 rm s3://otterworks-files-dev/tenants/ada-lovelace/ --recursive"
+NS_LOOKUP_ERR=""
 
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"

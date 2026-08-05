@@ -16,8 +16,9 @@
 # --always-on to exempt the roster from that, which is what makes every URL
 # answer cold at the cost of holding the whole fleet's compute and pod IPs.
 #
-# Resumable: a tenant whose namespace already exists is skipped unless
-# --redeploy is passed, so a partial run can simply be re-run.
+# Resumable: a tenant whose deploy previously ran to completion is skipped unless
+# --redeploy is passed, while one left half-built by an aborted run is retried, so
+# a partial run can simply be re-run.
 #
 # Usage:
 #   ./scripts/deploy-tenant-batch.sh [options] [NAME ...]
@@ -26,7 +27,7 @@
 #   --roster FILE       roster file (default: scripts/tenant-roster.txt)
 #   --ttl VALUE         lifetime passed to deploy-tenant.sh (default: none)
 #   --concurrency N     tenants to deploy in parallel (default: 4)
-#   --redeploy          also (re)deploy tenants whose namespace already exists
+#   --redeploy          also redeploy tenants that already deployed successfully
 #   --dry-run           print the resolved ids and commands; touch nothing
 #   --always-on         never scale these tenants to zero when idle
 #   --no-preflight      deploy even if the cluster cannot hold the roster
@@ -222,16 +223,31 @@ deploy_one() {
   fi
 }
 
+# A tenant counts as already deployed only if deploy-tenant.sh got all the way to
+# the end for it (demo/deployed-at). Skipping on the namespace alone would strand
+# exactly the people this script is meant to rescue: the namespace is created in
+# the first seconds, so a deploy that died at the database, Helm or ingress step
+# leaves one behind, and a re-run would report "skipped" over a half-built tenant.
+tenant_deploy_finished() {
+  [ -n "$(kubectl get ns "$(tenant_namespace "$1")" \
+            -o jsonpath='{.metadata.annotations.demo/deployed-at}' 2>/dev/null)" ]
+}
+
 SKIPPED=()
+RETRYING=()
 QUEUE=()
 for id in "${IDS[@]}"; do
   if [ "${REDEPLOY}" = false ] && kubectl get ns "$(tenant_namespace "${id}")" >/dev/null 2>&1; then
-    SKIPPED+=("${id}")
-    continue
+    if tenant_deploy_finished "${id}"; then
+      SKIPPED+=("${id}")
+      continue
+    fi
+    RETRYING+=("${id}")
   fi
   QUEUE+=("${id}")
 done
-[ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} existing tenant(s) (pass --redeploy to redeploy them)."
+[ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} deployed tenant(s) (pass --redeploy to redeploy them)."
+[ "${#RETRYING[@]}" -eq 0 ] || warn "Retrying ${#RETRYING[@]} incomplete tenant(s) from an earlier run: ${RETRYING[*]}"
 
 if [ "${#QUEUE[@]}" -gt 0 ] && [ "${PREFLIGHT}" = true ]; then
   capacity_preflight "${#QUEUE[@]}" || exit 1
