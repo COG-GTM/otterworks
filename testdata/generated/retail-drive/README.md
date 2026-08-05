@@ -159,8 +159,10 @@ Notes:
   uploading throws that run's progress away and starts from the beginning; the
   dashboard path refuses to do so unless the runner is given `SEED_FORCE=true`.
 - **A suspended tenant cannot be seeded.** The loader writes through the
-  tenant's api-gateway, so wake a scaled-to-zero tenant first
-  (`scripts/tenant-scale.sh <id> up`, or check it out from the dashboard).
+  tenant's api-gateway, so wake a scaled-to-zero tenant first. Without cluster
+  access that means a redeploy — `tenant.sh sync <branch>` — since
+  `scripts/tenant-scale.sh <id> up` needs kubectl and dashboard check-out only
+  applies to a tenant that is free.
 - **Ephemeral tenants lose the data.** `coggtm` is a TTL'd tenant on
   `demo.otterworks.app`; the reaper deletes its namespace *and its database* at
   expiry, taking the seeded drive with it. Extend it
@@ -219,7 +221,10 @@ a different password stops working. Configure one or the other, not both.
 and lets the runner replace a loader that is still going. It is also the only way
 out of a loader that never finishes *and* never fails — one whose pod the
 tenant's `ResourceQuota` will not admit, say — which would otherwise leave every
-later seed of that tenant refused as "already loading".
+later seed of that tenant refused as "already loading". A loader pod that will
+not terminate is the other half of that: the runner's delete waits 120s for it,
+and only under force does it then remove the pod outright
+(`--force --grace-period=0`) and retry.
 
 Two deployment prerequisites for that path, both one-off:
 

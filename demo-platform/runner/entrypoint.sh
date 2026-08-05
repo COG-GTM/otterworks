@@ -241,21 +241,27 @@ run_seed() {
   # that never starts.
   [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ] ||
     kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||
-    die_no_seed_secret "${ns}"
+    die "$(no_seed_secret_msg "${ns}")"
 
   # A Job's pod template is immutable, so a re-seed at a different scale cannot
   # be an `apply` over the previous run. Deleting first keeps re-seeding
-  # idempotent -- which the generator itself is. Foreground cascade so the old
-  # loader pod is really gone (not merely orphaned to the GC) before its
-  # replacement is admitted against the tenant's ResourceQuota.
-  # Bounded, because a foreground delete waits for the loader pod to go away and
-  # a pod stuck Terminating (lost node, finalizer) would otherwise keep this
-  # runner Job active forever -- which the dashboard reads as "a seed is already
-  # running" for every later attempt.
+  # idempotent -- which the generator itself is.
   log "removing any previous seed Job in ${ns}"
-  kubectl -n "${ns}" delete job "${job}" \
-    --ignore-not-found --cascade=foreground --wait=true --timeout=120s >/dev/null ||
-    die "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating"
+  if ! delete_loader_job "${ns}" "${job}"; then
+    [ "${SEED_FORCE:-false}" = "true" ] ||
+      die "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating; re-run with SEED_FORCE=true"
+    # The pod outlived the delete: a lost node or a finalizer, which is exactly
+    # the case an operator would clear with `kubectl delete pod --force`. Doing
+    # it here is the point of force -- without cluster access there is no other
+    # way back, and the alternative is a tenant that can never be seeded again.
+    # Before the second delete rather than instead of it, so the Job object is
+    # really gone before its immutable replacement is applied.
+    log "force: the previous loader pod is not terminating; removing it outright"
+    kubectl -n "${ns}" delete pod -l "app.kubernetes.io/name=${job}" \
+      --ignore-not-found --force --grace-period=0 >/dev/null 2>&1 || true
+    delete_loader_job "${ns}" "${job}" ||
+      die "could not remove the previous seed Job in ${ns} even with SEED_FORCE=true -- it needs direct cluster access"
+  fi
 
   # After the delete, so that a seed refused or aborted before this point has not
   # replaced an operator-created Secret (which, per the README, can invalidate a
@@ -264,13 +270,8 @@ run_seed() {
   ensure_seed_secret "${ns}"
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
-  # An apply that fails here leaves the namespace with no loader at all, since
-  # the previous one has already been deleted. That is worth an audit row of its
-  # own: the runner pod's log is otherwise the only trace, and it ages out.
-  printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null || {
-    ctl_audit "${TENANT_ID}" seed_fail "could not create job/${job} in ${ns}; the previous loader is gone"
-    die "could not create the seed Job in ${ns}"
-  }
+  printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null ||
+    die_without_loader "could not create job/${job} in ${ns}; the previous loader is gone"
 
   ctl_audit "${TENANT_ID}" seed "ns=${ns} scale=${scale} departments=${departments}"
   log "seed Job created; follow it with: kubectl -n ${ns} logs -f job/${job}"
@@ -287,8 +288,26 @@ run_seed() {
 #
 # The values go to kubectl on STDIN, never on an argv (`kubectl create secret
 # --from-literal` would put them in /proc/<pid>/cmdline) and never into a file.
-die_no_seed_secret() {
-  die "secret retail-drive-seed is missing in $1 and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n $1 create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
+no_seed_secret_msg() {
+  printf '%s' "secret retail-drive-seed is missing in $1 and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n $1 create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
+}
+
+# For every failure between the delete of the old loader and the creation of its
+# replacement: the namespace is left with no loader at all, and the runner pod's
+# log is the only other trace of it -- which ages out with the runner Job.
+die_without_loader() {
+  ctl_audit "${TENANT_ID}" seed_fail "$1"
+  die "$1"
+}
+
+# Foreground cascade so the old loader pod is really gone (not merely orphaned
+# to the GC) before its replacement is admitted against the tenant's
+# ResourceQuota. Bounded, because that wait is on a pod which may never
+# terminate, and an unbounded one keeps this runner Job active forever -- which
+# the dashboard reads as "a seed is already running" for every later attempt.
+delete_loader_job() {
+  kubectl -n "$1" delete job "$2" \
+    --ignore-not-found --cascade=foreground --wait=true --timeout=120s >/dev/null
 }
 
 ensure_seed_secret() {
@@ -312,13 +331,13 @@ EOF
     then
       return 0
     fi
-    die "could not write the retail-drive-seed Secret in ${ns}"
+    die_without_loader "could not write the retail-drive-seed Secret in ${ns}"
   fi
 
   # Re-checked rather than assumed from the pre-flight above, because this is
   # also the guarantee the apply that follows depends on.
   kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||
-    die_no_seed_secret "${ns}"
+    die_without_loader "$(no_seed_secret_msg "${ns}")"
 }
 
 # Print the loader Job's true conditions (empty while it is still running), or

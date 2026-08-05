@@ -63,11 +63,13 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   if (tenant.live.readyPods === 0) {
     // No pods at all is a suspended tenant; pods that are simply not Ready is a
     // broken or still-starting one, and telling that operator to "wake it"
-    // points at the wrong remedy.
+    // points at the wrong remedy. The remedy named is the one the seed caller
+    // can actually run: scripts/tenant-scale.sh needs the cluster access this
+    // route exists to stand in for, a redeploy does not.
     return error(
       409,
       tenant.live.totalPods === 0
-        ? `tenant '${id}' is scaled to zero (idle-suspended); wake it before seeding`
+        ? `tenant '${id}' is scaled to zero (idle-suspended); wake it with a redeploy (tenant.sh sync ${tenant.branch ?? "<branch>"}) before seeding`
         : `tenant '${id}' has no ready pods (${tenant.live.phase}); it cannot serve the loader yet`,
     );
   }
