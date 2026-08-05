@@ -234,6 +234,9 @@ case "${cmd}" in
     [ -n "${id}" ] || fail "usage: tenant.sh status <id>"
 
     login
+    # The seed loader is a Job pod, which the dashboard keeps out of the live
+    # counters (it is a task, not one of the tenant's services), so it gets a
+    # line of its own -- otherwise a run in progress would be invisible here.
     api GET "/api/tenants/${id}" |
       jq -r '"id       : \(.id)",
              "status   : \(.status)",
@@ -241,7 +244,11 @@ case "${cmd}" in
              "url      : \(.url // "-")",
              "api      : \(.apiUrl // "-")",
              "expires  : \(if .expiresAt then (.expiresAt | todate) else "-" end)",
-             "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready"'
+             "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready",
+             ((.pods // [])
+              | map(select(.name | startswith("retail-drive-seed-loader")))
+              | if length == 0 then empty
+                else "seed     : \(.[0].phase) (\(.[0].name))" end)'
     ;;
 
   # Load the synthetic "RetailCo enterprise drive" into a live tenant, so a demo
@@ -262,13 +269,13 @@ case "${cmd}" in
     case "${scale}" in
       ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
     esac
-    # Before the leading-zero check, so that a bare `0` -- which that pattern
-    # also matches -- is diagnosed as the zero it is.
+    # The API bounds it to 0.01..2; saying so here beats a 400 after the login.
     case "${scale//./}" in
       *[!0]*) ;;
       *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
     esac
-    # The API bounds it to 0.01..2; saying so here beats a 400 after the login.
+    # Only the CLI needs this one: `01` is a number everywhere else in the chain,
+    # but not in JSON, so jq --argjson would reject it after the login.
     case "${scale}" in
       0[0-9]*) fail "invalid scale '${scale}' (no leading zero: 0.5, not 00.5)" ;;
     esac

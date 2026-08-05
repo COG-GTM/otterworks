@@ -167,8 +167,9 @@ Notes:
   (`tenant.sh extend coggtm 8h`) or make it perpetual
   (`tenant.sh persist coggtm true`) if the data has to outlive the demo.
 - The loader pod counts against the tenant's `ResourceQuota` (it requests
-  250m CPU / 512Mi) and lives in the tenant namespace, so it is visible as an
-  extra pod in `tenant.sh status <id>` while it runs.
+  250m CPU / 512Mi) and lives in the tenant namespace. It is a Job pod, so it is
+  deliberately left out of the tenant's ready/total counters; `tenant.sh status
+  <id>` prints it on its own `seed` line while it exists.
 - **NetworkPolicy.** The api-gateway chart's own policy lists only
   `ingress-nginx` and `monitoring` as sources, but `deploy-tenant.sh` also
   stamps a `tenant-isolation` policy into every tenant namespace that allows

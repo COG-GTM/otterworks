@@ -235,8 +235,6 @@ run_seed() {
                   "${sid}" "${scale}" "${departments}")" ||
     die "could not render the seed Job for ${ns}"
 
-  ensure_seed_secret "${ns}"
-
   # A Job's pod template is immutable, so a re-seed at a different scale cannot
   # be an `apply` over the previous run. Deleting first keeps re-seeding
   # idempotent -- which the generator itself is. Foreground cascade so the old
@@ -250,6 +248,12 @@ run_seed() {
   kubectl -n "${ns}" delete job "${job}" \
     --ignore-not-found --cascade=foreground --wait=true --timeout=120s >/dev/null ||
     die "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating"
+
+  # After the delete, so that a seed refused or aborted before this point has not
+  # replaced an operator-created Secret (which, per the README, can invalidate a
+  # drive account registered with a different password). Still before the apply,
+  # because the loader pod reads the Secret at start-up.
+  ensure_seed_secret "${ns}"
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
   printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null ||

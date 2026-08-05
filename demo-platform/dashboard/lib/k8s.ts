@@ -180,12 +180,6 @@ export async function listTenantNamespaces(): Promise<string[]> {
   return Array.from(byNamespace.keys());
 }
 
-function jobFailed(job: k8s.V1Job): boolean {
-  return (job.status?.conditions ?? []).some(
-    (c) => c.type === "Failed" && c.status === "True",
-  );
-}
-
 /**
  * Stream (read) the latest logs from the newest pod of a runner Job for one
  * tenant. Selected on the `demo/tenant-id` label rather than the Job's name
@@ -193,10 +187,11 @@ function jobFailed(job: k8s.V1Job): boolean {
  * (`seed-a-` also matches tenant `a-b`'s Jobs), and covers every action, so a
  * failed seed is not hidden behind the deploy that preceded it.
  *
- * A failed Job wins over a newer successful one: the logs an operator wants are
- * the ones that explain a failure, and "newest" alone would bury a broken deploy
- * under the seed someone dispatched a minute later. Best-effort; returns
- * undefined when nothing is found or the cluster is unreachable.
+ * Strictly the newest Job, whatever its action or outcome: preferring a failed
+ * one keeps a stale failure on screen for the hour its Job survives, including
+ * over the seed the operator just dispatched. So a failure is visible until
+ * something newer happens, and no longer. Best-effort; returns undefined when
+ * nothing is found or the cluster is unreachable.
  */
 export async function latestJobLogs(
   platformNamespace: string,
@@ -219,7 +214,7 @@ export async function latestJobLogs(
           new Date(b.metadata?.creationTimestamp ?? 0).getTime() -
           new Date(a.metadata?.creationTimestamp ?? 0).getTime(),
       );
-    const job = jobs.find(jobFailed) ?? jobs[0];
+    const job = jobs[0];
     if (!job?.metadata?.name) return undefined;
 
     const sel = `job-name=${job.metadata.name}`;
