@@ -56,6 +56,11 @@ interface ChaosEntry {
   source: "client" | "admin";
 }
 
+/**
+ * Keyed by service name, not scenario key, to match the admin dashboard's
+ * boolean-per-service shape. A second scenario for a service already in
+ * `CHAOS_SCENARIOS` would therefore share one flag and TTL with the first.
+ */
 type ClientChaosState = Record<string, ChaosEntry>;
 
 function serviceOf(scenarioKey: string): string {

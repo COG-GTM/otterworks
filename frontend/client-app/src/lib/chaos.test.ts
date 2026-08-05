@@ -31,6 +31,8 @@ function installLocalStorage(): void {
 describe("client-side chaos flag store", () => {
   beforeEach(() => {
     installLocalStorage();
+    // Drops the module's in-memory fallback, which a rejected write leaves behind.
+    resetChaos();
   });
 
   afterEach(() => {
