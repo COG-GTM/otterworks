@@ -193,6 +193,34 @@ check "  deploying nothing" "$(deployed)" ""
 FREE_IPS=999; rc="$(TENANT_PROFILE=ful run_batch)"
 check "rejects an unknown TENANT_PROFILE too" "${rc}" "1"
 
+# An accented name has to derive the same id on every operator's box: these
+# tenants are persistent, so a second spelling is a standing namespace, database
+# and S3 prefix that nothing ever reclaims. iconv's //TRANSLIT is locale-
+# dependent -- under C/POSIX glibc writes '?' where a UTF-8 locale folds the
+# accent -- and a batch is as likely to be run from cron, where LANG is unset.
+FREE_IPS=4000
+run_named() {
+  : > "${DEPLOY_LOG}"; rm -f "${MARKER_DIR}"/*
+  "${WORK}/scripts/deploy-tenant-batch.sh" "$@" >"${WORK}/out" 2>&1
+  echo "$?"
+}
+rc="$(LC_ALL=POSIX run_named "João Esteves")"
+check "transliterates an accented name under a non-UTF-8 locale" "${rc}" "0"
+check "  to the same id a UTF-8 locale gives" "$(deployed)" "deploy:joao-esteves"
+
+# And where no locale can (a box with no C.UTF-8, or musl's iconv): refuse, so
+# nobody gets a permanent tenant under a name they cannot recognise.
+cat > "${WORK}/bin/iconv" <<'EOS'
+#!/usr/bin/env bash
+sed 's/[^ -~]/?/g'
+EOS
+chmod +x "${WORK}/bin/iconv"
+rc="$(run_named "João Esteves")"
+check "refuses a name nothing on the box can transliterate" "${rc}" "1"
+said "  and says why" "did not transliterate to ASCII"
+check "  deploying nothing" "$(deployed)" ""
+rm -f "${WORK}/bin/iconv"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

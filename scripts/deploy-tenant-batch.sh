@@ -96,15 +96,40 @@ case "${PROFILE}" in
   *) err "profile must be core or full (got '${PROFILE}')"; exit 1 ;;
 esac
 
-# Turn a person's name into a tenant id. Accents are transliterated rather than
-# dashed out, so "João Esteves" is joao-esteves and not jo--o-esteves (sanitize_id
-# replaces each byte of a multi-byte character). //TRANSLIT can spell an accent
-# out as a quote or caret ("o -> o umlaut), hence the punctuation strip before
-# the remaining runs of non-alphanumerics collapse to single dashes.
-tenant_id_from_name() {
+# A person's name in ASCII. Accents are transliterated rather than dashed out, so
+# "João Esteves" is joao-esteves and not jo--o-esteves (sanitize_id replaces each
+# byte of a multi-byte character).
+#
+# LC_ALL is pinned because //TRANSLIT is locale-dependent: glibc folds an accented
+# letter to its base letter only under a UTF-8 locale, and emits '?' under C or
+# POSIX. Unpinned, the same roster derives joao-esteves on one box and jo-o-esteves
+# on another -- and these tenants are persistent, so the wrong one is a second
+# standing namespace, database and S3 prefix that no reaper ever reclaims.
+#
+# A locale that does not exist is not an error either -- setlocale falls back to C
+# and iconv still exits 0, having written '?' -- so the ambient locale is tried
+# second (macOS has no C.UTF-8 but transliterates under en_US.UTF-8), and the
+# caller rejects a name that still holds a '?' rather than deriving an id from it.
+tenant_ascii_from_name() {
   local ascii
-  ascii="$(printf '%s' "$1" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)" || ascii="$1"
-  printf '%s' "${ascii}" \
+  ascii="$(printf '%s' "$1" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)" || ascii=""
+  case "${ascii}" in
+    ""|*\?*)
+      local ambient
+      ambient="$(printf '%s' "$1" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)" || ambient=""
+      case "${ambient}" in
+        ""|*\?*) [ -n "${ascii}" ] || ascii="${ambient:-$1}" ;;
+        *) ascii="${ambient}" ;;
+      esac ;;
+  esac
+  printf '%s' "${ascii}"
+}
+
+# //TRANSLIT can also spell an accent out as a quote or caret ("o -> o umlaut),
+# hence the punctuation strip before the remaining runs of non-alphanumerics
+# collapse to single dashes.
+tenant_id_from_ascii() {
+  printf '%s' "$1" \
     | tr '[:upper:]' '[:lower:]' \
     | sed -E "s/[\"'\`^~]//g; s/[^a-z0-9]+/-/g; s/^-+//; s/-+$//"
 }
@@ -131,7 +156,17 @@ IDS=()
 declare -A NAME_OF_ID=()
 INVALID=0
 for name in "${NAMES[@]}"; do
-  id="$(tenant_id_from_name "${name}")"
+  ascii="$(tenant_ascii_from_name "${name}")"
+  # What is left when even the pinned locale could not transliterate: refusing is
+  # the point. Deriving an id from '?' would silently give this person a second
+  # permanent environment under a name nobody recognises.
+  case "${ascii}" in
+    *\?*)
+      err "'${name}' did not transliterate to ASCII (got '${ascii}'): this box has no C.UTF-8 locale,"
+      err "  so the id would not match the one another operator derives. Install it, or spell the name in ASCII."
+      INVALID=1; continue ;;
+  esac
+  id="$(tenant_id_from_ascii "${ascii}")"
   if [ -z "${id}" ]; then
     err "Cannot derive a tenant id from '${name}'"; INVALID=1; continue
   fi
