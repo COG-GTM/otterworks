@@ -219,6 +219,12 @@ capacity_preflight() {
   # delegation books a /28 at a time, so this reads slightly pessimistic --
   # addresses reserved for a node's next pods count as allocated.
   #
+  # A snapshot, and only that: another batch, a waking fleet or the next /28
+  # reservation all move it between this read and the last pod scheduled. The
+  # check is not trying to win that race -- it turns a roster that cannot
+  # possibly fit into one message up front, instead of 95 deploys timing out on
+  # Pending pods one at a time.
+  #
   # The subnet count comes back with the sum because JMESPath sum([]) is 0, not
   # null: a cluster whose subnets carry no karpenter.sh/discovery tag would
   # otherwise measure "0 free" and be refused outright, blaming capacity for
