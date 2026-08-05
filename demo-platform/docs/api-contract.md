@@ -37,7 +37,7 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   409 for a persistent tenant: the perpetual environment exists precisely not to be broken.
 - `POST /api/tenants/:id/reset` → clear injected scenarios. Allowed for every tenant, including
   the perpetual one, because it only restores.
-- `POST /api/tenants/:id/seed` `{ scale?, departments? }` → load the synthetic RetailCo
+- `POST /api/tenants/:id/seed` `{ scale?, departments?, force? }` → load the synthetic RetailCo
   enterprise drive into the tenant via a runner Job (`OP=seed`), which stamps
   `testdata/generated/retail-drive/seed-loader.job.tpl.yaml` into `otterworks-<id>`.
   `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is bounded to
@@ -46,7 +46,11 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   idle-suspended tenant is still `active` in the control table, so wake it first.
   409 if a seed is already running: the in-flight check is the loader Job in
   `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
-  that check cannot be made, rather than replacing a loader that may be mid-upload.
+  that check — or the tenant's live state — cannot be read, rather than acting on an
+  answer the cluster did not give. `force: true` skips the in-flight check and passes
+  `SEED_FORCE=true` to the runner: it discards whatever the running loader has uploaded,
+  and is the only way out of a loader that never gets a terminal condition (a pod the
+  tenant's ResourceQuota will not admit) without direct `kubectl` access.
   Returns once the *runner* Job is queued — the loader appears seconds later and then runs
   for minutes to hours, and a seed the runner refuses (asleep tenant, missing Secret,
   loader already running) shows up only in the runner Job's logs, which

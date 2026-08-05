@@ -193,7 +193,7 @@ run_reset() {
 # to run there rather than in otterworks-platform).
 run_seed() {
   [ -n "${TENANT_ID:-}" ] || die "OP=seed requires TENANT_ID"
-  local sid ns scale departments job
+  local sid ns scale departments job manifest
   sid="$(sanitize_id "${TENANT_ID}")"
   ns="$(tenant_namespace "${TENANT_ID}")"
   scale="${SCALE:-1.0}"
@@ -226,6 +226,15 @@ run_seed() {
     esac
   fi
 
+  # Render before anything is written: the renderer validates SCALE, DEPARTMENTS
+  # and the repo overrides, and a rejected input must not leave behind a Secret
+  # that replaced the operator's one.
+  manifest="$(TENANT_NAMESPACE="${ns}" \
+              REPO_URL="${SEED_REPO_URL:-}" REPO_REF="${SEED_REPO_REF:-}" \
+                "${REPO_DIR}/testdata/generated/retail-drive/render-seed-job.sh" \
+                  "${sid}" "${scale}" "${departments}")" ||
+    die "could not render the seed Job for ${ns}"
+
   ensure_seed_secret "${ns}"
 
   # A Job's pod template is immutable, so a re-seed at a different scale cannot
@@ -238,11 +247,7 @@ run_seed() {
     --ignore-not-found --cascade=foreground --wait=true >/dev/null
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
-  TENANT_NAMESPACE="${ns}" \
-  REPO_URL="${SEED_REPO_URL:-}" REPO_REF="${SEED_REPO_REF:-}" \
-    "${REPO_DIR}/testdata/generated/retail-drive/render-seed-job.sh" \
-      "${sid}" "${scale}" "${departments}" |
-    kubectl apply -f - >/dev/null ||
+  printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null ||
     die "could not create the seed Job in ${ns}"
 
   ctl_audit "${TENANT_ID}" seed "ns=${ns} scale=${scale} departments=${departments}"
@@ -287,17 +292,25 @@ EOF
 # UNREADABLE for a read that failed for any other reason -- throttling, a token
 # refresh, a transient 500. Callers must keep those apart: they act on "nothing
 # is running" by deleting the Job.
+#
+# stderr is captured separately, never folded into the value: kubectl warnings
+# on the success path would otherwise be substring-matched alongside the
+# conditions, and a stray "Failed"/"Complete" in a banner would decide whether a
+# running loader gets deleted.
 seed_job_state() {
-  local out
+  local out err
+  err="${TMPDIR:-/tmp}/seed-job-state.$$"
   if out="$(kubectl -n "$1" get job "$2" \
-              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>&1)"; then
+              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>"${err}")"; then
+    rm -f "${err}"
     printf '%s' "${out}"
     return 0
   fi
-  case "${out}" in
+  case "$(cat "${err}" 2>/dev/null)" in
     *NotFound*|*not\ found*) printf 'ABSENT' ;;
     *) printf 'UNREADABLE' ;;
   esac
+  rm -f "${err}"
 }
 
 # Poll rather than `kubectl wait --for=condition=complete`, which sits out the

@@ -184,6 +184,9 @@ not available to it. The dashboard does the same work from inside the cluster:
 ```bash
 ./demo-platform/scripts/tenant.sh seed coggtm 0.1        # [scale] [departments]
 ./demo-platform/scripts/tenant.sh status coggtm
+
+# a loader that is still uploading is left alone; restart it from scratch with
+SEED_FORCE=true ./demo-platform/scripts/tenant.sh seed coggtm 0.1
 ```
 
 That posts to `POST /api/tenants/coggtm/seed`, which launches a runner Job
@@ -193,6 +196,12 @@ created in the namespace) and applies this template into `otterworks-coggtm`.
 Dashboard credentials **win**: when they are configured the runner overwrites a
 hand-created Secret in the namespace, so a drive account registered earlier with
 a different password stops working. Configure one or the other, not both.
+
+`SEED_FORCE=true` sets `force` on that request, which skips the in-flight check
+and lets the runner replace a loader that is still going. It is also the only way
+out of a loader that never finishes *and* never fails — one whose pod the
+tenant's `ResourceQuota` will not admit, say — which would otherwise leave every
+later seed of that tenant refused as "already loading".
 
 Two deployment prerequisites for that path, both one-off:
 

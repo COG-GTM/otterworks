@@ -37,6 +37,13 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
       : "all";
   if (!DEPARTMENTS_RE.test(departments)) return error(400, "invalid departments");
 
+  // `force` throws away whatever the running loader has uploaded so far. It is
+  // here because the alternative recovery -- deleting the Job -- needs the very
+  // cluster access this route exists to stand in for, and a loader whose pod is
+  // never admitted (a tenant ResourceQuota with nothing left in it) has no
+  // terminal condition and would otherwise 409 every later seed for good.
+  const force = body.force === true;
+
   const base = await getTenant(id);
   if (!base) return error(404, "not found");
   // The loader writes through the tenant's own api-gateway, so there has to be
@@ -47,8 +54,13 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     return error(409, `tenant '${id}' is ${tenant.status}; seed it once it is active`);
   }
   // Idle-suspend scales a tenant to zero without touching its control-table
-  // status, so `active` alone does not mean anything is listening.
-  if (tenant.live && tenant.live.readyPods === 0) {
+  // status, so `active` alone does not mean anything is listening. Live state
+  // that could not be read is not evidence that it is: getTenantWithLiveState()
+  // swallows the cluster error, so an absent `live` says nothing either way.
+  if (!tenant.live) {
+    return error(503, `could not read live state for '${id}'; try again`);
+  }
+  if (tenant.live.readyPods === 0) {
     return error(409, `tenant '${id}' is scaled to zero (idle-suspended); wake it before seeding`);
   }
 
@@ -59,14 +71,19 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   // that runs for hours; the runner Job only covers the dispatch window.
   // A read that fails is not "nothing is running": the runner would go on to
   // delete the loader, so an unreadable Job blocks the request instead.
-  let loading: boolean;
-  try {
-    loading = await jobIsActive(tenant.namespace, SEED_LOADER_JOB);
-  } catch {
-    return error(503, `could not check for a running seed in ${tenant.namespace}; try again`);
-  }
-  if (loading) {
-    return error(409, `a seed is already loading '${id}' (${tenant.namespace}/${SEED_LOADER_JOB})`);
+  if (!force) {
+    let loading: boolean;
+    try {
+      loading = await jobIsActive(tenant.namespace, SEED_LOADER_JOB);
+    } catch {
+      return error(503, `could not check for a running seed in ${tenant.namespace}; try again`);
+    }
+    if (loading) {
+      return error(
+        409,
+        `a seed is already loading '${id}' (${tenant.namespace}/${SEED_LOADER_JOB}); force to restart it`,
+      );
+    }
   }
   const running = await activeRunnerJob(id, "seed");
   if (running) return error(409, `a seed is already running for '${id}' (${running})`);
@@ -75,7 +92,7 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     tenantId: id,
     action: "seed",
     actor,
-    detail: `scale=${scale} departments=${departments}`,
+    detail: `scale=${scale} departments=${departments}${force ? " force=true" : ""}`,
   });
   const jobName = await createRunnerJob({
     action: "seed",
@@ -84,6 +101,7 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     // which only accepts plain decimals.
     scale: scale.toFixed(3),
     departments,
+    force,
   });
   return json({ ok: true, job: jobName });
 });

@@ -24,6 +24,8 @@
 #   tenant.sh extend   <id> <ttl>
 #   tenant.sh status   <id>
 #   tenant.sh seed     <id> [scale] [departments]  # load the RetailCo drive
+#                                                  # SEED_FORCE=true restarts a
+#                                                  # loader that is still running
 #   tenant.sh sync     <branch> [image-tag]    # CD: redeploy, creating if absent
 #   tenant.sh persist  <id> true|false
 #
@@ -267,11 +269,18 @@ case "${cmd}" in
       *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
     esac
 
+    # A loader that is already uploading is refused, because restarting it
+    # throws away everything it has done so far. SEED_FORCE=true is the way back
+    # from a wedged one (a pod the tenant's ResourceQuota will never admit, say)
+    # that would otherwise need the cluster access this script does not have.
+    force=false
+    if [ "${SEED_FORCE:-false}" = "true" ]; then force=true; fi
+
     login
-    log "seeding '${id}' (scale ${scale}, departments ${departments})..."
+    log "seeding '${id}' (scale ${scale}, departments ${departments}, force ${force})..."
     out="$(api POST "/api/tenants/${id}/seed" \
-             "$(jq -nc --argjson s "${scale}" --arg d "${departments}" \
-                     '{scale:$s, departments:$d}')")"
+             "$(jq -nc --argjson s "${scale}" --arg d "${departments}" --argjson f "${force}" \
+                     '{scale:$s, departments:$d, force:$f}')")"
     log "${id}: $(printf '%s' "${out}" | jq -r '.job // "accepted"')"
     # The loader Job outlives the runner Job that created it, so "accepted" is
     # not "seeded": it shows up as an extra pod in the tenant's namespace and

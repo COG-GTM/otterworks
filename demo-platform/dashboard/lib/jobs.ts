@@ -21,6 +21,10 @@ export interface RunnerJobInput {
   // loader the runner stamps into the tenant's namespace.
   scale?: string;
   departments?: string;
+  // Seed only: restart a loader that is still running (or one the API server
+  // will not talk about) instead of refusing. The runner's own guard, reached
+  // from the dashboard so recovering from a wedged loader does not need kubectl.
+  force?: boolean;
   // Deploy into a tenant that is already up (continuous delivery) rather than
   // standing a new one up. Only changes how the runner records the operation.
   redeploy?: boolean;
@@ -71,6 +75,7 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   if (input.scale) plain.push({ name: "SCALE", value: input.scale });
   if (input.departments) plain.push({ name: "DEPARTMENTS", value: input.departments });
   if (input.redeploy) plain.push({ name: "REDEPLOY", value: "true" });
+  if (input.force) plain.push({ name: "SEED_FORCE", value: "true" });
 
   // Secrets injected by reference — values never appear in the Job manifest.
   const keys: readonly string[] =
