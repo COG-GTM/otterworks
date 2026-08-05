@@ -274,7 +274,10 @@ ensure_seed_secret() {
   local ns="$1"
   if [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ]; then
     log "upserting the retail-drive-seed Secret in ${ns}"
-    kubectl apply -f - >/dev/null <<EOF
+    # `if`, not `|| die`: the heredoc has to stay attached to the kubectl call,
+    # and an unguarded failure here would end the runner with kubectl's stderr
+    # and no indication of which step it came from.
+    if kubectl apply -f - >/dev/null <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
@@ -285,7 +288,10 @@ data:
   DRIVE_EMAIL: $(printf '%s' "${DRIVE_EMAIL}" | base64 | tr -d '\n')
   DRIVE_PASSWORD: $(printf '%s' "${DRIVE_PASSWORD}" | base64 | tr -d '\n')
 EOF
-    return 0
+    then
+      return 0
+    fi
+    die "could not write the retail-drive-seed Secret in ${ns}"
   fi
 
   kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||

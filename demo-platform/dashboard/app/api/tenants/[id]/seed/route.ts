@@ -61,7 +61,15 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     return error(503, `could not read live state for '${id}'; try again`);
   }
   if (tenant.live.readyPods === 0) {
-    return error(409, `tenant '${id}' is scaled to zero (idle-suspended); wake it before seeding`);
+    // No pods at all is a suspended tenant; pods that are simply not Ready is a
+    // broken or still-starting one, and telling that operator to "wake it"
+    // points at the wrong remedy.
+    return error(
+      409,
+      tenant.live.totalPods === 0
+        ? `tenant '${id}' is scaled to zero (idle-suspended); wake it before seeding`
+        : `tenant '${id}' has no ready pods (${tenant.live.phase}); it cannot serve the loader yet`,
+    );
   }
 
   // Two loaders writing the same drive concurrently is not corruption (the

@@ -169,14 +169,14 @@ Notes:
 - The loader pod counts against the tenant's `ResourceQuota` (it requests
   250m CPU / 512Mi) and lives in the tenant namespace, so it is visible as an
   extra pod in `tenant.sh status <id>` while it runs.
-- **The loader depends on NetworkPolicy not being enforced.** The api-gateway
-  chart ships one whose only ingress sources are `ingress-nginx` and
-  `monitoring` (`infrastructure/helm/api-gateway/values.yaml`,
-  `networkPolicy.enabled: true`), and the loader calls the Service from inside
-  the tenant namespace. The EKS VPC CNI does not enforce NetworkPolicy unless
-  network-policy support is turned on, which is what makes this work today (and
-  made the original single-namespace manifest work). Turning enforcement on
-  means adding the tenant namespace to that policy, or seeding would time out.
+- **NetworkPolicy.** The api-gateway chart's own policy lists only
+  `ingress-nginx` and `monitoring` as sources, but `deploy-tenant.sh` also
+  stamps a `tenant-isolation` policy into every tenant namespace that allows
+  traffic from that namespace itself — and policies are additive — so the loader
+  reaches the gateway even if NetworkPolicy enforcement is ever turned on for
+  the cluster. The single-tenant `otterworks` namespace has no such policy, so
+  there the loader does depend on enforcement being off (the EKS VPC CNI does
+  not enforce NetworkPolicy unless network-policy support is enabled).
 - **The generator that runs is the one on public `main`,** not the one in the
   runner image or on the tenant's branch: the init container clones
   `REPO_URL@REPO_REF` anonymously (defaults
