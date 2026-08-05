@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  CHAOS_EXPIRY_KEY,
   CHAOS_SCENARIOS,
   CHAOS_STATE_KEY,
+  CHAOS_TTL_MS,
   activeChaosScenarios,
   chaosError,
   injectChaosLatency,
@@ -59,12 +61,30 @@ describe("client-side chaos flag store", () => {
     expect(isChaosActive(CHAOS_SCENARIOS.documentSlowQueries)).toBe(true);
   });
 
+  it("keeps the shared key a plain boolean map the admin dashboard can count", () => {
+    setChaosActive("search-service", true);
+    const stored = JSON.parse(localStorage.getItem(CHAOS_STATE_KEY) ?? "{}");
+    expect(stored).toEqual({ "search-service": true });
+    expect(Object.values(stored).filter(Boolean).length).toBe(1);
+  });
+
   it("expires flags like the server-side Redis TTL", () => {
     vi.useFakeTimers();
     setChaosActive("notification-service", true, 1000);
     expect(isChaosActive(CHAOS_SCENARIOS.notificationStrictSchema)).toBe(true);
     vi.advanceTimersByTime(1001);
     expect(isChaosActive(CHAOS_SCENARIOS.notificationStrictSchema)).toBe(false);
+  });
+
+  it("expires an admin-set flag that carries no expiry of its own", () => {
+    vi.useFakeTimers();
+    localStorage.setItem(CHAOS_STATE_KEY, JSON.stringify({ "file-service": true }));
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
+
+    vi.advanceTimersByTime(CHAOS_TTL_MS + 1);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
+    expect(JSON.parse(localStorage.getItem(CHAOS_STATE_KEY) ?? "{}")).toEqual({});
+    expect(JSON.parse(localStorage.getItem(CHAOS_EXPIRY_KEY) ?? "{}")).toEqual({});
   });
 
   it("clears every scenario on reset", () => {
@@ -77,6 +97,17 @@ describe("client-side chaos flag store", () => {
   it("survives unparseable stored state", () => {
     localStorage.setItem(CHAOS_STATE_KEY, "not json");
     expect(isChaosActive(CHAOS_SCENARIOS.searchSuggest500)).toBe(false);
+  });
+
+  it("ignores a corrupt expiry map rather than getting stuck", () => {
+    localStorage.setItem(CHAOS_STATE_KEY, JSON.stringify({ "search-service": true }));
+    localStorage.setItem(CHAOS_EXPIRY_KEY, "[]");
+    expect(isChaosActive(CHAOS_SCENARIOS.searchSuggest500)).toBe(true);
+  });
+
+  it("reports unknown scenario names instead of silently arming nothing", () => {
+    expect(setChaosActive("files-service", true)).toBe(false);
+    expect(activeChaosScenarios()).toEqual([]);
   });
 
   it("builds an error indistinguishable from a failed axios request", () => {

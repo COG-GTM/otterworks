@@ -15,6 +15,12 @@ import { API_BASE_URL } from "./api-client";
 /** localStorage key, shared with the admin dashboard's Demo Controls panel. */
 export const CHAOS_STATE_KEY = "ow_admin_chaos_state";
 
+/**
+ * Expiries live in a client-owned key so `CHAOS_STATE_KEY` stays the plain
+ * `Record<string, boolean>` the admin dashboard reads and counts.
+ */
+export const CHAOS_EXPIRY_KEY = "ow_client_chaos_expiry";
+
 export const CHAOS_SCENARIOS = {
   searchSuggest500: "chaos:search-service:suggest_500",
   fileUploadS3Error: "chaos:file-service:upload_s3_error",
@@ -33,17 +39,14 @@ export const CHAOS_TTL_MS = 600_000;
 const SLOW_QUERY_MIN_MS = 3000;
 const SLOW_QUERY_MAX_MS = 5000;
 
-interface ChaosEntry {
-  active: boolean;
-  expiresAt?: number;
-}
-
 /**
- * The admin dashboard writes `{ "search-service": true }`; entries written here
- * carry an expiry, so both shapes are accepted under either the service name or
- * the full scenario key.
+ * `{ "search-service": true }`, the shape the admin dashboard writes and reads.
+ * Flags are also accepted under the full scenario key.
  */
-type ChaosState = Record<string, boolean | ChaosEntry>;
+type ChaosState = Record<string, boolean>;
+
+/** `{ "search-service": <epoch ms> }` — when the client stops honouring a flag. */
+type ChaosExpiries = Record<string, number>;
 
 function serviceOf(scenarioKey: string): string {
   return scenarioKey.split(":")[1] ?? "";
@@ -57,35 +60,58 @@ function getStorage(): Storage | null {
   }
 }
 
-function readState(): ChaosState {
+function readJson<T extends object>(key: string): T {
   const storage = getStorage();
-  if (!storage) return {};
+  if (!storage) return {} as T;
   try {
-    const raw = storage.getItem(CHAOS_STATE_KEY);
-    if (!raw) return {};
+    const raw = storage.getItem(key);
+    if (!raw) return {} as T;
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as ChaosState;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {} as T;
+    return parsed as T;
   } catch {
-    return {};
+    return {} as T;
   }
 }
 
-function writeState(state: ChaosState): void {
+function writeJson(key: string, value: object): void {
   const storage = getStorage();
   if (!storage) return;
   try {
-    storage.setItem(CHAOS_STATE_KEY, JSON.stringify(state));
+    storage.setItem(key, JSON.stringify(value));
   } catch {
     /* private-mode / quota errors must never break the app */
   }
 }
 
-function entryActive(value: boolean | ChaosEntry | undefined): boolean {
-  if (typeof value === "boolean") return value;
-  if (!value || typeof value !== "object") return false;
-  if (!value.active) return false;
-  return value.expiresAt === undefined || value.expiresAt > Date.now();
+function readState(): ChaosState {
+  return readJson<ChaosState>(CHAOS_STATE_KEY);
+}
+
+function writeState(state: ChaosState): void {
+  writeJson(CHAOS_STATE_KEY, state);
+}
+
+function readExpiries(): ChaosExpiries {
+  return readJson<ChaosExpiries>(CHAOS_EXPIRY_KEY);
+}
+
+function writeExpiries(expiries: ChaosExpiries): void {
+  writeJson(CHAOS_EXPIRY_KEY, expiries);
+}
+
+function flagSet(state: ChaosState, scenario: ChaosScenarioKey): boolean {
+  return Boolean(state[scenario]) || Boolean(state[serviceOf(scenario)]);
+}
+
+function clearFlag(scenario: ChaosScenarioKey): void {
+  const state = readState();
+  delete state[scenario];
+  delete state[serviceOf(scenario)];
+  writeState(state);
+  const expiries = readExpiries();
+  delete expiries[serviceOf(scenario)];
+  writeExpiries(expiries);
 }
 
 /** Resolve a service name (`file-service`) or full Redis key to a scenario key. */
@@ -94,35 +120,53 @@ export function resolveScenario(input: string): ChaosScenarioKey | null {
   return match ?? null;
 }
 
+/**
+ * A flag set by the admin dashboard carries no expiry (it only clears the key on
+ * "Reset All"), so the client stamps one the first time it sees the flag: chaos
+ * lapses in the browser like the Redis flag lapses on the server, instead of
+ * degrading that browser forever.
+ */
 export function isChaosActive(scenarioKey: string): boolean {
-  const state = readState();
-  return entryActive(state[scenarioKey]) || entryActive(state[serviceOf(scenarioKey)]);
+  const scenario = resolveScenario(scenarioKey);
+  if (!scenario) return false;
+  if (!flagSet(readState(), scenario)) return false;
+
+  const service = serviceOf(scenario);
+  const expiries = readExpiries();
+  const expiresAt = expiries[service];
+
+  if (typeof expiresAt !== "number") {
+    writeExpiries({ ...expiries, [service]: Date.now() + CHAOS_TTL_MS });
+    return true;
+  }
+  if (expiresAt <= Date.now()) {
+    clearFlag(scenario);
+    return false;
+  }
+  return true;
 }
 
 export function activeChaosScenarios(): ChaosScenarioKey[] {
   return ALL_SCENARIOS.filter(isChaosActive);
 }
 
-export function setChaosActive(scenarioKey: string, active: boolean, ttlMs = CHAOS_TTL_MS): void {
+export function setChaosActive(scenarioKey: string, active: boolean, ttlMs = CHAOS_TTL_MS): boolean {
   const scenario = resolveScenario(scenarioKey);
-  if (!scenario) return;
-  const state = readState();
-  if (active) {
-    state[scenario] = { active: true, expiresAt: Date.now() + ttlMs };
-  } else {
-    delete state[scenario];
-    delete state[serviceOf(scenario)];
+  if (!scenario) return false;
+  if (!active) {
+    clearFlag(scenario);
+    return true;
   }
-  writeState(state);
+  const service = serviceOf(scenario);
+  writeState({ ...readState(), [service]: true });
+  writeExpiries({ ...readExpiries(), [service]: Date.now() + ttlMs });
+  return true;
 }
 
 export function resetChaos(): void {
-  const state = readState();
   for (const scenario of ALL_SCENARIOS) {
-    delete state[scenario];
-    delete state[serviceOf(scenario)];
+    clearFlag(scenario);
   }
-  writeState(state);
 }
 
 export interface ChaosAxiosError extends AxiosError {
@@ -214,6 +258,10 @@ export function installChaosConsole(): void {
     return;
   }
   for (const name of requested.split(",")) {
-    setChaosActive(name.trim(), true);
+    if (!setChaosActive(name.trim(), true)) {
+      console.warn(
+        `[chaos] unknown scenario "${name.trim()}" — expected one of: ${ALL_SCENARIOS.map(serviceOf).join(", ")}`,
+      );
+    }
   }
 }
