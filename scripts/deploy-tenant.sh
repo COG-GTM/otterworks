@@ -308,8 +308,31 @@ EOF
 # tenant's pods then fail every AWS call. Serialise the pass across processes on
 # this host; it is seconds long, and a no-op when the Terraform-managed
 # otterworks-* wildcard already covers the namespace.
+#
+# The lock lives in a directory this user owns, not at a fixed path in a
+# world-writable /tmp: there, any local account can hold the file open until the
+# timeout fires (every deploy aborts) or pre-create it unwritable, and defeating
+# the lock re-opens the lost-update it exists to close. Falls back to the shared
+# path only if a private directory cannot be made, which is where it was before.
+irsa_lock_path() {
+  local base dir
+  base="${XDG_RUNTIME_DIR:-${HOME:-}}"
+  [ -n "${base}" ] && [ -d "${base}" ] || base="${TMPDIR:-/tmp}"
+  dir="${base}/.otterworks"
+  mkdir -p "${dir}" 2>/dev/null || return 1
+  # -O, because mkdir -p on an existing directory owned by somebody else
+  # succeeds, and that directory is exactly what this is avoiding.
+  [ -O "${dir}" ] || return 1
+  chmod 700 "${dir}" 2>/dev/null || return 1
+  printf '%s/irsa-trust.lock' "${dir}"
+}
+
 ensure_irsa_trust() {
-  local lock="${TMPDIR:-/tmp}/otterworks-irsa-trust.lock"
+  local lock
+  lock="$(irsa_lock_path)" || {
+    lock="${TMPDIR:-/tmp}/otterworks-irsa-trust.lock"
+    warn "no private lock directory available; falling back to ${lock}"
+  }
   if ! command -v flock >/dev/null 2>&1; then
     warn "flock unavailable: concurrent deploys may race on the shared IRSA trust policies"
     update_irsa_trust

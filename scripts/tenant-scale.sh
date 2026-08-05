@@ -33,6 +33,17 @@ case "${DIRECTION}" in
   *)    err "Direction must be 'up' or 'down'"; exit 1 ;;
 esac
 
+# Scaling an always-on tenant down does not stick: the idle scan finds it at
+# zero, reads the label as a promise that the URL answers, and puts it back.
+# Say so here rather than letting the operator discover it from the tenant
+# coming back up on its own.
+if [ "${replicas}" = "0" ] \
+   && [ "$(kubectl get ns "${NS}" -o jsonpath='{.metadata.labels.demo/always-on}' 2>/dev/null)" = "true" ]; then
+  warn "${NS} is labelled demo/always-on=true: the idle scan will scale it back up"
+  warn "  within one pass. To park it, redeploy without --always-on (or remove the"
+  warn "  label: kubectl label ns ${NS} demo/always-on-) and scale down after."
+fi
+
 log "Scaling all deployments in ${NS} to ${replicas}..."
 kubectl -n "${NS}" scale deployment --all --replicas="${replicas}"
 kubectl -n "${NS}" get deploy

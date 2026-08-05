@@ -282,16 +282,20 @@ EOF
 # 3. Orphan sweep (cluster/AWS is actual state; GC anything with no TENANT# item)
 # ------------------------------------------------------------------------------
 sweep_orphan_namespaces() {
-  local ns id
+  local ns id gc_rc
   for ns in $(kubectl get ns -l app.kubernetes.io/managed-by=otterworks-tenant \
                 -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
     case "${ns}" in otterworks-platform|otterworks-system|otterworks) continue ;; esac
     id="${ns#otterworks-}"
     [ -n "${id}" ] || continue
-    tenant_is_persistent "${id}" && continue
     if ! ctl_tenant_exists "${id}"; then
-      warn "orphan namespace ${ns} (no TENANT# item) -> GC"
-      gc_tenant "${id}" "orphan-namespace"
+      # The persistence check is gc_tenant's, not a second one here: every
+      # standing tenant is item-less by design, so announcing the orphan before
+      # the guard runs both doubles the label lookups over ~95 tenants and
+      # reports a collection that did not happen. 2 is "persistent, kept", and
+      # gc_tenant has already said so.
+      gc_rc=0; gc_tenant "${id}" "orphan-namespace" || gc_rc=$?
+      [ "${gc_rc}" = "2" ] || warn "orphan namespace ${ns} (no TENANT# item) -> GC"
     fi
   done
 }
@@ -340,18 +344,16 @@ YAML
 }
 
 sweep_orphan_dbs() {
-  local db id
+  local db id gc_rc
   for db in $(list_tenant_dbs); do
     [ "${db}" = "otterworks" ] && continue
     id="${db#otterworks_}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
-      # gc_tenant refuses a persistent tenant anyway, but every standing tenant
-      # is item-less by design: without this the sweep announces ~95 orphans it
-      # will not collect on every armed run.
-      tenant_is_persistent "${id}" && continue
-      warn "orphan database ${db} (no TENANT# item) -> GC"
-      gc_tenant "${id}" "orphan-database"
+      # As above: gc_tenant owns the persistence check, and the sweep only
+      # announces an orphan it actually collected.
+      gc_rc=0; gc_tenant "${id}" "orphan-database" || gc_rc=$?
+      [ "${gc_rc}" = "2" ] || warn "orphan database ${db} (no TENANT# item) -> GC"
     fi
   done
 }

@@ -107,8 +107,10 @@ check "  and reports it reaped" "${rc}" "0"
 # deletes on -- the case that would otherwise wipe the whole roster.
 PERSISTENT_LABEL="true"
 : > "${TEARDOWN_LOG}"
-sweep_orphan_namespaces >/dev/null 2>&1
+out="$(sweep_orphan_namespaces 2>&1)"
 check "orphan-namespace sweep spares a persistent tenant" "$(cat "${TEARDOWN_LOG}")" ""
+case "${out}" in *"orphan namespace"*) r=yes ;; *) r=no ;; esac
+check "  and does not announce a collection it did not make" "${r}" "no"
 
 PERSISTENT_LABEL=""
 : > "${TEARDOWN_LOG}"

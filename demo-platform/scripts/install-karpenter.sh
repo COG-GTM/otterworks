@@ -101,8 +101,11 @@ helm upgrade --install karpenter "oci://public.ecr.aws/karpenter/karpenter" \
 # m6a.2xlarge tops out near 58, and the surplus pods wedge in ContainerCreating
 # with IP-assignment errors -- a failure that looks like anything but this. Warn
 # rather than fail: an unreadable daemonset should not block the install.
+# Selected by container name: aws-node is index 0 today, but the CNI ships the
+# aws-eks-nodeagent sidecar alongside it and an ordering change would turn this
+# into a warning about a cluster that is configured correctly.
 prefix_delegation="$(kubectl -n kube-system get ds aws-node \
-  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ENABLE_PREFIX_DELEGATION")].value}' \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="aws-node")].env[?(@.name=="ENABLE_PREFIX_DELEGATION")].value}' \
   2>/dev/null || true)"
 if [ "${prefix_delegation}" != "true" ]; then
   log "WARNING: aws-node does not report ENABLE_PREFIX_DELEGATION=true."
