@@ -45,7 +45,9 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   loader writes through that tenant's own api-gateway) *and* has ready pods — an
   idle-suspended tenant is still `active` in the control table, so wake it first with a
   redeploy (`POST /api/tenants/:id/redeploy`, i.e. `tenant.sh sync <branch>`), which is
-  the wake-up available to a caller with no cluster access.
+  the wake-up available to a caller with no cluster access. A tenant whose namespace is
+  gone while the table still says `active` reads the same way from a pod list, so that
+  409 names the namespace instead of blaming idle-suspend.
   409 if a seed is already running: the in-flight check is the loader Job in
   `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
   that check — or the tenant's live state — cannot be read, rather than acting on an

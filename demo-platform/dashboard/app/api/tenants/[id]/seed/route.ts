@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob, SEED_LOADER_JOB } from "@/lib/jobs";
 import { getTenantWithLiveState } from "@/lib/tenants";
-import { jobIsActive } from "@/lib/k8s";
+import { jobIsActive, namespaceExists } from "@/lib/k8s";
 import type { SeedRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -61,16 +61,25 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     return error(503, `could not read live state for '${id}'; try again`);
   }
   if (tenant.live.readyPods === 0) {
-    // No pods at all is a suspended tenant; pods that are simply not Ready is a
-    // broken or still-starting one, and telling that operator to "wake it"
-    // points at the wrong remedy. The remedy named is the one the seed caller
-    // can actually run: scripts/tenant-scale.sh needs the cluster access this
-    // route exists to stand in for, a redeploy does not.
+    // No pods at all is a suspended tenant -- or one whose namespace is gone,
+    // since a pod LIST answers 200 either way and the control table can still
+    // say `active` after a reap. Pods that are simply not Ready is a broken or
+    // still-starting tenant, and telling that operator to "wake it" points at
+    // the wrong remedy. The remedy named is the one the seed caller can
+    // actually run: scripts/tenant-scale.sh needs the cluster access this route
+    // exists to stand in for, a redeploy does not.
+    const redeploy = `tenant.sh sync ${tenant.branch ?? "<branch>"}`;
+    if (tenant.live.totalPods > 0) {
+      return error(
+        409,
+        `tenant '${id}' has no ready pods (${tenant.live.phase}); it cannot serve the loader yet`,
+      );
+    }
     return error(
       409,
-      tenant.live.totalPods === 0
-        ? `tenant '${id}' is scaled to zero (idle-suspended); wake it with a redeploy (tenant.sh sync ${tenant.branch ?? "<branch>"}) before seeding`
-        : `tenant '${id}' has no ready pods (${tenant.live.phase}); it cannot serve the loader yet`,
+      (await namespaceExists(tenant.namespace))
+        ? `tenant '${id}' is scaled to zero (idle-suspended); wake it with a redeploy (${redeploy}) before seeding`
+        : `namespace ${tenant.namespace} no longer exists; re-create the tenant (${redeploy}) before seeding`,
     );
   }
 

@@ -165,6 +165,21 @@ export async function jobIsActive(ns: string, name: string): Promise<boolean> {
   }
 }
 
+/**
+ * Does a tenant namespace still exist? A pod LIST against a namespace that is
+ * gone answers 200 with nothing in it -- indistinguishable from a tenant scaled
+ * to zero -- so telling those two apart takes a read of the namespace itself.
+ * Only for the diagnosis: an error is not evidence either way, so it is `true`.
+ */
+export async function namespaceExists(ns: string): Promise<boolean> {
+  try {
+    await core().readNamespace(ns);
+    return true;
+  } catch (err) {
+    return !(err instanceof k8s.HttpError && err.statusCode === 404);
+  }
+}
+
 export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   try {
     const podsRes = await core().listNamespacedPod(ns);

@@ -200,12 +200,13 @@ run_seed() {
   departments="${DEPARTMENTS:-all}"
   job="retail-drive-seed-loader"
 
-  # The same ceiling the dashboard route applies, repeated because a runner Job
-  # can be created by hand: above it the corpus outlives the tenant's TTL and
-  # fills a bucket shared with every other tenant. The renderer stays uncapped --
-  # applying it needs cluster access, which is licence enough.
-  awk -v s="${scale}" 'BEGIN { exit !(s > 0 && s <= 2) }' 2>/dev/null ||
-    die "invalid SCALE '${scale}' (0 < scale <= 2)"
+  # The same bounds the dashboard route applies, repeated because a runner Job
+  # can be created by hand: above the ceiling the corpus outlives the tenant's
+  # TTL and fills a bucket shared with every other tenant, below the floor it is
+  # an empty drive. The renderer stays uncapped -- applying it needs cluster
+  # access, which is licence enough.
+  awk -v s="${scale}" 'BEGIN { exit !(s >= 0.01 && s <= 2) }' 2>/dev/null ||
+    die "invalid SCALE '${scale}' (0.01 to 2)"
 
   # Unset-only default, so an explicitly empty SEED_TIMEOUT is rejected here
   # rather than becoming a bash arithmetic error in wait_for_seed later.
