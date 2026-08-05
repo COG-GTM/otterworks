@@ -180,9 +180,16 @@ state_read() {
     s="$(printf '%s' "${item}" | jq -r '.Item.idle_since.N // empty')"
     r="$(printf '%s' "${item}" | jq -r '.Item.was_running.N // empty')"
   else
-    c="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/req-count}' 2>/dev/null)"
-    s="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/idle-since}' 2>/dev/null)"
-    r="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.annotations.demo/was-running}' 2>/dev/null)"
+    # One call for all three: the scan reads them per tenant per pass, so over
+    # ~95 namespaces the split version was ~285 requests an hour against the
+    # same API server the always-on label read has to be able to reach -- and a
+    # read it cannot reach is a tenant this pass leaves alone.
+    #
+    # The leading '.' on each field is what keeps them aligned: an unset
+    # annotation prints nothing, and `read` would collapse the run of spaces
+    # and shift the remaining values into the wrong variables.
+    read -r c s r <<< "$(kubectl get ns "${ns}" -o jsonpath='.{.metadata.annotations.demo/req-count} .{.metadata.annotations.demo/idle-since} .{.metadata.annotations.demo/was-running}' 2>/dev/null)"
+    c="${c#.}"; s="${s#.}"; r="${r#.}"
   fi
   printf '%s %s %s\n' "${c:--}" "${s:--}" "${r:--}"
 }

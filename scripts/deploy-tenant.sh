@@ -224,6 +224,14 @@ YAML
 # the previous one's marker.
 kubectl annotate namespace "${NS}" demo/deployed-at- >/dev/null 2>&1 || true
 
+# The idle scan's bookkeeping for a script-deployed tenant lives on the same
+# namespace and survives this apply for the same reason. Left in place, a tenant
+# that was 50 minutes idle when it was redeployed carries that clock across and
+# can be suspended ten minutes later, having just been rebuilt. The redeploy is
+# activity; the counters start again with it.
+kubectl annotate namespace "${NS}" \
+  demo/req-count- demo/idle-since- demo/was-running- >/dev/null 2>&1 || true
+
 # Converting a TTL'd tenant to a persistent one has to strip the annotations the
 # earlier deploy left behind: the baseline reaper reads them straight off the
 # namespace, and `kubectl apply` only prunes fields it owns (a namespace created
@@ -337,6 +345,16 @@ ensure_irsa_trust() {
     warn "flock unavailable: concurrent deploys may race on the shared IRSA trust policies"
     update_irsa_trust
     return
+  fi
+  # The redirection below is what opens the lock, and a path that cannot be
+  # opened (someone else's file, a symlink into a directory we cannot write)
+  # fails there, inside a subshell, leaving the deploy to abort on a bare status
+  # 1 and a line about a file descriptor. Find out here, where the message can
+  # say what actually went wrong.
+  if ! : >>"${lock}" 2>/dev/null; then
+    err "  cannot open the IRSA trust lock (${lock}); not updating the shared trust"
+    err "  policies unserialised — remove or fix that path and re-run."
+    return 1
   fi
   # Ten minutes is far longer than the pass takes, so a timeout means a stuck
   # holder rather than contention. Going ahead anyway is the one outcome worth

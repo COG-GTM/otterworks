@@ -422,9 +422,10 @@ aws() {
 kubectl() {
   case "$*" in
     *annotate*)         for a in "$@"; do case "${a}" in *=*) echo "${a}" >> "${WRITES}/annotate" ;; esac; done ;;
-    *demo/req-count*)   printf '%s' "${NS_ANNOT[req-count]:-}" ;;
-    *demo/idle-since*)  printf '%s' "${NS_ANNOT[idle-since]:-}" ;;
-    *demo/was-running*) printf '%s' "${NS_ANNOT[was-running]:-}" ;;
+    # All three in one response, as the real jsonpath asks for them, '.'-prefixed
+    # so an unset one still occupies its field.
+    *demo/req-count*)   printf '.%s .%s .%s' \
+                          "${NS_ANNOT[req-count]:-}" "${NS_ANNOT[idle-since]:-}" "${NS_ANNOT[was-running]:-}" ;;
   esac
   return 0
 }
@@ -455,6 +456,13 @@ check "  without writing to the control table" "$(wrote aws)" ""
 reset_backend; HAS_ITEM=no
 NS_ANNOT[req-count]=42; NS_ANNOT[idle-since]=555; NS_ANNOT[was-running]=1
 check "  and reads them back on the next pass" "$(state_read solo)" "42 555 1"
+
+# All three come back from one call now, and an unset one prints nothing: the
+# fields have to stay in their places or a running tenant's was-running lands in
+# req-count and the scan reads a counter that never moves as an idle tenant.
+reset_backend; HAS_ITEM=no
+NS_ANNOT[was-running]=1
+check "  keeps the fields apart when only one is set" "$(state_read solo)" "- - 1"
 
 # An unreadable control table must not read as "no item": that would send a
 # dashboard tenant's writes to its namespace, where nothing reads them again, and
