@@ -222,7 +222,10 @@ export function chaosError(
   return Object.assign(error, { chaosScenario: scenarioKey });
 }
 
-/** Mirrors document-service's `_maybe_inject_latency`: 3-5s before the read resolves. */
+/**
+ * Mirrors document-service's `_maybe_inject_latency`: 3-5s before the read resolves.
+ * Additive with the server's: if the Redis flag is set as well, a read waits for both.
+ */
 export async function injectChaosLatency(scenarioKey: ChaosScenarioKey): Promise<void> {
   if (!isChaosActive(scenarioKey)) return;
   const delay = SLOW_QUERY_MIN_MS + Math.random() * (SLOW_QUERY_MAX_MS - SLOW_QUERY_MIN_MS);
@@ -243,14 +246,20 @@ declare global {
   }
 }
 
+function warnUnknownScenario(name: string): void {
+  console.warn(
+    `[chaos] unknown scenario "${name}" — expected one of: ${ALL_SCENARIOS.map(serviceOf).join(", ")}`,
+  );
+}
+
 export const chaosConsole: ChaosConsole = {
   scenarios: CHAOS_SCENARIOS,
   enable: (scenario, ttlMs) => {
-    setChaosActive(scenario, true, ttlMs);
+    if (!setChaosActive(scenario, true, ttlMs)) warnUnknownScenario(scenario);
     return activeChaosScenarios();
   },
   disable: (scenario) => {
-    setChaosActive(scenario, false);
+    if (!setChaosActive(scenario, false)) warnUnknownScenario(scenario);
     return activeChaosScenarios();
   },
   reset: () => {
@@ -282,11 +291,7 @@ export function installChaosConsole(): void {
     return;
   }
   for (const name of requested.split(",")) {
-    if (!setChaosActive(name.trim(), true)) {
-      console.warn(
-        `[chaos] unknown scenario "${name.trim()}" — expected one of: ${ALL_SCENARIOS.map(serviceOf).join(", ")}`,
-      );
-    }
+    if (!setChaosActive(name.trim(), true)) warnUnknownScenario(name.trim());
   }
   stripChaosParam();
 }

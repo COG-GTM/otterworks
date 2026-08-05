@@ -5,6 +5,7 @@ import {
   CHAOS_SCENARIOS,
   CHAOS_TTL_MS,
   activeChaosScenarios,
+  chaosConsole,
   chaosError,
   injectChaosLatency,
   isChaosActive,
@@ -151,8 +152,13 @@ describe("client-side chaos flag store", () => {
   });
 
   it("reports unknown scenario names instead of silently arming nothing", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(setChaosActive("files-service", true)).toBe(false);
     expect(activeChaosScenarios()).toEqual([]);
+
+    expect(chaosConsole.enable("files-service")).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('unknown scenario "files-service"'));
+    warn.mockRestore();
   });
 
   it("builds an error indistinguishable from a failed axios request", () => {
