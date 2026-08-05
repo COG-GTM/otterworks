@@ -19,6 +19,7 @@ initialize: |
   # archive extra (terraform ships a LICENSE.txt) lands in /usr/local/bin, and nothing
   # is left in the snapshot.
   TOOLS="$(mktemp -d)"
+  trap 'rm -rf "$TOOLS"' EXIT
   fetch_verified() { # url sha256 dest
     curl -fsSL -o "$3" "$1" || { echo "download failed: $1"; exit 1; }
     echo "$2  $3" | sha256sum -c - >/dev/null || { echo "checksum mismatch: $1"; exit 1; }
