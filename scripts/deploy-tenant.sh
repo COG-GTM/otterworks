@@ -294,6 +294,11 @@ EOF
       && log "  IRSA trust: ${role} now trusts ${sub}" \
       || warn "  failed to update trust for ${role}"
   done
+  # Pin the contract the caller switches on: 0 is done, 3 is skipped, anything
+  # else aborts the deploy. Without this the function returns whatever the loop
+  # last ran, and a future edit near the end of it turns an incidental non-zero
+  # into a failed tenant.
+  return 0
 }
 
 # The trust documents are shared between all tenants and updated read-modify-

@@ -324,14 +324,6 @@ suspend_idle_tenants() {
 
   while read -r id ns; do
     [ -n "${id}" ] || continue
-    # Exempt tenants are measured like everyone else and only spared the
-    # suspension itself. Skipping them outright freezes their counters at
-    # whatever the last non-exempt pass stored, and the pass after the label is
-    # dropped would then compare live traffic against an hours-old baseline --
-    # an ingress restart in between reads as "idle since this morning" and
-    # suspends a tenant somebody is using.
-    always_on="$(tenant_always_on "${ns}")"
-
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
     count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
@@ -348,6 +340,17 @@ suspend_idle_tenants() {
       idle_warn "skipping ${id}: cannot tell which store its idle state lives in"
       continue
     fi
+    # Read after the backend resolution, not before it: a tenant skipped just
+    # above never uses the answer, and the pass that skips is the degraded one.
+    #
+    # Exempt tenants are measured like everyone else and only spared the
+    # suspension itself. Skipping them outright freezes their counters at
+    # whatever the last non-exempt pass stored, and the pass after the label is
+    # dropped would then compare live traffic against an hours-old baseline --
+    # an ingress restart in between reads as "idle since this morning" and
+    # suspends a tenant somebody is using.
+    always_on="$(tenant_always_on "${ns}")"
+
     read -r prev since was_running <<< "$(state_read "${id}")"
     [ "${prev}" != "-" ] || prev=""
     [ "${since}" != "-" ] || since=""
