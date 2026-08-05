@@ -95,6 +95,22 @@ helm upgrade --install karpenter "oci://public.ecr.aws/karpenter/karpenter" \
 # The chart's default affinity keeps the controller off Karpenter's own nodes,
 # so it always has somewhere to run: the managed node group stays as the system
 # pool for exactly this reason.
+# nodepool.yaml pins kubelet.maxPods: 110, which only has addresses behind it
+# while the CNI runs in prefix-delegation mode (Terraform sets it on the addon;
+# see platform/terraform/modules/eks/main.tf). Against an addon without it an
+# m6a.2xlarge tops out near 58, and the surplus pods wedge in ContainerCreating
+# with IP-assignment errors -- a failure that looks like anything but this. Warn
+# rather than fail: an unreadable daemonset should not block the install.
+prefix_delegation="$(kubectl -n kube-system get ds aws-node \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ENABLE_PREFIX_DELEGATION")].value}' \
+  2>/dev/null || true)"
+if [ "${prefix_delegation}" != "true" ]; then
+  log "WARNING: aws-node does not report ENABLE_PREFIX_DELEGATION=true."
+  log "         The NodePool about to be applied advertises maxPods: 110, which"
+  log "         only prefix delegation can back. Apply platform/terraform, or run"
+  log "         demo-platform/scripts/enable-prefix-delegation.sh, before using it."
+fi
+
 log "Applying EC2NodeClass + NodePool..."
 sed -e "s#__CLUSTER__#${EKS_CLUSTER}#g" \
     -e "s#__INSTANCE_PROFILE__#${KARPENTER_INSTANCE_PROFILE}#g" \
