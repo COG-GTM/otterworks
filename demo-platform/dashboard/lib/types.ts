@@ -60,6 +60,8 @@ export type AuditAction =
   | "reap"
   | "inject"
   | "reset"
+  | "suspend"
+  | "resume"
   | "login_ok"
   | "login_fail";
 

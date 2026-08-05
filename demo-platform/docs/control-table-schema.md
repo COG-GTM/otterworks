@@ -60,9 +60,11 @@ updated_by          string
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, deploy_ok, deploy_fail, reap, inject,
-reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+reset, suspend, resume, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
 destroys nothing, so a suspended tenant is still checked out and still in the table.
+`resume` is its counterpart: the idle scan scaling an `demo/always-on=true` tenant back up
+after finding it at zero replicas.
 
 ## Access patterns
 - List all tenants: `Query`/`Scan` `begins_with(PK,"TENANT#")` (small N; scan is fine at high-tens).

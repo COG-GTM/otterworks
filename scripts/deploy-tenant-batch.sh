@@ -12,9 +12,12 @@
 # They are removed only by scripts/teardown-tenant.sh.
 #
 # Persistent is not the same as awake. A standing tenant still scales to zero
-# after an hour of no ingress traffic and wakes on the next check-out; pass
-# --always-on to exempt the roster from that, which is what makes every URL
-# answer cold at the cost of holding the whole fleet's compute and pod IPs.
+# after an hour of no ingress traffic, and nothing here wakes it again: these
+# tenants have no control-table item, so the dashboard's check-out cannot reach
+# them and the URL serves 503 until somebody runs scripts/tenant-scale.sh <id>
+# up. Pass --always-on to exempt the roster from suspension, which is what makes
+# every URL answer cold, at the cost of holding the whole fleet's compute and
+# pod IPs.
 #
 # Resumable: a tenant whose deploy previously ran to completion is skipped unless
 # --redeploy is passed, while one left half-built by an aborted run is retried, so
@@ -31,6 +34,7 @@
 #   --dry-run           print the resolved ids and commands; touch nothing
 #   --always-on         never scale these tenants to zero when idle
 #   --no-preflight      deploy even if the cluster cannot hold the roster
+#   --skip-db           no per-tenant Postgres database (the roster shares one)
 #   --log-dir DIR       per-tenant logs (default: /tmp/otterworks-batch-<epoch>)
 #   --tier A|B | --profile core|full | --host-suffix D | --image-tag T
 #                       passed through to deploy-tenant.sh
@@ -81,7 +85,9 @@ while [ $# -gt 0 ]; do
                    [ "$1" = "--profile" ] && PROFILE="$2"
                    PASSTHROUGH+=("$1" "$2"); shift 2 ;;
     --skip-db)     PASSTHROUGH+=("$1"); shift ;;
-    -h|--help)     sed -n '2,40p' "$0"; exit 0 ;;
+    # Through the last line of the header block, which the comments above have
+    # grown past twice now.
+    -h|--help)     sed -n '2,/^# ---/p' "$0"; exit 0 ;;
     -*)            err "Unknown flag: $1"; exit 1 ;;
     *)             NAMES+=("$1"); shift ;;
   esac
@@ -415,5 +421,8 @@ esac
 if [ "${ALWAYS_ON}" = true ]; then
   log "They are always-on: the idle scan will not scale them to zero."
 else
-  log "They scale to zero after an hour idle and wake on check-out; pass --always-on to keep them up."
+  log "They scale to zero after an hour idle, and nothing wakes them again: a tenant"
+  log "  deployed from here has no control-table item, so check-out cannot reach it and"
+  log "  the URL serves 503 until './scripts/tenant-scale.sh <id> up'. Pass --always-on"
+  log "  to keep them up."
 fi

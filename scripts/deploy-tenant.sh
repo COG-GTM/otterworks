@@ -672,6 +672,28 @@ else
   INCOMPLETE+=("ingress (no ${INGRESS_NAMESPACE} namespace)")
 fi
 
+# ---------- Late readiness re-check ----------
+# Redis and MeiliSearch are waited for early, before thirteen Helm installs and
+# the ingress, so on a cold cluster their timeout can expire while Karpenter is
+# still launching the node they are scheduled onto. That is a slow tenant, not a
+# broken one, and several minutes of deploy have run since -- so ask once more
+# here, briefly, rather than withholding the marker and having the batch
+# redeploy a tenant that came up thirty seconds after anyone last looked.
+if [ ${#INCOMPLETE[@]} -gt 0 ]; then
+  STILL=()
+  for step in "${INCOMPLETE[@]}"; do
+    case "${step}" in
+      redis|meilisearch)
+        if kubectl -n "${NS}" rollout status "deployment/${step}" --timeout=60s >/dev/null 2>&1; then
+          log "${step} came up during the rest of the deploy."
+          continue
+        fi ;;
+    esac
+    STILL+=("${step}")
+  done
+  INCOMPLETE=("${STILL[@]+"${STILL[@]}"}")
+fi
+
 # ---------- Completion marker ----------
 # The namespace is created in the first seconds, so its existence says nothing
 # about whether the deploy finished; deploy-tenant-batch.sh reads this annotation
@@ -680,9 +702,25 @@ fi
 # aborting the tenant) or is in INCOMPLETE (the steps that warn and carry on:
 # IRSA trust, the database, Redis/MeiliSearch readiness, the shared ingress).
 # A tenant missing services, a database, or a URL is half-built and not done.
+#
+# Retried, and loud when it still fails: the batch reads this one annotation to
+# decide what to retry, so a single throttled write turns a finished tenant into
+# "services missing, tenant incomplete" and a full redeploy on the next run. The
+# marker is only as trustworthy as the write that sets it.
 if [ ${#FAILED[@]} -eq 0 ] && [ ${#INCOMPLETE[@]} -eq 0 ]; then
-  kubectl annotate namespace "${NS}" --overwrite \
-    "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true
+  MARKED=false
+  for attempt in 1 2 3; do
+    if kubectl annotate namespace "${NS}" --overwrite \
+         "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1; then
+      MARKED=true
+      break
+    fi
+    sleep $(( attempt * 2 ))
+  done
+  if [ "${MARKED}" = false ]; then
+    warn "could not mark ${NS} deployed: the tenant is built, but the batch reads that"
+    warn "  annotation, so it will report this one incomplete and redeploy it."
+  fi
 fi
 
 # ---------- Summary ----------

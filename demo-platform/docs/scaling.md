@@ -59,7 +59,7 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
   density the CNI can serve. Without it, prefix delegation buys addresses that the scheduler
   never uses.
 - **Subnet space is the other half.** The original node subnets are `/24`s (~250 addresses
-  each, ~500 across two AZs) — under 40 full tenants' worth of pods, and prefix delegation
+  each, ~500 across two AZs) — ~30 full tenants' worth of pods, and prefix delegation
   consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ
   (4,091 usable each, ~8,200 across two AZs) carrying the `karpenter.sh/discovery` tag, so Karpenter prefers
   them without any change to the existing subnets, the node group, or the shared NLB.
