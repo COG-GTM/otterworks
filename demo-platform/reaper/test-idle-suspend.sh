@@ -54,6 +54,15 @@ suspend_tenant() {
   [ "${SUSPEND_RC}" -eq 0 ] || return "${SUSPEND_RC}"
   NS_RUNNING["$2"]=0
 }
+# RESUME_RC=1 models the real function's failure return: the scale-up was
+# refused, or the namespace holds no Deployments to scale.
+RESUMED=""
+RESUME_RC=0
+resume_tenant() {
+  RESUMED="${RESUMED} $1"
+  [ "${RESUME_RC}" -eq 0 ] || return "${RESUME_RC}"
+  NS_RUNNING["$2"]=13
+}
 
 # tenant_namespaces is the real implementation (its exclusion list is under
 # test), so kubectl is stubbed at the boundary instead.
@@ -70,8 +79,8 @@ real_src="$(sed -n '/^ingress_request_counts()/,/^}/p' "${SCRIPT_DIR}/idle-suspe
 reset_state() {
   unset ITEM_COUNT ITEM_SINCE ITEM_RUNNING NS_RUNNING NS_CHAOS METRIC NS_ALWAYS_ON TENANT_HAS_ITEM
   declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=() NS_ALWAYS_ON=() TENANT_HAS_ITEM=()
-  SUSPENDED=""
-  SUSPEND_RC=0
+  SUSPENDED=""; RESUMED=""
+  SUSPEND_RC=0; RESUME_RC=0
 }
 # A tenant the reaper has already seen up. Without this the first pass just
 # records the run state, which is not what most cases below are exercising.
@@ -240,6 +249,45 @@ ITEM_SINCE[standing]=${STALE}; NS_ALWAYS_ON[otterworks-standing]=yes
 NS_ALWAYS_ON[otterworks-standing]=no
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  suspends it once the label is gone" "${SUSPENDED# }" "standing"
+
+# The other half of the promise: a tenant that was already asleep when the label
+# went on -- suspended before it existed, or scaled down by hand -- is exempt
+# from a suspension that has already happened, so exemption alone leaves it at
+# 503 forever. Nothing else wakes it: no control-table item, so check-out cannot.
+reset_state
+NS_RUNNING[otterworks-standing]=0; NS_ALWAYS_ON[otterworks-standing]=yes
+ITEM_COUNT[standing]=100; ITEM_SINCE[standing]=${STALE}; ITEM_RUNNING[standing]=0
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "wakes an always-on tenant found scaled to zero" "${RESUMED# }" "standing"
+check "  and records it as running" "${ITEM_RUNNING[standing]}" "1"
+check "  restarting its idle clock, not judging it on pre-suspend counters" \
+  "$([ "${ITEM_SINCE[standing]}" -ge "${NOW}" ] && echo reset)" "reset"
+
+RESUMED=""
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and leaves it alone once it is up" "${RESUMED# }" ""
+check "  without suspending it either" "${SUSPENDED# }" ""
+
+# A scale-up that was refused must stay recorded as down, or the next pass reads
+# the tenant as freshly woken, resets the clock and never retries the wake.
+reset_state
+NS_RUNNING[otterworks-standing]=0; NS_ALWAYS_ON[otterworks-standing]=yes
+ITEM_COUNT[standing]=100; ITEM_SINCE[standing]=${STALE}; ITEM_RUNNING[standing]=0
+RESUME_RC=1
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "tried to wake it" "${RESUMED# }" "standing"
+check "  but leaves it recorded as down when the scale-up fails" "${ITEM_RUNNING[standing]}" "0"
+RESUMED=""; RESUME_RC=0
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and retries on the next pass" "${RESUMED# }" "standing"
+
+# Waking is what the label buys, not something the scan does for everyone: an
+# ordinary suspended tenant stays suspended (that is the cost control working).
+reset_state
+NS_RUNNING[otterworks-dozing]=0
+ITEM_COUNT[dozing]=100; ITEM_SINCE[dozing]=${STALE}; ITEM_RUNNING[dozing]=0
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "leaves a suspended tenant without the label asleep" "${RESUMED# }" ""
 
 # A tenant whose store could not be determined is left for the next pass: writing
 # its counters to the wrong one loses them, and suspending on state read from the

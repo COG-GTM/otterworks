@@ -119,9 +119,10 @@ the above changes `main`. Verify per the "Live verification" section of the runb
   tenants too: no expiry is not the same as never sleeping, and a tenant deployed from the
   script has no control-table item, so check-out cannot wake it and its URL stays 503 until
   someone scales it up. **`--always-on` is the opt-out**
-  — it labels the namespace `demo/always-on=true` and the idle scan leaves it alone, so the
-  URL answers with no wake step, at the cost of reserving its requests (and ~15 pod IPs on
-  `full`) permanently.
+  — it labels the namespace `demo/always-on=true`; the idle scan leaves it alone, and scales
+  it back up if it finds it at zero, so the URL answers with no wake step, at the cost of
+  reserving its requests (and ~15 pod IPs on `full`) permanently. Scaling one down by hand
+  means removing the label first, or the next scan undoes it.
 - Deploy only what a lab needs: `deploy-tenant.sh <ID> --profile core` brings up the 5
   services a browser session exercises instead of all 13. See
   `demo-platform/docs/cost-and-scale.md` for the capacity and cost model.

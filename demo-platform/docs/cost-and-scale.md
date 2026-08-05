@@ -227,8 +227,10 @@ deadline for the reaper to act on, but the tenant still scales to zero after an
 hour of no traffic, so lever 1 above — the one worth 10× — still applies.
 
 Adding `--always-on` is what gives that up. It labels the namespace
-`demo/always-on=true`, the idle scan skips it, and the attendee's URL answers
-with no wake step. Otherwise a suspended tenant serves 503 until someone runs
+`demo/always-on=true`, the idle scan skips it — and scales it back up if it
+finds it at zero, so a tenant that was asleep before the label went on is not
+exempted into a permanent 503 — and the attendee's URL answers with no wake
+step. Otherwise a suspended tenant serves 503 until someone runs
 `scripts/tenant-scale.sh <id> up` (~60–90s to ready): the dashboard's check-out
 wake reads the control table, which a script-deployed tenant is not in, so it
 does not cover this roster. Reach for it only where someone must be
@@ -260,9 +262,11 @@ an always-on roster.
 One operational consequence holds either way: nothing reclaims a persistent
 tenant, so a roster that outlives its workshop keeps its database and S3 prefix
 (and, if always-on, its compute) until someone runs
-`scripts/teardown-tenant.sh <id>`. For an always-on roster,
-`scripts/tenant-scale.sh <id> down` is the manual equivalent of the suspend it
-no longer gets — worth doing for the names that never showed up.
+`scripts/teardown-tenant.sh <id>`. Parking an always-on tenant that never got
+used takes the label off first — `kubectl label ns otterworks-<id>
+demo/always-on-`, or redeploy without the flag — and then
+`scripts/tenant-scale.sh <id> down`; scaling it down while the label is on is
+undone by the next idle scan, which is the point of the label.
 
 ## 6. What is shared and what is per tenant
 

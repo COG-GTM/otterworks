@@ -102,10 +102,14 @@ the dashboard's check-out wake needs a `TENANT#<id>` control-table item, which a
 batch-deployed tenant does not have. The only wake is
 `./scripts/tenant-scale.sh <id> up` (~60–90s to ready). Pass `--always-on` to
 exempt it: that labels the namespace `demo/always-on=true` and `idle-suspend.sh`
-leaves it alone, so the URL answers cold with no wake step. It is opt-in because
+leaves it alone — and scales it back up if it finds it at zero, since a tenant
+suspended before the label went on would otherwise be exempted into a permanent
+503 — so the URL answers cold with no wake step. It is opt-in because
 the exemption is what costs money — an always-on tenant holds its requests and
 pod IPs whether or not anyone opens it. Dropping the flag on a redeploy removes
-the label and the tenant idles normally again.
+the label and the tenant idles normally again; to park one by hand, remove the
+label first (`kubectl label ns otterworks-<id> demo/always-on-`), or the next
+idle scan puts it straight back up.
 
 ```bash
 ./scripts/deploy-tenant-batch.sh --always-on --concurrency 4   # whole roster stays up

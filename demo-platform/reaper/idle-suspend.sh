@@ -13,9 +13,10 @@
 # is reached exclusively through that controller. Each run walks every tenant
 # namespace and compares its counter against the value the last run stored:
 #
-#   labelled demo/always-on  -> exempt; never suspended (deploy-tenant.sh
-#                               --always-on), for standing environments someone
-#                               must be able to open cold
+#   labelled demo/always-on  -> exempt; never suspended, and scaled back up if
+#                               found asleep (deploy-tenant.sh --always-on), for
+#                               standing environments someone must be able to
+#                               open cold
 #   counter increased        -> tenant is in use; record it and reset the clock
 #   counter unchanged/absent -> tenant took zero requests since the last run
 #   counter decreased to >0  -> controller restarted, but has served this tenant
@@ -259,6 +260,31 @@ suspend_tenant() {
   return 1
 }
 
+# An always-on tenant found at zero replicas. The label is a promise that the
+# URL answers, and zero replicas is a 503 for as long as it lasts; the tenant
+# gets there by having been suspended before the label was applied, or by a
+# manual tenant-scale.sh down. Nothing else brings it back -- a script-deployed
+# tenant has no control-table item, so the dashboard's check-out cannot reach it
+# -- so the scan that would otherwise only leave it asleep wakes it instead. To
+# take one down deliberately, drop the label first (redeploy without
+# --always-on), or this puts it straight back up on the next pass.
+#
+# A namespace with no Deployments at all -- freshly created, mid-deploy, half
+# torn down -- is left alone: `scale --all` over an empty set succeeds, and this
+# would then claim to wake something that does not exist, every pass, forever.
+resume_tenant() {
+  local id="$1" ns="$2" deploys
+  deploys="$(kubectl -n "${ns}" get deploy -o name 2>/dev/null | awk 'END { print NR + 0 }')"
+  [ "${deploys}" -gt 0 ] || return 1
+  idle_log "waking ${id}: always-on, but found scaled to zero"
+  if kubectl -n "${ns}" scale deployment --all --replicas=1 >/dev/null 2>&1; then
+    ctl_audit "${id}" "resume" "always-on tenant found suspended" 2>/dev/null || true
+    return 0
+  fi
+  idle_warn "failed to scale up ${ns}; leaving it for the next pass"
+  return 1
+}
+
 # Every tenant namespace that currently exists, as "<id> <namespace>" lines.
 # The scan is driven from this list rather than from the metrics, because
 # ingress-nginx only exports a counter series for a namespace once it has served
@@ -322,6 +348,13 @@ suspend_idle_tenants() {
 
     running="$(running_deployments "${ns}")"
     if [ "${running}" -eq 0 ]; then
+      if [ "${always_on}" = true ] && resume_tenant "${id}" "${ns}"; then
+        # Up again, and its clock starts now: the counters date from before it
+        # was suspended, and an hour-old baseline would read as idle.
+        record_activity "${id}" "${count}" "${now}"
+        record_running "${id}" 1
+        continue
+      fi
       # Asleep: nothing to suspend. Record that, so the tenant coming back is
       # recognisable as a wake on a later pass.
       [ "${was_running}" = "0" ] || record_running "${id}" 0
