@@ -34,7 +34,9 @@ Non-secret (control-plane metadata): `OP`, `TENANT_ID`, `TIER`, `TTL`,
 `TENANT_BRANCH`, `CONTROL_TABLE` (default `otterworks-demo-control`),
 `AWS_REGION`, `EKS_CLUSTER` (default `otterworks-dev`), `ACTOR`.
 
-`OP=seed` adds `SCALE` (default `1.0`), `DEPARTMENTS` (default `all`),
+`OP=seed` adds `SCALE` (default `1.0`, bounded to `0 < scale <= 2` as the dashboard
+route bounds it, since a runner Job can also be created by hand),
+`DEPARTMENTS` (default `all`),
 `SEED_FORCE` (default `false`; the runner refuses to replace a loader Job that
 is still uploading, since that discards its progress),
 `SEED_WAIT`/`SEED_TIMEOUT` (block until the loader finishes; default `false`,

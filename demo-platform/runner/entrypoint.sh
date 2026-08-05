@@ -200,6 +200,13 @@ run_seed() {
   departments="${DEPARTMENTS:-all}"
   job="retail-drive-seed-loader"
 
+  # The same ceiling the dashboard route applies, repeated because a runner Job
+  # can be created by hand: above it the corpus outlives the tenant's TTL and
+  # fills a bucket shared with every other tenant. The renderer stays uncapped --
+  # applying it needs cluster access, which is licence enough.
+  awk -v s="${scale}" 'BEGIN { exit !(s > 0 && s <= 2) }' 2>/dev/null ||
+    die "invalid SCALE '${scale}' (0 < scale <= 2)"
+
   # Unset-only default, so an explicitly empty SEED_TIMEOUT is rejected here
   # rather than becoming a bash arithmetic error in wait_for_seed later.
   case "${SEED_TIMEOUT-3600}" in
@@ -248,8 +255,11 @@ run_seed() {
   # idempotent -- which the generator itself is.
   log "removing any previous seed Job in ${ns}"
   if ! delete_loader_job "${ns}" "${job}"; then
+    # Audited like the failures below it: the delete has already set a deletion
+    # timestamp (and may have taken the pod), so the previous run is over even
+    # though this one never started.
     [ "${SEED_FORCE:-false}" = "true" ] ||
-      die "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating; re-run with SEED_FORCE=true"
+      die_without_loader "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating; re-run with SEED_FORCE=true"
     # The pod outlived the delete: a lost node or a finalizer, which is exactly
     # the case an operator would clear with `kubectl delete pod --force`. Doing
     # it here is the point of force -- without cluster access there is no other
@@ -260,7 +270,7 @@ run_seed() {
     kubectl -n "${ns}" delete pod -l "app.kubernetes.io/name=${job}" \
       --ignore-not-found --force --grace-period=0 >/dev/null 2>&1 || true
     delete_loader_job "${ns}" "${job}" ||
-      die "could not remove the previous seed Job in ${ns} even with SEED_FORCE=true -- it needs direct cluster access"
+      die_without_loader "could not remove the previous seed Job in ${ns} even with SEED_FORCE=true -- it needs direct cluster access"
   fi
 
   # After the delete, so that a seed refused or aborted before this point has not
@@ -292,8 +302,8 @@ no_seed_secret_msg() {
   printf '%s' "secret retail-drive-seed is missing in $1 and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n $1 create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
 }
 
-# For every failure between the delete of the old loader and the creation of its
-# replacement: the namespace is left with no loader at all, and the runner pod's
+# For every failure from the delete of the old loader onwards: the namespace is
+# left with no loader, or with one that is on its way out, and the runner pod's
 # log is the only other trace of it -- which ages out with the runner Job.
 die_without_loader() {
   ctl_audit "${TENANT_ID}" seed_fail "$1"

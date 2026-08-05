@@ -226,7 +226,16 @@ export async function latestJobLogs(
       undefined,
       sel,
     );
-    const pod = podsRes.body.items[0];
+    // Newest attempt, not the API server's (name-sorted) list order: a Job with
+    // backoffLimit > 0 that failed once has two pods, and the older one's logs
+    // are the ones the operator has already seen fail.
+    const pod = podsRes.body.items
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.metadata?.creationTimestamp ?? 0).getTime() -
+          new Date(a.metadata?.creationTimestamp ?? 0).getTime(),
+      )[0];
     if (!pod?.metadata?.name) return undefined;
 
     const logsRes = await core().readNamespacedPodLog(

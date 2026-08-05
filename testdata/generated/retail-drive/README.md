@@ -193,7 +193,11 @@ Notes:
   *ingress* requests, and the loader talks to the api-gateway Service directly —
   so on a tenant nobody is browsing, a full-scale run (longer than
   `IDLE_AFTER_SECONDS`, default 1h) can be scaled to zero underneath itself.
-  Seed at a smaller scale, or keep a browser on the tenant while it runs.
+  Seed at a smaller scale, or keep a browser on the tenant while it runs. The
+  dashboard's ready-pod check is made when the request arrives, not when the
+  loader starts, so a tenant suspended in that window (seconds, longer if the
+  platform node pool is busy) gets a loader that exhausts its `backoffLimit`
+  against a Service with no endpoints, and fails.
 
 ### Without cluster access: `tenant.sh seed`
 

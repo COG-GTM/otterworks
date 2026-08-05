@@ -171,7 +171,7 @@ warn_if_degraded() {
 # ------------------------------------------------------------------------------
 
 cmd="${1:-}"
-[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status|seed> [args]"
+[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status|seed|sync|persist> [args]"
 shift || true
 
 case "${cmd}" in
