@@ -58,6 +58,13 @@ lazy val root = project
       "com.dimafeng" %% "testcontainers-scala-scalatest" % "0.41.4" % Test,
       "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.41.4" % Test,
     ),
+    // Coverage ratchet for `sbt clean coverage test coverageReport`. Both numbers are the
+    // measured totals rounded down (93.13% statement / 83.48% branch); raise them as
+    // coverage improves, never lower them.
+    coverageMinimumStmtTotal := 93,
+    coverageMinimumBranchTotal := 83,
+    coverageFailOnMinimum := true,
+    coverageHighlighting := true,
     assembly / assemblyMergeStrategy := {
       // Preserve ServiceLoader registrations (Flyway discovers its database
       // and plugin support via META-INF/services).

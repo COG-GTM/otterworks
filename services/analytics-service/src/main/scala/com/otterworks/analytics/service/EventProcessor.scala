@@ -30,7 +30,7 @@ class EventProcessor(
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private lazy val sqsClient: SqsClient =
+  protected lazy val sqsClient: SqsClient =
     val builder = SqsClient.builder()
       .region(Region.of(config.aws.region))
       .credentialsProvider(DefaultCredentialsProvider.create())
