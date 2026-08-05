@@ -108,8 +108,10 @@ esac
 #
 # A locale that does not exist is not an error either -- setlocale falls back to C
 # and iconv still exits 0, having written '?' -- so the ambient locale is tried
-# second (macOS has no C.UTF-8 but transliterates under en_US.UTF-8), and the
-# caller rejects a name that still holds a '?' rather than deriving an id from it.
+# second (macOS has no C.UTF-8 but transliterates under en_US.UTF-8). Whatever
+# comes back is the caller's to check: it rejects a '?', and equally the raw name
+# returned when both attempts failed outright, which is what an iconv with no
+# //TRANSLIT support at all (musl's) does.
 tenant_ascii_from_name() {
   local ascii
   ascii="$(printf '%s' "$1" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null)" || ascii=""
@@ -157,15 +159,19 @@ declare -A NAME_OF_ID=()
 INVALID=0
 for name in "${NAMES[@]}"; do
   ascii="$(tenant_ascii_from_name "${name}")"
-  # What is left when even the pinned locale could not transliterate: refusing is
-  # the point. Deriving an id from '?' would silently give this person a second
-  # permanent environment under a name nobody recognises.
-  case "${ascii}" in
-    *\?*)
-      err "'${name}' did not transliterate to ASCII (got '${ascii}'): this box has no C.UTF-8 locale,"
-      err "  so the id would not match the one another operator derives. Install it, or spell the name in ASCII."
-      INVALID=1; continue ;;
-  esac
+  # Two ways transliteration fails, and both have to be refused rather than
+  # slugged: a '?' where glibc could not fold the letter, and a byte that is still
+  # not ASCII, which is the untouched name coming back from an iconv that does not
+  # implement //TRANSLIT. The second is the quieter one -- no '?' to spot, and
+  # sanitize_id would dash out each byte of the character into a plausible-looking
+  # id -- and both would give this person a second permanent environment under a
+  # name nobody recognises.
+  if [ "${ascii}" != "${ascii#*\?}" ] || [ -n "$(printf '%s' "${ascii}" | LC_ALL=C tr -d '[:print:]')" ]; then
+    err "'${name}' did not transliterate to ASCII (got '${ascii}'): iconv here cannot fold it,"
+    err "  so the id would not match the one another operator derives. Install a C.UTF-8 locale"
+    err "  (or a GNU iconv), or spell the name in ASCII in the roster."
+    INVALID=1; continue
+  fi
   id="$(tenant_id_from_ascii "${ascii}")"
   if [ -z "${id}" ]; then
     err "Cannot derive a tenant id from '${name}'"; INVALID=1; continue

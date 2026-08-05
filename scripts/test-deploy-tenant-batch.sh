@@ -221,6 +221,27 @@ said "  and says why" "did not transliterate to ASCII"
 check "  deploying nothing" "$(deployed)" ""
 rm -f "${WORK}/bin/iconv"
 
+# The quieter failure: an iconv that rejects //TRANSLIT outright (musl's) writes
+# nothing and exits nonzero, so there is no '?' to catch -- the name comes back
+# untouched and slugging would dash out each byte of the 'ã' into the
+# plausible-looking, and wrong, jo-o-esteves.
+cat > "${WORK}/bin/iconv" <<'EOS'
+#!/usr/bin/env bash
+echo "iconv: conversions from UTF-8 to ASCII//TRANSLIT are not supported" >&2
+exit 1
+EOS
+chmod +x "${WORK}/bin/iconv"
+rc="$(run_named "João Esteves")"
+check "refuses a name when iconv cannot transliterate at all" "${rc}" "1"
+said "  rather than deriving an id from the raw name" "did not transliterate to ASCII"
+check "  deploying nothing" "$(deployed)" ""
+# An ASCII name needs no transliteration, so the same broken iconv is no reason
+# to refuse the rest of the roster.
+rc="$(run_named "Jake Cosme")"
+check "  but still deploys a name that was already ASCII" "$(deployed)" "deploy:jake-cosme"
+check "  succeeding" "${rc}" "0"
+rm -f "${WORK}/bin/iconv"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

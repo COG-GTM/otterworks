@@ -104,19 +104,27 @@ idle_ns() { printf 'otterworks-%s' "$1"; }
 # of ~95 must not be what takes a standing environment down. stdout and stderr
 # are kept apart so a Warning header on a successful read is not compared to
 # "true" along with the label.
+#
+# true | false | unknown, rather than a bare exit status, because the two things
+# the caller does with the answer need different amounts of certainty. Not
+# suspending is safe under doubt -- it costs an hour of compute and the next pass
+# retries. Scaling a tenant *up* on the same doubt is not: a single throttled
+# label read would wake an ordinary tenant that was correctly asleep, and reset
+# its clock for another full idle window. Only a label read as "true" wakes
+# anything.
 tenant_always_on() {
   local out err errfile rc
   errfile="$(mktemp)"
   out="$(kubectl get ns "$1" -o jsonpath='{.metadata.labels.demo/always-on}' 2>"${errfile}")"; rc=$?
   err="$(cat "${errfile}")"; rm -f "${errfile}"
   if [ "${rc}" -eq 0 ]; then
-    [ "${out}" = "true" ]
-    return
+    if [ "${out}" = "true" ]; then printf 'true'; else printf 'false'; fi
+    return 0
   fi
   # The namespace is gone: there is nothing left to suspend either way.
-  case "${err}" in *NotFound*|*"not found"*) return 1 ;; esac
-  idle_warn "cannot read demo/always-on on $1 (${err//$'\n'/ }); leaving it running this pass"
-  return 0
+  case "${err}" in *NotFound*|*"not found"*) printf 'false'; return 0 ;; esac
+  idle_warn "cannot read demo/always-on on $1 (${err//$'\n'/ }); leaving it as it is this pass"
+  printf 'unknown'
 }
 
 # Where a tenant's idle bookkeeping lives. The dashboard's tenants have a
@@ -322,8 +330,7 @@ suspend_idle_tenants() {
     # dropped would then compare live traffic against an hours-old baseline --
     # an ingress restart in between reads as "idle since this morning" and
     # suspends a tenant somebody is using.
-    always_on=false
-    tenant_always_on "${ns}" && always_on=true
+    always_on="$(tenant_always_on "${ns}")"
 
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
@@ -348,7 +355,8 @@ suspend_idle_tenants() {
 
     running="$(running_deployments "${ns}")"
     if [ "${running}" -eq 0 ]; then
-      if [ "${always_on}" = true ] && resume_tenant "${id}" "${ns}"; then
+      # Only a label positively read as true: 'unknown' leaves it asleep.
+      if [ "${always_on}" = "true" ] && resume_tenant "${id}" "${ns}"; then
         # Up again, and its clock starts now: the counters date from before it
         # was suspended, and an hour-old baseline would read as idle.
         record_activity "${id}" "${count}" "${now}"
@@ -401,8 +409,11 @@ suspend_idle_tenants() {
       record_activity "${id}" "${count}" "${since}"
     fi
 
-    if [ "${always_on}" = true ]; then
-      idle_log "${id}: always-on, leaving it running (idle $(( now - since ))s)"
+    # Anything but a definite "false" keeps it up: an unreadable label is the one
+    # case where suspending is the irreversible mistake, since an always-on tenant
+    # has no control item for the dashboard to wake it from.
+    if [ "${always_on}" != "false" ]; then
+      idle_log "${id}: demo/always-on=${always_on}, leaving it running (idle $(( now - since ))s)"
       continue
     fi
 

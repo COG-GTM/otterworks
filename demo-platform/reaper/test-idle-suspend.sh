@@ -36,7 +36,15 @@ state_read() {
 }
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
 record_running() { ITEM_RUNNING["$1"]="$2"; }
-tenant_always_on() { [ "${NS_ALWAYS_ON[$1]:-no}" = "yes" ]; }
+# true | false | unknown, the three-state answer the scan reads: 'unknown' (an
+# unreadable label) must hold a running tenant up without waking a sleeping one.
+tenant_always_on() {
+  case "${NS_ALWAYS_ON[$1]:-no}" in
+    yes)     printf 'true' ;;
+    unknown) printf 'unknown' ;;
+    *)       printf 'false' ;;
+  esac
+}
 running_deployments() { echo "${NS_RUNNING[$1]:-0}"; }
 tenant_has_chaos() { [ "${NS_CHAOS[$1]:-no}" = "yes" ]; }
 # METRICS_UP=false models an unreachable metrics endpoint, which is distinct
@@ -289,6 +297,23 @@ ITEM_COUNT[dozing]=100; ITEM_SINCE[dozing]=${STALE}; ITEM_RUNNING[dozing]=0
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "leaves a suspended tenant without the label asleep" "${RESUMED# }" ""
 
+# ...including when the label could not be read. Not suspending on doubt costs an
+# hour of compute; waking on doubt starts an environment somebody deliberately
+# put to sleep, and holds it up for a full idle window afterwards.
+reset_state
+NS_RUNNING[otterworks-murk]=0; NS_ALWAYS_ON[otterworks-murk]=unknown
+ITEM_COUNT[murk]=100; ITEM_SINCE[murk]=${STALE}; ITEM_RUNNING[murk]=0
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "does not wake a sleeping tenant whose label could not be read" "${RESUMED# }" ""
+
+# ...while the same doubt still holds a running tenant up.
+reset_state
+NS_RUNNING[otterworks-murk]=13; NS_ALWAYS_ON[otterworks-murk]=unknown
+ITEM_COUNT[murk]=100; ITEM_SINCE[murk]=${STALE}; METRIC[otterworks-murk]=100
+seen_running murk
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  but still refuses to suspend a running one" "${SUSPENDED# }" ""
+
 # A tenant whose store could not be determined is left for the next pass: writing
 # its counters to the wrong one loses them, and suspending on state read from the
 # wrong one is a scale-down decided on somebody else's numbers.
@@ -465,17 +490,19 @@ kubectl() {
   [ -z "${LOOKUP_WARN}" ] || echo "${LOOKUP_WARN}" >&2
   printf '%s' "${LABEL}"
 }
-asks() { tenant_always_on otterworks-standing && echo exempt || echo suspendable; }
+asks() { tenant_always_on otterworks-standing; }
 
-LABEL="true";  check "the label exempts the tenant" "$(asks)" "exempt"
-LABEL="";      check "  and its absence does not" "$(asks)" "suspendable"
+LABEL="true";  check "the label exempts the tenant" "$(asks)" "true"
+LABEL="";      check "  and its absence does not" "$(asks)" "false"
 LABEL="true"; LOOKUP_WARN="Warning: v1 Namespace is deprecated in this cluster"
-check "  a warning on a successful read does not hide it" "$(asks)" "exempt"
+check "  a warning on a successful read does not hide it" "$(asks)" "true"
 LOOKUP_WARN=""
 LOOKUP_ERR="Error from server (NotFound): namespaces \"otterworks-standing\" not found"
-check "a namespace that is gone is not exempt" "$(asks 2>/dev/null)" "suspendable"
+check "a namespace that is gone is not exempt" "$(asks 2>/dev/null)" "false"
+# Reported as its own answer rather than folded into either: the scan holds a
+# running tenant up on it, and refuses to wake a sleeping one.
 LOOKUP_ERR="error: You must be logged in to the server (Unauthorized)"
-check "  but an unreadable label leaves the tenant running" "$(asks 2>/dev/null)" "exempt"
+check "  and an unreadable label is unknown, not a decision" "$(asks 2>/dev/null)" "unknown"
 LOOKUP_ERR=""
 
 echo "${PASS} passed, ${FAIL} failed"
