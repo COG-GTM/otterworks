@@ -269,7 +269,6 @@ case "${cmd}" in
     case "${scale}" in
       ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
     esac
-    # The API bounds it to 0.01..2; saying so here beats a 400 after the login.
     case "${scale//./}" in
       *[!0]*) ;;
       *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
@@ -279,6 +278,11 @@ case "${cmd}" in
     case "${scale}" in
       0[0-9]*) fail "invalid scale '${scale}' (no leading zero: 0.5, not 00.5)" ;;
     esac
+    # The same bounds the route enforces, checked here so an out-of-range scale
+    # costs a message rather than a login and a 400. awk because the shell has
+    # no decimal comparison.
+    awk -v s="${scale}" 'BEGIN { exit !(s >= 0.01 && s <= 2) }' ||
+      fail "invalid scale '${scale}' (0.01 to 2)"
 
     # A loader that is already uploading is refused, because restarting it
     # throws away everything it has done so far. SEED_FORCE=true is the way back

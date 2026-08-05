@@ -264,8 +264,13 @@ run_seed() {
   ensure_seed_secret "${ns}"
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
-  printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null ||
+  # An apply that fails here leaves the namespace with no loader at all, since
+  # the previous one has already been deleted. That is worth an audit row of its
+  # own: the runner pod's log is otherwise the only trace, and it ages out.
+  printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null || {
+    ctl_audit "${TENANT_ID}" seed_fail "could not create job/${job} in ${ns}; the previous loader is gone"
     die "could not create the seed Job in ${ns}"
+  }
 
   ctl_audit "${TENANT_ID}" seed "ns=${ns} scale=${scale} departments=${departments}"
   log "seed Job created; follow it with: kubectl -n ${ns} logs -f job/${job}"

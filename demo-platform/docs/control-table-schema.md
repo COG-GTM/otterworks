@@ -72,9 +72,10 @@ Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_
 reap, inject, reset, seed, seed_fail, suspend, login_ok, login_fail}. Attributes: `actor`,
 `detail`, `ts`. A seed writes two `seed` rows, as deploy and inject do: the dashboard's
 means *requested* (it precedes the runner Job and survives a runner that then refuses the
-seed), the runner's means the loader was created. `seed_fail` is written only when the
-runner waited for the loader (`SEED_WAIT=true`) and it failed — a loader that fails after
-an unwatched dispatch leaves those `seed` rows and nothing else.
+seed), the runner's means the loader was created. `seed_fail` covers the two failures the
+runner can see: an apply that leaves the namespace without a loader (the previous one is
+deleted first), and, under `SEED_WAIT=true`, a loader that ran and failed. A loader that
+fails after an unwatched dispatch leaves those `seed` rows and nothing else.
 `redeploy` is a deploy into a tenant that was already up (continuous delivery), as distinct
 from the `checkout` that created it.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
