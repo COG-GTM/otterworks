@@ -475,9 +475,11 @@ kubectl -n "${NS}" rollout status deployment/meilisearch --timeout=180s \
   || { warn "meilisearch not ready"; INCOMPLETE+=("meilisearch"); }
 
 # ---------- Resolve image tags ----------
-log "Logging into ECR to resolve image tags..."
-aws ecr get-login-password --region "${AWS_REGION}" | \
-  docker login --username AWS --password-stdin "${ECR_REGISTRY}" >/dev/null 2>&1 || true
+# No `docker login` here: nothing in this script talks to a Docker daemon. Tags
+# come from the ECR API below, and the images themselves are pulled by kubelet
+# with the node role's credentials. The login was also a shared-file write --
+# every concurrent child of deploy-tenant-batch.sh rewriting ~/.docker/config.json
+# at once -- for a credential none of them read.
 latest_tag() {
   aws ecr describe-images --repository-name "${ECR_PREFIX}$1" --region "${AWS_REGION}" \
     --query 'sort_by(imageDetails,&imagePushedAt)[-1].imageTags[0]' --output text 2>/dev/null
