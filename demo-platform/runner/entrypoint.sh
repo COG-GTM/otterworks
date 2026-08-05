@@ -235,6 +235,14 @@ run_seed() {
                   "${sid}" "${scale}" "${departments}")" ||
     die "could not render the seed Job for ${ns}"
 
+  # Read-only, before the delete: without credentials on the runner and without
+  # a Secret already in the namespace there is no seed to be had, and finding
+  # that out after the delete would have thrown away a running loader for a run
+  # that never starts.
+  [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ] ||
+    kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||
+    die_no_seed_secret "${ns}"
+
   # A Job's pod template is immutable, so a re-seed at a different scale cannot
   # be an `apply` over the previous run. Deleting first keeps re-seeding
   # idempotent -- which the generator itself is. Foreground cascade so the old
@@ -274,6 +282,10 @@ run_seed() {
 #
 # The values go to kubectl on STDIN, never on an argv (`kubectl create secret
 # --from-literal` would put them in /proc/<pid>/cmdline) and never into a file.
+die_no_seed_secret() {
+  die "secret retail-drive-seed is missing in $1 and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n $1 create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
+}
+
 ensure_seed_secret() {
   local ns="$1"
   if [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ]; then
@@ -298,8 +310,10 @@ EOF
     die "could not write the retail-drive-seed Secret in ${ns}"
   fi
 
+  # Re-checked rather than assumed from the pre-flight above, because this is
+  # also the guarantee the apply that follows depends on.
   kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||
-    die "secret retail-drive-seed is missing in ${ns} and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n ${ns} create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
+    die_no_seed_secret "${ns}"
 }
 
 # Print the loader Job's true conditions (empty while it is still running), or

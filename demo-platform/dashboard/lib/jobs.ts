@@ -111,7 +111,11 @@ export function buildRunnerJob(input: RunnerJobInput, epoch: number): k8s.V1Job 
       },
     },
     spec: {
-      backoffLimit: 1,
+      // A seed runner is not retried: it deletes the tenant's loader Job before
+      // applying the new one, so a retry after the loader was already dispatched
+      // restarts a run that is under way. Every other action is idempotent
+      // enough that one retry is worth having.
+      backoffLimit: input.action === "seed" ? 0 : 1,
       ttlSecondsAfterFinished: 3600,
       template: {
         metadata: {

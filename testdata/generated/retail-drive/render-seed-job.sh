@@ -94,8 +94,11 @@ for pair in "GATEWAY_URL:${gateway_url}" "REPO_URL:${repo_url}"; do
     *[!A-Za-z0-9:/?=@%._~-]*) fail "invalid ${name} '${value}' (unexpected character)" ;;
   esac
 done
+# A branch or a tag, not a commit: the init container clones with `--branch`,
+# which does not take a SHA, so accepting one here would only move the failure
+# into the loader pod as an opaque git error.
 case "${repo_ref}" in
-  ''|*[!A-Za-z0-9./_-]*) fail "invalid REPO_REF '${repo_ref}' (a branch, tag or commit)" ;;
+  ''|*[!A-Za-z0-9./_-]*) fail "invalid REPO_REF '${repo_ref}' (a branch or tag name)" ;;
 esac
 
 sed -e "s#__TENANT_NAMESPACE__#${namespace}#g" \

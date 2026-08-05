@@ -185,7 +185,8 @@ Notes:
   change to `generate_drive.py` or `taxonomy.py` is not exercised by a seed until
   it lands there. Point a test run at a branch with
   `REPO_REF=<branch> render-seed-job.sh ...` (`SEED_REPO_URL`/`SEED_REPO_REF` on
-  the runner).
+  the runner) — a branch or tag, not a commit SHA, since the init container
+  clones with `--branch`.
 - **Idle-suspend can interrupt a long seed.** The reaper measures idleness from
   *ingress* requests, and the loader talks to the api-gateway Service directly —
   so on a tenant nobody is browsing, a full-scale run (longer than
