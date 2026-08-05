@@ -9,32 +9,40 @@ initialize: |
   # (.github/workflows/ci.yml), kubectl to the cluster's minor
   # (platform/terraform/environments/dev.tfvars) to stay inside the supported skew -- the
   # bump note in that file says to move KUBECTL_VERSION with it.
-  # linux/amd64 only, deliberately: a checksum proves the file is the one upstream
-  # published, not that it runs here, so an arm64 image would install binaries that
-  # only fail when a script calls them.
-  [ "$(uname -m)" = "x86_64" ] || { echo "blueprint tool installs are linux/amd64 only (got $(uname -m))"; exit 1; }
-  TF_VERSION=1.7.0
-  TF_SHA256=2bac080244845ebd434baf5e8557bd06d53b3c8bc01b7e496b390a56cb40ac5c
-  KUBECTL_VERSION=v1.34.10
-  KUBECTL_SHA256=95bd70842bd11a524d24acd5b68726899e3488e153e45e2b4ae846545beda050
-  HELM_VERSION=v3.19.2
-  HELM_SHA256=2114c9dea2844dce6d0ee2d792a9aae846be8cf53d5b19dc2988b5a0e8fec26e
-  # Everything is unpacked in a scratch dir and only the binary is installed, so no
-  # archive extra (terraform ships a LICENSE.txt) lands in /usr/local/bin, and nothing
-  # is left in the snapshot.
-  TOOLS="$(mktemp -d)"
-  trap 'rm -rf "$TOOLS"' EXIT
-  fetch_verified() { # url sha256 dest
-    curl -fsSL -o "$3" "$1" || { echo "download failed: $1"; exit 1; }
-    echo "$2  $3" | sha256sum -c - >/dev/null || { echo "checksum mismatch: $1"; exit 1; }
-  }
-  fetch_verified "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" "$TF_SHA256" "$TOOLS/terraform.zip"
-  { unzip -o -q "$TOOLS/terraform.zip" -d "$TOOLS" && sudo install -m 0755 "$TOOLS/terraform" /usr/local/bin/terraform; } || exit 1
-  fetch_verified "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" "$KUBECTL_SHA256" "$TOOLS/kubectl"
-  sudo install -m 0755 "$TOOLS/kubectl" /usr/local/bin/kubectl || exit 1
-  fetch_verified "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" "$HELM_SHA256" "$TOOLS/helm.tgz"
-  { tar -xzf "$TOOLS/helm.tgz" -C "$TOOLS" && sudo install -m 0755 "$TOOLS/linux-amd64/helm" /usr/local/bin/helm; } || exit 1
-  rm -rf "$TOOLS"
+  # Every artifact below is a pinned linux/amd64 one, and a checksum proves a file is
+  # what upstream published, not that it runs here -- so on any other arch skip the
+  # installs rather than lay down binaries that only fail when a script calls them.
+  # Skipped, not fatal: the rest of the snapshot (image builds, seeding, Android) does
+  # not need these, and the platform scripts already abort with a clear require_bins
+  # error if they are missing.
+  if [ "$(uname -m)" != "x86_64" ]; then
+    echo "WARNING: skipping terraform/kubectl/helm: pinned artifacts are linux/amd64, this is $(uname -m)"
+  else
+    TF_VERSION=1.7.0
+    TF_SHA256=2bac080244845ebd434baf5e8557bd06d53b3c8bc01b7e496b390a56cb40ac5c
+    KUBECTL_VERSION=v1.34.10
+    KUBECTL_SHA256=95bd70842bd11a524d24acd5b68726899e3488e153e45e2b4ae846545beda050
+    HELM_VERSION=v3.19.2
+    HELM_SHA256=2114c9dea2844dce6d0ee2d792a9aae846be8cf53d5b19dc2988b5a0e8fec26e
+    # Everything is unpacked in a scratch dir and only the binary is installed, so no
+    # archive extra (terraform ships a LICENSE.txt) lands in /usr/local/bin, and nothing
+    # is left in the snapshot. The trap covers the failure paths and is released again
+    # straight after, so a later stage can install its own EXIT trap.
+    TOOLS="$(mktemp -d)"
+    trap 'rm -rf "$TOOLS"' EXIT
+    fetch_verified() { # url sha256 dest
+      curl -fsSL -o "$3" "$1" || { echo "download failed: $1"; exit 1; }
+      echo "$2  $3" | sha256sum -c - >/dev/null || { echo "checksum mismatch: $1"; exit 1; }
+    }
+    fetch_verified "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" "$TF_SHA256" "$TOOLS/terraform.zip"
+    { unzip -o -q "$TOOLS/terraform.zip" -d "$TOOLS" && sudo install -m 0755 "$TOOLS/terraform" /usr/local/bin/terraform; } || exit 1
+    fetch_verified "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" "$KUBECTL_SHA256" "$TOOLS/kubectl"
+    sudo install -m 0755 "$TOOLS/kubectl" /usr/local/bin/kubectl || exit 1
+    fetch_verified "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" "$HELM_SHA256" "$TOOLS/helm.tgz"
+    { tar -xzf "$TOOLS/helm.tgz" -C "$TOOLS" && sudo install -m 0755 "$TOOLS/linux-amd64/helm" /usr/local/bin/helm; } || exit 1
+    rm -rf "$TOOLS"
+    trap - EXIT
+  fi
 
   docker compose -f docker-compose.infra.yml pull
   # Serialized with retries: parallel builds overwhelm Docker's embedded DNS (127.0.0.11)
