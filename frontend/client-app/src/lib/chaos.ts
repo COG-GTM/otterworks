@@ -12,14 +12,15 @@ import { API_BASE_URL } from "./api-client";
  * same thing on both sides.
  */
 
-/** localStorage key, shared with the admin dashboard's Demo Controls panel. */
-export const CHAOS_STATE_KEY = "ow_admin_chaos_state";
-
 /**
- * Expiries live in a client-owned key so `CHAOS_STATE_KEY` stays the plain
- * `Record<string, boolean>` the admin dashboard reads and counts.
+ * The admin dashboard's Demo Controls state. Read-only here: an admin toggle
+ * arms the browser dupe too, but the client never writes this key, so a
+ * browser-only flag can't make the operator UI report the service as broken.
  */
-export const CHAOS_EXPIRY_KEY = "ow_client_chaos_expiry";
+export const CHAOS_ADMIN_STATE_KEY = "ow_admin_chaos_state";
+
+/** Everything this module writes, including expiries. */
+export const CHAOS_CLIENT_STATE_KEY = "ow_client_chaos_state";
 
 export const CHAOS_SCENARIOS = {
   searchSuggest500: "chaos:search-service:suggest_500",
@@ -40,13 +41,22 @@ const SLOW_QUERY_MIN_MS = 3000;
 const SLOW_QUERY_MAX_MS = 5000;
 
 /**
- * `{ "search-service": true }`, the shape the admin dashboard writes and reads.
- * Flags are also accepted under the full scenario key.
+ * `{ "search-service": true }`, the shape the admin dashboard writes. Flags are
+ * also accepted under the full scenario key.
  */
-type ChaosState = Record<string, boolean>;
+type AdminChaosState = Record<string, boolean>;
 
-/** `{ "search-service": <epoch ms> }` — when the client stops honouring a flag. */
-type ChaosExpiries = Record<string, number>;
+/**
+ * `source` records who armed the scenario: a `client` entry disappears when it
+ * lapses, an `admin` entry is the client's own view of a flag it does not own
+ * (stamped on first sight, kept once lapsed so it is not re-stamped forever).
+ */
+interface ChaosEntry {
+  expiresAt: number;
+  source: "client" | "admin";
+}
+
+type ClientChaosState = Record<string, ChaosEntry>;
 
 function serviceOf(scenarioKey: string): string {
   return scenarioKey.split(":")[1] ?? "";
@@ -84,34 +94,22 @@ function writeJson(key: string, value: object): void {
   }
 }
 
-function readState(): ChaosState {
-  return readJson<ChaosState>(CHAOS_STATE_KEY);
+/** Fallback for private mode / quota errors, so a flag can still time out. */
+let memoryState: ClientChaosState | null = null;
+
+function readClientState(): ClientChaosState {
+  return memoryState ?? readJson<ClientChaosState>(CHAOS_CLIENT_STATE_KEY);
 }
 
-function writeState(state: ChaosState): void {
-  writeJson(CHAOS_STATE_KEY, state);
+function writeClientState(state: ClientChaosState): void {
+  writeJson(CHAOS_CLIENT_STATE_KEY, state);
+  const persisted = readJson<ClientChaosState>(CHAOS_CLIENT_STATE_KEY);
+  memoryState = JSON.stringify(persisted) === JSON.stringify(state) ? null : state;
 }
 
-function readExpiries(): ChaosExpiries {
-  return readJson<ChaosExpiries>(CHAOS_EXPIRY_KEY);
-}
-
-function writeExpiries(expiries: ChaosExpiries): void {
-  writeJson(CHAOS_EXPIRY_KEY, expiries);
-}
-
-function flagSet(state: ChaosState, scenario: ChaosScenarioKey): boolean {
+function adminFlagSet(scenario: ChaosScenarioKey): boolean {
+  const state = readJson<AdminChaosState>(CHAOS_ADMIN_STATE_KEY);
   return Boolean(state[scenario]) || Boolean(state[serviceOf(scenario)]);
-}
-
-function clearFlag(scenario: ChaosScenarioKey): void {
-  const state = readState();
-  delete state[scenario];
-  delete state[serviceOf(scenario)];
-  writeState(state);
-  const expiries = readExpiries();
-  delete expiries[serviceOf(scenario)];
-  writeExpiries(expiries);
 }
 
 /** Resolve a service name (`file-service`) or full Redis key to a scenario key. */
@@ -129,20 +127,29 @@ export function resolveScenario(input: string): ChaosScenarioKey | null {
 export function isChaosActive(scenarioKey: string): boolean {
   const scenario = resolveScenario(scenarioKey);
   if (!scenario) return false;
-  if (!flagSet(readState(), scenario)) return false;
 
   const service = serviceOf(scenario);
-  const expiries = readExpiries();
-  const expiresAt = expiries[service];
+  const state = readClientState();
+  const entry = state[service];
+  const fromAdmin = adminFlagSet(scenario);
 
-  if (typeof expiresAt !== "number") {
-    writeExpiries({ ...expiries, [service]: Date.now() + CHAOS_TTL_MS });
-    return true;
-  }
-  if (expiresAt <= Date.now()) {
-    clearFlag(scenario);
+  if (entry && (entry.source === "client" || fromAdmin)) {
+    if (entry.expiresAt > Date.now()) return true;
+    if (entry.source === "client") {
+      const { [service]: _lapsed, ...rest } = state;
+      writeClientState(rest);
+    }
     return false;
   }
+
+  if (entry) {
+    // The admin cleared the flag; drop our stamp so a re-toggle starts a new TTL.
+    const { [service]: _stale, ...rest } = state;
+    writeClientState(rest);
+  }
+  if (!fromAdmin) return false;
+
+  writeClientState({ ...state, [service]: { expiresAt: Date.now() + CHAOS_TTL_MS, source: "admin" } });
   return true;
 }
 
@@ -153,19 +160,28 @@ export function activeChaosScenarios(): ChaosScenarioKey[] {
 export function setChaosActive(scenarioKey: string, active: boolean, ttlMs = CHAOS_TTL_MS): boolean {
   const scenario = resolveScenario(scenarioKey);
   if (!scenario) return false;
-  if (!active) {
-    clearFlag(scenario);
+  const service = serviceOf(scenario);
+  const state = readClientState();
+
+  if (active) {
+    writeClientState({ ...state, [service]: { expiresAt: Date.now() + ttlMs, source: "client" } });
     return true;
   }
-  const service = serviceOf(scenario);
-  writeState({ ...readState(), [service]: true });
-  writeExpiries({ ...readExpiries(), [service]: Date.now() + ttlMs });
+
+  if (adminFlagSet(scenario)) {
+    // Can't retract someone else's flag, so record it as already lapsed here.
+    writeClientState({ ...state, [service]: { expiresAt: 0, source: "admin" } });
+  } else {
+    const { [service]: _off, ...rest } = state;
+    writeClientState(rest);
+  }
   return true;
 }
 
 export function resetChaos(): void {
+  memoryState = null;
   for (const scenario of ALL_SCENARIOS) {
-    clearFlag(scenario);
+    setChaosActive(scenario, false);
   }
 }
 
@@ -244,6 +260,13 @@ export const chaosConsole: ChaosConsole = {
   active: activeChaosScenarios,
 };
 
+/** Drop the param once applied, so a reload doesn't keep restarting the TTL. */
+function stripChaosParam(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("chaos");
+  window.history.replaceState(window.history.state, "", url.toString());
+}
+
 /**
  * Expose the toggles to the browser console (`otterChaos.enable('file-service')`)
  * and honour `?chaos=file-service,document-service` so a demo can be linked to.
@@ -255,6 +278,7 @@ export function installChaosConsole(): void {
   if (!requested) return;
   if (requested === "reset" || requested === "off") {
     resetChaos();
+    stripChaosParam();
     return;
   }
   for (const name of requested.split(",")) {
@@ -264,4 +288,5 @@ export function installChaosConsole(): void {
       );
     }
   }
+  stripChaosParam();
 }

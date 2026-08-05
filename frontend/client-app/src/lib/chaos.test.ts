@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
-  CHAOS_EXPIRY_KEY,
+  CHAOS_ADMIN_STATE_KEY,
+  CHAOS_CLIENT_STATE_KEY,
   CHAOS_SCENARIOS,
-  CHAOS_STATE_KEY,
   CHAOS_TTL_MS,
   activeChaosScenarios,
   chaosError,
@@ -57,15 +57,53 @@ describe("client-side chaos flag store", () => {
   });
 
   it("reads the admin dashboard's boolean-per-service state", () => {
-    localStorage.setItem(CHAOS_STATE_KEY, JSON.stringify({ "document-service": true }));
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "document-service": true }));
     expect(isChaosActive(CHAOS_SCENARIOS.documentSlowQueries)).toBe(true);
   });
 
-  it("keeps the shared key a plain boolean map the admin dashboard can count", () => {
+  it("never writes the admin dashboard's key", () => {
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "file-service": true }));
     setChaosActive("search-service", true);
-    const stored = JSON.parse(localStorage.getItem(CHAOS_STATE_KEY) ?? "{}");
-    expect(stored).toEqual({ "search-service": true });
-    expect(Object.values(stored).filter(Boolean).length).toBe(1);
+    isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error);
+    setChaosActive("search-service", false);
+    resetChaos();
+    expect(JSON.parse(localStorage.getItem(CHAOS_ADMIN_STATE_KEY) ?? "{}")).toEqual({
+      "file-service": true,
+    });
+  });
+
+  it("turns an admin-set flag off locally without erasing the admin's record", () => {
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "file-service": true }));
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
+    setChaosActive("file-service", false);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
+    expect(JSON.parse(localStorage.getItem(CHAOS_ADMIN_STATE_KEY) ?? "{}")).toEqual({
+      "file-service": true,
+    });
+  });
+
+  it("re-arms with a fresh TTL after the admin clears and re-sets a flag", () => {
+    vi.useFakeTimers();
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "file-service": true }));
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
+    vi.advanceTimersByTime(CHAOS_TTL_MS + 1);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
+
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({}));
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "file-service": true }));
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
+  });
+
+  it("still expires flags when localStorage writes are rejected", () => {
+    vi.useFakeTimers();
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("QuotaExceededError");
+    });
+    setChaosActive("file-service", true, 1000);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
+    vi.advanceTimersByTime(1001);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
   });
 
   it("expires flags like the server-side Redis TTL", () => {
@@ -78,13 +116,19 @@ describe("client-side chaos flag store", () => {
 
   it("expires an admin-set flag that carries no expiry of its own", () => {
     vi.useFakeTimers();
-    localStorage.setItem(CHAOS_STATE_KEY, JSON.stringify({ "file-service": true }));
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "file-service": true }));
     expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(true);
 
     vi.advanceTimersByTime(CHAOS_TTL_MS + 1);
     expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
-    expect(JSON.parse(localStorage.getItem(CHAOS_STATE_KEY) ?? "{}")).toEqual({});
-    expect(JSON.parse(localStorage.getItem(CHAOS_EXPIRY_KEY) ?? "{}")).toEqual({});
+  });
+
+  it("forgets a client-armed scenario once it lapses", () => {
+    vi.useFakeTimers();
+    setChaosActive("file-service", true, 1000);
+    vi.advanceTimersByTime(1001);
+    expect(isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)).toBe(false);
+    expect(JSON.parse(localStorage.getItem(CHAOS_CLIENT_STATE_KEY) ?? "{}")).toEqual({});
   });
 
   it("clears every scenario on reset", () => {
@@ -95,13 +139,14 @@ describe("client-side chaos flag store", () => {
   });
 
   it("survives unparseable stored state", () => {
-    localStorage.setItem(CHAOS_STATE_KEY, "not json");
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, "not json");
+    localStorage.setItem(CHAOS_CLIENT_STATE_KEY, "[]");
     expect(isChaosActive(CHAOS_SCENARIOS.searchSuggest500)).toBe(false);
   });
 
-  it("ignores a corrupt expiry map rather than getting stuck", () => {
-    localStorage.setItem(CHAOS_STATE_KEY, JSON.stringify({ "search-service": true }));
-    localStorage.setItem(CHAOS_EXPIRY_KEY, "[]");
+  it("honours an admin flag even when its own state is corrupt", () => {
+    localStorage.setItem(CHAOS_ADMIN_STATE_KEY, JSON.stringify({ "search-service": true }));
+    localStorage.setItem(CHAOS_CLIENT_STATE_KEY, "[]");
     expect(isChaosActive(CHAOS_SCENARIOS.searchSuggest500)).toBe(true);
   });
 
