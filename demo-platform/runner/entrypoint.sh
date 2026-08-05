@@ -200,8 +200,29 @@ run_seed() {
   departments="${DEPARTMENTS:-all}"
   job="retail-drive-seed-loader"
 
+  case "${SEED_TIMEOUT:-3600}" in
+    ''|*[!0-9]*) die "invalid SEED_TIMEOUT '${SEED_TIMEOUT}' (seconds)" ;;
+  esac
+
   kubectl get namespace "${ns}" >/dev/null 2>&1 ||
     die "namespace ${ns} does not exist -- deploy tenant ${TENANT_ID} before seeding it"
+
+  # Decide whether this seed may proceed before changing anything, so that a
+  # refused seed leaves the tenant exactly as it found it.
+  #
+  # A loader that is still uploading is not collateral: replacing it discards
+  # however long it has been running, so that takes an explicit SEED_FORCE. An
+  # unreadable Job is treated the same way -- "the API server did not answer"
+  # must not be mistaken for "nothing is running" when the next step deletes it.
+  if [ "${SEED_FORCE:-false}" != "true" ]; then
+    case "$(seed_job_state "${ns}" "${job}")" in
+      ABSENT|*Complete*|*Failed*) ;;
+      UNREADABLE)
+        die "cannot tell whether a seed is already loading ${ns} (job/${job} is unreadable) -- retry, or re-run with SEED_FORCE=true" ;;
+      *)
+        die "a seed is already loading ${ns} (job/${job}) -- wait for it, or re-run with SEED_FORCE=true to restart it from scratch" ;;
+    esac
+  fi
 
   ensure_seed_secret "${ns}"
 
@@ -210,12 +231,6 @@ run_seed() {
   # idempotent -- which the generator itself is. Foreground cascade so the old
   # loader pod is really gone (not merely orphaned to the GC) before its
   # replacement is admitted against the tenant's ResourceQuota.
-  #
-  # A loader that is still uploading is not collateral: deleting it discards
-  # however long it has been running, so that takes an explicit SEED_FORCE.
-  if seed_job_active "${ns}" "${job}" && [ "${SEED_FORCE:-false}" != "true" ]; then
-    die "a seed is already loading ${ns} (job/${job}) -- wait for it, or re-run with SEED_FORCE=true to restart it from scratch"
-  fi
   log "removing any previous seed Job in ${ns}"
   kubectl -n "${ns}" delete job "${job}" \
     --ignore-not-found --cascade=foreground --wait=true >/dev/null
@@ -265,34 +280,38 @@ EOF
     die "secret retail-drive-seed is missing in ${ns} and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n ${ns} create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
 }
 
-seed_job_conditions() {
-  kubectl -n "$1" get job "$2" \
-    -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null
-}
-
-# True while the loader Job exists and has neither completed nor failed. A Job
-# that is absent (or unreadable) is not running, which is what callers mean.
-seed_job_active() {
-  local conds
-  conds="$(seed_job_conditions "$1" "$2")" || return 1
-  case "${conds}" in *Complete*|*Failed*) return 1 ;; esac
-  return 0
+# Print the loader Job's true conditions (empty while it is still running), or
+# one of two sentinels: ABSENT for a Job the API server says is not there, and
+# UNREADABLE for a read that failed for any other reason -- throttling, a token
+# refresh, a transient 500. Callers must keep those apart: they act on "nothing
+# is running" by deleting the Job.
+seed_job_state() {
+  local out
+  if out="$(kubectl -n "$1" get job "$2" \
+              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>&1)"; then
+    printf '%s' "${out}"
+    return 0
+  fi
+  case "${out}" in
+    *NotFound*|*not\ found*) printf 'ABSENT' ;;
+    *) printf 'UNREADABLE' ;;
+  esac
 }
 
 # Poll rather than `kubectl wait --for=condition=complete`, which sits out the
 # whole timeout on a Job that has already failed.
 wait_for_seed() {
-  local ns="$1" job="$2" deadline conds
+  local ns="$1" job="$2" deadline
   deadline=$(( $(date -u +%s) + ${SEED_TIMEOUT:-3600} ))
   log "waiting for ${job} in ${ns} (timeout ${SEED_TIMEOUT:-3600}s)"
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    # A read that fails is not a Job that is still running: say so, rather than
-    # polling a deleted (or unreadable) Job until the timeout.
-    conds="$(seed_job_conditions "${ns}" "${job}")" ||
-      die "cannot read job/${job} in ${ns} -- it was deleted, or the runner cannot read it"
-    case "${conds}" in
-      *Complete*) log "seed complete for ${TENANT_ID}"; return 0 ;;
-      *Failed*)   ctl_audit "${TENANT_ID}" seed "failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
+    # A Job that has gone missing is never going to complete, so say so rather
+    # than polling it until the timeout. A read that merely failed is retried.
+    case "$(seed_job_state "${ns}" "${job}")" in
+      *Complete*)  log "seed complete for ${TENANT_ID}"; return 0 ;;
+      *Failed*)    ctl_audit "${TENANT_ID}" seed "failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
+      ABSENT)      die "job/${job} is gone from ${ns} -- it was deleted while the seed was running" ;;
+      UNREADABLE)  log "warning: could not read job/${job} in ${ns}; retrying" ;;
     esac
     sleep 15
   done

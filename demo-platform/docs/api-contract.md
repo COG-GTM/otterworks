@@ -45,8 +45,12 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   loader writes through that tenant's own api-gateway) *and* has ready pods — an
   idle-suspended tenant is still `active` in the control table, so wake it first.
   409 if a seed is already running: the in-flight check is the loader Job in
-  `otterworks-<id>`, since the runner Job that creates it exits within seconds.
-  Returns as soon as the loader Job exists — seeding then runs for minutes to hours.
+  `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
+  that check cannot be made, rather than replacing a loader that may be mid-upload.
+  Returns once the *runner* Job is queued — the loader appears seconds later and then runs
+  for minutes to hours, and a seed the runner refuses (asleep tenant, missing Secret,
+  loader already running) shows up only in the runner Job's logs, which
+  `GET /api/tenants/:id` returns as `logs` when the seed is the tenant's latest Job.
 
 ## Reaper
 - `GET /api/reaper` → `CONFIG#reaper`.

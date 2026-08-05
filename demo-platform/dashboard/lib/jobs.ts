@@ -34,12 +34,13 @@ const RUNNER_SECRET_ENV_KEYS = [
   "JWT_SECRET",
   "SECRET_KEY_BASE",
   "GITHUB_TOKEN",
-  // Credentials for the seeded drive account (OP=seed). Optional like the rest:
-  // without them the runner requires a `retail-drive-seed` Secret to already
-  // exist in the tenant namespace.
-  "DRIVE_EMAIL",
-  "DRIVE_PASSWORD",
 ] as const;
+
+// Credentials for the seeded drive account, given only to the op that needs
+// them rather than to every runner Job. Optional like the rest: without them
+// the runner requires a `retail-drive-seed` Secret to already exist in the
+// tenant namespace.
+const SEED_SECRET_ENV_KEYS = ["DRIVE_EMAIL", "DRIVE_PASSWORD"] as const;
 
 function jobName(action: RunnerAction, id: string, epoch: number): string {
   // Contract: deploy-<id>-<epoch> / teardown-<id>-<epoch>; inject uses inject-bug.
@@ -76,7 +77,11 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   if (input.redeploy) plain.push({ name: "REDEPLOY", value: "true" });
 
   // Secrets injected by reference — values never appear in the Job manifest.
-  const secretEnv: k8s.V1EnvVar[] = RUNNER_SECRET_ENV_KEYS.map((key) => ({
+  const keys: readonly string[] =
+    input.action === "seed"
+      ? [...RUNNER_SECRET_ENV_KEYS, ...SEED_SECRET_ENV_KEYS]
+      : RUNNER_SECRET_ENV_KEYS;
+  const secretEnv: k8s.V1EnvVar[] = keys.map((key) => ({
     name: key,
     valueFrom: {
       secretKeyRef: { name: env.runnerSecretName, key, optional: true },

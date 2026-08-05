@@ -55,7 +55,15 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   // applying the new one, so a second seed throws away everything the first
   // has uploaded so far. The loader Job in the tenant namespace is the one
   // that runs for hours; the runner Job only covers the dispatch window.
-  if (await jobIsActive(tenant.namespace, SEED_LOADER_JOB)) {
+  // A read that fails is not "nothing is running": the runner would go on to
+  // delete the loader, so an unreadable Job blocks the request instead.
+  let loading: boolean;
+  try {
+    loading = await jobIsActive(tenant.namespace, SEED_LOADER_JOB);
+  } catch {
+    return error(503, `could not check for a running seed in ${tenant.namespace}; try again`);
+  }
+  if (loading) {
     return error(409, `a seed is already loading '${id}' (${tenant.namespace}/${SEED_LOADER_JOB})`);
   }
   const running = await activeRunnerJob(id, "seed");
