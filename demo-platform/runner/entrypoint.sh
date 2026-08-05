@@ -26,6 +26,7 @@
 #   SCENARIO      bug-catalog scenario (for OP=inject)
 #   SCALE         seed breadth multiplier (for OP=seed)          (default 1.0)
 #   DEPARTMENTS   seed departments, or `all` (for OP=seed)       (default all)
+#   SEED_FORCE    true to restart a seed that is still loading   (default false)
 #   SEED_WAIT     true to block until the seed Job finishes      (default false)
 #   SEED_TIMEOUT  seconds to wait when SEED_WAIT=true            (default 3600)
 #   SEED_REPO_URL/SEED_REPO_REF  repo the seed Job clones the generator from.
@@ -205,10 +206,19 @@ run_seed() {
   ensure_seed_secret "${ns}"
 
   # A Job's pod template is immutable, so a re-seed at a different scale cannot
-  # be an `apply` over the previous run. Deleting first (and waiting for the
-  # pods to go) keeps re-seeding idempotent -- which the generator itself is.
+  # be an `apply` over the previous run. Deleting first keeps re-seeding
+  # idempotent -- which the generator itself is. Foreground cascade so the old
+  # loader pod is really gone (not merely orphaned to the GC) before its
+  # replacement is admitted against the tenant's ResourceQuota.
+  #
+  # A loader that is still uploading is not collateral: deleting it discards
+  # however long it has been running, so that takes an explicit SEED_FORCE.
+  if seed_job_active "${ns}" "${job}" && [ "${SEED_FORCE:-false}" != "true" ]; then
+    die "a seed is already loading ${ns} (job/${job}) -- wait for it, or re-run with SEED_FORCE=true to restart it from scratch"
+  fi
   log "removing any previous seed Job in ${ns}"
-  kubectl -n "${ns}" delete job "${job}" --ignore-not-found --wait=true >/dev/null
+  kubectl -n "${ns}" delete job "${job}" \
+    --ignore-not-found --cascade=foreground --wait=true >/dev/null
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
   TENANT_NAMESPACE="${ns}" \
@@ -226,8 +236,10 @@ run_seed() {
 }
 
 # The loader reads DRIVE_EMAIL / DRIVE_PASSWORD from a Secret in the tenant's
-# namespace. When the runner was given the credentials we materialise it; when
-# it was not, an operator-created Secret must already be there.
+# namespace. When the runner was given the credentials we materialise it --
+# overwriting an operator-created Secret, so the platform's drive account wins
+# over a hand-made one -- and when it was not, that hand-made Secret must
+# already be in the namespace.
 #
 # The values go to kubectl on STDIN, never on an argv (`kubectl create secret
 # --from-literal` would put them in /proc/<pid>/cmdline) and never into a file.
@@ -253,15 +265,32 @@ EOF
     die "secret retail-drive-seed is missing in ${ns} and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n ${ns} create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
 }
 
+seed_job_conditions() {
+  kubectl -n "$1" get job "$2" \
+    -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null
+}
+
+# True while the loader Job exists and has neither completed nor failed. A Job
+# that is absent (or unreadable) is not running, which is what callers mean.
+seed_job_active() {
+  local conds
+  conds="$(seed_job_conditions "$1" "$2")" || return 1
+  case "${conds}" in *Complete*|*Failed*) return 1 ;; esac
+  return 0
+}
+
 # Poll rather than `kubectl wait --for=condition=complete`, which sits out the
 # whole timeout on a Job that has already failed.
 wait_for_seed() {
-  local ns="$1" job="$2" deadline
+  local ns="$1" job="$2" deadline conds
   deadline=$(( $(date -u +%s) + ${SEED_TIMEOUT:-3600} ))
   log "waiting for ${job} in ${ns} (timeout ${SEED_TIMEOUT:-3600}s)"
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
-    case "$(kubectl -n "${ns}" get job "${job}" \
-              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null)" in
+    # A read that fails is not a Job that is still running: say so, rather than
+    # polling a deleted (or unreadable) Job until the timeout.
+    conds="$(seed_job_conditions "${ns}" "${job}")" ||
+      die "cannot read job/${job} in ${ns} -- it was deleted, or the runner cannot read it"
+    case "${conds}" in
       *Complete*) log "seed complete for ${TENANT_ID}"; return 0 ;;
       *Failed*)   ctl_audit "${TENANT_ID}" seed "failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
     esac

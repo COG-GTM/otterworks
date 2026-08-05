@@ -152,7 +152,12 @@ Notes:
   every screen look real and finishes quickly.
 - **Re-running.** The generator is idempotent, but a Job's pod template is not
   mutable — `kubectl -n otterworks-<id> delete job retail-drive-seed-loader`
-  before re-applying at a different scale.
+  before re-applying at a different scale. Deleting a loader that is still
+  uploading throws that run's progress away and starts from the beginning; the
+  dashboard path refuses to do so unless the runner is given `SEED_FORCE=true`.
+- **A suspended tenant cannot be seeded.** The loader writes through the
+  tenant's api-gateway, so wake a scaled-to-zero tenant first
+  (`scripts/tenant-scale.sh <id> up`, or check it out from the dashboard).
 - **Ephemeral tenants lose the data.** `coggtm` is a TTL'd tenant on
   `demo.otterworks.app`; the reaper deletes its namespace *and its database* at
   expiry, taking the seeded drive with it. Extend it
@@ -182,6 +187,9 @@ That posts to `POST /api/tenants/coggtm/seed`, which launches a runner Job
 (`OP=seed`) that upserts the `retail-drive-seed` Secret from the dashboard's own
 `DRIVE_EMAIL`/`DRIVE_PASSWORD` (falling back to a Secret an operator already
 created in the namespace) and applies this template into `otterworks-coggtm`.
+Dashboard credentials **win**: when they are configured the runner overwrites a
+hand-created Secret in the namespace, so a drive account registered earlier with
+a different password stops working. Configure one or the other, not both.
 
 Two deployment prerequisites for that path, both one-off:
 

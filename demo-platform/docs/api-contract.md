@@ -40,9 +40,12 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
 - `POST /api/tenants/:id/seed` `{ scale?, departments? }` → load the synthetic RetailCo
   enterprise drive into the tenant via a runner Job (`OP=seed`), which stamps
   `testdata/generated/retail-drive/seed-loader.job.tpl.yaml` into `otterworks-<id>`.
-  `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is capped at `2`;
-  `departments` defaults to `all`. 409 unless the tenant is `active` (the loader writes
-  through that tenant's own api-gateway), and 409 if a seed is already running for it.
+  `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is bounded to
+  `0.01..2`; `departments` defaults to `all`. 409 unless the tenant is `active` (the
+  loader writes through that tenant's own api-gateway) *and* has ready pods — an
+  idle-suspended tenant is still `active` in the control table, so wake it first.
+  409 if a seed is already running: the in-flight check is the loader Job in
+  `otterworks-<id>`, since the runner Job that creates it exits within seconds.
   Returns as soon as the loader Job exists — seeding then runs for minutes to hours.
 
 ## Reaper

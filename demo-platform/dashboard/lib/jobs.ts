@@ -4,6 +4,10 @@ import { env } from "@/lib/env";
 
 export type RunnerAction = "deploy" | "teardown" | "inject" | "seed";
 
+// The loader Job OP=seed stamps into the tenant's own namespace. It is the
+// long-running half of a seed; the runner Job that creates it exits in seconds.
+export const SEED_LOADER_JOB = "retail-drive-seed-loader";
+
 export interface RunnerJobInput {
   action: RunnerAction;
   tenantId: string;

@@ -62,13 +62,37 @@ gateway_url="${GATEWAY_URL:-http://api-gateway.${namespace}.svc.cluster.local:80
 repo_url="${REPO_URL:-https://github.com/Cognition-Partner-Workshops/otterworks.git}"
 repo_ref="${REPO_REF:-main}"
 
+# A plain decimal, so no exponent notation (which the caller's language may
+# produce for a small number) and no zero, which would seed an empty drive.
 case "${scale}" in
-  ''|*[!0-9.]*|*.*.*|.*|*.|0|0.0) fail "invalid scale '${scale}' (a positive number, e.g. 0.1 or 1.0)" ;;
+  ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a positive number, e.g. 0.1 or 1.0)" ;;
+esac
+case "${scale//./}" in
+  *[!0]*) ;;
+  *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
 esac
 # Rendered into the manifest by sed, so anything that is special to sed (`#`,
 # `&`, `\`) is refused rather than silently mangling the Job spec.
 case "${departments}" in
   ''|*[!A-Za-z0-9,_\ -]*) fail "invalid departments '${departments}' (comma-separated names, or 'all')" ;;
+esac
+# The URL overrides are operator input, but they are still sed replacement text
+# stamped into a manifest -- and GATEWAY_URL is where the loader sends requests
+# carrying the drive credentials. Hold them to an http(s) URL of URL characters
+# so neither a typo nor a stray `#`/`&`/`\` can mangle the Job or retarget it.
+for pair in "GATEWAY_URL:${gateway_url}" "REPO_URL:${repo_url}"; do
+  name="${pair%%:*}"
+  value="${pair#*:}"
+  case "${value}" in
+    http://*|https://*) ;;
+    *) fail "invalid ${name} '${value}' (must be an http:// or https:// URL)" ;;
+  esac
+  case "${value}" in
+    *[!A-Za-z0-9:/?=@%._~-]*) fail "invalid ${name} '${value}' (unexpected character)" ;;
+  esac
+done
+case "${repo_ref}" in
+  ''|*[!A-Za-z0-9./_-]*) fail "invalid REPO_REF '${repo_ref}' (a branch, tag or commit)" ;;
 esac
 
 sed -e "s#__TENANT_NAMESPACE__#${namespace}#g" \

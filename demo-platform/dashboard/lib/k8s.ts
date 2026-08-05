@@ -128,6 +128,21 @@ export async function liveStateForNamespace(ns: string): Promise<TenantLiveState
   }
 }
 
+/**
+ * Is a named Job in a TENANT namespace still running? The seed loader outlives
+ * the runner Job that created it by minutes to hours, so it is the loader --
+ * not the runner Job in the platform namespace -- that says whether a seed is
+ * in flight. A Job that is absent, complete or failed is not.
+ */
+export async function jobIsActive(ns: string, name: string): Promise<boolean> {
+  try {
+    const status = (await batch().readNamespacedJob(name, ns)).body.status ?? {};
+    return (status.active ?? 0) > 0 || (!status.succeeded && !status.failed);
+  } catch {
+    return false;
+  }
+}
+
 export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   try {
     const podsRes = await core().listNamespacedPod(ns);

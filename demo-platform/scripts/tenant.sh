@@ -260,6 +260,11 @@ case "${cmd}" in
     case "${scale}" in
       ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
     esac
+    # The API bounds it to 0.01..2; saying so here beats a 400 after the login.
+    case "${scale//./}" in
+      *[!0]*) ;;
+      *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
+    esac
 
     login
     log "seeding '${id}' (scale ${scale}, departments ${departments})..."
