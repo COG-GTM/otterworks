@@ -768,6 +768,1168 @@ fn parse_file_share(
 }
 
 #[cfg(test)]
+mod client_tests {
+    use super::*;
+    use crate::test_support::{
+        aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
+        folder_item_json, get_item_response, offline_aws_env, ok_json, query_response, replay,
+        scan_response, share_item_json, uuid_from, version_item_json, with_env_blocking, write_ok,
+    };
+    use crate::test_support::{fixed_time, metadata_client};
+    use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
+    use serde_json::Value;
+
+    const FILE: u8 = 1;
+    const OWNER: u8 = 2;
+    const FOLDER: u8 = 3;
+    const SHARE: u8 = 4;
+    const OTHER_USER: u8 = 5;
+
+    fn sent_bodies(http: &StaticReplayClient) -> Vec<Value> {
+        http.actual_requests()
+            .map(|r| serde_json::from_slice(r.body().bytes().unwrap()).unwrap())
+            .collect()
+    }
+
+    fn target_of(http: &StaticReplayClient, index: usize) -> String {
+        http.actual_requests()
+            .nth(index)
+            .expect("request")
+            .headers()
+            .get("x-amz-target")
+            .expect("DynamoDB sets an operation target header")
+            .to_string()
+    }
+
+    fn file_fixture() -> FileMetadata {
+        FileMetadata {
+            id: uuid_from(FILE),
+            name: "report.pdf".into(),
+            mime_type: "application/pdf".into(),
+            size_bytes: 2048,
+            s3_key: "files/a/b".into(),
+            folder_id: Some(uuid_from(FOLDER)),
+            owner_id: uuid_from(OWNER),
+            version: 1,
+            is_trashed: false,
+            created_at: fixed_time(),
+            updated_at: fixed_time(),
+        }
+    }
+
+    #[test]
+    fn new_reads_every_table_name_from_config() {
+        let mut config = aws_config_fixture();
+        config.dynamodb_table = "f".into();
+        config.dynamodb_folders_table = "fo".into();
+        config.dynamodb_versions_table = "v".into();
+        config.dynamodb_shares_table = "s".into();
+        config.endpoint_url = Some("http://localstack:4566".into());
+
+        let client = with_env_blocking(&offline_aws_env(), async {
+            MetadataClient::new(&config).await
+        });
+
+        assert_eq!(client.files_table, "f");
+        assert_eq!(client.folders_table, "fo");
+        assert_eq!(client.versions_table, "v");
+        assert_eq!(client.shares_table, "s");
+        assert_eq!(
+            client.clone().client.config().region().map(|r| r.as_ref()),
+            Some("us-east-1")
+        );
+    }
+
+    #[tokio::test]
+    async fn put_file_writes_every_attribute_including_the_folder() {
+        let http = replay(vec![write_ok()]);
+        let client = metadata_client(http.clone());
+
+        client.put_file(&file_fixture()).await.expect("put_file");
+
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "files");
+        let item = &body["Item"];
+        assert_eq!(item["id"]["S"], uuid_from(FILE).to_string());
+        assert_eq!(item["name"]["S"], "report.pdf");
+        assert_eq!(item["mime_type"]["S"], "application/pdf");
+        assert_eq!(item["size_bytes"]["N"], "2048");
+        assert_eq!(item["s3_key"]["S"], "files/a/b");
+        assert_eq!(item["owner_id"]["S"], uuid_from(OWNER).to_string());
+        assert_eq!(item["version"]["N"], "1");
+        assert_eq!(item["is_trashed"]["BOOL"], false);
+        assert_eq!(item["folder_id"]["S"], uuid_from(FOLDER).to_string());
+        assert_eq!(item["created_at"]["S"], fixed_time().to_rfc3339());
+    }
+
+    #[tokio::test]
+    async fn put_file_omits_folder_id_for_root_level_files() {
+        let http = replay(vec![write_ok()]);
+        let client = metadata_client(http.clone());
+        let mut file = file_fixture();
+        file.folder_id = None;
+
+        client.put_file(&file).await.expect("put_file");
+
+        assert!(sent_bodies(&http)[0]["Item"]["folder_id"].is_null());
+    }
+
+    #[tokio::test]
+    async fn put_file_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.put_file(&file_fixture()).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_file_parses_the_returned_item() {
+        let http = replay(vec![get_item_response(&file_item_json(
+            uuid_from(FILE),
+            uuid_from(OWNER),
+            Some(uuid_from(FOLDER)),
+        ))]);
+        let client = metadata_client(http.clone());
+
+        let file = client.get_file(&uuid_from(FILE)).await.expect("get_file");
+
+        assert_eq!(file.id, uuid_from(FILE));
+        assert_eq!(file.folder_id, Some(uuid_from(FOLDER)));
+        assert_eq!(file.size_bytes, 2048);
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "files");
+        assert_eq!(body["Key"]["id"]["S"], uuid_from(FILE).to_string());
+    }
+
+    #[tokio::test]
+    async fn get_file_reports_a_missing_item_as_file_not_found() {
+        let client = metadata_client(replay(vec![empty_get_item_response()]));
+
+        let err = client.get_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::FileNotFound(id) if id == uuid_from(FILE).to_string()));
+    }
+
+    #[tokio::test]
+    async fn get_file_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.get_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn delete_file_deletes_by_primary_key() {
+        let http = replay(vec![write_ok()]);
+        let client = metadata_client(http.clone());
+
+        client
+            .delete_file(&uuid_from(FILE))
+            .await
+            .expect("delete_file");
+
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "files");
+        assert_eq!(body["Key"]["id"]["S"], uuid_from(FILE).to_string());
+        assert!(target_of(&http, 0).ends_with("DeleteItem"));
+    }
+
+    #[tokio::test]
+    async fn delete_file_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(400, "ValidationException")]));
+
+        let err = client.delete_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn trash_file_sets_the_flag_then_returns_the_updated_file() {
+        let mut trashed = file_item_json(uuid_from(FILE), uuid_from(OWNER), None);
+        trashed = trashed.replace(
+            r#""is_trashed":{"BOOL":false}"#,
+            r#""is_trashed":{"BOOL":true}"#,
+        );
+        let http = replay(vec![write_ok(), get_item_response(&trashed)]);
+        let client = metadata_client(http.clone());
+
+        let file = client
+            .trash_file(&uuid_from(FILE))
+            .await
+            .expect("trash_file");
+
+        assert!(file.is_trashed);
+        let update = &sent_bodies(&http)[0];
+        assert_eq!(
+            update["UpdateExpression"],
+            "SET is_trashed = :t, updated_at = :u"
+        );
+        assert_eq!(update["ConditionExpression"], "attribute_exists(id)");
+        assert_eq!(update["ExpressionAttributeValues"][":t"]["BOOL"], true);
+    }
+
+    #[tokio::test]
+    async fn trash_file_maps_a_failed_condition_to_file_not_found() {
+        let client = metadata_client(replay(vec![dynamo_error(
+            400,
+            "ConditionalCheckFailedException",
+        )]));
+
+        let err = client.trash_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::FileNotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn trash_file_surfaces_other_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.trash_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn restore_file_clears_the_trashed_flag() {
+        let http = replay(vec![
+            write_ok(),
+            get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let file = client
+            .restore_file(&uuid_from(FILE))
+            .await
+            .expect("restore_file");
+
+        assert!(!file.is_trashed);
+        assert_eq!(
+            sent_bodies(&http)[0]["ExpressionAttributeValues"][":t"]["BOOL"],
+            false
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_file_maps_a_failed_condition_to_file_not_found() {
+        let client = metadata_client(replay(vec![dynamo_error(
+            400,
+            "ConditionalCheckFailedException",
+        )]));
+
+        let err = client.restore_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::FileNotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn restore_file_surfaces_other_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.restore_file(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn rename_file_updates_the_reserved_name_attribute() {
+        let http = replay(vec![
+            write_ok(),
+            get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
+        ]);
+        let client = metadata_client(http.clone());
+
+        client
+            .rename_file(&uuid_from(FILE), "renamed.pdf")
+            .await
+            .expect("rename_file");
+
+        let update = &sent_bodies(&http)[0];
+        assert_eq!(update["UpdateExpression"], "SET #n = :n, updated_at = :u");
+        assert_eq!(update["ExpressionAttributeNames"]["#n"], "name");
+        assert_eq!(
+            update["ExpressionAttributeValues"][":n"]["S"],
+            "renamed.pdf"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_file_maps_a_failed_condition_to_file_not_found() {
+        let client = metadata_client(replay(vec![dynamo_error(
+            400,
+            "ConditionalCheckFailedException",
+        )]));
+
+        let err = client.rename_file(&uuid_from(FILE), "x").await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::FileNotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn rename_file_surfaces_other_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.rename_file(&uuid_from(FILE), "x").await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn move_file_into_a_folder_sets_folder_id() {
+        let http = replay(vec![
+            write_ok(),
+            get_item_response(&file_item_json(
+                uuid_from(FILE),
+                uuid_from(OWNER),
+                Some(uuid_from(FOLDER)),
+            )),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let file = client
+            .move_file(&uuid_from(FILE), Some(uuid_from(FOLDER)))
+            .await
+            .expect("move_file");
+
+        assert_eq!(file.folder_id, Some(uuid_from(FOLDER)));
+        let update = &sent_bodies(&http)[0];
+        assert_eq!(
+            update["UpdateExpression"],
+            "SET folder_id = :f, updated_at = :u"
+        );
+        assert_eq!(
+            update["ExpressionAttributeValues"][":f"]["S"],
+            uuid_from(FOLDER).to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn move_file_to_the_root_removes_folder_id() {
+        let http = replay(vec![
+            write_ok(),
+            get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let file = client
+            .move_file(&uuid_from(FILE), None)
+            .await
+            .expect("move_file");
+
+        assert_eq!(file.folder_id, None);
+        assert_eq!(
+            sent_bodies(&http)[0]["UpdateExpression"],
+            "SET updated_at = :u REMOVE folder_id"
+        );
+    }
+
+    #[tokio::test]
+    async fn move_file_maps_a_failed_condition_to_file_not_found() {
+        let client = metadata_client(replay(vec![dynamo_error(
+            400,
+            "ConditionalCheckFailedException",
+        )]));
+
+        let err = client.move_file(&uuid_from(FILE), None).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::FileNotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn move_file_surfaces_other_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.move_file(&uuid_from(FILE), None).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_trashed_filters_on_the_trashed_flag_and_owner() {
+        let http = replay(vec![scan_response(&[file_item_json(
+            uuid_from(FILE),
+            uuid_from(OWNER),
+            None,
+        )])]);
+        let client = metadata_client(http.clone());
+
+        let files = client
+            .list_trashed(Some(uuid_from(OWNER)))
+            .await
+            .expect("list_trashed");
+
+        assert_eq!(files.len(), 1);
+        let scan = &sent_bodies(&http)[0];
+        assert_eq!(
+            scan["FilterExpression"],
+            "is_trashed = :trashed AND owner_id = :owner_id"
+        );
+        assert_eq!(scan["ExpressionAttributeValues"][":trashed"]["BOOL"], true);
+        assert_eq!(
+            scan["ExpressionAttributeValues"][":owner_id"]["S"],
+            uuid_from(OWNER).to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn list_trashed_without_an_owner_filters_only_on_the_flag_and_sorts_newest_first() {
+        let older = file_item_json(uuid_from(FILE), uuid_from(OWNER), None)
+            .replace(&fixed_time().to_rfc3339(), "2020-01-01T00:00:00+00:00");
+        let http = replay(vec![scan_response(&[
+            older,
+            file_item_json(uuid_from(OTHER_USER), uuid_from(OWNER), None),
+        ])]);
+        let client = metadata_client(http.clone());
+
+        let files = client.list_trashed(None).await.expect("list_trashed");
+
+        assert_eq!(
+            files.iter().map(|f| f.id).collect::<Vec<_>>(),
+            vec![uuid_from(OTHER_USER), uuid_from(FILE)],
+            "most recently updated first"
+        );
+        assert_eq!(
+            sent_bodies(&http)[0]["FilterExpression"],
+            "is_trashed = :trashed"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_trashed_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.list_trashed(None).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_files_combines_every_filter() {
+        let http = replay(vec![scan_response(&[file_item_json(
+            uuid_from(FILE),
+            uuid_from(OWNER),
+            Some(uuid_from(FOLDER)),
+        )])]);
+        let client = metadata_client(http.clone());
+
+        let files = client
+            .list_files(Some(uuid_from(FOLDER)), Some(uuid_from(OWNER)), false)
+            .await
+            .expect("list_files");
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            sent_bodies(&http)[0]["FilterExpression"],
+            "folder_id = :folder_id AND owner_id = :owner_id AND is_trashed = :trashed"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_files_without_filters_scans_the_whole_table() {
+        let http = replay(vec![scan_response(&[])]);
+        let client = metadata_client(http.clone());
+
+        let files = client.list_files(None, None, true).await.expect("list");
+
+        assert!(files.is_empty());
+        assert!(
+            sent_bodies(&http)[0]["FilterExpression"].is_null(),
+            "include_trashed with no ids means no filter at all"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_files_follows_the_paginator_across_pages() {
+        let first_page = ok_json(&format!(
+            r#"{{"Items":[{}],"Count":1,"LastEvaluatedKey":{{"id":{{"S":"{}"}}}}}}"#,
+            file_item_json(uuid_from(FILE), uuid_from(OWNER), None),
+            uuid_from(FILE)
+        ));
+        let second_page = scan_response(&[file_item_json(
+            uuid_from(OTHER_USER),
+            uuid_from(OWNER),
+            None,
+        )]);
+        let http = replay(vec![first_page, second_page]);
+        let client = metadata_client(http.clone());
+
+        let files = client.list_files(None, None, true).await.expect("list");
+
+        assert_eq!(files.len(), 2, "both pages are collected");
+        let second_request = &sent_bodies(&http)[1];
+        assert_eq!(
+            second_request["ExclusiveStartKey"]["id"]["S"],
+            uuid_from(FILE).to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn list_files_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.list_files(None, None, false).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_files_reports_unparseable_items() {
+        let http = replay(vec![scan_response(
+            &[r#"{"id":{"S":"not-a-uuid"}}"#.into()],
+        )]);
+        let client = metadata_client(http);
+
+        let err = client.list_files(None, None, true).await.unwrap_err();
+
+        assert!(err.to_string().contains("invalid UUID"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn put_folder_writes_the_parent_only_when_present() {
+        let http = replay(vec![write_ok(), write_ok()]);
+        let client = metadata_client(http.clone());
+        let mut folder = Folder {
+            id: uuid_from(FOLDER),
+            name: "Finance".into(),
+            parent_id: Some(uuid_from(OTHER_USER)),
+            owner_id: uuid_from(OWNER),
+            created_at: fixed_time(),
+            updated_at: fixed_time(),
+        };
+
+        client.put_folder(&folder).await.expect("with parent");
+        folder.parent_id = None;
+        client.put_folder(&folder).await.expect("without parent");
+
+        let bodies = sent_bodies(&http);
+        assert_eq!(bodies[0]["TableName"], "folders");
+        assert_eq!(bodies[0]["Item"]["name"]["S"], "Finance");
+        assert_eq!(
+            bodies[0]["Item"]["parent_id"]["S"],
+            uuid_from(OTHER_USER).to_string()
+        );
+        assert!(bodies[1]["Item"]["parent_id"].is_null());
+    }
+
+    #[tokio::test]
+    async fn put_folder_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+        let folder = Folder {
+            id: uuid_from(FOLDER),
+            name: "Finance".into(),
+            parent_id: None,
+            owner_id: uuid_from(OWNER),
+            created_at: fixed_time(),
+            updated_at: fixed_time(),
+        };
+
+        let err = client.put_folder(&folder).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn get_folder_parses_the_item_and_reports_misses() {
+        let http = replay(vec![
+            get_item_response(&folder_item_json(uuid_from(FOLDER), uuid_from(OWNER), None)),
+            empty_get_item_response(),
+            dynamo_error(500, "InternalServerError"),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let folder = client
+            .get_folder(&uuid_from(FOLDER))
+            .await
+            .expect("get_folder");
+        assert_eq!(folder.name, "Finance");
+        assert_eq!(sent_bodies(&http)[0]["TableName"], "folders");
+
+        let missing = client.get_folder(&uuid_from(FOLDER)).await.unwrap_err();
+        assert!(matches!(missing, ServiceError::FolderNotFound(_)));
+
+        let failed = client.get_folder(&uuid_from(FOLDER)).await.unwrap_err();
+        assert!(matches!(failed, ServiceError::DynamoError(_)));
+    }
+
+    #[tokio::test]
+    async fn update_folder_only_sets_the_supplied_fields() {
+        let http = replay(vec![
+            write_ok(),
+            get_item_response(&folder_item_json(uuid_from(FOLDER), uuid_from(OWNER), None)),
+            write_ok(),
+            get_item_response(&folder_item_json(uuid_from(FOLDER), uuid_from(OWNER), None)),
+        ]);
+        let client = metadata_client(http.clone());
+
+        client
+            .update_folder(
+                &uuid_from(FOLDER),
+                Some("Renamed".into()),
+                Some(uuid_from(OTHER_USER)),
+            )
+            .await
+            .expect("update with both fields");
+        client
+            .update_folder(&uuid_from(FOLDER), None, None)
+            .await
+            .expect("timestamp-only update");
+
+        let bodies = sent_bodies(&http);
+        assert_eq!(
+            bodies[0]["UpdateExpression"],
+            "SET updated_at = :u, #n = :n, parent_id = :p"
+        );
+        assert_eq!(bodies[0]["ExpressionAttributeValues"][":n"]["S"], "Renamed");
+        assert_eq!(bodies[2]["UpdateExpression"], "SET updated_at = :u");
+        assert!(bodies[2]["ExpressionAttributeNames"].is_null());
+    }
+
+    #[tokio::test]
+    async fn update_folder_maps_a_failed_condition_to_folder_not_found() {
+        let client = metadata_client(replay(vec![dynamo_error(
+            400,
+            "ConditionalCheckFailedException",
+        )]));
+
+        let err = client
+            .update_folder(&uuid_from(FOLDER), None, None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::FolderNotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn update_folder_surfaces_other_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client
+            .update_folder(&uuid_from(FOLDER), None, None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn delete_folder_deletes_from_the_folders_table() {
+        let http = replay(vec![write_ok(), dynamo_error(500, "InternalServerError")]);
+        let client = metadata_client(http.clone());
+
+        client
+            .delete_folder(&uuid_from(FOLDER))
+            .await
+            .expect("delete_folder");
+        let err = client.delete_folder(&uuid_from(FOLDER)).await.unwrap_err();
+
+        assert_eq!(sent_bodies(&http)[0]["TableName"], "folders");
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_folders_filters_by_parent_or_root_and_owner() {
+        let http = replay(vec![
+            scan_response(&[folder_item_json(
+                uuid_from(FOLDER),
+                uuid_from(OWNER),
+                Some(uuid_from(OTHER_USER)),
+            )]),
+            scan_response(&[]),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let children = client
+            .list_folders(Some(uuid_from(OTHER_USER)), Some(uuid_from(OWNER)))
+            .await
+            .expect("list children");
+        client
+            .list_folders(None, None)
+            .await
+            .expect("list root folders");
+
+        assert_eq!(children.len(), 1);
+        assert_eq!(children[0].parent_id, Some(uuid_from(OTHER_USER)));
+        let bodies = sent_bodies(&http);
+        assert_eq!(
+            bodies[0]["FilterExpression"],
+            "parent_id = :parent_id AND owner_id = :owner_id"
+        );
+        assert_eq!(
+            bodies[1]["FilterExpression"],
+            "attribute_not_exists(parent_id)"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_folders_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.list_folders(None, None).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn put_version_writes_the_version_row() {
+        let http = replay(vec![write_ok(), dynamo_error(500, "InternalServerError")]);
+        let client = metadata_client(http.clone());
+        let version = FileVersion {
+            file_id: uuid_from(FILE),
+            version: 3,
+            s3_key: "files/a/b/v3".into(),
+            size_bytes: 4096,
+            created_by: uuid_from(OWNER),
+            created_at: fixed_time(),
+        };
+
+        client.put_version(&version).await.expect("put_version");
+        let err = client.put_version(&version).await.unwrap_err();
+
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "versions");
+        assert_eq!(body["Item"]["version"]["N"], "3");
+        assert_eq!(body["Item"]["size_bytes"]["N"], "4096");
+        assert_eq!(body["Item"]["s3_key"]["S"], "files/a/b/v3");
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_versions_queries_newest_first() {
+        let http = replay(vec![query_response(&[
+            version_item_json(uuid_from(FILE), uuid_from(OWNER), 2),
+            version_item_json(uuid_from(FILE), uuid_from(OWNER), 1),
+        ])]);
+        let client = metadata_client(http.clone());
+
+        let versions = client
+            .list_versions(&uuid_from(FILE))
+            .await
+            .expect("list_versions");
+
+        assert_eq!(
+            versions.iter().map(|v| v.version).collect::<Vec<_>>(),
+            vec![2, 1]
+        );
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "versions");
+        assert_eq!(body["KeyConditionExpression"], "file_id = :fid");
+        assert_eq!(body["ScanIndexForward"], false);
+    }
+
+    #[tokio::test]
+    async fn list_versions_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client.list_versions(&uuid_from(FILE)).await.unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn put_share_stores_the_permission_as_a_lowercase_string() {
+        let http = replay(vec![write_ok(), dynamo_error(500, "InternalServerError")]);
+        let client = metadata_client(http.clone());
+        let share = FileShare {
+            id: uuid_from(SHARE),
+            file_id: uuid_from(FILE),
+            shared_with: uuid_from(OTHER_USER),
+            permission: SharePermission::Editor,
+            shared_by: uuid_from(OWNER),
+            created_at: fixed_time(),
+        };
+
+        client.put_share(&share).await.expect("put_share");
+        let err = client.put_share(&share).await.unwrap_err();
+
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "shares");
+        assert_eq!(body["Item"]["permission"]["S"], "editor");
+        assert_eq!(
+            body["Item"]["shared_with"]["S"],
+            uuid_from(OTHER_USER).to_string()
+        );
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn find_existing_share_returns_the_first_match_or_none() {
+        let http = replay(vec![
+            scan_response(&[share_item_json(
+                uuid_from(SHARE),
+                uuid_from(FILE),
+                uuid_from(OTHER_USER),
+                uuid_from(OWNER),
+                "viewer",
+            )]),
+            scan_response(&[]),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let found = client
+            .find_existing_share(&uuid_from(FILE), &uuid_from(OTHER_USER))
+            .await
+            .expect("scan");
+        let missing = client
+            .find_existing_share(&uuid_from(FILE), &uuid_from(OTHER_USER))
+            .await
+            .expect("scan");
+
+        assert_eq!(found.map(|s| s.id), Some(uuid_from(SHARE)));
+        assert!(missing.is_none());
+        assert_eq!(
+            sent_bodies(&http)[0]["FilterExpression"],
+            "file_id = :fid AND shared_with = :uid"
+        );
+    }
+
+    #[tokio::test]
+    async fn find_existing_share_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client
+            .find_existing_share(&uuid_from(FILE), &uuid_from(OTHER_USER))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_shares_for_user_filters_on_the_recipient() {
+        let http = replay(vec![scan_response(&[share_item_json(
+            uuid_from(SHARE),
+            uuid_from(FILE),
+            uuid_from(OTHER_USER),
+            uuid_from(OWNER),
+            "viewer",
+        )])]);
+        let client = metadata_client(http.clone());
+
+        let shares = client
+            .list_shares_for_user(&uuid_from(OTHER_USER))
+            .await
+            .expect("list");
+
+        assert_eq!(shares.len(), 1);
+        assert_eq!(shares[0].permission, SharePermission::Viewer);
+        assert_eq!(
+            sent_bodies(&http)[0]["FilterExpression"],
+            "shared_with = :uid"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_shares_for_user_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client
+            .list_shares_for_user(&uuid_from(OTHER_USER))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_shares_by_owner_filters_on_the_sharer() {
+        let http = replay(vec![scan_response(&[share_item_json(
+            uuid_from(SHARE),
+            uuid_from(FILE),
+            uuid_from(OTHER_USER),
+            uuid_from(OWNER),
+            "editor",
+        )])]);
+        let client = metadata_client(http.clone());
+
+        let shares = client
+            .list_shares_by_owner(&uuid_from(OWNER))
+            .await
+            .expect("list");
+
+        assert_eq!(shares.len(), 1);
+        assert_eq!(shares[0].permission, SharePermission::Editor);
+        assert_eq!(
+            sent_bodies(&http)[0]["FilterExpression"],
+            "shared_by = :uid"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_shares_by_owner_surfaces_dynamo_failures() {
+        let client = metadata_client(replay(vec![dynamo_error(500, "InternalServerError")]));
+
+        let err = client
+            .list_shares_by_owner(&uuid_from(OWNER))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn list_shares_filters_on_the_file() {
+        let http = replay(vec![
+            scan_response(&[share_item_json(
+                uuid_from(SHARE),
+                uuid_from(FILE),
+                uuid_from(OTHER_USER),
+                uuid_from(OWNER),
+                "viewer",
+            )]),
+            dynamo_error(500, "InternalServerError"),
+        ]);
+        let client = metadata_client(http.clone());
+
+        let shares = client.list_shares(&uuid_from(FILE)).await.expect("list");
+        let err = client.list_shares(&uuid_from(FILE)).await.unwrap_err();
+
+        assert_eq!(shares.len(), 1);
+        assert_eq!(shares[0].file_id, uuid_from(FILE));
+        assert_eq!(sent_bodies(&http)[0]["FilterExpression"], "file_id = :fid");
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn delete_share_deletes_from_the_shares_table() {
+        let http = replay(vec![write_ok(), dynamo_error(500, "InternalServerError")]);
+        let client = metadata_client(http.clone());
+
+        client
+            .delete_share(&uuid_from(SHARE))
+            .await
+            .expect("delete_share");
+        let err = client.delete_share(&uuid_from(SHARE)).await.unwrap_err();
+
+        let body = &sent_bodies(&http)[0];
+        assert_eq!(body["TableName"], "shares");
+        assert_eq!(body["Key"]["id"]["S"], uuid_from(SHARE).to_string());
+        assert!(matches!(err, ServiceError::DynamoError(_)), "{err:?}");
+    }
+}
+
+#[cfg(test)]
+mod parsing_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn item(pairs: &[(&str, AttributeValue)]) -> HashMap<String, AttributeValue> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), v.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn get_s_requires_a_string_attribute() {
+        let item = item(&[
+            ("name", AttributeValue::S("x".into())),
+            ("size", AttributeValue::N("1".into())),
+        ]);
+
+        assert_eq!(get_s(&item, "name").unwrap(), "x");
+        assert_eq!(
+            get_s(&item, "size").unwrap_err().to_string(),
+            "DynamoDB error: missing field: size"
+        );
+        assert!(get_s(&item, "absent").is_err());
+    }
+
+    #[test]
+    fn numeric_getters_reject_non_numeric_and_out_of_range_values() {
+        let item = item(&[
+            ("n", AttributeValue::N("42".into())),
+            ("huge", AttributeValue::N("4294967296".into())),
+            ("text", AttributeValue::S("42".into())),
+            ("bad", AttributeValue::N("nope".into())),
+        ]);
+
+        assert_eq!(get_n_u64(&item, "n").unwrap(), 42);
+        assert_eq!(get_n_u32(&item, "n").unwrap(), 42);
+        assert_eq!(get_n_u64(&item, "huge").unwrap(), 4_294_967_296);
+        assert!(
+            get_n_u32(&item, "huge").is_err(),
+            "value beyond u32 is rejected"
+        );
+        assert!(get_n_u64(&item, "text").is_err());
+        assert!(get_n_u64(&item, "bad").is_err());
+        assert!(get_n_u32(&item, "missing").is_err());
+    }
+
+    #[test]
+    fn get_bool_requires_a_boolean_attribute() {
+        let item = item(&[
+            ("flag", AttributeValue::Bool(true)),
+            ("not_flag", AttributeValue::S("true".into())),
+        ]);
+
+        assert!(get_bool(&item, "flag").unwrap());
+        assert_eq!(
+            get_bool(&item, "not_flag").unwrap_err().to_string(),
+            "DynamoDB error: missing bool field: not_flag"
+        );
+        assert!(get_bool(&item, "absent").is_err());
+    }
+
+    #[test]
+    fn get_optional_s_returns_none_for_absent_or_mistyped_fields() {
+        let item = item(&[
+            ("here", AttributeValue::S("value".into())),
+            ("number", AttributeValue::N("1".into())),
+        ]);
+
+        assert_eq!(get_optional_s(&item, "here"), Some("value".to_string()));
+        assert_eq!(get_optional_s(&item, "number"), None);
+        assert_eq!(get_optional_s(&item, "absent"), None);
+    }
+
+    #[test]
+    fn parse_uuid_and_datetime_report_malformed_input() {
+        let id = Uuid::nil();
+        assert_eq!(parse_uuid(&id.to_string()).unwrap(), id);
+        assert!(parse_uuid("nope")
+            .unwrap_err()
+            .to_string()
+            .contains("invalid UUID"));
+
+        let parsed = parse_datetime("2024-05-17T12:30:45+02:00").unwrap();
+        assert_eq!(parsed.to_rfc3339(), "2024-05-17T10:30:45+00:00");
+        assert!(parse_datetime("17/05/2024")
+            .unwrap_err()
+            .to_string()
+            .contains("invalid datetime"));
+    }
+
+    #[test]
+    fn parse_file_metadata_rejects_a_malformed_folder_id() {
+        let mut item = item(&[
+            ("id", AttributeValue::S(Uuid::nil().to_string())),
+            ("name", AttributeValue::S("f".into())),
+            ("mime_type", AttributeValue::S("text/plain".into())),
+            ("size_bytes", AttributeValue::N("1".into())),
+            ("s3_key", AttributeValue::S("k".into())),
+            ("owner_id", AttributeValue::S(Uuid::nil().to_string())),
+            ("version", AttributeValue::N("1".into())),
+            ("is_trashed", AttributeValue::Bool(false)),
+            (
+                "created_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+            (
+                "updated_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+        ]);
+        item.insert("folder_id".into(), AttributeValue::S("not-a-uuid".into()));
+
+        let err = parse_file_metadata(&item).unwrap_err();
+
+        assert!(err.to_string().contains("invalid UUID"), "{err}");
+    }
+
+    #[test]
+    fn parse_folder_rejects_a_malformed_parent_id() {
+        let item = item(&[
+            ("id", AttributeValue::S(Uuid::nil().to_string())),
+            ("name", AttributeValue::S("Finance".into())),
+            ("parent_id", AttributeValue::S("nope".into())),
+            ("owner_id", AttributeValue::S(Uuid::nil().to_string())),
+            (
+                "created_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+            (
+                "updated_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+        ]);
+
+        assert!(parse_folder(&item)
+            .unwrap_err()
+            .to_string()
+            .contains("invalid UUID"));
+    }
+
+    #[test]
+    fn parse_file_version_requires_all_of_its_fields() {
+        let complete = item(&[
+            ("file_id", AttributeValue::S(Uuid::nil().to_string())),
+            ("version", AttributeValue::N("2".into())),
+            ("s3_key", AttributeValue::S("k".into())),
+            ("size_bytes", AttributeValue::N("5".into())),
+            ("created_by", AttributeValue::S(Uuid::nil().to_string())),
+            (
+                "created_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+        ]);
+        assert_eq!(parse_file_version(&complete).unwrap().version, 2);
+
+        let mut incomplete = complete.clone();
+        incomplete.remove("s3_key");
+        assert!(parse_file_version(&incomplete)
+            .unwrap_err()
+            .to_string()
+            .contains("missing field: s3_key"));
+    }
+
+    #[test]
+    fn parse_file_share_rejects_an_unknown_permission() {
+        let item = item(&[
+            ("id", AttributeValue::S(Uuid::nil().to_string())),
+            ("file_id", AttributeValue::S(Uuid::nil().to_string())),
+            ("shared_with", AttributeValue::S(Uuid::nil().to_string())),
+            ("permission", AttributeValue::S("owner".into())),
+            ("shared_by", AttributeValue::S(Uuid::nil().to_string())),
+            (
+                "created_at",
+                AttributeValue::S("2024-05-17T12:30:45+00:00".into()),
+            ),
+        ]);
+
+        let err = parse_file_share(&item).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "DynamoDB error: invalid permission: owner",
+            "unknown permissions are not silently downgraded"
+        );
+    }
+
+    #[test]
+    fn is_conditional_check_failed_only_matches_the_condition_error() {
+        use aws_sdk_dynamodb::error::SdkError;
+        use aws_sdk_dynamodb::operation::update_item::UpdateItemError;
+        use aws_sdk_dynamodb::types::error::ConditionalCheckFailedException;
+        use aws_smithy_runtime_api::http::Response as HttpResponse;
+        use aws_smithy_types::body::SdkBody;
+
+        let raw = || HttpResponse::new(400.try_into().unwrap(), SdkBody::empty());
+
+        let conditional = SdkError::service_error(
+            UpdateItemError::ConditionalCheckFailedException(
+                ConditionalCheckFailedException::builder().build(),
+            ),
+            raw(),
+        );
+        assert!(is_conditional_check_failed(&conditional));
+
+        let other = SdkError::service_error(
+            UpdateItemError::generic(
+                aws_smithy_types::error::ErrorMetadata::builder()
+                    .code("InternalServerError")
+                    .build(),
+            ),
+            raw(),
+        );
+        assert!(!is_conditional_check_failed(&other));
+
+        let timeout: SdkError<UpdateItemError> = SdkError::timeout_error("timed out");
+        assert!(!is_conditional_check_failed(&timeout));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
