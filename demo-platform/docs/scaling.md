@@ -41,13 +41,18 @@ force-applied to the live cluster (they recycle nodes and would disturb running 
   (`demo-platform/reaper/idle-suspend.sh`, or `scripts/tenant-scale.sh <id> down`) — and with
   Karpenter the node they vacate now goes away too.
 
-## 2. Pod IP exhaustion (VPC-CNI) — THE hard wall — OPT-IN
+## 2. Pod IP exhaustion (VPC-CNI) — THE hard wall — APPLIED (prefix delegation)
 Every pod gets a real VPC IP. A `t3.large` allows **35** pods/node by default (3 ENIs × 12 − 1).
 At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs fast.
-- **Fix:** enable **VPC-CNI prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) → up to **110**
+- **Fix:** **VPC-CNI prefix delegation** (`ENABLE_PREFIX_DELEGATION=true`) → up to **110**
   pods/node and far denser IP packing (/28 prefixes instead of one IP per pod).
-  `scripts/enable-prefix-delegation.sh` sets it; **new nodes** pick it up, so drain/recycle
-  nodes during a quiet window.
+  Terraform sets it on the addon (`platform/terraform/modules/eks/main.tf`), so it is on for
+  every node the cluster launches; `scripts/enable-prefix-delegation.sh` applies it to a
+  cluster built before that. Either way only **new nodes** pick it up, so drain/recycle
+  during a quiet window.
+  **Do not turn it off.** `maxPods: 110` below is set unconditionally, and without prefix
+  delegation an `m6a.2xlarge` has ~58 addresses: kubelet would advertise capacity the CNI
+  cannot back and the surplus pods wedge in `ContainerCreating`.
 - **Karpenter does not read that CNI setting.** It sizes a node's pod capacity from the plain
   ENI/IP budget unless told otherwise, so `kubelet.maxPods: 110` on the `EC2NodeClass`
   (`demo-platform/k8s/karpenter/nodepool.yaml`) is what actually lets it bin-pack to the
@@ -56,7 +61,7 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
 - **Subnet space is the other half.** The original node subnets are `/24`s (~250 addresses
   each, ~500 across two AZs) — under 40 full tenants' worth of pods, and prefix delegation
   consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ
-  (~4,000 addresses each) carrying the `karpenter.sh/discovery` tag, so Karpenter prefers
+  (4,091 usable each, ~8,200 across two AZs) carrying the `karpenter.sh/discovery` tag, so Karpenter prefers
   them without any change to the existing subnets, the node group, or the shared NLB.
 
 ## 3. Shared RDS connection limits — APPLIED (PgBouncer)

@@ -42,6 +42,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Same name deploy-tenant.sh uses, for the same reason: lib/tenant-common.sh
+# resolves the Terraform directory from it.
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=lib/tenant-common.sh
 source "${SCRIPT_DIR}/lib/tenant-common.sh"
 
@@ -179,6 +182,16 @@ if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   # file: a child can read a half-written kubeconfig and fail on the cluster
   # connection rather than on anything to do with its tenant.
   export OTTERWORKS_KUBECONFIG_READY=1
+fi
+
+# Same reasoning for the other shared file the children touch: load_infra_outputs
+# inits infrastructure/terraform, and N of those into one .terraform/ directory
+# corrupt each other. A child whose init lost the race reads empty outputs and
+# deploys a tenant with no RDS/S3/DynamoDB wiring at all.
+if terraform -chdir="${REPO_ROOT}/infrastructure/terraform" init -input=false >/dev/null 2>&1; then
+  export OTTERWORKS_TF_INIT_READY=1
+else
+  warn "terraform init failed in infrastructure/terraform; each deploy will retry it on its own."
 fi
 
 LOG_DIR="${LOG_DIR:-/tmp/otterworks-batch-$(date -u +%s)}"

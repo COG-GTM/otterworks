@@ -191,9 +191,9 @@ setting and otherwise bin-packs to the plain ENI budget.
 
 Density is only half of it: the addresses have to exist. The original node
 subnets are /24s — ~500 usable across two AZs, which is ~30 `full` tenants'
-worth of pods. `aws_subnet.pods` adds a /20 per AZ (~8,700 total) tagged for
-Karpenter discovery. It is additive, so no existing subnet, node or load
-balancer is touched by the apply.
+worth of pods. `aws_subnet.pods` adds a /20 per AZ (4,091 usable each, ~8,200
+across two AZs) tagged for Karpenter discovery. It is additive, so no existing
+subnet, node or load balancer is touched by the apply.
 
 **RDS connections.** Connections are `pools × services × tenants`, and they are
 held whether or not the tenant is being used: a live full tenant sitting idle

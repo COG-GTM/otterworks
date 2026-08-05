@@ -84,7 +84,13 @@ require_bins() {
 # and the per-service IRSA role ARNs). Same source of truth as deploy-dev.sh.
 load_infra_outputs() {
   local d="${REPO_ROOT}/infrastructure/terraform"
-  terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
+  # N concurrent deploys would otherwise init the same .terraform/ directory at
+  # once, which Terraform does not support -- and the `|| true` hides it, so the
+  # outputs below come back empty and the tenant deploys with unwired RDS/S3/
+  # DynamoDB config. deploy-tenant-batch.sh inits once and exports this.
+  if [ -z "${OTTERWORKS_TF_INIT_READY:-}" ]; then
+    terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
+  fi
   local rds; rds="$(terraform -chdir="$d" output -raw rds_endpoint 2>/dev/null || echo "")"
   RDS_HOST="${rds%%:*}"; RDS_PORT="${rds##*:}"
   [ "$RDS_PORT" = "$rds" ] && RDS_PORT=5432 || true

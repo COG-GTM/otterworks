@@ -96,8 +96,26 @@ idle_ns() { printf 'otterworks-%s' "$1"; }
 # Is this tenant exempt from suspension? Set by `deploy-tenant.sh --always-on`.
 # A label rather than an inference: exemption costs ~1.5 vCPU and ~15 pod IPs
 # for as long as the tenant exists, so it should be something somebody chose.
+#
+# Fails closed, like tenant_is_persistent in reaper.sh, and for a sharper reason:
+# an always-on tenant has no control item, so the dashboard cannot wake it and a
+# suspension stands until somebody runs tenant-scale.sh. One throttled lookup out
+# of ~95 must not be what takes a standing environment down. stdout and stderr
+# are kept apart so a Warning header on a successful read is not compared to
+# "true" along with the label.
 tenant_always_on() {
-  [ "$(kubectl get ns "$1" -o jsonpath='{.metadata.labels.demo/always-on}' 2>/dev/null)" = "true" ]
+  local out err errfile rc
+  errfile="$(mktemp)"
+  out="$(kubectl get ns "$1" -o jsonpath='{.metadata.labels.demo/always-on}' 2>"${errfile}")"; rc=$?
+  err="$(cat "${errfile}")"; rm -f "${errfile}"
+  if [ "${rc}" -eq 0 ]; then
+    [ "${out}" = "true" ]
+    return
+  fi
+  # The namespace is gone: there is nothing left to suspend either way.
+  case "${err}" in *NotFound*|*"not found"*) return 1 ;; esac
+  idle_warn "cannot read demo/always-on on $1 (${err//$'\n'/ }); leaving it running this pass"
+  return 0
 }
 
 # Where a tenant's idle bookkeeping lives. The dashboard's tenants have a
@@ -260,7 +278,7 @@ tenant_namespaces() {
 
 suspend_idle_tenants() {
   idle_log "idle scan starting (threshold=${IDLE_AFTER_SECONDS}s)"
-  local counts now ns id count prev since running was_running
+  local counts now ns id count prev since running was_running always_on
   # Traffic is the only evidence of use, so without it there is nothing to
   # decide on. Skipping the pass delays suspension until the next run; guessing
   # scales every attendee's environment to zero mid-workshop.
@@ -272,10 +290,14 @@ suspend_idle_tenants() {
 
   while read -r id ns; do
     [ -n "${id}" ] || continue
-    if tenant_always_on "${ns}"; then
-      idle_log "${id}: always-on, leaving it running"
-      continue
-    fi
+    # Exempt tenants are measured like everyone else and only spared the
+    # suspension itself. Skipping them outright freezes their counters at
+    # whatever the last non-exempt pass stored, and the pass after the label is
+    # dropped would then compare live traffic against an hours-old baseline --
+    # an ingress restart in between reads as "idle since this morning" and
+    # suspends a tenant somebody is using.
+    always_on=false
+    tenant_always_on "${ns}" && always_on=true
 
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
@@ -344,6 +366,11 @@ suspend_idle_tenants() {
       # controller keep genuinely idle tenants awake forever.
       idle_log "${id}: ingress counter reset (${prev} -> ${count}); keeping idle clock"
       record_activity "${id}" "${count}" "${since}"
+    fi
+
+    if [ "${always_on}" = true ]; then
+      idle_log "${id}: always-on, leaving it running (idle $(( now - since ))s)"
+      continue
     fi
 
     if [ $(( now - since )) -lt "${IDLE_AFTER_SECONDS}" ]; then

@@ -214,6 +214,25 @@ seen_running standing
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "never suspends an always-on tenant" "${SUSPENDED# }" ""
 
+# Exempt is not unmeasured. The counters have to stay current while the label is
+# on, or the first pass after it comes off compares live traffic against an
+# hours-old baseline and suspends a tenant that is in use.
+METRIC[otterworks-standing]=150
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  but still records its activity" "${ITEM_COUNT[standing]}" "150"
+check "  and keeps its idle clock current" \
+  "$([ "${ITEM_SINCE[standing]}" = "${STALE}" ] && echo frozen || echo current)" "current"
+
+# The dangerous sequence: label dropped, and the ingress controller restarted
+# while it was on, so the counter reads 0 against a prev of 150. That branch
+# keeps the existing idle clock -- which is safe only because the clock above
+# was kept up to date.
+NS_ALWAYS_ON[otterworks-standing]=no; METRIC[otterworks-standing]=0
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and an ingress reset right after the label comes off does not suspend it" "${SUSPENDED# }" ""
+METRIC[otterworks-standing]=100; ITEM_COUNT[standing]=100
+ITEM_SINCE[standing]=${STALE}; NS_ALWAYS_ON[otterworks-standing]=yes
+
 # ...and the same tenant without the label is suspended, so the flag is doing
 # the work rather than something incidental about how it was deployed. This is
 # the regression that mattered: script-deployed tenants had no control-table
@@ -385,6 +404,31 @@ reset_backend; HAS_ITEM=yes
 tenant_has_item dash
 state_read dash >/dev/null
 check "  and the resolved backend is cached for later calls" "${TENANT_HAS_ITEM[dash]}" "yes"
+
+# --- tenant_always_on, the real implementation -------------------------------
+# The exemption read decides whether a standing environment stays up, and an
+# always-on tenant has no control item, so a wrong "not exempt" is a suspension
+# nobody can undo from the dashboard. Same fail-closed contract as
+# tenant_is_persistent in reaper.sh.
+eval "$(sed -n '/^tenant_always_on()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
+LABEL=""; LOOKUP_ERR=""; LOOKUP_WARN=""
+kubectl() {
+  [ -z "${LOOKUP_ERR}" ] || { echo "${LOOKUP_ERR}" >&2; return 1; }
+  [ -z "${LOOKUP_WARN}" ] || echo "${LOOKUP_WARN}" >&2
+  printf '%s' "${LABEL}"
+}
+asks() { tenant_always_on otterworks-standing && echo exempt || echo suspendable; }
+
+LABEL="true";  check "the label exempts the tenant" "$(asks)" "exempt"
+LABEL="";      check "  and its absence does not" "$(asks)" "suspendable"
+LABEL="true"; LOOKUP_WARN="Warning: v1 Namespace is deprecated in this cluster"
+check "  a warning on a successful read does not hide it" "$(asks)" "exempt"
+LOOKUP_WARN=""
+LOOKUP_ERR="Error from server (NotFound): namespaces \"otterworks-standing\" not found"
+check "a namespace that is gone is not exempt" "$(asks 2>/dev/null)" "suspendable"
+LOOKUP_ERR="error: You must be logged in to the server (Unauthorized)"
+check "  but an unreadable label leaves the tenant running" "$(asks 2>/dev/null)" "exempt"
+LOOKUP_ERR=""
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

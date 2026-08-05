@@ -254,7 +254,9 @@ update_irsa_trust() {
       --query 'cluster.identity.oidc.issuer' --output text 2>/dev/null || echo "")"
   fi
   oidc_url="${oidc_url#https://}"
-  [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; skipping IRSA trust update (IRSA may fail for ${NS})"; return 0; }
+  # 3, not 0: this runs inside ensure_irsa_trust's flock subshell, so it cannot
+  # append to INCOMPLETE itself -- the caller translates the status.
+  [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; skipping IRSA trust update (IRSA may fail for ${NS})"; return 3; }
   local svc role sub
   for svc in $(echo "${IRSA_JSON}" | jq -r 'keys[]'); do
     role="otterworks-${svc}-dev"
@@ -317,12 +319,28 @@ ensure_irsa_trust() {
     update_irsa_trust
   ) 9>"${lock}"
 }
+# Steps that leave a tenant unusable without failing the run. They warn rather
+# than abort on purpose -- one missing piece should not abandon the other twelve
+# services -- but the completion marker must not call the result finished:
+# deploy-tenant-batch.sh skips a marked tenant on every re-run, which is exactly
+# when someone is trying to repair one of these.
+INCOMPLETE=()
+
 log "Ensuring shared IRSA roles trust the tenant namespace service accounts..."
-ensure_irsa_trust
+IRSA_RC=0; ensure_irsa_trust || IRSA_RC=$?
+# 3 is "skipped, tenant unusable"; anything else (a lock timeout) still aborts.
+case "${IRSA_RC}" in
+  0) ;;
+  3) INCOMPLETE+=("IRSA trust for ${NS}") ;;
+  *) exit "${IRSA_RC}" ;;
+esac
 
 # ---------- Per-tenant RDS database (Postgres data isolation) ----------
 create_tenant_database() {
-  [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB (services will share the default DB)"; return 0; }
+  [ -n "${RDS_HOST}" ] || {
+    warn "RDS endpoint unknown; skipping per-tenant DB (services will share the default DB)"
+    INCOMPLETE+=("database (RDS endpoint unknown)"); return 0
+  }
   log "Ensuring per-tenant database ${T_DB_NAME} exists on shared RDS (in-cluster job)..."
   kubectl -n "${NS}" delete job tenant-db-init --ignore-not-found >/dev/null 2>&1 || true
   apply_db_admin_secret "${NS}"
@@ -362,6 +380,7 @@ YAML
     log "  per-tenant database ready."
   else
     warn "  per-tenant DB init did not complete; check: kubectl -n ${NS} logs job/tenant-db-init"
+    INCOMPLETE+=("database ${T_DB_NAME}")
     kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | tail -5 || true
   fi
   kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
@@ -592,9 +611,10 @@ fi
 # The namespace is created in the first seconds, so its existence says nothing
 # about whether the deploy finished; deploy-tenant-batch.sh reads this annotation
 # to tell a finished tenant from one to retry. Every step above either succeeded
-# (set -e) or is in FAILED: the Helm loop collects per-service failures rather
-# than aborting the tenant, and a tenant missing services is half-built, not done.
-if [ ${#FAILED[@]} -eq 0 ]; then
+# (set -e), is in FAILED (the Helm loop collects per-service failures rather than
+# aborting the tenant) or is in INCOMPLETE (the steps that only warn). A tenant
+# missing services, or missing its own database, is half-built and not done.
+if [ ${#FAILED[@]} -eq 0 ] && [ ${#INCOMPLETE[@]} -eq 0 ]; then
   kubectl annotate namespace "${NS}" --overwrite \
     "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true
 fi
@@ -605,6 +625,9 @@ log "Tenant ${ATTENDEE_ID} deployed to namespace ${NS}."
 kubectl get pods -n "${NS}" -o wide || true
 if [ ${#FAILED[@]} -gt 0 ]; then
   warn "Services with deploy issues: ${FAILED[*]}"
+fi
+if [ ${#INCOMPLETE[@]} -gt 0 ]; then
+  warn "Incomplete: ${INCOMPLETE[*]} -- re-run this deploy once the cause is fixed."
 fi
 echo ""
 if [ "${PERSISTENT}" = true ]; then
