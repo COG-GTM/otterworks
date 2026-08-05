@@ -16,14 +16,21 @@
 #      and appends AUDIT events.
 #
 # Environment (control-plane metadata; NON-secret):
-#   OP            deploy | teardown | inject | reset | reap        (required)
-#   TENANT_ID     attendee id (required for deploy/teardown/inject/reset)
+#   OP            deploy | teardown | inject | reset | seed | reap  (required)
+#   TENANT_ID     attendee id (required for deploy/teardown/inject/reset/seed)
 #   TIER          A | B                                            (default A)
 #   TTL           e.g. 8h, 30m, 2d, or `never` for a perpetual tenant (default 8h)
 #   REDEPLOY      true when deploying over a live tenant (CD)   (default unset)
 #   IMAGE_TAG     optional pinned image tag
 #   HOST_SUFFIX   ingress host suffix              (default demo.otterworks.app)
 #   SCENARIO      bug-catalog scenario (for OP=inject)
+#   SCALE         seed breadth multiplier (for OP=seed)          (default 1.0)
+#   DEPARTMENTS   seed departments, or `all` (for OP=seed)       (default all)
+#   SEED_WAIT     true to block until the seed Job finishes      (default false)
+#   SEED_TIMEOUT  seconds to wait when SEED_WAIT=true            (default 3600)
+#   SEED_REPO_URL/SEED_REPO_REF  repo the seed Job clones the generator from.
+#                 It clones ANONYMOUSLY, so this must be a public repo/ref
+#                 (defaults in render-seed-job.sh), not REPO_HTTPS_URL.
 #   TENANT_BRANCH git branch to check out (e.g. workshop-<id>)
 #   CONTROL_TABLE DynamoDB control table         (default otterworks-demo-control)
 #   AWS_REGION    (default us-east-1)   EKS_CLUSTER (default otterworks-dev)
@@ -32,7 +39,7 @@
 #   ACTOR         audit actor label                       (default runner)
 #
 # Secrets (from Kubernetes Secret refs in the Job spec — env only, NEVER argv):
-#   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE
+#   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE, DRIVE_EMAIL/DRIVE_PASSWORD (seed)
 #
 # This script never echoes secret values and never passes them on a command line;
 # the underlying scripts read them straight from the environment.
@@ -179,13 +186,97 @@ run_reset() {
   log "reset complete for ${TENANT_ID}"
 }
 
+# Seed the RetailCo enterprise drive into a live tenant by stamping
+# testdata/generated/retail-drive/seed-loader.job.tpl.yaml into the tenant's own
+# namespace (the generator writes through that tenant's api-gateway, so it has
+# to run there rather than in otterworks-platform).
+run_seed() {
+  [ -n "${TENANT_ID:-}" ] || die "OP=seed requires TENANT_ID"
+  local sid ns scale departments job
+  sid="$(sanitize_id "${TENANT_ID}")"
+  ns="$(tenant_namespace "${TENANT_ID}")"
+  scale="${SCALE:-1.0}"
+  departments="${DEPARTMENTS:-all}"
+  job="retail-drive-seed-loader"
+
+  kubectl get namespace "${ns}" >/dev/null 2>&1 ||
+    die "namespace ${ns} does not exist -- deploy tenant ${TENANT_ID} before seeding it"
+
+  ensure_seed_secret "${ns}"
+
+  # A Job's pod template is immutable, so a re-seed at a different scale cannot
+  # be an `apply` over the previous run. Deleting first (and waiting for the
+  # pods to go) keeps re-seeding idempotent -- which the generator itself is.
+  log "removing any previous seed Job in ${ns}"
+  kubectl -n "${ns}" delete job "${job}" --ignore-not-found --wait=true >/dev/null
+
+  log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
+  TENANT_NAMESPACE="${ns}" \
+  REPO_URL="${SEED_REPO_URL:-}" REPO_REF="${SEED_REPO_REF:-}" \
+    "${REPO_DIR}/testdata/generated/retail-drive/render-seed-job.sh" \
+      "${sid}" "${scale}" "${departments}" |
+    kubectl apply -f - >/dev/null ||
+    die "could not create the seed Job in ${ns}"
+
+  ctl_audit "${TENANT_ID}" seed "ns=${ns} scale=${scale} departments=${departments}"
+  log "seed Job created; follow it with: kubectl -n ${ns} logs -f job/${job}"
+
+  [ "${SEED_WAIT:-false}" = "true" ] || return 0
+  wait_for_seed "${ns}" "${job}"
+}
+
+# The loader reads DRIVE_EMAIL / DRIVE_PASSWORD from a Secret in the tenant's
+# namespace. When the runner was given the credentials we materialise it; when
+# it was not, an operator-created Secret must already be there.
+#
+# The values go to kubectl on STDIN, never on an argv (`kubectl create secret
+# --from-literal` would put them in /proc/<pid>/cmdline) and never into a file.
+ensure_seed_secret() {
+  local ns="$1"
+  if [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ]; then
+    log "upserting the retail-drive-seed Secret in ${ns}"
+    kubectl apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: retail-drive-seed
+  namespace: ${ns}
+type: Opaque
+data:
+  DRIVE_EMAIL: $(printf '%s' "${DRIVE_EMAIL}" | base64 | tr -d '\n')
+  DRIVE_PASSWORD: $(printf '%s' "${DRIVE_PASSWORD}" | base64 | tr -d '\n')
+EOF
+    return 0
+  fi
+
+  kubectl -n "${ns}" get secret retail-drive-seed >/dev/null 2>&1 ||
+    die "secret retail-drive-seed is missing in ${ns} and DRIVE_EMAIL/DRIVE_PASSWORD were not provided -- create it with: kubectl -n ${ns} create secret generic retail-drive-seed --from-literal=DRIVE_EMAIL='<email>' --from-literal=DRIVE_PASSWORD='<password>'"
+}
+
+# Poll rather than `kubectl wait --for=condition=complete`, which sits out the
+# whole timeout on a Job that has already failed.
+wait_for_seed() {
+  local ns="$1" job="$2" deadline
+  deadline=$(( $(date -u +%s) + ${SEED_TIMEOUT:-3600} ))
+  log "waiting for ${job} in ${ns} (timeout ${SEED_TIMEOUT:-3600}s)"
+  while [ "$(date -u +%s)" -lt "${deadline}" ]; do
+    case "$(kubectl -n "${ns}" get job "${job}" \
+              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null)" in
+      *Complete*) log "seed complete for ${TENANT_ID}"; return 0 ;;
+      *Failed*)   ctl_audit "${TENANT_ID}" seed "failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
+    esac
+    sleep 15
+  done
+  die "seed Job did not finish within ${SEED_TIMEOUT:-3600}s -- it is still running: kubectl -n ${ns} logs -f job/${job}"
+}
+
 run_reap() {
   log "delegating to reaper v2"
   exec "${REPO_DIR}/demo-platform/reaper/reaper.sh"
 }
 
 main() {
-  [ -n "${OP}" ] || die "OP is required (deploy|teardown|inject|reset|reap)"
+  [ -n "${OP}" ] || die "OP is required (deploy|teardown|inject|reset|seed|reap)"
   command -v aws >/dev/null || die "aws CLI not found in image"
   command -v jq  >/dev/null || die "jq not found in image"
 
@@ -209,8 +300,9 @@ main() {
     teardown) run_teardown ;;
     inject)   run_inject ;;
     reset)    run_reset ;;
+    seed)     run_seed ;;
     reap)     run_reap ;;
-    *)        die "unknown OP '${OP}' (deploy|teardown|inject|reset|reap)" ;;
+    *)        die "unknown OP '${OP}' (deploy|teardown|inject|reset|seed|reap)" ;;
   esac
 }
 

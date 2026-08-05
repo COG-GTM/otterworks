@@ -2,7 +2,7 @@ import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
 
-export type RunnerAction = "deploy" | "teardown" | "inject";
+export type RunnerAction = "deploy" | "teardown" | "inject" | "seed";
 
 export interface RunnerJobInput {
   action: RunnerAction;
@@ -13,6 +13,10 @@ export interface RunnerJobInput {
   ttl?: string;
   scenario?: string;
   hostSuffix?: string;
+  // Seed only: breadth multiplier and department shard for the retail-drive
+  // loader the runner stamps into the tenant's namespace.
+  scale?: string;
+  departments?: string;
   // Deploy into a tenant that is already up (continuous delivery) rather than
   // standing a new one up. Only changes how the runner records the operation.
   redeploy?: boolean;
@@ -26,6 +30,11 @@ const RUNNER_SECRET_ENV_KEYS = [
   "JWT_SECRET",
   "SECRET_KEY_BASE",
   "GITHUB_TOKEN",
+  // Credentials for the seeded drive account (OP=seed). Optional like the rest:
+  // without them the runner requires a `retail-drive-seed` Secret to already
+  // exist in the tenant namespace.
+  "DRIVE_EMAIL",
+  "DRIVE_PASSWORD",
 ] as const;
 
 function jobName(action: RunnerAction, id: string, epoch: number): string {
@@ -35,7 +44,7 @@ function jobName(action: RunnerAction, id: string, epoch: number): string {
 }
 
 export function jobNamePrefixes(id: string): string[] {
-  return [`deploy-${id}-`, `teardown-${id}-`, `inject-bug-${id}-`];
+  return [`deploy-${id}-`, `teardown-${id}-`, `inject-bug-${id}-`, `seed-${id}-`];
 }
 
 function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
@@ -58,6 +67,8 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   if (input.imageTag) plain.push({ name: "IMAGE_TAG", value: input.imageTag });
   if (input.ttl) plain.push({ name: "TTL", value: input.ttl });
   if (input.scenario) plain.push({ name: "SCENARIO", value: input.scenario });
+  if (input.scale) plain.push({ name: "SCALE", value: input.scale });
+  if (input.departments) plain.push({ name: "DEPARTMENTS", value: input.departments });
   if (input.redeploy) plain.push({ name: "REDEPLOY", value: "true" });
 
   // Secrets injected by reference — values never appear in the Job manifest.

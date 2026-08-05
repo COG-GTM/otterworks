@@ -23,6 +23,7 @@
 #   tenant.sh checkin  <id>
 #   tenant.sh extend   <id> <ttl>
 #   tenant.sh status   <id>
+#   tenant.sh seed     <id> [scale] [departments]  # load the RetailCo drive
 #   tenant.sh sync     <branch> [image-tag]    # CD: redeploy, creating if absent
 #   tenant.sh persist  <id> true|false
 #
@@ -33,6 +34,7 @@
 #   tenant.sh checkout derek                   # -> workshop-derek, 8h
 #   tenant.sh checkout derek workshop-derek 24h
 #   tenant.sh sync workshop-derek              # -> tenant derek
+#   tenant.sh seed derek 0.1                   # ~110 files, quick + data-rich
 #   OPS_HOST=https://ops.example.app tenant.sh list
 # ------------------------------------------------------------------------------
 set -euo pipefail
@@ -167,7 +169,7 @@ warn_if_degraded() {
 # ------------------------------------------------------------------------------
 
 cmd="${1:-}"
-[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status> [args]"
+[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status|seed> [args]"
 shift || true
 
 case "${cmd}" in
@@ -240,6 +242,38 @@ case "${cmd}" in
              "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready"'
     ;;
 
+  # Load the synthetic "RetailCo enterprise drive" into a live tenant, so a demo
+  # opens on a deep, browsable drive instead of an empty one. The dashboard runs
+  # the loader as a Job in the tenant's OWN namespace (this caller has no
+  # cluster access); it writes through that tenant's api-gateway and is
+  # idempotent, so re-seeding only adds what is missing.
+  seed)
+    id="${1:-}"
+    [ -n "${id}" ] || fail "usage: tenant.sh seed <id> [scale] [departments]"
+    # 1.0 is the whole drive (~2,445 files / 15 departments, tens of minutes);
+    # 0.1 (~110 files) is enough to make every screen look real.
+    scale="${2:-1.0}"
+    departments="${3:-all}"
+    # Checked here because it is sent as a JSON number: a stray character (or a
+    # bare `1.`, which is not valid JSON) would otherwise fail inside jq with a
+    # parse error rather than this message.
+    case "${scale}" in
+      ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
+    esac
+
+    login
+    log "seeding '${id}' (scale ${scale}, departments ${departments})..."
+    out="$(api POST "/api/tenants/${id}/seed" \
+             "$(jq -nc --argjson s "${scale}" --arg d "${departments}" \
+                     '{scale:$s, departments:$d}')")"
+    log "${id}: $(printf '%s' "${out}" | jq -r '.job // "accepted"')"
+    # The loader Job outlives the runner Job that created it, so "accepted" is
+    # not "seeded": it shows up as an extra pod in the tenant's namespace and
+    # takes minutes to hours depending on the scale.
+    log "the loader runs in otterworks-${id}; watch it with: tenant.sh status ${id}"
+    log "an ephemeral tenant loses its seeded data at teardown -- 'tenant.sh persist ${id} true' to keep it"
+    ;;
+
   # The CD entry point: make the environment for a branch match that branch.
   # Idempotent by design -- every push runs the same command whether or not the
   # tenant already exists, so the pipeline needs no state of its own.
@@ -310,6 +344,6 @@ case "${cmd}" in
     ;;
 
   *)
-    fail "unknown command '${cmd}' -- expected list, checkout, checkin, extend, status, sync or persist"
+    fail "unknown command '${cmd}' -- expected list, checkout, checkin, extend, status, seed, sync or persist"
     ;;
 esac

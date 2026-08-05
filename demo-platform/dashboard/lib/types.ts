@@ -63,6 +63,7 @@ export type AuditAction =
   | "reap"
   | "inject"
   | "reset"
+  | "seed"
   | "redeploy"
   | "persist"
   | "login_ok"
@@ -127,6 +128,11 @@ export interface ExtendRequest {
 
 export interface InjectRequest {
   scenario: string;
+}
+
+export interface SeedRequest {
+  scale?: number;
+  departments?: string;
 }
 
 export interface ReaperUpdateRequest {

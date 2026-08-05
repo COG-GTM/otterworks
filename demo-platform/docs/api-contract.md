@@ -37,6 +37,13 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   409 for a persistent tenant: the perpetual environment exists precisely not to be broken.
 - `POST /api/tenants/:id/reset` → clear injected scenarios. Allowed for every tenant, including
   the perpetual one, because it only restores.
+- `POST /api/tenants/:id/seed` `{ scale?, departments? }` → load the synthetic RetailCo
+  enterprise drive into the tenant via a runner Job (`OP=seed`), which stamps
+  `testdata/generated/retail-drive/seed-loader.job.tpl.yaml` into `otterworks-<id>`.
+  `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is capped at `2`;
+  `departments` defaults to `all`. 409 unless the tenant is `active` (the loader writes
+  through that tenant's own api-gateway), and 409 if a seed is already running for it.
+  Returns as soon as the loader Job exists — seeding then runs for minutes to hours.
 
 ## Reaper
 - `GET /api/reaper` → `CONFIG#reaper`.
@@ -68,6 +75,7 @@ The web pod stays light: mutating actions create a Kubernetes **Job** (`otterwor
 ns) from the `otterworks-demo-runner` image, which carries the repo + `aws/kubectl/helm/
 terraform/jq` and runs `scripts/deploy-tenant.sh` / `teardown-tenant.sh` / `inject-bug.sh`.
 The Job uses the dashboard's IRSA role + a ClusterRole that can manage `otterworks-*`
-namespaces. Job name = `deploy-<id>-<epoch>` / `teardown-<id>-<epoch>`; logs stream back via
+namespaces. Job name = `deploy-<id>-<epoch>` / `teardown-<id>-<epoch>` / `seed-<id>-<epoch>`;
+logs stream back via
 `GET /api/tenants/:id` (reads Job pod logs). The runner reads/writes the control table so
 status transitions survive even if the web pod restarts.

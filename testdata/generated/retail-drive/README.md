@@ -107,10 +107,86 @@ pip install -r requirements.txt pytest
 python -m pytest tests -q
 ```
 
-## Seed-loader integration
+## Seed-loader integration (seeding a live tenant)
 
-`seed-loader.job.yaml` is a Kubernetes Job that runs this generator against the
-in-cluster gateway (`api-gateway.<ns>.svc.cluster.local:8080`) on demand /
-after a spin-up, mirroring the golden reference-data loader. It reads the drive
-credentials from the `retail-drive-seed` Secret and passes `--register` so it
-bootstraps the account on a fresh environment. See the job manifest for details.
+`seed-loader.job.tpl.yaml` is a Kubernetes Job that runs this generator against
+an in-cluster gateway on demand / after a spin-up, mirroring the golden
+reference-data loader. It reads the drive credentials from the
+`retail-drive-seed` Secret and passes `--register` so it bootstraps the account
+on a fresh environment.
+
+Each demo tenant is its own namespace (`otterworks-<id>`) with its own
+api-gateway Service, so the manifest is a **template**: `./render-seed-job.sh`
+stamps the namespace and gateway URL (and the scale / departments) for one
+tenant and prints the manifest on stdout.
+
+```bash
+render-seed-job.sh <tenant-id> [scale] [departments]
+```
+
+### Seeding tenant `coggtm`
+
+```bash
+# 1. credentials for the drive account, IN THE TENANT NAMESPACE
+kubectl -n otterworks-coggtm create secret generic retail-drive-seed \
+    --from-literal=DRIVE_EMAIL='<email>' \
+    --from-literal=DRIVE_PASSWORD='<password>'
+
+# 2. render the Job for this tenant and apply it
+#    -> namespace otterworks-coggtm
+#    -> GATEWAY_URL http://api-gateway.otterworks-coggtm.svc.cluster.local:8080
+testdata/generated/retail-drive/render-seed-job.sh coggtm 0.1 | kubectl apply -f -
+
+# 3. follow it
+kubectl -n otterworks-coggtm logs -f job/retail-drive-seed-loader
+```
+
+Any tenant works the same way — `render-seed-job.sh <id>`. For a single-tenant
+deploy (namespace `otterworks`, not derived from a tenant id) override the
+namespace: `TENANT_NAMESPACE=otterworks render-seed-job.sh otterworks | kubectl apply -f -`.
+
+Notes:
+
+- **Scale.** `1.0` (the default) is the whole drive: ~2,445 files / 15
+  departments, tens of minutes of uploads. `0.1` (~110 files) is enough to make
+  every screen look real and finishes quickly.
+- **Re-running.** The generator is idempotent, but a Job's pod template is not
+  mutable — `kubectl -n otterworks-<id> delete job retail-drive-seed-loader`
+  before re-applying at a different scale.
+- **Ephemeral tenants lose the data.** `coggtm` is a TTL'd tenant on
+  `demo.otterworks.app`; the reaper deletes its namespace *and its database* at
+  expiry, taking the seeded drive with it. Extend it
+  (`tenant.sh extend coggtm 8h`) or make it perpetual
+  (`tenant.sh persist coggtm true`) if the data has to outlive the demo.
+- The loader pod counts against the tenant's `ResourceQuota` (it requests
+  250m CPU / 512Mi) and lives in the tenant namespace, so it is visible as an
+  extra pod in `tenant.sh status <id>` while it runs.
+- **Idle-suspend can interrupt a long seed.** The reaper measures idleness from
+  *ingress* requests, and the loader talks to the api-gateway Service directly —
+  so on a tenant nobody is browsing, a full-scale run (longer than
+  `IDLE_AFTER_SECONDS`, default 1h) can be scaled to zero underneath itself.
+  Seed at a smaller scale, or keep a browser on the tenant while it runs.
+
+### Without cluster access: `tenant.sh seed`
+
+The provisioner credential most operators have can read the ops-dashboard
+passcode and nothing else — no EKS access, so the `kubectl` commands above are
+not available to it. The dashboard does the same work from inside the cluster:
+
+```bash
+./demo-platform/scripts/tenant.sh seed coggtm 0.1        # [scale] [departments]
+./demo-platform/scripts/tenant.sh status coggtm
+```
+
+That posts to `POST /api/tenants/coggtm/seed`, which launches a runner Job
+(`OP=seed`) that upserts the `retail-drive-seed` Secret from the dashboard's own
+`DRIVE_EMAIL`/`DRIVE_PASSWORD` (falling back to a Secret an operator already
+created in the namespace) and applies this template into `otterworks-coggtm`.
+
+Two deployment prerequisites for that path, both one-off:
+
+- the **runner image** must be built from a revision that has `OP=seed` and this
+  template (`demo-platform/runner/README.md`), and the dashboard rolled onto it;
+- the `demo-ops-dashboard` Secret must carry `DRIVE_EMAIL` / `DRIVE_PASSWORD`
+  keys, otherwise every target namespace needs the `retail-drive-seed` Secret
+  created by hand first (which needs cluster access).

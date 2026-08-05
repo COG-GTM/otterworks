@@ -112,3 +112,9 @@ secret:
   # Optional: token used by runner Jobs to fetch participant branches (needs
   # repoHttpsUrl set). Scope to repo read-only. Omit to use the bundled tree.
   githubToken: ""
+  # Optional: credentials for the synthetic drive account the retail-drive seed
+  # loader owns (OP=seed / `tenant.sh seed <id>`). With them the runner creates
+  # the per-tenant `retail-drive-seed` Secret itself; without them that Secret
+  # has to exist in the tenant namespace before a seed can run.
+  driveEmail: ""
+  drivePassword: ""

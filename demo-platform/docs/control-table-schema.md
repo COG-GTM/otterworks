@@ -69,7 +69,7 @@ updated_by          string
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_ok, deploy_fail,
-reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+reap, inject, reset, seed, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
 `redeploy` is a deploy into a tenant that was already up (continuous delivery), as distinct
 from the `checkout` that created it.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
