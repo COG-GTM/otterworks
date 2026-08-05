@@ -48,10 +48,6 @@ function jobName(action: RunnerAction, id: string, epoch: number): string {
   return `${prefix}-${id}-${epoch}`;
 }
 
-export function jobNamePrefixes(id: string): string[] {
-  return [`deploy-${id}-`, `teardown-${id}-`, `inject-bug-${id}-`, `seed-${id}-`];
-}
-
 function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   // The runner image ENTRYPOINT (entrypoint.sh) dispatches on OP and does the
   // branch checkout + control-table status/audit writes. We drive it purely

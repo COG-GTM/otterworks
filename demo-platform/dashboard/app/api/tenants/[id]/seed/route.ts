@@ -16,7 +16,9 @@ export const dynamic = "force-dynamic";
 // numeric check rejects, and off an empty drive.
 const MAX_SCALE = 2;
 const MIN_SCALE = 0.01;
-const DEPARTMENTS_RE = /^[A-Za-z0-9,_ -]+$/;
+// `&` is in there because three departments are named with one ("Supply Chain
+// & Logistics"); the renderer escapes it before it becomes sed replacement text.
+const DEPARTMENTS_RE = /^[A-Za-z0-9,_ &-]+$/;
 
 export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const id = params?.id;

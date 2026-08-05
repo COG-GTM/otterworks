@@ -200,7 +200,9 @@ run_seed() {
   departments="${DEPARTMENTS:-all}"
   job="retail-drive-seed-loader"
 
-  case "${SEED_TIMEOUT:-3600}" in
+  # Unset-only default, so an explicitly empty SEED_TIMEOUT is rejected here
+  # rather than becoming a bash arithmetic error in wait_for_seed later.
+  case "${SEED_TIMEOUT-3600}" in
     ''|*[!0-9]*) die "invalid SEED_TIMEOUT '${SEED_TIMEOUT}' (seconds)" ;;
   esac
 
@@ -309,7 +311,7 @@ wait_for_seed() {
     # than polling it until the timeout. A read that merely failed is retried.
     case "$(seed_job_state "${ns}" "${job}")" in
       *Complete*)  log "seed complete for ${TENANT_ID}"; return 0 ;;
-      *Failed*)    ctl_audit "${TENANT_ID}" seed "failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
+      *Failed*)    ctl_audit "${TENANT_ID}" seed_fail "loader failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
       ABSENT)      die "job/${job} is gone from ${ns} -- it was deleted while the seed was running" ;;
       UNREADABLE)  log "warning: could not read job/${job} in ${ns}; retrying" ;;
     esac

@@ -66,20 +66,18 @@ function toPodInfo(pod: k8s.V1Pod): PodInfo {
   };
 }
 
-// A Job pod that has run to completion (the retail-drive seed loader lingers
-// for `ttlSecondsAfterFinished`) is not a tenant service that went unready: it
-// is a finished task. Counting it would show the tenant as Degraded, and would
-// stop reconcileStatus() promoting it back to `active`, for as long as the pod
-// is kept around. A *running* Job pod still counts, so an in-flight seed stays
-// visible in the tenant's pod list.
-function isFinishedJobPod(pod: k8s.V1Pod): boolean {
-  const phase = pod.status?.phase;
-  if (phase !== "Succeeded" && phase !== "Failed") return false;
+// A Job pod is a task, not one of the tenant's services: the retail-drive seed
+// loader is unready while it builds its venv and then lingers Succeeded for
+// `ttlSecondsAfterFinished`. Counting it would read as Degraded and would stop
+// reconcileStatus() promoting the tenant back to `active` for as long as it is
+// around. podsForNamespace() is unfiltered, so the loader is still visible to
+// anyone looking at the namespace's pods.
+function isJobPod(pod: k8s.V1Pod): boolean {
   return (pod.metadata?.ownerReferences ?? []).some((o) => o.kind === "Job");
 }
 
 function computeLive(allPods: k8s.V1Pod[]): TenantLiveState {
-  const pods = allPods.filter((p) => !isFinishedJobPod(p));
+  const pods = allPods.filter((p) => !isJobPod(p));
   const totalPods = pods.length;
   const readyPods = pods.filter(podReady).length;
   const services: ServiceLiveState[] = pods.map((p) => ({
@@ -145,7 +143,11 @@ export async function liveStateForNamespace(ns: string): Promise<TenantLiveState
  * Is a named Job in a TENANT namespace still running? The seed loader outlives
  * the runner Job that created it by minutes to hours, so it is the loader --
  * not the runner Job in the platform namespace -- that says whether a seed is
- * in flight. A Job that is absent, complete or failed is not.
+ * in flight.
+ *
+ * "Running" is the absence of a Complete/Failed condition, the same test the
+ * runner makes: a Job with `backoffLimit: 3` reads `{active: 0, failed: 1}`
+ * between a failed pod and its retry, and it has not finished.
  *
  * Only a 404 counts as "not running": callers act on a `false` by replacing the
  * Job, so a throttled or unreachable API server must raise rather than read as
@@ -153,8 +155,10 @@ export async function liveStateForNamespace(ns: string): Promise<TenantLiveState
  */
 export async function jobIsActive(ns: string, name: string): Promise<boolean> {
   try {
-    const status = (await batch().readNamespacedJob(name, ns)).body.status ?? {};
-    return (status.active ?? 0) > 0 || (!status.succeeded && !status.failed);
+    const conditions = (await batch().readNamespacedJob(name, ns)).body.status?.conditions ?? [];
+    return !conditions.some(
+      (c) => (c.type === "Complete" || c.type === "Failed") && c.status === "True",
+    );
   } catch (err) {
     if (err instanceof k8s.HttpError && err.statusCode === 404) return false;
     throw err;
@@ -177,22 +181,29 @@ export async function listTenantNamespaces(): Promise<string[]> {
 }
 
 /**
- * Stream (read) the latest logs from the newest pod of a Job whose name matches
- * one of the given prefixes in the platform namespace. Newest across *all* the
- * prefixes, so the last operation on a tenant is the one shown -- a failed seed
- * is not hidden behind the deploy that preceded it. Best-effort; returns
- * undefined when nothing is found or the cluster is unreachable.
+ * Stream (read) the latest logs from the newest pod of a runner Job for one
+ * tenant. Selected on the `demo/tenant-id` label rather than the Job's name
+ * prefix, which is ambiguous when one tenant id is a prefix of another
+ * (`seed-a-` also matches tenant `a-b`'s Jobs), and covers every action, so a
+ * failed seed is not hidden behind the deploy that preceded it. Best-effort;
+ * returns undefined when nothing is found or the cluster is unreachable.
  */
 export async function latestJobLogs(
   platformNamespace: string,
-  jobNamePrefix: string | string[],
+  tenantId: string,
   tailLines = 200,
 ): Promise<string | undefined> {
-  const prefixes = Array.isArray(jobNamePrefix) ? jobNamePrefix : [jobNamePrefix];
   try {
-    const jobsRes = await batch().listNamespacedJob(platformNamespace);
+    const jobsRes = await batch().listNamespacedJob(
+      platformNamespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      `demo/tenant-id=${tenantId}`,
+    );
     const jobs = jobsRes.body.items
-      .filter((j) => prefixes.some((p) => (j.metadata?.name ?? "").startsWith(p)))
+      .slice()
       .sort(
         (a, b) =>
           new Date(b.metadata?.creationTimestamp ?? 0).getTime() -

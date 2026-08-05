@@ -64,6 +64,7 @@ export type AuditAction =
   | "inject"
   | "reset"
   | "seed"
+  | "seed_fail"
   | "redeploy"
   | "persist"
   | "login_ok"

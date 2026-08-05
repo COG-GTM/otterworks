@@ -150,6 +150,9 @@ Notes:
 - **Scale.** `1.0` (the default) is the whole drive: ~2,445 files / 15
   departments, tens of minutes of uploads. `0.1` (~110 files) is enough to make
   every screen look real and finishes quickly.
+- **Departments.** `all`, or a comma-separated subset of the names in
+  `taxonomy.py`, matched exactly — three of them contain an ampersand, so quote
+  the argument: `render-seed-job.sh coggtm 1.0 'Supply Chain & Logistics'`.
 - **Re-running.** The generator is idempotent, but a Job's pod template is not
   mutable — `kubectl -n otterworks-<id> delete job retail-drive-seed-loader`
   before re-applying at a different scale. Deleting a loader that is still

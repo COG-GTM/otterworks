@@ -259,6 +259,7 @@ case "${cmd}" in
     # parse error rather than this message.
     case "${scale}" in
       ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
+      0[0-9]*) fail "invalid scale '${scale}' (no leading zero: 0.5, not 00.5)" ;;
     esac
     # The API bounds it to 0.01..2; saying so here beats a 400 after the login.
     case "${scale//./}" in

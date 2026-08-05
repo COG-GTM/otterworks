@@ -71,11 +71,14 @@ case "${scale//./}" in
   *[!0]*) ;;
   *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
 esac
-# Rendered into the manifest by sed, so anything that is special to sed (`#`,
-# `&`, `\`) is refused rather than silently mangling the Job spec.
+# Three departments in taxonomy.py are named with an ampersand ("Supply Chain &
+# Logistics"), and generate_drive.py matches department names exactly, so `&`
+# has to be spellable here. It is also sed's "the whole match" though, hence the
+# escape below; `#` and `\` have no such use and stay refused.
 case "${departments}" in
-  ''|*[!A-Za-z0-9,_\ -]*) fail "invalid departments '${departments}' (comma-separated names, or 'all')" ;;
+  ''|*[!A-Za-z0-9,_\&\ -]*) fail "invalid departments '${departments}' (comma-separated names, or 'all')" ;;
 esac
+departments_sed="${departments//&/\\&}"
 # The URL overrides are operator input, but they are still sed replacement text
 # stamped into a manifest -- and GATEWAY_URL is where the loader sends requests
 # carrying the drive credentials. Hold them to an http(s) URL of URL characters
@@ -98,7 +101,7 @@ esac
 sed -e "s#__TENANT_NAMESPACE__#${namespace}#g" \
     -e "s#__GATEWAY_URL__#${gateway_url}#g" \
     -e "s#__SCALE__#${scale}#g" \
-    -e "s#__DEPARTMENTS__#${departments}#g" \
+    -e "s#__DEPARTMENTS__#${departments_sed}#g" \
     -e "s#__REPO_URL__#${repo_url}#g" \
     -e "s#__REPO_REF__#${repo_ref}#g" \
     "${TEMPLATE}"
