@@ -5,9 +5,11 @@ cluster_name = "otterworks-dev"
 # MUST stay within EKS standard support. Extended support costs $0.60/hr against
 # a standard rate of $0.10/hr -- a $360/month penalty that buys nothing, which
 # is exactly what running 1.32 past its window was costing. 1.34 holds standard
-# support until 2026-12-02; schedule the next bump before then. Bumping this also
-# means bumping KUBECTL_VERSION/KUBECTL_SHA256 in .devin/blueprint.yaml: the pinned
-# client is only supported one minor either side of the cluster.
+# support until 2026-12-02; schedule the next bump before then. A client is only
+# supported one minor either side of the cluster, so bumping this means bumping
+# every pinned kubectl with it: KUBECTL_VERSION/KUBECTL_SHA256 in
+# .devin/blueprint.yaml and ARG KUBECTL_VERSION in demo-platform/runner/Dockerfile
+# (which is already at 1.30.4, four minors behind this cluster).
 cluster_version = "1.34"
 
 vpc_cidr           = "10.0.0.0/16"

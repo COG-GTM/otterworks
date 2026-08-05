@@ -9,6 +9,10 @@ initialize: |
   # (.github/workflows/ci.yml), kubectl to the cluster's minor
   # (platform/terraform/environments/dev.tfvars) to stay inside the supported skew -- the
   # bump note in that file says to move KUBECTL_VERSION with it.
+  # linux/amd64 only, deliberately: a checksum proves the file is the one upstream
+  # published, not that it runs here, so an arm64 image would install binaries that
+  # only fail when a script calls them.
+  [ "$(uname -m)" = "x86_64" ] || { echo "blueprint tool installs are linux/amd64 only (got $(uname -m))"; exit 1; }
   TF_VERSION=1.7.0
   TF_SHA256=2bac080244845ebd434baf5e8557bd06d53b3c8bc01b7e496b390a56cb40ac5c
   KUBECTL_VERSION=v1.34.10
