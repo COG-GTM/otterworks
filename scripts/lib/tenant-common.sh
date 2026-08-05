@@ -88,7 +88,13 @@ load_infra_outputs() {
   # once, which Terraform does not support -- and the `|| true` hides it, so the
   # outputs below come back empty and the tenant deploys with unwired RDS/S3/
   # DynamoDB config. deploy-tenant-batch.sh inits once and exports this.
-  if [ -z "${OTTERWORKS_TF_INIT_READY:-}" ]; then
+  #
+  # The flag alone is not taken as proof: it is an ordinary environment variable,
+  # so a stale export in a long-lived shell or a CI template would otherwise skip
+  # init in a tree that never had one -- the same unwired tenant by another route.
+  # An init that did happen leaves .terraform/ behind, and re-running init over a
+  # good one is a no-op anyway.
+  if [ -z "${OTTERWORKS_TF_INIT_READY:-}" ] || [ ! -d "${d}/.terraform" ]; then
     terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
   fi
   local rds; rds="$(terraform -chdir="$d" output -raw rds_endpoint 2>/dev/null || echo "")"

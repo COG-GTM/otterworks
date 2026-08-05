@@ -465,8 +465,14 @@ spec:
   selector: { app: meilisearch }
   ports: [{ port: 7700, targetPort: 7700 }]
 YAML
-kubectl -n "${NS}" rollout status deployment/redis --timeout=120s || warn "redis not ready"
-kubectl -n "${NS}" rollout status deployment/meilisearch --timeout=180s || warn "meilisearch not ready"
+# Chaos flags, sessions and search live here, so a tenant without them is not
+# usable -- and these timeouts are realistic while a batch waits on Karpenter to
+# launch nodes and pull images. Recorded rather than only warned about, so the
+# tenant is not stamped complete and a re-run retries it.
+kubectl -n "${NS}" rollout status deployment/redis --timeout=120s \
+  || { warn "redis not ready"; INCOMPLETE+=("redis"); }
+kubectl -n "${NS}" rollout status deployment/meilisearch --timeout=180s \
+  || { warn "meilisearch not ready"; INCOMPLETE+=("meilisearch"); }
 
 # ---------- Resolve image tags ----------
 log "Logging into ECR to resolve image tags..."
@@ -481,7 +487,10 @@ latest_tag() {
 deploy_service() {
   local service=$1
   local chart_dir="${REPO_ROOT}/infrastructure/helm/${service}"
-  [ -d "${chart_dir}" ] || { warn "No chart for ${service}, skipping"; return 0; }
+  # Non-zero, not a benign skip: every service in every profile has a chart, so a
+  # missing one leaves the tenant without that service. The caller collects it in
+  # FAILED, which withholds the completion marker and makes a re-run retry.
+  [ -d "${chart_dir}" ] || { warn "No chart for ${service}; not deployed"; return 1; }
 
   local tag="${IMAGE_TAG_OVERRIDE}"
   # Per-service image tag override: BUG_IMAGE_TAG_<service_with_underscores>
@@ -489,8 +498,8 @@ deploy_service() {
   [ -n "${!var:-}" ] && tag="${!var}"
   [ -z "${tag}" ] && tag="$(latest_tag "${service}")"
   if [ -z "${tag}" ] || [ "${tag}" = "None" ]; then
-    warn "No image in ECR for ${service}; skipping."
-    return 0
+    warn "No image in ECR for ${service}; not deployed."
+    return 1
   fi
 
   build_helm_args "${service}"
@@ -605,6 +614,8 @@ if kubectl get ns "${INGRESS_NAMESPACE}" >/dev/null 2>&1; then
 else
   warn "No '${INGRESS_NAMESPACE}' namespace — shared ingress controller not installed."
   warn "Run scripts/tenant-platform-baseline.sh once to install it. Frontends are ClusterIP-only for now."
+  # No ingress means no URL, which is the whole point of the tenant.
+  INCOMPLETE+=("ingress (no ${INGRESS_NAMESPACE} namespace)")
 fi
 
 # ---------- Completion marker ----------
@@ -612,8 +623,9 @@ fi
 # about whether the deploy finished; deploy-tenant-batch.sh reads this annotation
 # to tell a finished tenant from one to retry. Every step above either succeeded
 # (set -e), is in FAILED (the Helm loop collects per-service failures rather than
-# aborting the tenant) or is in INCOMPLETE (the steps that only warn). A tenant
-# missing services, or missing its own database, is half-built and not done.
+# aborting the tenant) or is in INCOMPLETE (the steps that warn and carry on:
+# IRSA trust, the database, Redis/MeiliSearch readiness, the shared ingress).
+# A tenant missing services, a database, or a URL is half-built and not done.
 if [ ${#FAILED[@]} -eq 0 ] && [ ${#INCOMPLETE[@]} -eq 0 ]; then
   kubectl annotate namespace "${NS}" --overwrite \
     "demo/deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >/dev/null 2>&1 || true

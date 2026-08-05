@@ -184,6 +184,15 @@ DEPLOYED_NS=""; INCOMPLETE=""
 check "rejects a flag with no value" "${rc}" "1"
 said "  and says which flag" "--profile needs a value"
 
+# Sizing reads anything that is not 'core' as 'full', so a typo would size the
+# roster wrong here and then fail every deploy separately in the children.
+FREE_IPS=999; rc="$(run_batch --profile ful)"
+check "rejects an unknown profile up front" "${rc}" "1"
+said "  and names the one it got" "got 'ful'"
+check "  deploying nothing" "$(deployed)" ""
+FREE_IPS=999; rc="$(TENANT_PROFILE=ful run_batch)"
+check "rejects an unknown TENANT_PROFILE too" "${rc}" "1"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

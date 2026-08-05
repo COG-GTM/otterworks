@@ -88,6 +88,13 @@ while [ $# -gt 0 ]; do
 done
 
 [[ "${CONCURRENCY}" =~ ^[1-9][0-9]*$ ]] || { err "--concurrency must be a positive integer"; exit 1; }
+# Checked here rather than left to the children: the sizing below reads anything
+# that is not 'core' as 'full', so a typo would size the roster wrong and then
+# fail 95 deploys one at a time on profile_services' error.
+case "${PROFILE}" in
+  core|full) ;;
+  *) err "profile must be core or full (got '${PROFILE}')"; exit 1 ;;
+esac
 
 # Turn a person's name into a tenant id. Accents are transliterated rather than
 # dashed out, so "João Esteves" is joao-esteves and not jo--o-esteves (sanitize_id
