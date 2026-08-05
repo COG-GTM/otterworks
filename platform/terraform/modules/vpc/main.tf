@@ -103,8 +103,17 @@ resource "aws_subnet" "private" {
 # addresses. They are additive: the existing subnets keep their CIDRs, so no
 # subnet is replaced and no running node is disturbed by an apply.
 #
-# Deliberately not tagged `kubernetes.io/role/elb` -- load balancer placement
-# stays on the original public subnets, so the shared NLB is not recreated.
+# Deliberately not tagged `kubernetes.io/role/elb`. That is what keeps the shared
+# NLB where it is, and it is a preference rather than an exclusion: the in-tree
+# AWS provider (there is no aws-load-balancer-controller here -- ingress-nginx
+# asks for an NLB with the legacy `aws-load-balancer-type` annotation) considers
+# every subnet in the VPC that is either tagged for this cluster or tagged for no
+# cluster at all, and with `enable_nat_gateway = false` these sit on the public
+# route table, so they read as public and land in that candidate set. It then
+# keeps one subnet per AZ, preferring the one carrying the role tag -- which is
+# the original public subnet in each AZ, in every AZ, since both sets are
+# `az_count` wide. Dropping the cluster tag here would not narrow the set (an
+# untagged subnet is a candidate too); the role tag is the lever.
 resource "aws_subnet" "pods" { # nosemgrep: terraform.aws.security.aws-subnet-has-public-ip-address.aws-subnet-has-public-ip-address
   count = var.az_count
 

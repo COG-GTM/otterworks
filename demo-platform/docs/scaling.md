@@ -63,6 +63,16 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
   consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ
   (4,091 usable each, ~8,200 across two AZs) carrying the `karpenter.sh/discovery` tag, so Karpenter prefers
   them without any change to the existing subnets, the node group, or the shared NLB.
+  They carry no `kubernetes.io/role/elb` tag, which is what keeps the NLB on the original
+  public subnets — the in-tree AWS provider picks one subnet per AZ and prefers the
+  role-tagged one, but the new subnets are in the candidate set (they are public when
+  `enable_nat_gateway = false`). Worth confirming once, after the first apply, that the
+  shared NLB still lists only the `*-public-*` subnets:
+
+  ```bash
+  aws elbv2 describe-load-balancers --region "$AWS_REGION" \
+    --query "LoadBalancers[?VpcId=='<vpc-id>'].[LoadBalancerName,AvailabilityZones[].SubnetId]"
+  ```
 
 ## 3. Shared RDS connection limits — APPLIED (PgBouncer)
 Every tenant database lives on one RDS instance, and each service holds its own pool, so raw
