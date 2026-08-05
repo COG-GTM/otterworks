@@ -1,6 +1,30 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
+  # Cluster/IaC tooling for the multi-tenant platform scripts, which abort on a missing
+  # binary (`require_bins aws kubectl helm terraform jq`); the image already carries aws
+  # and jq. Installed first because nothing below depends on it, so a failure in the
+  # image builds or seeding does not cost the session its cluster tools. Every version is
+  # pinned and checksum-verified: terraform to the release CI validates with
+  # (.github/workflows/ci.yml), kubectl to the cluster's minor
+  # (platform/terraform/environments/dev.tfvars) to stay inside the supported skew.
+  TF_VERSION=1.7.0
+  TF_SHA256=2bac080244845ebd434baf5e8557bd06d53b3c8bc01b7e496b390a56cb40ac5c
+  KUBECTL_VERSION=v1.34.10
+  KUBECTL_SHA256=95bd70842bd11a524d24acd5b68726899e3488e153e45e2b4ae846545beda050
+  HELM_VERSION=v3.19.2
+  HELM_SHA256=2114c9dea2844dce6d0ee2d792a9aae846be8cf53d5b19dc2988b5a0e8fec26e
+  fetch_verified() { # url sha256 dest
+    curl -fsSL -o "$3" "$1" || { echo "download failed: $1"; exit 1; }
+    echo "$2  $3" | sha256sum -c - >/dev/null || { echo "checksum mismatch: $1"; exit 1; }
+  }
+  fetch_verified "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" "$TF_SHA256" /tmp/terraform.zip
+  sudo unzip -o -q /tmp/terraform.zip -d /usr/local/bin && sudo chmod +x /usr/local/bin/terraform
+  fetch_verified "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" "$KUBECTL_SHA256" /tmp/kubectl
+  sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+  fetch_verified "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" "$HELM_SHA256" /tmp/helm.tgz
+  tar -xzf /tmp/helm.tgz -C /tmp && sudo install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
+
   docker compose -f docker-compose.infra.yml pull
   # Serialized with retries: parallel builds overwhelm Docker's embedded DNS (127.0.0.11)
   # and dependency fetches (e.g. cargo's static.crates.io) intermittently fail to resolve.
@@ -117,15 +141,6 @@ initialize: |
      done'
   # Remove containers but KEEP the seeded volumes so they are captured in the snapshot.
   $COMPOSE down
-
-  # Cluster/IaC tooling for the multi-tenant platform scripts, which abort on a missing
-  # binary (`require_bins aws kubectl helm terraform jq`). terraform is pinned to the
-  # version CI validates with; the image already carries aws and jq.
-  curl -fsSL -o /tmp/tf.zip https://releases.hashicorp.com/terraform/1.9.8/terraform_1.9.8_linux_amd64.zip
-  sudo unzip -o -q /tmp/tf.zip -d /usr/local/bin && sudo chmod +x /usr/local/bin/terraform
-  curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-  sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
-  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | sudo bash
 # Install project dependencies (runs during builds, surfaced to agent at session start).
 maintenance: |
   # file-service's Cargo.lock needs a newer Cargo than the baked-in 1.83 (edition2024).
