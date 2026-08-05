@@ -58,6 +58,13 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
   (`demo-platform/k8s/karpenter/nodepool.yaml`) is what actually lets it bin-pack to the
   density the CNI can serve. Without it, prefix delegation buys addresses that the scheduler
   never uses.
+  **Adding it recycles the fleet once.** `kubelet` is part of the `EC2NodeClass` spec Karpenter
+  hashes for drift, so the `install-karpenter.sh` run that first applies the field marks every
+  existing node drifted: cordon, drain, replace, 20% at a time. Tenant services are
+  `replicas=1` with in-cluster, non-persistent Redis and MeiliSearch, so every awake tenant
+  loses its sessions, search index and injected chaos flag as its node goes. The script is
+  idempotent afterwards; that first run wants the same quiet window as the prefix-delegation
+  recycle above, and warns if it finds nodes to replace.
 - **Subnet space is the other half.** The original node subnets are `/24`s (~250 addresses
   each, ~500 across two AZs) — ~30 full tenants' worth of pods, and prefix delegation
   consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ

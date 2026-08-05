@@ -179,10 +179,11 @@ tenant_has_item() {
   [ "${TENANT_HAS_ITEM[$id]}" = "yes" ]
 }
 
-# "<req_count> <idle_since> <was_running>", each "-" when unset. Callers read it
-# with `read -r`, so the fields cannot be empty.
+# "<req_count> <idle_since> <was_running>", each "-" when unset, or "? ? ?" when
+# the store could not be read at all. Callers read it with `read -r`, so the
+# fields cannot be empty.
 state_read() {
-  local id="$1" ns item c s r
+  local id="$1" ns item c s r out err errfile rc
   ns="$(idle_ns "${id}")"
   # The item the backend probe already read, not a fresh ctl_get: that second
   # read is one more chance to fail, and ctl_get answers a failure with '{}' --
@@ -202,7 +203,25 @@ state_read() {
     # The leading '.' on each field is what keeps them aligned: an unset
     # annotation prints nothing, and `read` would collapse the run of spaces
     # and shift the remaining values into the wrong variables.
-    read -r c s r <<< "$(kubectl get ns "${ns}" -o jsonpath='.{.metadata.annotations.demo/req-count} .{.metadata.annotations.demo/idle-since} .{.metadata.annotations.demo/was-running}' 2>/dev/null)"
+    #
+    # Discarding stderr and reading the empty result would be the same three
+    # blanks an unannotated namespace gives, i.e. a first observation -- so a
+    # throttled or unauthorised API server restarts the idle clock every pass and
+    # silently switches suspension off for every script-deployed tenant, with
+    # nothing in the log. Like the two lookups above: a failure stays a failure.
+    errfile="$(mktemp)"
+    out="$(kubectl get ns "${ns}" -o jsonpath='.{.metadata.annotations.demo/req-count} .{.metadata.annotations.demo/idle-since} .{.metadata.annotations.demo/was-running}' 2>"${errfile}")"; rc=$?
+    err="$(cat "${errfile}")"; rm -f "${errfile}"
+    if [ "${rc}" -ne 0 ]; then
+      # A namespace that is gone has no state and nothing to suspend; the caller
+      # finds no Deployments either way.
+      case "${err}" in
+        *NotFound*|*"not found"*) : ;;
+        *) idle_warn "cannot read idle state on ${ns} (${err//$'\n'/ }); leaving it as it is this pass"
+           printf '? ? ?\n'; return 0 ;;
+      esac
+    fi
+    read -r c s r <<< "${out}"
     c="${c#.}"; s="${s#.}"; r="${r#.}"
   fi
   printf '%s %s %s\n' "${c:--}" "${s:--}" "${r:--}"
@@ -373,6 +392,10 @@ suspend_idle_tenants() {
     always_on="$(tenant_always_on "${ns}")"
 
     read -r prev since was_running <<< "$(state_read "${id}")"
+    # The store answered with an error rather than with counters (state_read has
+    # already said so). Its blanks would read as a first observation, so acting on
+    # them would restart the clock -- and on the next pass, and the one after.
+    [ "${prev}" != "?" ] || continue
     [ "${prev}" != "-" ] || prev=""
     [ "${since}" != "-" ] || since=""
     [ "${was_running}" != "-" ] || was_running=""

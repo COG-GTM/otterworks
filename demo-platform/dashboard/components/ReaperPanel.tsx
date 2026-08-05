@@ -7,16 +7,24 @@ import type { Orphan, ReaperConfig } from "@/lib/types";
 export default function ReaperPanel() {
   const [cfg, setCfg] = useState<ReaperConfig | null>(null);
   const [orphans, setOrphans] = useState<Orphan[]>([]);
+  const [orphansUnavailable, setOrphansUnavailable] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   async function load() {
     setError(null);
+    setOrphansUnavailable(null);
     try {
       const [c, o] = await Promise.all([
         apiGet<ReaperConfig>("/api/reaper"),
-        apiGet<Orphan[]>("/api/reaper/orphans").catch(() => [] as Orphan[]),
+        // The preview refuses to guess when it cannot read which namespaces are
+        // protected, and "no orphans" is what a clean cluster looks like — so the
+        // reason has to reach the page, or a real orphan sits here unseen.
+        apiGet<Orphan[]>("/api/reaper/orphans").catch((err) => {
+          setOrphansUnavailable(err instanceof Error ? err.message : "preview unavailable");
+          return [] as Orphan[];
+        }),
       ]);
       setCfg(c);
       setOrphans(o);
@@ -164,7 +172,9 @@ export default function ReaperPanel() {
         <p className="mt-1 text-xs text-slate-500">
           Live namespaces with no matching tenant record.
         </p>
-        {orphans.length === 0 ? (
+        {orphansUnavailable ? (
+          <p className="mt-4 text-sm text-amber-600">Preview unavailable: {orphansUnavailable}</p>
+        ) : orphans.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">No orphans detected.</p>
         ) : (
           <ul className="mt-4 space-y-1 text-sm">

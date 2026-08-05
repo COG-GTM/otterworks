@@ -119,13 +119,19 @@ idle scan puts it straight back up.
 / 3.5 GiB on `full`, ~0.5 vCPU / 1.3 GiB on `core` — and holds ~15 (`full`) or
 ~7 (`core`) pod IPs for as long as it exists. A batch also brings the whole
 roster up at once regardless of the flag, so the peak is the same either way at
-deploy time. Before deploying a roster of this size, check three ceilings:
+deploy time. Before deploying a roster of this size, check four ceilings:
 
 | Ceiling | Where | Room |
 |---|---|---|
 | Pod IPs | node subnets — the `/24`s hold ~500 total, `aws_subnet.pods` adds a `/20` per AZ | ~30 `full` before, ~500 after |
+| Pods per node | `kubelet.maxPods` on the Karpenter `EC2NodeClass` | 58 before, 110 after |
 | Node CPU | `limits.cpu` on the Karpenter NodePool | ~130 `full` / ~400 `core` |
 | DB clients | PgBouncer `max_client_conn` | ~125 awake `full` |
+
+Raising `maxPods` is a one-time recycle: it is part of the `EC2NodeClass` spec
+Karpenter hashes for drift, so the `install-karpenter.sh` run that first applies
+it replaces every node it owns (20% at a time) and restarts every tenant that is
+awake. Do it before the roster exists, or in a quiet window.
 
 A ~95-person roster is ~140 vCPU (`full`, the default) or ~47 vCPU (`core`) —
 roughly $3,600 vs $800/month of spot compute if it is `--always-on`, and a

@@ -114,6 +114,24 @@ if [ "${prefix_delegation}" != "true" ]; then
   log "         demo-platform/scripts/enable-prefix-delegation.sh, before using it."
 fi
 
+# kubelet.maxPods is part of what Karpenter hashes to detect drift, so on a cluster
+# whose EC2NodeClass does not already carry it, applying this file marks every
+# NodeClaim drifted: each node is cordoned, drained and replaced, 20% at a time per
+# the NodePool's disruption budget. Tenant services run replicas=1 with in-cluster,
+# non-persistent Redis and MeiliSearch, so an awake tenant loses its sessions, its
+# search index and any injected chaos flag as its node goes. The script is
+# idempotent, but the run that first introduces the field is a rolling recycle of
+# the whole fleet and belongs in a quiet window.
+nodeclass_max_pods="$(kubectl get ec2nodeclass default -o jsonpath='{.spec.kubelet.maxPods}' 2>/dev/null || true)"
+karpenter_nodes="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null | awk 'END { print NR + 0 }')"
+if [ "${nodeclass_max_pods}" != "110" ] && [ "${karpenter_nodes:-0}" -gt 0 ]; then
+  log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_max_pods:-unset} -> 110)."
+  log "         Karpenter reads that as drift and will replace all ${karpenter_nodes} node(s) it"
+  log "         owns, restarting every tenant that is awake (Redis and MeiliSearch are"
+  log "         in-cluster and not persisted). Ctrl-C and come back in a quiet window if"
+  log "         somebody is using the cluster."
+fi
+
 log "Applying EC2NodeClass + NodePool..."
 sed -e "s#__CLUSTER__#${EKS_CLUSTER}#g" \
     -e "s#__INSTANCE_PROFILE__#${KARPENTER_INSTANCE_PROFILE}#g" \

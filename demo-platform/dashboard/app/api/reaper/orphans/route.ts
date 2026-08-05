@@ -1,4 +1,4 @@
-import { withSession, json } from "@/lib/api";
+import { withSession, json, error } from "@/lib/api";
 import { listTenants } from "@/lib/control";
 import { listTenantNamespaces, listPersistentNamespaces } from "@/lib/k8s";
 import type { Orphan } from "@/lib/types";
@@ -16,21 +16,24 @@ export const dynamic = "force-dynamic";
 // would be a preview of deletions that cannot happen, burying any real orphan in
 // ~95 rows and inviting somebody to clear them by hand.
 //
-// A label query that fails leaves every namespace protected rather than reported:
-// this page is read as a delete list, and the reaper is the thing that actually
-// decides.
+// A label query that fails lists nothing rather than everything: this page is read
+// as a delete list, and the reaper is the thing that actually decides. It says so
+// though — an empty list is also what a clean cluster looks like, so returning one
+// silently would hide a real orphan for as long as the label query keeps failing.
 export const GET = withSession(async () => {
   const [tenants, namespaces, persistent] = await Promise.all([
     listTenants(),
     listTenantNamespaces().catch(() => [] as string[]),
-    listPersistentNamespaces().catch(() => null),
+    listPersistentNamespaces().catch((err: unknown) =>
+      err instanceof Error ? err : new Error(String(err)),
+    ),
   ]);
+  if (persistent instanceof Error) {
+    return error(503, `cannot tell which namespaces are persistent: ${persistent.message}`);
+  }
   const known = new Set(tenants.map((t) => t.namespace));
-  const orphans: Orphan[] =
-    persistent === null
-      ? []
-      : namespaces
-          .filter((ns) => !known.has(ns) && !persistent.has(ns))
-          .map((ns) => ({ kind: "namespace", name: ns, detail: "no matching TENANT# record" }));
+  const orphans: Orphan[] = namespaces
+    .filter((ns) => !known.has(ns) && !persistent.has(ns))
+    .map((ns) => ({ kind: "namespace", name: ns, detail: "no matching TENANT# record" }));
   return json(orphans);
 });

@@ -32,6 +32,9 @@ SUSPENDED=""
 # two branches are covered by the contract tests at the bottom.
 ctl_audit() { :; }
 state_read() {
+  # The real function's third answer: the store could not be read at all, which
+  # is not the same as a tenant with nothing recorded yet.
+  case " ${STATE_UNREADABLE:-} " in *" $1 "*) printf '? ? ?\n'; return 0 ;; esac
   printf '%s %s %s\n' "${ITEM_COUNT[$1]:--}" "${ITEM_SINCE[$1]:--}" "${ITEM_RUNNING[$1]:--}"
 }
 record_activity() { ITEM_COUNT["$1"]="$2"; ITEM_SINCE["$1"]="$3"; }
@@ -89,6 +92,7 @@ reset_state() {
   declare -gA ITEM_COUNT=() ITEM_SINCE=() ITEM_RUNNING=() NS_RUNNING=() NS_CHAOS=() METRIC=() NS_ALWAYS_ON=() TENANT_HAS_ITEM=()
   SUSPENDED=""; RESUMED=""
   SUSPEND_RC=0; RESUME_RC=0
+  STATE_UNREADABLE=""
 }
 # A tenant the reaper has already seen up. Without this the first pass just
 # records the run state, which is not what most cases below are exercising.
@@ -133,6 +137,19 @@ ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
 seen_running quiet
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "suspends a tenant whose counter has not moved" "${SUSPENDED# }" "quiet"
+
+# The same tenant, with its counters unreadable rather than unmoved. Acting on
+# the blanks would look like a first observation and rewrite the clock, so the
+# pass leaves the tenant exactly as it found it -- awake, and with the counters
+# a later, healthy pass will compare against.
+reset_state
+NS_RUNNING[otterworks-quiet]=13; METRIC[otterworks-quiet]=100
+ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
+seen_running quiet
+STATE_UNREADABLE="quiet"
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "suspends nothing when the idle state cannot be read" "${SUSPENDED# }" ""
+check "  and leaves the stored clock where it was" "${ITEM_SINCE[quiet]}" "${STALE}"
 
 reset_state
 NS_RUNNING[otterworks-recent]=13; METRIC[otterworks-recent]=100
@@ -431,8 +448,10 @@ kubectl() {
     *annotate*)         for a in "$@"; do case "${a}" in *=*) echo "${a}" >> "${WRITES}/annotate" ;; esac; done ;;
     # All three in one response, as the real jsonpath asks for them, '.'-prefixed
     # so an unset one still occupies its field.
-    *demo/req-count*)   printf '.%s .%s .%s' \
-                          "${NS_ANNOT[req-count]:-}" "${NS_ANNOT[idle-since]:-}" "${NS_ANNOT[was-running]:-}" ;;
+    *demo/req-count*)
+      [ -z "${NS_READ_ERR:-}" ] || { echo "${NS_READ_ERR}" >&2; return 1; }
+      printf '.%s .%s .%s' \
+        "${NS_ANNOT[req-count]:-}" "${NS_ANNOT[idle-since]:-}" "${NS_ANNOT[was-running]:-}" ;;
   esac
   return 0
 }
@@ -471,6 +490,20 @@ check "  and reads them back on the next pass" "$(state_read solo)" "42 555 1"
 reset_backend; HAS_ITEM=no
 NS_ANNOT[was-running]=1
 check "  keeps the fields apart when only one is set" "$(state_read solo)" "- - 1"
+
+# A namespace read that fails is not a namespace with no annotations: the empty
+# answer is a first observation, so a throttled or unauthorised API server would
+# restart the idle clock every pass and switch suspension off for every
+# script-deployed tenant, with nothing in the log to say why.
+reset_backend; HAS_ITEM=no
+NS_ANNOT[req-count]=42; NS_ANNOT[idle-since]=555; NS_ANNOT[was-running]=1
+NS_READ_ERR="error: You must be logged in to the server (Unauthorized)"
+check "an unreadable namespace is unknown, not unmeasured" "$(state_read solo 2>/dev/null)" "? ? ?"
+
+# Except the one failure that is an answer: nothing is left to suspend.
+NS_READ_ERR='Error from server (NotFound): namespaces "otterworks-solo" not found'
+check "  but a namespace that is gone reads as unset" "$(state_read solo 2>/dev/null)" "- - -"
+NS_READ_ERR=""
 
 # An unreadable control table must not read as "no item": that would send a
 # dashboard tenant's writes to its namespace, where nothing reads them again, and

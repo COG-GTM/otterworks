@@ -21,6 +21,7 @@ nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
 PERSISTENT_LABEL=""     # what `kubectl get ns` reports for demo/persistent
+CTL_ITEM_ID=""          # the one tenant id the control table has a TENANT# item for
 NS_LOOKUP_ERR=""        # when set, the namespace lookup fails with this on stderr
 NS_LOOKUP_WARN=""       # printed on stderr by a lookup that still succeeds
 DELETED=""              # every destructive call the reaper attempted
@@ -39,9 +40,16 @@ kubectl() {
 
 aws() {
   case "$*" in
-    # No TENANT#<id> item: the tenant was deployed straight from the script, so
-    # ctl_tenant_exists is false and only the persistence guard protects it.
-    *"get-item"*)            printf '{}'; return 0 ;;
+    # No TENANT#<id> item unless CTL_ITEM_ID names one: a tenant deployed straight
+    # from the script has none, so ctl_tenant_exists is false and only the
+    # persistence guard protects it.
+    *"get-item"*)
+      if [ -n "${CTL_ITEM_ID}" ] && [ "$*" != "${*//TENANT#${CTL_ITEM_ID}\"/}" ]; then
+        printf '{"Item":{"PK":{"S":"TENANT#%s"},"SK":{"S":"META"}}}' "${CTL_ITEM_ID}"
+      else
+        printf '{}'
+      fi
+      return 0 ;;
     *"s3api list-buckets"*)  printf 'otterworks-files-dev'; return 0 ;;
     *"list-objects-v2"*)     printf 'tenants/ada-lovelace/'; return 0 ;;
     *"s3 rm"*)               DELETED="${DELETED} $*"; return 0 ;;
@@ -131,7 +139,19 @@ check "  and does not announce it as an orphan" "${r}" "no"
 PERSISTENT_LABEL=""
 : > "${TEARDOWN_LOG}"
 sweep_orphan_dbs >/dev/null 2>&1
-check "orphan-database sweep still GCs a genuine orphan" "$(cat "${TEARDOWN_LOG}")" "teardown:ada_lovelace"
+check "orphan-database sweep still GCs a genuine orphan" "$(cat "${TEARDOWN_LOG}")" "teardown:ada-lovelace"
+
+# And it has to ask about the tenant in the spelling the control table uses. A
+# database name writes '_' where the id has '-', so stripping the prefix alone
+# asks about a tenant that cannot exist -- and for every hyphenated id, which is
+# now every id the roster derives, the answer is "orphan". gc_tenant re-sanitises
+# what it is handed, so the namespace and database it deletes are the live
+# tenant's; only the TENANT# item, looked up under the mis-spelling, survives.
+CTL_ITEM_ID="ada-lovelace"
+: > "${TEARDOWN_LOG}"
+sweep_orphan_dbs >/dev/null 2>&1
+check "orphan-database sweep spares a live tenant with a hyphenated id" "$(cat "${TEARDOWN_LOG}")" ""
+CTL_ITEM_ID=""
 
 # Its data is guarded separately: the S3 and DynamoDB sweeps delete objects
 # directly rather than going through gc_tenant.

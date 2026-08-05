@@ -347,7 +347,17 @@ sweep_orphan_dbs() {
   local db id gc_rc
   for db in $(list_tenant_dbs); do
     [ "${db}" = "otterworks" ] && continue
-    id="${db#otterworks_}"
+    # Back to the id's own spelling. tenant_db_name maps every non-alphanumeric
+    # character to '_', while sanitize_id -- which namespaces and TENANT# keys are
+    # built from -- maps it to '-', so stripping the prefix alone turns
+    # otterworks_ada_lovelace into 'ada_lovelace': a key that exists for no tenant,
+    # however live. ctl_tenant_exists then says "orphan", and gc_tenant re-sanitises
+    # the id and deletes the real namespace and the real database, leaving the
+    # TENANT# item behind. An id never contains '_' (sanitize_id would have replaced
+    # it), so the reverse mapping is unambiguous. Roster tenants survive on the
+    # persistence label; a dashboard tenant has none, and this PR makes the
+    # hyphenated firstname-lastname id the ordinary shape.
+    id="${db#otterworks_}"; id="${id//_/-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
       # As above: gc_tenant owns the persistence check, and the sweep only
