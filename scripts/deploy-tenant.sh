@@ -232,7 +232,7 @@ else
 fi
 
 # ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------
-ensure_irsa_trust() {
+update_irsa_trust() {
   local d="${REPO_ROOT}/infrastructure/terraform"
   local oidc_url; oidc_url="$(terraform -chdir="${REPO_ROOT}/platform/terraform" output -raw oidc_provider_url 2>/dev/null || echo "")"
   # In-cluster the platform/terraform state isn't initialized; fall back to the
@@ -282,6 +282,30 @@ EOF
       && log "  IRSA trust: ${role} now trusts ${sub}" \
       || warn "  failed to update trust for ${role}"
   done
+}
+
+# The trust documents are shared between all tenants and updated read-modify-
+# write, so two deploys running at once (deploy-tenant-batch.sh fans out by
+# default) can each append their namespace to the same document and the second
+# write drops the first. Nothing surfaces the loss: the deploy succeeds and that
+# tenant's pods then fail every AWS call. Serialise the pass across processes on
+# this host; it is seconds long, and a no-op when the Terraform-managed
+# otterworks-* wildcard already covers the namespace.
+ensure_irsa_trust() {
+  local lock="${TMPDIR:-/tmp}/otterworks-irsa-trust.lock"
+  if ! command -v flock >/dev/null 2>&1; then
+    warn "flock unavailable: concurrent deploys may race on the shared IRSA trust policies"
+    update_irsa_trust
+    return
+  fi
+  # Ten minutes is far longer than the pass takes, so a timeout means a stuck
+  # holder rather than contention. Going ahead anyway is the one outcome worth
+  # avoiding — it is the lost-update this lock exists to prevent, and it fails
+  # later and invisibly, in another tenant's pods.
+  (
+    flock -w 600 9 || { err "  timed out waiting for the IRSA trust lock (${lock}); another deploy is mid-update"; exit 1; }
+    update_irsa_trust
+  ) 9>"${lock}"
 }
 log "Ensuring shared IRSA roles trust the tenant namespace service accounts..."
 ensure_irsa_trust

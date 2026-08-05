@@ -20,7 +20,7 @@ PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); echo "  ok   - $1"; }
 nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
-said() { if grep -q "$2" "${WORK}/out"; then ok "$1"; else nope "$1 (not in output: '$2')"; fi; }
+said() { if grep -q -- "$2" "${WORK}/out"; then ok "$1"; else nope "$1 (not in output: '$2')"; fi; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
@@ -131,6 +131,10 @@ check "retries a tenant left half-built by an earlier run" "$(deployed)" \
   "deploy:ada-lovelace deploy:grace-hopper"
 said "  and says so" "Retrying 1 incomplete tenant"
 EXISTING_NS=""
+
+"${WORK}/scripts/deploy-tenant-batch.sh" --profile >"${WORK}/out" 2>&1; rc="$?"
+check "rejects a flag with no value" "${rc}" "1"
+said "  and says which flag" "--profile needs a value"
 
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"

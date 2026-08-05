@@ -57,17 +57,22 @@ PROFILE="full"
 NAMES=()
 PASSTHROUGH=()
 
+# Under set -u a value-less "--profile" would abort on `$2: unbound variable`
+# instead of saying what is wrong.
+needs_value() { if [ "$#" -lt 2 ] || [ -z "$2" ]; then err "$1 needs a value"; exit 1; fi; }
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --roster)      ROSTER="$2"; shift 2 ;;
-    --ttl)         TTL="$2"; shift 2 ;;
-    --concurrency) CONCURRENCY="$2"; shift 2 ;;
-    --log-dir)     LOG_DIR="$2"; shift 2 ;;
+    --roster)      needs_value "$@"; ROSTER="$2"; shift 2 ;;
+    --ttl)         needs_value "$@"; TTL="$2"; shift 2 ;;
+    --concurrency) needs_value "$@"; CONCURRENCY="$2"; shift 2 ;;
+    --log-dir)     needs_value "$@"; LOG_DIR="$2"; shift 2 ;;
     --redeploy)    REDEPLOY=true; shift ;;
     --dry-run)     DRY_RUN=true; shift ;;
     --always-on)   ALWAYS_ON=true; PASSTHROUGH+=("$1"); shift ;;
     --no-preflight) PREFLIGHT=false; shift ;;
     --tier|--profile|--host-suffix|--image-tag)
+                   needs_value "$@"
                    [ "$1" = "--profile" ] && PROFILE="$2"
                    PASSTHROUGH+=("$1" "$2"); shift 2 ;;
     --skip-db)     PASSTHROUGH+=("$1"); shift ;;
