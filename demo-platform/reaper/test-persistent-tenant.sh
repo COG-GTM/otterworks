@@ -22,12 +22,14 @@ check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$
 
 PERSISTENT_LABEL=""     # what `kubectl get ns` reports for demo/persistent
 NS_LOOKUP_ERR=""        # when set, the namespace lookup fails with this on stderr
+NS_LOOKUP_WARN=""       # printed on stderr by a lookup that still succeeds
 DELETED=""              # every destructive call the reaper attempted
 
 kubectl() {
   case "$*" in
     *"labels.demo/persistent"*)
       if [ -n "${NS_LOOKUP_ERR}" ]; then echo "${NS_LOOKUP_ERR}" >&2; return 1; fi
+      [ -z "${NS_LOOKUP_WARN}" ] || echo "${NS_LOOKUP_WARN}" >&2
       printf '%s' "${PERSISTENT_LABEL}"; return 0 ;;
     *"get ns -l app.kubernetes.io/managed-by=otterworks-tenant"*)
       printf 'otterworks-ada-lovelace'; return 0 ;;
@@ -76,6 +78,15 @@ PERSISTENT_LABEL=""
 tenant_is_persistent ada-lovelace && r=yes || r=no
 check "recognises an ordinary tenant" "${r}" "no"
 
+# kubectl writes to stderr on plenty of successful calls -- API-server Warning
+# headers, exec-plugin deprecation notices. Folded into the value, any of them
+# makes the label compare unequal to "true" and the tenant is deleted.
+PERSISTENT_LABEL="true"
+NS_LOOKUP_WARN="Warning: v1 Namespace is deprecated in this cluster"
+tenant_is_persistent ada-lovelace && r=yes || r=no
+check "  even when the lookup also prints a warning" "${r}" "yes"
+NS_LOOKUP_WARN=""
+
 # The guard sits in gc_tenant, which is the single choke point for the expiry
 # reap, the orphan-namespace sweep and the orphan-database sweep alike.
 PERSISTENT_LABEL="true"
@@ -103,6 +114,22 @@ PERSISTENT_LABEL=""
 : > "${TEARDOWN_LOG}"
 sweep_orphan_namespaces >/dev/null 2>&1
 check "orphan-namespace sweep still GCs a genuine orphan" "$(cat "${TEARDOWN_LOG}")" "teardown:ada-lovelace"
+
+# The database sweep goes through gc_tenant, so the data was never at risk --
+# but every standing tenant is item-less by design, and announcing ~95 orphans
+# it will not collect buries the one real orphan in the same log.
+list_tenant_dbs() { echo "otterworks_ada_lovelace"; }
+PERSISTENT_LABEL="true"
+: > "${TEARDOWN_LOG}"
+out="$(sweep_orphan_dbs 2>&1)"
+check "orphan-database sweep spares a persistent tenant" "$(cat "${TEARDOWN_LOG}")" ""
+case "${out}" in *"orphan database"*) r=yes ;; *) r=no ;; esac
+check "  and does not announce it as an orphan" "${r}" "no"
+
+PERSISTENT_LABEL=""
+: > "${TEARDOWN_LOG}"
+sweep_orphan_dbs >/dev/null 2>&1
+check "orphan-database sweep still GCs a genuine orphan" "$(cat "${TEARDOWN_LOG}")" "teardown:ada_lovelace"
 
 # Its data is guarded separately: the S3 and DynamoDB sweeps delete objects
 # directly rather than going through gc_tenant.

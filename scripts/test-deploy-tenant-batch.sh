@@ -28,12 +28,14 @@ mkdir -p "${WORK}/scripts/lib" "${WORK}/bin"
 cp "${SCRIPT_DIR}/deploy-tenant-batch.sh" "${WORK}/scripts/"
 cp "${SCRIPT_DIR}/lib/tenant-common.sh" "${WORK}/scripts/lib/"
 
-# Records the tenants a run would have deployed. Like the real script it stamps
-# demo/deployed-at on the way out, and withholds it -- while still exiting 0 --
-# for a tenant named in INCOMPLETE, which is what a failed Helm install leaves.
+# Records the tenants a run would have deployed. Like the real script it clears
+# demo/deployed-at on the way in and stamps it on the way out, withholding it --
+# while still exiting 0 -- for a tenant named in INCOMPLETE, which is what a
+# failed Helm install leaves.
 cat > "${WORK}/scripts/deploy-tenant.sh" <<'EOS'
 #!/usr/bin/env bash
 echo "deploy:$1 $*" >> "${DEPLOY_LOG}"
+rm -f "${MARKER_DIR}/otterworks-$1"
 case " ${INCOMPLETE:-} " in *" $1 "*) exit 0 ;; esac
 : > "${MARKER_DIR}/otterworks-$1"
 EOS
@@ -48,9 +50,10 @@ case "$*" in
 esac
 EOS
 
-# EXISTING_NS is the namespaces the cluster already has, DEPLOYED_NS the subset
-# that carries demo/deployed-at. Default: an empty cluster, and a NodePool wide
-# enough not to warn.
+# EXISTING_NS is the namespaces the cluster already has, and MARKER_DIR holds a
+# file per namespace carrying demo/deployed-at -- a file rather than a variable
+# because the child deploy adds and removes them as a run progresses. Default:
+# an empty cluster, and a NodePool wide enough not to warn.
 cat > "${WORK}/bin/kubectl" <<'EOS'
 #!/usr/bin/env bash
 matches() { for n in $1; do case "$2" in *"${n}"*) return 0 ;; esac; done; return 1; }
@@ -61,7 +64,7 @@ case "$*" in
       [ -e "${f}" ] || continue
       case "$*" in *"${f##*/}"*) echo "2026-01-01T00:00:00Z"; exit 0 ;; esac
     done
-    matches "${DEPLOYED_NS:-}" "$*" && echo "2026-01-01T00:00:00Z"; exit 0 ;;
+    exit 0 ;;
   *"get ns"*)                          matches "${EXISTING_NS:-}" "$*"; exit $? ;;
   *)                                   exit 0 ;;
 esac
@@ -80,6 +83,8 @@ export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS="" INCOMPLETE=""
 run_batch() {
   : > "${DEPLOY_LOG}"
   rm -f "${MARKER_DIR}"/*
+  # The state an earlier run left on the cluster.
+  for n in ${DEPLOYED_NS:-}; do : > "${MARKER_DIR}/otterworks-${n}"; done
   "${WORK}/scripts/deploy-tenant-batch.sh" "$@" "Ada Lovelace" "Grace Hopper" >"${WORK}/out" 2>&1
   echo "$?"
 }
@@ -134,7 +139,7 @@ said "  and says the fleet is permanently reserved" "reserved permanently"
 # database or Helm step leaves behind: skipping on that alone would report the
 # roster complete while leaving those people with a shell of a tenant.
 FREE_IPS=4000
-EXISTING_NS="otterworks-ada-lovelace" DEPLOYED_NS="otterworks-ada-lovelace"
+EXISTING_NS="otterworks-ada-lovelace" DEPLOYED_NS="ada-lovelace"
 rc="$(run_batch)"
 check "skips a tenant that finished deploying" "$(deployed)" "deploy:grace-hopper"
 check "  and succeeds" "${rc}" "0"
@@ -154,7 +159,15 @@ INCOMPLETE="ada-lovelace"; rc="$(run_batch)"
 check "fails a tenant that came back without every service" "${rc}" "1"
 said "  and names it as incomplete" "services missing, tenant incomplete"
 said "  and reports the other one deployed" "1 deployed"
-INCOMPLETE=""
+
+# ...including when the tenant deployed cleanly once before. The marker is set
+# with `kubectl annotate`, so the namespace re-apply does not prune it: if the
+# child did not clear it, this run would be judged complete on the strength of
+# the previous one and the roster would report a service-less tenant as fine.
+DEPLOYED_NS="ada-lovelace grace-hopper"; rc="$(run_batch --redeploy)"
+check "a redeploy that loses a service is not covered by the old marker" "${rc}" "1"
+said "  and still names it incomplete" "services missing, tenant incomplete"
+DEPLOYED_NS=""; INCOMPLETE=""
 
 "${WORK}/scripts/deploy-tenant-batch.sh" --profile >"${WORK}/out" 2>&1; rc="$?"
 check "rejects a flag with no value" "${rc}" "1"

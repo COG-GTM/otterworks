@@ -218,6 +218,12 @@ spec:
               kubernetes.io/metadata.name: monitoring
 YAML
 
+# demo/deployed-at describes the run that wrote it, and this run has not finished:
+# it is set with `kubectl annotate`, so the apply above does not prune it, and a
+# redeploy that then loses a service would be read as complete on the strength of
+# the previous one's marker.
+kubectl annotate namespace "${NS}" demo/deployed-at- >/dev/null 2>&1 || true
+
 # Converting a TTL'd tenant to a persistent one has to strip the annotations the
 # earlier deploy left behind: the baseline reaper reads them straight off the
 # namespace, and `kubectl apply` only prunes fields it owns (a namespace created
