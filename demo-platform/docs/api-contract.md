@@ -47,10 +47,11 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   409 if a seed is already running: the in-flight check is the loader Job in
   `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
   that check — or the tenant's live state — cannot be read, rather than acting on an
-  answer the cluster did not give. `force: true` skips the in-flight check and passes
-  `SEED_FORCE=true` to the runner: it discards whatever the running loader has uploaded,
-  and is the only way out of a loader that never gets a terminal condition (a pod the
-  tenant's ResourceQuota will not admit) without direct `kubectl` access.
+  answer the cluster did not give. `force: true` skips both in-flight checks (loader Job and
+  runner Job) and passes `SEED_FORCE=true` to the runner: it discards whatever the running
+  loader has uploaded, and is the only way out of a Job that never reaches a terminal state
+  — a loader pod the tenant's ResourceQuota will not admit, a runner blocked on a pod stuck
+  Terminating — without direct `kubectl` access.
   Returns once the *runner* Job is queued — the loader appears seconds later and then runs
   for minutes to hours, and a seed the runner refuses (asleep tenant, missing Secret,
   loader already running) shows up only in the runner Job's logs, which

@@ -242,9 +242,14 @@ run_seed() {
   # idempotent -- which the generator itself is. Foreground cascade so the old
   # loader pod is really gone (not merely orphaned to the GC) before its
   # replacement is admitted against the tenant's ResourceQuota.
+  # Bounded, because a foreground delete waits for the loader pod to go away and
+  # a pod stuck Terminating (lost node, finalizer) would otherwise keep this
+  # runner Job active forever -- which the dashboard reads as "a seed is already
+  # running" for every later attempt.
   log "removing any previous seed Job in ${ns}"
   kubectl -n "${ns}" delete job "${job}" \
-    --ignore-not-found --cascade=foreground --wait=true >/dev/null
+    --ignore-not-found --cascade=foreground --wait=true --timeout=120s >/dev/null ||
+    die "could not remove the previous seed Job in ${ns} within 120s -- its pod may be stuck Terminating"
 
   log "seeding ${TENANT_ID} (${ns}) at scale ${scale}, departments ${departments}"
   printf '%s\n' "${manifest}" | kubectl apply -f - >/dev/null ||

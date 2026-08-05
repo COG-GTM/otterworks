@@ -85,8 +85,15 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
       );
     }
   }
-  const running = await activeRunnerJob(id, "seed");
-  if (running) return error(409, `a seed is already running for '${id}' (${running})`);
+  // Skipped under force for the same reason as the loader check: a runner Job
+  // can also get stuck active (it waits on a foreground delete of a loader pod
+  // that will not terminate), and a check that cannot be bypassed is a lockout.
+  if (!force) {
+    const running = await activeRunnerJob(id, "seed");
+    if (running) {
+      return error(409, `a seed is already running for '${id}' (${running}); force to dispatch anyway`);
+    }
+  }
 
   await appendAudit({
     tenantId: id,

@@ -169,6 +169,22 @@ Notes:
 - The loader pod counts against the tenant's `ResourceQuota` (it requests
   250m CPU / 512Mi) and lives in the tenant namespace, so it is visible as an
   extra pod in `tenant.sh status <id>` while it runs.
+- **The loader depends on NetworkPolicy not being enforced.** The api-gateway
+  chart ships one whose only ingress sources are `ingress-nginx` and
+  `monitoring` (`infrastructure/helm/api-gateway/values.yaml`,
+  `networkPolicy.enabled: true`), and the loader calls the Service from inside
+  the tenant namespace. The EKS VPC CNI does not enforce NetworkPolicy unless
+  network-policy support is turned on, which is what makes this work today (and
+  made the original single-namespace manifest work). Turning enforcement on
+  means adding the tenant namespace to that policy, or seeding would time out.
+- **The generator that runs is the one on public `main`,** not the one in the
+  runner image or on the tenant's branch: the init container clones
+  `REPO_URL@REPO_REF` anonymously (defaults
+  `https://github.com/Cognition-Partner-Workshops/otterworks.git`, `main`), so a
+  change to `generate_drive.py` or `taxonomy.py` is not exercised by a seed until
+  it lands there. Point a test run at a branch with
+  `REPO_REF=<branch> render-seed-job.sh ...` (`SEED_REPO_URL`/`SEED_REPO_REF` on
+  the runner).
 - **Idle-suspend can interrupt a long seed.** The reaper measures idleness from
   *ingress* requests, and the loader talks to the api-gateway Service directly —
   so on a tenant nobody is browsing, a full-scale run (longer than
