@@ -405,14 +405,15 @@ if [ "${#QUEUE[@]}" -gt 0 ]; then
 fi
 
 log "Deploying ${#QUEUE[@]} tenant(s), ${CONCURRENCY} at a time..."
-running=0
 for id in "${QUEUE[@]+"${QUEUE[@]}"}"; do
   deploy_one "${id}" &
-  running=$(( running + 1 ))
-  if [ "${running}" -ge "${CONCURRENCY}" ]; then
+  # Counted from the job table rather than decremented on each `wait -n`: two
+  # children finishing between iterations is one return and one decrement, so a
+  # bookkeeping counter drifts below the requested concurrency and a 95-tenant
+  # run finishes slower than it was asked to, with no sign of why.
+  while [ "$(jobs -rp | wc -l)" -ge "${CONCURRENCY}" ]; do
     wait -n
-    running=$(( running - 1 ))
-  fi
+  done
 done
 wait
 

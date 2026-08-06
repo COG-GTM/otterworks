@@ -384,11 +384,14 @@ suspend_idle_tenants() {
     # above never uses the answer, and the pass that skips is the degraded one.
     #
     # Exempt tenants are measured like everyone else and only spared the
-    # suspension itself. Skipping them outright freezes their counters at
+    # suspension itself. Skipping them outright would freeze req_count at
     # whatever the last non-exempt pass stored, and the pass after the label is
     # dropped would then compare live traffic against an hours-old baseline --
     # an ingress restart in between reads as "idle since this morning" and
-    # suspends a tenant somebody is using.
+    # suspends a tenant somebody is using. (idle_since does sit still while an
+    # exempt tenant is genuinely idle: no branch writes when the counter has not
+    # moved, which is the same "idle since then" a non-exempt tenant records.
+    # Traffic, a wake, or a counter reset all update it as usual.)
     always_on="$(tenant_always_on "${ns}")"
 
     read -r prev since was_running <<< "$(state_read "${id}")"

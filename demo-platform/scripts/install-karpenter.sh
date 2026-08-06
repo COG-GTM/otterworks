@@ -11,11 +11,15 @@
 # discovery tags) is Terraform's -- see platform/terraform/modules/eks/karpenter.tf.
 # This script installs the controller and the NodePool that consumes them.
 #
-# Idempotent: safe to re-run, including to upgrade the Karpenter version.
+# Idempotent: safe to re-run, including to upgrade the Karpenter version. The one
+# exception is a run that changes the EC2NodeClass's kubelet settings on a cluster
+# with live nodes -- Karpenter reads that as drift and recycles the fleet -- which
+# this asks about before applying.
 #
 # Usage:
 #   demo-platform/scripts/install-karpenter.sh
 #   KARPENTER_VERSION=1.13.0 EKS_CLUSTER=otterworks-dev ... install-karpenter.sh
+#   ACCEPT_NODE_RECYCLE=1 ... install-karpenter.sh   # unattended, recycle allowed
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -35,6 +39,8 @@ KARPENTER_VERSION="${KARPENTER_VERSION:-1.13.0}"
 # anyway; the second only shortens failover, which is HA this environment has
 # deliberately given up. Raise it if the system pool ever grows.
 KARPENTER_REPLICAS="${KARPENTER_REPLICAS:-1}"
+# Answers the drift prompt below for unattended runs (CI, a runner Job).
+ACCEPT_NODE_RECYCLE="${ACCEPT_NODE_RECYCLE:-}"
 TF_DIR="${TF_DIR:-${REPO_ROOT}/platform/terraform}"
 
 log()  { echo "[karpenter] $*"; }
@@ -128,8 +134,24 @@ if [ "${nodeclass_max_pods}" != "110" ] && [ "${karpenter_nodes:-0}" -gt 0 ]; th
   log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_max_pods:-unset} -> 110)."
   log "         Karpenter reads that as drift and will replace all ${karpenter_nodes} node(s) it"
   log "         owns, restarting every tenant that is awake (Redis and MeiliSearch are"
-  log "         in-cluster and not persisted). Ctrl-C and come back in a quiet window if"
-  log "         somebody is using the cluster."
+  log "         in-cluster and not persisted)."
+  # A warning followed immediately by the apply is not a decision anybody gets to
+  # make, so this is a gate. Only reached when the field actually changes and there
+  # are nodes to lose: a first install, or a re-run of an unchanged file, never asks.
+  if [ -n "${ACCEPT_NODE_RECYCLE}" ]; then
+    log "         ACCEPT_NODE_RECYCLE is set; continuing."
+  elif [ -t 0 ]; then
+    read -r -p "[karpenter] Replace ${karpenter_nodes} node(s) now? [y/N] " reply
+    case "${reply}" in
+      [yY]|[yY][eE][sS]) ;;
+      *) fail "aborted; re-run in a quiet window, or with ACCEPT_NODE_RECYCLE=1" ;;
+    esac
+  else
+    # Unattended and unacknowledged: refuse rather than guess. Everything above
+    # this point (the controller upgrade) has already been applied and is
+    # idempotent, so the re-run with the variable set costs nothing.
+    fail "refusing to recycle ${karpenter_nodes} node(s) unattended; re-run with ACCEPT_NODE_RECYCLE=1"
+  fi
 fi
 
 log "Applying EC2NodeClass + NodePool..."

@@ -64,7 +64,8 @@ At ~15 pods/tenant that's ~2 tenants/node, and you exhaust private-subnet CIDRs 
   `replicas=1` with in-cluster, non-persistent Redis and MeiliSearch, so every awake tenant
   loses its sessions, search index and injected chaos flag as its node goes. The script is
   idempotent afterwards; that first run wants the same quiet window as the prefix-delegation
-  recycle above, and warns if it finds nodes to replace.
+  recycle above, and `install-karpenter.sh` stops to ask before applying when it finds nodes
+  to replace (`ACCEPT_NODE_RECYCLE=1` answers it for an unattended run).
 - **Subnet space is the other half.** The original node subnets are `/24`s (~250 addresses
   each, ~500 across two AZs) — ~30 full tenants' worth of pods, and prefix delegation
   consumes them in `/28` blocks. `aws_subnet.pods` in the VPC module adds a `/20` per AZ

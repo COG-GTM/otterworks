@@ -135,6 +135,15 @@ resource "aws_subnet" "pods" { # nosemgrep: terraform.aws.security.aws-subnet-ha
       condition     = var.az_count <= local.pod_subnet_az_limit
       error_message = "az_count > ${local.pod_subnet_az_limit} overlaps the public subnets; renumber the pod subnets before widening the VPC."
     }
+    # Four bits of subnetting is a /20 only from a /16, which is what the docs
+    # and the capacity numbers assume. From anything narrower the same expression
+    # quietly yields smaller subnets -- a /18 VPC gives /22s, ~1,000 pods per AZ
+    # instead of ~4,000 -- and the roster's preflight would be sized against
+    # capacity that does not exist.
+    precondition {
+      condition     = tonumber(split("/", var.vpc_cidr)[1]) <= 16
+      error_message = "vpc_cidr must be /16 or larger for the pod subnets to be the documented /20s (got ${var.vpc_cidr})."
+    }
   }
 }
 

@@ -131,7 +131,8 @@ deploy time. Before deploying a roster of this size, check four ceilings:
 Raising `maxPods` is a one-time recycle: it is part of the `EC2NodeClass` spec
 Karpenter hashes for drift, so the `install-karpenter.sh` run that first applies
 it replaces every node it owns (20% at a time) and restarts every tenant that is
-awake. Do it before the roster exists, or in a quiet window.
+awake. The script asks before doing it (`ACCEPT_NODE_RECYCLE=1` to answer it
+unattended). Do it before the roster exists, or in a quiet window.
 
 A ~95-person roster is ~140 vCPU (`full`, the default) or ~47 vCPU (`core`) —
 roughly $3,600 vs $800/month of spot compute if it is `--always-on`, and a
