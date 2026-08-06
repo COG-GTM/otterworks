@@ -279,15 +279,17 @@ that pattern in `testdata/harness/validate.py` + `make testdata-validate NS=<ns>
 ## 5. Work packages
 
 Effort: **S** ≈ half a session, **M** ≈ one session, **L** ≈ one full session with setup risk.
-Ownership globs are disjoint — that is what makes the fan-out safe.
+Ownership globs are disjoint — that is what makes the fan-out safe. Every path below is
+repo-root-relative and fully qualified, so disjointness can be checked mechanically rather than
+inferred; two WPs may own different files in the same directory, never the same file.
 
 | WP | Title | Owns (files/globs) | Effort | Depends on |
 |---|---|---|---|---|
 | **WP-00** | Coverage baseline + gates | `Makefile`, `.github/workflows/ci.yml`, `sonar-project.properties`, `frontend/client-app/package.json` + vitest config, `codecov.yml` (new) | M | — |
-| WP-01 | file-service handlers: upload/download/versions | `services/file-service/src/handlers.rs` (tests), `src/storage.rs`, new `services/file-service/tests/` | L | WP-00 |
-| WP-02 | file-service: folders, trash/restore, share matrix | `services/file-service/src/metadata.rs` (tests), `src/models.rs`, `src/middleware.rs`, `src/config.rs`, `src/errors.rs` | L | WP-00 |
-| WP-03 | api-gateway router + JWT/header-spoofing negatives | `services/api-gateway/internal/proxy/router_test.go` (new), `internal/config/*_test.go`, `internal/middleware/jwt_test.go`, `logging_test.go`, `metrics_test.go` | M | WP-00 |
-| WP-04 | api-gateway rate-limit + circuit-breaker boundaries | `services/api-gateway/internal/middleware/ratelimit_test.go`, `internal/proxy/circuitbreaker_test.go` | S | WP-00 |
+| WP-01 | file-service handlers: upload/download/versions | `services/file-service/src/handlers.rs` (tests), `services/file-service/src/storage.rs`, new `services/file-service/tests/` | L | WP-00 |
+| WP-02 | file-service: folders, trash/restore, share matrix | `services/file-service/src/metadata.rs` (tests), `services/file-service/src/models.rs`, `services/file-service/src/middleware.rs`, `services/file-service/src/config.rs`, `services/file-service/src/errors.rs` | L | WP-00 |
+| WP-03 | api-gateway router + JWT/header-spoofing negatives | `services/api-gateway/internal/proxy/router_test.go` (new), `services/api-gateway/internal/config/config_test.go` (new), `services/api-gateway/internal/middleware/jwt_test.go`, `services/api-gateway/internal/middleware/logging_test.go` (new), `services/api-gateway/internal/middleware/metrics_test.go` (new) | M | WP-00 |
+| WP-04 | api-gateway rate-limit + circuit-breaker boundaries | `services/api-gateway/internal/middleware/ratelimit_test.go`, `services/api-gateway/internal/proxy/circuitbreaker_test.go` | S | WP-00 |
 | WP-05 | auth-service: token lifecycle + password policy | `services/auth-service/src/test/**` | M | WP-00 |
 | WP-06 | document-service: pagination, versions, event publisher | `services/document-service/tests/**` | M | WP-00 |
 | WP-07 | search-service: query edges, SQS consumer, auth middleware | `services/search-service/tests/**` | M | WP-00 |
