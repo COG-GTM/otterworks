@@ -214,6 +214,15 @@ for name in "${NAMES[@]}"; do
   if [ -z "${id}" ]; then
     err "Cannot derive a tenant id from '${name}'"; INVALID=1; continue
   fi
+  # Checked independently of the slug that produced it. This id is interpolated
+  # into a DynamoDB key, the IAM trust-policy subjects of shared roles and
+  # heredoc-generated YAML, and one sed expression above is currently the only
+  # thing keeping a roster line out of all three; an edit to it should not be
+  # able to widen what reaches them. The shape asked for here is the one the
+  # namespace needs anyway, so nothing valid is turned away.
+  if ! [[ "${id}" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+    err "'${name}' derived '${id}', which is not a usable tenant id"; INVALID=1; continue
+  fi
   # otterworks-<id> is a namespace, i.e. one RFC-1123 label (63 chars max).
   if [ "${#id}" -gt 52 ]; then
     err "Tenant id '${id}' is too long for namespace $(tenant_namespace "${id}") (max 63 chars)"
@@ -236,13 +245,20 @@ case "${PROFILE}" in
   core) PODS_EACH=7;  MILLICPU_EACH=500 ;;
   *)    PODS_EACH=15; MILLICPU_EACH=1500 ;;
 esac
-PEAK_PODS=$(( ${#IDS[@]} * PODS_EACH ))
-PEAK_CPU=$(( (${#IDS[@]} * MILLICPU_EACH + 999) / 1000 ))
-if [ "${ALWAYS_ON}" = true ]; then
-  log "Always-on: ${PEAK_PODS} pods / ~${PEAK_CPU} vCPU reserved permanently (${PROFILE} profile, no scale-to-zero)."
-else
-  log "Peak ${PEAK_PODS} pods / ~${PEAK_CPU} vCPU while the roster is awake (${PROFILE} profile); idle tenants scale to zero after an hour."
-fi
+# Sized against what the run will actually bring up rather than against the
+# roster, so it agrees with the capacity check that follows it: on a re-run with
+# three tenants left, the 95-tenant figure is the number an operator reads
+# before deciding whether to let the run proceed.
+report_footprint() {
+  local want="$1" pods cpu
+  pods=$(( want * PODS_EACH ))
+  cpu=$(( (want * MILLICPU_EACH + 999) / 1000 ))
+  if [ "${ALWAYS_ON}" = true ]; then
+    log "Always-on: ${pods} pods / ~${cpu} vCPU reserved permanently (${PROFILE} profile, no scale-to-zero)."
+  else
+    log "Peak ${pods} pods / ~${cpu} vCPU while the roster is awake (${PROFILE} profile); idle tenants scale to zero after an hour."
+  fi
+}
 
 # ---------- Capacity ----------
 # Sized against the whole roster, not against how many people use it at once:
@@ -359,14 +375,18 @@ if [ "${DRY_RUN}" = true ]; then
     # read.
     if kubectl get --raw /healthz >/dev/null 2>&1; then
       partition_roster
+      report_footprint "${#QUEUE[@]}"
       capacity_preflight "${#QUEUE[@]}" || true
     else
       warn "No cluster connection, so how much of the roster is already deployed is unknown."
       warn "  Sizing all ${#IDS[@]} tenant(s); the real run writes a kubeconfig first and sizes"
       warn "  only what is left to deploy. Run 'aws eks update-kubeconfig --name ${EKS_CLUSTER}"
       warn "  --region ${AWS_REGION}' for the answer the real run would give."
+      report_footprint "${#IDS[@]}"
       capacity_preflight "${#IDS[@]}" || true
     fi
+  else
+    report_footprint "${#IDS[@]}"
   fi
   exit 0
 fi
@@ -455,6 +475,7 @@ deploy_one() {
 partition_roster
 
 if [ "${#QUEUE[@]}" -gt 0 ]; then
+  report_footprint "${#QUEUE[@]}"
   if [ "${PREFLIGHT}" = true ]; then
     capacity_preflight "${#QUEUE[@]}" || exit 1
   fi

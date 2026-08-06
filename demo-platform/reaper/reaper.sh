@@ -282,20 +282,24 @@ EOF
 # 3. Orphan sweep (cluster/AWS is actual state; GC anything with no TENANT# item)
 # ------------------------------------------------------------------------------
 sweep_orphan_namespaces() {
-  local ns id gc_rc
+  local ns id
   for ns in $(kubectl get ns -l app.kubernetes.io/managed-by=otterworks-tenant \
                 -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
     case "${ns}" in otterworks-platform|otterworks-system|otterworks) continue ;; esac
     id="${ns#otterworks-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
-      # The persistence check is gc_tenant's, not a second one here: every
-      # standing tenant is item-less by design, so announcing the orphan before
-      # the guard runs both doubles the label lookups over ~95 tenants and
-      # reports a collection that did not happen. 2 is "persistent, kept", and
-      # gc_tenant has already said so.
-      gc_rc=0; gc_tenant "${id}" "orphan-namespace" || gc_rc=$?
-      [ "${gc_rc}" = "2" ] || warn "orphan namespace ${ns} (no TENANT# item) -> GC"
+      # Asked here, and short-circuited, so the cause is logged before the
+      # collection it explains rather than after gc_tenant's own "reaping" and
+      # "reaped" lines. What must not happen is announcing unconditionally:
+      # every standing tenant is item-less by design, so that is ~95 lines a
+      # pass claiming deletions the guard refuses, with the one real orphan
+      # among them. gc_tenant checks again -- it is the last thing between a
+      # tenant and its data and must not depend on its callers having looked --
+      # but only for the few that get this far.
+      tenant_is_persistent "${id}" && continue
+      warn "orphan namespace ${ns} (no TENANT# item) -> GC"
+      gc_tenant "${id}" "orphan-namespace" || true
     fi
   done
 }
@@ -344,7 +348,7 @@ YAML
 }
 
 sweep_orphan_dbs() {
-  local db id gc_rc
+  local db id
   for db in $(list_tenant_dbs); do
     [ "${db}" = "otterworks" ] && continue
     # Back to the id's own spelling. tenant_db_name maps every non-alphanumeric
@@ -360,10 +364,11 @@ sweep_orphan_dbs() {
     id="${db#otterworks_}"; id="${id//_/-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
-      # As above: gc_tenant owns the persistence check, and the sweep only
-      # announces an orphan it actually collected.
-      gc_rc=0; gc_tenant "${id}" "orphan-database" || gc_rc=$?
-      [ "${gc_rc}" = "2" ] || warn "orphan database ${db} (no TENANT# item) -> GC"
+      # As above: the standing roster is skipped before anything is announced,
+      # and gc_tenant still makes its own check for whatever gets past this one.
+      tenant_is_persistent "${id}" && continue
+      warn "orphan database ${db} (no TENANT# item) -> GC"
+      gc_tenant "${id}" "orphan-database" || true
     fi
   done
 }
