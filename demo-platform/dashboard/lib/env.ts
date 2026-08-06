@@ -67,4 +67,14 @@ export const TENANT_LABEL = "demo/tenant";
 // has to be drawn from the sweep's own selector, or the page is authoritative
 // about a set it does not read.
 export const SWEEP_LABEL = "app.kubernetes.io/managed-by=otterworks-tenant";
+// ...and what that sweep then refuses to consider, whatever it is labelled
+// (the `case` at the top of its loop). The selector is only half the set the
+// sweep walks; a preview that applies one and not the other can list a
+// platform namespace as a delete candidate, which is the same class of wrong
+// as reading the other label.
+export const SWEEP_EXCLUDED_NAMESPACES: ReadonlySet<string> = new Set([
+  "otterworks-platform",
+  "otterworks-system",
+  "otterworks",
+]);
 export const TTL_LABEL = "demo/expires-at";

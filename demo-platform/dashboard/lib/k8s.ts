@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { SWEEP_LABEL, TENANT_LABEL } from "@/lib/env";
+import { SWEEP_EXCLUDED_NAMESPACES, SWEEP_LABEL, TENANT_LABEL } from "@/lib/env";
 import type { PodInfo, ServiceLiveState, TenantLiveState } from "@/lib/types";
 
 let _core: k8s.CoreV1Api | null = null;
@@ -195,6 +195,11 @@ export interface TenantNamespace {
  * since the reaper re-reads the label itself before every destructive path, but
  * the page exists to be believed.
  *
+ * The sweep's own exclusions are applied here too: it skips the platform
+ * namespaces by name before looking at anything else, so a preview that only
+ * copied the selector would list one of them as a delete candidate the moment
+ * the platform chart picked up the tenant label.
+ *
  * The namespace list is also the whole answer, so it is asked for directly
  * rather than derived from loadTenantPods(): that lists pods in every tenant
  * namespace to build a map this discards, which at a standing roster is ~95 pod
@@ -212,7 +217,7 @@ export async function listTenantNamespaces(): Promise<TenantNamespace[]> {
   );
   return res.body.items.flatMap((ns) => {
     const name = ns.metadata?.name;
-    if (!name) return [];
+    if (!name || SWEEP_EXCLUDED_NAMESPACES.has(name)) return [];
     return [{ name, persistent: ns.metadata?.labels?.["demo/persistent"] === "true" }];
   });
 }
