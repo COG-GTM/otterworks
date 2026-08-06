@@ -4,6 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
+import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
 
 interface FileUploadDropzoneProps {
   uploadFile: (
@@ -30,11 +31,17 @@ interface UploadingFile {
 
 let fileIdCounter = 0;
 
+// Frontend counterpart of the file-upload-fails chaos scenario
+// (chaos:file-service:upload_s3_error): every upload attempt fails
+// with a prominent error banner.
+const UPLOADS_ALWAYS_FAIL = true;
+
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
   ref: Ref<FileUploadDropzoneHandle>,
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [showChaosBanner, setShowChaosBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -75,6 +82,19 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
+      if (UPLOADS_ALWAYS_FAIL) {
+        setShowChaosBanner(true);
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === entry.id
+              ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
+              : f,
+          ),
+        );
+        void notifyUploadFailed(entry.file.name);
+        return;
+      }
+
       const abortController = new AbortController();
 
       setUploadingFiles((prev) =>
@@ -159,6 +179,13 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
+      {showChaosBanner && (
+        <ChaosErrorBanner
+          title="File upload failed"
+          message="Your files could not be uploaded. The storage service returned an error (S3 write failed). Please try again later."
+          onDismiss={() => setShowChaosBanner(false)}
+        />
+      )}
       <div
         {...getRootProps()}
         className={cn(
