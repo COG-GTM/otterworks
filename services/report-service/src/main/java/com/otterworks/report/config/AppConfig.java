@@ -57,10 +57,7 @@ public class AppConfig {
                 .setConnectionManager(connectionManager)
                 .build();
 
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setConnectTimeout(connectionTimeout);
-
-        return new RestTemplate(factory);
+        return new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
     }
 
     public String getAnalyticsServiceUrl() {

@@ -4,7 +4,7 @@ This document describes 11 upgrade axes for migrating the report-service from it
 legacy stack to a modern, supported baseline. Each axis lists the exact files,
 imports, and annotations that change, together with a verification step.
 
-Axes 1-5, 7, 10 and 11 have landed (TTRWRKS-13). Axes 6, 8 and 9 are dependency
+Axes 1-5, 7, 8, 10 and 11 have landed (TTRWRKS-13). Axes 6 and 9 are dependency
 refreshes that are not required to run on Java 17 / Spring Boot 3.2 and remain open.
 
 ---
@@ -20,7 +20,7 @@ refreshes that are not required to run on Java 17 / Spring Boot 3.2 and remain o
 | 5 | SpringFox to springdoc | SpringFox 3.0.0 | springdoc-openapi 2.x | `SwaggerConfig.java`, `ReportController.java`, model classes | Done |
 | 6 | iText 5 to OpenPDF / iText 7 | iText 5.5.13.3 | OpenPDF 1.3+ or iText 7+ | `PdfReportGenerator.java` | Open |
 | 7 | Commons Lang 2 to 3 | `commons-lang:commons-lang:2.6` | `org.apache.commons:commons-lang3:3.14+` | `ReportDateUtils.java`, `PdfReportGenerator.java`, `ExcelReportGenerator.java`, `ReportDataFetcher.java` | Done |
-| 8 | Commons IO | 2.6 | 2.15+ | `pom.xml`, `ReportController.java` | Open |
+| 8 | Commons IO | 2.6 | 2.15+ | `pom.xml`, `ReportController.java` | Done |
 | 9 | Guava | 28.0-jre | 33+ | `pom.xml`, `ReportDataFetcher.java` | Open |
 | 10 | Apache POI | 4.1.2 | 5.2+ | `pom.xml`, `ExcelReportGenerator.java` | Done |
 | 11 | Mockito | 3.12.4 | 5.x | `pom.xml`, all test files | Done (managed by the Boot 3.2 BOM) |
