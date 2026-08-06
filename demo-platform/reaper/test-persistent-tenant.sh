@@ -204,14 +204,24 @@ NS_LOOKUP_ERR=""
 REAPER_SH="${SCRIPT_DIR}/reaper.sh"
 ENV_TS="${SCRIPT_DIR}/../dashboard/lib/env.ts"
 
+# Both sides are scraped, so both scrapes have to be checked for having found
+# anything: two empty strings compare equal, and an assertion that passes
+# because it read neither file is worse than no assertion -- it reports the two
+# as in step for as long as it takes somebody to reformat either one.
+found() { if [ -n "$2" ]; then ok "$1"; else nope "$1 (read nothing -- the scrape below is comparing nothing)"; fi; }
+
 sweep_label="$(sed -n 's/.*kubectl get ns -l \([^ ]*\).*/\1/p' "${REAPER_SH}" | head -1)"
 env_label="$(sed -n 's/^export const SWEEP_LABEL = "\(.*\)";$/\1/p' "${ENV_TS}")"
+found "reads the sweep's selector out of reaper.sh" "${sweep_label}"
+found "reads SWEEP_LABEL out of the dashboard's env.ts" "${env_label}"
 check "the dashboard preview enumerates by the sweep's label" "${env_label}" "${sweep_label}"
 
 sweep_excluded="$(sed -n 's/.*case "${ns}" in \(.*\)) continue.*/\1/p' "${REAPER_SH}" \
   | tr '|' '\n' | sort | tr '\n' ' ')"
 env_excluded="$(sed -n '/SWEEP_EXCLUDED_NAMESPACES/,/^]/p' "${ENV_TS}" \
   | grep -o '"[^"]*"' | tr -d '"' | sort | tr '\n' ' ')"
+found "reads the sweep's exclusion list out of reaper.sh" "${sweep_excluded// /}"
+found "reads SWEEP_EXCLUDED_NAMESPACES out of the dashboard's env.ts" "${env_excluded// /}"
 check "  and skips the same namespaces the sweep refuses" "${env_excluded}" "${sweep_excluded}"
 
 echo ""
