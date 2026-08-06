@@ -53,6 +53,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   useEffect(() => {
     if (uploadingFiles.length === 0) {
       setDismissing(false);
+      setShowChaosBanner(false);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
@@ -181,6 +182,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     <div className={className}>
       {showChaosBanner && (
         <ChaosErrorBanner
+          className="mb-4"
           title="File upload failed"
           message="Your files could not be uploaded. The storage service returned an error (S3 write failed). Please try again later."
           onDismiss={() => setShowChaosBanner(false)}
