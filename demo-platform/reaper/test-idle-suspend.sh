@@ -244,6 +244,21 @@ seen_running standing
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and does not wake an always-on tenant on it either" "${RESUMED:-}" ""
 
+# A namespace that is gone is not a namespace that could not be read. A
+# dashboard tenant whose namespace was deleted out of band keeps its control
+# item, so state_read takes the item branch and its NotFound short-circuit never
+# fires -- the scan reaches the replica read every pass. Counted degraded, that
+# is a warning and a tally on every pass until somebody removes the item, in the
+# one line an operator reads to find the tenants a real failure hid.
+reset_state
+NS_RUNNING[otterworks-vanished]="gone"; TENANT_HAS_ITEM[vanished]=yes
+seen_running vanished
+SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
+check "skips a tenant whose namespace is gone" "${SUSPENDED# }" ""
+check "  writing nothing about it" "${ITEM_RUNNING[vanished]}" "1"
+check "  and without calling the pass degraded" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c 'read that failed')" "0"
+
 # Every skip above warns on its own line, and a pass that skipped everything
 # otherwise ends on the same "scan complete" a pass with nothing to do prints.
 # The count is the only thing that separates a working cost control from one
@@ -627,6 +642,25 @@ check "a namespace that is gone is not exempt" "$(asks 2>/dev/null)" "false"
 LOOKUP_ERR="error: You must be logged in to the server (Unauthorized)"
 check "  and an unreadable label is unknown, not a decision" "$(asks 2>/dev/null)" "unknown"
 LOOKUP_ERR=""
+
+# --- running_deployments, the real implementation ----------------------------
+# The two failure answers the scan branches on differently: '?' holds the tenant
+# up for a pass, 'gone' drops it silently. Folding the second into the first is
+# what put a permanent warning in the log for every tenant outlived by its
+# control item.
+eval "$(sed -n '/^running_deployments()/,/^}/p' "${SCRIPT_DIR}/idle-suspend.sh")"
+REPLICAS=""; DEPLOY_ERR=""
+kubectl() {
+  [ -z "${DEPLOY_ERR}" ] || { echo "${DEPLOY_ERR}" >&2; return 1; }
+  printf '%s' "${REPLICAS}"
+}
+REPLICAS="$(printf '1\n0\n2\n')"
+check "counts the Deployments with replicas" "$(running_deployments otterworks-solo)" "2"
+DEPLOY_ERR='Error from server (NotFound): namespaces "otterworks-solo" not found'
+check "  a namespace that is gone says so" "$(running_deployments otterworks-solo)" "gone"
+DEPLOY_ERR="error: You must be logged in to the server (Unauthorized)"
+check "  and any other failure is unmeasured, not zero" "$(running_deployments otterworks-solo)" "?"
+DEPLOY_ERR=""
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

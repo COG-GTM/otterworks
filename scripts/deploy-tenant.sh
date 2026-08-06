@@ -324,7 +324,14 @@ EOF
         Action: "sts:AssumeRoleWithWebIdentity",
         Principal: (.Statement[0].Principal),
         Condition: { StringEquals: { ($url+":sub"): $sub, ($url+":aud"): "sts.amazonaws.com" } }
-      }]')"
+      }]' 2>/dev/null)"
+    # Checked here rather than left to errexit: this function now runs inside a
+    # `|| IRSA_RC=$?` list (and a flock subshell), so `set -e` does not apply to
+    # it, and an unguarded jq failure would fall through to an
+    # update-assume-role-policy with an empty --policy-document -- an IAM call
+    # that can only fail, reported as "failed to update trust" with no hint that
+    # the document was never built.
+    [ -n "${new}" ] || { warn "  could not build the trust document for ${role}; skipping"; continue; }
     aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null \
       && log "  IRSA trust: ${role} now trusts ${sub}" \
       || warn "  failed to update trust for ${role}"

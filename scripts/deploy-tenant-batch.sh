@@ -286,9 +286,16 @@ capacity_preflight() {
   # null: a cluster whose subnets carry no karpenter.sh/discovery tag would
   # otherwise measure "0 free" and be refused outright, blaming capacity for
   # what is a tagging or EKS_CLUSTER mismatch.
+  #
+  # The separator is a raw-string literal, not a JSON literal in backticks: a
+  # bare space is not valid JSON, and both jmespath 0.10 (awscli v1) and 1.0.1
+  # (v2) quietly resolve `` ` ` `` to the empty string. "2 subnets, 30 free" then
+  # arrives as "230", free_ips is never set, and every roster falls through to
+  # "could not read subnet capacity" -- the check reporting itself blind rather
+  # than refusing, on the run it exists to refuse.
   read -r n_subnets free_ips <<< "$(aws ec2 describe-subnets --region "${AWS_REGION}" \
     --filters "Name=tag:karpenter.sh/discovery,Values=${EKS_CLUSTER}" \
-    --query 'join(` `, [to_string(length(Subnets)), to_string(sum(Subnets[].AvailableIpAddressCount))])' \
+    --query "join(' ', [to_string(length(Subnets)), to_string(sum(Subnets[].AvailableIpAddressCount))])" \
     --output text 2>/dev/null | sed 's/\.[0-9]*//g')"
   if ! [[ "${n_subnets:-}" =~ ^[0-9]+$ ]]; then
     warn "Could not read subnet capacity from EC2; skipping the pod-IP check."

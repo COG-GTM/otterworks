@@ -43,6 +43,14 @@ EOS
 # What EC2 reports across the karpenter.sh/discovery subnets: the number matched
 # and the free addresses in them. Both come back from JMESPath as floats, hence
 # the ".0"; N_SUBNETS unset means the call itself produced nothing.
+#
+# Where a real JMESPath is available, --query is answered by evaluating the
+# expression the script actually sent against canned subnet JSON, rather than by
+# printing what its author expected the expression to produce. That distinction
+# is not academic: `join(` `, ...)` -- a JSON literal holding a bare space, which
+# is not valid JSON -- evaluates to the empty string, so the two numbers arrived
+# glued together and the check silently measured nothing on every run, while a
+# stub that fabricated two fields passed the whole suite.
 cat > "${WORK}/bin/aws" <<'EOS'
 #!/usr/bin/env bash
 case "$*" in
@@ -51,6 +59,25 @@ case "$*" in
     echo "v1"; exit 0 ;;
   *describe-subnets*)
     [ -n "${N_SUBNETS-}" ] || { [ -n "${FREE_IPS}" ] || exit 0; N_SUBNETS=2; }
+    if [ -n "${JMESPATH_OK:-}" ]; then
+      query=""
+      while [ $# -gt 0 ]; do
+        [ "$1" = "--query" ] && { query="$2"; break; }
+        shift
+      done
+      # --output text on a string result prints the string. AvailableIpAddress-
+      # Count is a number, and awscli renders the sum as a float, which is what
+      # the script's trailing sed is for.
+      N_SUBNETS="${N_SUBNETS}" FREE_IPS="${FREE_IPS:-0}" python3 -c '
+import json, os, sys
+import jmespath
+n, free = int(os.environ["N_SUBNETS"]), int(os.environ["FREE_IPS"])
+subnets = [{"AvailableIpAddressCount": free if i == 0 else 0} for i in range(n)]
+out = jmespath.search(sys.argv[1], json.loads(json.dumps({"Subnets": subnets})))
+print("None" if out is None else out)
+' "${query}"
+      exit 0
+    fi
     printf '%s.0 %s.0\n' "${N_SUBNETS}" "${FREE_IPS:-0}"; exit 0 ;;
   *) exit 0 ;;
 esac
@@ -85,6 +112,14 @@ export DB_PASSWORD=stub JWT_SECRET=stub SECRET_KEY_BASE=stub
 export DEPLOY_LOG="${WORK}/deploy.log"
 export MARKER_DIR="${WORK}/markers"; mkdir -p "${MARKER_DIR}"
 export FREE_IPS="" EXISTING_NS="" DEPLOYED_NS="" INCOMPLETE=""
+# The stub answers --query for real where jmespath is importable (it ships with
+# awscli), and falls back to canned fields where it is not, so the suite still
+# runs on a box without it -- with one property fewer pinned, hence the note.
+if python3 -c 'import jmespath' 2>/dev/null; then
+  export JMESPATH_OK=1
+else
+  echo "  note - python3 jmespath unavailable: --query is answered from canned fields, not evaluated"
+fi
 export ECR_LOG="${WORK}/ecr.log"; : > "${ECR_LOG}"
 
 # Two full-profile tenants: 30 pod IPs.

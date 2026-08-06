@@ -289,10 +289,23 @@ record_running() {
 # over; for an always-on tenant it goes to resume_tenant, which finds the same
 # unreadable namespace and does nothing. Counting through a pipe cannot tell the
 # difference -- awk prints 0 for no Deployments and 0 for no answer.
+# '?' means the read failed, 'gone' means the namespace is not there -- two
+# different answers because the caller does two different things with them. A
+# tenant whose control item outlived its namespace (deleted out of band, or a
+# teardown that stopped short of the record) is not a degraded read: nothing
+# about it can be suspended, and reporting it unreadable adds a warning and a
+# tally to every pass, for as long as the item exists.
 running_deployments() {
-  local out rc=0
-  out="$(kubectl -n "$1" get deploy -o jsonpath='{range .items[*]}{.spec.replicas}{"\n"}{end}' 2>/dev/null)" || rc=$?
-  if [ "${rc}" -ne 0 ]; then printf '?'; return 0; fi
+  local out err errfile rc=0
+  errfile="$(mktemp)"
+  out="$(kubectl -n "$1" get deploy -o jsonpath='{range .items[*]}{.spec.replicas}{"\n"}{end}' 2>"${errfile}")" || rc=$?
+  err="$(cat "${errfile}")"; rm -f "${errfile}"
+  if [ "${rc}" -ne 0 ]; then
+    case "${err}" in
+      *NotFound*|*"not found"*) printf 'gone'; return 0 ;;
+    esac
+    printf '?'; return 0
+  fi
   printf '%s' "${out}" | awk '$1 > 0 { n++ } END { print n + 0 }'
 }
 
@@ -442,6 +455,11 @@ suspend_idle_tenants() {
     [ "${was_running}" != "-" ] || was_running=""
 
     running="$(running_deployments "${ns}")"
+    # Namespace gone while the control item remains -- state_read's own NotFound
+    # short-circuit only covers namespace-backed tenants, so this is where a
+    # dashboard tenant in that state arrives. Leave it alone, quietly: it is a
+    # standing condition until somebody removes the item, not a bad pass.
+    [ "${running}" != "gone" ] || continue
     # Not measured: every branch from here reads a replica count, and a wrong
     # zero writes was_running=0 on a tenant that never stopped.
     if [ "${running}" = "?" ]; then
