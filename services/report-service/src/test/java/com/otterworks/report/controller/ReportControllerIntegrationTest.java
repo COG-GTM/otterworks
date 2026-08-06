@@ -1,9 +1,12 @@
 package com.otterworks.report.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
+import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.repository.ReportRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -43,6 +46,9 @@ public class ReportControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ReportRepository reportRepository;
 
     // ---- POST /api/v1/reports ----
 
@@ -192,18 +198,10 @@ public class ReportControllerIntegrationTest {
 
     @Test
     public void downloadPendingReportReturns409() throws Exception {
-        Long id = createReportAndReturnId("Download Pending Report",
-                ReportCategory.USAGE_ANALYTICS, ReportType.PDF, "integration-user-8");
+        Long id = persistReportWithStatus("Download Pending Report", ReportStatus.GENERATING);
 
-        MvcResult result = mockMvc.perform(get("/api/v1/reports/" + id))
-                .andReturn();
-        String statusVal = objectMapper.readTree(
-                result.getResponse().getContentAsString()).get("status").asText();
-
-        if ("PENDING".equals(statusVal) || "GENERATING".equals(statusVal)) {
-            mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
-                    .andExpect(status().isConflict());
-        }
+        mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
+                .andExpect(status().isConflict());
     }
 
     // ---- DELETE /api/v1/reports/{id} ----
@@ -262,5 +260,20 @@ public class ReportControllerIntegrationTest {
 
         String body = result.getResponse().getContentAsString();
         return objectMapper.readTree(body).get("id").asLong();
+    }
+
+    /**
+     * Persists a report in a known status. Going through POST /api/v1/reports instead would
+     * race the async worker, which can reach a terminal status before the assertion runs.
+     */
+    private Long persistReportWithStatus(String name, ReportStatus status) {
+        Report report = new Report();
+        report.setReportName(name);
+        report.setCategory(ReportCategory.USAGE_ANALYTICS);
+        report.setReportType(ReportType.PDF);
+        report.setRequestedBy("integration-user-8");
+        report.setStatus(status);
+        report.setCreatedAt(new Date());
+        return reportRepository.save(report).getId();
     }
 }
