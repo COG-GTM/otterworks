@@ -26,9 +26,10 @@ public class SecurityConfig {
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/swagger-resources/**",
                                 "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll()
+                        .requestMatchers("/api/v1/reports/**").permitAll()  // TODO: Add JWT validation
                         .requestMatchers("/error").permitAll()
-                        // Security 6 denies unmatched requests; Security 5 permitted them
+                        // Security 6 denies unmatched requests, including the ERROR dispatch;
+                        // Security 5 permitted them. Authentication is done at the api-gateway.
                         .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(options -> options.deny())
