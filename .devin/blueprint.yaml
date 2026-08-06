@@ -4,12 +4,15 @@ initialize: |
   docker compose -f docker-compose.infra.yml pull
   # Serialized with retries: parallel builds overwhelm Docker's embedded DNS (127.0.0.11)
   # and dependency fetches (e.g. cargo's static.crates.io) intermittently fail to resolve.
+  # Exponential backoff (30/60/120/240s): registries like Maven Central also rate-limit
+  # with HTTP 429, which needs minutes -- not seconds -- to clear.
   COMPOSE="docker compose -f docker-compose.infra.yml -f docker-compose.yml"
   for svc in $($COMPOSE config --services); do
     n=0
     until $COMPOSE build "$svc"; do
-      n=$((n+1)); [ "$n" -ge 3 ] && { echo "build failed for $svc after $n attempts"; exit 1; }
-      echo "retrying build for $svc ($n)"; sleep 10
+      n=$((n+1)); [ "$n" -ge 5 ] && { echo "build failed for $svc after $n attempts"; exit 1; }
+      backoff=$((15 * (2 ** n)))
+      echo "retrying build for $svc ($n) in ${backoff}s"; sleep "$backoff"
     done
   done
 
