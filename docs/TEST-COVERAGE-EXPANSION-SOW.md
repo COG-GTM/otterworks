@@ -8,7 +8,8 @@ This document is the contract for a fan-out of parallel workers. Each work packa
 > **Shared-file protocol.** Exactly one file is needed by many packages: `.github/workflows/ci.yml`.
 > **WP-00 is its sole owner.** Any other WP that needs a CI job (WP-15, WP-16, WP-17, WP-19, WP-20,
 > WP-23) must **not** edit `ci.yml` — it delivers the job YAML in its PR description and WP-00's
-> owner applies it in a follow-up commit. Same rule for `Makefile` and `sonar-project.properties`.
+> owner applies it in a follow-up commit. Same rule for `Makefile`, `sonar-project.properties` and
+> `frontend/client-app/package.json` (the `--passWithNoTests` flag lives there).
 > This is the one place where the disjointness guarantee needs a human handoff rather than a glob.
 
 ---
@@ -22,7 +23,7 @@ This document is the contract for a fan-out of parallel workers. Each work packa
 | Total unit/integration cases | ≈ 525 |
 | Coverage thresholds enforced anywhere | **None** — coverage is produced by 4 suites, gated by 0 |
 | Suites that exist but **never execute in CI** | 3 — Playwright e2e (70), Cucumber BDD (36), black-box API flows (24, collect-only) |
-| Suites that **cannot fail** CI | `admin-dashboard` (`|| true`), `client-app` (`--passWithNoTests`) |
+| Suites that **cannot fail** CI | `admin-dashboard` (`\|\| true`), `client-app` (`--passWithNoTests`) |
 | Dominant gap shape | positive-path bias; boundary (`limit±1`), authz-negative, and concurrency/idempotency cases are largely absent |
 
 The single highest-leverage fix is not more tests — it is **WP-00**: no coverage number is measured
@@ -48,7 +49,7 @@ Cases counted by test-annotation grep; LOC excludes test dirs.
 | `services/collab-service` | Node / Jest | 45 | 1,659 | 27 | yes | yes | no |
 | `services/legacy-portal` | Java 11 / JUnit 5 | 13 | 814 | 16 | yes | yes | no |
 | **`services/file-service`** | **Rust / inline `#[test]`** | **9** | **2,617** | **3.4** | yes | yes | no |
-| `frontend/admin-dashboard` | Angular / Karma | 64 | 4,506 | 14 | yes | **no** (`|| true`) | no |
+| `frontend/admin-dashboard` | Angular / Karma | 64 | 4,506 | 14 | yes | **no** (`\|\| true`) | no |
 | **`frontend/client-app`** | **Vitest** | **4** | **9,308** | **0.4** | yes | **no** (`--passWithNoTests`) | no |
 | `frontend/client-app/e2e` | Playwright | 70 | — | — | **no** | no | — |
 | `frontend/client-app/bdd` | Cucumber | 36 scenarios | — | — | **no** | no | — |
@@ -63,9 +64,10 @@ Cases counted by test-annotation grep; LOC excludes test dirs.
 
 1. **`make test` is broken** — targets `frontend/web-app`, which does not exist (the app is
    `frontend/client-app`). It also omits `report-service`, `legacy-portal`, `tests/api`,
-   `tests/contract`, e2e and BDD. (`Makefile:114-126`) The same stale `frontend/web-app` path
-   appears **three times** — `build-web` (`Makefile:107`), `test` (`:125`) and `lint` (`:150`) — so
-   `make build`, `make test` and `make lint` are all broken at the web-frontend step.
+   `tests/contract`, e2e and BDD. (the `test` target spans `Makefile:114-126`) The same stale
+   `frontend/web-app` path appears **three times** — `build-web` (`Makefile:107`), `test` (`:125`)
+   and `lint` (`:150`) — so `make build`, `make test` and `make lint` are all broken at the
+   web-frontend step.
 2. **`api-flow-tests` CI job only collects** — `pytest tests/api --collect-only -q`
    (`.github/workflows/ci.yml:428`). 24 integration flows are syntax-checked, never executed. There
    is no docker-compose stand-up step in CI.
@@ -221,8 +223,12 @@ demo variant). Full matrix — **24 cases**:
 | B4 | R2 | HO4 | 579 | Declined | Yes | Yes |
 | B5 | R2 | HO4 | **580** | **Not declined** | No | No |
 | B6 | R2 | HO4 | 581 | Not declined | No | No |
-| B7 | R1 | HO6 | 579 | Declined | Yes | Yes | *(HO6 declines below HO4's threshold too — proves thresholds are not swapped)* |
-| B8 | R2 | HO4 | 585 | **Not declined** | No | No | *(would decline under HO6's 590 — proves per-policy-type routing)* |
+| B7 | R1 | HO6 | 579 | Declined | Yes | Yes |
+| B8 | R2 | HO4 | 585 | **Not declined** | No | No |
+
+B7 and B8 are not redundant with B1–B6: **B7** proves the two thresholds are not swapped (an HO6
+quote below HO4's 580 must still decline under HO6's own rule), and **B8** proves per-policy-type
+routing (585 declines under HO6's 590 but must *not* decline under HO4's 580).
 
 *Scope negatives (rule must NOT fire outside the BRD's stated scope) — each expects "not declined,
 no notice":*
@@ -277,7 +283,7 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 
 | WP | Title | Owns (files/globs) | Effort | Depends on |
 |---|---|---|---|---|
-| **WP-00** | Coverage baseline + gates | `Makefile` (test targets), `.github/workflows/ci.yml`, `sonar-project.properties`, `codecov.yml` (new) | M | — |
+| **WP-00** | Coverage baseline + gates | `Makefile`, `.github/workflows/ci.yml`, `sonar-project.properties`, `frontend/client-app/package.json` + vitest config, `codecov.yml` (new) | M | — |
 | WP-01 | file-service handlers: upload/download/versions | `services/file-service/src/handlers.rs` (tests), `src/storage.rs`, new `services/file-service/tests/` | L | WP-00 |
 | WP-02 | file-service: folders, trash/restore, share matrix | `services/file-service/src/metadata.rs` (tests), `src/models.rs`, `src/middleware.rs`, `src/config.rs`, `src/errors.rs` | L | WP-00 |
 | WP-03 | api-gateway router + JWT/header-spoofing negatives | `services/api-gateway/internal/proxy/router_test.go` (new), `internal/config/*_test.go`, `internal/middleware/jwt_test.go`, `logging_test.go`, `metrics_test.go` | M | WP-00 |
@@ -293,7 +299,7 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 | **WP-13** | **BRD decision-table testing standard + threshold audit** | `docs/bdd/decision-table-testing-standard.md` (new), `docs/bdd/brd-credit-decline-matrix.md` (new) | S | — |
 | WP-14 | client-app unit tests: API client, hooks, editor state | `frontend/client-app/src/**/*.test.ts(x)` | L | WP-00 |
 | WP-15 | Wire Playwright e2e + BDD into CI, de-flake, delete stale `test-results/` | `frontend/client-app/e2e/**`, `frontend/client-app/bdd/**`, `playwright.config.ts` (+ e2e CI job **handed to WP-00**) | L | WP-00 |
-| WP-16 | admin-dashboard: remove `|| true`, fix/expand Angular specs | `frontend/admin-dashboard/src/**/*.spec.ts` (+ CI job change **handed to WP-00**) | M | WP-00 |
+| WP-16 | admin-dashboard: remove `\|\| true`, fix/expand Angular specs | `frontend/admin-dashboard/src/**/*.spec.ts` (+ CI job change **handed to WP-00**) | M | WP-00 |
 | WP-17 | Execute `tests/api` in CI against a composed stack | `tests/api/**` (+ compose CI job **handed to WP-00**) | L | WP-00 |
 | WP-18 | Cross-service authorization matrix suite | `tests/authz/**` (new) | L | WP-17 |
 | WP-19 | Wire + extend `tests/contract`; schema back-compat gate on `shared/` | `tests/contract/**`, `shared/openapi/**` (read-only) (+ contract CI job **handed to WP-00**) | M | WP-00 |
@@ -314,8 +320,11 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 - Make `make test-coverage` fail on error (drop the seven `|| true`), emit machine-readable reports
   (`coverage.xml` / `lcov.info` / `cobertura`) per unit, and print an aggregate table.
 - Add per-unit coverage upload + a **ratchet** (coverage may not decrease; no absolute target yet).
-- Remove `|| true` from the `admin-dashboard` CI job and `--passWithNoTests` from `client-app`
-  (may be done here or deferred to WP-16/WP-14 — declare which, so the two do not collide).
+- Remove `\|\| true` from the `admin-dashboard` CI job and `--passWithNoTests` from
+  `frontend/client-app/package.json`. **Both edits belong to WP-00**, not to WP-14/WP-16 — no other
+  package owns `package.json` or the vitest config, so pinning them here keeps the contract closed.
+  WP-14 must land enough real tests first for `--passWithNoTests` removal to be safe; sequence the
+  removal as a WP-00 follow-up commit once WP-14 merges.
 - Fix `sonar-project.properties`: `sonar.sources` and `sonar.tests` must not both be
   `services,frontend`.
 - **Acceptance:** `make test` and `make test-coverage` both exit non-zero on a seeded failure; CI
@@ -342,7 +351,7 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 - Write the decision-table template (rule id, dimensions, condition, expected outcome **per
   downstream system**, mandatory boundary trio, mandatory scope-negatives).
 - Transcribe §4b of this document into `docs/bdd/brd-credit-decline-matrix.md` as the worked
-  example, including the E1–E10 open questions as a explicit "questions for the BA" section.
+  example, including the E1–E10 open questions as an explicit "questions for the BA" section.
 - Audit the repo for every numeric threshold (`MAX_UPLOAD_BYTES`, `quota_bytes`, rate-limit `rps`,
   pagination caps, token TTLs, TTL/reaper windows) and list which WP owns each one's boundary trio.
 - **Acceptance:** every threshold in the repo appears in the table with an owning WP.
