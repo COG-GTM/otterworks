@@ -4,6 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
+import { reportUploadFailure } from "@/lib/incident-report";
 import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
 
 interface FileUploadDropzoneProps {
@@ -30,11 +31,6 @@ interface UploadingFile {
 }
 
 let fileIdCounter = 0;
-
-// Frontend counterpart of the file-upload-fails chaos scenario
-// (chaos:file-service:upload_s3_error): every upload attempt fails
-// with a prominent error banner.
-const UPLOADS_ALWAYS_FAIL = true;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
@@ -83,19 +79,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
-      if (UPLOADS_ALWAYS_FAIL) {
-        setShowChaosBanner(true);
-        setUploadingFiles((prev) =>
-          prev.map((f) =>
-            f.id === entry.id
-              ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
-              : f,
-          ),
-        );
-        void notifyUploadFailed(entry.file.name);
-        return;
-      }
-
       const abortController = new AbortController();
 
       setUploadingFiles((prev) =>
@@ -125,10 +108,12 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            setShowChaosBanner(true);
+            void reportUploadFailure(entry.file.name, err);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id

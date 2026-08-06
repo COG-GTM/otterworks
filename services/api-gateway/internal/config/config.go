@@ -40,11 +40,15 @@ type Config struct {
 	// Graceful shutdown
 	ShutdownTimeout time.Duration
 
+	// Devin triage relay
+	DevinAPIKey         string
+	DevinTriageCooldown time.Duration
+
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -75,6 +79,9 @@ func Load() *Config {
 		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
+
+		DevinAPIKey:         getEnv("DEVIN_API_KEY", ""),
+		DevinTriageCooldown: time.Duration(getEnvInt("DEVIN_TRIAGE_COOLDOWN_MINUTES", 10)) * time.Minute,
 
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:4200", "https://localhost", "capacitor://localhost"}),
 		CORSAllowedMethods: getEnvSlice("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
