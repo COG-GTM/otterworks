@@ -205,8 +205,10 @@ run_seed() {
   # TTL and fills a bucket shared with every other tenant, below the floor it is
   # an empty drive. The renderer stays uncapped -- applying it needs cluster
   # access, which is licence enough.
-  # Shape first: awk gives an unparsed `-v` a string's comparison semantics, so
-  # "1e9" would sort below "2" and pass the bounds below.
+  # Shape first, because the bounds below are only numeric for a `-v` value that
+  # looks like a number (strnum): "0.5abc" would be compared as a string, and
+  # sorts inside 0.01..2. A plain decimal is always compared as a number --
+  # including by the image's busybox awk, which rejects 10 and 3 here.
   case "${scale}" in
     ''|*[!0-9.]*|*.*.*|.*|*.) die "invalid SCALE '${scale}' (a plain decimal, e.g. 0.1 or 1.0)" ;;
   esac
