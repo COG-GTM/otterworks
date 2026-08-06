@@ -91,6 +91,12 @@ case "${departments}" in
   *[A-Za-z0-9]*) ;;
   *) fail "invalid departments '${departments}' (no department names in it)" ;;
 esac
+# A leading `-` is argparse's option prefix, so "-Finance" reaches the loader as
+# `--departments -Finance` and kills the pod with "expected one argument"
+# instead of failing here, where the message says which value was wrong.
+case "${departments}" in
+  -*) fail "invalid departments '${departments}' (a department name cannot start with '-')" ;;
+esac
 departments_sed="${departments//&/\\&}"
 # The URL overrides are operator input, but they are still sed replacement text
 # stamped into a manifest -- and GATEWAY_URL is where the loader sends requests

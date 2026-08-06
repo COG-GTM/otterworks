@@ -53,7 +53,10 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
   that check — or the tenant's live state — cannot be read, rather than acting on an
   answer the cluster did not give. `force: true` skips both in-flight checks (loader Job and
-  runner Job) and passes `SEED_FORCE=true` to the runner: it discards whatever the running
+  runner Job) *and* the readiness checks above — a tenant idle-suspended after its loader
+  wedged would otherwise have no way out, since waking it does not delete a Job; the forced
+  seed clears the loader, its own replacement fails, and the seed after the redeploy works.
+  Force passes `SEED_FORCE=true` to the runner: it discards whatever the running
   loader has uploaded, and is the only way out of a Job that never reaches a terminal state
   — a loader pod the tenant's ResourceQuota will not admit — without direct `kubectl`
   access. Under force the runner also escalates a delete its 120s foreground wait did not

@@ -21,7 +21,10 @@ const MIN_SCALE = 0.01;
 // A name has to be in there somewhere: generate_drive.py drops empty entries,
 // so "," selects no department and the loader would succeed having uploaded
 // nothing. Names themselves are checked by the generator against taxonomy.py.
-const DEPARTMENTS_RE = /^[A-Za-z0-9,_ &-]*[A-Za-z0-9][A-Za-z0-9,_ &-]*$/;
+// The first character is alphanumeric because the value is stamped into
+// `--departments "$DEPARTMENTS"`, and argparse reads a leading `-` as an option
+// -- a loader pod dying on "expected one argument" instead of a 400 here.
+const DEPARTMENTS_RE = /^[A-Za-z0-9][A-Za-z0-9,_ &-]*$/;
 // The one service the loader cannot do without: it is the gateway the rendered
 // Job points GATEWAY_URL at.
 const GATEWAY_SERVICE = "api-gateway";
@@ -59,14 +62,21 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   if (tenant.status !== "active") {
     return error(409, `tenant '${id}' is ${tenant.status}; seed it once it is active`);
   }
+  // Skipped under `force`, which exists to clear a loader that will never
+  // finish: a tenant idle-suspended since that loader wedged would otherwise
+  // 409 here, and every unforced seed after it would 409 on the loader -- with
+  // no order of operations out of it, since waking the tenant does not delete a
+  // Job. A forced seed on a tenant that is not serving still deletes the wedged
+  // loader; its replacement fails, and the next seed after the redeploy works.
+  //
   // Idle-suspend scales a tenant to zero without touching its control-table
   // status, so `active` alone does not mean anything is listening. Live state
   // that could not be read is not evidence that it is: getTenantWithLiveState()
   // swallows the cluster error, so an absent `live` says nothing either way.
-  if (!tenant.live) {
+  if (!force && !tenant.live) {
     return error(503, `could not read live state for '${id}'; try again`);
   }
-  if (tenant.live.readyPods === 0) {
+  if (!force && tenant.live && tenant.live.readyPods === 0) {
     // No pods at all is a suspended tenant -- or one whose namespace is gone,
     // since a pod LIST answers 200 either way and the control table can still
     // say `active` after a reap. Pods that are simply not Ready is a broken or
@@ -94,8 +104,8 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   // crash-loop the loader against a Service with no endpoints. The name is the
   // pod's `app.kubernetes.io/name`, which the chart sets to the chart name, and
   // api-gateway is in every service profile.
-  const gateway = tenant.live.services.find((s) => s.name === GATEWAY_SERVICE);
-  if (!gateway?.ready) {
+  const gateway = tenant.live?.services.find((s) => s.name === GATEWAY_SERVICE);
+  if (!force && !gateway?.ready) {
     return error(
       409,
       `tenant '${id}' has no ready ${GATEWAY_SERVICE}; the loader writes through it, so seeding would only crash-loop`,
