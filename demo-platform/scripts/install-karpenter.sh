@@ -80,7 +80,21 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 # a state nobody asked for and the log does not name. Everything it reads is
 # pre-existing -- the CRD and controller upgrades do not touch EC2NodeClass
 # objects or nodes -- so it answers the same question either way.
-# nodepool.yaml pins kubelet.maxPods: 110, which only has addresses behind it
+# The value this run is about to apply, read from the manifest rather than
+# repeated in the two places below that compare against it: a literal drifts
+# from the file silently, and with the two out of step a cluster already
+# carrying the new value is told it is about to change -- an unattended run then
+# refuses, the recycle gate firing hardest on the run with nothing to do.
+#
+# Only kubelet.maxPods is compared. It is the field this change introduces and
+# the one whose absence guarantees a full recycle, but Karpenter hashes the
+# whole EC2NodeClass spec, so any other future edit to that file drifts the
+# fleet without passing through the gate.
+NODEPOOL_FILE="${REPO_ROOT}/demo-platform/k8s/karpenter/nodepool.yaml"
+desired_max_pods="$(awk '/^[[:space:]]*maxPods:[[:space:]]*[0-9]+[[:space:]]*$/ { print $2; exit }' "${NODEPOOL_FILE}" 2>/dev/null || true)"
+[ -n "${desired_max_pods}" ] || fail "could not read kubelet.maxPods from ${NODEPOOL_FILE}; that file is applied below, so this run cannot proceed"
+
+# nodepool.yaml pins kubelet.maxPods, which only has addresses behind it
 # while the CNI runs in prefix-delegation mode (Terraform sets it on the addon;
 # see platform/terraform/modules/eks/main.tf). Against an addon without it an
 # m6a.2xlarge tops out near 58, and the surplus pods wedge in ContainerCreating
@@ -94,8 +108,8 @@ prefix_delegation="$(kubectl -n kube-system get ds aws-node \
   2>/dev/null || true)"
 if [ "${prefix_delegation}" != "true" ]; then
   log "WARNING: aws-node does not report ENABLE_PREFIX_DELEGATION=true."
-  log "         The NodePool about to be applied advertises maxPods: 110, which"
-  log "         only prefix delegation can back. Apply platform/terraform, or run"
+  log "         The NodePool about to be applied advertises maxPods: ${desired_max_pods},"
+  log "         which only prefix delegation can back. Apply platform/terraform, or run"
   log "         demo-platform/scripts/enable-prefix-delegation.sh, before using it."
 fi
 
@@ -110,8 +124,8 @@ fi
 # Same distinction the node count makes below, for the same reason and with the
 # opposite consequence: '' is both "the field is unset" and "this read failed",
 # and here the two argue in different directions. A field genuinely unset is the
-# recycle this gate exists for; a read that failed on a cluster already at 110 is
-# a re-run that has nothing to do, and treating it as drift makes an unattended
+# recycle this gate exists for; a read that failed on a cluster already at the
+# desired value is a re-run with nothing to do, and treating it as drift makes an unattended
 # re-install refuse -- the idempotence a runner Job depends on, lost to one
 # throttled GET. Neither guess is free, so say which one is being made.
 nodeclass_read_rc=0
@@ -145,13 +159,13 @@ else
   [ "${karpenter_nodes}" -gt 0 ] && nodes_at_risk=true || nodes_at_risk=false
   nodes_desc="${karpenter_nodes}"
 fi
-if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
-  log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_desc} -> 110)."
+if [ "${nodeclass_max_pods}" != "${desired_max_pods}" ] && [ "${nodes_at_risk}" = true ]; then
+  log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_desc} -> ${desired_max_pods})."
   log "         Karpenter reads that as drift and will replace all ${nodes_desc} node(s) it"
   log "         owns, restarting every tenant that is awake (Redis and MeiliSearch are"
   log "         in-cluster and not persisted)."
   if [ "${nodeclass_desc}" = "unreadable" ]; then
-    log "         (the current value could not be read: on a cluster already at 110 there"
+    log "         (the current value could not be read: on a cluster already at ${desired_max_pods} there"
     log "          is no drift and nothing to replace, so this gate may be asking for"
     log "          nothing. Fix the read rather than answering it blind.)"
   fi

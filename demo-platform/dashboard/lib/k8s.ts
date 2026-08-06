@@ -167,8 +167,20 @@ export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   }
 }
 
+export interface TenantNamespace {
+  name: string;
+  /**
+   * demo/persistent=true — a standing per-person environment (deploy-tenant.sh
+   * --ttl none). It carries no control-table item and no expiry, and every
+   * reaper path refuses to delete it, so it is not a candidate for anything
+   * that reasons about cleanup.
+   */
+  persistent: boolean;
+}
+
 /**
- * The namespaces the reaper's orphan sweep would enumerate.
+ * The namespaces the reaper's orphan sweep would enumerate, each with the
+ * protection label the sweep checks before deleting it.
  *
  * Selected by the sweep's own label rather than by demo/tenant: this list is
  * the input to "what would be deleted", so it has to be the set the sweep
@@ -176,13 +188,21 @@ export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
  * that ever carried only one is exactly the case where a preview built on the
  * other label would be quietly wrong.
  *
- * The namespace list is the whole answer, so it is asked for directly rather
- * than derived from loadTenantPods(): that lists pods in every tenant namespace
- * to build a map this discards, which at a standing roster is ~95 pod lists per
- * cache miss, and made the orphan preview -- whose only question is which
- * namespaces exist -- the heaviest and most failure-prone call in the dashboard.
+ * One query, and the protection read off the same objects. Asking twice — once
+ * for the namespaces and once for the persistent ones — is two snapshots, and a
+ * namespace created between them appears in the first without the second, i.e.
+ * a protected tenant listed as a delete candidate. Only ever on the preview,
+ * since the reaper re-reads the label itself before every destructive path, but
+ * the page exists to be believed.
+ *
+ * The namespace list is also the whole answer, so it is asked for directly
+ * rather than derived from loadTenantPods(): that lists pods in every tenant
+ * namespace to build a map this discards, which at a standing roster is ~95 pod
+ * lists per cache miss, and made the orphan preview -- whose only question is
+ * which namespaces exist -- the heaviest and most failure-prone call in the
+ * dashboard.
  */
-export async function listTenantNamespaces(): Promise<string[]> {
+export async function listTenantNamespaces(): Promise<TenantNamespace[]> {
   const res = await core().listNamespace(
     undefined,
     undefined,
@@ -190,29 +210,11 @@ export async function listTenantNamespaces(): Promise<string[]> {
     undefined,
     SWEEP_LABEL,
   );
-  return res.body.items
-    .map((ns) => ns.metadata?.name)
-    .filter((n): n is string => Boolean(n));
-}
-
-/**
- * Tenant namespaces labeled demo/persistent=true — standing per-person
- * environments deployed with `deploy-tenant.sh --ttl none`. They carry no
- * control-table item and no expiry, and every reaper path refuses to delete
- * them, so they are not candidates for anything that reasons about cleanup.
- */
-export async function listPersistentNamespaces(): Promise<Set<string>> {
-  const res = await core().listNamespace(
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    `${SWEEP_LABEL},demo/persistent=true`,
-  );
-  const names = res.body.items
-    .map((ns) => ns.metadata?.name)
-    .filter((n): n is string => Boolean(n));
-  return new Set(names);
+  return res.body.items.flatMap((ns) => {
+    const name = ns.metadata?.name;
+    if (!name) return [];
+    return [{ name, persistent: ns.metadata?.labels?.["demo/persistent"] === "true" }];
+  });
 }
 
 /**

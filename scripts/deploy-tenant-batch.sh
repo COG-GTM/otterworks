@@ -364,8 +364,41 @@ partition_roster() {
 DEPLOY_ARGS=(--ttl "${TTL}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}")
 if [ "${DRY_RUN}" = true ]; then
   echo ""
-  log "--dry-run: would run, ${CONCURRENCY} at a time:"
-  for id in "${IDS[@]}"; do echo "  ${SCRIPT_DIR}/deploy-tenant.sh ${id} ${DEPLOY_ARGS[*]}"; done
+  # Partition before anything is printed. The command list is the part of this
+  # mode an operator actually reads to decide whether the plan is right, so it
+  # has to describe the same run the footprint and the capacity check below are
+  # sized against: listing all 95 names above "Skipping 90" and a footprint for
+  # 5 makes the reader pick which of the three to believe.
+  #
+  # The real run writes the kubeconfig before it reads anything; this mode
+  # writes nothing, so on a fresh shell every namespace read fails and the
+  # roster looks entirely undeployed -- a plan and a refusal the real run would
+  # not make, which is the disagreement the partition is here to remove. Ask the
+  # API server once whether it is reachable at all, and say which of the two
+  # answers is being given rather than reporting against a cluster that was
+  # never read.
+  PLAN=()
+  if kubectl get --raw /healthz >/dev/null 2>&1; then
+    partition_roster
+    PLAN=("${QUEUE[@]+"${QUEUE[@]}"}")
+  else
+    warn "No cluster connection, so how much of the roster is already deployed is unknown."
+    warn "  Sizing all ${#IDS[@]} tenant(s); the real run writes a kubeconfig first and sizes"
+    warn "  only what is left to deploy. Run 'aws eks update-kubeconfig --name ${EKS_CLUSTER}"
+    warn "  --region ${AWS_REGION}' for the answer the real run would give."
+    PLAN=("${IDS[@]}")
+  fi
+
+  echo ""
+  if [ "${#PLAN[@]}" -eq 0 ]; then
+    log "--dry-run: nothing to do -- every tenant on the roster has already deployed."
+    log "  Pass --redeploy to redeploy them."
+  else
+    log "--dry-run: would run, ${CONCURRENCY} at a time:"
+    for id in "${PLAN[@]}"; do echo "  ${SCRIPT_DIR}/deploy-tenant.sh ${id} ${DEPLOY_ARGS[*]}"; done
+  fi
+
+  report_footprint "${#PLAN[@]}"
   # "Will this roster fit" is most of what a dry run is asked, and the real run
   # refuses on the answer -- finding that out here, before committing to 95
   # deploys, is the point of the mode. Sized against the same queue the real run
@@ -373,27 +406,7 @@ if [ "${DRY_RUN}" = true ]; then
   # deployed to refuse.
   if [ "${PREFLIGHT}" = true ] && command -v aws >/dev/null 2>&1; then
     echo ""
-    # The real run writes the kubeconfig before it reads anything; this mode
-    # writes nothing, so on a fresh shell every namespace read fails and the
-    # roster looks entirely undeployed -- a refusal the real run would not make,
-    # which is the disagreement the partition is here to remove. Ask the API
-    # server once whether it is reachable at all, and say which of the two
-    # answers is being given rather than sizing against a cluster that was never
-    # read.
-    if kubectl get --raw /healthz >/dev/null 2>&1; then
-      partition_roster
-      report_footprint "${#QUEUE[@]}"
-      capacity_preflight "${#QUEUE[@]}" || true
-    else
-      warn "No cluster connection, so how much of the roster is already deployed is unknown."
-      warn "  Sizing all ${#IDS[@]} tenant(s); the real run writes a kubeconfig first and sizes"
-      warn "  only what is left to deploy. Run 'aws eks update-kubeconfig --name ${EKS_CLUSTER}"
-      warn "  --region ${AWS_REGION}' for the answer the real run would give."
-      report_footprint "${#IDS[@]}"
-      capacity_preflight "${#IDS[@]}" || true
-    fi
-  else
-    report_footprint "${#IDS[@]}"
+    capacity_preflight "${#PLAN[@]}" || true
   fi
   exit 0
 fi

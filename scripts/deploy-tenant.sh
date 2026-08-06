@@ -767,7 +767,10 @@ if [ ${#FAILED[@]} -eq 0 ] && [ ${#INCOMPLETE[@]} -eq 0 ]; then
       MARKED=true
       break
     fi
-    sleep $(( attempt * 2 ))
+    # Backing off after the last attempt buys nothing but six seconds per
+    # tenant, which on a 95-name batch is most of two minutes spent waiting to
+    # give up.
+    [ "${attempt}" -lt 3 ] && sleep $(( attempt * 2 ))
   done
   if [ "${MARKED}" = false ]; then
     warn "could not mark ${NS} deployed: the tenant is built, but the batch reads that"

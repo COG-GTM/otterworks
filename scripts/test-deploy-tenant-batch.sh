@@ -221,6 +221,23 @@ else
   ok "  and does not refuse a roster the real run would accept"
 fi
 said "  saying which tenants it left out" "Skipping 1 deployed tenant"
+# The command list is what the operator reads to decide the plan is right, so it
+# has to be the same run the footprint is sized against -- not the whole roster
+# printed above "Skipping 1".
+if grep -q -- "deploy-tenant.sh ada-lovelace" "${WORK}/out"; then
+  nope "  and lists only the tenants it would deploy"
+else
+  ok "  and lists only the tenants it would deploy"
+fi
+said "  still listing the ones it would" "deploy-tenant.sh grace-hopper"
+
+# Nothing left to deploy is a plan too, and an empty list under "would run" reads
+# as a failure to produce one.
+EXISTING_NS="otterworks-ada-lovelace otterworks-grace-hopper"
+DEPLOYED_NS="ada-lovelace grace-hopper"
+rc="$(run_batch --dry-run)"
+check "--dry-run on a finished roster succeeds" "${rc}" "0"
+said "  and says there is nothing to do" "nothing to do"
 
 # Unless there is no cluster to ask. --dry-run writes no kubeconfig, so on a
 # fresh shell every namespace read fails and the roster reads as untouched --

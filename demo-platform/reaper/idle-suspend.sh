@@ -323,6 +323,13 @@ tenant_has_chaos() {
 # scaled down would make the next pass read it as a wake, reset the idle clock,
 # and start the wait over -- so a persistently failing scale-down would keep the
 # tenant running forever while the platform believed it had been suspended.
+#
+# The audit line is written for script-deployed tenants too, which have no
+# TENANT#<id> item -- an AUDIT#<id> partition with nothing beside it. That is on
+# purpose: AUDIT# is append-only and independent of TENANT# (nothing joins the
+# two, and no sweep reads it), the dashboard's activity feed scans the prefix
+# rather than the tenant list, and the alternative is the whole standing roster
+# going to sleep and waking with no durable record anywhere that it happened.
 suspend_tenant() {
   local id="$1" ns="$2"
   idle_log "suspending ${id}: no ingress requests for >= ${IDLE_AFTER_SECONDS}s"
