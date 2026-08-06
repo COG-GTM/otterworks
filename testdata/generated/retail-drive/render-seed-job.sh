@@ -116,8 +116,13 @@ done
 # A branch or a tag, not a commit: the init container clones with `--branch`,
 # which does not take a SHA, so accepting one here would only move the failure
 # into the loader pod as an opaque git error.
+# The git-check-ref-format rules a value made only of those characters can still
+# break, refused here so the message names the ref rather than leaving an opaque
+# clone error in the init container. A leading `-` is not an option injection --
+# it is the argument to `--branch` -- just an unfindable ref.
 case "${repo_ref}" in
   ''|*[!A-Za-z0-9./_-]*) fail "invalid REPO_REF '${repo_ref}' (a branch or tag name)" ;;
+  -*|/*|*/|*..*|*.lock) fail "invalid REPO_REF '${repo_ref}' (not a valid git ref name)" ;;
 esac
 
 sed -e "s#__TENANT_NAMESPACE__#${namespace}#g" \

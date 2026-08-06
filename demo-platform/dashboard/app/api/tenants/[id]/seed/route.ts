@@ -104,8 +104,14 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   // crash-loop the loader against a Service with no endpoints. The name is the
   // pod's `app.kubernetes.io/name`, which the chart sets to the chart name, and
   // api-gateway is in every service profile.
-  const gateway = tenant.live?.services.find((s) => s.name === GATEWAY_SERVICE);
-  if (!force && !gateway?.ready) {
+  //
+  // `some`, not `find`: `services` has an entry per pod, so a rollout (old pod
+  // Ready, new pod not) or a Terminating pod puts two gateway entries in the
+  // list and the first one is whichever the API server listed first.
+  const gatewayReady = (tenant.live?.services ?? []).some(
+    (s) => s.name === GATEWAY_SERVICE && s.ready,
+  );
+  if (!force && !gatewayReady) {
     return error(
       409,
       `tenant '${id}' has no ready ${GATEWAY_SERVICE}; the loader writes through it, so seeding would only crash-loop`,
