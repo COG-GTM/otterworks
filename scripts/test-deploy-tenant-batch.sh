@@ -200,6 +200,12 @@ check "asks ECR nothing when every tenant is already deployed" "$(wc -l < "${ECR
 check "  and still succeeds" "${rc}" "0"
 EXISTING_NS=""; DEPLOYED_NS=""
 
+# ...nor when the operator has already named the tag: deploy-tenant.sh prefers
+# --image-tag over anything resolved here, so the answers would be thrown away.
+rc="$(run_batch --profile core --image-tag v9)"
+check "asks ECR nothing when --image-tag names the tag" "$(wc -l < "${ECR_LOG}" | tr -d ' ')" "0"
+check "  and passes the pinned tag down" "$(grep -c -- '--image-tag v9' "${DEPLOY_LOG}")" "2"
+
 # --dry-run is where a 95-name roster is sanity-checked, and whether it fits is
 # most of that question -- but it is advisory here: refusing to print a plan
 # helps nobody.

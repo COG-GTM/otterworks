@@ -385,6 +385,11 @@ tenant_namespaces() {
   kubectl get ns -l demo/tenant -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
     | while read -r ns; do
         [ -n "${ns}" ] || continue
+        # Two names, where the orphan sweep in reaper.sh excludes three: the
+        # golden app's own "otterworks" namespace is not listed because it
+        # cannot arrive here -- only otterworks-<id> is emitted, and there is no
+        # id after the prefix. The sweep enumerates namespaces themselves, so it
+        # has to say so explicitly.
         case "${ns}" in
           otterworks-platform|otterworks-system) continue ;;
           otterworks-*) printf '%s %s\n' "${ns#otterworks-}" "${ns}" ;;

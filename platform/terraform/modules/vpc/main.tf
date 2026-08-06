@@ -13,6 +13,13 @@ locals {
   # The /20 pod subnets take blocks 1..az_count of the VPC's /20 grid; block 6
   # is where the /24 public subnets already sit (x.x.100.0/24), so past five AZs
   # the two would overlap and the apply would fail on a CIDR conflict.
+  #
+  # Blocks 1-5 -- x.x.16.0 through x.x.95.255 on a /16 -- are therefore reserved
+  # whatever az_count is set to today, and nothing enforces that on a subnet
+  # added elsewhere: a future RDS or VPC-endpoint subnet numbered into that range
+  # is an apply-time CIDR conflict, or worse, an apply that succeeds now and
+  # conflicts the day az_count grows. New subnets belong in blocks 7-15
+  # (x.x.112.0 and up).
   pod_subnet_az_limit = 5
 
   common_tags = {

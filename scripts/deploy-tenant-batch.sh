@@ -68,6 +68,7 @@ REDEPLOY=false
 DRY_RUN=false
 PREFLIGHT=true
 ALWAYS_ON=false
+IMAGE_TAG_PINNED=false
 LOG_DIR=""
 # Same default as deploy-tenant.sh, from the same place: sizing the roster as
 # `full` while the children deploy `core` would refuse rosters that do fit.
@@ -92,6 +93,7 @@ while [ $# -gt 0 ]; do
     --tier|--profile|--host-suffix|--image-tag)
                    needs_value "$@"
                    [ "$1" = "--profile" ] && PROFILE="$2"
+                   [ "$1" = "--image-tag" ] && IMAGE_TAG_PINNED=true
                    PASSTHROUGH+=("$1" "$2"); shift 2 ;;
     --skip-db)     PASSTHROUGH+=("$1"); shift ;;
     # Through the last line of the header block, which the comments above have
@@ -501,8 +503,10 @@ if [ "${#QUEUE[@]}" -gt 0 ]; then
   fi
   # After the partition, not before it: a re-run that finds every tenant already
   # deployed -- the ordinary end of the "re-run until the batch is clean" loop --
-  # should not ask ECR thirteen questions in order to deploy nothing.
-  resolve_image_tags
+  # should not ask ECR thirteen questions in order to deploy nothing. Nor when
+  # --image-tag already names the tag: deploy-tenant.sh takes that in preference
+  # to anything resolved here, so the answers would be discarded.
+  [ "${IMAGE_TAG_PINNED}" = true ] || resolve_image_tags
 fi
 
 log "Deploying ${#QUEUE[@]} tenant(s), ${CONCURRENCY} at a time..."

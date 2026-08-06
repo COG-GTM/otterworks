@@ -450,6 +450,17 @@ seen_running system
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "never suspends the platform's own namespaces" "${SUSPENDED# }" ""
 
+# The golden app is not in the exclusion list beside those two, because it does
+# not need to be: the enumeration only emits otterworks-<id>, and "otterworks"
+# has no id after the prefix. Pinned rather than argued, since the orphan sweep
+# next door does name it and the difference invites someone to "fix" one of them.
+reset_state
+NS_RUNNING[otterworks]=13
+ITEM_COUNT[otterworks]=0; ITEM_SINCE[otterworks]=${STALE}
+seen_running otterworks
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  nor the golden app, which is not a tenant namespace at all" "${SUSPENDED# }" ""
+
 # ---- contract of the real ingress_request_counts -----------------------------
 # The scan cases above stub this function, and that stub is precisely what hid a
 # pipefail bug: it returned success on empty output while the real pipeline
