@@ -54,13 +54,16 @@ is out of scope.
 - A terminal `.anyRequest().permitAll()` plus `/error` and `/swagger-ui.html` on the permit
   list. Security 5 let unmatched requests through; Security 6 denies them, and that includes
   the `ERROR` dispatch — so every error path (validation 400s, 404s, 405s) came back as a
-  bodyless 403. Found only by A/B-ing the running service against a live `main` baseline;
-  MockMvc slices bypass the filter chain and error dispatch, so all 44 tests stayed green.
+  bodyless 403. Found only by A/B-ing the running service against a live `main` baseline.
+  The MockMvc suite does run the security filter chain (`@AutoConfigureMockMvc` registers it),
+  but it never performs the container's ERROR dispatch and no case requested an unmapped path,
+  so all 44 tests stayed green throughout. `SecurityErrorDispatchTest` now closes that gap over
+  a real container — it fails on all three cases if the terminal rule is removed.
 - Builder image → `maven:3.9-eclipse-temurin-17`, runtime → `eclipse-temurin:17-jre-jammy`.
 - CI: `ci.yml` `report-service` job and `docker-build.yml` `report-service-tests` job →
   `java-version: '17'`.
 
-`mvn -B clean verify` on JDK 17: **BUILD SUCCESS, 44 tests → 44 tests**, all green. No tests
+`mvn -B clean verify` on JDK 17: **BUILD SUCCESS, 44 tests → 47 tests**, all green. No tests
 deleted or weakened. No trailing-slash breakage: Spring 6 drops the legacy trailing-slash
 match, but no route, test, `tests/api/*.py` case or api-gateway proxy rule relies on one
 (`router.go` forwards `req.URL.Path` unmodified and chi does not append a slash). No
