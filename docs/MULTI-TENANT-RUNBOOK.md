@@ -128,6 +128,13 @@ deploy time. Before deploying a roster of this size, check four ceilings:
 | Node CPU | `limits.cpu` on the Karpenter NodePool | ~100 `full` / ~300 `core` |
 | DB clients | PgBouncer `max_client_conn` | ~125 awake `full` |
 
+The batch's preflight covers the first row and only the first: it refuses a
+roster that does not fit the free addresses in the discovery-tagged subnets, and
+warns (rather than refuses) when the NodePool CPU limit is already below what the
+roster requests. Pods per node, PgBouncer connections and the per-tenant
+`ResourceQuota` are not measured — check those from this table yourself before a
+run of this size.
+
 Raising `maxPods` is a one-time recycle: it is part of the `EC2NodeClass` spec
 Karpenter hashes for drift, so the `install-karpenter.sh` run that first applies
 it replaces every node it owns (20% at a time) and restarts every tenant that is

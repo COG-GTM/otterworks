@@ -63,7 +63,7 @@ Append-only. `action` ∈ {checkout, checkin, extend, deploy_ok, deploy_fail, re
 reset, suspend, resume, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
 destroys nothing, so a suspended tenant is still checked out and still in the table.
-`resume` is its counterpart: the idle scan scaling an `demo/always-on=true` tenant back up
+`resume` is its counterpart: the idle scan scaling a `demo/always-on=true` tenant back up
 after finding it at zero replicas.
 
 ## Access patterns
