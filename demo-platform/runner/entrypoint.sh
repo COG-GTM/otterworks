@@ -205,6 +205,11 @@ run_seed() {
   # TTL and fills a bucket shared with every other tenant, below the floor it is
   # an empty drive. The renderer stays uncapped -- applying it needs cluster
   # access, which is licence enough.
+  # Shape first: awk gives an unparsed `-v` a string's comparison semantics, so
+  # "1e9" would sort below "2" and pass the bounds below.
+  case "${scale}" in
+    ''|*[!0-9.]*|*.*.*|.*|*.) die "invalid SCALE '${scale}' (a plain decimal, e.g. 0.1 or 1.0)" ;;
+  esac
   awk -v s="${scale}" 'BEGIN { exit !(s >= 0.01 && s <= 2) }' 2>/dev/null ||
     die "invalid SCALE '${scale}' (0.01 to 2)"
 
@@ -361,24 +366,20 @@ EOF
 # refresh, a transient 500. Callers must keep those apart: they act on "nothing
 # is running" by deleting the Job.
 #
-# stderr is captured separately, never folded into the value: kubectl warnings
-# on the success path would otherwise be substring-matched alongside the
-# conditions, and a stray "Failed"/"Complete" in a banner would decide whether a
-# running loader gets deleted.
+# Absence is `--ignore-not-found` (empty output, exit 0) rather than a match on
+# kubectl's "NotFound" wording, which is a phrase in a message and not an API.
+# The uid is printed first only so that absent and "present, no conditions yet"
+# are distinguishable, since both print no conditions; it is stripped again
+# before the value is returned. stderr never reaches the value either way: a
+# kubectl warning containing "Failed" would otherwise decide whether a running
+# loader gets deleted.
 seed_job_state() {
-  local out err
-  err="${TMPDIR:-/tmp}/seed-job-state.$$"
-  if out="$(kubectl -n "$1" get job "$2" \
-              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>"${err}")"; then
-    rm -f "${err}"
-    printf '%s' "${out}"
-    return 0
-  fi
-  case "$(cat "${err}" 2>/dev/null)" in
-    *NotFound*|*not\ found*) printf 'ABSENT' ;;
-    *) printf 'UNREADABLE' ;;
-  esac
-  rm -f "${err}"
+  local out
+  out="$(kubectl -n "$1" get job "$2" --ignore-not-found \
+           -o jsonpath='{.metadata.uid}|{.status.conditions[?(@.status=="True")].type}' \
+           2>/dev/null)" || { printf 'UNREADABLE'; return 0; }
+  [ -n "${out}" ] || { printf 'ABSENT'; return 0; }
+  printf '%s' "${out#*|}"
 }
 
 # Poll rather than `kubectl wait --for=condition=complete`, which sits out the
