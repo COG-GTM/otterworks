@@ -194,6 +194,26 @@ check "orphan-S3 sweep still clears data whose namespace is gone" \
   "${DELETED# }" "s3 rm s3://otterworks-files-dev/tenants/ada-lovelace/ --recursive"
 NS_LOOKUP_ERR=""
 
+# --- the dashboard's copy of the sweep's definition ---------------------------
+# The ops dashboard's clean-up preview answers "what would this sweep delete",
+# and it answers from constants in lib/env.ts that restate what the sweep does:
+# the label it enumerates by, and the namespaces it refuses whatever they are
+# labelled. A restatement drifts silently -- the page would keep looking right
+# while describing a sweep that no longer exists -- so the two are compared here
+# rather than trusted to stay in step.
+REAPER_SH="${SCRIPT_DIR}/reaper.sh"
+ENV_TS="${SCRIPT_DIR}/../dashboard/lib/env.ts"
+
+sweep_label="$(sed -n 's/.*kubectl get ns -l \([^ ]*\).*/\1/p' "${REAPER_SH}" | head -1)"
+env_label="$(sed -n 's/^export const SWEEP_LABEL = "\(.*\)";$/\1/p' "${ENV_TS}")"
+check "the dashboard preview enumerates by the sweep's label" "${env_label}" "${sweep_label}"
+
+sweep_excluded="$(sed -n 's/.*case "${ns}" in \(.*\)) continue.*/\1/p' "${REAPER_SH}" \
+  | tr '|' '\n' | sort | tr '\n' ' ')"
+env_excluded="$(sed -n '/SWEEP_EXCLUDED_NAMESPACES/,/^]/p' "${ENV_TS}" \
+  | grep -o '"[^"]*"' | tr -d '"' | sort | tr '\n' ' ')"
+check "  and skips the same namespaces the sweep refuses" "${env_excluded}" "${sweep_excluded}"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

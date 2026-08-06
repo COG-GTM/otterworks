@@ -295,6 +295,15 @@ record_running() {
 # teardown that stopped short of the record) is not a degraded read: nothing
 # about it can be suspended, and reporting it unreadable adds a warning and a
 # tally to every pass, for as long as the item exists.
+#
+# 'gone' is the defensive answer, not the usual one: listing a namespaced
+# resource in a namespace that does not exist is an empty list and exit 0, not a
+# 404, so a deleted namespace ordinarily arrives here as "0 Deployments
+# running", which the scan reads as already suspended and leaves alone -- the
+# same outcome, without the log line. What reaches this branch is a kubectl or
+# apiserver that does answer NotFound; the namespace-backed tenants have their
+# own, real 404 in state_read, which is where a missing namespace is actually
+# caught.
 running_deployments() {
   local out err errfile rc=0
   errfile="$(mktemp)"

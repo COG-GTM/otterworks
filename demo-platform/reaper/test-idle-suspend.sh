@@ -656,8 +656,15 @@ kubectl() {
 }
 REPLICAS="$(printf '1\n0\n2\n')"
 check "counts the Deployments with replicas" "$(running_deployments otterworks-solo)" "2"
+# The defensive branch: a list in a missing namespace is normally an empty list
+# and exit 0 (so a deleted namespace reads as "0 running", which the scan treats
+# as already suspended). This covers a kubectl or apiserver that does say
+# NotFound -- what must not happen is that answer being folded into '?'.
 DEPLOY_ERR='Error from server (NotFound): namespaces "otterworks-solo" not found'
-check "  a namespace that is gone says so" "$(running_deployments otterworks-solo)" "gone"
+check "  a NotFound says gone, not unreadable" "$(running_deployments otterworks-solo)" "gone"
+DEPLOY_ERR=""; REPLICAS=""
+check "  and the ordinary empty list is zero, not unreadable" "$(running_deployments otterworks-solo)" "0"
+REPLICAS="$(printf '1\n0\n2\n')"
 DEPLOY_ERR="error: You must be logged in to the server (Unauthorized)"
 check "  and any other failure is unmeasured, not zero" "$(running_deployments otterworks-solo)" "?"
 DEPLOY_ERR=""
