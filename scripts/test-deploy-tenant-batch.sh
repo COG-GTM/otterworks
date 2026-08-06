@@ -172,6 +172,21 @@ check "--dry-run reports a roster that will not fit" "${rc}" "0"
 said "  naming the limit the real run would refuse on" "Not enough pod IPs"
 check "  and deploys nothing" "$(deployed)" ""
 
+# The point of the mode is agreeing with the real run. A tenant already deployed
+# is already holding its pod IPs, so sizing the whole roster after a partial
+# batch refuses one the real run (which sizes the queue) would accept.
+EXISTING_NS="otterworks-ada-lovelace"
+DEPLOYED_NS="ada-lovelace"
+FREE_IPS=20; rc="$(run_batch --dry-run)"
+check "--dry-run sizes the un-deployed remainder, not the whole roster" "${rc}" "0"
+if grep -q -- "Not enough pod IPs" "${WORK}/out"; then
+  nope "  and does not refuse a roster the real run would accept"
+else
+  ok "  and does not refuse a roster the real run would accept"
+fi
+said "  saying which tenants it left out" "Skipping 1 deployed tenant"
+EXISTING_NS=""; DEPLOYED_NS=""
+
 # Staying awake is opt-in. Without the flag a tenant idles like any other, which
 # is the whole point of it being a flag: the exemption holds its compute and pod
 # IPs whether or not anyone opens the URL.

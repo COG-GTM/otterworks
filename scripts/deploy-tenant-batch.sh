@@ -302,6 +302,42 @@ capacity_preflight() {
   return "${rc}"
 }
 
+# A tenant counts as already deployed only if deploy-tenant.sh got all the way to
+# the end for it (demo/deployed-at). Skipping on the namespace alone would strand
+# exactly the people this script is meant to rescue: the namespace is created in
+# the first seconds, so a deploy that died at the database, Helm or ingress step
+# leaves one behind, and a re-run would report "skipped" over a half-built tenant.
+tenant_deploy_finished() {
+  [ -n "$(kubectl get ns "$(tenant_namespace "$1")" \
+            -o jsonpath='{.metadata.annotations.demo/deployed-at}' 2>/dev/null)" ]
+}
+
+# Splits the roster into what is already up, what an earlier run left half-built,
+# and what this run will deploy. Read-only, which is why --dry-run can run it
+# too: without it that mode sizes all 95 names against a cluster where 90 of them
+# are already deployed and already holding their pod IPs, and reports a roster
+# that will not fit when the real run would accept it. A cluster it cannot reach
+# reads as a cluster with nothing on it -- the same answer as before, and the
+# conservative one.
+SKIPPED=()
+RETRYING=()
+QUEUE=()
+partition_roster() {
+  local id
+  for id in "${IDS[@]}"; do
+    if [ "${REDEPLOY}" = false ] && kubectl get ns "$(tenant_namespace "${id}")" >/dev/null 2>&1; then
+      if tenant_deploy_finished "${id}"; then
+        SKIPPED+=("${id}")
+        continue
+      fi
+      RETRYING+=("${id}")
+    fi
+    QUEUE+=("${id}")
+  done
+  [ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} deployed tenant(s) (pass --redeploy to redeploy them)."
+  [ "${#RETRYING[@]}" -eq 0 ] || warn "Retrying ${#RETRYING[@]} incomplete tenant(s) from an earlier run: ${RETRYING[*]}"
+}
+
 DEPLOY_ARGS=(--ttl "${TTL}" "${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}")
 if [ "${DRY_RUN}" = true ]; then
   echo ""
@@ -309,12 +345,13 @@ if [ "${DRY_RUN}" = true ]; then
   for id in "${IDS[@]}"; do echo "  ${SCRIPT_DIR}/deploy-tenant.sh ${id} ${DEPLOY_ARGS[*]}"; done
   # "Will this roster fit" is most of what a dry run is asked, and the real run
   # refuses on the answer -- finding that out here, before committing to 95
-  # deploys, is the point of the mode. Advisory: nothing is being deployed to
-  # refuse, and it sizes the whole roster rather than the queue, since which
-  # tenants are already up is not read in this mode.
+  # deploys, is the point of the mode. Sized against the same queue the real run
+  # would size, so the two modes agree. Advisory only: there is nothing being
+  # deployed to refuse.
   if [ "${PREFLIGHT}" = true ] && command -v aws >/dev/null 2>&1; then
     echo ""
-    capacity_preflight "${#IDS[@]}" || true
+    partition_roster
+    capacity_preflight "${#QUEUE[@]}" || true
   fi
   exit 0
 fi
@@ -400,31 +437,7 @@ deploy_one() {
   fi
 }
 
-# A tenant counts as already deployed only if deploy-tenant.sh got all the way to
-# the end for it (demo/deployed-at). Skipping on the namespace alone would strand
-# exactly the people this script is meant to rescue: the namespace is created in
-# the first seconds, so a deploy that died at the database, Helm or ingress step
-# leaves one behind, and a re-run would report "skipped" over a half-built tenant.
-tenant_deploy_finished() {
-  [ -n "$(kubectl get ns "$(tenant_namespace "$1")" \
-            -o jsonpath='{.metadata.annotations.demo/deployed-at}' 2>/dev/null)" ]
-}
-
-SKIPPED=()
-RETRYING=()
-QUEUE=()
-for id in "${IDS[@]}"; do
-  if [ "${REDEPLOY}" = false ] && kubectl get ns "$(tenant_namespace "${id}")" >/dev/null 2>&1; then
-    if tenant_deploy_finished "${id}"; then
-      SKIPPED+=("${id}")
-      continue
-    fi
-    RETRYING+=("${id}")
-  fi
-  QUEUE+=("${id}")
-done
-[ "${#SKIPPED[@]}" -eq 0 ] || log "Skipping ${#SKIPPED[@]} deployed tenant(s) (pass --redeploy to redeploy them)."
-[ "${#RETRYING[@]}" -eq 0 ] || warn "Retrying ${#RETRYING[@]} incomplete tenant(s) from an earlier run: ${RETRYING[*]}"
+partition_roster
 
 if [ "${#QUEUE[@]}" -gt 0 ]; then
   if [ "${PREFLIGHT}" = true ]; then

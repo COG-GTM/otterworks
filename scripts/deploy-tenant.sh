@@ -344,29 +344,47 @@ EOF
 # this host; it is seconds long, and a no-op when the Terraform-managed
 # otterworks-* wildcard already covers the namespace.
 #
-# The lock lives in a directory this user owns, not at a fixed path in a
+# The lock lives in a directory this user owns, never at a shared path in a
 # world-writable /tmp: there, any local account can hold the file open until the
-# timeout fires (every deploy aborts) or pre-create it unwritable, and defeating
-# the lock re-opens the lost-update it exists to close. Falls back to the shared
-# path only if a private directory cannot be made, which is where it was before.
+# timeout fires (every deploy in the batch aborts) or pre-create it unwritable,
+# and defeating the lock re-opens the lost update it exists to close.
+#
+# Tried in order, first one that works: the runtime dir, the home directory, and
+# a uid-suffixed directory under TMPDIR. The suffix is what makes the last one
+# usable -- an unsuffixed /tmp/.otterworks is one name several accounts race
+# for, and the loser cannot use it (the -O test refuses somebody else's
+# directory), while /tmp/.otterworks-1000 is only contended by an account
+# already impersonating this uid.
 irsa_lock_path() {
-  local base dir
-  base="${XDG_RUNTIME_DIR:-${HOME:-}}"
-  [ -n "${base}" ] && [ -d "${base}" ] || base="${TMPDIR:-/tmp}"
-  dir="${base}/.otterworks"
-  mkdir -p "${dir}" 2>/dev/null || return 1
-  # -O, because mkdir -p on an existing directory owned by somebody else
-  # succeeds, and that directory is exactly what this is avoiding.
-  [ -O "${dir}" ] || return 1
-  chmod 700 "${dir}" 2>/dev/null || return 1
-  printf '%s/irsa-trust.lock' "${dir}"
+  local dir
+  for dir in "${XDG_RUNTIME_DIR:+${XDG_RUNTIME_DIR}/.otterworks}" \
+             "${HOME:+${HOME}/.otterworks}" \
+             "${TMPDIR:-/tmp}/.otterworks-$(id -u)"; do
+    [ -n "${dir}" ] || continue
+    # One component under the shared directory, not a nested path: a parent an
+    # attacker owns can be swapped out from under a leaf that passes -O.
+    mkdir -p "${dir}" 2>/dev/null || continue
+    # -O, because mkdir -p on an existing directory owned by somebody else
+    # succeeds, and that directory is exactly what this is avoiding.
+    [ -O "${dir}" ] || continue
+    chmod 700 "${dir}" 2>/dev/null || continue
+    printf '%s/irsa-trust.lock' "${dir}"
+    return 0
+  done
+  return 1
 }
 
 ensure_irsa_trust() {
   local lock
+  # No fallback to a shared path. The alternatives when no private directory can
+  # be made are an unlocked read-modify-write (the lost update, silent, in
+  # another tenant's pods) or a lock any local account can hold or poison; both
+  # are worse than a deploy that stops and says which directory to fix.
   lock="$(irsa_lock_path)" || {
-    lock="${TMPDIR:-/tmp}/otterworks-irsa-trust.lock"
-    warn "no private lock directory available; falling back to ${lock}"
+    err "  no lock directory this user owns could be created under XDG_RUNTIME_DIR,"
+    err "  HOME or ${TMPDIR:-/tmp}; refusing to update the shared IRSA trust policies"
+    err "  unserialised. Set TMPDIR to a writable path and re-run."
+    return 1
   }
   if ! command -v flock >/dev/null 2>&1; then
     warn "flock unavailable: concurrent deploys may race on the shared IRSA trust policies"
