@@ -286,7 +286,7 @@ inferred; two WPs may own different files in the same directory, never the same 
 | WP | Title | Owns (files/globs) | Effort | Depends on |
 |---|---|---|---|---|
 | **WP-00** | Coverage baseline + gates | `Makefile`, `.github/workflows/ci.yml`, `sonar-project.properties`, `frontend/client-app/package.json` + vitest config, `codecov.yml` (new) | M | — |
-| WP-01 | file-service handlers: upload/download/versions | `services/file-service/src/handlers.rs` (tests), `services/file-service/src/storage.rs`, new `services/file-service/tests/` | L | WP-00 |
+| WP-01 | file-service handlers: upload/download/versions | `services/file-service/src/handlers.rs` (tests), `services/file-service/src/storage.rs`, `services/file-service/src/main.rs`, new `services/file-service/tests/` | L | WP-00 |
 | WP-02 | file-service: folders, trash/restore, share matrix | `services/file-service/src/metadata.rs` (tests), `services/file-service/src/models.rs`, `services/file-service/src/middleware.rs`, `services/file-service/src/config.rs`, `services/file-service/src/errors.rs` | L | WP-00 |
 | WP-03 | api-gateway router + JWT/header-spoofing negatives | `services/api-gateway/internal/proxy/router_test.go` (new), `services/api-gateway/internal/config/config_test.go` (new), `services/api-gateway/internal/middleware/jwt_test.go`, `services/api-gateway/internal/middleware/logging_test.go` (new), `services/api-gateway/internal/middleware/metrics_test.go` (new) | M | WP-00 |
 | WP-04 | api-gateway rate-limit + circuit-breaker boundaries | `services/api-gateway/internal/middleware/ratelimit_test.go`, `services/api-gateway/internal/proxy/circuitbreaker_test.go` | S | WP-00 |
@@ -300,7 +300,7 @@ inferred; two WPs may own different files in the same directory, never the same 
 | WP-12 | analytics + report + legacy-portal boundary pass | `services/analytics-service/src/test/**`, `services/report-service/src/test/**`, `services/legacy-portal/src/test/**` | M | WP-00 |
 | **WP-13** | **BRD decision-table testing standard + threshold audit** | `docs/bdd/decision-table-testing-standard.md` (new), `docs/bdd/brd-credit-decline-matrix.md` (new) | S | — |
 | WP-14 | client-app unit tests: API client, hooks, editor state | `frontend/client-app/src/**/*.test.ts(x)` | L | WP-00 |
-| WP-15 | Wire Playwright e2e + BDD into CI, de-flake, delete stale `test-results/` | `frontend/client-app/e2e/**`, `frontend/client-app/bdd/**`, `playwright.config.ts` (+ e2e CI job **handed to WP-00**) | L | WP-00 |
+| WP-15 | Wire Playwright e2e + BDD into CI, de-flake, delete stale `test-results/` | `frontend/client-app/e2e/**`, `frontend/client-app/bdd/**`, `frontend/client-app/playwright.config.ts` (+ e2e CI job **and any new `package.json` script** handed to WP-00) | L | WP-00 |
 | WP-16 | admin-dashboard: remove `\|\| true`, fix/expand Angular specs | `frontend/admin-dashboard/src/**/*.spec.ts` (+ CI job change **handed to WP-00**) | M | WP-00 |
 | WP-17 | Execute `tests/api` in CI against a composed stack | `tests/api/**` (+ compose CI job **handed to WP-00**) | L | WP-00 |
 | WP-18 | Cross-service authorization matrix suite | `tests/authz/**` (new) | L | WP-17 |
@@ -400,7 +400,10 @@ document.
 2. **No production-code changes in a coverage PR.** Defect fixes are separate PRs with their own
    review. For Rust (`file-service`), which uses inline tests, adding a `#[cfg(test)] mod tests`
    block to a `src/*.rs` file is a *test* change, not a production change — but nothing outside
-   that block may move. WP-01/WP-02 own those source files on exactly that basis.
+   that block may move. WP-01/WP-02 own those source files on exactly that basis. `main.rs` (the
+   crate root, where any shared test-helper module must be declared with `mod`) belongs to **WP-01**
+   — WP-02 requests a declaration in its PR description rather than editing it, same handoff shape
+   as `ci.yml`.
 3. **No existing test is edited or deleted** to make a new one pass. **Appending** new cases to an
    existing test file is expected and allowed — several WPs own files that already exist
    (`jwt_test.go`, `ratelimit_test.go`, `circuitbreaker_test.go`, `cors_test.go`,
