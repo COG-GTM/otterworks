@@ -420,7 +420,7 @@ wait_for_seed() {
     esac
     sleep 15
   done
-  die "seed Job did not finish within ${SEED_TIMEOUT:-3600}s -- it is still running: kubectl -n ${ns} logs -f job/${job}"
+  die "seed Job did not finish within ${SEED_TIMEOUT-3600}s -- it is still running: kubectl -n ${ns} logs -f job/${job}"
 }
 
 run_reap() {

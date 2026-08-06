@@ -56,6 +56,9 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   runner Job) *and* the readiness checks above — a tenant idle-suspended after its loader
   wedged would otherwise have no way out, since waking it does not delete a Job; the forced
   seed clears the loader, its own replacement fails, and the seed after the redeploy works.
+  The one gate force does *not* skip is `status !== active`: a tenant being deployed or torn
+  down is not one to delete Jobs in, and a wedged loader in a tenant that is not active goes
+  away with the tenant.
   Force passes `SEED_FORCE=true` to the runner: it discards whatever the running
   loader has uploaded, and is the only way out of a Job that never reaches a terminal state
   — a loader pod the tenant's ResourceQuota will not admit — without direct `kubectl`
