@@ -15,8 +15,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * - java.util.Date usage (target: java.time.*)
  * - RestTemplate (target: WebClient or RestClient)
  * - iText 5 (AGPL license; target: OpenPDF or iText 7)
- * - Guava 28 (multiple CVEs; target: 33+)
- * - Commons IO / Guava caching (target: Caffeine, java.nio)
+ * - Guava 28 (multiple CVEs; target: 33+), including its cache (target: Caffeine)
  */
 @SpringBootApplication
 @EnableScheduling

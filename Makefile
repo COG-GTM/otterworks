@@ -226,7 +226,7 @@ security-scan: ## Run security scans across all services
 	@echo ""
 	@echo "=== Report Service (skipped - excluded from Trivy, see UPGRADE_GUIDE axes 6/9) ==="
 
-test-report: ## Run report-service tests only
+test-report: ## Build and test report-service (mvn verify)
 	cd services/report-service && mvn -B verify
 
 build-report: ## Build report-service
