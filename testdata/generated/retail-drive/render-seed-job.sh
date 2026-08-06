@@ -77,8 +77,15 @@ esac
 # Logistics"), and generate_drive.py matches department names exactly, so `&`
 # has to be spellable here. It is also sed's "the whole match" though, hence the
 # escape below; `#` and `\` have no such use and stay refused.
+# The second case is for the separators-only values (",", ", ") that survive the
+# first: generate_drive.py drops empty entries, so those select no department at
+# all and the loader would succeed having uploaded nothing.
 case "${departments}" in
   ''|*[!A-Za-z0-9,_\&\ -]*) fail "invalid departments '${departments}' (comma-separated names, or 'all')" ;;
+esac
+case "${departments}" in
+  *[A-Za-z0-9]*) ;;
+  *) fail "invalid departments '${departments}' (no department names in it)" ;;
 esac
 departments_sed="${departments//&/\\&}"
 # The URL overrides are operator input, but they are still sed replacement text
