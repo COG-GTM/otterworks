@@ -42,7 +42,8 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   `testdata/generated/retail-drive/seed-loader.job.tpl.yaml` into `otterworks-<id>`.
   `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is bounded to
   `0.01..2`; `departments` defaults to `all`. 409 unless the tenant is `active` (the
-  loader writes through that tenant's own api-gateway) *and* has ready pods — an
+  loader writes through that tenant's own api-gateway) *and* has a ready `api-gateway`
+  pod, since that is the one service every uploaded file goes through — an
   idle-suspended tenant is still `active` in the control table, so wake it first with a
   redeploy (`POST /api/tenants/:id/redeploy`, i.e. `tenant.sh sync <branch>`), which is
   the wake-up available to a caller with no cluster access. A tenant whose namespace is

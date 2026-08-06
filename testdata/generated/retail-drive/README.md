@@ -220,6 +220,10 @@ created in the namespace) and applies this template into `otterworks-coggtm`.
 Dashboard credentials **win**: when they are configured the runner overwrites a
 hand-created Secret in the namespace, so a drive account registered earlier with
 a different password stops working. Configure one or the other, not both.
+The upsert is a **server-side** apply under its own field manager, so the
+credentials are not echoed back into the Secret's
+`kubectl.kubernetes.io/last-applied-configuration` annotation; if a client-side
+`kubectl apply` of your own left one there, the runner deletes it.
 
 `SEED_FORCE=true` sets `force` on that request, which skips the in-flight check
 and lets the runner replace a loader that is still going. It is also the only way

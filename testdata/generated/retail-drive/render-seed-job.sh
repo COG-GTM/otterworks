@@ -58,6 +58,10 @@ namespace="${TENANT_NAMESPACE:-otterworks-${id}}"
 case "${namespace}" in
   *[!a-z0-9-]*|-*|*-|"") fail "invalid namespace '${namespace}' (RFC 1123 label)" ;;
 esac
+# 63 is the label limit the API server applies; without this a long id renders a
+# manifest that is only rejected at apply time, by which point the runner has
+# already deleted the previous loader.
+[ "${#namespace}" -le 63 ] || fail "invalid namespace '${namespace}' (${#namespace} characters, max 63)"
 gateway_url="${GATEWAY_URL:-http://api-gateway.${namespace}.svc.cluster.local:8080}"
 # `:-`, not `-`: the runner passes REPO_URL/REPO_REF through unconditionally and
 # they are empty when its own SEED_REPO_* are unset, so empty has to mean default.

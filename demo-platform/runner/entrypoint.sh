@@ -332,6 +332,14 @@ delete_loader_job() {
     --ignore-not-found --cascade=foreground --wait=true --timeout=120s >/dev/null
 }
 
+# Server-side apply, so the credentials are not echoed back into the object's
+# kubectl.kubernetes.io/last-applied-configuration annotation (kubectl only
+# maintains that annotation for its default `kubectl` field manager). The keys
+# are still merged rather than replaced: fields owned by other managers stay.
+# --force-conflicts takes the two keys from whoever wrote them last, which is
+# the documented precedence -- the platform's drive account wins.
+SEED_FIELD_MANAGER="otterworks-seed-runner"
+
 ensure_seed_secret() {
   local ns="$1"
   if [ -n "${DRIVE_EMAIL:-}" ] && [ -n "${DRIVE_PASSWORD:-}" ]; then
@@ -339,7 +347,8 @@ ensure_seed_secret() {
     # `if`, not `|| die`: the heredoc has to stay attached to the kubectl call,
     # and an unguarded failure here would end the runner with kubectl's stderr
     # and no indication of which step it came from.
-    if kubectl apply -f - >/dev/null <<EOF
+    if kubectl apply --server-side --field-manager="${SEED_FIELD_MANAGER}" \
+         --force-conflicts -f - >/dev/null <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
@@ -351,6 +360,13 @@ data:
   DRIVE_PASSWORD: $(printf '%s' "${DRIVE_PASSWORD}" | base64 | tr -d '\n')
 EOF
     then
+      # A client-side apply of the same Secret -- an earlier runner, or an
+      # operator's own `kubectl apply` -- left the whole manifest, credentials
+      # included, in this annotation. Server-side apply does not update it under
+      # a non-default field manager, so it would keep a stale password in
+      # metadata, which tooling copies around far more freely than `data`.
+      kubectl -n "${ns}" annotate secret retail-drive-seed \
+        kubectl.kubernetes.io/last-applied-configuration- >/dev/null 2>&1 || true
       return 0
     fi
     die_without_loader "could not write the retail-drive-seed Secret in ${ns}"
@@ -388,8 +404,11 @@ seed_job_state() {
 # whole timeout on a Job that has already failed.
 wait_for_seed() {
   local ns="$1" job="$2" deadline
-  deadline=$(( $(date -u +%s) + ${SEED_TIMEOUT:-3600} ))
-  log "waiting for ${job} in ${ns} (timeout ${SEED_TIMEOUT:-3600}s)"
+  # `-`, not `:-`, matching the validation in run_seed: an explicitly empty
+  # SEED_TIMEOUT is a caller error, and defaulting it here would hide it from
+  # any future caller that has not been through that validation.
+  deadline=$(( $(date -u +%s) + ${SEED_TIMEOUT-3600} ))
+  log "waiting for ${job} in ${ns} (timeout ${SEED_TIMEOUT-3600}s)"
   while [ "$(date -u +%s)" -lt "${deadline}" ]; do
     # A Job that has gone missing is never going to complete, so say so rather
     # than polling it until the timeout. A read that merely failed is retried.

@@ -22,6 +22,9 @@ const MIN_SCALE = 0.01;
 // so "," selects no department and the loader would succeed having uploaded
 // nothing. Names themselves are checked by the generator against taxonomy.py.
 const DEPARTMENTS_RE = /^[A-Za-z0-9,_ &-]*[A-Za-z0-9][A-Za-z0-9,_ &-]*$/;
+// The one service the loader cannot do without: it is the gateway the rendered
+// Job points GATEWAY_URL at.
+const GATEWAY_SERVICE = "api-gateway";
 
 export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const id = params?.id;
@@ -83,6 +86,19 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
       (await namespaceExists(tenant.namespace))
         ? `tenant '${id}' is scaled to zero (idle-suspended); wake it with a redeploy (${redeploy}) before seeding`
         : `namespace ${tenant.namespace} no longer exists; re-create the tenant (${redeploy}) before seeding`,
+    );
+  }
+  // Ready pods somewhere in the namespace is not the condition that matters:
+  // the loader writes every file through the tenant's api-gateway, so a tenant
+  // whose gateway alone is down or still rolling would take the seed and then
+  // crash-loop the loader against a Service with no endpoints. The name is the
+  // pod's `app.kubernetes.io/name`, which the chart sets to the chart name, and
+  // api-gateway is in every service profile.
+  const gateway = tenant.live.services.find((s) => s.name === GATEWAY_SERVICE);
+  if (!gateway?.ready) {
+    return error(
+      409,
+      `tenant '${id}' has no ready ${GATEWAY_SERVICE}; the loader writes through it, so seeding would only crash-loop`,
     );
   }
 
