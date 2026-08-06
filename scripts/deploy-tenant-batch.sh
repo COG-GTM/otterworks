@@ -45,6 +45,15 @@
 # No -e: one person's failed deploy must not abandon the rest of the roster.
 set -uo pipefail
 
+# `wait -n` (4.3) and "${ARRAY[@]+...}" on an empty array under set -u (4.4) are
+# both used below, and macOS still ships bash 3.2 as /bin/bash. Left to itself
+# that is a syntax error or an unbound-variable abort partway through an operator
+# command, neither of which names the cause.
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -lt 4 ]; }; then
+  echo "ERROR: bash >= 4.4 required (this is ${BASH_VERSION}). On macOS: brew install bash, then run it with that bash." >&2
+  exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Same name deploy-tenant.sh uses, for the same reason: lib/tenant-common.sh
 # resolves the Terraform directory from it.

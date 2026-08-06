@@ -251,13 +251,16 @@ usual reason it does not).
 
 A batch deploy brings every tenant up at once whether or not the flag is set, so
 the ceilings below bind at deploy time either way — they are permanent only for
-an always-on roster.
+an always-on roster. The NodePool row counts what Karpenter counts: the CPU
+*capacity* of the nodes it launches, not the ~1.5 vCPU a `full` tenant requests,
+which is why the number is ~100 and not 260. `core` is scaled from it by the
+ratio of requests.
 
 | Limit | Where | Always-on tenants it allows |
 |---|---|---:|
 | Pod IPs | node subnets (see §4) | ~500 `full` / ~1,000 `core` |
 | PgBouncer `max_client_conn = 2000` | `demo-platform/k8s/pgbouncer.yaml` | ~125 awake `full` |
-| NodePool `limits.cpu: "400"` | `demo-platform/k8s/karpenter/nodepool.yaml` | ~130 `full` / ~400 `core` |
+| NodePool `limits.cpu: "400"` | `demo-platform/k8s/karpenter/nodepool.yaml` | ~100 `full` / ~300 `core` |
 
 One operational consequence holds either way: nothing reclaims a persistent
 tenant, so a roster that outlives its workshop keeps its database and S3 prefix

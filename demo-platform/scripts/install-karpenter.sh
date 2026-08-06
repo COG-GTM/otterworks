@@ -129,10 +129,23 @@ fi
 # idempotent, but the run that first introduces the field is a rolling recycle of
 # the whole fleet and belongs in a quiet window.
 nodeclass_max_pods="$(kubectl get ec2nodeclass default -o jsonpath='{.spec.kubelet.maxPods}' 2>/dev/null || true)"
-karpenter_nodes="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null | awk 'END { print NR + 0 }')"
-if [ "${nodeclass_max_pods}" != "110" ] && [ "${karpenter_nodes:-0}" -gt 0 ]; then
+# `|| true` on the pipeline, not just the kubectl: under pipefail an unreadable
+# API server fails the whole substitution, and under set -e that ends the install
+# silently, between the controller upgrade and the NodePool it exists to apply.
+# An empty node list is not the failing case -- that exits 0 and prints 0.
+karpenter_nodes="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null | awk 'END { print NR + 0 }' || true)"
+# Which also means the count can come back empty, and empty must not read as "no
+# nodes to lose": a fleet this could not measure is one to ask about, not one to
+# recycle quietly.
+if [ -z "${karpenter_nodes}" ]; then
+  nodes_at_risk=true; nodes_desc="an unknown number of"
+else
+  [ "${karpenter_nodes}" -gt 0 ] && nodes_at_risk=true || nodes_at_risk=false
+  nodes_desc="${karpenter_nodes}"
+fi
+if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
   log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_max_pods:-unset} -> 110)."
-  log "         Karpenter reads that as drift and will replace all ${karpenter_nodes} node(s) it"
+  log "         Karpenter reads that as drift and will replace all ${nodes_desc} node(s) it"
   log "         owns, restarting every tenant that is awake (Redis and MeiliSearch are"
   log "         in-cluster and not persisted)."
   # A warning followed immediately by the apply is not a decision anybody gets to

@@ -125,7 +125,7 @@ deploy time. Before deploying a roster of this size, check four ceilings:
 |---|---|---|
 | Pod IPs | node subnets — the `/24`s hold ~500 total, `aws_subnet.pods` adds a `/20` per AZ | ~30 `full` before, ~500 after |
 | Pods per node | `kubelet.maxPods` on the Karpenter `EC2NodeClass` | 58 before, 110 after |
-| Node CPU | `limits.cpu` on the Karpenter NodePool | ~130 `full` / ~400 `core` |
+| Node CPU | `limits.cpu` on the Karpenter NodePool | ~100 `full` / ~300 `core` |
 | DB clients | PgBouncer `max_client_conn` | ~125 awake `full` |
 
 Raising `maxPods` is a one-time recycle: it is part of the `EC2NodeClass` spec

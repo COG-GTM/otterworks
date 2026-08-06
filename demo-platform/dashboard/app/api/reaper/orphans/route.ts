@@ -23,7 +23,10 @@ const asError = (err: unknown): Error => (err instanceof Error ? err : new Error
 // — an empty list is also what a clean cluster looks like, so returning one silently
 // would hide a real orphan for as long as the API server keeps failing. Both
 // namespace queries, not just the label one: they go to the same API server, and a
-// failure of either produces the same misleading "nothing here".
+// failure of either produces the same misleading "nothing here". listTenants() is
+// the third input and the most dangerous one to get wrong — an empty tenant list
+// makes every namespace an orphan — but it throws rather than defaulting, and
+// withSession turns that into a non-200, so it is left to reject.
 export const GET = withSession(async () => {
   const [tenants, namespaces, persistent] = await Promise.all([
     listTenants(),
