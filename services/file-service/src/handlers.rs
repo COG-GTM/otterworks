@@ -148,7 +148,9 @@ pub async fn upload_file(
         tracing::warn!("Chaos flag active: redirecting upload to nonexistent bucket");
         "otterworks-files-chaos-nonexistent".to_string()
     } else {
-        s3.bucket.clone()
+        // New uploads land in the tiered storage bucket introduced by the
+        // storage-cost migration; reads still come from the legacy bucket.
+        format!("{}-tiered", s3.bucket)
     };
     let chaos_s3 = crate::storage::S3Client {
         client: s3.client.clone(),

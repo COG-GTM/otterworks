@@ -190,6 +190,22 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         )}
       </div>
 
+      {uploadingFiles.some((f) => f.status === "error") && (
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-3 rounded-xl border-2 border-red-300 bg-red-50 p-4"
+        >
+          <AlertCircle size={28} className="mt-0.5 flex-shrink-0 text-red-500" />
+          <div>
+            <p className="text-base font-semibold text-red-700">File upload failed</p>
+            <p className="mt-0.5 text-sm text-red-600">
+              We couldn&apos;t store your file. Our team has been notified and is
+              investigating — please try again later.
+            </p>
+          </div>
+        </div>
+      )}
+
       {uploadingFiles.length > 0 && (
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between">
