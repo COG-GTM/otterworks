@@ -26,6 +26,7 @@ const RUNNER_SECRET_ENV_KEYS = [
   "JWT_SECRET",
   "SECRET_KEY_BASE",
   "GITHUB_TOKEN",
+  "DEVIN_API_KEY",
 ] as const;
 
 function jobName(action: RunnerAction, id: string, epoch: number): string {

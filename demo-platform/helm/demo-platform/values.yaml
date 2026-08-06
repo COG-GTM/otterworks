@@ -112,3 +112,6 @@ secret:
   # Optional: token used by runner Jobs to fetch participant branches (needs
   # repoHttpsUrl set). Scope to repo read-only. Omit to use the bundled tree.
   githubToken: ""
+  # Optional: Devin API key handed to tenant api-gateways for the upload-failure
+  # triage relay (see internal/devin in the api-gateway service). Omit to no-op.
+  devinApiKey: ""
