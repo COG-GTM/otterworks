@@ -59,6 +59,8 @@ case "${namespace}" in
   *[!a-z0-9-]*|-*|*-|"") fail "invalid namespace '${namespace}' (RFC 1123 label)" ;;
 esac
 gateway_url="${GATEWAY_URL:-http://api-gateway.${namespace}.svc.cluster.local:8080}"
+# `:-`, not `-`: the runner passes REPO_URL/REPO_REF through unconditionally and
+# they are empty when its own SEED_REPO_* are unset, so empty has to mean default.
 repo_url="${REPO_URL:-https://github.com/Cognition-Partner-Workshops/otterworks.git}"
 repo_ref="${REPO_REF:-main}"
 

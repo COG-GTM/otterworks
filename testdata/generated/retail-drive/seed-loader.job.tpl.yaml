@@ -6,8 +6,8 @@
 #
 # This file is not applied directly: every tenant lives in its own namespace
 # (otterworks-<id>) with its own api-gateway Service, so the namespace, the
-# gateway URL and the volume knobs are placeholder tokens (spelled __NAME__ in
-# the body) rendered by ./render-seed-job.sh, the same convention
+# gateway URL and the volume knobs are double-underscored placeholder tokens
+# rendered by ./render-seed-job.sh, the same convention
 # scripts/enable-dns-tls.sh uses for demo-platform/k8s/dns-tls:
 #
 #   TENANT_NAMESPACE  otterworks-<id> (or `otterworks` for a single-tenant deploy)
