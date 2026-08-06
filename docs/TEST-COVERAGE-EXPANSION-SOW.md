@@ -17,7 +17,7 @@ This document is the contract for a fan-out of parallel workers. Each work packa
 
 | | |
 |---|---|
-| Build units in repo | 17 (12 backend services, 2 frontends, demo-platform, ETL, Windows desktop client) |
+| Build units in repo | 17 (12 backend services, 2 frontends, demo-platform, ETL, Windows desktop client) — note `README.md`/`AGENTS.md`/`sonar-project.properties` still say 11 backend services; `legacy-portal` makes 12 |
 | Units with **zero** automated tests | **4** — `etl/`, `clients/windows-desktop/`, `demo-platform/dashboard/`, `services/file-service/src/storage.rs`+`middleware.rs`+`config.rs` |
 | Total unit/integration cases | ≈ 525 |
 | Coverage thresholds enforced anywhere | **None** — coverage is produced by 4 suites, gated by 0 |
@@ -91,7 +91,7 @@ Tested: `metadata` parsing (7), `events` serialization (2), `health`/`metrics` h
 Untested: **all 20 business handlers** in `handlers.rs` (upload, download, move, rename, trash,
 restore, share, remove_share, folder CRUD, versions, activity), plus `storage.rs` (S3),
 `middleware.rs` (auth header extraction), `config.rs`, `errors.rs`, `models.rs`.
-Missing cases: upload at `MAX_UPLOAD_BYTES` (100 MB default, `config.rs:47`) −1/=/+1; zero-byte
+Missing cases: upload at `MAX_UPLOAD_BYTES` (100 MB default, `config.rs:49-52`) −1/=/+1; zero-byte
 file; missing multipart part; filename with unicode/path-traversal (`../`); download of a trashed
 file; restore of a non-trashed file; double-trash idempotency; share with self; share with an
 unknown permission string; remove a share that does not exist; folder cycle (move a folder into
@@ -193,7 +193,7 @@ decision tables:
 
 | BRD concept | OtterWorks analogue with the same shape | Today |
 |---|---|---|
-| `Credit Score < 590` → decline | `MAX_UPLOAD_BYTES` (100 MB) → reject upload (`file-service/src/config.rs:47`) | untested |
+| `Credit Score < 590` → decline | `MAX_UPLOAD_BYTES` (100 MB) → reject upload (`file-service/src/config.rs:49-52`) | untested |
 | Rule differs by Policy Type (HO4/HO6) | Share permission tier changes allowed actions (`metadata.rs` `share_permission_from_str`) | 1 parse test, no matrix |
 | Threshold breach → decline + notice | `used_bytes >= quota_bytes` → over-quota (`admin-service/app/models/storage_quota.rb:26`) | boundary untested |
 | Rate/eligibility gate | Gateway rate limiter `rps` token bucket | refill/boundary untested |
@@ -301,7 +301,7 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 | WP-21 | demo-platform: dashboard API tests + `control-common.sh` / tenant-id derivation | `demo-platform/dashboard/**`, `demo-platform/lib/**`, `demo-platform/reaper/test-*.sh` | M | WP-00 |
 | WP-22 | Windows desktop client test project | `clients/windows-desktop/**` | M | WP-00 |
 | WP-23 | IaC policy tests (`helm template` assertions, no stray LoadBalancer) | `infrastructure/**/tests/**` (new) (+ IaC CI job **handed to WP-00**) | M | WP-00 |
-| WP-24 | Load/performance smoke (k6) on the golden path | `tests/perf/**` (new) | M | WP-17 |
+| WP-24 | Load/performance smoke (k6) on the golden path | `tests/perf/**` (new) | M | WP-17 (hard); WP-18 sequenced ahead of it, not a prerequisite |
 
 ### Detailed specs for the first wave
 
@@ -372,8 +372,9 @@ packages share a file. Expect ~350–450 new cases.
 **Wave 2 (6 workers, parallel):** WP-14, WP-15, WP-16, WP-17, WP-19, WP-20. Frontend + the three
 suites that exist but never run. WP-17 is the long pole (needs a composed stack in CI).
 
-**Wave 3 (4 workers, then 1):** WP-18, WP-21, WP-22, WP-23 in parallel; WP-24 after WP-18 lands
-(it reuses the composed stack from WP-17). Cross-cutting and zero-coverage units.
+**Wave 3 (4 workers, then 1):** WP-18, WP-21, WP-22, WP-23 in parallel; WP-24 last. WP-24's only
+hard dependency is WP-17 (it reuses that composed stack); it is scheduled after WP-18 purely to
+keep one worker free, not because WP-18 blocks it. Cross-cutting and zero-coverage units.
 
 Merge order = wave order. Re-run the §2 inventory after each wave and record the delta in this
 document.
