@@ -336,7 +336,8 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
   version list at 0 and N; S3 error propagation (`storage.rs` with a stubbed client);
   double-upload idempotency; concurrent upload of the same name.
 - **Acceptance:** `cargo test` green twice in a row; `cargo llvm-cov` shows `handlers.rs` +
-  `storage.rs` moving from ~0% to ≥60%; no change to any `src/**` non-test line.
+  `storage.rs` moving from ~0% to ≥60%; the only additions inside `src/**` are `#[cfg(test)]`
+  modules — zero diff to non-test lines (`git diff` outside a `#[cfg(test)]` block must be empty).
 
 **WP-03 — api-gateway router**
 - Pin current behavior for the four known route gaps (`/templates`, `/folders`, `/reports`,
@@ -395,7 +396,9 @@ document.
    catches a planted bug must **document** it (skipped/expected-fail), never fix it. If unsure
    whether a defect is planted or genuine, ask before changing anything.
 2. **No production-code changes in a coverage PR.** Defect fixes are separate PRs with their own
-   review.
+   review. For Rust (`file-service`), which uses inline tests, adding a `#[cfg(test)] mod tests`
+   block to a `src/*.rs` file is a *test* change, not a production change — but nothing outside
+   that block may move. WP-01/WP-02 own those source files on exactly that basis.
 3. **No existing test is edited or deleted** to make a new one pass. **Appending** new cases to an
    existing test file is expected and allowed — several WPs own files that already exist
    (`jwt_test.go`, `ratelimit_test.go`, `circuitbreaker_test.go`, `cors_test.go`,
