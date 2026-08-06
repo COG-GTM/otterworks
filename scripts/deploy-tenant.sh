@@ -299,12 +299,31 @@ update_irsa_trust() {
   # 3, not 0: this runs inside ensure_irsa_trust's flock subshell, so it cannot
   # append to INCOMPLETE itself -- the caller translates the status.
   [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; skipping IRSA trust update (IRSA may fail for ${NS})"; return 3; }
+  # Set by any role this pass could not finish. Returned as 3, which the caller
+  # records in INCOMPLETE: a namespace the roles do not trust is a tenant whose
+  # pods cannot call AWS, and marking it deployed means the re-run that would
+  # repair it skips it instead.
+  local degraded=false
   local svc role sub
   for svc in $(echo "${IRSA_JSON}" | jq -r 'keys[]'); do
     role="otterworks-${svc}-dev"
     sub="system:serviceaccount:${NS}:${svc}"
-    local doc; doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "")"
-    [ -n "${doc}" ] || { warn "role ${role} not found; skipping"; continue; }
+    # "Role absent" and "could not ask" are different answers, and folding them
+    # together is how a throttled read -- ~11 IAM GetRoles per tenant, serialised
+    # across the batch by the lock, is enough to earn one -- becomes a namespace
+    # nothing trusts, reported as a role that does not exist and marked deployed.
+    local doc docerr derr drc
+    docerr="$(mktemp)"
+    doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>"${docerr}")"; drc=$?
+    derr="$(cat "${docerr}")"; rm -f "${docerr}"
+    if [ "${drc}" -ne 0 ] || [ -z "${doc}" ]; then
+      case "${derr}" in
+        *NoSuchEntity*|*"cannot be found"*)
+          warn "  role ${role} not found; skipping"; continue ;;
+      esac
+      warn "  could not read ${role}'s trust policy (${derr//$'\n'/ }); ${NS} may not be trusted"
+      degraded=true; continue
+    fi
     # Skip if the sub is already trusted — either an exact StringEquals entry or
     # a StringLike wildcard (e.g. the Terraform-managed "otterworks-*" pattern)
     # that already matches this namespace. Checking only StringEquals would make
@@ -338,15 +357,19 @@ EOF
     # update-assume-role-policy with an empty --policy-document -- an IAM call
     # that can only fail, reported as "failed to update trust" with no hint that
     # the document was never built.
-    [ -n "${new}" ] || { warn "  could not build the trust document for ${role}; skipping"; continue; }
-    aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null \
-      && log "  IRSA trust: ${role} now trusts ${sub}" \
-      || warn "  failed to update trust for ${role}"
+    [ -n "${new}" ] || { warn "  could not build the trust document for ${role}; skipping"; degraded=true; continue; }
+    if aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null; then
+      log "  IRSA trust: ${role} now trusts ${sub}"
+    else
+      warn "  failed to update trust for ${role}"
+      degraded=true
+    fi
   done
   # Pin the contract the caller switches on: 0 is done, 3 is skipped, anything
   # else aborts the deploy. Without this the function returns whatever the loop
   # last ran, and a future edit near the end of it turns an incidental non-zero
   # into a failed tenant.
+  [ "${degraded}" = false ] || return 3
   return 0
 }
 

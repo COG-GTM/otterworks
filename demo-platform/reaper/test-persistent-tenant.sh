@@ -50,6 +50,11 @@ aws() {
         printf '{}'
       fi
       return 0 ;;
+    # (e) of the infra sweep: the zone's records, then the one record's detail.
+    *"Type=='A'"*)          printf '%s\n' "${R53_RECORDS:-}"; return 0 ;;
+    *"list-resource-record-sets"*)
+      printf '[{"Name":"t-ada-lovelace.demo.otterworks.app.","Type":"A"}]'; return 0 ;;
+    *"change-resource-record-sets"*) DELETED="${DELETED} r53-delete"; return 0 ;;
     *"s3api list-buckets"*)  printf 'otterworks-files-dev'; return 0 ;;
     *"list-objects-v2"*)     printf 'tenants/ada-lovelace/'; return 0 ;;
     *"s3 rm"*)               DELETED="${DELETED} $*"; return 0 ;;
@@ -193,6 +198,42 @@ sweep_orphan_s3 >/dev/null 2>&1
 check "orphan-S3 sweep still clears data whose namespace is gone" \
   "${DELETED# }" "s3 rm s3://otterworks-files-dev/tenants/ada-lovelace/ --recursive"
 NS_LOOKUP_ERR=""
+
+# --- the infra sweep's Route53 records ----------------------------------------
+# The one reaper path that still deleted on "no TENANT# item" alone. A standing
+# tenant has no such item, so an armed infra sweep took the A record and the
+# ownership records of every person on the roster -- their URL stops resolving
+# until external-dns notices the Ingress again, which is a real outage if
+# external-dns is down, and a puzzling one either way.
+R53_RECORDS="t-ada-lovelace.demo.otterworks.app."
+DNS_ZONE_ID="Z123"
+DRY_RUN=false
+
+PERSISTENT_LABEL="true"
+DELETED=""
+# Output to a file, not a command substitution: DELETED is set by the aws stub,
+# and a subshell would take that with it -- leaving the assertion to compare the
+# empty string it started with and pass whatever the sweep did.
+sweep_route53 >"${FAKE_ROOT}/r53.out" 2>&1
+out="$(cat "${FAKE_ROOT}/r53.out")"
+check "Route53 sweep spares a persistent tenant's records" "${DELETED# }" ""
+case "${out}" in *"orphan Route53 record"*) r=yes ;; *) r=no ;; esac
+check "  and does not report them as orphans" "${r}" "no"
+
+PERSISTENT_LABEL=""
+DELETED=""
+sweep_route53 >/dev/null 2>&1
+check "Route53 sweep still deletes a genuine orphan's records" "${DELETED# }" "r53-delete"
+
+# Same rule as the data sweeps: a label it could not read keeps the record.
+PERSISTENT_LABEL=""
+NS_LOOKUP_ERR="error: You must be logged in to the server (Unauthorized)"
+DELETED=""
+sweep_route53 >/dev/null 2>&1
+check "  and keeps records it cannot check" "${DELETED# }" ""
+NS_LOOKUP_ERR=""
+DRY_RUN=true
+DNS_ZONE_ID=""
 
 # --- the dashboard's copy of the sweep's definition ---------------------------
 # The ops dashboard's clean-up preview answers "what would this sweep delete",

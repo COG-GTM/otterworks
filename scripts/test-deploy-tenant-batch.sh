@@ -455,6 +455,67 @@ EOS
 read -r sub_pass sub_fail < "${WORK}/tf-tally"
 PASS="${sub_pass}"; FAIL="${sub_fail}"
 
+# --- update_irsa_trust tells "no such role" from "could not ask" --------------
+# The pass reads one IAM trust policy per service per tenant, serialised across
+# the batch by the trust lock, so a throttled GetRole is a normal event on a
+# 95-name roster. Read as "role not found" it is invisible: the deploy carries
+# on, the tenant is marked deployed, and that namespace is trusted by nothing --
+# its pods fail every AWS call, and a re-run skips it.
+(
+  IRSADIR="${WORK}/irsa"; mkdir -p "${IRSADIR}/bin"
+  cat > "${IRSADIR}/bin/aws" <<'EOS'
+#!/usr/bin/env bash
+case "$*" in
+  *"describe-cluster"*) echo "https://oidc.eks.us-east-1.amazonaws.com/id/ABC"; exit 0 ;;
+  *"get-role"*)
+    case "${GET_ROLE:-ok}" in
+      missing)   echo "An error occurred (NoSuchEntity) when calling the GetRole operation" >&2; exit 254 ;;
+      throttled) echo "An error occurred (Throttling) when calling the GetRole operation" >&2; exit 254 ;;
+    esac
+    echo '{"Statement":[{"Effect":"Allow","Principal":{"Federated":"arn:aws:iam::1:oidc-provider/x"},"Action":"sts:AssumeRoleWithWebIdentity","Condition":{}}]}'
+    exit 0 ;;
+  *"update-assume-role-policy"*) exit "${PUT_RC:-0}" ;;
+esac
+exit 0
+EOS
+  chmod +x "${IRSADIR}/bin/aws"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "${IRSADIR}/bin/terraform"   # no local state
+  chmod +x "${IRSADIR}/bin/terraform"
+  export PATH="${IRSADIR}/bin:${PATH}"
+  # shellcheck disable=SC2034  # all read by the extracted function
+  REPO_ROOT="${IRSADIR}"; NS="otterworks-ada-lovelace"; EKS_CLUSTER="c"; AWS_REGION="us-east-1"
+  IRSA_JSON='{"file-service":"arn:aws:iam::1:role/fs"}'
+  log()  { echo "$*"; }
+  warn() { echo "WARN: $*"; }
+  err()  { echo "ERR: $*" >&2; }
+  eval "$(sed -n '/^update_irsa_trust()/,/^}/p' "${SCRIPT_DIR}/deploy-tenant.sh")"
+
+  rc=0; update_irsa_trust >"${IRSADIR}/out" 2>&1 || rc=$?
+  check "trusts the namespace and reports the pass done" "${rc}" "0"
+
+  # 3 is the status the caller records in INCOMPLETE, so the tenant is not
+  # stamped deployed and the next batch run repairs it instead of skipping it.
+  rc=0; GET_ROLE=throttled update_irsa_trust >"${IRSADIR}/out" 2>&1 || rc=$?
+  check "a throttled read leaves the tenant incomplete" "${rc}" "3"
+  if grep -q "could not read" "${IRSADIR}/out"; then ok "  and says the policy was unreadable"
+  else nope "  and says the policy was unreadable (said: $(cat "${IRSADIR}/out"))"; fi
+  if grep -q "not found" "${IRSADIR}/out"; then nope "  not that the role is absent"
+  else ok "  not that the role is absent"; fi
+
+  # A role that genuinely does not exist is not this tenant's problem: the other
+  # ten still get their trust, and the deploy is complete.
+  rc=0; GET_ROLE=missing update_irsa_trust >"${IRSADIR}/out" 2>&1 || rc=$?
+  check "an absent role is skipped, not a failure" "${rc}" "0"
+
+  # Writing the policy can fail for its own reasons -- and did, silently, before:
+  # a warn in the log and a tenant stamped deployed with no trust.
+  rc=0; PUT_RC=1 update_irsa_trust >"${IRSADIR}/out" 2>&1 || rc=$?
+  check "a failed trust write leaves the tenant incomplete" "${rc}" "3"
+  echo "${PASS} ${FAIL}" > "${WORK}/irsa-tally"
+)
+read -r sub_pass sub_fail < "${WORK}/irsa-tally"
+PASS="${sub_pass}"; FAIL="${sub_fail}"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

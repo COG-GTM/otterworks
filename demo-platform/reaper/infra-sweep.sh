@@ -244,17 +244,57 @@ sweep_eips() {
   done
 }
 
+# Does this id belong to a standing tenant that must keep its records?
+#
+# "No TENANT# item" is the whole test the rest of this function makes, and every
+# tenant deploy-tenant.sh creates has exactly that shape -- so without this the
+# armed sweep deletes the A and ownership records of the entire standing roster,
+# and each of those people's URLs stops resolving until external-dns notices the
+# Ingress again. The other sweeps in reaper.sh ask the namespace label instead;
+# this one has to as well.
+#
+# reaper.sh sources this file and defines tenant_is_persistent after it, which
+# is fine -- the name is resolved when the sweep runs, not when it is read.
+# Standalone (this file has its own main) there is no such function and possibly
+# no cluster at all, so the label is read directly here, and anything other than
+# a definite "not persistent" keeps the records: a stale DNS record costs
+# nothing, and is reported either way.
+route53_tenant_protected() {
+  local ns out err errfile rc
+  if command -v tenant_is_persistent >/dev/null 2>&1; then
+    tenant_is_persistent "$1"
+    return
+  fi
+  command -v kubectl >/dev/null 2>&1 || return 0
+  ns="otterworks-$1"
+  errfile="$(mktemp)"
+  out="$(kubectl get ns "${ns}" -o jsonpath='{.metadata.labels.demo/persistent}' 2>"${errfile}")"; rc=$?
+  err="$(cat "${errfile}")"; rm -f "${errfile}"
+  if [ "${rc}" -eq 0 ]; then
+    [ "${out}" = "true" ]
+    return
+  fi
+  # A namespace that is really gone is the orphan this sweep is for; anything
+  # else (unreachable, throttled, no RBAC) is unknown, which keeps the records.
+  case "${err}" in *NotFound*|*"not found"*) return 1 ;; esac
+  sweep_warn "cannot read demo/persistent on ${ns} (${err//$'\n'/ }); keeping '$1' records"
+  return 0
+}
+
 # ------------------------------------------------------------------------------
 # (e) Route53 records for tenants that no longer exist
 #
 # external-dns normally removes these, but only while it is running — records
 # created before external-dns was reconfigured, or left when the cluster died,
 # persist forever. Requires ctl_tenant_exists from control-common.sh; skipped
-# when the control plane is not sourced.
+# when the control plane is not sourced. Persistent tenants are kept: they have
+# no control-table item by design, so "no TENANT# item" does not mean gone.
 # ------------------------------------------------------------------------------
 sweep_route53() {
   [ -n "${DNS_ZONE_ID}" ] || { sweep_log "DNS_ZONE_ID unset; skipping Route53 sweep"; return 0; }
   command -v ctl_tenant_exists >/dev/null 2>&1 || { sweep_log "control plane not sourced; skipping Route53 sweep"; return 0; }
+  command -v kubectl >/dev/null 2>&1 || command -v tenant_is_persistent >/dev/null 2>&1 || \
+    sweep_warn "no kubectl: persistent tenants cannot be identified, so no tenant record will be deleted"
 
   local records name label id batch
   records="$(aws route53 list-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
@@ -281,6 +321,10 @@ sweep_route53() {
     id="${label#cname-}"; id="${id#txt-}"; id="${id#api-}"; id="${id#t-}"
     [ -n "${id}" ] || continue
     if ! ctl_tenant_exists "${id}"; then
+      if route53_tenant_protected "${id}"; then
+        sweep_log "keeping ${name}: '${id}' is a persistent tenant"
+        continue
+      fi
       sweep_warn "orphan Route53 record ${name} (no TENANT# item for '${id}')"
       if [ "${DRY_RUN}" = "false" ]; then
         batch="$(aws route53 list-resource-record-sets --hosted-zone-id "${DNS_ZONE_ID}" \
