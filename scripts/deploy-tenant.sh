@@ -255,7 +255,7 @@ kubectl annotate namespace "${NS}" \
 # deploy over.
 aws dynamodb update-item \
   --table-name "${CONTROL_TABLE:-otterworks-demo-control}" --region "${AWS_REGION}" \
-  --key "{\"PK\":{\"S\":\"TENANT#${ATTENDEE_ID}\"},\"SK\":{\"S\":\"META\"}}" \
+  --key "{\"PK\":{\"S\":\"TENANT#${NS#otterworks-}\"},\"SK\":{\"S\":\"META\"}}" \
   --update-expression "REMOVE req_count, idle_since, was_running" \
   --condition-expression "attribute_exists(PK)" >/dev/null 2>&1 || true
 

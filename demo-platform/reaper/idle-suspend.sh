@@ -366,6 +366,11 @@ tenant_namespaces() {
 suspend_idle_tenants() {
   idle_log "idle scan starting (threshold=${IDLE_AFTER_SECONDS}s)"
   local counts now ns id count prev since running was_running always_on
+  # Every input this loop reads has an "unknown" answer that skips the tenant for
+  # the pass, and each one warns on its own line. A scan that suspends nothing
+  # because it could read nothing then looks like a scan with nothing to do,
+  # buried in ~95 warnings; count them and say so at the end.
+  local seen=0 unreadable=0
   # Traffic is the only evidence of use, so without it there is nothing to
   # decide on. Skipping the pass delays suspension until the next run; guessing
   # scales every attendee's environment to zero mid-workshop.
@@ -375,12 +380,19 @@ suspend_idle_tenants() {
   fi
   now="$(date -u +%s)"
 
+  # The order of the branches below is the behaviour, not a style: every one that
+  # finds activity records it and returns, so the always-on gate near the end is
+  # reached only by a tenant whose counter did not move. Moving that gate earlier
+  # freezes req_count on exempt tenants and makes the pass after the label is
+  # dropped compare live traffic to an hours-old baseline.
   while read -r id ns; do
     [ -n "${id}" ] || continue
     # No counter series means the controller has routed nothing to this tenant,
     # which is zero traffic -- not a reason to skip it.
     count="$(printf '%s\n' "${counts}" | awk -v n="${ns}" '$1 == n { print $2; exit }')"
     [ -n "${count}" ] || count=0
+
+    seen=$(( seen + 1 ))
 
     # Resolve the backend here, in this shell: state_read runs in a command
     # substitution, so a lookup it caches is thrown away with the subshell and
@@ -391,6 +403,7 @@ suspend_idle_tenants() {
       # counters are lost and it never suspends; to the control table, a script
       # tenant's are written where nothing reads them. Leave it for the next pass.
       idle_warn "skipping ${id}: cannot tell which store its idle state lives in"
+      unreadable=$(( unreadable + 1 ))
       continue
     fi
     # Read after the backend resolution, not before it: a tenant skipped just
@@ -411,7 +424,7 @@ suspend_idle_tenants() {
     # The store answered with an error rather than with counters (state_read has
     # already said so). Its blanks would read as a first observation, so acting on
     # them would restart the clock -- and on the next pass, and the one after.
-    [ "${prev}" != "?" ] || continue
+    if [ "${prev}" = "?" ]; then unreadable=$(( unreadable + 1 )); continue; fi
     # Torn down while this pass was running: every write from here is addressed
     # to a namespace that is not there.
     [ "${prev}" != "gone" ] || continue
@@ -424,6 +437,7 @@ suspend_idle_tenants() {
     # zero writes was_running=0 on a tenant that never stopped.
     if [ "${running}" = "?" ]; then
       idle_warn "skipping ${id}: cannot read its Deployments"
+      unreadable=$(( unreadable + 1 ))
       continue
     fi
     if [ "${running}" -eq 0 ]; then
@@ -504,7 +518,13 @@ suspend_idle_tenants() {
     record_running "${id}" 0
   done <<< "$(tenant_namespaces)"
 
-  idle_log "idle scan complete."
+  # A tenant left alone because its namespace is gone is not counted: that is an
+  # answer, not a failed read.
+  if [ "${unreadable}" -gt 0 ]; then
+    idle_warn "idle scan complete: skipped ${unreadable} of ${seen} tenants, unread. Suspension is off for those until it clears."
+  else
+    idle_log "idle scan complete."
+  fi
 }
 
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then

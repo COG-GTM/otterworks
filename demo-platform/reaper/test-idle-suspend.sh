@@ -31,6 +31,11 @@ SUSPENDED=""
 # item or namespace annotations), so one store models both; state_read's own
 # two branches are covered by the contract tests at the bottom.
 ctl_audit() { :; }
+# Real signatures, because one of the scan's outputs is a test subject: the
+# count of tenants a pass could not read is the only thing separating a working
+# cost control from one that has been off since a credential expired.
+idle_log()  { echo "[idle-suspend] $*"; }
+idle_warn() { echo "[idle-suspend] WARN: $*" >&2; }
 state_read() {
   # The real function's third answer: the store could not be read at all, which
   # is not the same as a tenant with nothing recorded yet.
@@ -238,6 +243,23 @@ NS_RUNNING[otterworks-standing]="?"; NS_ALWAYS_ON[otterworks-standing]=yes
 seen_running standing
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and does not wake an always-on tenant on it either" "${RESUMED:-}" ""
+
+# Every skip above warns on its own line, and a pass that skipped everything
+# otherwise ends on the same "scan complete" a pass with nothing to do prints.
+# The count is the only thing that separates a working cost control from one
+# that has been off since the credentials expired.
+reset_state
+NS_RUNNING[otterworks-blind]="?"; NS_RUNNING[otterworks-quiet]=13
+METRIC[otterworks-quiet]=100; ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
+seen_running blind; seen_running quiet
+SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
+check "reports how many tenants a degraded pass could not read" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c 'skipped 1 of 2 tenants')" "1"
+reset_state
+NS_RUNNING[otterworks-quiet]=13; seen_running quiet
+SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
+check "  and says nothing about skips when it read them all" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c 'skipped')" "0"
 
 # A refused scale-down must not be recorded as a suspension. Writing
 # was_running=0 for a tenant that is still up makes the next pass read it as a
