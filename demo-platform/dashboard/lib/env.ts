@@ -60,4 +60,11 @@ export const env = {
 } as const;
 
 export const TENANT_LABEL = "demo/tenant";
+// What the reaper's namespace sweep enumerates (sweep_orphan_namespaces in
+// demo-platform/reaper/reaper.sh). deploy-tenant.sh sets this alongside
+// demo/tenant, so the two select the same namespaces today -- but the orphan
+// preview answers "what would the sweep delete", and an answer to that question
+// has to be drawn from the sweep's own selector, or the page is authoritative
+// about a set it does not read.
+export const SWEEP_LABEL = "app.kubernetes.io/managed-by=otterworks-tenant";
 export const TTL_LABEL = "demo/expires-at";

@@ -1,5 +1,5 @@
 import * as k8s from "@kubernetes/client-node";
-import { TENANT_LABEL } from "@/lib/env";
+import { SWEEP_LABEL, TENANT_LABEL } from "@/lib/env";
 import type { PodInfo, ServiceLiveState, TenantLiveState } from "@/lib/types";
 
 let _core: k8s.CoreV1Api | null = null;
@@ -168,7 +168,13 @@ export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
 }
 
 /**
- * Namespaces labeled demo/tenant that currently exist in the cluster.
+ * The namespaces the reaper's orphan sweep would enumerate.
+ *
+ * Selected by the sweep's own label rather than by demo/tenant: this list is
+ * the input to "what would be deleted", so it has to be the set the sweep
+ * walks. deploy-tenant.sh sets both labels, so the two agree today; a namespace
+ * that ever carried only one is exactly the case where a preview built on the
+ * other label would be quietly wrong.
  *
  * The namespace list is the whole answer, so it is asked for directly rather
  * than derived from loadTenantPods(): that lists pods in every tenant namespace
@@ -182,7 +188,7 @@ export async function listTenantNamespaces(): Promise<string[]> {
     undefined,
     undefined,
     undefined,
-    TENANT_LABEL,
+    SWEEP_LABEL,
   );
   return res.body.items
     .map((ns) => ns.metadata?.name)
@@ -201,7 +207,7 @@ export async function listPersistentNamespaces(): Promise<Set<string>> {
     undefined,
     undefined,
     undefined,
-    `${TENANT_LABEL},demo/persistent=true`,
+    `${SWEEP_LABEL},demo/persistent=true`,
   );
   const names = res.body.items
     .map((ns) => ns.metadata?.name)
