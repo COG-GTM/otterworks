@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Validates that the generator produces a well-formed CSV file with correct
  * column headers, metadata comment lines, and data rows. Does not require
  * a Spring context.
- * */
+ */
 public class CsvReportGeneratorTest {
 
     private CsvReportGenerator generator;

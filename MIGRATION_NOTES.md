@@ -41,8 +41,13 @@ is out of scope.
 - Added the springdoc `OpenAPI` bean (SpringFox's `Docket` has no equivalent).
 - Apache POI 4.1.2 → 5.2.5, commons-io 2.6 → 2.15.1, Guava 28.0 → 33.1.0 (all shipped
   `javax` transitively or break under JDK 17's strong encapsulation).
-- `@JdbcTypeCode(SqlTypes.LONGVARCHAR)` on the `@Lob String` column: Hibernate 6 otherwise
-  maps it to a Postgres `oid` and the column silently breaks at runtime.
+- `@JdbcTypeCode(SqlTypes.LONGVARCHAR)` on the `@Lob String` column (`Report.errorMessage`):
+  Hibernate 6 otherwise maps it to a Postgres `oid` and the column silently breaks at runtime.
+- A terminal `.anyRequest().permitAll()` plus `/error` and `/swagger-ui.html` on the permit
+  list. Security 5 let unmatched requests through; Security 6 denies them, and that includes
+  the `ERROR` dispatch — so every error path (validation 400s, 404s, 405s) came back as a
+  bodyless 403. Found only by A/B-ing the running service against a live `main` baseline;
+  MockMvc slices bypass the filter chain and error dispatch, so all 44 tests stayed green.
 - Builder image → `maven:3.9-eclipse-temurin-17`, runtime → `eclipse-temurin:17-jre-jammy`.
 - CI: `ci.yml` `report-service` job and `docker-build.yml` `report-service-tests` job →
   `java-version: '17'`.

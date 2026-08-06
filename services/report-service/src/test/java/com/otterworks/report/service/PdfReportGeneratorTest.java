@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Validates that the generator produces a syntactically valid PDF file with
  * correct size, header bytes, and non-trivial content. Does not require a
  * Spring context -- instantiates the generator directly.
- * */
+ */
 public class PdfReportGeneratorTest {
 
     private PdfReportGenerator generator;

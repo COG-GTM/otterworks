@@ -24,8 +24,12 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/swagger-resources/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll())
+                        .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/swagger-resources/**",
+                                "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/v1/reports/**").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        // Security 6 denies unmatched requests; Security 5 permitted them
+                        .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(options -> options.deny())
                         .contentTypeOptions(Customizer.withDefaults())

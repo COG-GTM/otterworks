@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Verifies HTTP status codes, content types, and response body structure
  * for every controller action. Uses a real Spring context with an H2
  * in-memory database (profile "test").
- * */
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

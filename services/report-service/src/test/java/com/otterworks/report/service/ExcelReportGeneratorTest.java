@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Uses Apache POI to read back the generated .xlsx file and verify its
  * structure: sheet names, summary metadata, column headers, and data rows.
  * Does not require a Spring context.
- * */
+ */
 public class ExcelReportGeneratorTest {
 
     private ExcelReportGenerator generator;
