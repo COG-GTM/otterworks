@@ -500,9 +500,12 @@ NS_ANNOT[req-count]=42; NS_ANNOT[idle-since]=555; NS_ANNOT[was-running]=1
 NS_READ_ERR="error: You must be logged in to the server (Unauthorized)"
 check "an unreadable namespace is unknown, not unmeasured" "$(state_read solo 2>/dev/null)" "? ? ?"
 
-# Except the one failure that is an answer: nothing is left to suspend.
+# Except the one failure that is an answer -- and its own answer, not unset:
+# blanks would carry the tenant through the ordinary path to `record_running
+# <id> 0`, which annotates a namespace that is not there and warns about it,
+# once per tenant per pass for as long as a teardown is in flight.
 NS_READ_ERR='Error from server (NotFound): namespaces "otterworks-solo" not found'
-check "  but a namespace that is gone reads as unset" "$(state_read solo 2>/dev/null)" "- - -"
+check "  but a namespace that is gone says so" "$(state_read solo 2>/dev/null)" "gone gone gone"
 NS_READ_ERR=""
 
 # An unreadable control table must not read as "no item": that would send a

@@ -31,6 +31,10 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   idle_after_seconds, sweep_infra, sweep_infra_delete }` → update config
   (the reaper CronJob reads this each run; changing the cron also patches the CronJob schedule).
 - `GET /api/reaper/orphans` → resources with no matching tenant (preview before sweep).
+  Persistent namespaces (`demo/persistent=true`) are excluded: the reaper refuses to delete
+  them, so listing them would preview deletions that cannot happen. Answers `503` if either
+  namespace query fails rather than returning `[]`, which is also what a clean cluster looks
+  like — a caller that treats a non-200 as "no orphans" would hide a real one.
 
 ## Audit
 - `GET /api/audit?limit=100` → recent events across tenants.

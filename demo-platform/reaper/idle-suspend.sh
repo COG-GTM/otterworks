@@ -179,8 +179,9 @@ tenant_has_item() {
   [ "${TENANT_HAS_ITEM[$id]}" = "yes" ]
 }
 
-# "<req_count> <idle_since> <was_running>", each "-" when unset, or "? ? ?" when
-# the store could not be read at all. Callers read it with `read -r`, so the
+# "<req_count> <idle_since> <was_running>", each "-" when unset, "? ? ?" when the
+# store could not be read at all, and "gone gone gone" when the namespace has
+# been deleted since the scan listed it. Callers read it with `read -r`, so the
 # fields cannot be empty.
 state_read() {
   local id="$1" ns item c s r out err errfile rc
@@ -213,10 +214,13 @@ state_read() {
     out="$(kubectl get ns "${ns}" -o jsonpath='.{.metadata.annotations.demo/req-count} .{.metadata.annotations.demo/idle-since} .{.metadata.annotations.demo/was-running}' 2>"${errfile}")"; rc=$?
     err="$(cat "${errfile}")"; rm -f "${errfile}"
     if [ "${rc}" -ne 0 ]; then
-      # A namespace that is gone has no state and nothing to suspend; the caller
-      # finds no Deployments either way.
+      # A namespace deleted between the listing and here is not an unreadable
+      # one: it has no state, no Deployments and nothing to suspend. Answering
+      # with blanks would send the caller down the ordinary path, which ends in
+      # `record_running <id> 0` annotating a namespace that no longer exists --
+      # a warning per tenant per pass while a teardown is in flight.
       case "${err}" in
-        *NotFound*|*"not found"*) : ;;
+        *NotFound*|*"not found"*) printf 'gone gone gone\n'; return 0 ;;
         *) idle_warn "cannot read idle state on ${ns} (${err//$'\n'/ }); leaving it as it is this pass"
            printf '? ? ?\n'; return 0 ;;
       esac
@@ -399,6 +403,9 @@ suspend_idle_tenants() {
     # already said so). Its blanks would read as a first observation, so acting on
     # them would restart the clock -- and on the next pass, and the one after.
     [ "${prev}" != "?" ] || continue
+    # Torn down while this pass was running: every write from here is addressed
+    # to a namespace that is not there.
+    [ "${prev}" != "gone" ] || continue
     [ "${prev}" != "-" ] || prev=""
     [ "${since}" != "-" ] || since=""
     [ "${was_running}" != "-" ] || was_running=""
