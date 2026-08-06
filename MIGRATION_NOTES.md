@@ -69,6 +69,11 @@ match, but no route, test, `tests/api/*.py` case or api-gateway proxy rule relie
 (`router.go` forwards `req.URL.Path` unmodified and chi does not append a slash). No
 `--add-opens` needed. No `spring-boot-properties-migrator` warnings.
 
+One test was repaired rather than merely re-annotated: `downloadPendingReportReturns409` raced the
+async worker (read `GENERATING`, then the worker reached `FAILED` before the `/download` call, which
+answers 404) and went red in CI. It now persists a `GENERATING` report through the repository, so it
+asserts on every run instead of only when it lost the race.
+
 ## legacy-portal (Java 11 / Boot 2.7.18 → Java 17 / Boot 3.2.5)
 
 Coming from 11 rather than 8, this was the smaller half: no JAXB/Nashorn removals, no
