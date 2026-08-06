@@ -43,6 +43,14 @@ is out of scope.
   `javax` transitively or break under JDK 17's strong encapsulation).
 - `@JdbcTypeCode(SqlTypes.LONGVARCHAR)` on the `@Lob String` column (`Report.errorMessage`):
   Hibernate 6 otherwise maps it to a Postgres `oid` and the column silently breaks at runtime.
+  One knock-on, accepted deliberately: on a *freshly created* schema this emits
+  `varchar(32600)` where Hibernate 5 emitted unbounded `text`. Existing databases keep `text`
+  (`ddl-auto=update` never retypes a column), and a >32600-char exception message is not a
+  realistic failure mode, so the canonical annotation was preferred over pinning
+  `columnDefinition = "text"`.
+- `management.info.env.enabled=true`. Boot 2.6 turned the `env` info contributor off by
+  default, which left the `info.app.*` entries unpublished and `/actuator/info` returning
+  `{}` — confirmed by diffing the running service against the `main` baseline.
 - A terminal `.anyRequest().permitAll()` plus `/error` and `/swagger-ui.html` on the permit
   list. Security 5 let unmatched requests through; Security 6 denies them, and that includes
   the `ERROR` dispatch — so every error path (validation 400s, 404s, 405s) came back as a
@@ -53,7 +61,9 @@ is out of scope.
   `java-version: '17'`.
 
 `mvn -B clean verify` on JDK 17: **BUILD SUCCESS, 44 tests → 44 tests**, all green. No tests
-deleted or weakened. No trailing-slash breakage (no route or test relied on one). No
+deleted or weakened. No trailing-slash breakage: Spring 6 drops the legacy trailing-slash
+match, but no route, test, `tests/api/*.py` case or api-gateway proxy rule relies on one
+(`router.go` forwards `req.URL.Path` unmodified and chi does not append a slash). No
 `--add-opens` needed. No `spring-boot-properties-migrator` warnings.
 
 ## legacy-portal (Java 11 / Boot 2.7.18 → Java 17 / Boot 3.2.5)
@@ -98,6 +108,12 @@ grep -rn "java-version: '\(8\|11\)'" .github/workflows/
 
 - **iText 5.5.13.3** (AGPL, pre-license-change) is still there. It runs fine on JDK 17 so it
   was left alone; migrating to OpenPDF or iText 7 is its own change.
+- **`ReportDataFetcher`'s sample-data fallback does not fire.** `LoadingCache.get(key, Callable)`
+  wraps unchecked exceptions in Guava's `UncheckedExecutionException`, but the fetch methods
+  only catch `ExecutionException` — so a `RestClientException` from `RestTemplate`, the likely
+  failure, propagates and fails the report instead. Pre-existing on `main` and untouched here,
+  but it is what drove analytics/audit reports to `FAILED` during runtime verification, which
+  is how the `@Lob` mapping got exercised at all.
 - `auth-service` stays on Boot **3.2.4** rather than 3.2.5 — it was already compliant, and
   bumping a `verify` service is out of scope for this migration.
 - The local dev box has neither Maven nor Gradle on `PATH` and the wrapper jars are

@@ -22,6 +22,6 @@ public class SwaggerConfig {
                 .title("OtterWorks Report Service API")
                 .description("Legacy report generation service for PDF, CSV, and Excel exports")
                 .version("0.1.0")
-                .contact(new Contact().name("OtterWorks Engineering").url("").email("engineering@otterworks.example.com"));
+                .contact(new Contact().name("OtterWorks Engineering").email("engineering@otterworks.example.com"));
     }
 }
