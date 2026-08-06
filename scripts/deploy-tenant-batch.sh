@@ -179,7 +179,11 @@ FROM="the command line"
 if [ "${#NAMES[@]}" -eq 0 ]; then
   FROM="${ROSTER}"
   [ -f "${ROSTER}" ] || { err "Roster file not found: ${ROSTER}"; exit 1; }
-  while IFS= read -r line; do
+  # `|| [ -n "${line}" ]` because read returns non-zero on a final line with no
+  # newline after it, having already filled the variable: without it the last
+  # person on a hand-edited roster is dropped, and the run reports a roster one
+  # shorter with nothing to say a name went missing.
+  while IFS= read -r line || [ -n "${line}" ]; do
     line="${line%$'\r'}"                       # tolerate CRLF rosters
     line="$(printf '%s' "${line}" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
     case "${line}" in ""|\#*) continue ;; esac

@@ -254,12 +254,33 @@ METRIC[otterworks-quiet]=100; ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
 seen_running blind; seen_running quiet
 SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
 check "reports how many tenants a degraded pass could not read" \
-  "$(printf '%s' "${SCAN_OUT}" | grep -c 'skipped 1 of 2 tenants')" "1"
+  "$(printf '%s' "${SCAN_OUT}" | grep -c '1 of 2 tenants had a read that failed')" "1"
 reset_state
 NS_RUNNING[otterworks-quiet]=13; seen_running quiet
 SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
-check "  and says nothing about skips when it read them all" \
-  "$(printf '%s' "${SCAN_OUT}" | grep -c 'skipped')" "0"
+check "  and says nothing about failed reads when it read them all" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c 'read that failed')" "0"
+
+# An unreadable always-on label does not skip the tenant, but it takes the same
+# branch a real exemption does -- so a pass where every label read fails
+# suspends nothing while reporting a clean scan. It counts too.
+reset_state
+NS_RUNNING[otterworks-quiet]=13; NS_ALWAYS_ON[otterworks-quiet]=unknown
+METRIC[otterworks-quiet]=100; ITEM_COUNT[quiet]=100; ITEM_SINCE[quiet]=${STALE}
+seen_running quiet
+SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
+check "  counts a tenant whose always-on label could not be read" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c '1 of 1 tenants had a read that failed')" "1"
+
+# ...but only once, however many of that tenant's reads failed: the tally counts
+# tenants it could not decide about, and "2 of 1" is not a sentence.
+reset_state
+NS_RUNNING[otterworks-quiet]=13; NS_ALWAYS_ON[otterworks-quiet]=unknown
+STATE_UNREADABLE="quiet"
+seen_running quiet
+SCAN_OUT="$(IDLE_AFTER_SECONDS=3600 suspend_idle_tenants 2>&1 >/dev/null)"
+check "  and counts each tenant once, not each failed read" \
+  "$(printf '%s' "${SCAN_OUT}" | grep -c '1 of 1 tenants had a read that failed')" "1"
 
 # A refused scale-down must not be recorded as a suspension. Writing
 # was_running=0 for a tenant that is still up makes the next pass read it as a

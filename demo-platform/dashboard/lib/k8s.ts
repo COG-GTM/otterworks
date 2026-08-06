@@ -115,11 +115,27 @@ async function loadTenantPods(): Promise<Map<string, k8s.V1Pod[]>> {
     const chunk = names.slice(i, i + BATCH);
     const results = await Promise.all(
       chunk.map(async (name) => {
-        const podsRes = await core().listNamespacedPod(name);
-        return [name, podsRes.body.items] as const;
+        try {
+          const podsRes = await core().listNamespacedPod(name);
+          return [name, podsRes.body.items] as const;
+        } catch (err) {
+          // The namespace list is a snapshot, and a teardown between it and this
+          // call is a 404 for a namespace that is legitimately gone. Rejecting on
+          // it fails the whole page — /api/tenants and the orphan preview both —
+          // over one tenant that no longer exists, and at ~95 namespaces per pass
+          // that race is met often rather than never. Dropped from the map, which
+          // is what "not there" means. Anything else still rejects: an RBAC denial
+          // or an unreachable API server must not read as a cluster with fewer
+          // tenants in it than there are.
+          if (err instanceof k8s.HttpError && err.statusCode === 404) return null;
+          throw err;
+        }
       }),
     );
-    for (const [name, pods] of results) byNamespace.set(name, pods);
+    for (const result of results) {
+      if (!result) continue;
+      byNamespace.set(result[0], result[1]);
+    }
   }
   _cache = { at: Date.now(), byNamespace };
   return byNamespace;

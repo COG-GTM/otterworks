@@ -111,6 +111,17 @@ FREE_IPS=4000; rc="$(run_batch)"
 check "deploys when there is room" "${rc}" "0"
 check "deploys every tenant" "$(deployed)" "deploy:ada-lovelace deploy:grace-hopper"
 
+# The roster is documented as operator-editable and plenty of editors do not add
+# a final newline. `read` returns non-zero on that last line having already read
+# it, so the loop drops the person -- one name short, silently, and the run's own
+# "N tenant(s)" line agrees with itself.
+printf 'Ada Lovelace\nGrace Hopper' > "${WORK}/roster-no-eol.txt"
+: > "${DEPLOY_LOG}"; : > "${ECR_LOG}"; rm -f "${MARKER_DIR}"/*
+FREE_IPS=4000 "${WORK}/scripts/deploy-tenant-batch.sh" \
+  --roster "${WORK}/roster-no-eol.txt" >"${WORK}/out" 2>&1
+check "reads the last name in a roster saved without a trailing newline" \
+  "$(deployed)" "deploy:ada-lovelace deploy:grace-hopper"
+
 FREE_IPS=12; rc="$(run_batch --no-preflight)"
 check "--no-preflight overrides the refusal" "${rc}" "0"
 check "--no-preflight still deploys everyone" "$(deployed)" "deploy:ada-lovelace deploy:grace-hopper"

@@ -370,7 +370,10 @@ suspend_idle_tenants() {
   # the pass, and each one warns on its own line. A scan that suspends nothing
   # because it could read nothing then looks like a scan with nothing to do,
   # buried in ~95 warnings; count them and say so at the end.
-  local seen=0 unreadable=0
+  local seen=0 unreadable=0 degraded
+  # Once per tenant, however many of its reads failed: the tally is a count of
+  # tenants the pass could not decide about, not of failed API calls.
+  mark_unreadable() { [ "${degraded}" = true ] || { degraded=true; unreadable=$(( unreadable + 1 )); }; }
   # Traffic is the only evidence of use, so without it there is nothing to
   # decide on. Skipping the pass delays suspension until the next run; guessing
   # scales every attendee's environment to zero mid-workshop.
@@ -393,6 +396,7 @@ suspend_idle_tenants() {
     [ -n "${count}" ] || count=0
 
     seen=$(( seen + 1 ))
+    degraded=false
 
     # Resolve the backend here, in this shell: state_read runs in a command
     # substitution, so a lookup it caches is thrown away with the subshell and
@@ -403,7 +407,7 @@ suspend_idle_tenants() {
       # counters are lost and it never suspends; to the control table, a script
       # tenant's are written where nothing reads them. Leave it for the next pass.
       idle_warn "skipping ${id}: cannot tell which store its idle state lives in"
-      unreadable=$(( unreadable + 1 ))
+      mark_unreadable
       continue
     fi
     # Read after the backend resolution, not before it: a tenant skipped just
@@ -419,12 +423,17 @@ suspend_idle_tenants() {
     # moved, which is the same "idle since then" a non-exempt tenant records.
     # Traffic, a wake, or a counter reset all update it as usual.)
     always_on="$(tenant_always_on "${ns}")"
+    # Counted with the outright skips even though the tenant is still examined:
+    # an unreadable label takes the same branch a genuine exemption does, so a
+    # pass where every label read fails suspends nothing at all -- the case the
+    # tally exists to name.
+    [ "${always_on}" != "unknown" ] || mark_unreadable
 
     read -r prev since was_running <<< "$(state_read "${id}")"
     # The store answered with an error rather than with counters (state_read has
     # already said so). Its blanks would read as a first observation, so acting on
     # them would restart the clock -- and on the next pass, and the one after.
-    if [ "${prev}" = "?" ]; then unreadable=$(( unreadable + 1 )); continue; fi
+    if [ "${prev}" = "?" ]; then mark_unreadable; continue; fi
     # Torn down while this pass was running: every write from here is addressed
     # to a namespace that is not there.
     [ "${prev}" != "gone" ] || continue
@@ -437,7 +446,7 @@ suspend_idle_tenants() {
     # zero writes was_running=0 on a tenant that never stopped.
     if [ "${running}" = "?" ]; then
       idle_warn "skipping ${id}: cannot read its Deployments"
-      unreadable=$(( unreadable + 1 ))
+      mark_unreadable
       continue
     fi
     if [ "${running}" -eq 0 ]; then
@@ -521,7 +530,7 @@ suspend_idle_tenants() {
   # A tenant left alone because its namespace is gone is not counted: that is an
   # answer, not a failed read.
   if [ "${unreadable}" -gt 0 ]; then
-    idle_warn "idle scan complete: skipped ${unreadable} of ${seen} tenants, unread. Suspension is off for those until it clears."
+    idle_warn "idle scan complete: ${unreadable} of ${seen} tenants had a read that failed. Suspension is off for those until it clears."
   else
     idle_log "idle scan complete."
   fi
