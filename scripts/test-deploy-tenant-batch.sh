@@ -173,6 +173,21 @@ check "--always-on succeeds" "${rc}" "0"
 check "  passes the flag to every tenant" "$(deploy_flags)" "2"
 said "  and says the fleet is permanently reserved" "reserved permanently"
 
+# A TTL that is not "none" buys an expiry and loses the demo/persistent label,
+# which is the only thing standing between a script-deployed tenant and the
+# orphan sweep. That roster is deleted long before its TTL, so the run says so.
+FREE_IPS=4000; rc="$(run_batch --ttl 8h)"
+check "--ttl 8h still deploys" "${rc}" "0"
+said "  and warns the orphan sweep would delete the roster first" "orphan sweep"
+
+rc="$(run_batch)"
+check "the default TTL succeeds" "${rc}" "0"
+if grep -q -- "orphan sweep" "${WORK}/out"; then
+  nope "does not warn about the orphan sweep for a persistent roster"
+else
+  ok "does not warn about the orphan sweep for a persistent roster"
+fi
+
 # Resuming a half-finished roster. deploy-tenant.sh creates the namespace in its
 # first seconds, so "namespace exists" is also what a deploy that died at the
 # database or Helm step leaves behind: skipping on that alone would report the

@@ -129,17 +129,23 @@ fi
 # idempotent, but the run that first introduces the field is a rolling recycle of
 # the whole fleet and belongs in a quiet window.
 nodeclass_max_pods="$(kubectl get ec2nodeclass default -o jsonpath='{.spec.kubelet.maxPods}' 2>/dev/null || true)"
-# `|| true` on the pipeline, not just the kubectl: under pipefail an unreadable
-# API server fails the whole substitution, and under set -e that ends the install
-# silently, between the controller upgrade and the NodePool it exists to apply.
-# An empty node list is not the failing case -- that exits 0 and prints 0.
-karpenter_nodes="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null | awk 'END { print NR + 0 }' || true)"
-# Which also means the count can come back empty, and empty must not read as "no
-# nodes to lose": a fleet this could not measure is one to ask about, not one to
-# recycle quietly.
-if [ -z "${karpenter_nodes}" ]; then
+# Two answers are wanted from one command and they must not be confused: how many
+# nodes are at stake, and whether that number is a measurement at all. Counting
+# through a pipe collapses them -- awk prints 0 for an empty list and 0 again for
+# an RBAC denial, an expired token or an unreachable API server, so a cluster this
+# could not read looks exactly like a cluster with nothing to lose, and the gate
+# below is skipped on the run that most needs it. Capture the output on its own,
+# keep the exit status, and count afterwards. The status is caught rather than
+# allowed to propagate because the failure has to reach the branch: under set -e an
+# unguarded substitution would stop the install here, between the controller
+# upgrade and the NodePool it exists to apply, printing nothing.
+node_read_rc=0
+node_list="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null)" || node_read_rc=$?
+if [ "${node_read_rc}" -ne 0 ]; then
   nodes_at_risk=true; nodes_desc="an unknown number of"
+  log "WARNING: could not read the node list; assuming this cluster has nodes to lose."
 else
+  karpenter_nodes="$(printf '%s' "${node_list}" | grep -c . || true)"
   [ "${karpenter_nodes}" -gt 0 ] && nodes_at_risk=true || nodes_at_risk=false
   nodes_desc="${karpenter_nodes}"
 fi
@@ -154,7 +160,7 @@ if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
   if [ -n "${ACCEPT_NODE_RECYCLE}" ]; then
     log "         ACCEPT_NODE_RECYCLE is set; continuing."
   elif [ -t 0 ]; then
-    read -r -p "[karpenter] Replace ${karpenter_nodes} node(s) now? [y/N] " reply
+    read -r -p "[karpenter] Replace ${nodes_desc} node(s) now? [y/N] " reply
     case "${reply}" in
       [yY]|[yY][eE][sS]) ;;
       *) fail "aborted; re-run in a quiet window, or with ACCEPT_NODE_RECYCLE=1" ;;
@@ -163,7 +169,7 @@ if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
     # Unattended and unacknowledged: refuse rather than guess. Everything above
     # this point (the controller upgrade) has already been applied and is
     # idempotent, so the re-run with the variable set costs nothing.
-    fail "refusing to recycle ${karpenter_nodes} node(s) unattended; re-run with ACCEPT_NODE_RECYCLE=1"
+    fail "refusing to recycle ${nodes_desc} node(s) unattended; re-run with ACCEPT_NODE_RECYCLE=1"
   fi
 fi
 

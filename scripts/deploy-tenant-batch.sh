@@ -111,6 +111,25 @@ case "${PROFILE}" in
   *) err "profile must be core or full (got '${PROFILE}')"; exit 1 ;;
 esac
 
+# A TTL other than "none" is not simply a shorter life: it is an unprotected one.
+# The reaper identifies an orphan as a tenant namespace or database with no
+# TENANT# control-table item, which only the dashboard's check-out writes, so
+# every tenant this script deploys has that shape -- and demo/persistent=true, set
+# only for a persistent tenant, is the single thing that makes the sweeps skip it.
+# So the roster of a `--ttl 8h` batch is deleted by the next armed orphan sweep,
+# database and S3 prefix included, long before the 8 hours are up. Not refused:
+# the sweeps are off by default and a short-lived roster is a reasonable thing to
+# ask for. But it should not be a surprise.
+case "${TTL}" in
+  none|never|infinite|persistent) ;;
+  *)
+    warn "--ttl ${TTL}: these tenants get an expiry but NOT demo/persistent=true, and a"
+    warn "  script-deployed tenant has no control-table item, so an armed orphan sweep"
+    warn "  (CONFIG#reaper sweep_orphans=true) treats the whole roster as junk and deletes it"
+    warn "  -- namespaces, databases and S3 prefixes -- before the TTL expires."
+    warn "  Use --ttl none for a standing roster, or keep the orphan sweeps disabled." ;;
+esac
+
 # A person's name in ASCII. Accents are transliterated rather than dashed out, so
 # "João Esteves" is joao-esteves and not jo--o-esteves (sanitize_id replaces each
 # byte of a multi-byte character).
