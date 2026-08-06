@@ -373,6 +373,82 @@ check "  but still deploys a name that was already ASCII" "$(deployed)" "deploy:
 check "  succeeding" "${rc}" "0"
 rm -f "${WORK}/bin/iconv"
 
+# --- load_infra_outputs reads the state once ----------------------------------
+# The values wired here are the tenant's database, buckets and IRSA roles: get
+# one wrong and the tenant comes up looking healthy and talking to nothing. The
+# read is one `terraform output -json` rather than eleven `-raw` calls, so what
+# has to hold is that every value still arrives, that a missing output is empty
+# rather than the string "null" (which would reach a ConfigMap), and that a
+# state that cannot be read says so instead of wiring blanks silently.
+(
+  TFDIR="${WORK}/tfhome"; mkdir -p "${TFDIR}/infrastructure/terraform" "${TFDIR}/bin"
+  cat > "${TFDIR}/bin/terraform" <<'EOS'
+#!/usr/bin/env bash
+echo "$*" >> "${TF_CALLS}"
+[ -z "${TF_FAIL:-}" ] || exit 1
+case "$*" in
+  *"output -json"*) cat "${TF_JSON}" ;;
+  *) exit 0 ;;
+esac
+EOS
+  chmod +x "${TFDIR}/bin/terraform"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "${TFDIR}/bin/kubectl"  # no pgbouncer
+  chmod +x "${TFDIR}/bin/kubectl"
+  export PATH="${TFDIR}/bin:${PATH}"
+  export REPO_ROOT="${TFDIR}" TF_CALLS="${TFDIR}/calls" TF_JSON="${TFDIR}/out.json"
+  mkdir -p "${TFDIR}/infrastructure/terraform/.terraform"
+  export OTTERWORKS_TF_INIT_READY=1
+  # shellcheck disable=SC1090
+  . "${WORK}/scripts/lib/tenant-common.sh"
+
+  cat > "${TF_JSON}" <<'EOS'
+{
+  "rds_endpoint":                 {"value": "otterworks.abc.us-east-1.rds.amazonaws.com:5432"},
+  "s3_file_bucket":               {"value": "otterworks-files-dev"},
+  "s3_audit_archive_bucket":      {"value": "otterworks-audit-dev"},
+  "dynamodb_file_metadata_table": {"value": "otterworks-file-metadata"},
+  "dynamodb_audit_events_table":  {"value": "otterworks-audit-events"},
+  "dynamodb_notifications_table": {"value": "otterworks-notifications"},
+  "dynamodb_folders_table":       {"value": "otterworks-folders"},
+  "dynamodb_file_versions_table": {"value": "otterworks-file-versions"},
+  "dynamodb_file_shares_table":   {"value": "otterworks-file-shares"},
+  "irsa_role_arns":               {"value": {"file-service": "arn:aws:iam::1:role/fs"}}
+}
+EOS
+  : > "${TF_CALLS}"
+  load_infra_outputs >/dev/null 2>&1
+  check "wires the RDS host and port from one state read" "${RDS_HOST}:${RDS_PORT}" \
+    "otterworks.abc.us-east-1.rds.amazonaws.com:5432"
+  check "  the buckets" "${S3_FILE_BUCKET} ${S3_AUDIT_BUCKET}" "otterworks-files-dev otterworks-audit-dev"
+  check "  every DynamoDB table" \
+    "${DDB_FILE_META} ${DDB_AUDIT} ${DDB_NOTIF} ${DDB_FOLDERS} ${DDB_VERSIONS} ${DDB_SHARES}" \
+    "otterworks-file-metadata otterworks-audit-events otterworks-notifications otterworks-folders otterworks-file-versions otterworks-file-shares"
+  check "  and the IRSA role ARNs" "$(irsa_arn file-service)" "arn:aws:iam::1:role/fs"
+  check "asks Terraform for the outputs once, not once per value" \
+    "$(grep -c 'output -json' "${TF_CALLS}")" "1"
+
+  # An output the state does not have. Empty is the answer the per-value reads
+  # gave; "null" would be wired into a ConfigMap and resolved as a hostname.
+  echo '{"rds_endpoint": {"value": "db:5432"}}' > "${TF_JSON}"
+  load_infra_outputs >/dev/null 2>&1
+  check "a missing output is empty, not the string null" "${S3_FILE_BUCKET}" ""
+  check "  and a missing irsa_role_arns is an empty object" "${IRSA_JSON}" "{}"
+
+  # A state that cannot be read at all: nothing wired, and said out loud --
+  # this is the run that would otherwise deploy 95 tenants pointed at nothing.
+  export TF_FAIL=1
+  # Not `$(load_infra_outputs)`: the values it sets are the assertion, and a
+  # command substitution would set them in a subshell and leave the ones from
+  # the successful load above in place -- a test that passes on stale state.
+  load_infra_outputs >"${TFDIR}/warn" 2>&1
+  check "an unreadable state wires nothing" "${RDS_HOST}${S3_FILE_BUCKET}${DDB_AUDIT}" ""
+  if grep -q "Terraform outputs unavailable" "${TFDIR}/warn"; then ok "  and warns about it"
+  else nope "  and warns about it (said: $(cat "${TFDIR}/warn"))"; fi
+  echo "${PASS} ${FAIL}" > "${WORK}/tf-tally"
+)
+read -r sub_pass sub_fail < "${WORK}/tf-tally"
+PASS="${sub_pass}"; FAIL="${sub_fail}"
+
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

@@ -80,6 +80,14 @@ require_bins() {
   done
 }
 
+# One value out of `terraform output -json`. Empty for an output that is not
+# there, which is what the per-output `|| echo ""` used to give -- an absent
+# output has to read as "unwired", not as the string "null", because that would
+# reach a ConfigMap and the service would try to resolve it.
+tf_output() {
+  printf '%s' "$1" | jq -r --arg k "$2" '.[$k].value // empty' 2>/dev/null || printf ''
+}
+
 # Load shared application-infra Terraform outputs (RDS/Redis/S3/DynamoDB/SNS/SQS
 # and the per-service IRSA role ARNs). Same source of truth as deploy-dev.sh.
 load_infra_outputs() {
@@ -97,18 +105,28 @@ load_infra_outputs() {
   if [ -z "${OTTERWORKS_TF_INIT_READY:-}" ] || [ ! -d "${d}/.terraform" ]; then
     terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
   fi
-  local rds; rds="$(terraform -chdir="$d" output -raw rds_endpoint 2>/dev/null || echo "")"
+  # One read, not eleven. `terraform output` pulls the whole remote state on
+  # every invocation, so asking for each value separately is eleven S3 round
+  # trips for one snapshot -- about a thousand across a 95-name roster, four of
+  # them in flight at a time, all answering out of the same state file. `-json`
+  # returns every output at once, and jq is already required by every caller of
+  # this function. It also makes the eleven values one snapshot rather than
+  # eleven, which is what they were always assumed to be.
+  local tf; tf="$(terraform -chdir="$d" output -json 2>/dev/null || true)"
+  case "${tf}" in "") tf='{}' ;; esac
+  local rds; rds="$(tf_output "${tf}" rds_endpoint)"
   RDS_HOST="${rds%%:*}"; RDS_PORT="${rds##*:}"
   [ "$RDS_PORT" = "$rds" ] && RDS_PORT=5432 || true
-  S3_FILE_BUCKET="$(terraform -chdir="$d" output -raw s3_file_bucket 2>/dev/null || echo "")"
-  S3_AUDIT_BUCKET="$(terraform -chdir="$d" output -raw s3_audit_archive_bucket 2>/dev/null || echo "")"
-  DDB_FILE_META="$(terraform -chdir="$d" output -raw dynamodb_file_metadata_table 2>/dev/null || echo "")"
-  DDB_AUDIT="$(terraform -chdir="$d" output -raw dynamodb_audit_events_table 2>/dev/null || echo "")"
-  DDB_NOTIF="$(terraform -chdir="$d" output -raw dynamodb_notifications_table 2>/dev/null || echo "")"
-  DDB_FOLDERS="$(terraform -chdir="$d" output -raw dynamodb_folders_table 2>/dev/null || echo "")"
-  DDB_VERSIONS="$(terraform -chdir="$d" output -raw dynamodb_file_versions_table 2>/dev/null || echo "")"
-  DDB_SHARES="$(terraform -chdir="$d" output -raw dynamodb_file_shares_table 2>/dev/null || echo "")"
-  IRSA_JSON="$(terraform -chdir="$d" output -json irsa_role_arns 2>/dev/null || echo "{}")"
+  S3_FILE_BUCKET="$(tf_output "${tf}" s3_file_bucket)"
+  S3_AUDIT_BUCKET="$(tf_output "${tf}" s3_audit_archive_bucket)"
+  DDB_FILE_META="$(tf_output "${tf}" dynamodb_file_metadata_table)"
+  DDB_AUDIT="$(tf_output "${tf}" dynamodb_audit_events_table)"
+  DDB_NOTIF="$(tf_output "${tf}" dynamodb_notifications_table)"
+  DDB_FOLDERS="$(tf_output "${tf}" dynamodb_folders_table)"
+  DDB_VERSIONS="$(tf_output "${tf}" dynamodb_file_versions_table)"
+  DDB_SHARES="$(tf_output "${tf}" dynamodb_file_shares_table)"
+  IRSA_JSON="$(printf '%s' "${tf}" | jq -c '.irsa_role_arns.value // {}' 2>/dev/null || echo '{}')"
+  case "${IRSA_JSON}" in ""|null) IRSA_JSON='{}' ;; esac
   DB_USER="${DB_USER:-otterworks_admin}"
   if [ -z "${RDS_HOST}" ]; then
     warn "Terraform outputs unavailable; services will deploy without wired config."
