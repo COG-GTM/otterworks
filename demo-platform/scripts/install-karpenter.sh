@@ -90,8 +90,21 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 # the one whose absence guarantees a full recycle, but Karpenter hashes the
 # whole EC2NodeClass spec, so any other future edit to that file drifts the
 # fleet without passing through the gate.
+#
+# Scraped rather than parsed: the alternative is a YAML parser this script does
+# not otherwise need. Trailing comments and quoting are tolerated; anything else
+# (a templated value, the field moved into a second kubelet block) leaves this
+# empty and the run stops below rather than comparing against a guess.
 NODEPOOL_FILE="${REPO_ROOT}/demo-platform/k8s/karpenter/nodepool.yaml"
-desired_max_pods="$(awk '/^[[:space:]]*maxPods:[[:space:]]*[0-9]+[[:space:]]*$/ { print $2; exit }' "${NODEPOOL_FILE}" 2>/dev/null || true)"
+desired_max_pods="$(awk '
+  /^[[:space:]]*maxPods:[[:space:]]*/ {
+    v = $0
+    sub(/^[^:]*:[[:space:]]*/, "", v)   # value only
+    sub(/[[:space:]]*#.*$/, "", v)      # drop a trailing comment
+    gsub(/["'"'"']/, "", v)             # drop quotes
+    sub(/[[:space:]]+$/, "", v)
+    if (v ~ /^[0-9]+$/) { print v; exit }
+  }' "${NODEPOOL_FILE}" 2>/dev/null || true)"
 [ -n "${desired_max_pods}" ] || fail "could not read kubelet.maxPods from ${NODEPOOL_FILE}; that file is applied below, so this run cannot proceed"
 
 # nodepool.yaml pins kubelet.maxPods, which only has addresses behind it

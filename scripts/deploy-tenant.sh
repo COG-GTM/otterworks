@@ -142,6 +142,19 @@ fi
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ] && [ -z "${OTTERWORKS_KUBECONFIG_READY:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+# demo/deployed-at describes the run that wrote it, and this run has not finished.
+# It is set with `kubectl annotate`, so the namespace apply below does not prune
+# it, and a redeploy that then loses a service would be read as complete on the
+# strength of the previous run's marker.
+#
+# Cleared here rather than after that apply: the script runs under `set -e`, so a
+# failure in the apply or in load_infra_outputs exits before any later clear, and
+# the marker survives to tell the next batch run that the tenant it is being
+# re-run to repair is already done. Withholding the marker is only a signal if
+# the tenant cannot be holding a stale one. A missing namespace (every first
+# deploy) makes this a no-op.
+kubectl annotate namespace "${NS}" demo/deployed-at- >/dev/null 2>&1 || true
+
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 
@@ -221,12 +234,6 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
 YAML
-
-# demo/deployed-at describes the run that wrote it, and this run has not finished:
-# it is set with `kubectl annotate`, so the apply above does not prune it, and a
-# redeploy that then loses a service would be read as complete on the strength of
-# the previous one's marker.
-kubectl annotate namespace "${NS}" demo/deployed-at- >/dev/null 2>&1 || true
 
 # The idle scan's bookkeeping for a script-deployed tenant lives on the same
 # namespace and survives this apply for the same reason. Left in place, a tenant
