@@ -170,7 +170,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   };
 
   const clearCompleted = () => {
-    setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
+    setUploadingFiles((prev) => prev.filter((f) => f.status === "uploading"));
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
