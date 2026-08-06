@@ -74,33 +74,12 @@ log "instance profile=${KARPENTER_INSTANCE_PROFILE} queue=${KARPENTER_QUEUE}"
 
 aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 
-# CRDs are installed as their own release. Helm never upgrades CRDs that came
-# from a chart's crds/ directory, so bundling them would silently leave the API
-# behind the controller on the next version bump.
-log "Installing CRDs..."
-helm upgrade --install karpenter-crd "oci://public.ecr.aws/karpenter/karpenter-crd" \
-  --version "${KARPENTER_VERSION}" \
-  --namespace "${KARPENTER_NAMESPACE}" --create-namespace \
-  --wait --timeout 5m
-
-log "Installing controller..."
-helm upgrade --install karpenter "oci://public.ecr.aws/karpenter/karpenter" \
-  --version "${KARPENTER_VERSION}" \
-  --namespace "${KARPENTER_NAMESPACE}" \
-  --skip-crds \
-  --set "settings.clusterName=${EKS_CLUSTER}" \
-  --set "settings.interruptionQueue=${KARPENTER_QUEUE}" \
-  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${KARPENTER_ROLE_ARN}" \
-  --set replicas="${KARPENTER_REPLICAS}" \
-  --set controller.resources.requests.cpu=200m \
-  --set controller.resources.requests.memory=512Mi \
-  --set controller.resources.limits.cpu=1 \
-  --set controller.resources.limits.memory=1Gi \
-  --wait --timeout 10m
-
-# The chart's default affinity keeps the controller off Karpenter's own nodes,
-# so it always has somewhere to run: the managed node group stays as the system
-# pool for exactly this reason.
+# Checked before anything is installed, not between the controller upgrade and the
+# NodePool this exists to apply: the gate below can refuse, and refusing halfway
+# leaves a cluster carrying a new controller against old node settings, which is
+# a state nobody asked for and the log does not name. Everything it reads is
+# pre-existing -- the CRD and controller upgrades do not touch EC2NodeClass
+# objects or nodes -- so it answers the same question either way.
 # nodepool.yaml pins kubelet.maxPods: 110, which only has addresses behind it
 # while the CNI runs in prefix-delegation mode (Terraform sets it on the addon;
 # see platform/terraform/modules/eks/main.tf). Against an addon without it an
@@ -154,8 +133,8 @@ fi
 # below is skipped on the run that most needs it. Capture the output on its own,
 # keep the exit status, and count afterwards. The status is caught rather than
 # allowed to propagate because the failure has to reach the branch: under set -e an
-# unguarded substitution would stop the install here, between the controller
-# upgrade and the NodePool it exists to apply, printing nothing.
+# unguarded substitution would end the install here, before anything is installed
+# and printing nothing about why.
 node_read_rc=0
 node_list="$(kubectl get nodes -l karpenter.sh/nodepool --no-headers 2>/dev/null)" || node_read_rc=$?
 if [ "${node_read_rc}" -ne 0 ]; then
@@ -188,13 +167,40 @@ if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
       *) fail "aborted; re-run in a quiet window, or with ACCEPT_NODE_RECYCLE=1" ;;
     esac
   else
-    # Unattended and unacknowledged: refuse rather than guess. Everything above
-    # this point (the controller upgrade) has already been applied and is
-    # idempotent, so the re-run with the variable set costs nothing.
+    # Unattended and unacknowledged: refuse rather than guess. Nothing has been
+    # installed at this point, so the cluster is exactly as the run found it and
+    # the re-run with the variable set costs nothing.
     fail "refusing to recycle ${nodes_desc} node(s) unattended; re-run with ACCEPT_NODE_RECYCLE=1"
   fi
 fi
 
+# CRDs are installed as their own release. Helm never upgrades CRDs that came
+# from a chart's crds/ directory, so bundling them would silently leave the API
+# behind the controller on the next version bump.
+log "Installing CRDs..."
+helm upgrade --install karpenter-crd "oci://public.ecr.aws/karpenter/karpenter-crd" \
+  --version "${KARPENTER_VERSION}" \
+  --namespace "${KARPENTER_NAMESPACE}" --create-namespace \
+  --wait --timeout 5m
+
+log "Installing controller..."
+helm upgrade --install karpenter "oci://public.ecr.aws/karpenter/karpenter" \
+  --version "${KARPENTER_VERSION}" \
+  --namespace "${KARPENTER_NAMESPACE}" \
+  --skip-crds \
+  --set "settings.clusterName=${EKS_CLUSTER}" \
+  --set "settings.interruptionQueue=${KARPENTER_QUEUE}" \
+  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=${KARPENTER_ROLE_ARN}" \
+  --set replicas="${KARPENTER_REPLICAS}" \
+  --set controller.resources.requests.cpu=200m \
+  --set controller.resources.requests.memory=512Mi \
+  --set controller.resources.limits.cpu=1 \
+  --set controller.resources.limits.memory=1Gi \
+  --wait --timeout 10m
+
+# The chart's default affinity keeps the controller off Karpenter's own nodes,
+# so it always has somewhere to run: the managed node group stays as the system
+# pool for exactly this reason.
 log "Applying EC2NodeClass + NodePool..."
 sed -e "s#__CLUSTER__#${EKS_CLUSTER}#g" \
     -e "s#__INSTANCE_PROFILE__#${KARPENTER_INSTANCE_PROFILE}#g" \
