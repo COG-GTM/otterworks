@@ -115,6 +115,25 @@ idle scan puts it straight back up.
 ./scripts/deploy-tenant-batch.sh --always-on --concurrency 4   # whole roster stays up
 ```
 
+**Before rolling this reaper out**, label anything already standing on the
+cluster. The idle scan used to skip every tenant with no `TENANT#` control-table
+item, which is every tenant `deploy-tenant.sh` has ever deployed — so those have
+been exempt from suspension by accident, not by decision, and the first pass of
+the new image makes them eligible. They also carry no `demo/always-on`, and
+nothing can wake them once they are down: check-out reads the control table, and
+the URL serves 503. An hour after the upgrade, a tenant somebody is using goes
+quiet with no way back except `tenant-scale.sh`.
+
+```bash
+# tenant namespaces the dashboard does not know about, i.e. script-deployed
+kubectl get ns -l demo/tenant --no-headers -o custom-columns=:.metadata.name
+kubectl label ns otterworks-<id> demo/always-on=true    # anything still in use
+```
+
+Deliberately not automatic: the scan cannot tell a tenant somebody still uses
+from one left behind months ago, and labelling every one of them would reserve
+the whole cluster's compute for tenants nobody has opened since.
+
 **Capacity.** An always-on tenant reserves its requests indefinitely — ~1.5 vCPU
 / 3.5 GiB on `full`, ~0.5 vCPU / 1.3 GiB on `core` — and holds ~15 (`full`) or
 ~7 (`core`) pod IPs for as long as it exists. A batch also brings the whole

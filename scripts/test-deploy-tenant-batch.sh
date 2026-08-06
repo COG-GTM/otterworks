@@ -34,7 +34,7 @@ cp "${SCRIPT_DIR}/lib/tenant-common.sh" "${WORK}/scripts/lib/"
 # failed Helm install leaves.
 cat > "${WORK}/scripts/deploy-tenant.sh" <<'EOS'
 #!/usr/bin/env bash
-echo "deploy:$1 $* tag=${OTTERWORKS_IMAGE_TAG_api_gateway:-unset}" >> "${DEPLOY_LOG}"
+echo "deploy:$1 $* tag=${OTTERWORKS_IMAGE_TAG_api_gateway:-unset} db=${DB_PASSWORD:-unset} jwt=${JWT_SECRET:-unset} skb=${SECRET_KEY_BASE:-unset}" >> "${DEPLOY_LOG}"
 rm -f "${MARKER_DIR}/otterworks-$1"
 case " ${INCOMPLETE:-} " in *" $1 "*) exit 0 ;; esac
 : > "${MARKER_DIR}/otterworks-$1"
@@ -146,6 +146,36 @@ said "says which limit was hit" "Not enough pod IPs"
 FREE_IPS=4000; rc="$(run_batch)"
 check "deploys when there is room" "${rc}" "0"
 check "deploys every tenant" "$(deployed)" "deploy:ada-lovelace deploy:grace-hopper"
+
+# The secrets are checked in this shell and used in another one, so what the
+# preflight promises has to be what the children get. Set but not exported, they
+# would reach neither -- pinned here, because "set" in the operator's shell and
+# "set in the deploy's environment" are not the same thing and the failure is
+# quiet for two of the three: each child mints its own signing secret and
+# rotates it on every redeploy.
+FREE_IPS=4000
+: > "${DEPLOY_LOG}"; rm -f "${MARKER_DIR}"/*
+DB_PASSWORD=rostered JWT_SECRET=jwt-rostered SECRET_KEY_BASE=skb-rostered \
+  "${WORK}/scripts/deploy-tenant-batch.sh" "Ada Lovelace" >"${WORK}/out" 2>&1
+check "the deploys run with the secrets the preflight checked" \
+  "$(grep -c 'db=rostered jwt=jwt-rostered skb=skb-rostered' "${DEPLOY_LOG}")" "1"
+
+# And a value this shell never received is refused here rather than 95 times
+# over in the children, each with its own log file to go and read.
+: > "${DEPLOY_LOG}"
+env -u DB_PASSWORD "${WORK}/scripts/deploy-tenant-batch.sh" "Ada Lovelace" >"${WORK}/out" 2>&1
+check "refuses a run whose environment has no DB_PASSWORD" "$(deployed)" ""
+said "  naming what is missing" "DB_PASSWORD must be set"
+
+# Unset is not the same as set-and-empty: exported empty, the child's
+# ${JWT_SECRET:-$(openssl rand ...)} stops minting anything and the services
+# come up signing with a blank key.
+: > "${DEPLOY_LOG}"; rm -f "${MARKER_DIR}"/*
+env -u JWT_SECRET -u SECRET_KEY_BASE "${WORK}/scripts/deploy-tenant-batch.sh" "Ada Lovelace" \
+  >"${WORK}/out" 2>&1
+check "leaves an unset signing secret unset, not empty" \
+  "$(grep -c 'jwt=unset skb=unset' "${DEPLOY_LOG}")" "1"
+said "  and says each tenant will get its own" "JWT_SECRET unset"
 
 # The roster is documented as operator-editable and plenty of editors do not add
 # a final newline. `read` returns non-zero on that last line having already read

@@ -416,11 +416,21 @@ fi
 # ---------- Preflight ----------
 require_bins aws kubectl helm terraform jq
 [ -n "${DB_PASSWORD:-}" ] || { err "DB_PASSWORD must be set (shared RDS master password)."; exit 1; }
+# The three checks here are about values the *children* read, and a child is a
+# separate process: a variable set in this shell but never exported satisfies
+# every check below and then reaches none of the deploys. For DB_PASSWORD that
+# is 95 aborts against a preflight that just said it was set; for the other two
+# it is silent, because each child mints its own and rotates it every redeploy.
+export DB_PASSWORD
 # deploy-tenant.sh mints a random JWT_SECRET / SECRET_KEY_BASE when unset, which
 # is per-invocation: a redeploy would then invalidate every session and token
 # the tenant had issued. Fine for a first run, worth knowing before a redeploy.
 [ -n "${JWT_SECRET:-}" ] || warn "JWT_SECRET unset: each tenant gets a random one, and a redeploy will rotate it."
 [ -n "${SECRET_KEY_BASE:-}" ] || warn "SECRET_KEY_BASE unset: each tenant gets a random one, and a redeploy will rotate it."
+# Only when set: exporting an empty one turns "mint me a random secret" into an
+# empty signing key, which the services accept and sign nothing with.
+[ -z "${JWT_SECRET:-}" ] || export JWT_SECRET
+[ -z "${SECRET_KEY_BASE:-}" ] || export SECRET_KEY_BASE
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null \
     || { err "Could not reach EKS cluster ${EKS_CLUSTER} in ${AWS_REGION}."; exit 1; }
