@@ -108,7 +108,12 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   // can also get stuck active (it waits on a foreground delete of a loader pod
   // that will not terminate), and a check that cannot be bypassed is a lockout.
   if (!force) {
-    const running = await activeRunnerJob(id, "seed");
+    let running: string | null;
+    try {
+      running = await activeRunnerJob(id, "seed");
+    } catch {
+      return error(503, `could not check for a running seed dispatch for '${id}'; try again`);
+    }
     if (running) {
       return error(409, `a seed is already running for '${id}' (${running}); force to dispatch anyway`);
     }

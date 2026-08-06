@@ -212,6 +212,10 @@ run_seed() {
   # rather than becoming a bash arithmetic error in wait_for_seed later.
   case "${SEED_TIMEOUT-3600}" in
     ''|*[!0-9]*) die "invalid SEED_TIMEOUT '${SEED_TIMEOUT}' (seconds)" ;;
+    0) die "invalid SEED_TIMEOUT '0' -- the wait would expire before its first poll" ;;
+    # `$(( 0900 ))` is octal to bash, and an invalid one at that, which under
+    # `set -e` would kill the runner after the loader had already been created.
+    0*) die "invalid SEED_TIMEOUT '${SEED_TIMEOUT}' (no leading zero: 900, not 0900)" ;;
   esac
 
   kubectl get namespace "${ns}" >/dev/null 2>&1 ||
@@ -389,7 +393,7 @@ wait_for_seed() {
     case "$(seed_job_state "${ns}" "${job}")" in
       *Complete*)  log "seed complete for ${TENANT_ID}"; return 0 ;;
       *Failed*)    ctl_audit "${TENANT_ID}" seed_fail "loader failed in ${ns}"; die "seed Job failed in ${ns} -- kubectl -n ${ns} logs job/${job}" ;;
-      ABSENT)      die "job/${job} is gone from ${ns} -- it was deleted while the seed was running" ;;
+      ABSENT)      die_without_loader "job/${job} is gone from ${ns} -- it was deleted while the seed was running" ;;
       UNREADABLE)  log "warning: could not read job/${job} in ${ns}; retrying" ;;
     esac
     sleep 15
