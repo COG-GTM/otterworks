@@ -167,10 +167,26 @@ export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   }
 }
 
-/** Namespaces labeled demo/tenant that currently exist in the cluster. */
+/**
+ * Namespaces labeled demo/tenant that currently exist in the cluster.
+ *
+ * The namespace list is the whole answer, so it is asked for directly rather
+ * than derived from loadTenantPods(): that lists pods in every tenant namespace
+ * to build a map this discards, which at a standing roster is ~95 pod lists per
+ * cache miss, and made the orphan preview -- whose only question is which
+ * namespaces exist -- the heaviest and most failure-prone call in the dashboard.
+ */
 export async function listTenantNamespaces(): Promise<string[]> {
-  const byNamespace = await loadTenantPods();
-  return Array.from(byNamespace.keys());
+  const res = await core().listNamespace(
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    TENANT_LABEL,
+  );
+  return res.body.items
+    .map((ns) => ns.metadata?.name)
+    .filter((n): n is string => Boolean(n));
 }
 
 /**

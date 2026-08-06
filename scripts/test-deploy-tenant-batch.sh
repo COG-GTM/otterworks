@@ -64,6 +64,7 @@ cat > "${WORK}/bin/kubectl" <<'EOS'
 #!/usr/bin/env bash
 matches() { for n in $1; do case "$2" in *"${n}"*) return 0 ;; esac; done; return 1; }
 case "$*" in
+  *"get --raw /healthz"*)              [ -z "${NO_CLUSTER:-}" ]; exit $? ;;
   *"get nodepool"*)                    echo 400; exit 0 ;;
   *"annotations.demo/deployed-at"*)
     for f in "${MARKER_DIR}"/*; do
@@ -185,6 +186,15 @@ else
   ok "  and does not refuse a roster the real run would accept"
 fi
 said "  saying which tenants it left out" "Skipping 1 deployed tenant"
+
+# Unless there is no cluster to ask. --dry-run writes no kubeconfig, so on a
+# fresh shell every namespace read fails and the roster reads as untouched --
+# which must not be reported as a measurement of what is left to deploy.
+NO_CLUSTER=1 FREE_IPS=20; export NO_CLUSTER
+rc="$(run_batch --dry-run)"
+check "--dry-run without a cluster connection says so" "${rc}" "0"
+said "  rather than reporting the roster as undeployed" "how much of the roster is already deployed is unknown"
+unset NO_CLUSTER
 EXISTING_NS=""; DEPLOYED_NS=""
 
 # Staying awake is opt-in. Without the flag a tenant idles like any other, which

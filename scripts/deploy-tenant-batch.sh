@@ -350,8 +350,23 @@ if [ "${DRY_RUN}" = true ]; then
   # deployed to refuse.
   if [ "${PREFLIGHT}" = true ] && command -v aws >/dev/null 2>&1; then
     echo ""
-    partition_roster
-    capacity_preflight "${#QUEUE[@]}" || true
+    # The real run writes the kubeconfig before it reads anything; this mode
+    # writes nothing, so on a fresh shell every namespace read fails and the
+    # roster looks entirely undeployed -- a refusal the real run would not make,
+    # which is the disagreement the partition is here to remove. Ask the API
+    # server once whether it is reachable at all, and say which of the two
+    # answers is being given rather than sizing against a cluster that was never
+    # read.
+    if kubectl get --raw /healthz >/dev/null 2>&1; then
+      partition_roster
+      capacity_preflight "${#QUEUE[@]}" || true
+    else
+      warn "No cluster connection, so how much of the roster is already deployed is unknown."
+      warn "  Sizing all ${#IDS[@]} tenant(s); the real run writes a kubeconfig first and sizes"
+      warn "  only what is left to deploy. Run 'aws eks update-kubeconfig --name ${EKS_CLUSTER}"
+      warn "  --region ${AWS_REGION}' for the answer the real run would give."
+      capacity_preflight "${#IDS[@]}" || true
+    fi
   fi
   exit 0
 fi
