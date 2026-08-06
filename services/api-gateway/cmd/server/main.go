@@ -92,7 +92,7 @@ func main() {
 		Secret:              cfg.JWTSecret,
 		PublicPath:          middleware.DefaultPublicPaths(),
 		PrefixPath:          middleware.DefaultPrefixPaths(),
-		ProtectedPrefixPath: routePrefixes(routes),
+		ProtectedPrefixPath: append(routePrefixes(routes), "/api/v1/incidents"),
 	}))
 
 	// Health check

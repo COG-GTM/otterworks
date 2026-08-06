@@ -79,6 +79,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
+      setShowChaosBanner(false);
       const abortController = new AbortController();
 
       setUploadingFiles((prev) =>

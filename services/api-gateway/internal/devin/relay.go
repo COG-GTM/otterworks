@@ -16,6 +16,11 @@ import (
 
 const devinSessionsURL = "https://api.devin.ai/v1/sessions"
 
+const (
+	maxReportBodyBytes = 16 << 10 // 16 KiB
+	maxFieldLen        = 256
+)
+
 // Relay accepts upload-failure incident reports and opens a Devin triage
 // session, at most once per cooldown window so a burst of failed uploads does
 // not spawn dozens of sessions.
@@ -50,9 +55,14 @@ type uploadFailureReport struct {
 func (r *Relay) UploadFailureHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		var report uploadFailureReport
-		if err := json.NewDecoder(req.Body).Decode(&report); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, maxReportBodyBytes)).Decode(&report); err != nil {
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
+		}
+		report.FileName = truncate(report.FileName, maxFieldLen)
+		report.Message = truncate(report.Message, maxFieldLen)
+		if report.HTTPStatus != nil && (*report.HTTPStatus < 100 || *report.HTTPStatus > 599) {
+			report.HTTPStatus = nil
 		}
 
 		go r.triggerTriage(report)
@@ -109,6 +119,10 @@ func (r *Relay) triggerTriage(report uploadFailureReport) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode >= 300 {
+		r.logger.Error().Int("status", resp.StatusCode).Msg("Devin API rejected session creation")
+		return
+	}
 	var out struct {
 		SessionID string `json:"session_id"`
 		URL       string `json:"url"`
@@ -117,12 +131,15 @@ func (r *Relay) triggerTriage(report uploadFailureReport) {
 		r.logger.Warn().Int("status", resp.StatusCode).Msg("Devin session created but response body could not be decoded")
 		return
 	}
-	if resp.StatusCode >= 300 {
-		r.logger.Error().Int("status", resp.StatusCode).Msg("Devin API rejected session creation")
-		return
-	}
 	r.logger.Info().
 		Str("session_id", out.SessionID).
 		Str("session_url", out.URL).
 		Msg("Devin triage session created for upload failure")
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
