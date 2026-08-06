@@ -281,10 +281,19 @@ record_running() {
   fi
 }
 
-# Number of Deployments currently running at least one replica.
+# Number of Deployments currently running at least one replica, or "?" when the
+# namespace could not be read. The last of the scan's inputs to get an unknown,
+# and the one where a wrong zero is least visible: it is the reading that says a
+# tenant is asleep, so an API failure retires a running tenant on paper. The
+# next pass sees it "running again", calls that a wake and starts the idle clock
+# over; for an always-on tenant it goes to resume_tenant, which finds the same
+# unreadable namespace and does nothing. Counting through a pipe cannot tell the
+# difference -- awk prints 0 for no Deployments and 0 for no answer.
 running_deployments() {
-  kubectl -n "$1" get deploy -o jsonpath='{range .items[*]}{.spec.replicas}{"\n"}{end}' 2>/dev/null \
-    | awk '$1 > 0 { n++ } END { print n + 0 }'
+  local out rc=0
+  out="$(kubectl -n "$1" get deploy -o jsonpath='{range .items[*]}{.spec.replicas}{"\n"}{end}' 2>/dev/null)" || rc=$?
+  if [ "${rc}" -ne 0 ]; then printf '?'; return 0; fi
+  printf '%s' "${out}" | awk '$1 > 0 { n++ } END { print n + 0 }'
 }
 
 # Does the tenant have an injected chaos scenario running? Such a tenant is a
@@ -411,6 +420,12 @@ suspend_idle_tenants() {
     [ "${was_running}" != "-" ] || was_running=""
 
     running="$(running_deployments "${ns}")"
+    # Not measured: every branch from here reads a replica count, and a wrong
+    # zero writes was_running=0 on a tenant that never stopped.
+    if [ "${running}" = "?" ]; then
+      idle_warn "skipping ${id}: cannot read its Deployments"
+      continue
+    fi
     if [ "${running}" -eq 0 ]; then
       # Only a label positively read as true: 'unknown' leaves it asleep.
       if [ "${always_on}" = "true" ] && resume_tenant "${id}" "${ns}"; then

@@ -128,7 +128,24 @@ fi
 # search index and any injected chaos flag as its node goes. The script is
 # idempotent, but the run that first introduces the field is a rolling recycle of
 # the whole fleet and belongs in a quiet window.
-nodeclass_max_pods="$(kubectl get ec2nodeclass default -o jsonpath='{.spec.kubelet.maxPods}' 2>/dev/null || true)"
+# Same distinction the node count makes below, for the same reason and with the
+# opposite consequence: '' is both "the field is unset" and "this read failed",
+# and here the two argue in different directions. A field genuinely unset is the
+# recycle this gate exists for; a read that failed on a cluster already at 110 is
+# a re-run that has nothing to do, and treating it as drift makes an unattended
+# re-install refuse -- the idempotence a runner Job depends on, lost to one
+# throttled GET. Neither guess is free, so say which one is being made.
+nodeclass_read_rc=0
+nodeclass_max_pods="$(kubectl get ec2nodeclass default -o jsonpath='{.spec.kubelet.maxPods}' 2>/dev/null)" || nodeclass_read_rc=$?
+if [ "${nodeclass_read_rc}" -ne 0 ]; then
+  # Still fail-closed: a NotFound here is a first install (no EC2NodeClass at
+  # all), which has no nodes to lose and is filtered by the node count anyway,
+  # and any other failure leaves the current value unknown. Recycling the fleet
+  # on that is the one outcome worth refusing.
+  nodeclass_desc="unreadable"
+else
+  nodeclass_desc="${nodeclass_max_pods:-unset}"
+fi
 # Two answers are wanted from one command and they must not be confused: how many
 # nodes are at stake, and whether that number is a measurement at all. Counting
 # through a pipe collapses them -- awk prints 0 for an empty list and 0 again for
@@ -150,10 +167,15 @@ else
   nodes_desc="${karpenter_nodes}"
 fi
 if [ "${nodeclass_max_pods}" != "110" ] && [ "${nodes_at_risk}" = true ]; then
-  log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_max_pods:-unset} -> 110)."
+  log "WARNING: kubelet.maxPods on EC2NodeClass/default changes (${nodeclass_desc} -> 110)."
   log "         Karpenter reads that as drift and will replace all ${nodes_desc} node(s) it"
   log "         owns, restarting every tenant that is awake (Redis and MeiliSearch are"
   log "         in-cluster and not persisted)."
+  if [ "${nodeclass_desc}" = "unreadable" ]; then
+    log "         (the current value could not be read: on a cluster already at 110 there"
+    log "          is no drift and nothing to replace, so this gate may be asking for"
+    log "          nothing. Fix the read rather than answering it blind.)"
+  fi
   # A warning followed immediately by the apply is not a decision anybody gets to
   # make, so this is a gate. Only reached when the field actually changes and there
   # are nodes to lose: a first install, or a re-run of an unchanged file, never asks.

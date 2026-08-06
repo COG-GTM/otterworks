@@ -236,6 +236,29 @@ kubectl annotate namespace "${NS}" demo/deployed-at- >/dev/null 2>&1 || true
 kubectl annotate namespace "${NS}" \
   demo/req-count- demo/idle-since- demo/was-running- >/dev/null 2>&1 || true
 
+# The same clock, for a tenant the dashboard checked out: its counters live in
+# the control table, nothing on the deploy path has ever reset them, and the
+# hazard is identical -- a tenant rebuilt after 55 idle minutes is suspended by
+# the next pass, five minutes old. Smaller blast radius than the namespace case
+# (check-out can wake a dashboard tenant; nothing can wake a script-deployed
+# one), which is why it went unnoticed, not why it is acceptable.
+#
+# attribute_exists(PK) is what makes this safe to run for every tenant: without
+# it, update-item would *create* an item for a script-deployed tenant, and an
+# item is precisely what tells the idle scan and the orphan sweeps that a tenant
+# is the dashboard's -- state written where nothing reads it, and a persistent
+# tenant that suddenly looks checked out. The condition fails for those, aws
+# exits non-zero, and the line below swallows it, which is the intent.
+#
+# Best-effort in every other sense too: this script runs from operator machines
+# with no DynamoDB access at all, and an idle clock is not worth failing a
+# deploy over.
+aws dynamodb update-item \
+  --table-name "${CONTROL_TABLE:-otterworks-demo-control}" --region "${AWS_REGION}" \
+  --key "{\"PK\":{\"S\":\"TENANT#${ATTENDEE_ID}\"},\"SK\":{\"S\":\"META\"}}" \
+  --update-expression "REMOVE req_count, idle_since, was_running" \
+  --condition-expression "attribute_exists(PK)" >/dev/null 2>&1 || true
+
 # Converting a TTL'd tenant to a persistent one has to strip the annotations the
 # earlier deploy left behind: the baseline reaper reads them straight off the
 # namespace, and `kubectl apply` only prunes fields it owns (a namespace created

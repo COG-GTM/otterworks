@@ -101,11 +101,25 @@ async function loadTenantPods(): Promise<Map<string, k8s.V1Pod[]>> {
     undefined,
     TENANT_LABEL,
   );
-  for (const ns of nsRes.body.items) {
-    const name = ns.metadata?.name;
-    if (!name) continue;
-    const podsRes = await core().listNamespacedPod(name);
-    byNamespace.set(name, podsRes.body.items);
+  const names = nsRes.body.items
+    .map((ns) => ns.metadata?.name)
+    .filter((n): n is string => Boolean(n));
+  // One pod list per namespace, but not one after another: a standing roster is
+  // ~95 tenant namespaces that never go away, so serially this is ~95 round
+  // trips on every cache miss, paid by /api/tenants and the orphan preview
+  // alike. Chunked rather than all at once — 95 concurrent requests is a burst
+  // against the same API server the reaper reads, and the point is to stop the
+  // page scaling with the roster, not to issue every call simultaneously.
+  const BATCH = 10;
+  for (let i = 0; i < names.length; i += BATCH) {
+    const chunk = names.slice(i, i + BATCH);
+    const results = await Promise.all(
+      chunk.map(async (name) => {
+        const podsRes = await core().listNamespacedPod(name);
+        return [name, podsRes.body.items] as const;
+      }),
+    );
+    for (const [name, pods] of results) byNamespace.set(name, pods);
   }
   _cache = { at: Date.now(), byNamespace };
   return byNamespace;

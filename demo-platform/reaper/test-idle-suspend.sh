@@ -48,6 +48,8 @@ tenant_always_on() {
     *)       printf 'false' ;;
   esac
 }
+# "?" is the real function's answer for a namespace it could not read, which
+# must not be counted as a tenant with nothing running.
 running_deployments() { echo "${NS_RUNNING[$1]:-0}"; }
 tenant_has_chaos() { [ "${NS_CHAOS[$1]:-no}" = "yes" ]; }
 # METRICS_UP=false models an unreachable metrics endpoint, which is distinct
@@ -214,6 +216,28 @@ check "  restarts the idle clock on wake" "$([ "${ITEM_SINCE[nap]}" -ge "${NOW}"
 ITEM_SINCE[nap]=${STALE}
 IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
 check "  and is suspended again once it goes idle" "${SUSPENDED# }" "nap"
+
+# An unreadable replica count is the reading that says "asleep", so a wrong zero
+# retires a running tenant on paper: was_running=0 now, a wake on the next pass,
+# and the idle clock starts over -- the tenant is never suspended and the log
+# says only that a read failed. Nothing may be written from a pass that could
+# not see the Deployments.
+reset_state
+NS_RUNNING[otterworks-blind]="?"; METRIC[otterworks-blind]=100
+ITEM_COUNT[blind]=100; ITEM_SINCE[blind]=${STALE}
+seen_running blind
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "does not suspend a tenant whose Deployments it cannot read" "${SUSPENDED# }" ""
+check "  nor records it as scaled down" "${ITEM_RUNNING[blind]}" "1"
+check "  and leaves its idle clock alone" "${ITEM_SINCE[blind]}" "${STALE}"
+
+# Same read, the always-on path: waking is a write too, and resume_tenant would
+# be asked to scale a namespace the scan just failed to read.
+reset_state
+NS_RUNNING[otterworks-standing]="?"; NS_ALWAYS_ON[otterworks-standing]=yes
+seen_running standing
+IDLE_AFTER_SECONDS=3600 suspend_idle_tenants >/dev/null 2>&1
+check "  and does not wake an always-on tenant on it either" "${RESUMED:-}" ""
 
 # A refused scale-down must not be recorded as a suspension. Writing
 # was_running=0 for a tenant that is still up makes the next pass read it as a
