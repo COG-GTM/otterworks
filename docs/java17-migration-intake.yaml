@@ -48,7 +48,7 @@ services:
     framework: akka-http 10.5.3 (scala 3.4.0)
     dockerfile: sbtscala/scala-sbt:eclipse-temurin-jammy-17.0.10_7_1.9.9_3.4.1 / eclipse-temurin:17-jre-jammy
     ci: ci.yml ('17')
-    class: verify
+    class: jdk-only
 
 # Out of scope: frontend/client-app/mobile/android is the Capacitor Android shell, not a
 # backend JVM service. Its Gradle build is driven by AGP and requires JDK 21 per the repo
