@@ -19,7 +19,7 @@ This document is the contract for a fan-out of parallel workers. Each work packa
 | | |
 |---|---|
 | Build units in repo | 17 (12 backend services, 2 frontends, demo-platform, ETL, Windows desktop client) — note `README.md`/`AGENTS.md`/`sonar-project.properties` still say 11 backend services; `legacy-portal` makes 12 |
-| Units with **zero** automated tests | **4** — `etl/`, `clients/windows-desktop/`, `demo-platform/dashboard/`, `services/file-service/src/storage.rs`+`middleware.rs`+`config.rs` |
+| Build units with **zero** automated tests | **3** — `etl/`, `clients/windows-desktop/`, `demo-platform/dashboard/` (plus, within `file-service`, the `storage.rs` / `middleware.rs` / `config.rs` modules are individually at zero) |
 | Total unit/integration cases | ≈ 525 |
 | Coverage thresholds enforced anywhere | **None** — coverage is produced by 4 suites, gated by 0 |
 | Suites that exist but **never execute in CI** | 3 — Playwright e2e (70), Cucumber BDD (36), black-box API flows (24, collect-only) |
@@ -396,7 +396,11 @@ document.
    whether a defect is planted or genuine, ask before changing anything.
 2. **No production-code changes in a coverage PR.** Defect fixes are separate PRs with their own
    review.
-3. **No existing test is edited or deleted** to make a new one pass.
+3. **No existing test is edited or deleted** to make a new one pass. **Appending** new cases to an
+   existing test file is expected and allowed — several WPs own files that already exist
+   (`jwt_test.go`, `ratelimit_test.go`, `circuitbreaker_test.go`, `cors_test.go`,
+   `requestid_test.go`, and every service's existing suite). The rule is about existing
+   *assertions*, not existing *files*: add cases, never weaken or delete one that already passes.
 4. **Determinism**: no `sleep`-based waits, no wall-clock dependence, no inter-test ordering, no
    shared mutable fixtures. Suites must pass twice, in random order.
 5. **One PR per work package**, branch `devin/<ts>-wp-NN-<slug>`. Per the org's duplicate-PR
