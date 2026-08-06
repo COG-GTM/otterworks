@@ -5,6 +5,12 @@
 This document is the contract for a fan-out of parallel workers. Each work package (WP) owns a
 **disjoint set of files**, so every WP can run simultaneously on its own branch and PR.
 
+> **Shared-file protocol.** Exactly one file is needed by many packages: `.github/workflows/ci.yml`.
+> **WP-00 is its sole owner.** Any other WP that needs a CI job (WP-15, WP-16, WP-17, WP-19, WP-20,
+> WP-23) must **not** edit `ci.yml` — it delivers the job YAML in its PR description and WP-00's
+> owner applies it in a follow-up commit. Same rule for `Makefile` and `sonar-project.properties`.
+> This is the one place where the disjointness guarantee needs a human handoff rather than a glob.
+
 ---
 
 ## 1. Executive summary
@@ -57,7 +63,9 @@ Cases counted by test-annotation grep; LOC excludes test dirs.
 
 1. **`make test` is broken** — targets `frontend/web-app`, which does not exist (the app is
    `frontend/client-app`). It also omits `report-service`, `legacy-portal`, `tests/api`,
-   `tests/contract`, e2e and BDD. (`Makefile:114-126`)
+   `tests/contract`, e2e and BDD. (`Makefile:114-126`) The same stale `frontend/web-app` path
+   appears **three times** — `build-web` (`Makefile:107`), `test` (`:125`) and `lint` (`:150`) — so
+   `make build`, `make test` and `make lint` are all broken at the web-frontend step.
 2. **`api-flow-tests` CI job only collects** — `pytest tests/api --collect-only -q`
    (`.github/workflows/ci.yml:428`). 24 integration flows are syntax-checked, never executed. There
    is no docker-compose stand-up step in CI.
@@ -284,22 +292,25 @@ Ownership globs are disjoint — that is what makes the fan-out safe.
 | WP-12 | analytics + report + legacy-portal boundary pass | `services/analytics-service/src/test/**`, `services/report-service/src/test/**`, `services/legacy-portal/src/test/**` | M | WP-00 |
 | **WP-13** | **BRD decision-table testing standard + threshold audit** | `docs/bdd/decision-table-testing-standard.md` (new), `docs/bdd/brd-credit-decline-matrix.md` (new) | S | — |
 | WP-14 | client-app unit tests: API client, hooks, editor state | `frontend/client-app/src/**/*.test.ts(x)` | L | WP-00 |
-| WP-15 | Wire Playwright e2e + BDD into CI, de-flake, delete stale `test-results/` | `frontend/client-app/e2e/**`, `frontend/client-app/bdd/**`, `playwright.config.ts`, e2e CI job | L | WP-00 |
-| WP-16 | admin-dashboard: remove `|| true`, fix/expand Angular specs | `frontend/admin-dashboard/src/**/*.spec.ts` + its CI job | M | WP-00 |
-| WP-17 | Execute `tests/api` in CI against a composed stack | `tests/api/**`, docker-compose CI job | L | WP-00 |
+| WP-15 | Wire Playwright e2e + BDD into CI, de-flake, delete stale `test-results/` | `frontend/client-app/e2e/**`, `frontend/client-app/bdd/**`, `playwright.config.ts` (+ e2e CI job **handed to WP-00**) | L | WP-00 |
+| WP-16 | admin-dashboard: remove `|| true`, fix/expand Angular specs | `frontend/admin-dashboard/src/**/*.spec.ts` (+ CI job change **handed to WP-00**) | M | WP-00 |
+| WP-17 | Execute `tests/api` in CI against a composed stack | `tests/api/**` (+ compose CI job **handed to WP-00**) | L | WP-00 |
 | WP-18 | Cross-service authorization matrix suite | `tests/authz/**` (new) | L | WP-17 |
-| WP-19 | Wire + extend `tests/contract`; schema back-compat gate on `shared/` | `tests/contract/**`, `shared/openapi/**` (read-only), contract CI job | M | WP-00 |
-| WP-20 | ETL job tests (5 cron scripts) | `etl/scripts/**`, `etl/tests/**` (new), ETL CI job | M | WP-00 |
+| WP-19 | Wire + extend `tests/contract`; schema back-compat gate on `shared/` | `tests/contract/**`, `shared/openapi/**` (read-only) (+ contract CI job **handed to WP-00**) | M | WP-00 |
+| WP-20 | ETL job tests (5 cron scripts) | `etl/scripts/**`, `etl/tests/**` (new) (+ ETL CI job **handed to WP-00**) | M | WP-00 |
 | WP-21 | demo-platform: dashboard API tests + `control-common.sh` / tenant-id derivation | `demo-platform/dashboard/**`, `demo-platform/lib/**`, `demo-platform/reaper/test-*.sh` | M | WP-00 |
 | WP-22 | Windows desktop client test project | `clients/windows-desktop/**` | M | WP-00 |
-| WP-23 | IaC policy tests (`helm template` assertions, no stray LoadBalancer) | `infrastructure/**/tests/**` (new), IaC CI job | M | WP-00 |
+| WP-23 | IaC policy tests (`helm template` assertions, no stray LoadBalancer) | `infrastructure/**/tests/**` (new) (+ IaC CI job **handed to WP-00**) | M | WP-00 |
 | WP-24 | Load/performance smoke (k6) on the golden path | `tests/perf/**` (new) | M | WP-17 |
 
 ### Detailed specs for the first wave
 
 **WP-00 — Coverage baseline + gates** *(land before everything else)*
 - Fix `make test`: `frontend/web-app` → `frontend/client-app`; add `report-service`,
-  `legacy-portal`, `tests/contract`.
+  `legacy-portal`, `tests/contract`. Fix the same stale path in the `build-web` (`:107`) and `lint`
+  (`:150`) targets.
+- **Own `.github/workflows/ci.yml`, `Makefile` and `sonar-project.properties` for the whole
+  program**, and apply the CI-job snippets handed over by WP-15/16/17/19/20/23 as they land.
 - Make `make test-coverage` fail on error (drop the seven `|| true`), emit machine-readable reports
   (`coverage.xml` / `lcov.info` / `cobertura`) per unit, and print an aggregate table.
 - Add per-unit coverage upload + a **ratchet** (coverage may not decrease; no absolute target yet).
@@ -361,8 +372,8 @@ packages share a file. Expect ~350–450 new cases.
 **Wave 2 (6 workers, parallel):** WP-14, WP-15, WP-16, WP-17, WP-19, WP-20. Frontend + the three
 suites that exist but never run. WP-17 is the long pole (needs a composed stack in CI).
 
-**Wave 3 (4 workers):** WP-18, WP-21, WP-22, WP-23, then WP-24. Cross-cutting and zero-coverage
-units.
+**Wave 3 (4 workers, then 1):** WP-18, WP-21, WP-22, WP-23 in parallel; WP-24 after WP-18 lands
+(it reuses the composed stack from WP-17). Cross-cutting and zero-coverage units.
 
 Merge order = wave order. Re-run the §2 inventory after each wave and record the delta in this
 document.
