@@ -42,10 +42,12 @@ on:
         type: boolean
         default: false
 
-# Only one mirror at a time; a newer merge supersedes an in-flight one.
+# Only one mirror at a time; a newer merge supersedes an in-flight one. A manual
+# run is not cancellable, because it is the recovery path -- a merge landing
+# mid-reset would otherwise kill it and leave the replay wedged as it was.
 concurrency:
   group: mirror-demo-coggtm
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   mirror:
@@ -55,7 +57,7 @@ jobs:
       # note above). `ref` pins the checkout to main so that a workflow_dispatch
       # run started from some other branch still mirrors main rather than
       # publishing that branch to the tenant.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           ref: main
           fetch-depth: 0
@@ -91,6 +93,14 @@ jobs:
           git fetch --no-tags origin +refs/heads/demo-coggtm:refs/remotes/origin/demo-coggtm
           old="$(git rev-parse refs/remotes/origin/demo-coggtm)"
 
+          # Every push from here on leases against refs/remotes/origin/demo-coggtm
+          # as fetched above, so a variant pushed to the branch mid-job fails the
+          # push instead of being silently discarded. That lease is the whole of
+          # the protection -- --force-if-includes is not implied, it has to be
+          # asked for -- and it is enough: the bare form resolves the destination
+          # through the fetch refspec to the ref fetched just above, so naming an
+          # explicit <expect> would only repeat ${old}.
+
           # The way out of a wedged replay: back to plain mirroring, dropping
           # whatever made this tenant a variant.
           if [ "${RESET_TO_MAIN:-false}" = "true" ]; then
@@ -99,14 +109,6 @@ jobs:
             exit 0
           fi
 
-          # Every push below leases against refs/remotes/origin/demo-coggtm as
-          # fetched above, so a variant pushed to the branch mid-job fails the
-          # push instead of being silently discarded. That lease is the whole of
-          # the protection: the --force-if-includes git implies for the bare form
-          # reads the reflog of a local branch named after the destination, and
-          # this workspace has none (the checkout is main, the replay lives on
-          # mirror-replay), so it never fires. The bare form is kept because
-          # naming an explicit <expect> would only repeat ${old} anyway.
           if ! base="$(git merge-base "${main_sha}" "${old}")"; then
             echo "::error::demo-coggtm shares no history with main, so its commits cannot be replayed. Re-run this workflow with reset_to_main to reset the branch, or repoint it at a descendant of main by hand."
             exit 1
