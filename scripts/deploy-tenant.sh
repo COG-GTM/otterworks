@@ -66,8 +66,9 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 [ -n "${AWS_ACCOUNT_ID}" ] || { err "Unable to resolve AWS account (are creds exported?)"; exit 1; }
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
-JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
-SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# JWT_SECRET / SECRET_KEY_BASE are resolved after kubectl is configured (below):
+# an existing tenant's deployed value is reused so redeploys never rotate the
+# signing key out from under pods that don't roll.
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
@@ -111,6 +112,23 @@ log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> exp
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+
+# Per-tenant signing/session secrets. Precedence: caller env (stable fleet-wide
+# value) > the value already deployed in this tenant (so a redeploy keeps every
+# consumer on the same key, even pods that don't restart) > a fresh random one
+# (first deploy). Values only ever travel via env/files, never argv.
+existing_tenant_secret() {
+  kubectl -n "${NS}" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d 2>/dev/null || true
+}
+if [ -z "${JWT_SECRET:-}" ]; then
+  JWT_SECRET="$(existing_tenant_secret api-gateway-secrets JWT_SECRET)"
+fi
+JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+if [ -z "${SECRET_KEY_BASE:-}" ]; then
+  SECRET_KEY_BASE="$(existing_tenant_secret admin-service-secrets SECRET_KEY_BASE)"
+fi
+SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 
