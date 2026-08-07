@@ -64,3 +64,10 @@ config:
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
 secrets: {}
+
+# Credentials for the Devin API client that opens a session on upload failure.
+# Both must be set for the client to do anything; with either empty file-service
+# logs a warning and skips session creation.
+devin:
+  apiKey: ""
+  orgId: ""

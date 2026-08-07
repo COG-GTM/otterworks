@@ -54,3 +54,18 @@ spec:
             - secretRef:
                 name: {{ .Release.Name }}-secrets
                 optional: true
+          # Devin API credentials. Optional at every level: an absent secret or
+          # key leaves them unset and the client no-ops.
+          env:
+            - name: DEVIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: DEVIN_API_KEY
+                  optional: true
+            - name: DEVIN_ORG_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: DEVIN_ORG_ID
+                  optional: true
