@@ -89,8 +89,8 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   log "Applied (rollout restarting). Revert with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
   log "  kubectl -n ${NS} rollout restart deploy/file-service"
-  log "(deploy-tenant.sh ${ATTENDEE_ID} also resets the value, but the deployment has no ConfigMap"
-  log " checksum annotation, so the rollout restart is required either way.)"
+  log "(deploy-tenant.sh ${ATTENDEE_ID} also resets the value; the deployment's ConfigMap"
+  log " checksum annotation rolls the pods automatically when the value changes.)"
   exit 0
 fi
 

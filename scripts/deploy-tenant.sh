@@ -129,7 +129,9 @@ existing_tenant_secret() {
   if b64="$(kubectl -n "${NS}" get secret "$1" --ignore-not-found -o "jsonpath={.data.$2}" 2>"${errf}")"; then
     rm -f "${errf}"
     [ -n "${b64}" ] || return 0
-    printf '%s' "${b64}" | base64 -d 2>/dev/null || {
+    # GNU base64 decodes with -d; BSD/macOS builds use -D.
+    printf '%s' "${b64}" | base64 -d 2>/dev/null ||
+      printf '%s' "${b64}" | base64 -D 2>/dev/null || {
       err "cannot decode existing secret $1/$2 in ${NS}"
       err "aborting rather than silently rotating this tenant's keys"
       exit 1
