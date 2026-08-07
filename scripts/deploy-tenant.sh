@@ -117,8 +117,24 @@ fi
 # value) > the value already deployed in this tenant (so a redeploy keeps every
 # consumer on the same key, even pods that don't restart) > a fresh random one
 # (first deploy). Values only ever travel via env/files, never argv.
+# A genuinely absent secret/namespace (NotFound) yields an empty string; any
+# other kubectl failure (auth, throttling, RBAC) aborts the deploy, because
+# treating it as "absent" would silently rotate a live tenant's signing key.
 existing_tenant_secret() {
-  kubectl -n "${NS}" get secret "$1" -o "jsonpath={.data.$2}" 2>/dev/null | base64 -d 2>/dev/null || true
+  local b64 errf
+  errf="$(mktemp)"
+  if b64="$(kubectl -n "${NS}" get secret "$1" -o "jsonpath={.data.$2}" 2>"${errf}")"; then
+    rm -f "${errf}"
+    printf '%s' "${b64}" | base64 -d 2>/dev/null || true
+  elif grep -qi "notfound\|not found" "${errf}"; then
+    rm -f "${errf}"
+    return 0
+  else
+    err "cannot read existing secret $1 in ${NS}: $(cat "${errf}")"
+    err "aborting rather than silently rotating this tenant's keys"
+    rm -f "${errf}"
+    exit 1
+  fi
 }
 if [ -z "${JWT_SECRET:-}" ]; then
   JWT_SECRET="$(existing_tenant_secret api-gateway-secrets JWT_SECRET)"
