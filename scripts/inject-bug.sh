@@ -81,6 +81,19 @@ if [ "${SCENARIO}" = "file-bad-bucket" ]; then
   exit 0
 fi
 
+if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
+  log "Injecting config bug 'file-upload-always-fails' (file-service uploads always 5xx)..."
+  helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
+    --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
+  kubectl -n "${NS}" rollout restart deploy/file-service
+  log "Applied (rollout restarting). Revert with:"
+  log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
+  log "  kubectl -n ${NS} rollout restart deploy/file-service"
+  log "(deploy-tenant.sh ${ATTENDEE_ID} also resets the value, but the deployment has no ConfigMap"
+  log " checksum annotation, so the rollout restart is required either way.)"
+  exit 0
+fi
+
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }

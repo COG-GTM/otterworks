@@ -141,8 +141,9 @@ pub async fn upload_file(
 
     // CHAOS (demo-testfailupload): the upload path is permanently on the chaos
     // route — every upload targets a nonexistent bucket regardless of the
-    // chaos:file-service:upload_s3_error Redis flag, so the AWS SDK returns a
-    // real NoSuchBucket error which surfaces as a 500.
+    // FILE_UPLOAD_ALWAYS_FAIL env switch or the chaos:file-service:upload_s3_error
+    // Redis flag, so the AWS SDK returns a real NoSuchBucket error which
+    // surfaces as a 500.
     tracing::warn!("Chaos permanently active: redirecting upload to nonexistent bucket");
     let effective_bucket = "otterworks-files-chaos-nonexistent".to_string();
     let chaos_s3 = crate::storage::S3Client {
