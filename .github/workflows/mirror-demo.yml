@@ -8,8 +8,14 @@
 #   merge to main
 #     -> this workflow replays demo-coggtm's own commits on top of main
 #       -> that push triggers cd-tenant.yml (the deploy pipeline)
-#         -> the pipeline rebuilds the services that changed and redeploys
-#            the tenant, so t-coggtm always runs the current main
+#         -> the pipeline rebuilds the variant's services and redeploys the
+#            tenant, so t-coggtm runs the current main plus the variant
+#
+# That last step only fires while the branch carries a variant. cd-tenant.yml
+# diffs a demo-* push against its merge-base with main, so a demo-coggtm equal
+# to main is an empty change set and nothing is deployed -- harmless, since the
+# tenant would come back byte-identical, and true of the old copy-main mirror
+# on every merge.
 #
 # `demo-coggtm` is a rebase of main, not a copy of it. Commits pushed only to
 # that branch — a bespoke demo variant, e.g. a service configured to fail — are
@@ -42,11 +48,12 @@ on:
         type: boolean
         default: false
 
-# Only one mirror at a time, and no run is ever cancelled: a merge landing while
-# an operator is running the reset_to_main recovery must not kill it. Nothing
-# piles up -- github keeps at most one queued run per group, a newer one
-# replacing the older -- and a queued run checks out main afresh, so it mirrors
-# the newest commit rather than the one that queued it.
+# Only one mirror at a time, and a run that has started is never cancelled: a
+# merge landing while an operator is running the reset_to_main recovery must not
+# kill it. A run still *queued* can be superseded by a newer one, so a reset
+# dispatched behind an in-flight mirror needs re-running if a merge beats it to
+# the front. Queued runs check out main afresh, mirroring the newest commit
+# rather than the one that queued them.
 concurrency:
   group: mirror-demo-coggtm
   cancel-in-progress: false
