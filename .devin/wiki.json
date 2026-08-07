@@ -145,7 +145,7 @@
     },
     {
       "title": "Report Service & Legacy Portal",
-      "purpose": "Documentation of the legacy Java 8/Maven Report Service (CSV/PDF/Excel generation, ReportDataFetcher, ReportGenerationWorker) and the Legacy Portal modular monolith (Java 11/Spring Boot 2.7, three bounded contexts: Announcements, User Preferences, Feedback). Explains their role as upgrade/decomposition demo targets.",
+      "purpose": "Documentation of the Java 17/Maven Report Service (CSV/PDF/Excel generation, ReportDataFetcher, ReportGenerationWorker), upgraded from Java 8/Spring Boot 2.5, and the Legacy Portal modular monolith (Java 11/Spring Boot 2.7, three bounded contexts: Announcements, User Preferences, Feedback). Explains their role as upgrade/decomposition demo targets.",
       "parent": "Backend Services",
       "page_notes": [
         {

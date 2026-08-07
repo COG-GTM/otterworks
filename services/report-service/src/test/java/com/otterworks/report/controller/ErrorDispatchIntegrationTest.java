@@ -19,7 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * MockMvc never performs that dispatch, so {@link ReportControllerIntegrationTest} cannot
  * tell a real 400 apart from a 403 produced by the security chain rejecting /error.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "otterworks.report.output-dir=${java.io.tmpdir}/error-dispatch-test-reports")
 @ActiveProfiles("test")
 public class ErrorDispatchIntegrationTest {
 
