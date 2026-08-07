@@ -13,11 +13,45 @@ change is programmatic proof that the finding is closed.
 from __future__ import annotations
 
 import enum
+import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import httpx
+
+#: Reports are uploaded as CI artifacts and echoed into job summaries, so evidence
+#: must never carry a usable credential. Auth responses contain `accessToken`, and
+#: probes deliberately attack the login path, so redaction happens at capture time
+#: rather than at each call site.
+SECRET_FIELDS = (
+    "accesstoken",
+    "refreshtoken",
+    "idtoken",
+    "token",
+    "password",
+    "secret",
+    "authorization",
+    "apikey",
+    "api_key",
+)
+_SECRET_JSON = re.compile(
+    rf'("(?:{"|".join(SECRET_FIELDS)})"\s*:\s*")[^"]*"',
+    re.IGNORECASE,
+)
+_SECRET_QUERY = re.compile(
+    rf"((?:{'|'.join(SECRET_FIELDS)})=)[^&\s]+",
+    re.IGNORECASE,
+)
+#: A bare JWT, in case it appears under a field name we do not know about.
+_JWT = re.compile(r"\bey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*")
+
+
+def redact(text: str) -> str:
+    """Strip credential material from anything destined for a report."""
+    text = _SECRET_JSON.sub('\\1[REDACTED]"', text)
+    text = _SECRET_QUERY.sub(r"\1[REDACTED]", text)
+    return _JWT.sub("[REDACTED-JWT]", text)
 
 
 class Severity(enum.StrEnum):
@@ -53,6 +87,11 @@ class Evidence:
     response_excerpt: str = ""
     note: str = ""
 
+    def __post_init__(self) -> None:
+        self.request = redact(self.request)
+        self.response_excerpt = redact(self.response_excerpt)
+        self.note = redact(self.note)
+
     @classmethod
     def from_response(cls, response: httpx.Response, note: str = "", limit: int = 400) -> Evidence:
         return cls(
@@ -77,6 +116,9 @@ class Result:
     detail: str = ""
     evidence: list[Evidence] = field(default_factory=list)
     remediation: str = ""
+
+    def __post_init__(self) -> None:
+        self.detail = redact(self.detail)
 
     @property
     def is_finding(self) -> bool:

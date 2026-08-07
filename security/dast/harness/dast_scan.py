@@ -164,17 +164,42 @@ def write_baseline(path: Path, findings: list[Result], reason: str) -> None:
 # ── reporting ─────────────────────────────────────────────────────────────────
 
 
-def to_report(results: list[Result], target: str, baseline: dict[str, Any]) -> dict[str, Any]:
+def is_gating(result: Result, baseline: dict[str, Any], threshold: int) -> bool:
+    """Whether this finding is what fails the run.
+
+    The report and the exit code have to agree, so both go through here: a merged
+    ZAP alert downgraded to `info` is reported but does not gate.
+    """
+    return (
+        result.is_finding
+        and result.finding_id not in baseline
+        and SEVERITY_ORDER[result.severity] >= threshold
+    )
+
+
+def to_report(
+    results: list[Result],
+    target: str,
+    baseline: dict[str, Any],
+    threshold: int,
+) -> dict[str, Any]:
+    gating = [r for r in results if is_gating(r, baseline, threshold)]
     return {
         "target": target,
         "scanned_at": datetime.now(UTC).isoformat(),
         "summary": {
             "probes_run": len(results),
             "findings": sum(1 for r in results if r.is_finding),
-            "gated": sum(1 for r in results if r.is_finding and r.finding_id not in baseline),
+            "gated": len(gating),
+            "below_threshold": sum(
+                1
+                for r in results
+                if r.is_finding and r.finding_id not in baseline and r not in gating
+            ),
             "accepted": sum(1 for r in results if r.is_finding and r.finding_id in baseline),
             "inconclusive": sum(1 for r in results if r.verdict is Verdict.INCONCLUSIVE),
         },
+        "gating": [r.finding_id for r in gating],
         "results": [r.to_dict() for r in results],
     }
 
@@ -188,6 +213,7 @@ def to_markdown(report: dict[str, Any], baseline: dict[str, Any]) -> str:
         f"- Scanned: {report['scanned_at']}",
         f"- Probes run: {summary['probes_run']} | "
         f"gating findings: {summary['gated']} | "
+        f"reported below threshold: {summary['below_threshold']} | "
         f"accepted: {summary['accepted']} | "
         f"inconclusive: {summary['inconclusive']}",
         "",
@@ -204,11 +230,8 @@ def to_markdown(report: dict[str, Any], baseline: dict[str, Any]) -> str:
             f"{result['severity']} | {result['service']} | {result['owasp']} |"
         )
 
-    gating = [
-        r
-        for r in report["results"]
-        if r["verdict"] == Verdict.VULNERABLE.value and r["finding_id"] not in baseline
-    ]
+    gating_ids = set(report["gating"])
+    gating = [r for r in report["results"] if r["finding_id"] in gating_ids]
     if gating:
         lines += ["", "## Gating findings", ""]
         for result in gating:
@@ -234,12 +257,14 @@ def to_markdown(report: dict[str, Any], baseline: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def print_table(results: list[Result], baseline: dict[str, Any]) -> None:
+def print_table(results: list[Result], baseline: dict[str, Any], threshold: int) -> None:
     rows = []
     for result in sorted(results, key=lambda r: (-SEVERITY_ORDER[r.severity], r.finding_id)):
         state = VERDICT_MARK[result.verdict]
         if result.is_finding and result.finding_id in baseline:
             state = "ACCEPTED"
+        elif result.is_finding and not is_gating(result, baseline, threshold):
+            state = "REPORTED"
         rows.append([state, result.finding_id, result.severity.value, result.detail[:70]])
     print(tabulate(rows, headers=["", "finding", "severity", "detail"], tablefmt="simple"))
 
@@ -369,20 +394,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Recorded {len(findings)} finding(s) as accepted in {args.baseline}")
         return 0
 
+    threshold = SEVERITY_ORDER[Severity(args.fail_on)]
+
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    report = to_report(results, target, baseline)
+    report = to_report(results, target, baseline, threshold)
     (args.report_dir / "dast-report.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.report_dir / "dast-report.md").write_text(to_markdown(report, baseline))
 
-    print_table(results, baseline)
+    print_table(results, baseline, threshold)
     print(f"\nReports written to {args.report_dir}/dast-report.{{json,md}}")
 
-    threshold = SEVERITY_ORDER[Severity(args.fail_on)]
-    gating = [
-        r
-        for r in results
-        if r.is_finding and r.finding_id not in baseline and SEVERITY_ORDER[r.severity] >= threshold
-    ]
+    gating = [r for r in results if is_gating(r, baseline, threshold)]
     if gating:
         print(f"\nDAST gate FAILED: {len(gating)} finding(s) at or above {args.fail_on}:")
         for result in gating:

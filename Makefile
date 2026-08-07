@@ -237,10 +237,10 @@ DAST := uv run --with httpx --with tabulate security/dast/harness/dast_scan.py
 dast-list: ## List the registered DAST attack probes
 	$(DAST) --list
 
-dast-scan: ## Run the DAST suite against a running app (TARGET=<url>), gated by the baseline
+dast-scan: ## Run the DAST suite against a running app (DAST_TARGET=<url>), gated by the baseline
 	$(DAST) --target $(DAST_TARGET) $(if $(FAIL_ON),--fail-on $(FAIL_ON),)
 
-dast-verify: ## Prove one finding is remediated (FINDING=<id> TARGET=<url>); baseline is ignored
+dast-verify: ## Prove one finding is remediated (FINDING=<id> DAST_TARGET=<url>); baseline is ignored
 ifndef FINDING
 	$(error FINDING is required, e.g. make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS)
 endif
