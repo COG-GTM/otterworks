@@ -180,8 +180,8 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           tags: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}:${{ needs.plan.outputs.image_tag }}
 
-      # Deleting a pointer tag only untags: the manifest stays, still held by
-      # its immutable <slug>-<sha> tag, so nothing historical is lost.
+      # Deleting a pointer tag only untags: the manifest stays as long as
+      # another tag (normally its immutable <slug>-<sha> tag) still holds it.
       - name: Move pointer tags
         env:
           SERVICE: ${{ matrix.service }}
@@ -191,18 +191,20 @@ jobs:
         run: |
           set -euo pipefail
           repo="otterworks/${SERVICE}"
+          # jq -r, not --output text: the manifest is raw JSON whose exact
+          # bytes are the image digest, and text output is not byte-safe.
           manifest="$(aws ecr batch-get-image --repository-name "${repo}" \
-            --image-ids imageTag="${IMAGE_TAG}" \
-            --query 'images[0].imageManifest' --output text)"
-          [ -n "${manifest}" ] && [ "${manifest}" != "None" ] || {
+            --image-ids imageTag="${IMAGE_TAG}" --output json |
+            jq -r '.images[0].imageManifest // empty')"
+          [ -n "${manifest}" ] || {
             echo "::error::no manifest found for ${repo}:${IMAGE_TAG}"; exit 1; }
 
           tags=("${TENANT_TAG}")
           if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
           for tag in "${tags[@]}"; do
             current="$(aws ecr batch-get-image --repository-name "${repo}" \
-              --image-ids imageTag="${tag}" \
-              --query 'images[0].imageManifest' --output text)"
+              --image-ids imageTag="${tag}" --output json |
+              jq -r '.images[0].imageManifest // empty')"
             if [ "${current}" = "${manifest}" ]; then
               echo "${repo}:${tag} already points at ${IMAGE_TAG}"
               continue
