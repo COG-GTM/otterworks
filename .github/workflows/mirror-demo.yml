@@ -3,14 +3,19 @@
 # The demo platform only deploys from workshop-*/demo-* branches on this fork
 # (main is reserved for the upstream repo's t-main environment). So the tenant
 # that runs COG-GTM's code is deployed from the branch `demo-coggtm`, and this
-# workflow is what keeps that branch — and therefore the tenant — always equal
-# to main:
+# workflow is what keeps that branch — and therefore the tenant — tracking main:
 #
 #   merge to main
-#     -> this workflow pushes main's commit onto demo-coggtm
+#     -> this workflow replays demo-coggtm's own commits on top of main
 #       -> that push triggers cd-tenant.yml (the deploy pipeline)
 #         -> the pipeline rebuilds the services that changed and redeploys
 #            the tenant, so t-coggtm always runs the current main
+#
+# `demo-coggtm` is a rebase of main, not a copy of it. Commits pushed only to
+# that branch — a bespoke demo variant, e.g. a service configured to fail — are
+# carried forward onto every new main instead of being overwritten, so the
+# tenant follows main *and* keeps whatever makes it that demo. Anything the
+# branch shares with main is dropped by the rebase in the normal way.
 #
 # The push MUST use a personal access token (MIRROR_TOKEN repo secret with
 # contents write access). Pushes made with the built-in GITHUB_TOKEN never
@@ -37,7 +42,44 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.MIRROR_TOKEN }}
 
-      # Point demo-coggtm at exactly this commit (creating the branch on the
-      # first run). --force-with-lease keeps the mirror authoritative even if
-      # someone pushed to demo-coggtm directly: main is the source of truth.
-      - run: git push --force-with-lease origin HEAD:demo-coggtm
+      - name: Replay demo-coggtm's own commits onto main
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          main_sha="$(git rev-parse HEAD)"
+          git fetch --no-tags origin +refs/heads/demo-coggtm:refs/remotes/origin/demo-coggtm || true
+          old="$(git rev-parse --verify -q refs/remotes/origin/demo-coggtm || true)"
+
+          # First run: the branch does not exist yet, so main is the whole of it.
+          if [ -z "${old}" ]; then
+            git push origin "${main_sha}:refs/heads/demo-coggtm"
+            exit 0
+          fi
+
+          # --force-with-lease is pinned to the sha this job read, so a variant
+          # pushed to the branch while the job ran fails the push instead of
+          # being silently discarded (the bare form would compare against the
+          # ref this job fetched and happily overwrite it).
+          base="$(git merge-base "${main_sha}" "${old}")"
+          if [ "$(git rev-list --count "${base}..${old}")" -eq 0 ]; then
+            echo "::notice::demo-coggtm carries no commits of its own; fast-forwarding to main"
+            git push --force-with-lease="demo-coggtm:${old}" origin "${main_sha}:refs/heads/demo-coggtm"
+            exit 0
+          fi
+
+          echo "Replaying $(git rev-list --count "${base}..${old}") demo-coggtm commit(s) onto ${main_sha}:"
+          git log --oneline "${base}..${old}"
+
+          git checkout -B mirror-replay "${old}"
+          # A conflict means main changed something the variant also touches.
+          # Abort and fail: the tenant keeps running its last good build, which
+          # is safer than deploying it with the variant silently dropped.
+          if ! git rebase --onto "${main_sha}" "${base}" mirror-replay; then
+            git rebase --abort || true
+            echo "::error::Replaying demo-coggtm onto main hit a conflict. demo-coggtm is unchanged and the tenant still runs its previous build. Rebase the branch by hand, push it, and re-run this workflow."
+            exit 1
+          fi
+
+          git push --force-with-lease="demo-coggtm:${old}" origin HEAD:refs/heads/demo-coggtm
