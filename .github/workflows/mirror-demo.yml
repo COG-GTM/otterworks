@@ -73,9 +73,10 @@ jobs:
 
           # ls-remote separates "the branch is not there" (exit 2, the first-run
           # path) from a fetch that simply failed, which must not be mistaken for
-          # an empty branch.
+          # an empty branch. The pattern is the full refname: a bare name is a
+          # tail match, so refs/heads/team/demo-coggtm would answer for it.
           set +e
-          git ls-remote --exit-code --heads origin demo-coggtm >/dev/null
+          git ls-remote --exit-code --heads origin refs/heads/demo-coggtm >/dev/null
           rc=$?
           set -e
           if [ "${rc}" -eq 2 ]; then
