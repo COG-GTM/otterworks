@@ -59,10 +59,12 @@ config:
   # path that survives Redis restarts and TTL expiry. What actually reaches the
   # tenant is the branch's file-service *image*, which sets the variable in its
   # Dockerfile -- the deploy runner renders charts from its own bundled tree, so
-  # this value only applies when someone deploys from this checkout. Kept in
-  # agreement with the image so the two can never contradict each other. To turn
-  # the failure off for this tenant without reverting the branch, set it
-  # explicitly (an explicit value beats the image's):
+  # this value only applies when someone deploys from this checkout -- and then
+  # it is not inert: deploy-tenant.sh renders without --reuse-values, so it also
+  # discards a manual --set-string of false. Kept in agreement with the image so
+  # the two can never contradict each other. To turn the failure off for this
+  # tenant without reverting the branch, set it explicitly (an explicit value
+  # beats the image's, until the next redeploy re-renders the chart):
   #   helm upgrade file-service infrastructure/helm/file-service \
   #     -n otterworks-coggtm --reuse-values \
   #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false
