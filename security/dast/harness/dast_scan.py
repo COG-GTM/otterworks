@@ -26,6 +26,8 @@ Exit codes:
     0 = no findings outside the baseline
     1 = one or more findings at or above the fail-on severity
     2 = target unreachable / configuration error
+    3 = nothing gating, but a selected probe could not reach a verdict
+        (--only, i.e. `make dast-verify`, or --fail-on-inconclusive)
 """
 
 from __future__ import annotations
@@ -281,6 +283,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Severity.MEDIUM.value,
         help="minimum severity that fails the gate (default: medium)",
     )
+    parser.add_argument(
+        "--fail-on-inconclusive",
+        action="store_true",
+        help="exit 3 if any probe could not reach a verdict (implied by --only)",
+    )
     parser.add_argument("--list", action="store_true", help="list registered probes and exit")
     parser.add_argument("--timeout", type=float, default=20.0)
     return parser.parse_args(argv)
@@ -330,12 +337,13 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"Scanning {target} (run {ctx.run_id}) with {len(selected)} probe(s)\n")
         for entry in selected:
-            if entry.requires_identity and not ctx.attacker.access_token:
+            if entry.requires_identity and not ctx.identities_ready:
                 results.append(
                     entry.result(
                         Verdict.INCONCLUSIVE,
-                        "no seeded identity: this attack needs an authenticated caller, so an "
-                        "unauthenticated rejection is not evidence of a control",
+                        "the scan identities were not all seeded: this attack needs an "
+                        "authenticated caller and a distinct victim, so its result would not "
+                        "be evidence of a control",
                     )
                 )
                 continue
@@ -380,6 +388,16 @@ def main(argv: list[str] | None = None) -> int:
         for result in gating:
             print(f"  - {result.finding_id} ({result.severity.value}): {result.detail}")
         return 1
+
+    # A remediation is only proven by an attack that ran and failed. Verifying one
+    # finding (--only) must therefore not accept "could not tell" as a pass.
+    if args.only or args.fail_on_inconclusive:
+        unverified = [r for r in results if r.verdict is Verdict.INCONCLUSIVE]
+        if unverified:
+            print(f"\nDAST gate UNVERIFIED: {len(unverified)} probe(s) reached no verdict:")
+            for result in unverified:
+                print(f"  - {result.finding_id}: {result.detail}")
+            return 3
 
     print(f"\nDAST gate PASSED: no unaccepted findings at or above {args.fail_on}.")
     return 0

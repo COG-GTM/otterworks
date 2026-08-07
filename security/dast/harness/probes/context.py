@@ -97,6 +97,20 @@ class ScanContext:
         for identity in (self.attacker, self.victim, self.burner):
             self._register(identity)
 
+    @property
+    def identities_ready(self) -> bool:
+        """Whether every identity the authenticated probes assume actually exists.
+
+        Seeding stops at the first failure, so a half-seeded run can leave the
+        attacker usable and the victim blank. A cross-account attack aimed at an
+        empty user id degrades into an ordinary self-owned request and would
+        report `secure` without ever having been attempted.
+        """
+        return all(
+            identity.access_token and identity.user_id
+            for identity in (self.attacker, self.victim, self.burner)
+        )
+
     def _register(self, identity: Identity) -> None:
         response = self.client.post(
             "/api/v1/auth/register",
