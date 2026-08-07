@@ -149,11 +149,14 @@ def credential_brute_force(ctx: ScanContext) -> Result:
     attempts = ctx.brute_force_attempts
     statuses = []
     last = None
+    # Aimed at the burner, not the victim: a target that correctly locks the
+    # account must not strand the later probes that log in as the victim.
+    target = ctx.burner
     for i in range(attempts):
         last = ctx.request(
             "POST",
             "/api/v1/auth/login",
-            json={"email": ctx.victim.email, "password": f"wrong-password-{i}"},
+            json={"email": target.email, "password": f"wrong-password-{i}"},
             headers={"X-Forwarded-For": "203.0.113.7"},
         )
         statuses.append(last.status_code)
@@ -164,7 +167,7 @@ def credential_brute_force(ctx: ScanContext) -> Result:
                 [Evidence.from_response(last)],
             )
 
-    still_valid = ctx.login(ctx.victim.email, ctx.victim.password)
+    still_valid = ctx.login(target.email, target.password)
     evidence = [
         Evidence.from_response(
             last,

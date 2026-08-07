@@ -152,11 +152,12 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
             )
         # Control request: the attacker creating in its own account must work,
         # or the create path is refusing everyone and proves nothing.
+        # No owner_id: the remediation this probe recommends is to drop the field
+        # from the schema, so a control that still sends it would be refused too.
         control = ctx.create_document_response(
             ctx.attacker,
             title=f"control-{ctx.run_id}",
             content=f"control {ctx.plant_marker}",
-            owner_id=ctx.attacker.user_id,
         )
         if control.status_code not in (200, 201):
             return self.result(
@@ -303,7 +304,20 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
             f"search backend unavailable (status {response.status_code})",
             [Evidence.from_response(response)],
         )
-    if marker in response.text:
+    # The service echoes the query back in every response, so the verdict has to
+    # come from the hits themselves rather than a substring match on the body.
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    hits = payload.get("results") if isinstance(payload, dict) else None
+    if hits is None:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the search response was not a parsable result set",
+            [Evidence.from_response(response)],
+        )
+    if any(marker in str(hit) for hit in hits):
         return self.result(
             Verdict.VULNERABLE,
             "attacker's search returned the victim's document marker",

@@ -43,6 +43,10 @@ class ScanContext:
     brute_force_attempts: int = 12
     attacker: Identity = field(init=False)
     victim: Identity = field(init=False)
+    #: A throwaway account for probes that abuse credentials. Keeping them off the
+    #: victim means a target that correctly locks accounts does not strand the
+    #: later probes that need the victim to be able to log in.
+    burner: Identity = field(init=False)
     _victim_document: dict[str, Any] | None = field(default=None, init=False)
     _victim_document_attempted: bool = field(default=False, init=False)
 
@@ -52,6 +56,9 @@ class ScanContext:
         )
         self.victim = Identity(
             email=f"dast-victim-{self.run_id}@example.test", password=DEFAULT_PASSWORD
+        )
+        self.burner = Identity(
+            email=f"dast-burner-{self.run_id}@example.test", password=DEFAULT_PASSWORD
         )
 
     # ── lifecycle ────────────────────────────────────────────────────────────
@@ -87,7 +94,7 @@ class ScanContext:
         raise SeedError(f"target {self.base_url} did not become reachable: {last}")
 
     def seed_identities(self) -> None:
-        for identity in (self.attacker, self.victim):
+        for identity in (self.attacker, self.victim, self.burner):
             self._register(identity)
 
     def _register(self, identity: Identity) -> None:
