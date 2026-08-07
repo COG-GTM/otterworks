@@ -12,8 +12,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
     /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Defaults ON on this demo variant branch (it is
-    /// off on the golden app); `FILE_UPLOAD_ALWAYS_FAIL=false` turns it off.
+    /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
 }
 
@@ -54,13 +53,7 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            // Defaults ON here, unlike the golden app: this is the demo-coggtm
-            // variant branch, and its tenant deploys the branch's *image* while
-            // the chart it gets is whatever tree the runner has (branch checkout
-            // needs GITHUB_TOKEN and falls back to the bundled golden tree). The
-            // default is the only part of the switch the branch reliably owns.
-            // FILE_UPLOAD_ALWAYS_FAIL=false still turns it off explicitly.
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", true),
+            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
         }
     }
 }
@@ -140,13 +133,11 @@ mod tests {
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 
-    /// Inverted from the golden app: on this demo variant branch an unset
-    /// FILE_UPLOAD_ALWAYS_FAIL means uploads fail.
     #[test]
-    fn upload_always_fail_is_on_by_default() {
+    fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
         }
-        assert!(super::ServerConfig::from_env().upload_always_fail);
+        assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
 }
