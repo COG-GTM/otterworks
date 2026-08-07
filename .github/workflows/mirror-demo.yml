@@ -14,16 +14,18 @@
 # `demo-coggtm` is a rebase of main, not a copy of it. Commits pushed only to
 # that branch — a bespoke demo variant, e.g. a service configured to fail — are
 # carried forward onto every new main instead of being overwritten, so the
-# tenant follows main *and* keeps whatever makes it that demo. Anything the
-# branch shares with main is dropped by the rebase in the normal way.
+# tenant follows main *and* keeps whatever makes it that demo. A variant that
+# later lands on main verbatim replays as an empty commit and git prunes it
+# ("patch contents already upstream"), so the branch stops carrying it.
 #
 # Keep those commits a short linear stack of small patches. The replay is a
 # rebase, so merge commits on the branch are flattened and their side commits
-# replayed one by one, and a variant that reaches main by squash-merge has a
-# different patch-id -- it is not recognised as already applied, and conflicts.
-# When the replay conflicts the job stops and the branch stands still until
-# someone rebases it by hand, or runs this workflow with `reset_to_main` to
-# throw the variant away and go back to plain mirroring.
+# replayed one by one, and a variant that reaches main in modified form -- a
+# squash-merge, or any edit on the way in -- no longer replays empty, so it
+# conflicts instead of being recognised as already applied. When the replay
+# conflicts the job stops and the branch stands still until someone rebases it
+# by hand, or runs this workflow with `reset_to_main` to throw the variant away
+# and go back to plain mirroring.
 #
 # The push MUST use a personal access token (MIRROR_TOKEN repo secret with
 # contents write access). Pushes made with the built-in GITHUB_TOKEN never
@@ -98,10 +100,16 @@ jobs:
 
           # Every push below leases against refs/remotes/origin/demo-coggtm as
           # fetched above, so a variant pushed to the branch mid-job fails the
-          # push instead of being silently discarded. The lease is deliberately
-          # bare: naming an explicit <expect> is the same comparison, but it
-          # disables the --force-if-includes check git implies for the bare form.
-          base="$(git merge-base "${main_sha}" "${old}")"
+          # push instead of being silently discarded. That lease is the whole of
+          # the protection: the --force-if-includes git implies for the bare form
+          # reads the reflog of a local branch named after the destination, and
+          # this workspace has none (the checkout is main, the replay lives on
+          # mirror-replay), so it never fires. The bare form is kept because
+          # naming an explicit <expect> would only repeat ${old} anyway.
+          if ! base="$(git merge-base "${main_sha}" "${old}")"; then
+            echo "::error::demo-coggtm shares no history with main, so its commits cannot be replayed. Re-run this workflow with reset_to_main to reset the branch, or repoint it at a descendant of main by hand."
+            exit 1
+          fi
           if [ "$(git rev-list --count "${base}..${old}")" -eq 0 ]; then
             echo "::notice::demo-coggtm carries no commits of its own; fast-forwarding to main"
             git push --force-with-lease origin "${main_sha}:refs/heads/demo-coggtm"
