@@ -113,7 +113,9 @@ services:
       DYNAMODB_TABLE: otterworks-file-metadata
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
-      FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
+      # On this demo variant branch uploads always fail, so a local stack
+      # reproduces what the tenant does. Override with FILE_UPLOAD_ALWAYS_FAIL=false.
+      FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-true}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
