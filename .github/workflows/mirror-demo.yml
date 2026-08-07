@@ -42,12 +42,14 @@ on:
         type: boolean
         default: false
 
-# Only one mirror at a time; a newer merge supersedes an in-flight one. A manual
-# run is not cancellable, because it is the recovery path -- a merge landing
-# mid-reset would otherwise kill it and leave the replay wedged as it was.
+# Only one mirror at a time, and no run is ever cancelled: a merge landing while
+# an operator is running the reset_to_main recovery must not kill it. Nothing
+# piles up -- github keeps at most one queued run per group, a newer one
+# replacing the older -- and a queued run checks out main afresh, so it mirrors
+# the newest commit rather than the one that queued it.
 concurrency:
   group: mirror-demo-coggtm
-  cancel-in-progress: ${{ github.event_name == 'push' }}
+  cancel-in-progress: false
 
 jobs:
   mirror:
@@ -109,8 +111,17 @@ jobs:
             exit 0
           fi
 
-          if ! base="$(git merge-base "${main_sha}" "${old}")"; then
+          # merge-base exits 1 for "no common ancestor" and 128 for a real git
+          # failure; only the former should send an operator to reset_to_main.
+          set +e
+          base="$(git merge-base "${main_sha}" "${old}")"
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 1 ]; then
             echo "::error::demo-coggtm shares no history with main, so its commits cannot be replayed. Re-run this workflow with reset_to_main to reset the branch, or repoint it at a descendant of main by hand."
+            exit 1
+          elif [ "${rc}" -ne 0 ]; then
+            echo "::error::git merge-base failed (exit ${rc}); demo-coggtm is unchanged"
             exit 1
           fi
           if [ "$(git rev-list --count "${base}..${old}")" -eq 0 ]; then
