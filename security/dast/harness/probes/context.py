@@ -197,6 +197,22 @@ class ScanContext:
     def get(self, path: str, **kwargs: Any) -> httpx.Response:
         return self.request("GET", path, **kwargs)
 
+    def search_as(self, identity: Identity, query: str) -> list[Any] | None:
+        """Control request: the result hits this identity sees, or None if unusable.
+
+        Documents index asynchronously, so an empty result set for the attacker
+        is only meaningful once the owner can find the document.
+        """
+        response = self.get("/api/v1/search/", params={"q": query}, identity=identity)
+        if response.status_code != 200:
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            return None
+        hits = payload.get("results") if isinstance(payload, dict) else None
+        return hits if isinstance(hits, list) else None
+
     def owner_can_read(self, path: str, identity: Identity) -> bool:
         """Control request: can the legitimate owner read this object at all?
 

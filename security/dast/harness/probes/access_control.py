@@ -260,10 +260,15 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
     ]
     evidence: list[Evidence] = []
     exposed: list[str] = []
+    unavailable: list[str] = []
     for path in targets:
         response = ctx.get(path)
-        if response.status_code == 502:
-            continue  # backend not deployed in this environment; not an auth verdict
+        # Any 5xx is the gateway failing to reach the backend (502/504) or an open
+        # circuit breaker (503) — not the route deciding to refuse an anonymous
+        # caller. admin-service crash-loops by design here, so this matters.
+        if response.status_code >= 500:
+            unavailable.append(f"{path} -> {response.status_code}")
+            continue
         evidence.append(Evidence.from_response(response, note=path))
         if response.status_code < 400:
             exposed.append(path)
@@ -274,7 +279,11 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
             evidence,
         )
     if not evidence:
-        return self.result(Verdict.INCONCLUSIVE, "no administrative backend was reachable")
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "no administrative backend produced an auth verdict; every route was "
+            f"unavailable: {', '.join(unavailable)}",
+        )
     return self.result(Verdict.SECURE, "all administrative routes required a token", evidence)
 
 
@@ -299,7 +308,7 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
 
     marker = ctx.victim_marker
     response = ctx.get("/api/v1/search/", params={"q": marker}, identity=ctx.attacker)
-    if response.status_code >= 500 or response.status_code == 502:
+    if response.status_code >= 500:
         return self.result(
             Verdict.INCONCLUSIVE,
             f"search backend unavailable (status {response.status_code})",
@@ -324,8 +333,18 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
             "attacker's search returned the victim's document marker",
             [Evidence.from_response(response, note=f"marker {marker}")],
         )
+    # Control request: documents are indexed asynchronously, so an empty result
+    # set for the attacker means nothing until the owner can find it.
+    control = ctx.search_as(ctx.victim, marker)
+    if control is None or not any(marker in str(hit) for hit in control):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the owner cannot find the marker either, so the index is empty or still "
+            "catching up and scoping cannot be assessed",
+            [Evidence.from_response(response)],
+        )
     return self.result(
         Verdict.SECURE,
-        "search results were scoped to the caller",
+        "the owner finds the document but the attacker's search does not",
         [Evidence.from_response(response)],
     )

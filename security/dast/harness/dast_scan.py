@@ -69,15 +69,47 @@ ZAP_RISK_TO_SEVERITY = {
 }
 
 
-def load_zap_findings(path: Path) -> list[Result]:
+DEFAULT_ZAP_RULES = DAST_DIR / "zap" / "zap-baseline.conf"
+
+
+def load_zap_rule_levels(path: Path) -> dict[str, str]:
+    """Plugin id -> WARN/IGNORE/FAIL from a zap-baseline.py rule file.
+
+    ``zap-baseline.py -c`` applies these to its own console summary only; the
+    JSON report still lists every alert, so the harness has to apply the tuning
+    itself or a rule downgraded to WARN would gate anyway.
+    """
+    levels: dict[str, str] = {}
+    if not path.exists():
+        return levels
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) >= 2:
+            levels[fields[0].strip()] = fields[1].strip().upper()
+    return levels
+
+
+def load_zap_findings(path: Path, rule_levels: dict[str, str] | None = None) -> list[Result]:
     """Convert an OWASP ZAP JSON report into harness results."""
     data = json.loads(path.read_text())
+    rule_levels = rule_levels or {}
     results: list[Result] = []
     for site in data.get("site", []):
         for alert in site.get("alerts", []):
             plugin_id = str(alert.get("pluginid", "unknown"))
+            level = rule_levels.get(plugin_id, "FAIL")
+            if level == "IGNORE":
+                continue
             severity = ZAP_RISK_TO_SEVERITY.get(str(alert.get("riskcode", "0")), Severity.INFO)
             instances = alert.get("instances", [])
+            detail = f"{len(instances)} instance(s) reported by ZAP at {site.get('@name', '')}"
+            if level == "WARN":
+                # Reported, but not a second gate on something a probe already owns.
+                severity = Severity.INFO
+                detail = f"{detail} (WARN in {DEFAULT_ZAP_RULES.name}: reported, not gated)"
             results.append(
                 Result(
                     finding_id=f"ZAP-{plugin_id}",
@@ -87,8 +119,7 @@ def load_zap_findings(path: Path) -> list[Result]:
                     cwe=f"CWE-{alert.get('cweid')}" if alert.get("cweid") else "",
                     service="api-gateway",
                     verdict=Verdict.VULNERABLE,
-                    detail=f"{len(instances)} instance(s) reported by ZAP "
-                    f"at {site.get('@name', '')}",
+                    detail=detail,
                     remediation=alert.get("solution", "").strip(),
                 )
             )
@@ -239,6 +270,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
     parser.add_argument("--zap-report", type=Path, help="merge an OWASP ZAP JSON report")
     parser.add_argument(
+        "--zap-rules",
+        type=Path,
+        default=DEFAULT_ZAP_RULES,
+        help="zap-baseline.py rule file whose WARN/IGNORE levels the gate honours",
+    )
+    parser.add_argument(
         "--fail-on",
         choices=[s.value for s in Severity],
         default=Severity.MEDIUM.value,
@@ -316,7 +353,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.zap_report.exists():
             print(f"ZAP report not found: {args.zap_report}", file=sys.stderr)
             return 2
-        results.extend(load_zap_findings(args.zap_report))
+        results.extend(load_zap_findings(args.zap_report, load_zap_rule_levels(args.zap_rules)))
 
     if args.update_baseline:
         findings = [r for r in results if r.is_finding]
