@@ -1,6 +1,8 @@
 package com.otterworks.report.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -96,7 +98,10 @@ public class Report {
     @Schema(description = "Number of data rows in the report")
     private Integer rowCount;
 
+    // Hibernate 6 maps a bare @Lob String to a Postgres large-object (oid) column, whereas
+    // Hibernate 5 mapped it to text. Pin LONG32VARCHAR so existing text columns keep working.
     @Lob
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
     @Column(name = "error_message")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;

@@ -48,8 +48,8 @@ public class AppConfig {
     // LEGACY: RestTemplate with an Apache HttpComponents 5 connection pool
     @Bean
     public RestTemplate restTemplate() {
-        // Spring 6 dropped HttpComponentsClientHttpRequestFactory#setReadTimeout; the socket
-        // timeout now belongs to the HttpClient 5 connection manager.
+        // Spring 6 dropped HttpComponentsClientHttpRequestFactory#setReadTimeout; both timeouts
+        // now belong to the HttpClient 5 connection manager.
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(50);
         connectionManager.setDefaultMaxPerRoute(20);
@@ -62,10 +62,7 @@ public class AppConfig {
                 .setConnectionManager(connectionManager)
                 .build();
 
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setConnectTimeout(connectionTimeout);
-
-        return new RestTemplate(factory);
+        return new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
     }
 
     public String getAnalyticsServiceUrl() {

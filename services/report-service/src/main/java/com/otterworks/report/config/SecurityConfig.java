@@ -22,8 +22,13 @@ public class SecurityConfig {
                 .sessionManagement(management -> management
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(requests -> requests
+                        // authorizeHttpRequests denies anything unmatched and also filters the
+                        // container's ERROR dispatch, so /error must be listed or every
+                        // sendError() response is rewritten to an empty 403.
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
-                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
+                                "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                         .requestMatchers("/api/v1/reports/**").permitAll())  // TODO: Add JWT validation
                 .headers(headers -> headers
                         .frameOptions(frameOptions -> frameOptions.deny())

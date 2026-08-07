@@ -56,7 +56,7 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - run: mvn test -B
+      - run: mvn -B verify
 
   legacy-portal-tests:
     runs-on: ubuntu-latest
