@@ -53,6 +53,18 @@ scenarios:
       Misconfiguration bug: point file-service at a bucket that does not exist
       via a config override (requires a rollout restart to take effect).
 
+  file-upload-always-fails:
+    mechanism: config
+    service: file-service
+    set: "config.FILE_UPLOAD_ALWAYS_FAIL=true"
+    description: >
+      Permanent version of file-upload-fails: the FILE_UPLOAD_ALWAYS_FAIL env
+      var makes file-service route every upload to a nonexistent S3 bucket, so
+      uploads keep returning 5xx across Redis restarts and TTL expiry (the chaos
+      flag is transient). Downloads, listing, folders and sharing are unaffected,
+      and no metadata row is written for the failed upload. Requires a rollout
+      restart to take effect; revert by re-running deploy-tenant.sh <ID>.
+
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
   # re-deploy the tenant with the golden tag.
