@@ -13,3 +13,5 @@ Rails.application.configure do
   config.active_support.disallowed_deprecation_warnings = []
   config.active_record.dump_schema_after_migration = false
 end
+
+# Built per-tenant so the fork's logger fix (PR #86) ships to this environment.
