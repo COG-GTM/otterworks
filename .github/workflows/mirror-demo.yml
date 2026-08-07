@@ -11,11 +11,20 @@
 #         -> the pipeline rebuilds the variant's services and redeploys the
 #            tenant, so t-coggtm runs the current main plus the variant
 #
-# That last step only fires while the branch carries a variant. cd-tenant.yml
-# diffs a demo-* push against its merge-base with main, so a demo-coggtm equal
-# to main is an empty change set and nothing is deployed -- harmless, since the
-# tenant would come back byte-identical, and true of the old copy-main mirror
-# on every merge.
+# That last step is driven by the variant, not by main: cd-tenant.yml diffs a
+# demo-* push against its merge-base with main, which after the replay is the
+# variant's own patches. So keep the variant touching a deployable path
+# (services/, frontend/, infrastructure/helm/, scripts/) -- one that only
+# touched docs or workflows would leave every mirror push with an empty change
+# set, and the tenant would sit on the build it already had. A branch equal to
+# main is that same empty case, harmless because the tenant would come back
+# byte-identical, and what the old copy-main mirror did on every merge.
+#
+# Dropping a variant does not undo its deployment: CI tagged its services
+# `tenant-coggtm`, and deploy-tenant.sh prefers that tag over `main` for as long
+# as it exists. After a reset_to_main, or after a variant is auto-pruned, run
+# cd-tenant.yml with rebuild_all (or delete the tenant-coggtm tags) to put the
+# tenant back on the golden images.
 #
 # `demo-coggtm` is a rebase of main, not a copy of it. Commits pushed only to
 # that branch — a bespoke demo variant, e.g. a service configured to fail — are
@@ -92,7 +101,13 @@ jobs:
           set -e
           if [ "${rc}" -eq 2 ]; then
             echo "::notice::demo-coggtm does not exist yet; creating it from main"
-            git push origin "${main_sha}:refs/heads/demo-coggtm"
+            # Unforced, so someone creating the branch between the probe and
+            # here loses nothing: the push is rejected and the next run replays
+            # onto whatever they pushed.
+            if ! git push origin "${main_sha}:refs/heads/demo-coggtm"; then
+              echo "::error::Could not create demo-coggtm from main; it may have just been created by someone else, in which case re-running this workflow will replay it"
+              exit 1
+            fi
             exit 0
           elif [ "${rc}" -ne 0 ]; then
             echo "::error::Could not read demo-coggtm from origin (git ls-remote exit ${rc})"
