@@ -56,8 +56,10 @@ config:
   # Permanently force every upload to fail (file-service writes to a nonexistent
   # S3 bucket and returns 5xx). OFF on the golden app (`main`); ON here because
   # this is the demo-coggtm variant branch, whose whole point is a broken upload
-  # path that survives Redis restarts and TTL expiry. Turn it off for this tenant
-  # without reverting the branch:
+  # path that survives Redis restarts and TTL expiry. The branch's file-service
+  # image also defaults it on, so the tenant fails uploads even when the runner
+  # deploys the golden chart instead of this one. Turn it off for this tenant
+  # without reverting the branch (an explicit false beats both defaults):
   #   helm upgrade file-service infrastructure/helm/file-service \
   #     -n otterworks-coggtm --reuse-values \
   #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false
