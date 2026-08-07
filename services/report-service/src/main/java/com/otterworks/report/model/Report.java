@@ -1,8 +1,6 @@
 package com.otterworks.report.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -11,7 +9,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
@@ -99,10 +96,9 @@ public class Report {
     private Integer rowCount;
 
     // Hibernate 6 maps a bare @Lob String to a Postgres large-object (oid) column, whereas
-    // Hibernate 5 mapped it to text. Pin LONG32VARCHAR so existing text columns keep working.
-    @Lob
-    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
-    @Column(name = "error_message")
+    // Hibernate 5 mapped it to text. Declare the column type so existing text columns keep
+    // working; @Lob is dropped because it is what triggers the oid mapping.
+    @Column(name = "error_message", columnDefinition = "text")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
 
