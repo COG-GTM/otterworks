@@ -54,6 +54,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     const allDone = uploadingFiles.every((f) => f.status === "done");
     const hasUploading = uploadingFiles.some((f) => f.status === "uploading");
 
+    if (!uploadingFiles.some((f) => f.status === "error")) {
+      setShowUploadErrorBanner(false);
+    }
+
     if (allDone && !hasUploading) {
       setDismissing(true);
       dismissTimerRef.current = setTimeout(() => {
@@ -167,7 +171,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         <ChaosErrorBanner
           className="mb-4"
           title="File upload failed"
-          message="Your files could not be uploaded. The storage service returned an error. Please try again later."
+          message="One or more files could not be uploaded. Please try again."
           onDismiss={() => setShowUploadErrorBanner(false)}
         />
       )}
