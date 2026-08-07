@@ -247,6 +247,7 @@ def unsigned_jwt(ctx: ScanContext) -> Result:
         "Ensure every non-public prefix is listed as a protected route in the gateway JWT "
         "middleware, and enforce role checks in the admin service itself."
     ),
+    requires_identity=False,  # the attack *is* the absence of a token
 )
 def unauthenticated_admin(ctx: ScanContext) -> Result:
     """Hit administrative surfaces with no Authorization header at all."""

@@ -101,6 +101,10 @@ class Probe:
     service: str
     remediation: str
     run: Callable[..., Result]
+    #: False for probes that attack the unauthenticated surface. The runner
+    #: reports the rest as inconclusive when identity seeding failed, so an
+    #: unauthenticated 401 can never be mistaken for a passing attack.
+    requires_identity: bool = True
 
     def result(
         self,
@@ -134,6 +138,7 @@ def probe(
     cwe: str,
     service: str,
     remediation: str,
+    requires_identity: bool = True,
 ) -> Callable[[Callable[..., Result]], Callable[..., Result]]:
     """Register an attack case under a stable finding ID."""
 
@@ -149,6 +154,7 @@ def probe(
             service=service,
             remediation=remediation,
             run=fn,
+            requires_identity=requires_identity,
         )
         REGISTRY[finding_id] = entry
         fn.probe = entry  # type: ignore[attr-defined]

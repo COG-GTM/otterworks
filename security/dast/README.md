@@ -113,3 +113,12 @@ def my_attack(ctx: ScanContext) -> Result:
 Rules of thumb: one abuse case per probe; a stable `finding_id` (it is the gate
 key and the `dast-verify` handle); always attach the request/response evidence;
 return `INCONCLUSIVE` rather than guessing when the precondition is missing.
+
+Pass `requires_identity=False` only for probes that attack the *unauthenticated*
+surface. Everything else is skipped as `inconclusive` when identity seeding
+fails, so an unauthenticated `401` can never be read as a passing attack.
+
+The same principle applies inside a probe: before reporting `secure` off a
+refusal, make a **control request** proving the legitimate caller still
+succeeds. A route that refuses everyone is not a route that is protecting
+anything, and a 5xx or a `429` is a broken or throttled backend, not a control.

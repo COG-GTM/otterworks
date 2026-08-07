@@ -28,6 +28,7 @@ TLS_ONLY_HEADERS = {"strict-transport-security": None}
         "X-Content-Type-Options, X-Frame-Options, Content-Security-Policy, "
         "Referrer-Policy, and Strict-Transport-Security on every response."
     ),
+    requires_identity=False,  # the headers are expected on the rejection too
 )
 def missing_security_headers(ctx: ScanContext) -> Result:
     self = missing_security_headers.probe
@@ -64,6 +65,7 @@ def missing_security_headers(ctx: ScanContext) -> Result:
         "Only echo Access-Control-Allow-Origin for origins on the configured allowlist, and "
         "never combine a wildcard origin with Access-Control-Allow-Credentials: true."
     ),
+    requires_identity=False,  # the CORS headers are on the rejection too
 )
 def cors_origin_reflection(ctx: ScanContext) -> Result:
     self = cors_origin_reflection.probe
@@ -98,6 +100,7 @@ def cors_origin_reflection(ctx: ScanContext) -> Result:
         "Only honour X-Forwarded-For / X-Real-IP from trusted proxy hops, and key the rate "
         "limiter on an identity the client cannot choose (authenticated subject or peer IP)."
     ),
+    requires_identity=False,
 )
 def rate_limit_bypass(ctx: ScanContext) -> Result:
     """Burst past the limiter, then repeat the burst rotating X-Forwarded-For."""
@@ -149,23 +152,38 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
         "Serve /metrics and other operational endpoints on an internal listener or behind "
         "an authenticated ingress rule rather than the public gateway."
     ),
+    requires_identity=False,
 )
 def exposed_telemetry(ctx: ScanContext) -> Result:
     self = exposed_telemetry.probe
     evidence: list[Evidence] = []
     exposed: list[str] = []
-    for path, marker in (
-        ("/metrics", "go_goroutines"),
-        ("/actuator/env", "propertySources"),
+    unavailable: list[str] = []
+    for index, (path, marker) in enumerate(
+        (
+            ("/metrics", "go_goroutines"),
+            ("/actuator/env", "propertySources"),
+        )
     ):
-        response = ctx.get(path)
+        # A fresh forwarding address per request: the rate-limit probe runs just
+        # before this one and leaves the scanner's own bucket drained.
+        response = ctx.get(path, headers={"X-Forwarded-For": f"198.51.100.{index + 1}"})
         if response.status_code == 200 and marker in response.text:
             exposed.append(path)
+            evidence.append(Evidence.from_response(response, note=path))
+        elif response.status_code == 429 or response.status_code >= 500:
+            unavailable.append(f"{path} -> {response.status_code}")
             evidence.append(Evidence.from_response(response, note=path))
     if exposed:
         return self.result(
             Verdict.VULNERABLE,
             f"unauthenticated telemetry at {', '.join(exposed)}",
+            evidence,
+        )
+    if unavailable:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"throttled or erroring, so exposure cannot be assessed: {', '.join(unavailable)}",
             evidence,
         )
     return self.result(Verdict.SECURE, "no unauthenticated telemetry endpoints found")

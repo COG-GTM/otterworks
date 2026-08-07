@@ -293,6 +293,15 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"Scanning {target} (run {ctx.run_id}) with {len(selected)} probe(s)\n")
         for entry in selected:
+            if entry.requires_identity and not ctx.attacker.access_token:
+                results.append(
+                    entry.result(
+                        Verdict.INCONCLUSIVE,
+                        "no seeded identity: this attack needs an authenticated caller, so an "
+                        "unauthenticated rejection is not evidence of a control",
+                    )
+                )
+                continue
             try:
                 results.append(entry.run(ctx))
             except Exception as exc:  # a broken probe must not mask the rest of the suite
