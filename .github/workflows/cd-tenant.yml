@@ -181,6 +181,27 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # The registry keeps tags immutable (platform/terraform/modules/ecr), but
+      # `tenant-<id>` and `main` are moving pointers: the second build of a
+      # service for the same environment fails the push unless the previous
+      # pointer is deleted first. Deleting a tag only untags — the manifest and
+      # the immutable `<slug>-<sha>` tag on it survive.
+      - name: Release moving tags
+        env:
+          SERVICE: ${{ matrix.service }}
+          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
+          GOLDEN: ${{ needs.plan.outputs.golden }}
+        run: |
+          set -euo pipefail
+          tags=("${TENANT_TAG}")
+          if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
+          for tag in "${tags[@]}"; do
+            aws ecr batch-delete-image \
+              --repository-name "otterworks/${SERVICE}" \
+              --image-ids imageTag="${tag}" \
+              --query 'failures[?failureCode!=`ImageNotFound`]' --output text
+          done
+
       - name: Build and push
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
