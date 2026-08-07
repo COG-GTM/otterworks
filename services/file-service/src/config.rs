@@ -12,7 +12,8 @@ pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
     /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
+    /// request fails with a 500. Defaults ON on this demo variant branch (it is
+    /// off on the golden app); `FILE_UPLOAD_ALWAYS_FAIL=false` turns it off.
     pub upload_always_fail: bool,
 }
 
