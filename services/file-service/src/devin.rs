@@ -289,7 +289,8 @@ mod tests {
     }
 
     /// The no-op path: an unconfigured service must not attempt an API call.
-    /// Serialized against any other test that touches the same variables.
+    /// The lock only guards this module's own env mutation; any future test
+    /// elsewhere in the binary reading `DEVIN_*` must take the same lock.
     #[actix_web::test]
     async fn create_session_is_a_noop_without_credentials() {
         static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

@@ -330,6 +330,8 @@ build_helm_args() {
       if [ -n "${DEVIN_API_KEY:-}" ] && [ -n "${DEVIN_ORG_ID:-}" ]; then
         add_secret DEVIN_API_KEY "${DEVIN_API_KEY}"
         add_secret DEVIN_ORG_ID "${DEVIN_ORG_ID}"
+      elif [ -n "${DEVIN_API_KEY:-}" ] || [ -n "${DEVIN_ORG_ID:-}" ]; then
+        warn "Only one of DEVIN_API_KEY/DEVIN_ORG_ID is set; skipping both — Devin upload triage stays off"
       fi ;;
     document-service)
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
