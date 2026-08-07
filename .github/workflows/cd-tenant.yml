@@ -161,47 +161,15 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       # Each tag has a job:
-      #   <slug>-<sha>  immutable, exactly what this run built
+      #   <slug>-<sha>  immutable, exactly what this run built (pushed here)
       #   tenant-<id>   the environment's current build, what it deploys
       #   main          the golden image every other tenant falls back to
-      - name: Resolve image tags
-        id: tags
-        env:
-          REPO: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}
-          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
-          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
-          GOLDEN: ${{ needs.plan.outputs.golden }}
-        run: |
-          set -euo pipefail
-          {
-            echo "list<<EOF"
-            echo "${REPO}:${IMAGE_TAG}"
-            echo "${REPO}:${TENANT_TAG}"
-            if [ "${GOLDEN}" = "true" ]; then echo "${REPO}:main"; fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      # The registry keeps tags immutable (platform/terraform/modules/ecr), but
-      # `tenant-<id>` and `main` are moving pointers: the second build of a
-      # service for the same environment fails the push unless the previous
-      # pointer is deleted first. Deleting a tag only untags — the manifest and
-      # the immutable `<slug>-<sha>` tag on it survive.
-      - name: Release moving tags
-        env:
-          SERVICE: ${{ matrix.service }}
-          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
-          GOLDEN: ${{ needs.plan.outputs.golden }}
-        run: |
-          set -euo pipefail
-          tags=("${TENANT_TAG}")
-          if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
-          for tag in "${tags[@]}"; do
-            aws ecr batch-delete-image \
-              --repository-name "otterworks/${SERVICE}" \
-              --image-ids imageTag="${tag}" \
-              --query 'failures[?failureCode!=`ImageNotFound`]' --output text
-          done
-
+      #
+      # The registry keeps tags immutable (platform/terraform/modules/ecr), so
+      # only the <slug>-<sha> tag is pushed with the build; the moving pointer
+      # tags are re-pointed afterwards, once the new manifest exists, so a
+      # failed build never leaves an environment without its pointer and the
+      # tag is only ever absent for the instant between delete and put.
       - name: Build and push
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
@@ -210,7 +178,45 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          tags: ${{ steps.tags.outputs.list }}
+          tags: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}:${{ needs.plan.outputs.image_tag }}
+
+      # Deleting a pointer tag only untags: the manifest stays, still held by
+      # its immutable <slug>-<sha> tag, so nothing historical is lost.
+      - name: Move pointer tags
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
+          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
+          GOLDEN: ${{ needs.plan.outputs.golden }}
+        run: |
+          set -euo pipefail
+          repo="otterworks/${SERVICE}"
+          manifest="$(aws ecr batch-get-image --repository-name "${repo}" \
+            --image-ids imageTag="${IMAGE_TAG}" \
+            --query 'images[0].imageManifest' --output text)"
+          [ -n "${manifest}" ] && [ "${manifest}" != "None" ] || {
+            echo "::error::no manifest found for ${repo}:${IMAGE_TAG}"; exit 1; }
+
+          tags=("${TENANT_TAG}")
+          if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
+          for tag in "${tags[@]}"; do
+            current="$(aws ecr batch-get-image --repository-name "${repo}" \
+              --image-ids imageTag="${tag}" \
+              --query 'images[0].imageManifest' --output text)"
+            if [ "${current}" = "${manifest}" ]; then
+              echo "${repo}:${tag} already points at ${IMAGE_TAG}"
+              continue
+            fi
+            failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+              --image-ids imageTag="${tag}" \
+              --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"
+            if [ -n "${failures}" ]; then
+              echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+            fi
+            aws ecr put-image --repository-name "${repo}" \
+              --image-tag "${tag}" --image-manifest "${manifest}" \
+              --query 'image.imageId.imageDigest' --output text
+          done
 
   deploy:
     needs: [plan, build]
