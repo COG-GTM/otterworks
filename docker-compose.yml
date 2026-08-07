@@ -113,11 +113,11 @@ services:
       DYNAMODB_TABLE: otterworks-file-metadata
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
-      # On this demo variant branch uploads always fail, so a local stack
-      # reproduces what the tenant does. `make test-api-flows` therefore fails
-      # its two upload assertions here by design; run it with
-      # FILE_UPLOAD_ALWAYS_FAIL=false to exercise the golden behavior.
-      FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-true}
+      # Off locally even on this demo variant branch: the permanent failure is
+      # baked into the file-service image (see its Dockerfile) for tenant
+      # coggtm, and this explicit false overrides it so a local stack still
+      # behaves like the golden app. Set it to true to reproduce the tenant.
+      FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
