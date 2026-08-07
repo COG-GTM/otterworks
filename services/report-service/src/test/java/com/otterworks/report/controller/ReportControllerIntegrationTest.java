@@ -1,9 +1,12 @@
 package com.otterworks.report.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
+import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.repository.ReportRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -43,6 +46,9 @@ public class ReportControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ReportRepository reportRepository;
 
     // ---- POST /api/v1/reports ----
 
@@ -192,18 +198,19 @@ public class ReportControllerIntegrationTest {
 
     @Test
     public void downloadPendingReportReturns409() throws Exception {
-        Long id = createReportAndReturnId("Download Pending Report",
-                ReportCategory.USAGE_ANALYTICS, ReportType.PDF, "integration-user-8");
+        // Persisted directly rather than posted: a report created through the API is picked
+        // up by the async worker, which can move it out of PENDING before the download call.
+        Report pending = new Report();
+        pending.setReportName("Download Pending Report");
+        pending.setCategory(ReportCategory.USAGE_ANALYTICS);
+        pending.setReportType(ReportType.PDF);
+        pending.setRequestedBy("integration-user-8");
+        pending.setStatus(ReportStatus.PENDING);
+        pending.setCreatedAt(new Date());
+        Long id = reportRepository.save(pending).getId();
 
-        MvcResult result = mockMvc.perform(get("/api/v1/reports/" + id))
-                .andReturn();
-        String statusVal = objectMapper.readTree(
-                result.getResponse().getContentAsString()).get("status").asText();
-
-        if ("PENDING".equals(statusVal) || "GENERATING".equals(statusVal)) {
-            mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
-                    .andExpect(status().isConflict());
-        }
+        mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
+                .andExpect(status().isConflict());
     }
 
     // ---- DELETE /api/v1/reports/{id} ----
