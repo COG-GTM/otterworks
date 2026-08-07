@@ -19,6 +19,11 @@ REQUIRED_HEADERS = {
 # HSTS is only meaningful, and only expected, on a TLS listener.
 TLS_ONLY_HEADERS = {"strict-transport-security": None}
 
+#: How much more throughput a spoofed burst must win before it counts as a bypass.
+#: The unspoofed burst is the control, so this is a ratio rather than an absolute:
+#: a limiter behaving identically under both bursts lands at ~1.0.
+BYPASS_MARGIN = 1.25
+
 
 @probe(
     finding_id="DAST-MISSING-SECURITY-HEADERS",
@@ -132,23 +137,29 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
 
         spoofed = list(pool.map(lambda i: hit(i, True), range(burst)))
 
-    bypassed = sum(1 for r in spoofed if r.status_code != 429)
+    served = sum(1 for r in spoofed if r.status_code != 429)
+    baseline_served = sum(1 for r in baseline if r.status_code != 429)
     last = spoofed[-1]
 
-    evidence = [
-        Evidence.from_response(
-            last, note=f"{bypassed}/{burst} requests served while rotating X-Forwarded-For"
-        )
-    ]
-    if bypassed >= burst:
+    note = (
+        f"{served}/{burst} served while rotating X-Forwarded-For "
+        f"vs {baseline_served}/{burst} unspoofed"
+    )
+    evidence = [Evidence.from_response(last, note=note)]
+    # A partial bypass is still a bypass: the question is whether spoofing bought
+    # materially more throughput than the same burst without it. Some other layer
+    # (ingress, a global bucket) can still return the odd 429, so requiring every
+    # request to get through would report a near-total bypass as protected.
+    if served > baseline_served * BYPASS_MARGIN:
         return self.result(
             Verdict.VULNERABLE,
-            f"rotating X-Forwarded-For served {bypassed} requests after the limiter engaged",
+            f"rotating X-Forwarded-For served {served}/{burst} requests against "
+            f"{baseline_served}/{burst} for the same unspoofed burst",
             evidence,
         )
     return self.result(
         Verdict.SECURE,
-        "the limiter still engaged with a spoofed forwarding header",
+        f"the limiter throttled the spoofed burst comparably to the unspoofed one ({note})",
         evidence,
     )
 

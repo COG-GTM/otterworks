@@ -151,12 +151,15 @@ class ScanContext:
         content: str,
         *,
         owner_id: str | None = None,
+        allow_owner_fallback: bool = True,
     ) -> httpx.Response:
         """Create a document, falling back to naming the owner explicitly.
 
         Some deployments reject a create whose owner cannot be derived from the
         token and ask the caller to supply owner_id instead; the fallback keeps
-        the suite usable there.
+        the suite usable there. Pass ``allow_owner_fallback=False`` where the
+        point of the request is that it carries no owner_id — a service hardened
+        by dropping the field would reject the retry.
 
         Returns the raw response so callers can tell an explicit refusal apart
         from a backend that is simply broken.
@@ -165,7 +168,7 @@ class ScanContext:
         if owner_id:
             body["owner_id"] = owner_id
         response = self.request("POST", "/api/v1/documents/", identity=identity, json=body)
-        if response.status_code in (401, 403) and not owner_id:
+        if response.status_code in (401, 403) and not owner_id and allow_owner_fallback:
             body["owner_id"] = identity.user_id
             response = self.request("POST", "/api/v1/documents/", identity=identity, json=body)
         return response

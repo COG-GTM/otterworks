@@ -120,6 +120,17 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
             "spoof attempt proves nothing",
             [Evidence.from_response(response)],
         )
+    if response.status_code not in (401, 403, 404):
+        # Only an explicit refusal shows the header was not honoured. A 2xx whose
+        # body does not happen to echo the title, or a redirect, is a request that
+        # was served — never a pass.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the spoofed request was not refused (status {response.status_code}) but the "
+            "victim's document was not recognisable in the body, so the header cannot be "
+            "assessed",
+            [Evidence.from_response(response, note=f"X-User-ID: {ctx.victim.user_id}")],
+        )
     # Control request: a route that refuses the owner too proves nothing about
     # whether the spoofed header would have been honoured.
     if not ctx.owner_can_read(path, ctx.victim):
@@ -177,6 +188,7 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
             ctx.attacker,
             title=f"control-{ctx.run_id}",
             content=f"control {ctx.plant_marker}",
+            allow_owner_fallback=False,
         )
         if control.status_code not in (200, 201):
             return self.result(
