@@ -88,7 +88,7 @@ public class ReportController {
             @PathVariable Long id) {
 
         Optional<Report> report = reportService.getReport(id);
-        if (report.isEmpty()) { // LEGACY: !isPresent() instead of isEmpty()
+        if (report.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(ReportResponse.fromEntity(report.get()));

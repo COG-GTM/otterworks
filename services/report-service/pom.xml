@@ -16,7 +16,7 @@
     <version>0.1.0</version>
     <packaging>jar</packaging>
     <name>OtterWorks Report Service</name>
-    <description>Legacy report generation service — PDF, CSV, Excel exports from analytics and audit data</description>
+    <description>Report generation service — PDF, CSV, Excel exports from analytics and audit data</description>
 
     <properties>
         <java.version>17</java.version>

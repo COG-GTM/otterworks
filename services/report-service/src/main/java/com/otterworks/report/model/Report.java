@@ -1,6 +1,8 @@
 package com.otterworks.report.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -96,7 +98,9 @@ public class Report {
     @Schema(description = "Number of data rows in the report")
     private Integer rowCount;
 
+    // Hibernate 6 maps @Lob String to a PostgreSQL oid column; LONGVARCHAR keeps it text.
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "error_message")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
