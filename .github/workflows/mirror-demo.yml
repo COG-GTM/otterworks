@@ -17,6 +17,14 @@
 # tenant follows main *and* keeps whatever makes it that demo. Anything the
 # branch shares with main is dropped by the rebase in the normal way.
 #
+# Keep those commits a short linear stack of small patches. The replay is a
+# rebase, so merge commits on the branch are flattened and their side commits
+# replayed one by one, and a variant that reaches main by squash-merge has a
+# different patch-id -- it is not recognised as already applied, and conflicts.
+# When the replay conflicts the job stops and the branch stands still until
+# someone rebases it by hand, or runs this workflow with `reset_to_main` to
+# throw the variant away and go back to plain mirroring.
+#
 # The push MUST use a personal access token (MIRROR_TOKEN repo secret with
 # contents write access). Pushes made with the built-in GITHUB_TOKEN never
 # trigger other workflows, so the deploy pipeline would silently not run.
@@ -25,6 +33,12 @@ name: Mirror main to demo-coggtm
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      reset_to_main:
+        description: Discard demo-coggtm's own commits and reset the branch to main
+        type: boolean
+        default: false
 
 # Only one mirror at a time; a newer merge supersedes an in-flight one.
 concurrency:
@@ -43,6 +57,8 @@ jobs:
           token: ${{ secrets.MIRROR_TOKEN }}
 
       - name: Replay demo-coggtm's own commits onto main
+        env:
+          RESET_TO_MAIN: ${{ inputs.reset_to_main }}
         run: |
           set -euo pipefail
           git config user.name  "github-actions[bot]"
@@ -58,14 +74,23 @@ jobs:
             exit 0
           fi
 
-          # --force-with-lease is pinned to the sha this job read, so a variant
-          # pushed to the branch while the job ran fails the push instead of
-          # being silently discarded (the bare form would compare against the
-          # ref this job fetched and happily overwrite it).
+          # The way out of a wedged replay: back to plain mirroring, dropping
+          # whatever made this tenant a variant.
+          if [ "${RESET_TO_MAIN:-false}" = "true" ]; then
+            echo "::warning::Resetting demo-coggtm to main, discarding its own commits"
+            git push --force-with-lease origin "${main_sha}:refs/heads/demo-coggtm"
+            exit 0
+          fi
+
+          # Every push below leases against refs/remotes/origin/demo-coggtm as
+          # fetched above, so a variant pushed to the branch mid-job fails the
+          # push instead of being silently discarded. The lease is deliberately
+          # bare: naming an explicit <expect> is the same comparison, but it
+          # disables the --force-if-includes check git implies for the bare form.
           base="$(git merge-base "${main_sha}" "${old}")"
           if [ "$(git rev-list --count "${base}..${old}")" -eq 0 ]; then
             echo "::notice::demo-coggtm carries no commits of its own; fast-forwarding to main"
-            git push --force-with-lease="demo-coggtm:${old}" origin "${main_sha}:refs/heads/demo-coggtm"
+            git push --force-with-lease origin "${main_sha}:refs/heads/demo-coggtm"
             exit 0
           fi
 
@@ -78,8 +103,8 @@ jobs:
           # is safer than deploying it with the variant silently dropped.
           if ! git rebase --onto "${main_sha}" "${base}" mirror-replay; then
             git rebase --abort || true
-            echo "::error::Replaying demo-coggtm onto main hit a conflict. demo-coggtm is unchanged and the tenant still runs its previous build. Rebase the branch by hand, push it, and re-run this workflow."
+            echo "::error::Replaying demo-coggtm onto main hit a conflict. demo-coggtm is unchanged and the tenant still runs its previous build. Rebase the branch onto main by hand and push it, then re-run this workflow -- or re-run it with reset_to_main to drop the variant."
             exit 1
           fi
 
-          git push --force-with-lease="demo-coggtm:${old}" origin HEAD:refs/heads/demo-coggtm
+          git push --force-with-lease origin HEAD:refs/heads/demo-coggtm
