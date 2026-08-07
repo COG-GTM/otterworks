@@ -1,0 +1,157 @@
+"""Core types and registry for OtterWorks DAST probes.
+
+A probe is a single, targeted attack attempt against the *running* application.
+It is deliberately narrower than a crawler: each probe encodes one concrete
+abuse case, states what evidence proves the vulnerability, and returns a
+machine-readable verdict.
+
+The verdict is the verification loop. A probe that reports ``VULNERABLE`` is a
+reproduction of the attack; the same probe reporting ``SECURE`` after a code
+change is programmatic proof that the finding is closed.
+"""
+
+from __future__ import annotations
+
+import enum
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+import httpx
+
+
+class Severity(enum.StrEnum):
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    INFO = "info"
+
+
+class Verdict(enum.StrEnum):
+    VULNERABLE = "vulnerable"
+    SECURE = "secure"
+    INCONCLUSIVE = "inconclusive"
+    SKIPPED = "skipped"
+
+
+SEVERITY_ORDER = {
+    Severity.CRITICAL: 4,
+    Severity.HIGH: 3,
+    Severity.MEDIUM: 2,
+    Severity.LOW: 1,
+    Severity.INFO: 0,
+}
+
+
+@dataclass
+class Evidence:
+    """The request/response pair that demonstrates the verdict."""
+
+    request: str
+    response_status: int | None = None
+    response_excerpt: str = ""
+    note: str = ""
+
+    @classmethod
+    def from_response(cls, response: httpx.Response, note: str = "", limit: int = 400) -> Evidence:
+        return cls(
+            request=f"{response.request.method} {response.request.url}",
+            response_status=response.status_code,
+            response_excerpt=response.text[:limit],
+            note=note,
+        )
+
+
+@dataclass
+class Result:
+    """The outcome of running one probe."""
+
+    finding_id: str
+    title: str
+    severity: Severity
+    owasp: str
+    cwe: str
+    service: str
+    verdict: Verdict
+    detail: str = ""
+    evidence: list[Evidence] = field(default_factory=list)
+    remediation: str = ""
+
+    @property
+    def is_finding(self) -> bool:
+        return self.verdict is Verdict.VULNERABLE
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["severity"] = self.severity.value
+        payload["verdict"] = self.verdict.value
+        return payload
+
+
+@dataclass
+class Probe:
+    """A registered attack case."""
+
+    finding_id: str
+    title: str
+    severity: Severity
+    owasp: str
+    cwe: str
+    service: str
+    remediation: str
+    run: Callable[..., Result]
+
+    def result(
+        self,
+        verdict: Verdict,
+        detail: str = "",
+        evidence: list[Evidence] | None = None,
+    ) -> Result:
+        return Result(
+            finding_id=self.finding_id,
+            title=self.title,
+            severity=self.severity,
+            owasp=self.owasp,
+            cwe=self.cwe,
+            service=self.service,
+            verdict=verdict,
+            detail=detail,
+            evidence=evidence or [],
+            remediation=self.remediation,
+        )
+
+
+REGISTRY: dict[str, Probe] = {}
+
+
+def probe(
+    *,
+    finding_id: str,
+    title: str,
+    severity: Severity,
+    owasp: str,
+    cwe: str,
+    service: str,
+    remediation: str,
+) -> Callable[[Callable[..., Result]], Callable[..., Result]]:
+    """Register an attack case under a stable finding ID."""
+
+    def decorator(fn: Callable[..., Result]) -> Callable[..., Result]:
+        if finding_id in REGISTRY:
+            raise ValueError(f"duplicate DAST finding id: {finding_id}")
+        entry = Probe(
+            finding_id=finding_id,
+            title=title,
+            severity=severity,
+            owasp=owasp,
+            cwe=cwe,
+            service=service,
+            remediation=remediation,
+            run=fn,
+        )
+        REGISTRY[finding_id] = entry
+        fn.probe = entry  # type: ignore[attr-defined]
+        return fn
+
+    return decorator

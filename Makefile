@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap
 
 SHELL := /bin/bash
 
@@ -225,6 +225,37 @@ security-scan: ## Run security scans across all services
 	cd services/admin-service && bundle-audit check 2>/dev/null || true
 	@echo ""
 	@echo "=== Report Service (skipped - legacy) ==="
+
+# --- Dynamic Application Security Testing (DAST) ---
+#
+# DAST attacks the *running* application through the API gateway. TARGET can be
+# the local stack (default), a tenant URL, or a preview environment.
+
+DAST_TARGET ?= http://localhost:8080
+DAST := uv run --with httpx --with tabulate security/dast/harness/dast_scan.py
+
+dast-list: ## List the registered DAST attack probes
+	$(DAST) --list
+
+dast-scan: ## Run the DAST suite against a running app (TARGET=<url>), gated by the baseline
+	$(DAST) --target $(DAST_TARGET) $(if $(FAIL_ON),--fail-on $(FAIL_ON),)
+
+dast-verify: ## Prove one finding is remediated (FINDING=<id> TARGET=<url>); baseline is ignored
+ifndef FINDING
+	$(error FINDING is required, e.g. make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS)
+endif
+	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
+
+dast-baseline: ## Record current findings as accepted (REASON="...")
+	$(DAST) --target $(DAST_TARGET) --reason $${REASON:-"recorded by make dast-baseline"} --update-baseline
+
+dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
+	@mkdir -p security/dast/reports
+	docker run --rm --network host \
+		-v "$(PWD)/security/dast:/zap/wrk:rw" \
+		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+		-t $(DAST_TARGET) -c zap/zap-baseline.conf -J reports/zap-report.json -I
+	$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json
 
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test

@@ -1,0 +1,115 @@
+name: DAST Scan
+
+# Dynamic application security testing: stand the app up, attack it through the
+# API gateway, and gate on findings that this change introduced.
+#
+#   pull_request  -> gating. Fails only on findings absent from security/dast/baseline.json.
+#   schedule      -> informational. Full sweep (probes + ZAP) against the perpetual tenant,
+#                    reported in the job summary without failing the run.
+#
+# The static counterpart lives in security-scan.yml; the two are complementary —
+# SAST reads the code, DAST attacks the running system.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'infrastructure/helm/**'
+      - 'security/dast/**'
+      - '.github/workflows/dast-scan.yml'
+  schedule:
+    - cron: '0 7 * * *' # Daily 7AM UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Base URL to scan (defaults to the local stack)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dast-local:
+    name: Attack the local stack
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Start the application stack
+        run: |
+          docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
+            postgres redis localstack meilisearch \
+            auth-service api-gateway document-service search-service file-service
+
+      - name: Wait for the API gateway
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          echo "API gateway never became healthy"
+          docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50
+          exit 1
+
+      - name: Run the DAST probe suite
+        run: make dast-scan DAST_TARGET=http://localhost:8080
+
+      - name: Publish the report
+        if: always()
+        run: |
+          if [[ -f security/dast/reports/dast-report.md ]]; then
+            cat security/dast/reports/dast-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-report
+          path: security/dast/reports/
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=200
+
+  dast-deployed:
+    name: Sweep the deployed tenant
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The perpetual tenant tracking main. Never point this at a tenant someone
+      # is presenting from: every scan registers accounts and writes documents.
+      TARGET: ${{ inputs.target || 'https://api-t-main.otterworks.app' }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Run the DAST probe suite and the ZAP sweep
+        id: scan
+        continue-on-error: true
+        run: make dast-zap DAST_TARGET="$TARGET"
+
+      - name: Publish the report
+        if: always()
+        run: |
+          if [[ -f security/dast/reports/dast-report.md ]]; then
+            cat security/dast/reports/dast-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "${{ steps.scan.outcome }}" == "failure" ]]; then
+            echo "::warning::DAST findings on ${TARGET} — see the report artifact"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-report-deployed
+          path: security/dast/reports/
