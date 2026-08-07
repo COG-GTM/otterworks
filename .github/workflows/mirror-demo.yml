@@ -3,14 +3,44 @@
 # The demo platform only deploys from workshop-*/demo-* branches on this fork
 # (main is reserved for the upstream repo's t-main environment). So the tenant
 # that runs COG-GTM's code is deployed from the branch `demo-coggtm`, and this
-# workflow is what keeps that branch — and therefore the tenant — always equal
-# to main:
+# workflow is what keeps that branch — and therefore the tenant — tracking main:
 #
 #   merge to main
-#     -> this workflow pushes main's commit onto demo-coggtm
+#     -> this workflow replays demo-coggtm's own commits on top of main
 #       -> that push triggers cd-tenant.yml (the deploy pipeline)
-#         -> the pipeline rebuilds the services that changed and redeploys
-#            the tenant, so t-coggtm always runs the current main
+#         -> the pipeline rebuilds the variant's services and redeploys the
+#            tenant, so t-coggtm runs the current main plus the variant
+#
+# That last step is driven by the variant, not by main: cd-tenant.yml diffs a
+# demo-* push against its merge-base with main, which after the replay is the
+# variant's own patches. So keep the variant touching a deployable path
+# (services/, frontend/, infrastructure/helm/, scripts/) -- one that only
+# touched docs or workflows would leave every mirror push with an empty change
+# set, and the tenant would sit on the build it already had. A branch equal to
+# main is that same empty case, harmless because the tenant would come back
+# byte-identical, and what the old copy-main mirror did on every merge.
+#
+# Dropping a variant does not undo its deployment: CI tagged its services
+# `tenant-coggtm`, and deploy-tenant.sh prefers that tag over `main` for as long
+# as it exists. After a reset_to_main, or after a variant is auto-pruned, run
+# cd-tenant.yml with rebuild_all (or delete the tenant-coggtm tags) to put the
+# tenant back on the golden images.
+#
+# `demo-coggtm` is a rebase of main, not a copy of it. Commits pushed only to
+# that branch — a bespoke demo variant, e.g. a service configured to fail — are
+# carried forward onto every new main instead of being overwritten, so the
+# tenant follows main *and* keeps whatever makes it that demo. A variant that
+# later lands on main verbatim replays as an empty commit and git prunes it
+# ("patch contents already upstream"), so the branch stops carrying it.
+#
+# Keep those commits a short linear stack of small patches. The replay is a
+# rebase, so merge commits on the branch are flattened and their side commits
+# replayed one by one, and a variant that reaches main in modified form -- a
+# squash-merge, or any edit on the way in -- no longer replays empty, so it
+# conflicts instead of being recognised as already applied. When the replay
+# conflicts the job stops and the branch stands still until someone rebases it
+# by hand, or runs this workflow with `reset_to_main` to throw the variant away
+# and go back to plain mirroring.
 #
 # The push MUST use a personal access token (MIRROR_TOKEN repo secret with
 # contents write access). Pushes made with the built-in GITHUB_TOKEN never
@@ -20,24 +50,119 @@ name: Mirror main to demo-coggtm
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      reset_to_main:
+        description: Discard demo-coggtm's own commits and reset the branch to main
+        type: boolean
+        default: false
 
-# Only one mirror at a time; a newer merge supersedes an in-flight one.
+# Only one mirror at a time, and a run that has started is never cancelled: a
+# merge landing while an operator is running the reset_to_main recovery must not
+# kill it. A run still *queued* can be superseded by a newer one, so a reset
+# dispatched behind an in-flight mirror needs re-running if a merge beats it to
+# the front. Queued runs check out main afresh, mirroring the newest commit
+# rather than the one that queued them.
 concurrency:
   group: mirror-demo-coggtm
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
-      # Check out the commit that was just merged to main, authenticated with
-      # the PAT so the push below is attributed to it (see note above).
-      - uses: actions/checkout@v4
+      # Authenticated with the PAT so the push below is attributed to it (see
+      # note above). `ref` pins the checkout to main so that a workflow_dispatch
+      # run started from some other branch still mirrors main rather than
+      # publishing that branch to the tenant.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.MIRROR_TOKEN }}
 
-      # Point demo-coggtm at exactly this commit (creating the branch on the
-      # first run). --force-with-lease keeps the mirror authoritative even if
-      # someone pushed to demo-coggtm directly: main is the source of truth.
-      - run: git push --force-with-lease origin HEAD:demo-coggtm
+      - name: Replay demo-coggtm's own commits onto main
+        env:
+          RESET_TO_MAIN: ${{ inputs.reset_to_main }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          main_sha="$(git rev-parse HEAD)"
+
+          # ls-remote separates "the branch is not there" (exit 2, the first-run
+          # path) from a fetch that simply failed, which must not be mistaken for
+          # an empty branch. The pattern is the full refname: a bare name is a
+          # tail match, so refs/heads/team/demo-coggtm would answer for it.
+          set +e
+          git ls-remote --exit-code --heads origin refs/heads/demo-coggtm >/dev/null
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 2 ]; then
+            echo "::notice::demo-coggtm does not exist yet; creating it from main"
+            # Unforced, so someone creating the branch between the probe and
+            # here loses nothing: the push is rejected and the next run replays
+            # onto whatever they pushed.
+            if ! git push origin "${main_sha}:refs/heads/demo-coggtm"; then
+              echo "::error::Could not create demo-coggtm from main; it may have just been created by someone else, in which case re-running this workflow will replay it"
+              exit 1
+            fi
+            exit 0
+          elif [ "${rc}" -ne 0 ]; then
+            echo "::error::Could not read demo-coggtm from origin (git ls-remote exit ${rc})"
+            exit 1
+          fi
+
+          git fetch --no-tags origin +refs/heads/demo-coggtm:refs/remotes/origin/demo-coggtm
+          old="$(git rev-parse refs/remotes/origin/demo-coggtm)"
+
+          # Every push from here on leases against refs/remotes/origin/demo-coggtm
+          # as fetched above, so a variant pushed to the branch mid-job fails the
+          # push instead of being silently discarded. That lease is the whole of
+          # the protection -- --force-if-includes is not implied, it has to be
+          # asked for -- and it is enough: the bare form resolves the destination
+          # through the fetch refspec to the ref fetched just above, so naming an
+          # explicit <expect> would only repeat ${old}.
+
+          # The way out of a wedged replay: back to plain mirroring, dropping
+          # whatever made this tenant a variant.
+          if [ "${RESET_TO_MAIN:-false}" = "true" ]; then
+            echo "::warning::Resetting demo-coggtm to main, discarding its own commits"
+            git push --force-with-lease origin "${main_sha}:refs/heads/demo-coggtm"
+            exit 0
+          fi
+
+          # merge-base exits 1 for "no common ancestor" and 128 for a real git
+          # failure; only the former should send an operator to reset_to_main.
+          set +e
+          base="$(git merge-base "${main_sha}" "${old}")"
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 1 ]; then
+            echo "::error::demo-coggtm shares no history with main, so its commits cannot be replayed. Re-run this workflow with reset_to_main to reset the branch, or repoint it at a descendant of main by hand."
+            exit 1
+          elif [ "${rc}" -ne 0 ]; then
+            echo "::error::git merge-base failed (exit ${rc}); demo-coggtm is unchanged"
+            exit 1
+          fi
+          if [ "$(git rev-list --count "${base}..${old}")" -eq 0 ]; then
+            echo "::notice::demo-coggtm carries no commits of its own; fast-forwarding to main"
+            git push --force-with-lease origin "${main_sha}:refs/heads/demo-coggtm"
+            exit 0
+          fi
+
+          echo "Replaying $(git rev-list --count "${base}..${old}") demo-coggtm commit(s) onto ${main_sha}:"
+          git log --oneline "${base}..${old}"
+
+          git checkout -B mirror-replay "${old}"
+          # A conflict means main changed something the variant also touches.
+          # Abort and fail: the tenant keeps running its last good build, which
+          # is safer than deploying it with the variant silently dropped.
+          if ! git rebase --onto "${main_sha}" "${base}" mirror-replay; then
+            git rebase --abort || true
+            echo "::error::Replaying demo-coggtm onto main hit a conflict. demo-coggtm is unchanged and the tenant still runs its previous build. Rebase the branch onto main by hand and push it, then re-run this workflow -- or re-run it with reset_to_main to drop the variant."
+            exit 1
+          fi
+
+          git push --force-with-lease origin HEAD:refs/heads/demo-coggtm
