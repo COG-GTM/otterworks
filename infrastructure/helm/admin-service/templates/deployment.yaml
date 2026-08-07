@@ -33,7 +33,8 @@ spec:
             httpGet:
               path: {{ .Values.healthCheck.path }}
               port: {{ .Values.healthCheck.port }}
-            initialDelaySeconds: 30
+            # Rails runs db:migrate before serving; don't kill it mid-boot.
+            initialDelaySeconds: 180
             periodSeconds: 15
             timeoutSeconds: 10
             failureThreshold: 6
