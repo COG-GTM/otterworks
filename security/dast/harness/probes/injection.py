@@ -48,6 +48,10 @@ def sqli_error_based(ctx: ScanContext) -> Result:
         ("/api/v1/files/", "folder_id"),
     ]
     evidence: list[Evidence] = []
+    # A payload that never reached the query layer cannot surface an error from it,
+    # so track whether any endpoint actually processed one.
+    reached: list[str] = []
+    unavailable: list[str] = []
     for path, param in targets:
         for payload in SQLI_PAYLOADS:
             response = ctx.get(path, params={param: payload}, identity=ctx.attacker)
@@ -62,6 +66,17 @@ def sqli_error_based(ctx: ScanContext) -> Result:
                     f"{path} leaked a SQL error for {param}={payload!r}",
                     evidence,
                 )
+            if response.status_code >= 500 or response.status_code in (401, 403):
+                unavailable.append(f"{path} -> {response.status_code}")
+            else:
+                reached.append(path)
+
+    if not reached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "no injected parameter reached a query: every request was refused or failed "
+            f"({', '.join(sorted(set(unavailable)))})",
+        )
     return self.result(Verdict.SECURE, "no SQL errors surfaced from injected parameters")
 
 

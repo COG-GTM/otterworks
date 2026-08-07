@@ -39,7 +39,13 @@ class ScanContext:
     base_url: str
     client: httpx.Client
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
-    rate_limit_burst: int = 200
+    #: Sized against RATE_LIMIT_RPS (default 100/s) plus the refill accrued over the
+    #: burst's own duration: 200 concurrent requests do not draw a 429 from a deployed
+    #: tenant, 600 do.
+    rate_limit_burst: int = 600
+    #: The burst is issued concurrently: a token bucket is never drained by a
+    #: sequential client once a round trip costs more than the refill interval.
+    rate_limit_workers: int = 64
     brute_force_attempts: int = 12
     attacker: Identity = field(init=False)
     victim: Identity = field(init=False)

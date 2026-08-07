@@ -89,10 +89,29 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
         headers={"X-User-ID": ctx.victim.user_id},
     )
     if response.status_code == 200 and victim_doc["title"] in response.text:
+        # Negative control: the same read without the header. If that also succeeds
+        # the document service simply is not checking ownership, which belongs to
+        # DAST-BOLA-DOCUMENTS — blaming the gateway here would send the fix to the
+        # wrong service.
+        without_header = ctx.get(path, identity=ctx.attacker)
+        if without_header.status_code == 200 and victim_doc["title"] in without_header.text:
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                "the attacker reads the victim's document without the header too, so this is "
+                "object-level authorization (see DAST-BOLA-DOCUMENTS), not header trust",
+                [
+                    Evidence.from_response(response, note=f"X-User-ID: {ctx.victim.user_id}"),
+                    Evidence.from_response(without_header, note="same read, no X-User-ID"),
+                ],
+            )
         return self.result(
             Verdict.VULNERABLE,
-            "spoofed X-User-ID header granted access to the victim's document",
-            [Evidence.from_response(response, note=f"X-User-ID: {ctx.victim.user_id}")],
+            "spoofed X-User-ID header granted access to the victim's document; the same read "
+            f"without it returned {without_header.status_code}",
+            [
+                Evidence.from_response(response, note=f"X-User-ID: {ctx.victim.user_id}"),
+                Evidence.from_response(without_header, note="same read, no X-User-ID"),
+            ],
         )
     if response.status_code >= 500:
         return self.result(
@@ -233,6 +252,17 @@ def unsigned_jwt(ctx: ScanContext) -> Result:
         evidence.append(Evidence.from_response(response, note=label))
         if response.status_code < 400:
             return self.result(Verdict.VULNERABLE, f"forged token ({label}) was accepted", evidence)
+        if response.status_code >= 500:
+            # The gateway rejects an invalid token with 401 before proxying, so a 5xx
+            # means the request reached the backend — i.e. the token got past the
+            # very check under test.
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"forged token ({label}) reached a failing backend (status "
+                f"{response.status_code}); the gateway did not reject it outright, so the "
+                "attack cannot be assessed",
+                evidence,
+            )
     return self.result(Verdict.SECURE, "all forged tokens were rejected", evidence)
 
 

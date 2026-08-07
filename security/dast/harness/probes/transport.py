@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
+from httpx import Response
+
 from .base import Evidence, Result, Severity, Verdict, probe
 from .context import ScanContext
 
@@ -107,27 +111,35 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
     self = rate_limit_bypass.probe
     burst = ctx.rate_limit_burst
 
-    limited = False
-    for _ in range(burst):
-        response = ctx.get("/health")
-        if response.status_code == 429:
-            limited = True
-            break
-    if not limited:
-        return self.result(
-            Verdict.INCONCLUSIVE,
-            f"the limiter never engaged within {burst} requests; cannot test the bypass",
+    def hit(index: int, spoof: bool) -> Response:
+        headers = {"X-Forwarded-For": f"10.9.{index // 256}.{index % 256}"} if spoof else None
+        return ctx.get("/health", headers=headers)
+
+    # The limiter is a token bucket refilling at RATE_LIMIT_RPS per second, so a
+    # sequential loop only ever drains it when the round trip is faster than the
+    # refill — true locally, false against any deployed tenant. Issue the burst
+    # concurrently so the request rate beats the refill regardless of latency.
+    with ThreadPoolExecutor(max_workers=ctx.rate_limit_workers) as pool:
+        baseline = list(pool.map(lambda i: hit(i, False), range(burst)))
+        if not any(r.status_code == 429 for r in baseline):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"{burst} concurrent requests never drew a 429, so either no limiter is "
+                "configured at this edge or its allowance exceeds the burst; the bypass "
+                "cannot be tested",
+                [Evidence.from_response(baseline[-1], note="last unspoofed request")],
+            )
+
+        spoofed = list(pool.map(lambda i: hit(i, True), range(burst)))
+
+    bypassed = sum(1 for r in spoofed if r.status_code != 429)
+    last = spoofed[-1]
+
+    evidence = [
+        Evidence.from_response(
+            last, note=f"{bypassed}/{burst} requests served while rotating X-Forwarded-For"
         )
-
-    bypassed = 0
-    last = None
-    for i in range(burst):
-        last = ctx.get("/health", headers={"X-Forwarded-For": f"10.9.{i // 256}.{i % 256}"})
-        if last.status_code == 429:
-            break
-        bypassed += 1
-
-    evidence = [Evidence.from_response(last, note=f"{bypassed} requests served after spoofing")]
+    ]
     if bypassed >= burst:
         return self.result(
             Verdict.VULNERABLE,
