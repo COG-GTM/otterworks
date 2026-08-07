@@ -86,10 +86,13 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
   log "Applied. A value change rolls the pod on its own (ConfigMap checksum annotation);"
-  log "if the env was already true -- the demo-coggtm chart ships it ON -- nothing restarts"
-  log "and the tenant is already failing uploads. Turn it off with:"
+  log "if the env was already true nothing restarts and the tenant is already failing"
+  log "uploads -- tenant coggtm is in that state, because the demo-coggtm branch bakes"
+  log "the variable into the file-service image itself. Turn it off with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
-  log "(deploy-tenant.sh ${ATTENDEE_ID} re-applies the branch value and re-enables it.)"
+  log "(that explicit false outlives deploy-tenant.sh ${ATTENDEE_ID}, which sets a fixed"
+  log "list of config.* keys not including this one; to re-enable, set it back to true or"
+  log "redeploy the tenant so the branch's image default applies again.)"
   exit 0
 fi
 

@@ -19,9 +19,11 @@ USER appuser
 # demo-coggtm tenant variant -- NEVER merge this to `main`. The tenant runs the
 # image this branch builds (tag `tenant-coggtm`), so baking the switch in here is
 # the only way to make its uploads fail permanently: it survives pod restarts,
-# Redis restarts, TTL expiry and idle-suspend/wake, and needs no chart override
-# (the deploy runner's chart comes from its own bundled tree, not this branch).
-# Anything that sets the variable explicitly still wins -- docker-compose.yml
+# Redis restarts, TTL expiry and idle-suspend/wake, and needs no chart override:
+# the deploy runner renders charts from its own bundled tree, whose file-service
+# values are `config: {}` and whose build_helm_args sets a fixed list of
+# config.* keys that does not include this one, so nothing overrides the image.
+# Anything that does set the variable explicitly still wins -- docker-compose.yml
 # passes false, so local stacks behave like the golden app.
 ENV FILE_UPLOAD_ALWAYS_FAIL=true
 
