@@ -67,7 +67,7 @@ fn parse_bool_env(key: &str, default: bool) -> bool {
 fn parse_bool(raw: &str, default: bool) -> bool {
     match raw.trim().to_ascii_lowercase().as_str() {
         "true" | "1" => true,
-        "false" | "0" | "" => false,
+        "false" | "0" => false,
         _ => default,
     }
 }
@@ -110,13 +110,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_bool_treats_off_and_garbage_as_default() {
-        for raw in ["false", "0", "", "  "] {
-            assert!(!parse_bool(raw, false), "raw={raw}");
+    fn parse_bool_accepts_false_and_zero() {
+        for raw in ["false", "FALSE", " False ", "0"] {
             assert!(!parse_bool(raw, true), "raw={raw}");
         }
-        assert!(!parse_bool("yes", false));
-        assert!(parse_bool("yes", true));
+    }
+
+    #[test]
+    fn parse_bool_falls_back_to_default_on_empty_or_garbage() {
+        for raw in ["", "  ", "yes"] {
+            assert!(!parse_bool(raw, false), "raw={raw}");
+            assert!(parse_bool(raw, true), "raw={raw}");
+        }
     }
 
     #[test]
