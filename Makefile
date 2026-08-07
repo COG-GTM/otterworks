@@ -247,7 +247,7 @@ endif
 	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
 
 dast-baseline: ## Record current findings as accepted (REASON="...")
-	$(DAST) --target $(DAST_TARGET) --reason $${REASON:-"recorded by make dast-baseline"} --update-baseline
+	$(DAST) --target $(DAST_TARGET) --reason "$${REASON:-recorded by make dast-baseline}" --update-baseline
 
 dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 	@mkdir -p security/dast/reports

@@ -93,6 +93,13 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
             "spoofed X-User-ID header granted access to the victim's document",
             [Evidence.from_response(response, note=f"X-User-ID: {ctx.victim.user_id}")],
         )
+    if response.status_code >= 500:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the read path returned {response.status_code}; the backend is failing, so the "
+            "spoof attempt proves nothing",
+            [Evidence.from_response(response)],
+        )
     return self.result(
         Verdict.SECURE,
         f"spoofed identity header did not grant access (status {response.status_code})",
@@ -116,14 +123,34 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
 def mass_assignment_owner(ctx: ScanContext) -> Result:
     """Attacker POSTs a document naming the victim as owner, using its own token."""
     self = mass_assignment_owner.probe
-    planted = ctx.create_document(
+    response = ctx.create_document_response(
         ctx.attacker,
         title=f"planted-by-attacker-{ctx.run_id}",
         content=f"planted {ctx.victim_marker}",
         owner_id=ctx.victim.user_id,
     )
-    if planted is None:
-        return self.result(Verdict.SECURE, "the API refused a create naming another user as owner")
+    if response.status_code not in (200, 201):
+        if response.status_code >= 500:
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the create path returned {response.status_code}; the backend is failing, so "
+                "the refusal is not evidence of an ownership check",
+                [Evidence.from_response(response)],
+            )
+        return self.result(
+            Verdict.SECURE,
+            f"the API refused a create naming another user as owner ({response.status_code})",
+            [Evidence.from_response(response)],
+        )
+    try:
+        planted = response.json()
+    except ValueError:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the create returned {response.status_code} with an unparsable body, so the "
+            "resulting owner cannot be read",
+            [Evidence.from_response(response)],
+        )
     if str(planted.get("owner_id")) == ctx.victim.user_id:
         return self.result(
             Verdict.VULNERABLE,

@@ -111,20 +111,23 @@ class ScanContext:
 
     # ── seeded fixtures ──────────────────────────────────────────────────────
 
-    def create_document(
+    def create_document_response(
         self,
         identity: Identity,
         title: str,
         content: str,
         *,
         owner_id: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> httpx.Response:
         """Create a document, falling back to naming the owner explicitly.
 
         Some deployments reject a create whose owner cannot be derived from the
         token and ask the caller to supply owner_id instead. The fallback keeps
         the suite usable there, and records the fact for the mass-assignment
         probe to assert on.
+
+        Returns the raw response so callers can tell an explicit refusal apart
+        from a backend that is simply broken.
         """
         body: dict[str, Any] = {"title": title, "content": content}
         if owner_id:
@@ -135,6 +138,18 @@ class ScanContext:
             response = self.request("POST", "/api/v1/documents/", identity=identity, json=body)
             if response.status_code in (200, 201):
                 self.accepts_client_owner_id = True
+        return response
+
+    def create_document(
+        self,
+        identity: Identity,
+        title: str,
+        content: str,
+        *,
+        owner_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """The created document, or None if the create did not succeed."""
+        response = self.create_document_response(identity, title, content, owner_id=owner_id)
         if response.status_code not in (200, 201):
             return None
         try:
