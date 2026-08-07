@@ -42,10 +42,11 @@ ALL_SERVICES=("${BACKEND_SERVICES[@]}" "${FRONTEND_SERVICES[@]}")
 # not multiply to 100 tenants affordably -- but few labs exercise all 13
 # services. "core" is the subset a browser session actually touches (~0.5 vCPU).
 #
-# "full" remains the default: "core" deliberately omits admin-service, whose
-# planted crash-loop bug is the subject of the bug-hunt labs, so switching the
-# default would silently break them. Opt in with --profile core when a lab is
-# known not to need the whole estate.
+# "full" remains the default: "core" deliberately omits admin-service, which
+# hosts the incident-triage path (and, on the upstream golden app, the planted
+# crash-loop bug for bug-hunt labs), so switching the default would silently
+# break those demos. Opt in with --profile core when a lab is known not to
+# need the whole estate.
 PROFILE_CORE_SERVICES=(api-gateway auth-service file-service document-service web-app)
 
 # Echo the service list for a profile.
