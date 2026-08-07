@@ -191,20 +191,28 @@ jobs:
         run: |
           set -euo pipefail
           repo="otterworks/${SERVICE}"
-          # jq -r, not --output text: the manifest is raw JSON whose exact
-          # bytes are the image digest, and text output is not byte-safe.
-          manifest="$(aws ecr batch-get-image --repository-name "${repo}" \
-            --image-ids imageTag="${IMAGE_TAG}" --output json |
-            jq -r '.images[0].imageManifest // empty')"
+          # Accept single manifests and lists/indexes, so the step survives a
+          # future multi-platform or attestation-enabled build.
+          media_types=(
+            application/vnd.docker.distribution.manifest.v2+json
+            application/vnd.docker.distribution.manifest.list.v2+json
+            application/vnd.oci.image.manifest.v1+json
+            application/vnd.oci.image.index.v1+json
+          )
+          get_manifest() {  # jq -r, not --output text: byte-exact JSON round-trip
+            aws ecr batch-get-image --repository-name "${repo}" \
+              --image-ids imageTag="$1" \
+              --accepted-media-types "${media_types[@]}" --output json |
+              jq -r '.images[0].imageManifest // empty'
+          }
+          manifest="$(get_manifest "${IMAGE_TAG}")"
           [ -n "${manifest}" ] || {
             echo "::error::no manifest found for ${repo}:${IMAGE_TAG}"; exit 1; }
 
           tags=("${TENANT_TAG}")
           if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
           for tag in "${tags[@]}"; do
-            current="$(aws ecr batch-get-image --repository-name "${repo}" \
-              --image-ids imageTag="${tag}" --output json |
-              jq -r '.images[0].imageManifest // empty')"
+            current="$(get_manifest "${tag}")"
             if [ "${current}" = "${manifest}" ]; then
               echo "${repo}:${tag} already points at ${IMAGE_TAG}"
               continue
@@ -215,9 +223,19 @@ jobs:
             if [ -n "${failures}" ]; then
               echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
             fi
-            aws ecr put-image --repository-name "${repo}" \
-              --image-tag "${tag}" --image-manifest "${manifest}" \
-              --query 'image.imageId.imageDigest' --output text
+            # Retry: a put-image failure here would strand the environment
+            # with no pointer at all until the next successful build.
+            for attempt in 1 2 3 4 5; do
+              if aws ecr put-image --repository-name "${repo}" \
+                   --image-tag "${tag}" --image-manifest "${manifest}" \
+                   --query 'image.imageId.imageDigest' --output text; then
+                break
+              fi
+              if [ "${attempt}" = 5 ]; then
+                echo "::error::could not re-point ${repo}:${tag} at ${IMAGE_TAG}"; exit 1
+              fi
+              sleep $((attempt * 5))
+            done
           done
 
   deploy:
