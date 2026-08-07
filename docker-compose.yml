@@ -114,7 +114,9 @@ services:
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
       # On this demo variant branch uploads always fail, so a local stack
-      # reproduces what the tenant does. Override with FILE_UPLOAD_ALWAYS_FAIL=false.
+      # reproduces what the tenant does. `make test-api-flows` therefore fails
+      # its two upload assertions here by design; run it with
+      # FILE_UPLOAD_ALWAYS_FAIL=false to exercise the golden behavior.
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-true}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:

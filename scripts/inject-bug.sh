@@ -85,10 +85,11 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   log "Injecting config bug 'file-upload-always-fails' (file-service uploads always 5xx)..."
   helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
-  log "Applied (the ConfigMap checksum annotation rolls the pod). Revert with:"
+  log "Applied. A value change rolls the pod on its own (ConfigMap checksum annotation);"
+  log "if the env was already true -- the demo-coggtm chart ships it ON -- nothing restarts"
+  log "and the tenant is already failing uploads. Turn it off with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
-  log "(on the demo-coggtm branch the chart already ships this ON, so deploy-tenant.sh ${ATTENDEE_ID}"
-  log " re-enables it; the override above is how you turn it off without touching the branch.)"
+  log "(deploy-tenant.sh ${ATTENDEE_ID} re-applies the branch value and re-enables it.)"
   exit 0
 fi
 
