@@ -66,7 +66,18 @@ function toPodInfo(pod: k8s.V1Pod): PodInfo {
   };
 }
 
-function computeLive(pods: k8s.V1Pod[]): TenantLiveState {
+// A Job pod is a task, not one of the tenant's services: the retail-drive seed
+// loader is unready while it builds its venv and then lingers Succeeded for
+// `ttlSecondsAfterFinished`. Counting it would read as Degraded and would stop
+// reconcileStatus() promoting the tenant back to `active` for as long as it is
+// around. podsForNamespace() is unfiltered, so the loader is still visible to
+// anyone looking at the namespace's pods.
+function isJobPod(pod: k8s.V1Pod): boolean {
+  return (pod.metadata?.ownerReferences ?? []).some((o) => o.kind === "Job");
+}
+
+function computeLive(allPods: k8s.V1Pod[]): TenantLiveState {
+  const pods = allPods.filter((p) => !isJobPod(p));
   const totalPods = pods.length;
   const readyPods = pods.filter(podReady).length;
   const services: ServiceLiveState[] = pods.map((p) => ({
@@ -128,6 +139,47 @@ export async function liveStateForNamespace(ns: string): Promise<TenantLiveState
   }
 }
 
+/**
+ * Is a named Job in a TENANT namespace still running? The seed loader outlives
+ * the runner Job that created it by minutes to hours, so it is the loader --
+ * not the runner Job in the platform namespace -- that says whether a seed is
+ * in flight.
+ *
+ * "Running" is the absence of a Complete/Failed condition, the same test the
+ * runner makes: a Job with `backoffLimit: 3` reads `{active: 0, failed: 1}`
+ * between a failed pod and its retry, and it has not finished.
+ *
+ * Only a 404 counts as "not running": callers act on a `false` by replacing the
+ * Job, so a throttled or unreachable API server must raise rather than read as
+ * an absent Job.
+ */
+export async function jobIsActive(ns: string, name: string): Promise<boolean> {
+  try {
+    const conditions = (await batch().readNamespacedJob(name, ns)).body.status?.conditions ?? [];
+    return !conditions.some(
+      (c) => (c.type === "Complete" || c.type === "Failed") && c.status === "True",
+    );
+  } catch (err) {
+    if (err instanceof k8s.HttpError && err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
+/**
+ * Does a tenant namespace still exist? A pod LIST against a namespace that is
+ * gone answers 200 with nothing in it -- indistinguishable from a tenant scaled
+ * to zero -- so telling those two apart takes a read of the namespace itself.
+ * Only for the diagnosis: an error is not evidence either way, so it is `true`.
+ */
+export async function namespaceExists(ns: string): Promise<boolean> {
+  try {
+    await core().readNamespace(ns);
+    return true;
+  } catch (err) {
+    return !(err instanceof k8s.HttpError && err.statusCode === 404);
+  }
+}
+
 export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   try {
     const podsRes = await core().listNamespacedPod(ns);
@@ -144,19 +196,34 @@ export async function listTenantNamespaces(): Promise<string[]> {
 }
 
 /**
- * Stream (read) the latest logs from the newest pod of a Job whose name
- * matches the given prefix in the platform namespace. Best-effort; returns
- * undefined when nothing is found or the cluster is unreachable.
+ * Stream (read) the latest logs from the newest pod of a runner Job for one
+ * tenant. Selected on the `demo/tenant-id` label rather than the Job's name
+ * prefix, which is ambiguous when one tenant id is a prefix of another
+ * (`seed-a-` also matches tenant `a-b`'s Jobs), and covers every action, so a
+ * failed seed is not hidden behind the deploy that preceded it.
+ *
+ * Strictly the newest Job, whatever its action or outcome: preferring a failed
+ * one keeps a stale failure on screen for the hour its Job survives, including
+ * over the seed the operator just dispatched. So a failure is visible until
+ * something newer happens, and no longer. Best-effort; returns undefined when
+ * nothing is found or the cluster is unreachable.
  */
 export async function latestJobLogs(
   platformNamespace: string,
-  jobNamePrefix: string,
+  tenantId: string,
   tailLines = 200,
 ): Promise<string | undefined> {
   try {
-    const jobsRes = await batch().listNamespacedJob(platformNamespace);
+    const jobsRes = await batch().listNamespacedJob(
+      platformNamespace,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      `demo/tenant-id=${tenantId}`,
+    );
     const jobs = jobsRes.body.items
-      .filter((j) => (j.metadata?.name ?? "").startsWith(jobNamePrefix))
+      .slice()
       .sort(
         (a, b) =>
           new Date(b.metadata?.creationTimestamp ?? 0).getTime() -
@@ -174,7 +241,16 @@ export async function latestJobLogs(
       undefined,
       sel,
     );
-    const pod = podsRes.body.items[0];
+    // Newest attempt, not the API server's (name-sorted) list order: a Job with
+    // backoffLimit > 0 that failed once has two pods, and the older one's logs
+    // are the ones the operator has already seen fail.
+    const pod = podsRes.body.items
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.metadata?.creationTimestamp ?? 0).getTime() -
+          new Date(a.metadata?.creationTimestamp ?? 0).getTime(),
+      )[0];
     if (!pod?.metadata?.name) return undefined;
 
     const logsRes = await core().readNamespacedPodLog(

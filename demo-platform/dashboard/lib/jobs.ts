@@ -2,7 +2,11 @@ import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
 
-export type RunnerAction = "deploy" | "teardown" | "inject";
+export type RunnerAction = "deploy" | "teardown" | "inject" | "seed";
+
+// The loader Job OP=seed stamps into the tenant's own namespace. It is the
+// long-running half of a seed; the runner Job that creates it exits in seconds.
+export const SEED_LOADER_JOB = "retail-drive-seed-loader";
 
 export interface RunnerJobInput {
   action: RunnerAction;
@@ -13,6 +17,14 @@ export interface RunnerJobInput {
   ttl?: string;
   scenario?: string;
   hostSuffix?: string;
+  // Seed only: breadth multiplier and department shard for the retail-drive
+  // loader the runner stamps into the tenant's namespace.
+  scale?: string;
+  departments?: string;
+  // Seed only: restart a loader that is still running (or one the API server
+  // will not talk about) instead of refusing. The runner's own guard, reached
+  // from the dashboard so recovering from a wedged loader does not need kubectl.
+  force?: boolean;
   // Deploy into a tenant that is already up (continuous delivery) rather than
   // standing a new one up. Only changes how the runner records the operation.
   redeploy?: boolean;
@@ -28,14 +40,16 @@ const RUNNER_SECRET_ENV_KEYS = [
   "GITHUB_TOKEN",
 ] as const;
 
+// Credentials for the seeded drive account, given only to the op that needs
+// them rather than to every runner Job. Optional like the rest: without them
+// the runner requires a `retail-drive-seed` Secret to already exist in the
+// tenant namespace.
+const SEED_SECRET_ENV_KEYS = ["DRIVE_EMAIL", "DRIVE_PASSWORD"] as const;
+
 function jobName(action: RunnerAction, id: string, epoch: number): string {
   // Contract: deploy-<id>-<epoch> / teardown-<id>-<epoch>; inject uses inject-bug.
   const prefix = action === "inject" ? "inject-bug" : action;
   return `${prefix}-${id}-${epoch}`;
-}
-
-export function jobNamePrefixes(id: string): string[] {
-  return [`deploy-${id}-`, `teardown-${id}-`, `inject-bug-${id}-`];
 }
 
 function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
@@ -58,10 +72,17 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   if (input.imageTag) plain.push({ name: "IMAGE_TAG", value: input.imageTag });
   if (input.ttl) plain.push({ name: "TTL", value: input.ttl });
   if (input.scenario) plain.push({ name: "SCENARIO", value: input.scenario });
+  if (input.scale) plain.push({ name: "SCALE", value: input.scale });
+  if (input.departments) plain.push({ name: "DEPARTMENTS", value: input.departments });
   if (input.redeploy) plain.push({ name: "REDEPLOY", value: "true" });
+  if (input.force) plain.push({ name: "SEED_FORCE", value: "true" });
 
   // Secrets injected by reference — values never appear in the Job manifest.
-  const secretEnv: k8s.V1EnvVar[] = RUNNER_SECRET_ENV_KEYS.map((key) => ({
+  const keys: readonly string[] =
+    input.action === "seed"
+      ? [...RUNNER_SECRET_ENV_KEYS, ...SEED_SECRET_ENV_KEYS]
+      : RUNNER_SECRET_ENV_KEYS;
+  const secretEnv: k8s.V1EnvVar[] = keys.map((key) => ({
     name: key,
     valueFrom: {
       secretKeyRef: { name: env.runnerSecretName, key, optional: true },
@@ -90,7 +111,11 @@ export function buildRunnerJob(input: RunnerJobInput, epoch: number): k8s.V1Job 
       },
     },
     spec: {
-      backoffLimit: 1,
+      // A seed runner is not retried: it deletes the tenant's loader Job before
+      // applying the new one, so a retry after the loader was already dispatched
+      // restarts a run that is under way. Every other action is idempotent
+      // enough that one retry is worth having.
+      backoffLimit: input.action === "seed" ? 0 : 1,
       ttlSecondsAfterFinished: 3600,
       template: {
         metadata: {
