@@ -36,7 +36,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   ref: Ref<FileUploadDropzoneHandle>,
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
-  const [showChaosBanner, setShowChaosBanner] = useState(false);
+  const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -48,11 +48,15 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   useEffect(() => {
     if (uploadingFiles.length === 0) {
       setDismissing(false);
-      setShowChaosBanner(false);
+      setShowUploadErrorBanner(false);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
     const hasUploading = uploadingFiles.some((f) => f.status === "uploading");
+
+    if (!uploadingFiles.some((f) => f.status === "error")) {
+      setShowUploadErrorBanner(false);
+    }
 
     if (allDone && !hasUploading) {
       setDismissing(true);
@@ -78,7 +82,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
-      setShowChaosBanner(false);
+      setShowUploadErrorBanner(false);
       const abortController = new AbortController();
 
       setUploadingFiles((prev) =>
@@ -112,7 +116,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
-            setShowChaosBanner(true);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
@@ -120,6 +123,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   : f,
               ),
             );
+            setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
           }
         });
@@ -164,12 +168,12 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
-      {showChaosBanner && (
+      {showUploadErrorBanner && (
         <ChaosErrorBanner
           className="mb-4"
           title="File upload failed"
-          message="Your files could not be uploaded. The storage service returned an error (S3 write failed). Please try again later."
-          onDismiss={() => setShowChaosBanner(false)}
+          message="One or more files could not be uploaded. Please try again."
+          onDismiss={() => setShowUploadErrorBanner(false)}
         />
       )}
       <div
