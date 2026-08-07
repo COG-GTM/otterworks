@@ -49,10 +49,13 @@ jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
-      # Check out the commit that was just merged to main, authenticated with
-      # the PAT so the push below is attributed to it (see note above).
+      # Authenticated with the PAT so the push below is attributed to it (see
+      # note above). `ref` pins the checkout to main so that a workflow_dispatch
+      # run started from some other branch still mirrors main rather than
+      # publishing that branch to the tenant.
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.MIRROR_TOKEN }}
 
@@ -65,14 +68,25 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           main_sha="$(git rev-parse HEAD)"
-          git fetch --no-tags origin +refs/heads/demo-coggtm:refs/remotes/origin/demo-coggtm || true
-          old="$(git rev-parse --verify -q refs/remotes/origin/demo-coggtm || true)"
 
-          # First run: the branch does not exist yet, so main is the whole of it.
-          if [ -z "${old}" ]; then
+          # ls-remote separates "the branch is not there" (exit 2, the first-run
+          # path) from a fetch that simply failed, which must not be mistaken for
+          # an empty branch.
+          set +e
+          git ls-remote --exit-code --heads origin demo-coggtm >/dev/null
+          rc=$?
+          set -e
+          if [ "${rc}" -eq 2 ]; then
+            echo "::notice::demo-coggtm does not exist yet; creating it from main"
             git push origin "${main_sha}:refs/heads/demo-coggtm"
             exit 0
+          elif [ "${rc}" -ne 0 ]; then
+            echo "::error::Could not read demo-coggtm from origin (git ls-remote exit ${rc})"
+            exit 1
           fi
+
+          git fetch --no-tags origin +refs/heads/demo-coggtm:refs/remotes/origin/demo-coggtm
+          old="$(git rev-parse refs/remotes/origin/demo-coggtm)"
 
           # The way out of a wedged replay: back to plain mirroring, dropping
           # whatever made this tenant a variant.
