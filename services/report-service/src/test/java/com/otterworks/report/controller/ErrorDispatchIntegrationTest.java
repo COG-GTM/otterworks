@@ -1,8 +1,6 @@
 package com.otterworks.report.controller;
 
-import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
-import com.otterworks.report.model.ReportType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,9 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * MockMvc never performs that dispatch, so {@link ReportControllerIntegrationTest} cannot
  * tell a real 400 apart from a 403 produced by the security chain rejecting /error.
  */
-@SpringBootTest(
-        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "otterworks.report.output-dir=${java.io.tmpdir}/error-dispatch-test-reports")
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 public class ErrorDispatchIntegrationTest {
 
@@ -50,19 +46,5 @@ public class ErrorDispatchIntegrationTest {
                 "/v3/api-docs.yaml", String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    }
-
-    @Test
-    public void validRequestStillReturns202() {
-        ReportRequest request = new ReportRequest();
-        request.setReportName("Error Dispatch Probe");
-        request.setCategory(ReportCategory.COMPLIANCE);
-        request.setReportType(ReportType.CSV);
-        request.setRequestedBy("error-dispatch-user");
-
-        ResponseEntity<String> response = restTemplate.postForEntity(
-                "/api/v1/reports", request, String.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
     }
 }

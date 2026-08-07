@@ -227,7 +227,7 @@ security-scan: ## Run security scans across all services
 	@echo "=== Report Service (skipped - legacy) ==="
 
 test-report: ## Run report-service tests only
-	cd services/report-service && mvn test
+	cd services/report-service && mvn -B verify
 
 build-report: ## Build report-service
 	cd services/report-service && mvn package -DskipTests
