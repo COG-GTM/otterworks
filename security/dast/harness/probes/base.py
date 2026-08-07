@@ -35,21 +35,23 @@ SECRET_FIELDS = (
     "apikey",
     "api_key",
 )
+#: The closing quote is optional so a value cut off by truncation is still caught.
 _SECRET_JSON = re.compile(
-    rf'("(?:{"|".join(SECRET_FIELDS)})"\s*:\s*")[^"]*"',
+    rf'("(?:{"|".join(SECRET_FIELDS)})"\s*:\s*")[^"]*("|$)',
     re.IGNORECASE,
 )
 _SECRET_QUERY = re.compile(
     rf"((?:{'|'.join(SECRET_FIELDS)})=)[^&\s]+",
     re.IGNORECASE,
 )
-#: A bare JWT, in case it appears under a field name we do not know about.
-_JWT = re.compile(r"\bey[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*")
+#: A bare JWT, in case it appears under a field name we do not know about. The
+#: trailing segments are optional so a token cut off mid-string is still caught.
+_JWT = re.compile(r"\bey[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]*){0,2}")
 
 
 def redact(text: str) -> str:
     """Strip credential material from anything destined for a report."""
-    text = _SECRET_JSON.sub('\\1[REDACTED]"', text)
+    text = _SECRET_JSON.sub("\\1[REDACTED]\\2", text)
     text = _SECRET_QUERY.sub(r"\1[REDACTED]", text)
     return _JWT.sub("[REDACTED-JWT]", text)
 
@@ -97,7 +99,9 @@ class Evidence:
         return cls(
             request=f"{response.request.method} {response.request.url}",
             response_status=response.status_code,
-            response_excerpt=response.text[:limit],
+            # Redact before truncating: a cut halfway through a token would
+            # otherwise leave a fragment that matches no pattern.
+            response_excerpt=redact(response.text)[:limit],
             note=note,
         )
 

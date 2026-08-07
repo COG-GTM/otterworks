@@ -101,6 +101,10 @@ def verbose_errors(ctx: ScanContext) -> Result:
         ("GET", "/api/v1/search/?page=notanumber", None),
     ]
     evidence: list[Evidence] = []
+    # Only a response the owning service produced says anything about its error
+    # handling: a gateway 5xx or a blanket refusal never exercised the handler.
+    reached = 0
+    unavailable: list[str] = []
     for method, path, body in cases:
         response = ctx.request(method, path, identity=ctx.attacker, json=body)
         lowered = response.text.lower()
@@ -112,6 +116,17 @@ def verbose_errors(ctx: ScanContext) -> Result:
                 f"{method} {path} leaked internal detail ({hit!r})",
                 evidence,
             )
+        if response.status_code >= 500 or response.status_code in (401, 403, 404):
+            unavailable.append(f"{method} {path} -> {response.status_code}")
+        else:
+            reached += 1
+
+    if not reached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "no malformed request reached the owning service: every case was refused or "
+            f"failed ({', '.join(unavailable)})",
+        )
     return self.result(Verdict.SECURE, "malformed input produced no internal detail")
 
 
