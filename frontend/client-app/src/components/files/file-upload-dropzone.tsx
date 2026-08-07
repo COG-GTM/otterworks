@@ -4,6 +4,7 @@ import { useDropzone } from "react-dropzone";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
+import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
 
 interface FileUploadDropzoneProps {
   uploadFile: (
@@ -35,6 +36,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   ref: Ref<FileUploadDropzoneHandle>,
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
+  const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -46,6 +48,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   useEffect(() => {
     if (uploadingFiles.length === 0) {
       setDismissing(false);
+      setShowUploadErrorBanner(false);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
@@ -115,6 +118,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   : f,
               ),
             );
+            setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
           }
         });
@@ -159,6 +163,14 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
+      {showUploadErrorBanner && (
+        <ChaosErrorBanner
+          className="mb-4"
+          title="File upload failed"
+          message="Your files could not be uploaded. The storage service returned an error. Please try again later."
+          onDismiss={() => setShowUploadErrorBanner(false)}
+        />
+      )}
       <div
         {...getRootProps()}
         className={cn(
