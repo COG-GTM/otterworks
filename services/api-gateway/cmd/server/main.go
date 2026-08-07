@@ -20,7 +20,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/config"
-	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/devin"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/health"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/proxy"
@@ -92,16 +91,11 @@ func main() {
 		Secret:              cfg.JWTSecret,
 		PublicPath:          middleware.DefaultPublicPaths(),
 		PrefixPath:          middleware.DefaultPrefixPaths(),
-		ProtectedPrefixPath: append(routePrefixes(routes), "/api/v1/incidents"),
+		ProtectedPrefixPath: routePrefixes(routes),
 	}))
 
 	// Health check
 	r.Get("/health", health.Handler())
-
-	// Upload-failure incident relay: opens a Devin triage session server-side
-	// so the Devin API key never reaches the browser.
-	devinRelay := devin.NewRelay(cfg.DevinAPIKey, cfg.DevinTriageCooldown, logger)
-	r.Post("/api/v1/incidents/upload-failure", devinRelay.UploadFailureHandler())
 
 	// Prometheus metrics
 	r.Handle("/metrics", promhttp.Handler())

@@ -32,7 +32,7 @@
 #   ACTOR         audit actor label                       (default runner)
 #
 # Secrets (from Kubernetes Secret refs in the Job spec — env only, NEVER argv):
-#   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE, DEVIN_API_KEY (optional)
+#   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE
 #
 # This script never echoes secret values and never passes them on a command line;
 # the underlying scripts read them straight from the environment.

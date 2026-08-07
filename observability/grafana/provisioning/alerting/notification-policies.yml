@@ -9,3 +9,13 @@ policies:
     repeat_interval: 4h
     matchers:
       - team=otterworks
+    routes:
+      # Route the file-upload failure alert to the Devin session webhook in
+      # addition to the default admin-service ingest (continue: true).
+      - receiver: devin-session-receiver
+        matchers:
+          - alertname=FileUploadHighErrorRate
+        continue: true
+        group_wait: 10s
+        group_interval: 30s
+        repeat_interval: 4h

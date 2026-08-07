@@ -303,12 +303,7 @@ build_helm_args() {
   fi
 
   case "$service" in
-    api-gateway)
-      # Devin triage relay (demo-testfailupload): key comes from the platform
-      # runner Secret (demo-ops-dashboard) via the runner Job env; optional.
-      if [ -n "${DEVIN_API_KEY:-}" ]; then
-        add_secret DEVIN_API_KEY "${DEVIN_API_KEY}"
-      fi ;;
+    api-gateway) : ;;
     auth-service)
       EXTRA_ARGS+=(--set-string "config.SPRING_PROFILES_ACTIVE=prod")
       EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${T_DB_NAME}")
