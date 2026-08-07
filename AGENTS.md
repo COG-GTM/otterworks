@@ -11,9 +11,11 @@ Guidance for AI agents (and humans) working in this repo.
   defects to fix.
   - Do **not** "fix" a planted bug to make the app pass — that erases the lab. If you're
     unsure whether something is planted or a genuine infra gap, ask before changing it.
-  - Known planted bug: `services/admin-service/config/environments/production.rb`
-    (`ActiveSupport::TaggedLogging.logger($stdout)` is invalid on Rails 7.1 → admin-service
-    crash-loops on boot). Leave it in place on the golden app.
+  - Retired planted bug (this fork only): `services/admin-service/config/environments/production.rb`
+    used `ActiveSupport::TaggedLogging.logger($stdout)`, invalid on Rails 7.1 → admin-service
+    crash-looped on boot. It has been fixed on this fork so admin-service runs (it hosts the
+    Devin incident-triage path); the bug remains planted on the upstream golden app
+    (`Cognition-Partner-Workshops/otterworks`).
 - Genuine infrastructure/wiring gaps (missing tables, unwired config/secrets, unreachable
   backing services) **should** be fixed so the golden app is otherwise green.
 
