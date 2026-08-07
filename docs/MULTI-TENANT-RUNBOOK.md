@@ -90,8 +90,8 @@ isolation for all Postgres-backed services today.
 ./scripts/inject-bug.sh a01 reset                 # clear a01's chaos flags
 ```
 
-Mechanisms: `chaos` (Redis flag, instant, auto-expiring), `config` (helm upgrade
-+ rollout restart), `image` (variant image tag for one service). Fixing a bug
+Mechanisms: `chaos` (Redis flag, instant, auto-expiring), `config` (helm upgrade;
+the checksum annotation rolls the pods), `image` (variant image tag for one service). Fixing a bug
 mid-demo is the same lever scoped to the one namespace (seconds).
 
 ## Cost controls
