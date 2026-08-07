@@ -43,10 +43,6 @@ class ScanContext:
     brute_force_attempts: int = 12
     attacker: Identity = field(init=False)
     victim: Identity = field(init=False)
-    #: True when the API accepted a client-supplied owner_id on create. Probes
-    #: use this to tell "authorization works" apart from "the create path needs
-    #: the caller to name its own owner".
-    accepts_client_owner_id: bool = field(default=False, init=False)
     _victim_document: dict[str, Any] | None = field(default=None, init=False)
     _victim_document_attempted: bool = field(default=False, init=False)
 
@@ -66,7 +62,17 @@ class ScanContext:
 
     @property
     def victim_marker(self) -> str:
+        """A string that exists only inside the victim's own document.
+
+        Any probe that plants content elsewhere must use `plant_marker`, or the
+        search probe will read its own plant back as a cross-tenant leak.
+        """
         return f"otterworks-dast-marker-{self.run_id}"
+
+    @property
+    def plant_marker(self) -> str:
+        """A string for content probes write themselves, distinct from the victim's."""
+        return f"otterworks-dast-plant-{self.run_id}"
 
     def wait_for_target(self, timeout: float = 60.0) -> None:
         deadline = time.monotonic() + timeout
@@ -122,9 +128,8 @@ class ScanContext:
         """Create a document, falling back to naming the owner explicitly.
 
         Some deployments reject a create whose owner cannot be derived from the
-        token and ask the caller to supply owner_id instead. The fallback keeps
-        the suite usable there, and records the fact for the mass-assignment
-        probe to assert on.
+        token and ask the caller to supply owner_id instead; the fallback keeps
+        the suite usable there.
 
         Returns the raw response so callers can tell an explicit refusal apart
         from a backend that is simply broken.
@@ -136,8 +141,6 @@ class ScanContext:
         if response.status_code in (401, 403) and not owner_id:
             body["owner_id"] = identity.user_id
             response = self.request("POST", "/api/v1/documents/", identity=identity, json=body)
-            if response.status_code in (200, 201):
-                self.accepts_client_owner_id = True
         return response
 
     def create_document(

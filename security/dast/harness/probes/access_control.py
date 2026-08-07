@@ -82,8 +82,9 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
     if victim_doc is None:
         return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned document")
 
+    path = f"/api/v1/documents/{victim_doc['id']}"
     response = ctx.get(
-        f"/api/v1/documents/{victim_doc['id']}",
+        path,
         identity=ctx.attacker,
         headers={"X-User-ID": ctx.victim.user_id},
     )
@@ -100,9 +101,19 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
             "spoof attempt proves nothing",
             [Evidence.from_response(response)],
         )
+    # Control request: a route that refuses the owner too proves nothing about
+    # whether the spoofed header would have been honoured.
+    if not ctx.owner_can_read(path, ctx.victim):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the owner is also refused (spoof attempt got {response.status_code}); the read "
+            "path rejects every caller, so the header cannot be assessed",
+            [Evidence.from_response(response)],
+        )
     return self.result(
         Verdict.SECURE,
-        f"spoofed identity header did not grant access (status {response.status_code})",
+        f"the owner can read the document but the spoofed identity header could not "
+        f"(status {response.status_code})",
         [Evidence.from_response(response)],
     )
 
@@ -126,7 +137,9 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
     response = ctx.create_document_response(
         ctx.attacker,
         title=f"planted-by-attacker-{ctx.run_id}",
-        content=f"planted {ctx.victim_marker}",
+        # Deliberately not ctx.victim_marker: that string belongs to the victim's
+        # own document and the search probe treats any sighting of it as a leak.
+        content=f"planted {ctx.plant_marker}",
         owner_id=ctx.victim.user_id,
     )
     if response.status_code not in (200, 201):
@@ -137,9 +150,25 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
                 "the refusal is not evidence of an ownership check",
                 [Evidence.from_response(response)],
             )
+        # Control request: the attacker creating in its own account must work,
+        # or the create path is refusing everyone and proves nothing.
+        control = ctx.create_document_response(
+            ctx.attacker,
+            title=f"control-{ctx.run_id}",
+            content=f"control {ctx.plant_marker}",
+            owner_id=ctx.attacker.user_id,
+        )
+        if control.status_code not in (200, 201):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the attacker's own create is also refused ({control.status_code}); the create "
+                "path rejects every caller, so ownership handling cannot be assessed",
+                [Evidence.from_response(response), Evidence.from_response(control)],
+            )
         return self.result(
             Verdict.SECURE,
-            f"the API refused a create naming another user as owner ({response.status_code})",
+            f"the attacker can create in its own account but naming another user as owner was "
+            f"refused ({response.status_code})",
             [Evidence.from_response(response)],
         )
     try:
