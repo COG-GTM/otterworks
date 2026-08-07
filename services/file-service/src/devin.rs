@@ -7,6 +7,7 @@
 //!
 //! With `DEVIN_API_KEY` / `DEVIN_ORG_ID` unset the whole module is a no-op.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -14,6 +15,8 @@ use serde::Deserialize;
 const API_HOST: &str = "https://api.devin.ai";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+static HTTP_CLIENT: OnceLock<Option<reqwest::Client>> = OnceLock::new();
 
 /// An upload failure worth investigating.
 #[derive(Clone, Debug)]
@@ -32,7 +35,7 @@ pub struct DevinSession {
     pub url: Option<String>,
 }
 
-/// Resolve the API credentials, warning once when the client is disabled.
+/// Resolve the API credentials, warning when the client is disabled.
 fn resolve_credentials(
     api_key: Option<String>,
     org_id: Option<String>,
@@ -59,8 +62,24 @@ fn credentials_from_env() -> Option<(String, String)> {
 /// is unconfigured or the API call fails; failures are logged, never propagated.
 pub async fn create_session(incident: &UploadFailureIncident) -> Option<DevinSession> {
     let (api_key, org_id) = credentials_from_env()?;
-    let api_host = std::env::var("DEVIN_API_HOST").unwrap_or_else(|_| API_HOST.into());
-    post_session(&api_host, &api_key, &org_id, incident).await
+    post_session(API_HOST, &api_key, &org_id, incident).await
+}
+
+/// The shared connection pool, built once. `None` if the TLS backend failed to
+/// initialise, in which case the client stays disabled for the process's life.
+fn http_client() -> Option<&'static reqwest::Client> {
+    HTTP_CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .timeout(REQUEST_TIMEOUT)
+                .build()
+                .inspect_err(|e| {
+                    tracing::error!(error = %e, "Devin session creation failed: HTTP client build error");
+                })
+                .ok()
+        })
+        .as_ref()
 }
 
 async fn post_session(
@@ -69,18 +88,7 @@ async fn post_session(
     org_id: &str,
     incident: &UploadFailureIncident,
 ) -> Option<DevinSession> {
-    let client = match reqwest::Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .timeout(REQUEST_TIMEOUT)
-        .build()
-    {
-        Ok(client) => client,
-        Err(e) => {
-            tracing::error!(error = %e, "Devin session creation failed: HTTP client build error");
-            return None;
-        }
-    };
-
+    let client = http_client()?;
     let url = format!("{api_host}/v3/organizations/{org_id}/sessions");
     let response = match client
         .post(&url)
@@ -256,19 +264,19 @@ mod tests {
     }
 
     /// The no-op path: an unconfigured service must not attempt an API call.
+    /// Serialized against any other test that touches the same variables.
     #[actix_web::test]
     async fn create_session_is_a_noop_without_credentials() {
+        static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+        let _guard = ENV_LOCK.lock().await;
+
         let previous_key = std::env::var("DEVIN_API_KEY").ok();
         let previous_org = std::env::var("DEVIN_ORG_ID").ok();
         std::env::remove_var("DEVIN_API_KEY");
         std::env::remove_var("DEVIN_ORG_ID");
-        // Point at an unroutable host so a regression that skips the credential
-        // check fails here instead of reaching the real API.
-        std::env::set_var("DEVIN_API_HOST", "http://127.0.0.1:1");
 
         let session = create_session(&incident()).await;
 
-        std::env::remove_var("DEVIN_API_HOST");
         if let Some(key) = previous_key {
             std::env::set_var("DEVIN_API_KEY", key);
         }
