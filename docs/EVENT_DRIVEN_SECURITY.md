@@ -153,7 +153,7 @@ Required GitHub Actions secrets:
 | analytics-service | Scala 3.4 | `build.sbt` | sbt dependencies |
 | admin-service | Ruby 3.3 | `Gemfile` | Bundler gems |
 | audit-service | C# 12 | `AuditService.csproj` | NuGet packages |
-| report-service | Java 17 | `pom.xml` | **Excluded** (exclusion pending removal) |
+| report-service | Java 17 | `pom.xml` | **Excluded** (until iText/POI/Guava/Commons IO are bumped) |
 
 ## Extending to Snyk
 

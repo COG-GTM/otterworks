@@ -33,7 +33,7 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 
 | Job | Tool | Purpose |
 |-----|------|---------|
-| `dependency-scan` | Trivy v0.36.0 | Scans filesystem for CRITICAL/HIGH CVEs. Skips `report-service` (legacy). Uses `.trivyignore` for acknowledged CVEs. |
+| `dependency-scan` | Trivy v0.36.0 | Scans filesystem for CRITICAL/HIGH CVEs. Skips `report-service` (pending its iText/POI/Guava/Commons IO bumps). Uses `.trivyignore` for acknowledged CVEs. |
 | `secret-scan` | Gitleaks v8.21.2 | Full-history secret detection with redaction. |
 | `sast` | Semgrep | Static analysis with OWASP Top 10, default, and security-audit rulesets. |
 
