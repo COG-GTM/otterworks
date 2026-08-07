@@ -63,7 +63,9 @@ scenarios:
       uploads keep returning 5xx across Redis restarts and TTL expiry (the chaos
       flag is transient). Downloads, listing, folders and sharing are unaffected,
       and no metadata row is written for the failed upload. Requires a rollout
-      restart to take effect; revert by re-running deploy-tenant.sh <ID>.
+      restart to take effect, and another one to revert (the deployment has no
+      ConfigMap checksum annotation, so resetting the value alone leaves the
+      running pod with the stale env).
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
