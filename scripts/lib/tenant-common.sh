@@ -323,7 +323,14 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=${DDB_VERSIONS}")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=${DDB_SHARES}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
-      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}") ;;
+      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}")
+      # Upload-failure triage. Opt-in: only wired when the deploying shell has
+      # both set, since a tenant running an upload-failure lab would then open a
+      # real Devin session on every failed upload.
+      if [ -n "${DEVIN_API_KEY:-}" ] && [ -n "${DEVIN_ORG_ID:-}" ]; then
+        add_secret DEVIN_API_KEY "${DEVIN_API_KEY}"
+        add_secret DEVIN_ORG_ID "${DEVIN_ORG_ID}"
+      fi ;;
     document-service)
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_AWS_REGION=${AWS_REGION}")
