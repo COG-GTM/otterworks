@@ -123,10 +123,18 @@ fi
 existing_tenant_secret() {
   local b64 errf
   errf="$(mktemp)"
-  if b64="$(kubectl -n "${NS}" get secret "$1" -o "jsonpath={.data.$2}" 2>"${errf}")"; then
+  # --ignore-not-found: a genuinely absent secret exits 0 with empty output,
+  # so auth/RBAC/API failures are never mistaken for "no secret yet".
+  if b64="$(kubectl -n "${NS}" get secret "$1" --ignore-not-found -o "jsonpath={.data.$2}" 2>"${errf}")"; then
     rm -f "${errf}"
-    printf '%s' "${b64}" | base64 -d 2>/dev/null || true
-  elif grep -qi "notfound\|not found" "${errf}"; then
+    [ -n "${b64}" ] || return 0
+    printf '%s' "${b64}" | base64 -d 2>/dev/null || {
+      err "cannot decode existing secret $1/$2 in ${NS}"
+      err "aborting rather than silently rotating this tenant's keys"
+      exit 1
+    }
+  elif grep -q "namespaces \"${NS}\" not found" "${errf}"; then
+    # First deploy: the namespace itself does not exist yet.
     rm -f "${errf}"
     return 0
   else
