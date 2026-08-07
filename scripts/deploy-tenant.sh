@@ -20,8 +20,9 @@
 #       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
 #
-# Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Required env: AWS creds (exported), DB_PASSWORD. JWT_SECRET / SECRET_KEY_BASE
+#   are optional: if unset, the tenant's already-deployed value is reused, and a
+#   fresh one is generated only on a genuine first deploy.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
