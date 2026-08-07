@@ -108,7 +108,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
-        .catch((err: unknown) => {
+        .catch(() => {
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {

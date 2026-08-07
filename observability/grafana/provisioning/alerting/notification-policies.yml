@@ -10,12 +10,18 @@ policies:
     matchers:
       - team=otterworks
     routes:
-      # Route the file-upload failure alert to the Devin session webhook in
-      # addition to the default admin-service ingest (continue: true).
+      # Route the file-upload failure alert to the Devin session webhook. The
+      # parent receiver is not used once a child route matches, so a catch-all
+      # sibling route (reached via continue: true) keeps every alert flowing to
+      # the default admin-service ingest as well.
       - receiver: devin-session-receiver
         matchers:
           - alertname=FileUploadHighErrorRate
         continue: true
+        group_wait: 10s
+        group_interval: 30s
+        repeat_interval: 4h
+      - receiver: Default
         group_wait: 10s
         group_interval: 30s
         repeat_interval: 4h
