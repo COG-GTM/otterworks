@@ -3,6 +3,7 @@
 use actix_web::{middleware as actix_middleware, web, App, HttpServer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod alerts;
 mod config;
 mod errors;
 mod events;

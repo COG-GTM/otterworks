@@ -59,13 +59,17 @@ module Api
           return nil unless status == 'firing'
           return nil if affected_service.blank?
 
-          # Deduplicate: skip if an active incident for this service already exists
-          existing = Incident.where(affected_service: affected_service)
-                             .where(status: %w[open investigating])
-                             .first
-          if existing
-            Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
-            return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
+          # Deduplicate: skip if an active incident for this service already
+          # exists — unless the alert opts out with a `dedup=false` label, in
+          # which case every firing alert opens its own incident.
+          if labels[:dedup].to_s != 'false'
+            existing = Incident.where(affected_service: affected_service)
+                               .where(status: %w[open investigating])
+                               .first
+            if existing
+              Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
+              return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
+            end
           end
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
