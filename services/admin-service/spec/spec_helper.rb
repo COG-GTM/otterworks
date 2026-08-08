@@ -3,6 +3,12 @@ SimpleCov.start 'rails' do
   add_filter '/spec/'
   add_filter '/config/'
   add_filter '/db/'
+
+  enable_coverage :branch
+
+  # Ratchet: pinned to the coverage this suite actually achieves (line 100.0%,
+  # branch 99.1%). Never lower it.
+  minimum_coverage line: 100, branch: 99
 end
 
 RSpec.configure do |config|
