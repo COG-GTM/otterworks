@@ -66,7 +66,7 @@ module Api
             return render json: { error: 'Provide at least one of: enabled, webhook_url' }, status: :bad_request
           end
 
-          unless webhook_url.empty? || webhook_url.start_with?('https://hooks.slack.com/')
+          unless webhook_url.empty? || valid_slack_webhook_url?(webhook_url)
             return render json: { error: 'webhook_url must be an https://hooks.slack.com/ URL' },
                           status: :bad_request
           end
@@ -87,6 +87,13 @@ module Api
         end
 
         private
+
+        def valid_slack_webhook_url?(url)
+          uri = URI.parse(url)
+          uri.scheme == 'https' && uri.host == 'hooks.slack.com' && uri.userinfo.nil?
+        rescue URI::InvalidURIError
+          false
+        end
 
         def slack_status
           {
