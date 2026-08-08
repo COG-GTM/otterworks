@@ -80,6 +80,16 @@ SEVERITY_ORDER = {
 }
 
 
+def unavailable(response: httpx.Response) -> bool:
+    """Whether the response came from something other than the control under test.
+
+    A 5xx is a broken or unreachable backend and a 429 is the limiter, not a
+    decision about the request. Either way nothing was assessed, so a probe must
+    not count it towards a pass.
+    """
+    return response.status_code >= 500 or response.status_code == 429
+
+
 @dataclass
 class Evidence:
     """The request/response pair that demonstrates the verdict."""

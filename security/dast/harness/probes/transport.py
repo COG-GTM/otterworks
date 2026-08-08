@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from httpx import Response
 
-from .base import Evidence, Result, Severity, Verdict, probe
+from .base import Evidence, Result, Severity, Verdict, probe, unavailable
 from .context import ScanContext
 
 REQUIRED_HEADERS = {
@@ -181,7 +181,7 @@ def exposed_telemetry(ctx: ScanContext) -> Result:
     self = exposed_telemetry.probe
     evidence: list[Evidence] = []
     exposed: list[str] = []
-    unavailable: list[str] = []
+    unreached: list[str] = []
     for index, (path, marker) in enumerate(
         (
             ("/metrics", "go_goroutines"),
@@ -194,8 +194,8 @@ def exposed_telemetry(ctx: ScanContext) -> Result:
         if response.status_code == 200 and marker in response.text:
             exposed.append(path)
             evidence.append(Evidence.from_response(response, note=path))
-        elif response.status_code == 429 or response.status_code >= 500:
-            unavailable.append(f"{path} -> {response.status_code}")
+        elif unavailable(response):
+            unreached.append(f"{path} -> {response.status_code}")
             evidence.append(Evidence.from_response(response, note=path))
     if exposed:
         return self.result(
@@ -203,10 +203,10 @@ def exposed_telemetry(ctx: ScanContext) -> Result:
             f"unauthenticated telemetry at {', '.join(exposed)}",
             evidence,
         )
-    if unavailable:
+    if unreached:
         return self.result(
             Verdict.INCONCLUSIVE,
-            f"throttled or erroring, so exposure cannot be assessed: {', '.join(unavailable)}",
+            f"throttled or erroring, so exposure cannot be assessed: {', '.join(unreached)}",
             evidence,
         )
     return self.result(Verdict.SECURE, "no unauthenticated telemetry endpoints found")

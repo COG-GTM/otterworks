@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .base import Evidence, Result, Severity, Verdict, probe
+from .base import Evidence, Result, Severity, Verdict, probe, unavailable
 from .context import ScanContext
 
 SQL_ERROR_SIGNATURES = (
@@ -51,7 +51,7 @@ def sqli_error_based(ctx: ScanContext) -> Result:
     # A payload that never reached the query layer cannot surface an error from it,
     # so track whether any endpoint actually processed one.
     reached: list[str] = []
-    unavailable: list[str] = []
+    unreached: list[str] = []
     for path, param in targets:
         for payload in SQLI_PAYLOADS:
             response = ctx.get(path, params={param: payload}, identity=ctx.attacker)
@@ -66,16 +66,16 @@ def sqli_error_based(ctx: ScanContext) -> Result:
                     f"{path} leaked a SQL error for {param}={payload!r}",
                     evidence,
                 )
-            if response.status_code >= 500 or response.status_code in (401, 403):
-                unavailable.append(f"{path} -> {response.status_code}")
+            if unavailable(response) or response.status_code in (401, 403):
+                unreached.append(f"{path} -> {response.status_code}")
             else:
                 reached.append(path)
 
     if not reached:
         return self.result(
             Verdict.INCONCLUSIVE,
-            "no injected parameter reached a query: every request was refused or failed "
-            f"({', '.join(sorted(set(unavailable)))})",
+            "no injected parameter reached a query: every request was refused, throttled or "
+            f"failed ({', '.join(sorted(set(unreached)))})",
         )
     return self.result(Verdict.SECURE, "no SQL errors surfaced from injected parameters")
 
@@ -104,7 +104,7 @@ def verbose_errors(ctx: ScanContext) -> Result:
     # Only a response the owning service produced says anything about its error
     # handling: a gateway 5xx or a blanket refusal never exercised the handler.
     reached = 0
-    unavailable: list[str] = []
+    unreached: list[str] = []
     for method, path, body in cases:
         response = ctx.request(method, path, identity=ctx.attacker, json=body)
         lowered = response.text.lower()
@@ -116,16 +116,16 @@ def verbose_errors(ctx: ScanContext) -> Result:
                 f"{method} {path} leaked internal detail ({hit!r})",
                 evidence,
             )
-        if response.status_code >= 500 or response.status_code in (401, 403, 404):
-            unavailable.append(f"{method} {path} -> {response.status_code}")
+        if unavailable(response) or response.status_code in (401, 403, 404):
+            unreached.append(f"{method} {path} -> {response.status_code}")
         else:
             reached += 1
 
     if not reached:
         return self.result(
             Verdict.INCONCLUSIVE,
-            "no malformed request reached the owning service: every case was refused or "
-            f"failed ({', '.join(unavailable)})",
+            "no malformed request reached the owning service: every case was refused, "
+            f"throttled or failed ({', '.join(unreached)})",
         )
     return self.result(Verdict.SECURE, "malformed input produced no internal detail")
 

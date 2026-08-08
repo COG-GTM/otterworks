@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 
-from .base import Evidence, Result, Severity, Verdict, probe
+from .base import Evidence, Result, Severity, Verdict, probe, unavailable
 from .context import ScanContext
 
 
@@ -302,14 +302,15 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
     ]
     evidence: list[Evidence] = []
     exposed: list[str] = []
-    unavailable: list[str] = []
+    unreached: list[str] = []
     for path in targets:
         response = ctx.get(path)
-        # Any 5xx is the gateway failing to reach the backend (502/504) or an open
-        # circuit breaker (503) — not the route deciding to refuse an anonymous
-        # caller. admin-service crash-loops by design here, so this matters.
-        if response.status_code >= 500:
-            unavailable.append(f"{path} -> {response.status_code}")
+        # A 5xx is the gateway failing to reach the backend (502/504) or an open
+        # circuit breaker (503), and a 429 is the limiter — neither is the route
+        # deciding to refuse an anonymous caller. admin-service crash-loops by
+        # design here, so this matters.
+        if unavailable(response):
+            unreached.append(f"{path} -> {response.status_code}")
             continue
         evidence.append(Evidence.from_response(response, note=path))
         if response.status_code < 400:
@@ -324,7 +325,7 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
         return self.result(
             Verdict.INCONCLUSIVE,
             "no administrative backend produced an auth verdict; every route was "
-            f"unavailable: {', '.join(unavailable)}",
+            f"unavailable or throttled: {', '.join(unreached)}",
         )
     return self.result(Verdict.SECURE, "all administrative routes required a token", evidence)
 
