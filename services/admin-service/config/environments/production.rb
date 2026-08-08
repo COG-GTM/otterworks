@@ -4,7 +4,10 @@ Rails.application.configure do
   config.enable_reloading = false
   config.eager_load = true
   config.consider_all_requests_local = false
-  config.force_ssl = true
+  # TLS terminates at the shared ingress; forcing SSL here 301-redirects the
+  # kubelet's plain-HTTP health probes to https on Puma's plain port, so the
+  # probe TLS-handshakes against a non-SSL socket and the pod is killed.
+  config.force_ssl = false
   config.logger = ActiveSupport::TaggedLogging.new(ActiveSupport::Logger.new($stdout))
   config.log_tags = [:request_id]
   config.log_level = ENV.fetch('RAILS_LOG_LEVEL', 'info')
