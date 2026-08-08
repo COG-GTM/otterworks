@@ -241,6 +241,17 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
                 )
             ],
         )
+    if "owner_id" not in planted:
+        # The create succeeded; without the resulting owner in the body there is nothing
+        # to compare it against, and the attack may well have landed in the victim's
+        # account. Reading it back as the victim would be a stronger control, but that
+        # read is itself the subject of DAST-BOLA-DOCUMENTS.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the create succeeded but the response does not report an owner, so whether the "
+            "victim was named as owner cannot be determined",
+            [Evidence.from_response(response)],
+        )
     return self.result(
         Verdict.SECURE,
         f"owner_id was overridden to {planted.get('owner_id')} (the caller), not the victim",

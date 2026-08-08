@@ -220,17 +220,21 @@ def to_markdown(report: dict[str, Any], baseline: dict[str, Any]) -> str:
         "| Verdict | Finding | Severity | Service | OWASP |",
         "|---|---|---|---|---|",
     ]
+    gating_ids = set(report["gating"])
     for result in report["results"]:
         verdict = Verdict(result["verdict"])
         state = VERDICT_MARK[verdict]
         if verdict is Verdict.VULNERABLE and result["finding_id"] in baseline:
             state = "ACCEPTED"
+        elif verdict is Verdict.VULNERABLE and result["finding_id"] not in gating_ids:
+            # Same distinction the console table draws: a finding below the threshold
+            # is reported, but calling it FAIL would contradict the run that exited 0.
+            state = "REPORTED"
         lines.append(
             f"| {state} | `{result['finding_id']}` — {result['title']} | "
             f"{result['severity']} | {result['service']} | {result['owasp']} |"
         )
 
-    gating_ids = set(report["gating"])
     gating = [r for r in report["results"] if r["finding_id"] in gating_ids]
     if gating:
         lines += ["", "## Gating findings", ""]
