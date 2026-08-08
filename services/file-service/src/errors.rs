@@ -84,9 +84,16 @@ impl ResponseError for ServiceError {
             ),
         };
 
+        let message = if status.is_server_error() {
+            tracing::error!(error = %self, error_type, "Request failed");
+            "An internal error occurred. See file-service logs for details.".to_string()
+        } else {
+            self.to_string()
+        };
+
         HttpResponse::build(status).json(ErrorResponse {
             error: error_type.to_string(),
-            message: self.to_string(),
+            message,
         })
     }
 }
@@ -100,5 +107,29 @@ pub struct ErrorResponse {
 impl fmt::Display for ErrorResponse {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.error, self.message)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ServiceError;
+    use actix_web::ResponseError;
+
+    #[test]
+    fn server_errors_do_not_leak_internal_detail() {
+        let err = ServiceError::S3Error(
+            "upload failed for bucket 'otterworks-files' key 'files/owner/id': NoSuchBucket".into(),
+        );
+        let body = format!("{:?}", err.error_response().into_body());
+        assert!(!body.contains("otterworks-files"));
+        assert!(!body.contains("NoSuchBucket"));
+        assert!(body.contains("storage_error"));
+    }
+
+    #[test]
+    fn client_errors_keep_their_message() {
+        let err = ServiceError::BadRequest("owner_id is required".into());
+        let body = format!("{:?}", err.error_response().into_body());
+        assert!(body.contains("owner_id is required"));
     }
 }
