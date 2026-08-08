@@ -386,6 +386,19 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
 
+    # A scan whose identities never seeded attacked the target with a handful of
+    # unauthenticated probes. That is a setup failure, not a clean bill of health: it
+    # must not print PASSED, and it must not be recorded as a baseline either.
+    unrun = sum(1 for entry in selected if entry.requires_identity)
+    if unrun and not ctx.identities_ready:
+        print(
+            f"\nDAST setup failed: the scan identities were not seeded, so {unrun} "
+            "authenticated probe(s) never attacked anything; this run proves nothing "
+            "about them",
+            file=sys.stderr,
+        )
+        return 2
+
     if args.zap_report:
         if not args.zap_report.exists():
             print(f"ZAP report not found: {args.zap_report}", file=sys.stderr)
@@ -414,19 +427,6 @@ def main(argv: list[str] | None = None) -> int:
         for result in gating:
             print(f"  - {result.finding_id} ({result.severity.value}): {result.detail}")
         return 1
-
-    # A scan whose identities never seeded attacked the target with a handful of
-    # unauthenticated probes. That is a setup failure, not a clean bill of health, so
-    # it must not print PASSED — most of the suite never ran.
-    unrun = sum(1 for entry in selected if entry.requires_identity)
-    if unrun and not ctx.identities_ready:
-        print(
-            f"\nDAST setup failed: the scan identities were not seeded, so {unrun} "
-            "authenticated probe(s) never attacked anything; this run proves nothing "
-            "about them",
-            file=sys.stderr,
-        )
-        return 2
 
     # A remediation is only proven by an attack that ran and failed. Verifying one
     # finding (--only) must therefore not accept "could not tell" as a pass.
