@@ -251,6 +251,7 @@ dast-baseline: ## Record current findings as accepted (REASON="...")
 
 dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 	@mkdir -p security/dast/reports
+	@chmod 777 security/dast/reports # the ZAP image runs as uid 1000; a CI runner is 1001
 	docker run --rm --network host \
 		-v "$(PWD)/security/dast:/zap/wrk:rw" \
 		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
