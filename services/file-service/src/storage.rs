@@ -160,7 +160,10 @@ impl S3Client {
             .await
             .map_err(|e| {
                 ServiceError::S3Error(format!(
-                    "copy failed for source '{copy_source}' dest '{dest_key}': {}",
+                    "copy failed for source '{}' dest bucket '{}' key '{}': {}",
+                    copy_source,
+                    self.bucket,
+                    dest_key,
                     DisplayErrorContext(&e)
                 ))
             })?;
