@@ -23,6 +23,7 @@ services/api-gateway/vendor/
 services/auth-service/build/
 services/auth-service/.gradle/
 services/auth-service/out/
+services/report-service/target/
 *.class
 *.jar
 
