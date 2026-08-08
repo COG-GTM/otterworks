@@ -129,14 +129,64 @@ initialize: |
      done'
   # Remove containers but KEEP the seeded volumes so they are captured in the snapshot.
   $COMPOSE down
+
+  # --- Native per-service toolchains (mirrors the CI matrix in .github/workflows/ci.yml) ---
+  # Needed for per-service builds, tests and lints outside Docker. Only the pieces the base
+  # image lacks are installed; sbt, cargo, poetry and uv already ship with it.
+  # Go 1.22 + golangci-lint (api-gateway)
+  curl -sfLo /tmp/go.tar.gz https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+  sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
+  echo 'PATH=/usr/local/go/bin:$HOME/go/bin:$PATH' >> $ENVRC
+  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $HOME/go/bin v1.59.1
+  # JDK 8 + Maven for report-service (Java 8 source/target); JDK 21 above covers Gradle/sbt services.
+  sudo apt-get install -y openjdk-8-jdk-headless maven
+  # Gradle 8.6 on PATH, plus the gitignored wrapper jars the two JVM services are missing
+  curl -sfLo /tmp/gradle-8.6.zip https://services.gradle.org/distributions/gradle-8.6-bin.zip
+  unzip -q -o /tmp/gradle-8.6.zip -d $HOME && rm /tmp/gradle-8.6.zip
+  echo 'PATH=$HOME/gradle-8.6/bin:$PATH' >> $ENVRC
+  for svc in auth-service notification-service; do
+    (cd services/$svc && JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 $HOME/gradle-8.6/bin/gradle wrapper --gradle-version 8.6 --no-daemon)
+  done
+  # .NET 8 (audit-service)
+  curl -sfLo /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh && chmod +x /tmp/dotnet-install.sh
+  /tmp/dotnet-install.sh --channel 8.0 --install-dir $HOME/.dotnet && rm /tmp/dotnet-install.sh
+  echo 'DOTNET_ROOT=$HOME/.dotnet' >> $ENVRC
+  echo 'PATH=$HOME/.dotnet:$PATH' >> $ENVRC
+  # Ruby 3.3.9 via rbenv (admin-service). 3.3.0 cannot parse the pinned connection_pool 3.0.2.
+  sudo apt-get install -y libssl-dev libreadline-dev zlib1g-dev autoconf bison libyaml-dev libffi-dev
+  [ -d "$HOME/.rbenv" ] || git clone https://github.com/rbenv/rbenv.git $HOME/.rbenv
+  [ -d "$HOME/.rbenv/plugins/ruby-build" ] || git clone https://github.com/rbenv/ruby-build.git $HOME/.rbenv/plugins/ruby-build
+  export PATH="$HOME/.rbenv/bin:$PATH" && eval "$(rbenv init -)"
+  rbenv install -s 3.3.9 && rbenv global 3.3.9
+  gem install bundler -v 2.5.9 --no-document && gem install bundler-audit --no-document
+  echo 'PATH=$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH' >> $ENVRC
+  # Python 3.12 (document-service pins ^3.12; the base image ships 3.10) + linters/auditors
+  uv python install 3.12
+  uv tool install ruff && uv tool install pip-audit
+  # trivy for make security-scan. terraform/kubectl/helm/aws-cli v2 come from the org-wide
+  # blueprint (pinned to demo-platform/runner/Dockerfile) - do not shadow them here.
+  mkdir -p $HOME/.local/bin
+  curl -sfLo /tmp/trivy.tgz https://github.com/aquasecurity/trivy/releases/download/v0.72.0/trivy_0.72.0_Linux-64bit.tar.gz
+  tar -xzf /tmp/trivy.tgz -C /tmp trivy && install -m755 /tmp/trivy $HOME/.local/bin/trivy && rm -f /tmp/trivy.tgz /tmp/trivy
+  echo 'PATH=$HOME/.local/bin:$PATH' >> $ENVRC
 # Install project dependencies (runs during builds, surfaced to agent at session start).
 maintenance: |
   # file-service's Cargo.lock needs a newer Cargo than the baked-in 1.83 (edition2024).
   rustup update stable >/dev/null 2>&1 || true
   export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use default >/dev/null
+  export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$HOME/.dotnet:/usr/local/go/bin:$PATH"
   # The rolldown native binding is explicit: an npm optional-deps bug omits it and Vite fails.
   (cd frontend/client-app && npm install && npm install --no-save @rolldown/binding-linux-x64-gnu@1.1.5)
   (cd frontend/client-app/desktop && npm install)
+  (cd frontend/admin-dashboard && npm install)
+  (cd services/collab-service && npm install)
+  # document-service pins python ^3.12, so point poetry at the uv-managed interpreter.
+  (cd services/document-service && poetry env use "$(uv python find 3.12)" && poetry install)
+  (cd services/search-service && uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements-dev.txt)
+  (cd services/admin-service && bundle install)
+  (cd services/api-gateway && go mod download)
+  # Black-box API flow tests (make test-api-flows resolves UV_PROJECT_ENVIRONMENT=.venv)
+  uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r tests/api/requirements.txt
 knowledge:
   - name: run backend + web
     contents: |
@@ -158,7 +208,7 @@ knowledge:
       non-empty password returns a hardcoded admin JWT, so the web-app credentials are not
       used here. Data comes from admin-service's tables, seeded at init. To re-seed:
         docker exec otterworks-admin-service bundle exec rails db:seed
-      `make dev-admin` (HMR) is NOT pre-warmed - the first run pays a full Angular `npm ci`.
+      `make dev-admin` (HMR) works too: its node_modules are installed during maintenance.
   - name: run android app
     contents: |
       # Free resources before launching the emulator (virtualized microVM).
@@ -188,10 +238,56 @@ knowledge:
       # Embedded server on :34117 proxies /api/v1 to the gateway; run with Node 22.
   - name: test
     contents: |
-      make test
+      # Per-service, all verified natively. `make test` itself fails: it cd's into
+      # frontend/web-app, which no longer exists (the web frontend is frontend/client-app).
+      (cd services/api-gateway && go test ./...)
+      (cd services/auth-service && ./gradlew check --no-daemon)
+      (cd services/notification-service && ./gradlew check --no-daemon)
+      (cd services/analytics-service && sbt -batch test)
+      (cd services/file-service && cargo test)
+      (cd services/document-service && poetry run pytest)
+      (cd services/search-service && .venv/bin/python -m pytest)
+      (cd services/collab-service && npm test)
+      (cd services/audit-service && dotnet test)
+      (cd frontend/client-app && npm test)
+      (cd services/report-service && JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 mvn test -B)
+      # admin-service specs need Postgres (make infra-up) and the compose credentials:
+      export DATABASE_HOST=127.0.0.1 DATABASE_PASSWORD=otterworks_dev RAILS_ENV=test
+      (cd services/admin-service && bundle exec rails db:create db:schema:load && bundle exec rspec)
+      make test-api-flows   # black-box flows; needs the whole stack up (make up)
   - name: lint
     contents: |
-      make lint
+      # `make lint` has the same frontend/web-app breakage as `make test`; per-service:
+      (cd services/api-gateway && golangci-lint run)
+      (cd services/auth-service && ./gradlew spotlessCheck --no-daemon)
+      (cd services/file-service && cargo clippy -- -D warnings)
+      (cd services/document-service && poetry run ruff check .)
+      (cd services/search-service && ruff check .)
+      (cd services/collab-service && npm run lint)
+      (cd frontend/client-app && npm run lint)
+  - name: java versions
+    contents: |
+      JAVA_HOME defaults to JDK 21 (Capacitor/AGP need it) and the Gradle 8.6 / sbt services
+      (auth, notification, analytics) build and test fine on it. report-service is the
+      exception - Java 8 source/target - so run Maven with
+      JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64.
+  - name: security scan
+    contents: |
+      make security-scan   # trivy + npm audit + pip-audit + bundle-audit
+      # trivy's Java scanner hits repo.maven.apache.org rate limits (HTTP 429) unless ~/.m2 is
+      # already populated; run `mvn dependency:resolve` in services/report-service first.
+  - name: infra / deploy tooling
+    contents: |
+      terraform, kubectl, helm and AWS CLI v2 come from the org-wide blueprint (in
+      /usr/local/bin) and cover make tf-*, scripts/deploy-dev.sh, scripts/deploy-tenant.sh
+      and demo-platform/. `terraform fmt -check -recursive` and `terraform init
+      -backend=false && terraform validate` both pass in infrastructure/terraform.
+      AWS credentials are not provisioned, so deploys need them supplied per session.
+  - name: golden app policy
+    contents: |
+      main is the golden app and contains deliberately planted bugs (see AGENTS.md) - do not
+      "fix" them. Known: services/admin-service/config/environments/production.rb crash-loops
+      on boot by design. document-service also has 9 failing auth tests (401s) on main.
 ---
 # Windows sessions for the Electron desktop shell. Windows runs blueprint commands in
 # bash (Git Bash), the same as Linux, so this document must be bash - not PowerShell.
