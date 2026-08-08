@@ -242,9 +242,11 @@ jobs:
                 # only for the tenant pointer on a run that pins the immutable
                 # tag: everything else (throttling, transient API errors, the
                 # golden `main` pointer every other tenant falls back to) would
-                # deploy the previous build behind a green run.
+                # deploy the previous build behind a green run. Match the exact
+                # authorization failure -- an AccessDenied for any other reason
+                # is not something this run should paper over.
                 case "${err}" in
-                  *AccessDenied*) ;;
+                  *AccessDenied*ecr:BatchDeleteImage*) ;;
                   *) echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1 ;;
                 esac
                 if [ "${tag}" = "main" ] || [ "${PIN}" != "true" ]; then
