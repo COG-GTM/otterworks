@@ -113,23 +113,27 @@ impl fmt::Display for ErrorResponse {
 #[cfg(test)]
 mod tests {
     use super::ServiceError;
-    use actix_web::ResponseError;
+    use actix_web::{body::to_bytes, ResponseError};
 
-    #[test]
-    fn server_errors_do_not_leak_internal_detail() {
-        let err = ServiceError::S3Error(
-            "upload failed for bucket 'otterworks-files' key 'files/owner/id': NoSuchBucket".into(),
-        );
-        let body = format!("{:?}", err.error_response().into_body());
-        assert!(!body.contains("otterworks-files"));
-        assert!(!body.contains("NoSuchBucket"));
-        assert!(body.contains("storage_error"));
+    async fn body_of(err: ServiceError) -> String {
+        let bytes = to_bytes(err.error_response().into_body()).await.unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
     }
 
-    #[test]
-    fn client_errors_keep_their_message() {
-        let err = ServiceError::BadRequest("owner_id is required".into());
-        let body = format!("{:?}", err.error_response().into_body());
-        assert!(body.contains("owner_id is required"));
+    #[actix_web::test]
+    async fn server_errors_do_not_leak_internal_detail() {
+        let body = body_of(ServiceError::S3Error(
+            "upload failed for bucket 'otterworks-files' key 'files/owner/id': NoSuchBucket".into(),
+        ))
+        .await;
+        assert!(!body.contains("otterworks-files"), "{body}");
+        assert!(!body.contains("NoSuchBucket"), "{body}");
+        assert!(body.contains("storage_error"), "{body}");
+    }
+
+    #[actix_web::test]
+    async fn client_errors_keep_their_message() {
+        let body = body_of(ServiceError::BadRequest("owner_id is required".into())).await;
+        assert!(body.contains("owner_id is required"), "{body}");
     }
 }
