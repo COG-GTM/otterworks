@@ -17,4 +17,7 @@ test:
 
 production:
   <<: *default
-  database: admin_service_production
+  # Tenant deploys provision one shared per-tenant database (otterworks_<id>)
+  # rather than a per-service one; this branch is only ever deployed to the
+  # coggtm tenant, hence the default.
+  database: <%= ENV.fetch("DATABASE_NAME", "otterworks_coggtm") %>
