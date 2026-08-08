@@ -7,7 +7,7 @@ through the API gateway using `HttpClient`.
 > **Why .NET Framework 4.8?** This client is intentionally built on the *legacy* .NET
 > Framework (classic `.csproj` + `packages.config` + `Newtonsoft.Json`) so it can serve as a
 > realistic **framework-upgrade target** (net48 → .NET 8 / WinUI) alongside OtterWorks' other
-> upgrade candidates (e.g. the Java 8 `report-service`). It mirrors the core flow of the
+> upgrade candidates. It mirrors the core flow of the
 > `frontend/web-app` React client.
 
 ## Features
