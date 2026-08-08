@@ -1,0 +1,139 @@
+//! Fire-and-forget alert delivery to admin-service's Grafana-style webhook
+//! ingest endpoint (`POST /api/v1/admin/alerts/ingest`). Each failed upload
+//! produces one alert; the payload carries `dedup=false` so admin-service
+//! opens a fresh incident (and Devin session) per alert instead of collapsing
+//! repeats onto an existing open incident.
+
+use serde_json::{json, Value};
+
+#[derive(Clone, Debug)]
+pub struct AlertConfig {
+    /// Base URL of admin-service, e.g. `http://admin-service:8089`.
+    /// An empty value disables alert delivery.
+    pub admin_service_url: String,
+    /// Shared secret sent as `X-Alert-Secret`; omitted when unset.
+    pub alert_webhook_secret: Option<String>,
+}
+
+impl AlertConfig {
+    pub fn from_env() -> Self {
+        Self {
+            admin_service_url: std::env::var("ADMIN_SERVICE_URL")
+                .unwrap_or_else(|_| "http://admin-service:8089".into()),
+            alert_webhook_secret: std::env::var("ALERT_WEBHOOK_SECRET")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+        }
+    }
+}
+
+pub fn build_upload_failure_payload(file_name: &str, error: &str) -> Value {
+    json!({
+        "receiver": "otterworks-webhook",
+        "status": "firing",
+        "alerts": [{
+            "status": "firing",
+            "labels": {
+                "alertname": "FileUploadFailed",
+                "severity": "critical",
+                "affected_service": "file-service",
+                "dedup": "false",
+            },
+            "annotations": {
+                "summary": format!("File upload failed: {file_name}"),
+                "description": format!(
+                    "Upload of \"{file_name}\" failed in file-service: {error}"
+                ),
+            },
+            "startsAt": chrono::Utc::now().to_rfc3339(),
+        }],
+    })
+}
+
+/// Spawn a background task that POSTs the upload-failure alert to
+/// admin-service. Never blocks or alters the caller's response.
+pub fn notify_upload_failure(config: &AlertConfig, file_name: &str, error: &str) {
+    let base_url = config
+        .admin_service_url
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    if base_url.is_empty() {
+        tracing::warn!("ADMIN_SERVICE_URL is empty; skipping upload-failure alert");
+        return;
+    }
+    let secret = config.alert_webhook_secret.clone();
+    let payload = build_upload_failure_payload(file_name, error);
+    let file_name = file_name.to_string();
+
+    tokio::spawn(async move {
+        let url = format!("{base_url}/api/v1/admin/alerts/ingest");
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to build alert HTTP client");
+                return;
+            }
+        };
+        let mut req = client.post(&url).json(&payload);
+        if let Some(secret) = secret {
+            req = req.header("X-Alert-Secret", secret);
+        }
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(file_name = %file_name, "Upload-failure alert delivered to admin-service");
+            }
+            Ok(resp) => {
+                tracing::warn!(status = %resp.status(), url = %url, "Upload-failure alert rejected by admin-service");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, url = %url, "Failed to deliver upload-failure alert");
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn payload_has_grafana_shape_with_dedup_disabled() {
+        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket");
+        assert_eq!(payload["status"], "firing");
+        let alert = &payload["alerts"][0];
+        assert_eq!(alert["status"], "firing");
+        assert_eq!(alert["labels"]["alertname"], "FileUploadFailed");
+        assert_eq!(alert["labels"]["severity"], "critical");
+        assert_eq!(alert["labels"]["affected_service"], "file-service");
+        assert_eq!(alert["labels"]["dedup"], "false");
+        let summary = alert["annotations"]["summary"].as_str().unwrap();
+        assert!(summary.contains("report.pdf"));
+        let description = alert["annotations"]["description"].as_str().unwrap();
+        assert!(description.contains("report.pdf"));
+        assert!(description.contains("NoSuchBucket"));
+        assert!(alert["startsAt"].is_string());
+    }
+
+    #[test]
+    fn empty_admin_service_url_skips_without_spawning() {
+        let config = AlertConfig {
+            admin_service_url: "  ".into(),
+            alert_webhook_secret: None,
+        };
+        // Must return without needing a tokio runtime (no task spawned).
+        notify_upload_failure(&config, "a.txt", "boom");
+    }
+
+    #[actix_rt::test]
+    async fn notify_with_unreachable_admin_service_does_not_error() {
+        let config = AlertConfig {
+            admin_service_url: "http://127.0.0.1:1".into(),
+            alert_webhook_secret: Some("secret".into()),
+        };
+        notify_upload_failure(&config, "a.txt", "boom");
+    }
+}

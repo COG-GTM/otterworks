@@ -10,6 +10,7 @@ async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> boo
     result.unwrap_or(0) > 0
 }
 
+use crate::alerts;
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
@@ -161,9 +162,13 @@ pub async fn upload_file(
         client: s3.client.clone(),
         bucket: effective_bucket,
     };
-    chaos_s3
+    if let Err(err) = chaos_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
-        .await?;
+        .await
+    {
+        alerts::notify_upload_failure(&config.alerts, &file_name, &err.to_string());
+        return Err(err);
+    }
 
     let file_meta = FileMetadata {
         id: file_id,
