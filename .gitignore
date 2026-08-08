@@ -56,6 +56,9 @@ services/analytics-service/target/
 services/analytics-service/project/target/
 services/analytics-service/project/project/
 
+# --- Maven ---
+services/report-service/target/
+
 # --- Ruby ---
 services/admin-service/tmp/
 services/admin-service/log/
