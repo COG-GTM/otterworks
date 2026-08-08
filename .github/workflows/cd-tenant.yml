@@ -52,6 +52,7 @@ jobs:
       services: ${{ steps.select.outputs.services }}
       image_tag: ${{ steps.select.outputs.image_tag }}
       tenant_tag: ${{ steps.select.outputs.tenant_tag }}
+      pin: ${{ steps.select.outputs.pin }}
       golden: ${{ steps.select.outputs.golden }}
       deploy: ${{ steps.select.outputs.deploy }}
     steps:
@@ -109,6 +110,13 @@ jobs:
             services="$(printf '%s' "${CHANGED}" | jq -c '[.[] | select(. != "deployable")]')"
           fi
           echo "services=${services}" >> "$GITHUB_OUTPUT"
+
+          # When every service is rebuilt, the deploy can be pinned to this
+          # run's immutable <slug>-<sha> tag instead of relying on the moving
+          # tenant-<id> pointer, which the CI role may lack permission to move
+          # (ecr:BatchDeleteImage). Pinning is only safe on a full rebuild:
+          # the tag must exist for every service the tenant deploys.
+          echo "pin=${REBUILD_ALL}" >> "$GITHUB_OUTPUT"
 
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
@@ -217,9 +225,14 @@ jobs:
               echo "${repo}:${tag} already points at ${IMAGE_TAG}"
               continue
             fi
-            failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+            if ! failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
               --image-ids imageTag="${tag}" \
-              --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"
+              --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>&1)"; then
+              # The role may lack ecr:BatchDeleteImage; a full-rebuild deploy
+              # pins the immutable tag instead of following this pointer.
+              echo "::warning::cannot untag ${repo}:${tag} (${failures}); pointer tag left stale"
+              continue
+            fi
             if [ -n "${failures}" ]; then
               echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
             fi
@@ -261,4 +274,5 @@ jobs:
       - name: Sync tenant environment
         env:
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
-        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}"
+          PIN_TAG: ${{ needs.plan.outputs.pin == 'true' && needs.plan.outputs.image_tag || '' }}
+        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}" ${PIN_TAG:+"${PIN_TAG}"}
