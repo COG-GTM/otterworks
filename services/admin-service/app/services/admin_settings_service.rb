@@ -6,7 +6,7 @@ class AdminSettingsService
   class << self
     def auto_investigate_enabled?
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
       # Default to true (existing behavior) if not explicitly set
@@ -21,7 +21,7 @@ class AdminSettingsService
 
     def set_auto_investigate(enabled)
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
       redis.set(AUTO_INVESTIGATE_KEY, enabled.to_s)
@@ -37,7 +37,7 @@ class AdminSettingsService
     # exposed by any read path — only presence is reported.
     def devin_credentials
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
       api_key, org_id = redis.mget(DEVIN_API_KEY_KEY, DEVIN_ORG_ID_KEY)
@@ -51,7 +51,7 @@ class AdminSettingsService
 
     def set_devin_credentials(api_key:, org_id:)
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
       redis.mset(DEVIN_API_KEY_KEY, api_key, DEVIN_ORG_ID_KEY, org_id)
@@ -64,7 +64,7 @@ class AdminSettingsService
 
     def clear_devin_credentials
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
       redis.del(DEVIN_API_KEY_KEY, DEVIN_ORG_ID_KEY)

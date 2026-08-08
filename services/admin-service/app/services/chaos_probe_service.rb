@@ -52,7 +52,7 @@ class ChaosProbeService
       Thread.current.report_on_exception = true
       Rails.logger.info("[ChaosProbe] Started for #{service}")
       redis = Redis.new(
-        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        url: ServiceEnv.redis_url,
         timeout: 2
       )
 
