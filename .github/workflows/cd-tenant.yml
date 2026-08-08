@@ -253,6 +253,10 @@ jobs:
                   echo "::error::cannot untag ${repo}:${tag} and this run does not pin ${IMAGE_TAG}, so the deploy would ship the previous build: ${err}"
                   exit 1
                 fi
+                # The pointer stays stale after this run, so a later push that
+                # rebuilds no service (scripts/**, infrastructure/helm/**)
+                # deploys from it and reverts the tenant: re-dispatch with
+                # rebuild_all=true until the IAM grant lands.
                 echo "::warning::cannot untag ${repo}:${tag}; pointer left stale, deploy pinned to ${IMAGE_TAG}"
                 continue
               fi
