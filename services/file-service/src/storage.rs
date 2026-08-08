@@ -7,26 +7,25 @@ use std::time::Duration;
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
 
-/// Build an `S3Error` that carries the operation, the bucket/key it targeted and
-/// the S3 error code, instead of the SDK's bare `"service error"` summary.
+/// Log the bucket, key and full SDK source chain of a failed S3 call and return an
+/// `S3Error` naming the operation and S3 error code. The detail stays in the logs:
+/// `ServiceError` messages are serialized into the client-facing error body, and the
+/// bucket name and key layout (which embeds owner ids) are internal.
 fn s3_error<E, R>(op: &str, bucket: &str, key: &str, err: SdkError<E, R>) -> ServiceError
 where
     E: ProvideErrorMetadata + std::error::Error + Send + Sync + 'static,
     R: std::fmt::Debug + Send + Sync + 'static,
 {
     let code = err.code().unwrap_or("unknown").to_string();
-    let detail = DisplayErrorContext(&err).to_string();
     tracing::error!(
         operation = %op,
         bucket = %bucket,
         key = %key,
         code = %code,
-        error = %detail,
+        error = %DisplayErrorContext(&err),
         "S3 operation failed"
     );
-    ServiceError::S3Error(format!(
-        "{op} failed: bucket={bucket} key={key} code={code}: {detail}"
-    ))
+    ServiceError::S3Error(format!("{op} failed: code={code}"))
 }
 
 /// S3 client for file blob operations.
@@ -90,11 +89,14 @@ impl S3Client {
             .map_err(|e| s3_error("download", &self.bucket, key, e))?;
 
         let body = resp.body.collect().await.map_err(|e| {
-            ServiceError::S3Error(format!(
-                "body read failed: bucket={} key={key}: {}",
-                self.bucket,
-                DisplayErrorContext(&e)
-            ))
+            tracing::error!(
+                operation = "download",
+                bucket = %self.bucket,
+                key = %key,
+                error = %DisplayErrorContext(&e),
+                "S3 response body read failed"
+            );
+            ServiceError::S3Error("download failed: body read error".to_string())
         })?;
 
         Ok(body.into_bytes())
@@ -107,7 +109,17 @@ impl S3Client {
         expires_in_secs: u64,
     ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
-            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(
+                    operation = "presign",
+                    bucket = %self.bucket,
+                    key = %key,
+                    expires_in_secs = %expires_in_secs,
+                    error = %DisplayErrorContext(&e),
+                    "S3 presign config rejected"
+                );
+                ServiceError::S3Error("presign failed: invalid presign config".to_string())
+            })?;
 
         let presigned = self
             .client
@@ -145,7 +157,14 @@ impl S3Client {
             .key(dest_key)
             .send()
             .await
-            .map_err(|e| s3_error("copy", &self.bucket, dest_key, e))?;
+            .map_err(|e| {
+                s3_error(
+                    "copy",
+                    &self.bucket,
+                    &format!("{source_key} -> {dest_key}"),
+                    e,
+                )
+            })?;
 
         tracing::info!(source = %source_key, dest = %dest_key, "Copied object in S3");
         Ok(())
@@ -158,15 +177,15 @@ mod tests {
     use aws_sdk_s3::operation::put_object::PutObjectError;
 
     #[test]
-    fn s3_error_includes_bucket_key_and_underlying_detail() {
+    fn s3_error_keeps_bucket_and_key_out_of_the_client_message() {
         let err: SdkError<PutObjectError, ()> = SdkError::timeout_error("connect timed out");
         let ServiceError::S3Error(message) = s3_error("upload", "my-bucket", "files/a/b", err)
         else {
             panic!("expected an S3Error");
         };
 
-        assert!(message.contains("bucket=my-bucket"), "{message}");
-        assert!(message.contains("key=files/a/b"), "{message}");
-        assert!(message.contains("connect timed out"), "{message}");
+        assert_eq!(message, "upload failed: code=unknown");
+        assert!(!message.contains("my-bucket"), "{message}");
+        assert!(!message.contains("files/a/b"), "{message}");
     }
 }
