@@ -1,0 +1,26 @@
+repo: https://github.com/COG-GTM/otterworks
+default_branch: main
+build: maven
+services:            # one subsession per service
+  - report-service   # services/report-service — Boot 2.5.14, Java 8
+  - legacy-portal    # services/legacy-portal  — Boot 2.7.18, Java 11
+out_of_scope:
+  - auth-service          # already Boot 3.2.4 / Java 17 (Gradle)
+  - notification-service  # Kotlin/Ktor, jvmToolchain(17)
+current:
+  java: 8            # report-service; legacy-portal is 11
+  spring_boot: 2.5.x # report-service; legacy-portal is 2.7.18
+targets:
+  java: 17
+  spring_boot: 3.2.x
+uses:
+  javax_persistence: true    # report-service, legacy-portal
+  javax_servlet: true        # report-service (explicit javax.servlet-api dep)
+  javax_validation: true     # both
+  javax_transaction: true    # report-service
+  spring_security: true      # report-service: WebSecurityConfigurerAdapter
+  junit: 4                   # report-service (jupiter excluded); legacy-portal on 5
+  springfox: 3.0.0           # report-service — dead, needs springdoc-openapi 2.x
+ci_provider: github-actions
+ci_current_jdk: 8            # report-service job; legacy-portal has no CI job
+demo_mode: true   # prioritize speed; skip optional steps
