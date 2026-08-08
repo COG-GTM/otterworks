@@ -41,7 +41,7 @@ class AdminSettingsService
         timeout: 2
       )
       api_key, org_id = redis.mget(DEVIN_API_KEY_KEY, DEVIN_ORG_ID_KEY)
-      { api_key: presence(api_key), org_id: presence(org_id) }
+      { api_key: blank_to_nil(api_key), org_id: blank_to_nil(org_id) }
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials: #{e.message}")
       { api_key: nil, org_id: nil }
@@ -64,7 +64,7 @@ class AdminSettingsService
 
     private
 
-    def presence(val)
+    def blank_to_nil(val)
       val.nil? || val.strip.empty? ? nil : val
     end
   end

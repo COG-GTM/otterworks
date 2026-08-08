@@ -225,16 +225,21 @@ jobs:
               echo "${repo}:${tag} already points at ${IMAGE_TAG}"
               continue
             fi
-            if ! failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
-              --image-ids imageTag="${tag}" \
-              --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>&1)"; then
-              # The role may lack ecr:BatchDeleteImage; a full-rebuild deploy
-              # pins the immutable tag instead of following this pointer.
-              echo "::warning::cannot untag ${repo}:${tag} (${failures}); pointer tag left stale"
-              continue
-            fi
-            if [ -n "${failures}" ]; then
-              echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+            # An absent pointer needs no untag at all; go straight to put-image
+            # (a brand-new environment must still get its pointer created even
+            # when the role cannot delete tags).
+            if [ -n "${current}" ]; then
+              if ! failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+                --image-ids imageTag="${tag}" \
+                --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"; then
+                # The role may lack ecr:BatchDeleteImage; a full-rebuild deploy
+                # pins the immutable tag instead of following this pointer.
+                echo "::warning::cannot untag ${repo}:${tag}; pointer tag left stale"
+                continue
+              fi
+              if [ -n "${failures}" ]; then
+                echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+              fi
             fi
             # Retry: a put-image failure here would strand the environment
             # with no pointer at all until the next successful build.
