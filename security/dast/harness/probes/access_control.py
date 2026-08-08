@@ -347,11 +347,16 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
             f"reachable unauthenticated: {', '.join(exposed)}",
             evidence,
         )
-    if not evidence:
+    if unreached:
+        # Every route is part of the claim, so any one of them going unanswered makes
+        # "the admin surface requires a token" unproven — admin-service crash-loops by
+        # design in this repo, which is exactly how a 502 lands here.
         return self.result(
             Verdict.INCONCLUSIVE,
-            "no administrative backend produced an auth verdict; every route was "
-            f"unavailable or throttled: {', '.join(unreached)}",
+            "the administrative surface was not assessed in full: "
+            f"{', '.join(unreached)} never produced an auth verdict (unavailable or "
+            "throttled)",
+            evidence,
         )
     return self.result(Verdict.SECURE, "all administrative routes required a token", evidence)
 

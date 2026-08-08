@@ -82,7 +82,10 @@ def sqli_error_based(ctx: ScanContext) -> Result:
             "no injected parameter reached a query: every request was refused, throttled or "
             f"failed ({', '.join(sorted(set(unreached)))})",
         )
-    return self.result(Verdict.SECURE, "no SQL errors surfaced from injected parameters")
+    # Unlike the admin probe, a target that refused the payload does not undermine the
+    # claim about the ones that took it — but the claim only covers those, so say so.
+    scope = f" ({', '.join(sorted(set(unreached)))} never took a payload)" if unreached else ""
+    return self.result(Verdict.SECURE, f"no SQL errors surfaced from injected parameters{scope}")
 
 
 @probe(
@@ -132,7 +135,8 @@ def verbose_errors(ctx: ScanContext) -> Result:
             "no malformed request reached the owning service: every case was refused, "
             f"throttled or failed ({', '.join(unreached)})",
         )
-    return self.result(Verdict.SECURE, "malformed input produced no internal detail")
+    scope = f" ({', '.join(unreached)} never reached a handler)" if unreached else ""
+    return self.result(Verdict.SECURE, f"malformed input produced no internal detail{scope}")
 
 
 @probe(
