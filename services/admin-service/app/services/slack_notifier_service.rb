@@ -35,7 +35,7 @@ class SlackNotifierService
 
       response = http.request(request)
       unless response.is_a?(Net::HTTPSuccess)
-        Rails.logger.error("Slack webhook returned #{response.code}: #{response.body}")
+        Rails.logger.error("Slack webhook returned #{response.code}: #{response.body.to_s[0, 200]}")
       end
       nil
     rescue StandardError => e
