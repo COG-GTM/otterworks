@@ -1,10 +1,13 @@
 use std::env;
 
+use crate::alerts::AlertConfig;
+
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub server: ServerConfig,
     pub aws: AwsConfig,
     pub sns: SnsConfig,
+    pub alerts: AlertConfig,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +41,7 @@ impl AppConfig {
             server: ServerConfig::from_env(),
             aws: AwsConfig::from_env(),
             sns: SnsConfig::from_env(),
+            alerts: AlertConfig::from_env(),
         }
     }
 }
