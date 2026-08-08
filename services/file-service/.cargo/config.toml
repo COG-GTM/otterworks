@@ -1,0 +1,30 @@
+# Service-local coverage ratchet for file-service.
+#
+# `cargo coverage` is the gate: it fails the build when line coverage drops
+# below the floor measured on this branch (96.53% lines / 91.85% regions /
+# 92.88% functions). Ratchet these numbers up as coverage improves; never
+# lower them.
+#
+# Run it the same way CI would:
+#   cd services/file-service && cargo coverage
+#
+# `cargo coverage-lcov` writes the same run out as lcov.info for upload.
+[alias]
+coverage = [
+    "llvm-cov",
+    "--summary-only",
+    "--fail-under-lines",
+    "96",
+    "--fail-under-regions",
+    "91",
+    "--fail-under-functions",
+    "92",
+]
+coverage-lcov = [
+    "llvm-cov",
+    "--lcov",
+    "--output-path",
+    "lcov.info",
+    "--fail-under-lines",
+    "96",
+]
