@@ -5,6 +5,7 @@ import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucid
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
 import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
+import { incidentsApi } from "@/lib/api";
 
 interface FileUploadDropzoneProps {
   uploadFile: (
@@ -31,13 +32,20 @@ interface UploadingFile {
 
 let fileIdCounter = 0;
 
+// A failed upload opens an incident, and the Devin session it launches is
+// attached a moment later, so poll briefly rather than reading once.
+const SESSION_POLL_ATTEMPTS = 6;
+const SESSION_POLL_INTERVAL_MS = 2500;
+
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
   ref: Ref<FileUploadDropzoneHandle>,
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
+  const [devinSessionUrl, setDevinSessionUrl] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState(false);
+  const pollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
 
@@ -56,6 +64,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
     if (!uploadingFiles.some((f) => f.status === "error")) {
       setShowUploadErrorBanner(false);
+      setDevinSessionUrl(null);
     }
 
     if (allDone && !hasUploading) {
@@ -79,6 +88,34 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
       }
     };
   }, [uploadingFiles]);
+
+  useEffect(
+    () => () => {
+      pollTimersRef.current.forEach(clearTimeout);
+      pollTimersRef.current = [];
+    },
+    [],
+  );
+
+  const pollForDevinSession = useCallback((fileName: string) => {
+    let attempt = 0;
+    const check = async () => {
+      attempt += 1;
+      try {
+        const incident = await incidentsApi.findForUpload(fileName);
+        if (incident?.devinSessionUrl) {
+          setDevinSessionUrl(incident.devinSessionUrl);
+          return;
+        }
+      } catch {
+        // Incident lookup is best-effort: the banner still shows the failure.
+      }
+      if (attempt < SESSION_POLL_ATTEMPTS) {
+        pollTimersRef.current.push(setTimeout(() => void check(), SESSION_POLL_INTERVAL_MS));
+      }
+    };
+    void check();
+  }, []);
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
@@ -124,10 +161,11 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
+            void pollForDevinSession(entry.file.name);
           }
         });
     },
-    [uploadFile, onUploadComplete],
+    [uploadFile, onUploadComplete, pollForDevinSession],
   );
 
   const addFiles = useCallback(
@@ -172,6 +210,8 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           className="mb-4"
           title="File upload failed"
           message="One or more files could not be uploaded. Please try again."
+          actionHref={devinSessionUrl ?? undefined}
+          actionLabel="View Devin session"
           onDismiss={() => setShowUploadErrorBanner(false)}
         />
       )}
