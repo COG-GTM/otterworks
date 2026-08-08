@@ -71,13 +71,20 @@ class SlackNotifierService
         '*Type:*',
         incident.title.split(':').first.to_s.strip,
         '*Message:*',
-        incident.description,
+        :description,
         '*Environment:*',
         Rails.env,
         '*On-Call:*',
         on_call_devin
       ]
       body_lines += ['*On-Call:*', on_call_human] if on_call_human
+
+      # The description is the only unbounded field; truncate it to whatever
+      # budget remains so the trailing On-Call lines (the session link) always
+      # survive the section limit.
+      fixed_length = body_lines.sum { |l| l == :description ? 1 : l.to_s.length + 1 }
+      description = truncate(incident.description.to_s, [SECTION_MAX - fixed_length, 1].max)
+      body = body_lines.map { |l| l == :description ? description : l }.join("\n")
 
       {
         blocks: [
@@ -91,7 +98,7 @@ class SlackNotifierService
           },
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: truncate(body_lines.join("\n"), SECTION_MAX) }
+            text: { type: 'mrkdwn', text: truncate(body, SECTION_MAX) }
           },
           {
             type: 'context',

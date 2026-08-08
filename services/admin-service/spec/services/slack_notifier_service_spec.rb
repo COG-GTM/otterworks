@@ -77,11 +77,13 @@ RSpec.describe SlackNotifierService do
     incident.update!(title: "BigFailure: #{'x' * 240}", description: 'y' * 5000)
     read_posted = stub_post
 
-    described_class.notify_incident(incident: incident)
+    described_class.notify_incident(incident: incident, session_url: 'https://app.devin.ai/sessions/abc')
 
     posted = read_posted.call
     expect(posted['blocks'][0]['text']['text'].length).to be <= 150
     expect(posted['blocks'][1]['text']['text'].length).to be <= 3000
+    expect(posted['blocks'][1]['text']['text'])
+      .to include('<https://app.devin.ai/sessions/abc|Devin AI (auto-investigating)>')
   end
 
   it 'renders a true mention when the reporter is in SLACK_USER_MAP' do
