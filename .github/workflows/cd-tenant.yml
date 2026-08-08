@@ -196,6 +196,7 @@ jobs:
           IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
           TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
           GOLDEN: ${{ needs.plan.outputs.golden }}
+          PIN: ${{ needs.plan.outputs.pin }}
         run: |
           set -euo pipefail
           repo="otterworks/${SERVICE}"
@@ -229,16 +230,29 @@ jobs:
             # (a brand-new environment must still get its pointer created even
             # when the role cannot delete tags).
             if [ -n "${current}" ]; then
-              if ! failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+              if failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
                 --image-ids imageTag="${tag}" \
-                --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"; then
-                # The role may lack ecr:BatchDeleteImage; a full-rebuild deploy
-                # pins the immutable tag instead of following this pointer.
-                echo "::warning::cannot untag ${repo}:${tag}; pointer tag left stale"
+                --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>"${RUNNER_TEMP}/untag.err")"; then
+                if [ -n "${failures}" ]; then
+                  echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+                fi
+              else
+                err="$(cat "${RUNNER_TEMP}/untag.err")"
+                # Only a missing ecr:BatchDeleteImage grant is survivable, and
+                # only for the tenant pointer on a run that pins the immutable
+                # tag: everything else (throttling, transient API errors, the
+                # golden `main` pointer every other tenant falls back to) would
+                # deploy the previous build behind a green run.
+                case "${err}" in
+                  *AccessDenied*) ;;
+                  *) echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1 ;;
+                esac
+                if [ "${tag}" = "main" ] || [ "${PIN}" != "true" ]; then
+                  echo "::error::cannot untag ${repo}:${tag} and this run does not pin ${IMAGE_TAG}, so the deploy would ship the previous build: ${err}"
+                  exit 1
+                fi
+                echo "::warning::cannot untag ${repo}:${tag}; pointer left stale, deploy pinned to ${IMAGE_TAG}"
                 continue
-              fi
-              if [ -n "${failures}" ]; then
-                echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
               fi
             fi
             # Retry: a put-image failure here would strand the environment
