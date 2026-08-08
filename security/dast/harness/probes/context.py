@@ -130,19 +130,32 @@ class ScanContext:
         )
 
     def _register(self, identity: Identity) -> None:
-        response = self.client.post(
-            "/api/v1/auth/register",
-            json={
-                "email": identity.email,
-                "password": identity.password,
-                "displayName": f"DAST {identity.email.split('@')[0]}",
-            },
-        )
+        # Anything that goes wrong here is a setup problem, not a finding: a transport
+        # error or a proxy's HTML error page must not escape as an unhandled exception,
+        # whose exit status 1 the harness reserves for "the gate failed".
+        try:
+            response = self.client.post(
+                "/api/v1/auth/register",
+                json={
+                    "email": identity.email,
+                    "password": identity.password,
+                    "displayName": f"DAST {identity.email.split('@')[0]}",
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise SeedError(f"could not reach registration for {identity.email}: {exc}") from exc
         if response.status_code not in (200, 201):
             raise SeedError(
                 f"could not register {identity.email}: {response.status_code} {response.text[:200]}"
             )
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise SeedError(
+                f"registration for {identity.email} returned a non-JSON body: {response.text[:200]}"
+            ) from exc
+        if not isinstance(body, dict):
+            raise SeedError(f"registration for {identity.email} returned {type(body).__name__}")
         identity.access_token = body.get("accessToken", "")
         identity.user_id = str(body.get("user", {}).get("id", ""))
         if not identity.access_token or not identity.user_id:

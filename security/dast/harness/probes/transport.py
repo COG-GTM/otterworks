@@ -50,6 +50,15 @@ def missing_security_headers(ctx: ScanContext) -> Result:
         value = response.headers.get(header)
         if value is None or (expected is not None and expected not in value.lower()):
             missing.append(header)
+    if missing and unavailable(response):
+        # A 429 is written by the limiter and a 5xx by a failing hop, both before any
+        # response-header middleware runs, so their headers describe nothing.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the request returned {response.status_code} without reaching the header "
+            "middleware, so the headers cannot be assessed",
+            [Evidence.from_response(response)],
+        )
     if missing:
         return self.result(
             Verdict.VULNERABLE,
