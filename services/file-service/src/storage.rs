@@ -10,7 +10,7 @@ use crate::errors::ServiceError;
 /// Render an AWS SDK error with its full source chain. The `Display` impl of
 /// `SdkError` alone yields only "service error", hiding the S3 error code
 /// (`NoSuchBucket`, `AccessDenied`, ...) that makes an alert actionable.
-fn s3_error(context: &str, err: impl Error + Send + Sync + 'static) -> ServiceError {
+fn s3_error(context: &str, err: impl Error) -> ServiceError {
     ServiceError::S3Error(format!("{context}: {}", DisplayErrorContext(&err)))
 }
 
@@ -90,7 +90,7 @@ impl S3Client {
         expires_in_secs: u64,
     ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
-            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+            .map_err(|e| s3_error("presign config error", e))?;
 
         let presigned = self
             .client
