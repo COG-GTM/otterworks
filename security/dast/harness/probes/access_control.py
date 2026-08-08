@@ -234,7 +234,7 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
                 Evidence(
                     request=f"POST {ctx.base_url}/api/v1/documents/ "
                     f'{{"owner_id": "{ctx.victim.user_id}", ...}} as attacker',
-                    response_status=201,
+                    response_status=response.status_code,
                     # json.dumps, not str(): the redaction patterns match double-quoted
                     # JSON keys, and a Python dict repr would slip a single-quoted
                     # credential field past them. Redact before truncating.
