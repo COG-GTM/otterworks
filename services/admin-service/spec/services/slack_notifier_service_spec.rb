@@ -71,6 +71,19 @@ RSpec.describe SlackNotifierService do
     expect(footer).to start_with('Service: file-service | ')
   end
 
+  it 'truncates long titles so Slack does not reject the message' do
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    incident.update!(title: "BigFailure: #{'x' * 240}", description: 'y' * 5000)
+    read_posted = stub_post
+
+    described_class.notify_incident(incident: incident)
+
+    posted = read_posted.call
+    expect(posted['blocks'][0]['text']['text'].length).to be <= 150
+    expect(posted['blocks'][1]['text']['text'].length).to be <= 3000
+  end
+
   it 'renders a true mention when the reporter is in SLACK_USER_MAP' do
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')

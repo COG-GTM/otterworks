@@ -66,6 +66,11 @@ module Api
             return render json: { error: 'Provide at least one of: enabled, webhook_url' }, status: :bad_request
           end
 
+          unless webhook_url.empty? || webhook_url.start_with?('https://hooks.slack.com/')
+            return render json: { error: 'webhook_url must be an https://hooks.slack.com/ URL' },
+                          status: :bad_request
+          end
+
           AdminSettingsService.set_slack_notifications(enabled) unless enabled.nil?
           AdminSettingsService.set_slack_webhook_url(webhook_url) unless webhook_url.empty?
           Rails.logger.info('Slack notification settings updated via settings API')

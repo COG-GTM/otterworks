@@ -6,6 +6,11 @@ require 'uri'
 # channel is bound to the webhook itself. Every failure is logged and
 # swallowed — a Slack outage must never block incident creation.
 class SlackNotifierService
+  # Slack Block Kit rejects the whole message (400 invalid_blocks) when a
+  # header exceeds 150 chars or a section exceeds 3000 chars.
+  HEADER_MAX = 150
+  SECTION_MAX = 3000
+
   class << self
     def notify_incident(incident:, session_url: nil, reporter_email: nil)
       return unless AdminSettingsService.slack_notifications_enabled?
@@ -52,7 +57,7 @@ class SlackNotifierService
       on_call_devin = if session_url
                         "<#{session_url}|Devin AI (auto-investigating)>"
                       else
-                        'Devin AI (auto-investigating)'
+                        'No Devin session'
                       end
       on_call_human = human_mention(reporter_email)
 
@@ -68,7 +73,7 @@ class SlackNotifierService
         '*Message:*',
         incident.description,
         '*Environment:*',
-        ENV.fetch('RAILS_ENV', 'development'),
+        Rails.env,
         '*On-Call:*',
         on_call_devin
       ]
@@ -80,13 +85,13 @@ class SlackNotifierService
             type: 'header',
             text: {
               type: 'plain_text',
-              text: "OtterWorks Alert — #{service} — #{incident.title}",
+              text: truncate("OtterWorks Alert — #{service} — #{incident.title}", HEADER_MAX),
               emoji: true
             }
           },
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: body_lines.join("\n") }
+            text: { type: 'mrkdwn', text: truncate(body_lines.join("\n"), SECTION_MAX) }
           },
           {
             type: 'context',
@@ -121,10 +126,18 @@ class SlackNotifierService
       raw = ENV.fetch('SLACK_USER_MAP', nil).presence
       return {} unless raw
 
-      JSON.parse(raw)
+      parsed = JSON.parse(raw)
+      return parsed if parsed.is_a?(Hash)
+
+      Rails.logger.error('SLACK_USER_MAP must be a JSON object of email -> Slack member id')
+      {}
     rescue JSON::ParserError => e
       Rails.logger.error("SLACK_USER_MAP is not valid JSON: #{e.message}")
       {}
+    end
+
+    def truncate(text, max)
+      text.length > max ? "#{text[0, max - 1]}\u2026" : text
     end
   end
 end
