@@ -124,11 +124,11 @@ def identity_header_spoof(ctx: ScanContext) -> Result:
                 Evidence.from_response(without_header, note="same read, no X-User-ID"),
             ],
         )
-    if response.status_code >= 500:
+    if unavailable(response):
         return self.result(
             Verdict.INCONCLUSIVE,
-            f"the read path returned {response.status_code}; the backend is failing, so the "
-            "spoof attempt proves nothing",
+            f"the read path returned {response.status_code}; the backend is failing or the "
+            "limiter answered, so the spoof attempt proves nothing",
             [Evidence.from_response(response)],
         )
     if response.status_code not in (401, 403, 404):
@@ -184,11 +184,13 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
         owner_id=ctx.victim.user_id,
     )
     if response.status_code not in (200, 201):
-        if response.status_code >= 500:
+        if unavailable(response):
+            # A 429 in particular: the control create below would refill past it a moment
+            # later and the probe would then call the critical finding fixed.
             return self.result(
                 Verdict.INCONCLUSIVE,
-                f"the create path returned {response.status_code}; the backend is failing, so "
-                "the refusal is not evidence of an ownership check",
+                f"the create path returned {response.status_code}; the backend is failing or "
+                "throttling, so the refusal is not evidence of an ownership check",
                 [Evidence.from_response(response)],
             )
         # Control request: the attacker creating in its own account must work,
@@ -289,15 +291,14 @@ def unsigned_jwt(ctx: ScanContext) -> Result:
         evidence.append(Evidence.from_response(response, note=label))
         if response.status_code < 400:
             return self.result(Verdict.VULNERABLE, f"forged token ({label}) was accepted", evidence)
-        if response.status_code >= 500:
+        if unavailable(response):
             # The gateway rejects an invalid token with 401 before proxying, so a 5xx
-            # means the request reached the backend — i.e. the token got past the
-            # very check under test.
+            # means the request reached the backend — i.e. the token got past the very
+            # check under test — and a 429 means the limiter answered instead of it.
             return self.result(
                 Verdict.INCONCLUSIVE,
-                f"forged token ({label}) reached a failing backend (status "
-                f"{response.status_code}); the gateway did not reject it outright, so the "
-                "attack cannot be assessed",
+                f"forged token ({label}) drew status {response.status_code}; the gateway did "
+                "not reject it outright, so the attack cannot be assessed",
                 evidence,
             )
     return self.result(Verdict.SECURE, "all forged tokens were rejected", evidence)
@@ -376,10 +377,10 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
 
     marker = ctx.victim_marker
     response = ctx.get("/api/v1/search/", params={"q": marker}, identity=ctx.attacker)
-    if response.status_code >= 500:
+    if unavailable(response):
         return self.result(
             Verdict.INCONCLUSIVE,
-            f"search backend unavailable (status {response.status_code})",
+            f"search backend unavailable or throttled (status {response.status_code})",
             [Evidence.from_response(response)],
         )
     # The service echoes the query back in every response, so the verdict has to
