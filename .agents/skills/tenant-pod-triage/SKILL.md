@@ -15,7 +15,7 @@ kubectl)*.
 
 ```bash
 export AWS_REGION=us-east-1
-JAR=$(mktemp); chmod 600 "$JAR"; trap 'rm -f "$JAR"' EXIT
+JAR=$(mktemp); chmod 600 "$JAR"   # rm -f "$JAR" when done (don't set an EXIT trap in an interactive shell)
 PASS=$(aws secretsmanager get-secret-value --secret-id otterworks/dev/dashboard/passcode \
   --query SecretString --output text)
 PASSCODE="$PASS" jq -nc '{passcode: env.PASSCODE}' | curl -s -c "$JAR" \
@@ -41,8 +41,10 @@ break in this chain. Check each link:
 
 1. **CI built and pushed**: `gh run view <run> -R <repo> --job <build-job-id> --log |
    grep -a "pushing manifest"` — note the digest and tags. The build pushes an immutable
-   `<branch>-<short-sha>` tag first (e.g. branch `demo-coggtm` at `3c18da3` →
-   `demo-coggtm-3c18da3`); if the job then fails on `tenant-<id>` ("tag is
+   `<branch-slug>-<sha7>` tag first (e.g. branch `demo-coggtm` at `3c18da3` →
+   `demo-coggtm-3c18da3`; a fork with the `TENANT_PREFIX` repo variable set prepends it,
+   and the branch is slugified — see `branch_tag_slug` in `scripts/lib/tenant-common.sh`;
+   trust the tag the build log actually printed); if the job then fails on `tenant-<id>` ("tag is
    immutable and cannot be overwritten"), **the unique tag is still usable** — the
    failure is only the moving pointer tag (known CD bug, see PR #87).
 2. **ECR tag points where you think** *(ask a human)*:
@@ -59,7 +61,7 @@ immutable tag directly *(ask a human)*:
 
 ```bash
 kubectl -n otterworks-<id> set image deployment/<service> \
-  <service>=<registry>/otterworks/<service>:<branch>-<short-sha>
+  <service>=<registry>/otterworks/<service>:<branch-slug>-<sha7>
 ```
 
 A unique tag is never cached on the node, so it always forces a genuine pull.
@@ -85,7 +87,7 @@ state; check the log line rather than assuming). While that holds:
 | Puma log: `Invalid HTTP format ... SSL connection to a non-SSL Puma?` at probe cadence; events: `server gave HTTP response to HTTPS client` | Rails `config.force_ssl = true` 301-redirects `/health` to https; kubelet follows the redirect and TLS-handshakes Puma's plain port; liveness kills the pod (exit 137, reason `Error`, not OOM) | `config.force_ssl = false` in the image (TLS terminates at the shared ingress) |
 | `/health` returns 503, `db: 0.0` in request logs; `db:migrate` aborts at boot | Deploy wires `DATABASE_HOST/PORT/USER/PASSWORD` but **no database name**; Rails' `database.yml` hardcodes `admin_service_production`, which doesn't exist — the tenant DB is `otterworks_<id>` | make `database.yml` read `ENV["DATABASE_NAME"]` and wire `config.DATABASE_NAME=${T_DB_NAME}` in `scripts/lib/tenant-common.sh` (admin-service case). A tenant-specific fallback baked into an image is acceptable **only** on that tenant's own `demo-<id>` branch — never on golden/`main`, whose image every tenant shares |
 | `bin/rails aborted! NoMethodError ... TaggedLogging.logger` | The upstream planted bug (`production.rb`); fixed on this fork, intentional upstream | Ensure the pod runs a fork-built image, not `:main` |
-| Build job fails: `The image tag 'tenant-<id>' already exists ... immutable` | CD re-pushes the moving `tenant-<id>` pointer to an immutable registry on every rebuild | Use the immutable `<branch>-<short-sha>` tag it already pushed (see §2); durable fix tracked in PR #87 |
+| Build job fails: `The image tag 'tenant-<id>' already exists ... immutable` | CD re-pushes the moving `tenant-<id>` pointer to an immutable registry on every rebuild | Use the immutable `<branch-slug>-<sha7>` tag it already pushed (see §2); durable fix tracked in PR #87 |
 | Pod `Pending` forever during rollout | Old crash-looping pod holds quota/capacity; surge pod can't schedule | Resolve why the old pod is unhealthy first; the rollout completes once the new pod goes ready |
 
 ## 5. Order of operations
