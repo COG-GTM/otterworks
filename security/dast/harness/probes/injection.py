@@ -45,7 +45,10 @@ def sqli_error_based(ctx: ScanContext) -> Result:
     targets = [
         ("/api/v1/search/", "q"),
         ("/api/v1/documents/", "title"),
-        ("/api/v1/files/", "folder_id"),
+        # No trailing slash: file-service registers the collection as "" inside
+        # web::scope("/api/v1/files"), so "/api/v1/files/" is a 404 that never
+        # reaches a query.
+        ("/api/v1/files", "folder_id"),
     ]
     evidence: list[Evidence] = []
     # A payload that never reached the query layer cannot surface an error from it,
@@ -66,7 +69,9 @@ def sqli_error_based(ctx: ScanContext) -> Result:
                     f"{path} leaked a SQL error for {param}={payload!r}",
                     evidence,
                 )
-            if unavailable(response) or response.status_code in (401, 403):
+            # A 404/405 is the router refusing the request, so like a refusal or a
+            # throttle it says nothing about how the query layer handles the payload.
+            if unavailable(response) or response.status_code in (401, 403, 404, 405):
                 unreached.append(f"{path} -> {response.status_code}")
             else:
                 reached.append(path)

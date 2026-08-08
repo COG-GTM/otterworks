@@ -196,8 +196,10 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
     evidence = _last_evidence(spoofed, note)
     # Two ways to be a bypass. Absolute: the spoofed burst drew no 429 at all while
     # the unspoofed one did, so rotating the header removed the limiter outright —
-    # this is the case the ratio cannot see, since `served` is capped at `burst`.
-    if served == burst:  # every request served, and none of them errored
+    # this is the case the ratio cannot see, since `served` is capped at `burst`. It
+    # still needs the unspoofed burst to have been materially throttled: a limiter that
+    # served 1499/1500 unspoofed and 1500/1500 spoofed is jitter, not a bypass.
+    if served == burst and baseline_served * BYPASS_MARGIN < burst:
         return self.result(
             Verdict.VULNERABLE,
             f"rotating X-Forwarded-For served the whole burst ({burst}) while the same "
