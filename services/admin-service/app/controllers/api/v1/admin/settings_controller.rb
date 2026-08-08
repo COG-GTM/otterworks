@@ -48,6 +48,48 @@ module Api
           Rails.logger.info('Devin credentials cleared via settings API')
           render json: DevinSessionService.credentials_status
         end
+
+        # GET /api/v1/admin/settings/slack_notifications
+        # Reports the toggle plus webhook presence — the URL itself is never
+        # returned.
+        def slack_notifications
+          render json: slack_status
+        end
+
+        # PUT /api/v1/admin/settings/slack_notifications
+        # Accepts `enabled` and/or `webhook_url` — at least one is required.
+        def update_slack_notifications
+          enabled = params.key?(:enabled) ? ActiveModel::Type::Boolean.new.cast(params[:enabled]) : nil
+          webhook_url = params[:webhook_url].to_s.strip
+
+          if enabled.nil? && webhook_url.empty?
+            return render json: { error: 'Provide at least one of: enabled, webhook_url' }, status: :bad_request
+          end
+
+          AdminSettingsService.set_slack_notifications(enabled) unless enabled.nil?
+          AdminSettingsService.set_slack_webhook_url(webhook_url) unless webhook_url.empty?
+          Rails.logger.info('Slack notification settings updated via settings API')
+          render json: slack_status
+        end
+
+        # DELETE /api/v1/admin/settings/slack_notifications
+        # Clears the stored webhook URL. An env-supplied SLACK_WEBHOOK_URL
+        # takes precedence and is not revocable here.
+        def destroy_slack_notifications
+          AdminSettingsService.clear_slack_webhook_url
+          Rails.logger.info('Slack webhook URL cleared via settings API')
+          render json: slack_status
+        end
+
+        private
+
+        def slack_status
+          {
+            enabled: AdminSettingsService.slack_notifications_enabled?,
+            webhook_configured: ENV.fetch('SLACK_WEBHOOK_URL', nil).present? ||
+              AdminSettingsService.slack_webhook_url.present?
+          }
+        end
       end
     end
   end
