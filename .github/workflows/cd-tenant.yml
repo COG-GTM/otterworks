@@ -52,6 +52,7 @@ jobs:
       services: ${{ steps.select.outputs.services }}
       image_tag: ${{ steps.select.outputs.image_tag }}
       tenant_tag: ${{ steps.select.outputs.tenant_tag }}
+      pin: ${{ steps.select.outputs.pin }}
       golden: ${{ steps.select.outputs.golden }}
       deploy: ${{ steps.select.outputs.deploy }}
     steps:
@@ -109,6 +110,15 @@ jobs:
             services="$(printf '%s' "${CHANGED}" | jq -c '[.[] | select(. != "deployable")]')"
           fi
           echo "services=${services}" >> "$GITHUB_OUTPUT"
+
+          # When every service is rebuilt, the deploy can be pinned to this
+          # run's immutable <slug>-<sha> tag instead of relying on the moving
+          # tenant-<id> pointer, which the CI role may lack permission to move
+          # (ecr:BatchDeleteImage). Pinning is only safe on a full rebuild:
+          # the tag must exist for every service the tenant deploys.
+          pin=false
+          if [ "${REBUILD_ALL}" = "true" ]; then pin=true; fi
+          echo "pin=${pin}" >> "$GITHUB_OUTPUT"
 
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
@@ -188,6 +198,7 @@ jobs:
           IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
           TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
           GOLDEN: ${{ needs.plan.outputs.golden }}
+          PIN: ${{ needs.plan.outputs.pin }}
         run: |
           set -euo pipefail
           repo="otterworks/${SERVICE}"
@@ -217,11 +228,43 @@ jobs:
               echo "${repo}:${tag} already points at ${IMAGE_TAG}"
               continue
             fi
-            failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
-              --image-ids imageTag="${tag}" \
-              --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"
-            if [ -n "${failures}" ]; then
-              echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+            # An absent pointer needs no untag at all; go straight to put-image
+            # (a brand-new environment must still get its pointer created even
+            # when the role cannot delete tags).
+            if [ -n "${current}" ]; then
+              if failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+                --image-ids imageTag="${tag}" \
+                --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>"${RUNNER_TEMP}/untag.err")"; then
+                # stderr is captured for the failure path; surface anything the
+                # CLI wrote while still succeeding rather than dropping it.
+                if [ -s "${RUNNER_TEMP}/untag.err" ]; then cat "${RUNNER_TEMP}/untag.err" >&2; fi
+                if [ -n "${failures}" ]; then
+                  echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+                fi
+              else
+                err="$(cat "${RUNNER_TEMP}/untag.err")"
+                # Only a missing ecr:BatchDeleteImage grant is survivable, and
+                # only for the tenant pointer on a run that pins the immutable
+                # tag: everything else (throttling, transient API errors, the
+                # golden `main` pointer every other tenant falls back to) would
+                # deploy the previous build behind a green run. Match the exact
+                # authorization failure -- an AccessDenied for any other reason
+                # is not something this run should paper over.
+                case "${err}" in
+                  *AccessDenied*ecr:BatchDeleteImage*) ;;
+                  *) echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1 ;;
+                esac
+                if [ "${tag}" = "main" ] || [ "${PIN}" != "true" ]; then
+                  echo "::error::cannot untag ${repo}:${tag} and this run does not pin ${IMAGE_TAG}, so the deploy would ship the previous build: ${err}"
+                  exit 1
+                fi
+                # The pointer stays stale after this run, so a later push that
+                # rebuilds no service (scripts/**, infrastructure/helm/**)
+                # deploys from it and reverts the tenant: re-dispatch with
+                # rebuild_all=true until the IAM grant lands.
+                echo "::warning::cannot untag ${repo}:${tag}; pointer left stale, deploy pinned to ${IMAGE_TAG}"
+                continue
+              fi
             fi
             # Retry: a put-image failure here would strand the environment
             # with no pointer at all until the next successful build.
@@ -261,4 +304,5 @@ jobs:
       - name: Sync tenant environment
         env:
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
-        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}"
+          PIN_TAG: ${{ needs.plan.outputs.pin == 'true' && needs.plan.outputs.image_tag || '' }}
+        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}" ${PIN_TAG:+"${PIN_TAG}"}
