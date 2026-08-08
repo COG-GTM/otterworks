@@ -28,6 +28,8 @@ interface UploadingFile {
   status: "uploading" | "done" | "error";
   error?: string;
   abortController?: AbortController;
+  devinSessionUrl?: string;
+  failedAt?: number;
 }
 
 let fileIdCounter = 0;
@@ -43,9 +45,12 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
-  const [devinSessionUrl, setDevinSessionUrl] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState(false);
-  const pollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const pollTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  // Bumped whenever an upload's lookups are stopped, so a chain awaiting a
+  // request can tell it has been superseded and drop its result.
+  const pollGenerationRef = useRef(new Map<string, number>());
+  const mountedRef = useRef(true);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
 
@@ -64,7 +69,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
     if (!uploadingFiles.some((f) => f.status === "error")) {
       setShowUploadErrorBanner(false);
-      setDevinSessionUrl(null);
     }
 
     if (allDone && !hasUploading) {
@@ -89,42 +93,93 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     };
   }, [uploadingFiles]);
 
-  useEffect(
-    () => () => {
-      pollTimersRef.current.forEach(clearTimeout);
-      pollTimersRef.current = [];
+  const stopPolling = useCallback((id: string) => {
+    const timer = pollTimersRef.current.get(id);
+    if (timer) clearTimeout(timer);
+    pollTimersRef.current.delete(id);
+    pollGenerationRef.current.set(id, (pollGenerationRef.current.get(id) ?? 0) + 1);
+  }, []);
+
+  // An upload that will never be polled again drops its bookkeeping entirely.
+  const forgetPolling = useCallback(
+    (id: string) => {
+      stopPolling(id);
+      pollGenerationRef.current.delete(id);
     },
-    [],
+    [stopPolling],
   );
 
-  const pollForDevinSession = useCallback((fileName: string) => {
-    let attempt = 0;
-    const check = async () => {
-      attempt += 1;
-      try {
-        const incident = await incidentsApi.findForUpload(fileName);
-        if (incident?.devinSessionUrl) {
-          setDevinSessionUrl(incident.devinSessionUrl);
-          return;
-        }
-      } catch {
-        // Incident lookup is best-effort: the banner still shows the failure.
-      }
-      if (attempt < SESSION_POLL_ATTEMPTS) {
-        pollTimersRef.current.push(setTimeout(() => void check(), SESSION_POLL_INTERVAL_MS));
-      }
+  const stopAllPolling = useCallback(() => {
+    [...pollGenerationRef.current.keys()].forEach(stopPolling);
+  }, [stopPolling]);
+
+  const timers = pollTimersRef.current;
+  useEffect(() => {
+    // Re-set on mount so StrictMode's simulated remount does not leave the
+    // component permanently marked as unmounted.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      timers.forEach(clearTimeout);
+      timers.clear();
     };
-    void check();
-  }, []);
+  }, [timers]);
+
+  // Each failed upload polls for its own incident, so a later failure never
+  // shows the session belonging to an earlier file. One in-flight lookup per
+  // upload; retrying, cancelling or dismissing stops it.
+  const pollForDevinSession = useCallback(
+    (entry: UploadingFile) => {
+      stopPolling(entry.id);
+      const generation = pollGenerationRef.current.get(entry.id) ?? 0;
+      const superseded = () =>
+        !mountedRef.current || pollGenerationRef.current.get(entry.id) !== generation;
+      let attempt = 0;
+      const check = async () => {
+        pollTimersRef.current.delete(entry.id);
+        attempt += 1;
+        try {
+          const incident = await incidentsApi.findForUpload(entry.file.name);
+          if (superseded()) return;
+          if (incident?.devinSessionUrl) {
+            const url = incident.devinSessionUrl;
+            setUploadingFiles((prev) =>
+              prev.map((f) => (f.id === entry.id ? { ...f, devinSessionUrl: url } : f)),
+            );
+            return;
+          }
+        } catch {
+          // Incident lookup is best-effort: the banner still shows the failure.
+          if (superseded()) return;
+        }
+        if (attempt < SESSION_POLL_ATTEMPTS) {
+          pollTimersRef.current.set(
+            entry.id,
+            setTimeout(() => void check(), SESSION_POLL_INTERVAL_MS),
+          );
+        }
+      };
+      void check();
+    },
+    [stopPolling],
+  );
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
       const abortController = new AbortController();
 
+      stopPolling(entry.id);
       setUploadingFiles((prev) =>
         prev.map((f) =>
           f.id === entry.id
-            ? { ...f, status: "uploading" as const, progress: 0, error: undefined, abortController }
+            ? {
+                ...f,
+                status: "uploading" as const,
+                progress: 0,
+                error: undefined,
+                devinSessionUrl: undefined,
+                abortController,
+              }
             : f,
         ),
       );
@@ -145,6 +200,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 : f,
             ),
           );
+          forgetPolling(entry.id);
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
@@ -155,17 +211,23 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
-                  ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
+                  ? {
+                      ...f,
+                      status: "error" as const,
+                      error: "Upload failed",
+                      failedAt: Date.now(),
+                      abortController: undefined,
+                    }
                   : f,
               ),
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            void pollForDevinSession(entry.file.name);
+            pollForDevinSession(entry);
           }
         });
     },
-    [uploadFile, onUploadComplete, pollForDevinSession],
+    [uploadFile, onUploadComplete, pollForDevinSession, stopPolling, forgetPolling],
   );
 
   const addFiles = useCallback(
@@ -186,6 +248,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const cancelUpload = (id: string) => {
     const entry = uploadingFiles.find((f) => f.id === id);
+    forgetPolling(id);
     entry?.abortController?.abort();
   };
 
@@ -197,6 +260,18 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   const clearCompleted = () => {
     setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
   };
+
+  const dismissErrorBanner = () => {
+    stopAllPolling();
+    setShowUploadErrorBanner(false);
+  };
+
+  const lastFailed = uploadingFiles
+    .filter((f) => f.status === "error")
+    .reduce<UploadingFile | undefined>(
+      (latest, f) => (!latest || (f.failedAt ?? 0) >= (latest.failedAt ?? 0) ? f : latest),
+      undefined,
+    );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: addFiles,
@@ -210,9 +285,9 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           className="mb-4"
           title="File upload failed"
           message="One or more files could not be uploaded. Please try again."
-          actionHref={devinSessionUrl ?? undefined}
-          actionLabel="View Devin session"
-          onDismiss={() => setShowUploadErrorBanner(false)}
+          actionHref={lastFailed?.devinSessionUrl}
+          actionLabel={`View Devin session for ${lastFailed?.file.name ?? "this upload"}`}
+          onDismiss={dismissErrorBanner}
         />
       )}
       <div
