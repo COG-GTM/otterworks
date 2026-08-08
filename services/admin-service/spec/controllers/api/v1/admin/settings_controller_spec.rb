@@ -104,13 +104,14 @@ RSpec.describe Api::V1::Admin::SettingsController do
   describe 'DELETE #destroy_slack_notifications' do
     it 'clears the stored webhook URL without touching the toggle' do
       allow(AdminSettingsService).to receive(:clear_slack_webhook_url)
+      allow(AdminSettingsService).to receive(:set_slack_notifications)
       allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
       allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
 
       delete :destroy_slack_notifications
       expect(response).to have_http_status(:ok)
       expect(AdminSettingsService).to have_received(:clear_slack_webhook_url)
-      expect(AdminSettingsService).not_to have_received(:slack_notifications_enabled?).with(anything)
+      expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
       expect(response.parsed_body['enabled']).to be(true)
     end
   end

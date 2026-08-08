@@ -53,7 +53,8 @@ class SlackNotifierService
     end
 
     def build_payload(incident, session_url, reporter_email)
-      service = incident.affected_service.presence || 'unknown-service'
+      service = escape_mrkdwn(incident.affected_service.presence || 'unknown-service')
+      title = escape_mrkdwn(incident.title)
       on_call_devin = if session_url
                         "<#{session_url}|Devin AI (auto-investigating)>"
                       else
@@ -63,13 +64,13 @@ class SlackNotifierService
 
       body_lines = [
         '*Error:*',
-        incident.title,
+        title,
         '*Severity:*',
         incident.severity,
         '*Location:*',
         service,
         '*Type:*',
-        incident.title.split(':').first.to_s.strip,
+        title.split(':').first.to_s.strip,
         '*Message:*',
         :description,
         '*Environment:*',
@@ -83,7 +84,7 @@ class SlackNotifierService
       # budget remains so the trailing On-Call lines (the session link) always
       # survive the section limit.
       fixed_length = body_lines.sum { |l| l == :description ? 1 : l.to_s.length + 1 }
-      description = truncate(incident.description.to_s, [SECTION_MAX - fixed_length, 1].max)
+      description = truncate(escape_mrkdwn(incident.description.to_s), [SECTION_MAX - fixed_length, 1].max)
       body = body_lines.map { |l| l == :description ? description : l }.join("\n")
 
       {
@@ -141,6 +142,11 @@ class SlackNotifierService
     rescue JSON::ParserError => e
       Rails.logger.error("SLACK_USER_MAP is not valid JSON: #{e.message}")
       {}
+    end
+
+    # Slack mrkdwn requires &, < and > to be HTML-escaped in text content.
+    def escape_mrkdwn(text)
+      text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
     end
 
     def truncate(text, max)
