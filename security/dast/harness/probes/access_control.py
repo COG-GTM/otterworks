@@ -9,6 +9,17 @@ from .base import Evidence, Result, Severity, Verdict, probe, unavailable
 from .context import ScanContext
 
 
+def _hit_matches(hit: object, document_id: str) -> bool:
+    """Whether a search hit is the given document.
+
+    Matched on the structured id rather than the marker text: the service returns
+    the snippet from MeiliSearch's *formatted* field, which wraps every matched
+    token in <em>, and MeiliSearch tokenises on the hyphens in the marker — so the
+    marker never appears verbatim in a hit that contains it.
+    """
+    return isinstance(hit, dict) and str(hit.get("id", "")) == document_id
+
+
 def _b64url(payload: dict) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -367,19 +378,19 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
     if hits is None:
         return self.result(
             Verdict.INCONCLUSIVE,
-            "the search response was not a parsable result set",
+            f"the search response (status {response.status_code}) was not a parsable result set",
             [Evidence.from_response(response)],
         )
-    if any(marker in str(hit) for hit in hits):
+    if any(_hit_matches(hit, victim_doc["id"]) for hit in hits):
         return self.result(
             Verdict.VULNERABLE,
-            "attacker's search returned the victim's document marker",
+            f"attacker's search returned the victim's document {victim_doc['id']}",
             [Evidence.from_response(response, note=f"marker {marker}")],
         )
     # Control request: documents are indexed asynchronously, so an empty result
     # set for the attacker means nothing until the owner can find it.
     control = ctx.search_as(ctx.victim, marker)
-    if control is None or not any(marker in str(hit) for hit in control):
+    if control is None or not any(_hit_matches(hit, victim_doc["id"]) for hit in control):
         return self.result(
             Verdict.INCONCLUSIVE,
             "the owner cannot find the marker either, so the index is empty or still "
