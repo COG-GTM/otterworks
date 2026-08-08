@@ -1,16 +1,25 @@
-import { AlertOctagon, X } from "lucide-react";
+import { AlertOctagon, ExternalLink, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ChaosErrorBannerProps {
   title: string;
   message: string;
+  actionHref?: string;
+  actionLabel?: string;
   onDismiss?: () => void;
   className?: string;
 }
 
 // Large full-width red error banner used to surface chaos-scenario failures
 // prominently in the UI (vs. the small per-item inline error text).
-export function ChaosErrorBanner({ title, message, onDismiss, className }: ChaosErrorBannerProps) {
+export function ChaosErrorBanner({
+  title,
+  message,
+  actionHref,
+  actionLabel,
+  onDismiss,
+  className,
+}: ChaosErrorBannerProps) {
   return (
     <div
       role="alert"
@@ -23,6 +32,17 @@ export function ChaosErrorBanner({ title, message, onDismiss, className }: Chaos
       <div className="flex-1 min-w-0">
         <p className="text-lg font-bold uppercase tracking-wide">{title}</p>
         <p className="text-sm mt-1 text-red-100">{message}</p>
+        {actionHref && (
+          <a
+            href={actionHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold underline underline-offset-2 hover:text-red-100"
+          >
+            {actionLabel ?? "View details"}
+            <ExternalLink size={14} />
+          </a>
+        )}
       </div>
       {onDismiss && (
         <button
