@@ -15,7 +15,7 @@ kubectl)*.
 
 ```bash
 export AWS_REGION=us-east-1
-JAR=$(mktemp); chmod 600 "$JAR"   # rm -f "$JAR" when done (don't set an EXIT trap in an interactive shell)
+JAR=$(mktemp)
 PASS=$(aws secretsmanager get-secret-value --secret-id otterworks/dev/dashboard/passcode \
   --query SecretString --output text)
 PASSCODE="$PASS" jq -nc '{passcode: env.PASSCODE}' | curl -s -c "$JAR" \
@@ -23,6 +23,7 @@ PASSCODE="$PASS" jq -nc '{passcode: env.PASSCODE}' | curl -s -c "$JAR" \
   -H 'content-type: application/json' --data-binary @-
 curl -s -b "$JAR" https://ops.otterworks.app/api/tenants/<id> | jq '{
   status, live, pods: [.pods[] | {name, phase, ready, restarts}]}'
+rm -f "$JAR"   # session cookie lives in the jar; don't leave it behind
 ```
 
 The record's `.logs` field is the latest runner Job's deploy log — it shows which image
