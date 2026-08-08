@@ -84,6 +84,20 @@ must not exit clean.
   live in the target's database until the tenant is reaped.
 - Identities and seeded objects are namespaced by a per-run id, so concurrent
   scans (CI, several sessions, several tenants) do not collide.
+- `DAST-RATE-LIMIT-BYPASS` is a load generator: two bursts of
+  `OTTERWORKS_DAST_RATE_LIMIT_BURST` (default 1500) requests at
+  `OTTERWORKS_DAST_RATE_LIMIT_WORKERS` (default 64) concurrency. A tenant's data
+  is its own, but the ingress controller and the node group are shared with
+  every other tenant, so turn the burst down (or scan locally) while someone
+  else is presenting:
+
+  ```bash
+  OTTERWORKS_DAST_RATE_LIMIT_BURST=300 OTTERWORKS_DAST_RATE_LIMIT_WORKERS=16 \
+    make dast-scan DAST_TARGET=https://api-t-<id>.demo.otterworks.app
+  ```
+
+  A smaller burst may no longer separate a bypass from a generous allowance, in
+  which case the probe says so and reports `inconclusive` rather than passing.
 
 ## The baseline
 

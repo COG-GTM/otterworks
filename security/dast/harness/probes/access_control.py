@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import json
 
-from .base import Evidence, Result, Severity, Verdict, probe, unavailable
+from .base import Evidence, Result, Severity, Verdict, probe, redact, unavailable
 from .context import ScanContext
 
 
@@ -233,7 +233,10 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
                     request=f"POST {ctx.base_url}/api/v1/documents/ "
                     f'{{"owner_id": "{ctx.victim.user_id}", ...}} as attacker',
                     response_status=201,
-                    response_excerpt=str(planted)[:300],
+                    # json.dumps, not str(): the redaction patterns match double-quoted
+                    # JSON keys, and a Python dict repr would slip a single-quoted
+                    # credential field past them. Redact before truncating.
+                    response_excerpt=redact(json.dumps(planted))[:300],
                     note="owner_id in the response echoes the victim, not the caller",
                 )
             ],

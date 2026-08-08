@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from httpx import Response
+from httpx import HTTPError, Response
 
 from .base import Evidence, Result, Severity, Verdict, probe, unavailable
 from .context import ScanContext
@@ -23,6 +23,12 @@ TLS_ONLY_HEADERS = {"strict-transport-security": None}
 #: The unspoofed burst is the control, so this is a ratio rather than an absolute:
 #: a limiter behaving identically under both bursts lands at ~1.0.
 BYPASS_MARGIN = 1.25
+
+
+def _last_evidence(responses: list[Response | None], note: str) -> list[Evidence]:
+    """Evidence from the last request that actually got a response."""
+    last = next((r for r in reversed(responses) if r is not None), None)
+    return [Evidence.from_response(last, note=note)] if last is not None else []
 
 
 @probe(
@@ -135,9 +141,15 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
     self = rate_limit_bypass.probe
     burst = ctx.rate_limit_burst
 
-    def hit(index: int, spoof: bool) -> Response:
+    def hit(index: int, spoof: bool) -> Response | None:
         headers = {"X-Forwarded-For": f"10.9.{index // 256}.{index % 256}"} if spoof else None
-        return ctx.get("/health", headers=headers)
+        try:
+            return ctx.get("/health", headers=headers)
+        except HTTPError:
+            # A reset or timeout is the expected shape of flooding a gateway. It is
+            # neither served nor throttled, so it is counted rather than allowed to
+            # abort the burst and discard every other observation.
+            return None
 
     # The limiter is a token bucket refilling at RATE_LIMIT_RPS per second, so a
     # sequential loop only ever drains it when the round trip is faster than the
@@ -145,30 +157,47 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
     # concurrently so the request rate beats the refill regardless of latency.
     with ThreadPoolExecutor(max_workers=ctx.rate_limit_workers) as pool:
         baseline = list(pool.map(lambda i: hit(i, False), range(burst)))
-        if not any(r.status_code == 429 for r in baseline):
+        baseline_errors = sum(1 for r in baseline if r is None)
+        if baseline_errors > burst // 2:
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"{baseline_errors}/{burst} unspoofed requests failed at the transport level, "
+                "so the limiter's behaviour cannot be measured",
+            )
+        if not any(r is not None and r.status_code == 429 for r in baseline):
             return self.result(
                 Verdict.INCONCLUSIVE,
                 f"{burst} concurrent requests never drew a 429, so either no limiter is "
                 "configured at this edge or its allowance exceeds the burst; the bypass "
                 "cannot be tested",
-                [Evidence.from_response(baseline[-1], note="last unspoofed request")],
+                _last_evidence(baseline, "last unspoofed request"),
             )
 
         spoofed = list(pool.map(lambda i: hit(i, True), range(burst)))
 
-    served = sum(1 for r in spoofed if r.status_code != 429)
-    baseline_served = sum(1 for r in baseline if r.status_code != 429)
-    last = spoofed[-1]
+    spoofed_errors = sum(1 for r in spoofed if r is None)
+    if spoofed_errors > burst // 2:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"{spoofed_errors}/{burst} spoofed requests failed at the transport level, so the "
+            "two bursts are not comparable",
+        )
+
+    # An errored request was not served, so it counts against the bypass rather than
+    # for it: the comparison stays conservative.
+    served = sum(1 for r in spoofed if r is not None and r.status_code != 429)
+    baseline_served = sum(1 for r in baseline if r is not None and r.status_code != 429)
 
     note = (
         f"{served}/{burst} served while rotating X-Forwarded-For "
         f"vs {baseline_served}/{burst} unspoofed"
+        + (f", {spoofed_errors + baseline_errors} transport errors" if spoofed_errors else "")
     )
-    evidence = [Evidence.from_response(last, note=note)]
+    evidence = _last_evidence(spoofed, note)
     # Two ways to be a bypass. Absolute: the spoofed burst drew no 429 at all while
     # the unspoofed one did, so rotating the header removed the limiter outright —
     # this is the case the ratio cannot see, since `served` is capped at `burst`.
-    if served == burst:
+    if served == burst:  # every request served, and none of them errored
         return self.result(
             Verdict.VULNERABLE,
             f"rotating X-Forwarded-For served the whole burst ({burst}) while the same "

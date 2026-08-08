@@ -54,6 +54,13 @@ bypasses the controls under test. Never scan a tenant someone else is
 presenting from: each scan registers accounts and writes documents into the
 target's database.
 
+`DAST-RATE-LIMIT-BYPASS` also puts real load on the cluster — two bursts of
+1500 requests at 64-way concurrency — and every tenant shares one ingress
+controller and node group. While others are presenting, turn it down with
+`OTTERWORKS_DAST_RATE_LIMIT_BURST=300 OTTERWORKS_DAST_RATE_LIMIT_WORKERS=16`
+(the probe reports `inconclusive`, not `secure`, if the smaller burst can no
+longer distinguish a bypass).
+
 The local Java builds (`auth-service`, `notification-service`) pull from Maven
 Central; if that is rate-limited in your environment, scan a deployed tenant
 instead of the local stack.

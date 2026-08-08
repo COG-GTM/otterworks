@@ -189,6 +189,14 @@ def credential_brute_force(ctx: ScanContext) -> Result:
     # Aimed at the burner, not the victim: a target that correctly locks the
     # account must not strand the later probes that log in as the victim.
     target = ctx.burner
+    # Control request first, so "the correct password stops working" afterwards reads as
+    # a lockout rather than an account that never worked.
+    if not ctx.login(target.email, target.password):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the burner's own password does not work before the attack, so nothing that "
+            "happens to it during the attempts can be attributed to a lockout control",
+        )
     for i in range(attempts):
         last = ctx.request(
             "POST",
@@ -222,9 +230,13 @@ def credential_brute_force(ctx: ScanContext) -> Result:
         )
     ]
     if not still_valid:
+        # The password worked before the attack and does not now: the account was
+        # locked. Most implementations signal that with the same generic 401 as any
+        # other failure, so the status codes alone would never show it.
         return self.result(
-            Verdict.INCONCLUSIVE,
-            "account state changed unexpectedly during the probe",
+            Verdict.SECURE,
+            f"the correct password stopped working after {attempts} failed attempts, so the "
+            "account was locked (the same credential succeeded before the attack)",
             evidence,
         )
     return self.result(
