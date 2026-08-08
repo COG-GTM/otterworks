@@ -182,10 +182,29 @@ jobs:
           IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
         run: |
           set -euo pipefail
-          # A repository that does not exist yet is simply "not built".
-          found="$(aws ecr batch-get-image --repository-name "otterworks/${SERVICE}" \
-                     --image-ids imageTag="${IMAGE_TAG}" --output json 2>/dev/null |
-                   jq -r '.images | length' || echo 0)"
+          # Same media types as the pointer step: the defaults exclude manifest
+          # lists and OCI indexes, so a multi-platform or attestation-carrying
+          # image would read as absent and the build would run and fail again.
+          if out="$(aws ecr batch-get-image --repository-name "otterworks/${SERVICE}" \
+                      --image-ids imageTag="${IMAGE_TAG}" \
+                      --accepted-media-types \
+                        application/vnd.docker.distribution.manifest.v2+json \
+                        application/vnd.docker.distribution.manifest.list.v2+json \
+                        application/vnd.oci.image.manifest.v1+json \
+                        application/vnd.oci.image.index.v1+json \
+                      --output json 2>"${RUNNER_TEMP}/probe.err")"; then
+            found="$(printf '%s' "${out}" | jq -r '.images | length')"
+          else
+            # A repository that does not exist yet is simply "not built"; any
+            # other failure leaves the build to hit the immutable-tag push, so
+            # say why rather than failing silently.
+            err="$(cat "${RUNNER_TEMP}/probe.err")"
+            case "${err}" in
+              *RepositoryNotFoundException*) ;;
+              *) echo "::warning::could not check for ${IMAGE_TAG} in otterworks/${SERVICE}: ${err}" ;;
+            esac
+            found=0
+          fi
           if [ "${found:-0}" -gt 0 ]; then
             echo "::notice::otterworks/${SERVICE}:${IMAGE_TAG} already exists; skipping build"
             echo "built=true" >> "$GITHUB_OUTPUT"
