@@ -12,7 +12,9 @@ RSpec.describe DevinSessionService do
   end
 
   before do
-    stub_const('ENV', ENV.to_h.except('DEVIN_API_KEY', 'DEVIN_ORG_ID'))
+    allow(ENV).to receive(:fetch).and_call_original
+    allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return(nil)
+    allow(ENV).to receive(:fetch).with('DEVIN_ORG_ID', nil).and_return(nil)
   end
 
   it 'skips session creation when no credentials are configured anywhere' do
@@ -37,5 +39,18 @@ RSpec.describe DevinSessionService do
     result = described_class.create_session(incident: incident)
     expect(captured_uri.to_s).to include('/organizations/org-123/sessions')
     expect(result).to eq({ session_id: 's-1', url: 'https://app.devin.ai/s-1' })
+  end
+
+  it 'does not pair an env api key with a stored org id' do
+    allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return('env-key')
+    allow(AdminSettingsService).to receive(:devin_credentials)
+      .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+    allow(described_class).to receive(:make_request) do |_uri, request|
+      expect(request['Authorization']).to eq('Bearer stored-key')
+      instance_double(Net::HTTPOK, body: { session_id: 's-1', url: 'u' }.to_json)
+    end
+
+    described_class.create_session(incident: incident)
   end
 end

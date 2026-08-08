@@ -62,6 +62,19 @@ class AdminSettingsService
       redis&.close
     end
 
+    def clear_devin_credentials
+      redis = Redis.new(
+        url: ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0"),
+        timeout: 2
+      )
+      redis.del(DEVIN_API_KEY_KEY, DEVIN_ORG_ID_KEY)
+    rescue StandardError => e
+      Rails.logger.error("Failed to clear Devin credentials: #{e.message}")
+      raise
+    ensure
+      redis&.close
+    end
+
     private
 
     def blank_to_nil(val)

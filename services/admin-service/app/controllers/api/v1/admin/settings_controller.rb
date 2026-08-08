@@ -19,13 +19,11 @@ module Api
         end
 
         # GET /api/v1/admin/settings/devin_credentials
-        # Reports presence only — credential values are never returned.
+        # Reports presence only — credential values are never returned. Uses the
+        # same resolution as session creation, so a "configured" answer here
+        # means sessions will actually be created.
         def devin_credentials
-          creds = AdminSettingsService.devin_credentials
-          render json: {
-            api_key_configured: creds[:api_key].present? || ENV['DEVIN_API_KEY'].present?,
-            org_id_configured: creds[:org_id].present? || ENV['DEVIN_ORG_ID'].present?
-          }
+          render json: DevinSessionService.credentials_status
         end
 
         # PUT /api/v1/admin/settings/devin_credentials
@@ -38,7 +36,14 @@ module Api
 
           AdminSettingsService.set_devin_credentials(api_key: api_key, org_id: org_id)
           Rails.logger.info('Devin credentials updated via settings API')
-          render json: { api_key_configured: true, org_id_configured: true }
+          render json: DevinSessionService.credentials_status
+        end
+
+        # DELETE /api/v1/admin/settings/devin_credentials
+        def destroy_devin_credentials
+          AdminSettingsService.clear_devin_credentials
+          Rails.logger.info('Devin credentials cleared via settings API')
+          render json: DevinSessionService.credentials_status
         end
       end
     end

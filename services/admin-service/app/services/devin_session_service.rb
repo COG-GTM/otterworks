@@ -55,10 +55,19 @@ class DevinSessionService
       nil
     end
 
+    # Whether a usable credential pair resolves right now, from the same
+    # resolution the API calls use.
+    def credentials_status
+      api_key, org_id = credentials
+      { api_key_configured: api_key.present?, org_id_configured: org_id.present? }
+    end
+
     private
 
-    # Environment variables win; the Redis-backed settings store is the
-    # fallback so credentials can be supplied at runtime on tenants whose
+    # A key and an org id must come from the same source: pairing an env key
+    # with a stored org id (or vice versa) yields credentials that never
+    # belonged together. Environment wins; the Redis-backed settings store is
+    # the fallback so credentials can be supplied at runtime on tenants whose
     # deploy pipeline does not wire them as env vars.
     def credentials
       api_key = ENV.fetch('DEVIN_API_KEY', nil).presence
@@ -66,7 +75,7 @@ class DevinSessionService
       return [api_key, org_id] if api_key && org_id
 
       stored = AdminSettingsService.devin_credentials
-      [api_key || stored[:api_key], org_id || stored[:org_id]]
+      [stored[:api_key], stored[:org_id]]
     end
 
     def build_prompt(incident)
