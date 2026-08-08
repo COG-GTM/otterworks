@@ -53,6 +53,19 @@ class MarginServiceSpec extends AnyFlatSpec with Matchers:
     m.commodityCostUsd shouldBe BigDecimal("0.5000")
   }
 
+  it should "report a zero margin for a product with no list price" in {
+    val freeProduct = salmonProduct.copy(listPriceUsd = BigDecimal(0))
+    val m = MarginService.computeMargin(
+      freeProduct,
+      commodityPrice = BigDecimal(100),
+      commodityCurrency = "NOK",
+      usdNok = BigDecimal(10),
+      wciUsdFeu = BigDecimal(2500)
+    )
+    m.cogsUsd shouldBe BigDecimal("11.6380")
+    m.marginPct shouldBe BigDecimal(0)
+  }
+
   "MarketSeeder walk extension" should "be deterministic for the same inputs (BDD-01)" in {
     val a = MarketSeeder.walkExtension(
       "SALMON_NOK_KG", LocalDate.parse("2026-06-30"), BigDecimal(100), LocalDate.parse("2026-07-20"))
