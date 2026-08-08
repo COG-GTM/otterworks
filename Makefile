@@ -251,26 +251,31 @@ dast-baseline: ## Record current findings as accepted (REASON="...")
 
 dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 	@mkdir -p security/dast/reports
-# ZAP writes its report *and* its generated automation plan into the mount, and the
-# image runs as uid 1000 while a CI runner is 1001, so the mount has to be writable
-# by another uid (running the container as the host uid instead is not an option:
-# ZAP needs /home/zap, which only exists for uid 1000). So the mount is a throwaway
-# directory outside the tree rather than anything durable, and the report is copied
-# back out. The stale report is removed first, so "a report exists" can only mean
-# this run produced one.
+# ZAP writes its report *and* its generated automation plan into its working
+# directory, and the image runs as uid 1000 while a CI runner is 1001 (running the
+# container as the host uid instead is not an option: ZAP needs /home/zap, which
+# only exists for uid 1000). Rather than open up a host directory, the working
+# directory is a throwaway docker volume chowned to the image's uid from inside a
+# container, so nothing on the host is ever writable by another local user. The
+# rule file goes in read-only, and the report is read back out through the volume.
+# The stale report is removed first, so "a report exists" can only mean this run
+# produced one.
 	@rm -f security/dast/reports/zap-report.json
 	@set -e; \
-	scratch="$$(mktemp -d)"; \
-	trap 'rm -rf "$$scratch"' EXIT INT TERM; \
-	cp security/dast/zap/zap-baseline.conf "$$scratch/"; \
-	chmod 0777 "$$scratch"; \
+	vol="dast-zap-$$$$"; \
+	trap 'docker volume rm -f "$$vol" >/dev/null 2>&1' EXIT INT TERM; \
+	docker volume create "$$vol" >/dev/null; \
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" \
+		ghcr.io/zaproxy/zaproxy:stable chown 1000:1000 /zap/wrk; \
 	docker run --rm --network host \
-		-v "$$scratch:/zap/wrk:rw" \
+		-v "$$vol:/zap/wrk" \
+		-v "$(CURDIR)/security/dast/zap/zap-baseline.conf:/zap/wrk/zap-baseline.conf:ro" \
 		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
 		-t $(DAST_TARGET) -c zap-baseline.conf -J zap-report.json -I || true; \
-	if [ -f "$$scratch/zap-report.json" ]; then \
-		cp "$$scratch/zap-report.json" security/dast/reports/zap-report.json; \
-	fi
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+		sh -c 'cat /zap/wrk/zap-report.json 2>/dev/null' \
+		> security/dast/reports/zap-report.json || true; \
+	[ -s security/dast/reports/zap-report.json ] || rm -f security/dast/reports/zap-report.json
 # A ZAP failure must not cost the probe suite: the sweep still reports, without it.
 	@if [ -f security/dast/reports/zap-report.json ]; then \
 		$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json; \

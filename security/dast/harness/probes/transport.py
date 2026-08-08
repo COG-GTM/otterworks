@@ -183,48 +183,57 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
             "two bursts are not comparable",
         )
 
-    # An errored request was not served, so it counts against the bypass rather than
-    # for it: the comparison stays conservative.
+    # Only a request that came back says anything about the limiter, and the two bursts
+    # do not error equally (the unspoofed one runs first, on a cold pool). Comparing raw
+    # counts would let the control's own transport errors read as throttling and turn a
+    # working limiter into a bypass, so both sides are fractions of what responded.
     served = sum(1 for r in spoofed if r is not None and r.status_code != 429)
     baseline_served = sum(1 for r in baseline if r is not None and r.status_code != 429)
+    spoofed_rate = served / (burst - spoofed_errors)
+    baseline_rate = baseline_served / (burst - baseline_errors)
 
     note = (
-        f"{served}/{burst} served while rotating X-Forwarded-For "
-        f"vs {baseline_served}/{burst} unspoofed"
-        + (f", {spoofed_errors + baseline_errors} transport errors" if spoofed_errors else "")
+        f"{served}/{burst - spoofed_errors} answered requests served while rotating "
+        f"X-Forwarded-For vs {baseline_served}/{burst - baseline_errors} unspoofed"
+        + (
+            f", {spoofed_errors + baseline_errors} transport errors"
+            if spoofed_errors or baseline_errors
+            else ""
+        )
     )
     evidence = _last_evidence(spoofed, note)
     # Two ways to be a bypass. Absolute: the spoofed burst drew no 429 at all while
     # the unspoofed one did, so rotating the header removed the limiter outright —
-    # this is the case the ratio cannot see, since `served` is capped at `burst`. It
-    # still needs the unspoofed burst to have been materially throttled: a limiter that
-    # served 1499/1500 unspoofed and 1500/1500 spoofed is jitter, not a bypass.
-    if served == burst and baseline_served * BYPASS_MARGIN < burst:
+    # this is the case the ratio cannot see, since the rate is capped at 1. It still
+    # needs the unspoofed burst to have been materially throttled: a limiter that served
+    # 1499/1500 unspoofed and 1500/1500 spoofed is jitter, not a bypass.
+    if spoofed_rate == 1 and baseline_rate * BYPASS_MARGIN < 1:
         return self.result(
             Verdict.VULNERABLE,
-            f"rotating X-Forwarded-For served the whole burst ({burst}) while the same "
-            f"unspoofed burst was throttled to {baseline_served}",
+            f"rotating X-Forwarded-For served every request that came back "
+            f"({served}/{burst - spoofed_errors}) while the same unspoofed burst was "
+            f"throttled to {baseline_served}/{burst - baseline_errors}",
             evidence,
         )
     # Relative: a partial bypass is still a bypass if spoofing bought materially more
     # throughput. Some other layer (ingress, a global bucket) can still return the odd
     # 429, so requiring every request through would report a near-total bypass as safe.
-    if served > baseline_served * BYPASS_MARGIN:
+    if spoofed_rate > baseline_rate * BYPASS_MARGIN:
         return self.result(
             Verdict.VULNERABLE,
-            f"rotating X-Forwarded-For served {served}/{burst} requests against "
-            f"{baseline_served}/{burst} for the same unspoofed burst",
+            f"rotating X-Forwarded-For served {spoofed_rate:.0%} of the requests that came "
+            f"back against {baseline_rate:.0%} for the same unspoofed burst ({note})",
             evidence,
         )
-    if baseline_served * BYPASS_MARGIN >= burst:
+    if baseline_rate * BYPASS_MARGIN >= 1:
         # The limiter's allowance is wide enough that the ratio test could not have
         # fired whatever the spoofed burst did, and it was not a clean sweep either:
         # the burst is too small to separate a bypass from a generous limit.
         return self.result(
             Verdict.INCONCLUSIVE,
-            f"the unspoofed burst was barely throttled ({baseline_served}/{burst} served), so "
-            f"a burst of {burst} cannot distinguish a bypass from a generous allowance; raise "
-            "rate_limit_burst to test this target",
+            f"the unspoofed burst was barely throttled ({baseline_rate:.0%} of answered "
+            f"requests served), so a burst of {burst} cannot distinguish a bypass from a "
+            "generous allowance; raise rate_limit_burst to test this target",
             evidence,
         )
     return self.result(
