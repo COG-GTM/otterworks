@@ -50,6 +50,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   // Bumped whenever an upload's lookups are stopped, so a chain awaiting a
   // request can tell it has been superseded and drop its result.
   const pollGenerationRef = useRef(new Map<string, number>());
+  const mountedRef = useRef(true);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
 
@@ -99,14 +100,30 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     pollGenerationRef.current.set(id, (pollGenerationRef.current.get(id) ?? 0) + 1);
   }, []);
 
+  // An upload that will never be polled again drops its bookkeeping entirely.
+  const forgetPolling = useCallback(
+    (id: string) => {
+      stopPolling(id);
+      pollGenerationRef.current.delete(id);
+    },
+    [stopPolling],
+  );
+
+  const stopAllPolling = useCallback(() => {
+    [...pollGenerationRef.current.keys()].forEach(stopPolling);
+  }, [stopPolling]);
+
   const timers = pollTimersRef.current;
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Re-set on mount so StrictMode's simulated remount does not leave the
+    // component permanently marked as unmounted.
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       timers.forEach(clearTimeout);
       timers.clear();
-    },
-    [timers],
-  );
+    };
+  }, [timers]);
 
   // Each failed upload polls for its own incident, so a later failure never
   // shows the session belonging to an earlier file. One in-flight lookup per
@@ -115,7 +132,8 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     (entry: UploadingFile) => {
       stopPolling(entry.id);
       const generation = pollGenerationRef.current.get(entry.id) ?? 0;
-      const superseded = () => pollGenerationRef.current.get(entry.id) !== generation;
+      const superseded = () =>
+        !mountedRef.current || pollGenerationRef.current.get(entry.id) !== generation;
       let attempt = 0;
       const check = async () => {
         pollTimersRef.current.delete(entry.id);
@@ -182,6 +200,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 : f,
             ),
           );
+          forgetPolling(entry.id);
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
@@ -208,7 +227,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           }
         });
     },
-    [uploadFile, onUploadComplete, pollForDevinSession, stopPolling],
+    [uploadFile, onUploadComplete, pollForDevinSession, stopPolling, forgetPolling],
   );
 
   const addFiles = useCallback(
@@ -229,7 +248,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const cancelUpload = (id: string) => {
     const entry = uploadingFiles.find((f) => f.id === id);
-    stopPolling(id);
+    forgetPolling(id);
     entry?.abortController?.abort();
   };
 
@@ -243,7 +262,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   };
 
   const dismissErrorBanner = () => {
-    uploadingFiles.forEach((f) => stopPolling(f.id));
+    stopAllPolling();
     setShowUploadErrorBanner(false);
   };
 
