@@ -170,6 +170,29 @@ jobs:
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      # A re-run of the same commit (notably a rebuild_all dispatch after a run
+      # that pushed the image but failed later) cannot push <slug>-<sha> again:
+      # the registry keeps tags immutable. The build is redundant anyway, so
+      # skip straight to the pointer step, which works off the existing
+      # manifest.
+      - name: Check for an existing immutable tag
+        id: existing
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
+        run: |
+          set -euo pipefail
+          # A repository that does not exist yet is simply "not built".
+          found="$(aws ecr batch-get-image --repository-name "otterworks/${SERVICE}" \
+                     --image-ids imageTag="${IMAGE_TAG}" --output json 2>/dev/null |
+                   jq -r '.images | length' || echo 0)"
+          if [ "${found:-0}" -gt 0 ]; then
+            echo "::notice::otterworks/${SERVICE}:${IMAGE_TAG} already exists; skipping build"
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Each tag has a job:
       #   <slug>-<sha>  immutable, exactly what this run built (pushed here)
       #   tenant-<id>   the environment's current build, what it deploys
@@ -181,6 +204,7 @@ jobs:
       # failed build never leaves an environment without its pointer and the
       # tag is only ever absent for the instant between delete and put.
       - name: Build and push
+        if: steps.existing.outputs.built != 'true'
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ${{ steps.ctx.outputs.path }}
