@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import com.otterworks.report.service.ReportGenerationWorker;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -35,12 +35,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * for every controller action. Uses a real Spring context with an H2
  * in-memory database (profile "test").
  *
- * Written in JUnit 4 style to match the current stack. After the JUnit 5
- * migration (Axis 4), replace:
- *   - @RunWith(SpringRunner.class) -> remove
- *   - org.junit.Test              -> org.junit.jupiter.api.Test
+ * The generation worker is mocked out so created reports stay PENDING for the
+ * lifetime of a test; otherwise the background thread races the assertions.
  */
-@RunWith(SpringRunner.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -51,6 +48,9 @@ public class ReportControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockBean
+    private ReportGenerationWorker generationWorker;
 
     // ---- POST /api/v1/reports ----
 
@@ -203,15 +203,11 @@ public class ReportControllerIntegrationTest {
         Long id = createReportAndReturnId("Download Pending Report",
                 ReportCategory.USAGE_ANALYTICS, ReportType.PDF, "integration-user-8");
 
-        MvcResult result = mockMvc.perform(get("/api/v1/reports/" + id))
-                .andReturn();
-        String statusVal = objectMapper.readTree(
-                result.getResponse().getContentAsString()).get("status").asText();
+        mockMvc.perform(get("/api/v1/reports/" + id))
+                .andExpect(jsonPath("$.status", anyOf(is("PENDING"), is("GENERATING"))));
 
-        if ("PENDING".equals(statusVal) || "GENERATING".equals(statusVal)) {
-            mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
-                    .andExpect(status().isConflict());
-        }
+        mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
+                .andExpect(status().isConflict());
     }
 
     // ---- DELETE /api/v1/reports/{id} ----

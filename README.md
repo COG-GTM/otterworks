@@ -54,9 +54,9 @@ make down
 | Analytics Service | Scala 3.4 | Akka HTTP | 8088 | Usage analytics, data aggregation |
 | Admin Service | Ruby 3.3 | Rails 7.1 | 8089 | Admin dashboard backend |
 | Audit Service | C# 12 | ASP.NET 8 | 8090 | Immutable audit trail, compliance |
-| Report Service *(legacy)* | Java 8 | Spring Boot 2.5 | 8091 | PDF/CSV/Excel report generation (tech-debt: upgrade target Java 17+, Spring Boot 3.2+) |
+| Report Service | Java 17 | Spring Boot 3.2 | 8091 | PDF/CSV/Excel report generation |
 
-> **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
+> **Note:** The Report Service was migrated from Java 8 / Spring Boot 2.5 / javax.\* / JUnit 4. Remaining library tech debt (iText 5, POI 4, Guava 28, Commons IO 2.6, OpenCSV 4.6) is tracked in `services/report-service/UPGRADE_GUIDE.md`.
 
 ## Frontend Applications
 
@@ -170,7 +170,7 @@ otterworks/
 │   ├── analytics-service/ #   Scala / Akka HTTP
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
-│   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   └── report-service/    #   Java 17 / Spring Boot 3.2
 ├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)

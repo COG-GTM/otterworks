@@ -15,7 +15,7 @@ import com.itextpdf.text.pdf.PdfPTable;
 import com.itextpdf.text.pdf.PdfWriter;
 import com.otterworks.report.model.Report;
 import com.otterworks.report.util.ReportDateUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -36,7 +36,6 @@ import java.util.LinkedHashSet;
  * - iText 5.5.x (AGPL license, last free release before commercial-only iText 7)
  * - com.itextpdf.text.* package (iText 7 uses com.itextpdf.kernel.*, com.itextpdf.layout.*)
  * - FileOutputStream for output (target: OutputStream abstraction or S3 upload)
- * - Commons Lang 2 StringUtils
  *
  * UPGRADE TARGETS:
  * - OpenPDF (LGPL fork of iText 5, actively maintained) or iText 7 (commercial)
@@ -159,7 +158,7 @@ public class PdfReportGenerator {
         if (StringUtils.isBlank(columnName)) {
             return "";
         }
-        // LEGACY: Commons Lang 2 StringUtils.capitalize
+        // LEGACY: Commons Lang StringUtils.capitalize
         return StringUtils.capitalize(columnName.replace("_", " "));
     }
 
