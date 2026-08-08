@@ -165,7 +165,11 @@ class ScanContext:
         if not isinstance(body, dict):
             raise SeedError(f"registration for {identity.email} returned {type(body).__name__}")
         identity.access_token = body.get("accessToken", "")
-        identity.user_id = str(body.get("user", {}).get("id", ""))
+        # A JSON null (or a string, or a list) under "user" would make .get() an
+        # AttributeError, which is not a SeedError and would leave the harness exiting 1
+        # — the status reserved for a failed gate.
+        user = body.get("user")
+        identity.user_id = str(user.get("id", "")) if isinstance(user, dict) else ""
         if not identity.access_token or not identity.user_id:
             raise SeedError(f"registration for {identity.email} returned no usable identity")
 

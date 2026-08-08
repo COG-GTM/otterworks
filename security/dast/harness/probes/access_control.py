@@ -228,8 +228,8 @@ def mass_assignment_owner(ctx: ScanContext) -> Result:
     if str(planted.get("owner_id")) == ctx.victim.user_id:
         return self.result(
             Verdict.VULNERABLE,
-            f"attacker created document {planted['id']} owned by the victim "
-            f"({ctx.victim.user_id}) using only the attacker's own token",
+            f"attacker created document {planted.get('id', '(id absent from response)')} owned "
+            f"by the victim ({ctx.victim.user_id}) using only the attacker's own token",
             [
                 Evidence(
                     request=f"POST {ctx.base_url}/api/v1/documents/ "
