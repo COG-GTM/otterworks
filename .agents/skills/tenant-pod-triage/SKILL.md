@@ -15,7 +15,7 @@ kubectl)*.
 
 ```bash
 export AWS_REGION=us-east-1
-JAR=$(mktemp)
+JAR=$(mktemp); chmod 600 "$JAR"; trap 'rm -f "$JAR"' EXIT
 PASS=$(aws secretsmanager get-secret-value --secret-id otterworks/dev/dashboard/passcode \
   --query SecretString --output text)
 PASSCODE="$PASS" jq -nc '{passcode: env.PASSCODE}' | curl -s -c "$JAR" \
@@ -41,7 +41,8 @@ break in this chain. Check each link:
 
 1. **CI built and pushed**: `gh run view <run> -R <repo> --job <build-job-id> --log |
    grep -a "pushing manifest"` — note the digest and tags. The build pushes an immutable
-   `demo-<branch>-<sha>` tag first; if the job then fails on `tenant-<id>` ("tag is
+   `<branch>-<short-sha>` tag first (e.g. branch `demo-coggtm` at `3c18da3` →
+   `demo-coggtm-3c18da3`); if the job then fails on `tenant-<id>` ("tag is
    immutable and cannot be overwritten"), **the unique tag is still usable** — the
    failure is only the moving pointer tag (known CD bug, see PR #87).
 2. **ECR tag points where you think** *(ask a human)*:
@@ -58,7 +59,7 @@ immutable tag directly *(ask a human)*:
 
 ```bash
 kubectl -n otterworks-<id> set image deployment/<service> \
-  <service>=<registry>/otterworks/<service>:demo-<branch>-<sha>
+  <service>=<registry>/otterworks/<service>:<branch>-<short-sha>
 ```
 
 A unique tag is never cached on the node, so it always forces a genuine pull.
@@ -67,8 +68,10 @@ and reuses the same cached tag.
 
 ## 3. The runner deploys its bundled tree, not your branch
 
-The dashboard runner Job cannot check out tenant branches (`GITHUB_TOKEN` /
-`REPO_HTTPS_URL` unset — its log says so explicitly and silently falls back). Therefore:
+Unless `GITHUB_TOKEN` and `REPO_HTTPS_URL` are configured for the runner, the runner Job
+cannot check out tenant branches — the deploy log prints `branch checkout of <branch>
+failed; continuing with the image's bundled tree` when they are unset (the current
+state; check the log line rather than assuming). While that holds:
 
 - **Helm chart / values / probe / resource changes on a demo branch never reach the
   tenant.** Only changes baked into a service's Docker image ship.
@@ -80,9 +83,9 @@ The dashboard runner Job cannot check out tenant branches (`GITHUB_TOKEN` /
 | Signature | Cause | Fix |
 |---|---|---|
 | Puma log: `Invalid HTTP format ... SSL connection to a non-SSL Puma?` at probe cadence; events: `server gave HTTP response to HTTPS client` | Rails `config.force_ssl = true` 301-redirects `/health` to https; kubelet follows the redirect and TLS-handshakes Puma's plain port; liveness kills the pod (exit 137, reason `Error`, not OOM) | `config.force_ssl = false` in the image (TLS terminates at the shared ingress) |
-| `/health` returns 503, `db: 0.0` in request logs; `db:migrate` aborts at boot | Deploy wires `DATABASE_HOST/PORT/USER/PASSWORD` but **no database name**; Rails' `database.yml` hardcodes `admin_service_production`, which doesn't exist — the tenant DB is `otterworks_<id>` | `database: <%= ENV.fetch("DATABASE_NAME", "otterworks_<id>") %>` in `database.yml`, baked into the image |
+| `/health` returns 503, `db: 0.0` in request logs; `db:migrate` aborts at boot | Deploy wires `DATABASE_HOST/PORT/USER/PASSWORD` but **no database name**; Rails' `database.yml` hardcodes `admin_service_production`, which doesn't exist — the tenant DB is `otterworks_<id>` | make `database.yml` read `ENV["DATABASE_NAME"]` and wire `config.DATABASE_NAME=${T_DB_NAME}` in `scripts/lib/tenant-common.sh` (admin-service case). A tenant-specific fallback baked into an image is acceptable **only** on that tenant's own `demo-<id>` branch — never on golden/`main`, whose image every tenant shares |
 | `bin/rails aborted! NoMethodError ... TaggedLogging.logger` | The upstream planted bug (`production.rb`); fixed on this fork, intentional upstream | Ensure the pod runs a fork-built image, not `:main` |
-| Build job fails: `The image tag 'tenant-<id>' already exists ... immutable` | CD re-pushes the moving `tenant-<id>` pointer to an immutable registry on every rebuild | Use the immutable `demo-<branch>-<sha>` tag it already pushed (see §2); durable fix tracked in PR #87 |
+| Build job fails: `The image tag 'tenant-<id>' already exists ... immutable` | CD re-pushes the moving `tenant-<id>` pointer to an immutable registry on every rebuild | Use the immutable `<branch>-<short-sha>` tag it already pushed (see §2); durable fix tracked in PR #87 |
 | Pod `Pending` forever during rollout | Old crash-looping pod holds quota/capacity; surge pod can't schedule | Resolve why the old pod is unhealthy first; the rollout completes once the new pod goes ready |
 
 ## 5. Order of operations
@@ -91,7 +94,7 @@ The dashboard runner Job cannot check out tenant branches (`GITHUB_TOKEN` /
 2. If crash-looping: get pod logs/events via a human — do not guess between OOM, probe
    kill, and app crash; `lastState.terminated.reason`/`exitCode` distinguishes them.
 3. If code fix needed: commit to the tenant's `demo-<id>` branch, let CD build, then
-   deploy the **unique** tag via `set image` (the deploy job is skipped whenever any
+   deploy the **unique** `<branch>-<short-sha>` tag via `set image` (the deploy job is skipped whenever any
    service build fails on the immutable pointer tag, so don't wait for it).
 4. Re-check via the dashboard until `ready: true`, then verify externally:
    `curl -s -o /dev/null -w '%{http_code}' https://api-t-<id>.demo.otterworks.app/<path>`
