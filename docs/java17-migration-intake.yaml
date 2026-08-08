@@ -1,0 +1,56 @@
+# Inventory of every JVM service in the repo (TTRWRKS-10).
+# Produced by scanning build files, Dockerfiles and CI job pins — not a hardcoded list.
+repo: https://github.com/COG-GTM/otterworks
+default_branch: main
+services:
+  - name: report-service
+    path: services/report-service
+    build: maven
+    java: 8
+    framework: spring-boot 2.5.14
+    dockerfile: maven:3.8.7-eclipse-temurin-8 / eclipse-temurin:8-jre
+    ci: ci.yml report-service (java 8), docker-build.yml report-service-tests (java 8)
+    class: migrate
+  - name: legacy-portal
+    path: services/legacy-portal
+    build: maven
+    java: 11
+    framework: spring-boot 2.7.18
+    dockerfile: maven:3.9-eclipse-temurin-11 / eclipse-temurin:11-jre-jammy
+    ci: ci.yml legacy-portal (java 11), docker-build.yml legacy-portal-tests (java 11)
+    class: migrate
+  - name: auth-service
+    path: services/auth-service
+    build: gradle
+    java: 17
+    framework: spring-boot 3.2.4
+    dockerfile: gradle:8.6-jdk17 / eclipse-temurin:17-jre-jammy
+    ci: java-version 17 (ci.yml + docker-build.yml)
+    class: verify
+  - name: notification-service
+    path: services/notification-service
+    build: gradle-kts
+    java: 17            # jvmToolchain(17)
+    framework: ktor 2.3.9 (kotlin 1.9.23)
+    dockerfile: gradle:8.6-jdk17 / eclipse-temurin:17-jre-jammy
+    ci: java-version 17
+    class: jdk-only     # already on 17, no work
+  - name: analytics-service
+    path: services/analytics-service
+    build: sbt
+    java: 17
+    framework: akka-http (scala 3.4.0)
+    dockerfile: sbtscala/scala-sbt:eclipse-temurin-jammy-17.0.10 / eclipse-temurin:17-jre-jammy
+    ci: java-version 17
+    class: jdk-only     # already on 17, no work
+non_jvm_services_excluded:
+  - api-gateway (go)
+  - file-service (rust)
+  - document-service, search-service (python)
+  - collab-service (node)
+  - admin-service (ruby)
+  - audit-service (.net)
+targets:
+  java: 17
+  spring_boot: 3.2.5
+demo_mode: true
