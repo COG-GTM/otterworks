@@ -169,11 +169,12 @@ class ScanContext:
         if not identity.access_token or not identity.user_id:
             raise SeedError(f"registration for {identity.email} returned no usable identity")
 
+    def login_response(self, email: str, password: str) -> httpx.Response:
+        """The raw login response, for probes that must tell a refusal from a 429/5xx."""
+        return self.client.post("/api/v1/auth/login", json={"email": email, "password": password})
+
     def login(self, email: str, password: str) -> bool:
-        response = self.client.post(
-            "/api/v1/auth/login", json={"email": email, "password": password}
-        )
-        return response.status_code == 200
+        return self.login_response(email, password).status_code == 200
 
     # ── seeded fixtures ──────────────────────────────────────────────────────
 

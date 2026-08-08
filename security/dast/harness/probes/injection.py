@@ -191,11 +191,13 @@ def credential_brute_force(ctx: ScanContext) -> Result:
     target = ctx.burner
     # Control request first, so "the correct password stops working" afterwards reads as
     # a lockout rather than an account that never worked.
-    if not ctx.login(target.email, target.password):
+    before = ctx.login_response(target.email, target.password)
+    if before.status_code != 200:
         return self.result(
             Verdict.INCONCLUSIVE,
-            "the burner's own password does not work before the attack, so nothing that "
-            "happens to it during the attempts can be attributed to a lockout control",
+            f"the burner's own password returned {before.status_code} before the attack, so "
+            "nothing that happens to it during the attempts can be attributed to a lockout",
+            [Evidence.from_response(before, note="pre-attack control login")],
         )
     for i in range(attempts):
         last = ctx.request(
@@ -222,21 +224,33 @@ def credential_brute_force(ctx: ScanContext) -> Result:
                 [Evidence.from_response(last)],
             )
 
-    still_valid = ctx.login(target.email, target.password)
+    after = ctx.login_response(target.email, target.password)
     evidence = [
         Evidence.from_response(
             last,
             note=f"{attempts} failed attempts, statuses seen: {sorted(set(statuses))}",
-        )
+        ),
+        Evidence.from_response(after, note="post-attack control login"),
     ]
-    if not still_valid:
-        # The password worked before the attack and does not now: the account was
+    if unavailable(after):
+        # The attempts were spoofed onto one source and this control login goes out from
+        # the scanner's own, so a 429 here is a different bucket entirely — and a 5xx is
+        # a broken service. Neither is the account refusing a correct password.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the post-attack control login returned {after.status_code}, which is the "
+            "limiter or a failing service rather than the account, so a lockout cannot be "
+            "distinguished from an absent one",
+            evidence,
+        )
+    if after.status_code != 200:
+        # The password worked before the attack and is refused now: the account was
         # locked. Most implementations signal that with the same generic 401 as any
-        # other failure, so the status codes alone would never show it.
+        # other failure, so the status codes during the loop would never show it.
         return self.result(
             Verdict.SECURE,
-            f"the correct password stopped working after {attempts} failed attempts, so the "
-            "account was locked (the same credential succeeded before the attack)",
+            f"the correct password was refused ({after.status_code}) after {attempts} failed "
+            "attempts but succeeded before them, so the account was locked",
             evidence,
         )
     return self.result(
