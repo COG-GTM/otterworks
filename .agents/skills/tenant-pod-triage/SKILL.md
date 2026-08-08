@@ -96,7 +96,7 @@ state; check the log line rather than assuming). While that holds:
 2. If crash-looping: get pod logs/events via a human — do not guess between OOM, probe
    kill, and app crash; `lastState.terminated.reason`/`exitCode` distinguishes them.
 3. If code fix needed: commit to the tenant's `demo-<id>` branch, let CD build, then
-   deploy the **unique** `<branch>-<short-sha>` tag via `set image` (the deploy job is skipped whenever any
+   deploy the **unique** `<branch-slug>-<sha7>` tag (see §2) via `set image` (the deploy job is skipped whenever any
    service build fails on the immutable pointer tag, so don't wait for it).
 4. Re-check via the dashboard until `ready: true`, then verify externally:
    `curl -s -o /dev/null -w '%{http_code}' https://api-t-<id>.demo.otterworks.app/<path>`
