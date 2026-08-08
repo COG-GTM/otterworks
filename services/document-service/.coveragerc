@@ -1,7 +1,15 @@
 [run]
 source = app
 omit = app/tests/*
+branch = True
+# SQLAlchemy's asyncio layer runs ORM I/O inside greenlets; without this coverage
+# silently drops every statement after the first awaited query in a frame.
+concurrency = greenlet,thread
 
 [report]
 show_missing = true
-fail_under = 0
+fail_under = 100
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
