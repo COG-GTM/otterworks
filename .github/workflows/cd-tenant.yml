@@ -116,7 +116,9 @@ jobs:
           # tenant-<id> pointer, which the CI role may lack permission to move
           # (ecr:BatchDeleteImage). Pinning is only safe on a full rebuild:
           # the tag must exist for every service the tenant deploys.
-          echo "pin=${REBUILD_ALL}" >> "$GITHUB_OUTPUT"
+          pin=false
+          if [ "${REBUILD_ALL}" = "true" ]; then pin=true; fi
+          echo "pin=${pin}" >> "$GITHUB_OUTPUT"
 
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
@@ -233,6 +235,9 @@ jobs:
               if failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
                 --image-ids imageTag="${tag}" \
                 --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>"${RUNNER_TEMP}/untag.err")"; then
+                # stderr is captured for the failure path; surface anything the
+                # CLI wrote while still succeeding rather than dropping it.
+                if [ -s "${RUNNER_TEMP}/untag.err" ]; then cat "${RUNNER_TEMP}/untag.err" >&2; fi
                 if [ -n "${failures}" ]; then
                   echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
                 fi
