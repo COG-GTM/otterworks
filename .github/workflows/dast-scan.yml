@@ -73,6 +73,7 @@ jobs:
           exit 1
 
       - name: Run the DAST probe suite
+        id: scan
         continue-on-error: true # informational until baseline.json is populated — see header
         run: make dast-scan DAST_TARGET=http://localhost:8080
 
@@ -90,7 +91,9 @@ jobs:
           path: security/dast/reports/
 
       - name: Collect service logs on failure
-        if: failure()
+        # continue-on-error keeps the job green, so failure() never fires for the scan
+        # itself — which is the one failure whose backend logs are worth having.
+        if: always() && (failure() || steps.scan.outcome == 'failure')
         run: docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=200
 
   dast-deployed:
