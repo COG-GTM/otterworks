@@ -62,12 +62,15 @@ admin-service already owns the Devin flow: `DevinSessionService.create_session`
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
 or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
 unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
-second Devin client:
+second Devin client. Note: the alert sender, the dedup bypass, and the runtime
+credentials endpoint below exist only on `demo-coggtm` (merged via PRs #90/#92),
+not on `main` — on `main` you implement them per this recipe.
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
   the error the client receives) a Grafana-shaped alert payload to
-  `http://admin-service:8089/api/v1/admin/alerts/ingest`. See
-  `services/file-service/src/alerts.rs`: labels `alertname`, `severity`,
+  `http://admin-service:8089/api/v1/admin/alerts/ingest`. Reference
+  implementation: `services/file-service/src/alerts.rs` **on the `demo-coggtm`
+  branch** (not present on `main`): labels `alertname`, `severity`,
   `affected_service`, annotations summary/description, `startsAt`. Config via env
   `ADMIN_SERVICE_URL` (default `http://admin-service:8089` resolves in-namespace)
   and optional `ALERT_WEBHOOK_SECRET`. Missing config → warn and skip. Never log
@@ -75,7 +78,9 @@ second Devin client:
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+  controller **on `demo-coggtm` (PR #90)** honors by bypassing the skip — `main`'s
+  controller has no such label and always dedups, so port that change to your
+  demo branch. Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant
@@ -83,7 +88,9 @@ second Devin client:
 Nothing in the deploy scripts wires `DEVIN_API_KEY`/`DEVIN_ORG_ID` to any service,
 so out of the box `DevinSessionService` no-ops on tenants. Options:
 
-- **Runtime settings endpoint (PR #92)**: `PUT /api/v1/admin/settings/devin_credentials`
+- **Runtime settings endpoint (PR #92, `demo-coggtm` only — not routed on
+  `main`, where `DevinSessionService` reads ENV only)**:
+  `PUT /api/v1/admin/settings/devin_credentials`
   (JWT-authenticated via api-gateway) stores the credentials in the tenant's Redis;
   `DevinSessionService` falls back to it when env vars are absent (env vars take
   precedence). Load once after each fresh deploy; no infra access needed.
