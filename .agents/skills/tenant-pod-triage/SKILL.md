@@ -74,7 +74,8 @@ Unless `GITHUB_TOKEN` and `REPO_HTTPS_URL` are configured for the runner, the ru
 cannot check out tenant branches — the deploy log prints `branch checkout of <branch>
 failed; continuing with the image's bundled tree` whenever checkout fails (unset
 credentials — the current state — but also a nonexistent branch or a token without
-repo read). While the fallback is in effect:
+repo read; a run with no `TENANT_BRANCH` at all logs `no TENANT_BRANCH set; using
+image's bundled checkout` instead). While the fallback is in effect:
 
 - **Helm chart / values / probe / resource changes on a demo branch never reach the
   tenant.** Only changes baked into a service's Docker image ship.
