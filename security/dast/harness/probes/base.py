@@ -24,24 +24,28 @@ import httpx
 #: must never carry a usable credential. Auth responses contain `accessToken`, and
 #: probes deliberately attack the login path, so redaction happens at capture time
 #: rather than at each call site.
+#: Matched as substrings of the key, not whole keys: DAST-SENSITIVE-DATA-EXPOSURE
+#: fires precisely when a login response carries `passwordHash`, `password_hash`,
+#: `salt` or `mfaSecret`, and attaches that response as its evidence.
 SECRET_FIELDS = (
-    "accesstoken",
-    "refreshtoken",
-    "idtoken",
     "token",
     "password",
+    "passwd",
     "secret",
+    "salt",
+    "credential",
     "authorization",
     "apikey",
     "api_key",
+    "privatekey",
 )
+_SECRET_KEY = rf'"[A-Za-z0-9_-]*(?:{"|".join(SECRET_FIELDS)})[A-Za-z0-9_-]*"\s*:\s*'
 #: The closing quote is optional so a value cut off by truncation is still caught.
-_SECRET_JSON = re.compile(
-    rf'("(?:{"|".join(SECRET_FIELDS)})"\s*:\s*")[^"]*("|$)',
-    re.IGNORECASE,
-)
+_SECRET_JSON = re.compile(rf'({_SECRET_KEY}")[^"]*("|$)', re.IGNORECASE)
+#: The same key with an unquoted value (a numeric salt, a null hash).
+_SECRET_JSON_BARE = re.compile(rf'({_SECRET_KEY})([^"\s,}}\]]+)', re.IGNORECASE)
 _SECRET_QUERY = re.compile(
-    rf"((?:{'|'.join(SECRET_FIELDS)})=)[^&\s]+",
+    rf"([A-Za-z0-9_-]*(?:{'|'.join(SECRET_FIELDS)})[A-Za-z0-9_-]*=)[^&\s]+",
     re.IGNORECASE,
 )
 #: A bare JWT, in case it appears under a field name we do not know about. The
@@ -52,6 +56,7 @@ _JWT = re.compile(r"\bey[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]*){0,2}")
 def redact(text: str) -> str:
     """Strip credential material from anything destined for a report."""
     text = _SECRET_JSON.sub("\\1[REDACTED]\\2", text)
+    text = _SECRET_JSON_BARE.sub(r"\1[REDACTED]", text)
     text = _SECRET_QUERY.sub(r"\1[REDACTED]", text)
     return _JWT.sub("[REDACTED-JWT]", text)
 

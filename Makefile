@@ -251,21 +251,26 @@ dast-baseline: ## Record current findings as accepted (REASON="...")
 
 dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 	@mkdir -p security/dast/reports
-# The image runs as uid 1000 and a CI runner is 1001, so the bind mount has to be
-# writable by the container (what upstream's own docs prescribe). Running it as the
-# host uid instead is not an option: ZAP writes its automation plan into /home/zap,
-# which only exists for uid 1000. Restored below, run or no run.
+	@cp security/dast/zap/zap-baseline.conf security/dast/reports/zap-baseline.conf
+# ZAP writes its report *and* its generated automation plan into the mount, so the
+# mount is the reports directory alone (with the rule file copied in) — nothing else
+# in the tree needs to be writable. The image runs as uid 1000 and a CI runner is
+# 1001, so it does have to be world-writable, which is what upstream's own docs
+# prescribe; running the container as the host uid instead is not an option, since
+# ZAP needs /home/zap, which only exists for uid 1000. Restored below, run or no run.
 	@chmod 0777 security/dast/reports
 	-docker run --rm --network host \
-		-v "$(CURDIR)/security/dast:/zap/wrk:rw" \
+		-v "$(CURDIR)/security/dast/reports:/zap/wrk:rw" \
 		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
-		-t $(DAST_TARGET) -c zap/zap-baseline.conf -J reports/zap-report.json -I
+		-t $(DAST_TARGET) -c zap-baseline.conf -J zap-report.json -I
 	@chmod 0755 security/dast/reports
+	@rm -f security/dast/reports/zap-baseline.conf
 # A ZAP failure must not cost the probe suite: the sweep still reports, without it.
 	@if [ -f security/dast/reports/zap-report.json ]; then \
 		$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json; \
 	else \
-		echo "ZAP produced no report; running the probe suite on its own"; \
+		echo "::warning::ZAP produced no report (see the log above); the passive sweep is"\
+		     "missing from this run. Running the probe suite on its own."; \
 		$(DAST) --target $(DAST_TARGET); \
 	fi
 

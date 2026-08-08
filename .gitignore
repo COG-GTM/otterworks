@@ -85,9 +85,8 @@ infrastructure/terraform/plan.out
 *.log
 
 # --- Security ---
+# scan output, plus the automation plan zap-baseline.py writes into its mount
 security/dast/reports/
-# the automation plan zap-baseline.py writes into its mount
-security/dast/zap.yaml
 
 # --- Misc ---
 *.bak
