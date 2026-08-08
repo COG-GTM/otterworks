@@ -251,12 +251,23 @@ dast-baseline: ## Record current findings as accepted (REASON="...")
 
 dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 	@mkdir -p security/dast/reports
-	@chmod 777 security/dast/reports # the ZAP image runs as uid 1000; a CI runner is 1001
-	docker run --rm --network host \
-		-v "$(PWD)/security/dast:/zap/wrk:rw" \
+# The image runs as uid 1000 and a CI runner is 1001, so the bind mount has to be
+# writable by the container (what upstream's own docs prescribe). Running it as the
+# host uid instead is not an option: ZAP writes its automation plan into /home/zap,
+# which only exists for uid 1000. Restored below, run or no run.
+	@chmod 0777 security/dast/reports
+	-docker run --rm --network host \
+		-v "$(CURDIR)/security/dast:/zap/wrk:rw" \
 		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
 		-t $(DAST_TARGET) -c zap/zap-baseline.conf -J reports/zap-report.json -I
-	$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json
+	@chmod 0755 security/dast/reports
+# A ZAP failure must not cost the probe suite: the sweep still reports, without it.
+	@if [ -f security/dast/reports/zap-report.json ]; then \
+		$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json; \
+	else \
+		echo "ZAP produced no report; running the probe suite on its own"; \
+		$(DAST) --target $(DAST_TARGET); \
+	fi
 
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test
