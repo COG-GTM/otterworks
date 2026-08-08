@@ -5,6 +5,17 @@
 //! repeats onto an existing open incident.
 
 use serde_json::{json, Value};
+use std::sync::OnceLock;
+
+fn http_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("failed to build alert HTTP client")
+    })
+}
 
 #[derive(Clone, Debug)]
 pub struct AlertConfig {
@@ -68,17 +79,7 @@ pub fn notify_upload_failure(config: &AlertConfig, file_name: &str, error: &str)
 
     tokio::spawn(async move {
         let url = format!("{base_url}/api/v1/admin/alerts/ingest");
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to build alert HTTP client");
-                return;
-            }
-        };
-        let mut req = client.post(&url).json(&payload);
+        let mut req = http_client().post(&url).json(&payload);
         if let Some(secret) = secret {
             req = req.header("X-Alert-Secret", secret);
         }
