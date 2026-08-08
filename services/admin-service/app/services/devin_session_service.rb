@@ -7,10 +7,9 @@ class DevinSessionService
 
   class << self
     def create_session(incident:)
-      api_key = ENV.fetch('DEVIN_API_KEY', nil)
-      org_id  = ENV.fetch('DEVIN_ORG_ID', nil)
+      api_key, org_id = credentials
       unless api_key && org_id
-        Rails.logger.warn('DEVIN_API_KEY or DEVIN_ORG_ID not set, skipping Devin session creation')
+        Rails.logger.warn('Devin credentials not configured (env or settings), skipping Devin session creation')
         return nil
       end
 
@@ -36,8 +35,7 @@ class DevinSessionService
     end
 
     def get_session(session_id:)
-      api_key = ENV.fetch('DEVIN_API_KEY', nil)
-      org_id  = ENV.fetch('DEVIN_ORG_ID', nil)
+      api_key, org_id = credentials
       return nil unless api_key && org_id && session_id
 
       uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions/#{session_id}")
@@ -57,7 +55,28 @@ class DevinSessionService
       nil
     end
 
+    # Whether a usable credential pair resolves right now, from the same
+    # resolution the API calls use.
+    def credentials_status
+      api_key, org_id = credentials
+      { api_key_configured: api_key.present?, org_id_configured: org_id.present? }
+    end
+
     private
+
+    # A key and an org id must come from the same source: pairing an env key
+    # with a stored org id (or vice versa) yields credentials that never
+    # belonged together. Environment wins; the Redis-backed settings store is
+    # the fallback so credentials can be supplied at runtime on tenants whose
+    # deploy pipeline does not wire them as env vars.
+    def credentials
+      api_key = ENV.fetch('DEVIN_API_KEY', nil).presence
+      org_id  = ENV.fetch('DEVIN_ORG_ID', nil).presence
+      return [api_key, org_id] if api_key && org_id
+
+      stored = AdminSettingsService.devin_credentials
+      [stored[:api_key], stored[:org_id]]
+    end
 
     def build_prompt(incident)
       <<~PROMPT
