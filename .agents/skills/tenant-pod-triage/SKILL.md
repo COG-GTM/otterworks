@@ -72,8 +72,9 @@ and reuses the same cached tag.
 
 Unless `GITHUB_TOKEN` and `REPO_HTTPS_URL` are configured for the runner, the runner Job
 cannot check out tenant branches — the deploy log prints `branch checkout of <branch>
-failed; continuing with the image's bundled tree` when they are unset (the current
-state; check the log line rather than assuming). While that holds:
+failed; continuing with the image's bundled tree` whenever checkout fails (unset
+credentials — the current state — but also a nonexistent branch or a token without
+repo read). While the fallback is in effect:
 
 - **Helm chart / values / probe / resource changes on a demo branch never reach the
   tenant.** Only changes baked into a service's Docker image ship.
