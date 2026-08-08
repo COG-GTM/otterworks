@@ -261,7 +261,14 @@ jobs:
           bundler-cache: true
           working-directory: services/admin-service
       - run: bundle exec rails db:schema:load
+      # rspec fails the job when coverage drops below the SimpleCov
+      # minimum_coverage ratchet pinned in spec/spec_helper.rb
       - run: bundle exec rspec
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: admin-service-coverage
+          path: services/admin-service/coverage/**
 
   # C# - Audit Service
   audit-service:
