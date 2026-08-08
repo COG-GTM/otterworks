@@ -321,3 +321,15 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
 }
+
+func TestValidateToken_UnexpectedSigningMethod(t *testing.T) {
+	token := jwt.NewWithClaims(jwt.SigningMethodNone, JWTClaims{UserID: "user-1"})
+	tokenStr, err := token.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	claims, err := validateToken(tokenStr, testSecret)
+
+	require.Error(t, err)
+	assert.Nil(t, claims)
+	assert.Contains(t, err.Error(), "unexpected signing method")
+}
