@@ -1,7 +1,13 @@
 # Report Service Dependency Upgrade Guide
 
+> **Status:** axes 1–5 and 7–11 are **done** — the service now builds and tests on
+> Java 17 / Spring Boot 3.2 with `jakarta.*`, JUnit 5, springdoc-openapi, commons-lang3,
+> Mockito 5, POI 5.2.5, Commons IO 2.15.1 and Guava 33.1.0-jre.
+> **Remaining:** axis 6 (iText 5 AGPL → OpenPDF / iText 7) and re-enabling the Trivy
+> scan for `services/report-service`, which is still in `--skip-dirs`.
+
 This document describes 11 upgrade axes for migrating the report-service from its
-current legacy stack to a modern, supported baseline. Each axis lists the exact
+legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
 
 ---

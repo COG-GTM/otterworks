@@ -1,0 +1,23 @@
+repo: https://github.com/COG-GTM/otterworks
+module: services/report-service
+default_branch: main
+build: maven
+current:
+  java: 8
+  spring_boot: 2.5.14
+targets:
+  java: 17
+  spring_boot: 3.2.x
+uses:
+  javax_persistence: true
+  javax_servlet: true
+  javax_validation: true
+  javax_transaction: true
+  spring_security: true   # WebSecurityConfigurerAdapter
+  junit: 4                # jupiter excluded from spring-boot-starter-test
+  mockito: 3.12.4
+  springfox: 3.0.0        # dead project -> springdoc-openapi 2.x
+  itext5: 5.5.13.3        # AGPL -> OpenPDF
+  commons_lang: 2.6       # -> commons-lang3
+ci_provider: github-actions
+demo_mode: true   # prioritize speed; skip optional steps
