@@ -13,6 +13,8 @@ name: DAST Scan
 #                    summary without failing the run. The job no-ops when it is unset: a scan
 #                    registers accounts and writes documents, so it must never default to a
 #                    tenant someone presents from (t-main is never reaped — see AGENTS.md).
+#   dispatch      -> with a target, the deployed sweep against it; with none, the local stack.
+#                    A deployed target is never inferred, for the reason above.
 #
 # The static counterpart lives in security-scan.yml; the two are complementary —
 # SAST reads the code, DAST attacks the running system.
@@ -30,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'Base URL to scan (defaults to the local stack)'
+        description: 'Base URL to scan (leave blank to stand up and scan the local stack)'
         required: false
         type: string
 
@@ -40,7 +42,12 @@ permissions:
 jobs:
   dast-local:
     name: Attack the local stack
-    if: github.event_name == 'pull_request'
+    # A manual run with no target scans the local stack rather than no-opping: the
+    # deployed sweep needs a target nobody else is using, which is not something to
+    # fall back to silently.
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == '')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -88,7 +95,9 @@ jobs:
 
   dast-deployed:
     name: Sweep the deployed tenant
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target != '')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -100,8 +109,8 @@ jobs:
       - name: Require an explicit target
         if: env.TARGET == ''
         run: |
-          echo "::warning::No scan target. Set the DAST_SWEEP_TARGET repository variable to a"\
-               "disposable tenant, or dispatch with an explicit target. Never the perpetual tenant."
+          echo "::warning::No scan target for the scheduled sweep. Set the DAST_SWEEP_TARGET"\
+               "repository variable to a disposable tenant. Never the perpetual tenant."
 
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         if: env.TARGET != ''
