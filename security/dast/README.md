@@ -68,8 +68,10 @@ make dast-zap DAST_TARGET=...
 ```
 
 Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `medium`),
-`2` target unreachable or misconfigured, `3` nothing gating but a probe could
-not reach a verdict. `3` applies when a single finding is being verified
+`2` target unreachable or misconfigured — including a run whose scan accounts
+never registered, since the authenticated probes then attacked nothing — `3`
+nothing gating but a probe could not reach a verdict. `3` applies when a single
+finding is being verified
 (`--only`, i.e. `make dast-verify`) or with `--fail-on-inconclusive`: a
 remediation is proven by an attack that ran and failed, so "could not tell"
 must not exit clean.

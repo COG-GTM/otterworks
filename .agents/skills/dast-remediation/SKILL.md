@@ -38,7 +38,8 @@ make dast-baseline REASON="..."                  # accept current findings
 `DAST_TARGET` defaults to `http://localhost:8080`. Reports land in
 `security/dast/reports/dast-report.{json,md}` (gitignored). Exit codes: `0`
 clean, `1` findings at or above `--fail-on` (default `medium`), `2` target
-unreachable, `3` a probe reached no verdict while verifying one finding
+unreachable or the scan accounts never registered (the authenticated probes then
+attacked nothing), `3` a probe reached no verdict while verifying one finding
 (`dast-verify`) — the remediation is unproven, not done.
 
 ## Targets

@@ -119,9 +119,24 @@ class ScanContext:
             time.sleep(1.0)
         raise SeedError(f"target {self.base_url} did not become reachable: {last}")
 
-    def seed_identities(self) -> None:
+    def seed_identities(self, timeout: float = 120.0) -> None:
+        """Register the scan's accounts, waiting for the auth backend to come up.
+
+        The gateway's ``/health`` is a static handler, so it answers well before
+        auth-service can serve a registration: a scan started right after
+        ``docker compose up`` would otherwise fail to seed and skip most of the
+        suite. Registration is the real readiness check, so it is the one retried.
+        """
+        deadline = time.monotonic() + timeout
         for identity in (self.attacker, self.victim, self.burner):
-            self._register(identity)
+            while True:
+                try:
+                    self._register(identity)
+                    break
+                except SeedError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(2.0)
 
     @property
     def identities_ready(self) -> bool:
