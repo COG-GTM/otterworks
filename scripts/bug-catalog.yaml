@@ -23,15 +23,16 @@ scenarios:
     description: >
       File uploads fail: file-service writes to a non-existent S3 bucket and
       returns 5xx. Classic "uploads are broken" incident.
-    # demo-testfailupload branch variant: the chaos route is hardwired ON in
-    # services/file-service/src/handlers.rs (no Redis flag needed) so every
-    # upload returns a real NoSuchBucket 5xx. The React client shows a big red
-    # ChaosErrorBanner on any real upload failure. The FileUploadHighErrorRate
+    # demo-testfailupload branch variant: the chaos route is gated on the
+    # FILE_UPLOAD_ALWAYS_FAIL env switch (or the Redis flag above), so uploads
+    # only return a real NoSuchBucket 5xx where the switch is turned on. The
+    # React client shows a big red ChaosErrorBanner on any real upload failure.
+    # The FileUploadHighErrorRate
     # Grafana alert (scoped to the upload path, fires in ~1-2 min) routes to
     # the devin-session-receiver webhook contact point, which opens a Devin
     # session via the Devin API (DEVIN_API_KEY + DEVIN_ORG_ID on the Grafana
     # container; alert grouping/repeat_interval prevents session fan-out).
-    demo_branch: "demo-testfailupload (server-side failure always on + Grafana -> Devin webhook)"
+    demo_branch: "demo-testfailupload (FILE_UPLOAD_ALWAYS_FAIL switch + Grafana -> Devin webhook)"
 
   search-suggest-500:
     mechanism: chaos
