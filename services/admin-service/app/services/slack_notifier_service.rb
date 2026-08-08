@@ -53,7 +53,8 @@ class SlackNotifierService
     end
 
     def build_payload(incident, session_url, reporter_email)
-      service = escape_mrkdwn(incident.affected_service.presence || 'unknown-service')
+      raw_service = incident.affected_service.presence || 'unknown-service'
+      service = escape_mrkdwn(raw_service)
       title = escape_mrkdwn(incident.title)
       on_call_devin = if session_url
                         "<#{session_url}|Devin AI (auto-investigating)>"
@@ -93,7 +94,7 @@ class SlackNotifierService
             type: 'header',
             text: {
               type: 'plain_text',
-              text: truncate("OtterWorks Alert — #{service} — #{incident.title}", HEADER_MAX),
+              text: truncate("OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
               emoji: true
             }
           },
