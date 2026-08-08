@@ -113,6 +113,10 @@ services:
       DYNAMODB_TABLE: otterworks-file-metadata
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
+      # Failed uploads fire a Grafana-style alert at admin-service's ingest
+      # endpoint so each failure opens its own incident + Devin session.
+      ADMIN_SERVICE_URL: http://admin-service:8089
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
       # Off locally even on this demo variant branch: the permanent failure is
       # baked into the file-service image (see its Dockerfile) for tenant
       # coggtm, and this explicit false overrides it so a local stack still
