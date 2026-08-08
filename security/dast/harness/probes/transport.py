@@ -146,15 +146,35 @@ def rate_limit_bypass(ctx: ScanContext) -> Result:
         f"vs {baseline_served}/{burst} unspoofed"
     )
     evidence = [Evidence.from_response(last, note=note)]
-    # A partial bypass is still a bypass: the question is whether spoofing bought
-    # materially more throughput than the same burst without it. Some other layer
-    # (ingress, a global bucket) can still return the odd 429, so requiring every
-    # request to get through would report a near-total bypass as protected.
+    # Two ways to be a bypass. Absolute: the spoofed burst drew no 429 at all while
+    # the unspoofed one did, so rotating the header removed the limiter outright —
+    # this is the case the ratio cannot see, since `served` is capped at `burst`.
+    if served == burst:
+        return self.result(
+            Verdict.VULNERABLE,
+            f"rotating X-Forwarded-For served the whole burst ({burst}) while the same "
+            f"unspoofed burst was throttled to {baseline_served}",
+            evidence,
+        )
+    # Relative: a partial bypass is still a bypass if spoofing bought materially more
+    # throughput. Some other layer (ingress, a global bucket) can still return the odd
+    # 429, so requiring every request through would report a near-total bypass as safe.
     if served > baseline_served * BYPASS_MARGIN:
         return self.result(
             Verdict.VULNERABLE,
             f"rotating X-Forwarded-For served {served}/{burst} requests against "
             f"{baseline_served}/{burst} for the same unspoofed burst",
+            evidence,
+        )
+    if baseline_served * BYPASS_MARGIN >= burst:
+        # The limiter's allowance is wide enough that the ratio test could not have
+        # fired whatever the spoofed burst did, and it was not a clean sweep either:
+        # the burst is too small to separate a bypass from a generous limit.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the unspoofed burst was barely throttled ({baseline_served}/{burst} served), so "
+            f"a burst of {burst} cannot distinguish a bypass from a generous allowance; raise "
+            "rate_limit_burst to test this target",
             evidence,
         )
     return self.result(

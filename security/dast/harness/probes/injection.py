@@ -190,10 +190,20 @@ def credential_brute_force(ctx: ScanContext) -> Result:
             headers={"X-Forwarded-For": "203.0.113.7"},
         )
         statuses.append(last.status_code)
-        if last.status_code in (423, 429):
+        if last.status_code == 423:
             return self.result(
                 Verdict.SECURE,
-                f"throttled after {i + 1} failed attempts (status {last.status_code})",
+                f"the account was locked after {i + 1} failed attempts",
+                [Evidence.from_response(last)],
+            )
+        if last.status_code == 429:
+            # A per-source throttle is not a per-account control: it is keyed on the
+            # forwarding header DAST-RATE-LIMIT-BYPASS exists to show is spoofable,
+            # so an attacker rotates around it and the lockout stays untested.
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the request limiter answered after {i + 1} attempts; that throttle is keyed "
+                "on the source, not the account, so lockout cannot be assessed",
                 [Evidence.from_response(last)],
             )
 

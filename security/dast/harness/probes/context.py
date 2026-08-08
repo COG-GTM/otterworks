@@ -50,9 +50,11 @@ class ScanContext:
     client: httpx.Client
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     #: Sized against RATE_LIMIT_RPS (default 100/s) plus the refill accrued over the
-    #: burst's own duration: 200 concurrent requests do not draw a 429 from a deployed
-    #: tenant, 600 do.
-    rate_limit_burst: int = 600
+    #: burst's own duration, and large enough that the limiter throttles a clear
+    #: majority of it: 200 concurrent requests draw no 429 from a deployed tenant,
+    #: 600 leave ~94% served (too generous to tell a bypass from the allowance),
+    #: 1500 leaves ~40%.
+    rate_limit_burst: int = 1500
     #: The burst is issued concurrently: a token bucket is never drained by a
     #: sequential client once a round trip costs more than the refill interval.
     rate_limit_workers: int = 64
