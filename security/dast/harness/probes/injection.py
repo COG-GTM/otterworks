@@ -157,6 +157,13 @@ def stored_xss_documents(ctx: ScanContext) -> Result:
         return self.result(
             Verdict.VULNERABLE, "payload reflected in an HTML-typed response", evidence
         )
+    if response.status_code != 200:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the read-back returned {response.status_code}, so the stored content was never "
+            "served and the response typing cannot be assessed",
+            evidence,
+        )
     return self.result(
         Verdict.SECURE, "payload only returned inside a JSON-typed response", evidence
     )

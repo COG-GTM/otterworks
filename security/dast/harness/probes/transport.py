@@ -95,6 +95,16 @@ def cors_origin_reflection(ctx: ScanContext) -> Result:
             "untrusted origin reflected alongside credentials",
             evidence,
         )
+    if unavailable(response):
+        # The limiter sits in front of the CORS middleware, so a 429 (like a 5xx from
+        # further back) carries no Access-Control-* headers at all: their absence says
+        # nothing about the policy.
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the request returned {response.status_code} without reaching the CORS "
+            "middleware, so the policy cannot be assessed",
+            evidence,
+        )
     return self.result(Verdict.SECURE, "untrusted origin was not granted access", evidence)
 
 
