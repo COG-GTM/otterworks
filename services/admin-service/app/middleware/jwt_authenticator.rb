@@ -39,7 +39,9 @@ class JwtAuthenticator
 
   def decode_token(token)
     secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
-    decoded = JWT.decode(token, secret, true, algorithms: ['HS256', 'HS384'])
+    # auth-service signs with HS512 (jjwt picks the algorithm from the key
+    # length), so every real user token is rejected without it in this list.
+    decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
     decoded.first
   rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
