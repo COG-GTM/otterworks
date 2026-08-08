@@ -8,8 +8,11 @@ name: DAST Scan
 #                    reports into the job summary rather than failing every PR. Populate the
 #                    baseline (make dast-baseline REASON="...") to turn this into a real gate
 #                    on newly introduced findings, and drop continue-on-error below.
-#   schedule      -> informational. Full sweep (probes + ZAP) against the perpetual tenant,
-#                    reported in the job summary without failing the run.
+#   schedule      -> informational. Full sweep (probes + ZAP) against the disposable tenant
+#                    named by the DAST_SWEEP_TARGET repository variable, reported in the job
+#                    summary without failing the run. The job no-ops when it is unset: a scan
+#                    registers accounts and writes documents, so it must never default to a
+#                    tenant someone presents from (t-main is never reaped — see AGENTS.md).
 #
 # The static counterpart lives in security-scan.yml; the two are complementary —
 # SAST reads the code, DAST attacks the running system.
@@ -89,22 +92,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      # The perpetual tenant tracking main. Never point this at a tenant someone
-      # is presenting from: every scan registers accounts and writes documents.
-      TARGET: ${{ inputs.target || 'https://api-t-main.otterworks.app' }}
+      # No default: every scan registers accounts and writes documents that live in
+      # the target's database until the tenant is reaped, so the target must be a
+      # disposable (TTL'd) tenant somebody chose deliberately.
+      TARGET: ${{ inputs.target || vars.DAST_SWEEP_TARGET }}
     steps:
+      - name: Require an explicit target
+        if: env.TARGET == ''
+        run: |
+          echo "::warning::No scan target. Set the DAST_SWEEP_TARGET repository variable to a"\
+               "disposable tenant, or dispatch with an explicit target. Never the perpetual tenant."
+
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        if: env.TARGET != ''
 
       - name: Install uv
+        if: env.TARGET != ''
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       - name: Run the DAST probe suite and the ZAP sweep
         id: scan
+        if: env.TARGET != ''
         continue-on-error: true
         run: make dast-zap DAST_TARGET="$TARGET"
 
       - name: Publish the report
-        if: always()
+        if: always() && env.TARGET != ''
         run: |
           if [[ -f security/dast/reports/dast-report.md ]]; then
             cat security/dast/reports/dast-report.md >> "$GITHUB_STEP_SUMMARY"
@@ -114,7 +127,7 @@ jobs:
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: always() && env.TARGET != ''
         with:
           name: dast-report-deployed
           path: security/dast/reports/

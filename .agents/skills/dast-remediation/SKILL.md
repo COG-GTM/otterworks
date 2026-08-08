@@ -47,7 +47,7 @@ unreachable, `3` a probe reached no verdict while verifying one finding
 |---|---|---|
 | Local stack | `http://localhost:8080` | after `make up`; the default |
 | Your tenant | `https://api-t-<id>.demo.otterworks.app` | after `scripts/deploy-tenant.sh <id>` |
-| Perpetual tenant | `https://api-t-main.otterworks.app` | tracks `main`; read-mostly, never inject bugs there |
+| Perpetual tenant | `https://api-t-main.otterworks.app` | tracks `main`; never scan it — it is never reaped, so the accounts and documents a scan writes stay forever |
 
 Always scan through the gateway on port 8080 — hitting a backend port directly
 bypasses the controls under test. Never scan a tenant someone else is

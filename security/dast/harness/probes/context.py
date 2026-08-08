@@ -8,6 +8,7 @@ tenants) never collide.
 
 from __future__ import annotations
 
+import secrets
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -15,7 +16,16 @@ from typing import Any
 
 import httpx
 
-DEFAULT_PASSWORD = "OtterworksDast123!"
+
+def scan_password() -> str:
+    """A single-use password for an account the scan registers.
+
+    The accounts are real and outlive the run: they persist in the target's
+    database until the tenant is reaped. A constant here would be a committed,
+    publicly known credential for every account any scan has ever created, so
+    each one gets its own value that exists only in the running process.
+    """
+    return f"Dast-{secrets.token_urlsafe(24)}-1!"
 
 
 @dataclass
@@ -58,13 +68,13 @@ class ScanContext:
 
     def __post_init__(self) -> None:
         self.attacker = Identity(
-            email=f"dast-attacker-{self.run_id}@example.test", password=DEFAULT_PASSWORD
+            email=f"dast-attacker-{self.run_id}@example.test", password=scan_password()
         )
         self.victim = Identity(
-            email=f"dast-victim-{self.run_id}@example.test", password=DEFAULT_PASSWORD
+            email=f"dast-victim-{self.run_id}@example.test", password=scan_password()
         )
         self.burner = Identity(
-            email=f"dast-burner-{self.run_id}@example.test", password=DEFAULT_PASSWORD
+            email=f"dast-burner-{self.run_id}@example.test", password=scan_password()
         )
 
     # ── lifecycle ────────────────────────────────────────────────────────────
