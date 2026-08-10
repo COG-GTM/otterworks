@@ -105,10 +105,20 @@ def test_ingress_origins_come_from_a_chart_that_publishes_its_own_host(tmp_path:
     (tmp_path / "search-service" / "values.yaml").write_text(
         "ingress:\n  enabled: false\n  hosts:\n    - host: search.example.test\n"
     )
-    origins = ingress_origins(tmp_path)
+    origins = ingress_origins("https://api.example.test", tmp_path)
     assert [(o.service, o.url, o.severity) for o in origins] == [
         ("file-service", "https://files.example.test", Severity.CRITICAL)
     ]
+
+
+def test_ingress_origins_outside_the_target_site_are_left_alone(tmp_path: Path) -> None:
+    """Authorization to scan one target is not authorization to scan a chart's host."""
+    (tmp_path / "file-service").mkdir()
+    (tmp_path / "file-service" / "values.yaml").write_text(
+        "ingress:\n  enabled: true\n  hosts:\n    - host: files.somewhere-else.test\n"
+    )
+    assert ingress_origins("https://api.example.test", tmp_path) == []
+    assert ingress_origins("http://localhost:8080", tmp_path) == []
 
 
 # ── the bypass verdict ───────────────────────────────────────────────────────
@@ -116,7 +126,7 @@ def test_ingress_origins_come_from_a_chart_that_publishes_its_own_host(tmp_path:
 
 @pytest.fixture
 def only_file_service(monkeypatch):
-    monkeypatch.setattr(perimeter, "ingress_origins", list)
+    monkeypatch.setattr(perimeter, "ingress_origins", lambda target: [])
     monkeypatch.setattr(
         perimeter,
         "compose_origins",
@@ -129,8 +139,22 @@ def only_file_service(monkeypatch):
 
 def test_no_declared_origin_is_secure(monkeypatch) -> None:
     monkeypatch.setattr(perimeter, "compose_origins", lambda target: [])
-    monkeypatch.setattr(perimeter, "ingress_origins", list)
+    monkeypatch.setattr(perimeter, "ingress_origins", lambda target: [])
     assert gateway_bypass_identity(StubContext()).verdict is Verdict.SECURE
+
+
+def test_a_declared_origin_that_never_answers_is_inconclusive(monkeypatch) -> None:
+    """Unroutable from here is not the same as not exposed."""
+    monkeypatch.setattr(
+        perimeter,
+        "compose_origins",
+        lambda target: [
+            Origin("file-service", "http://backend:8082", "docker-compose.yml ports", Severity.LOW)
+        ],
+    )
+    monkeypatch.setattr(perimeter, "ingress_origins", lambda target: [])
+    monkeypatch.setattr(perimeter, "reachable", lambda origin, timeout=3.0: False)
+    assert gateway_bypass_identity(StubContext()).verdict is Verdict.INCONCLUSIVE
 
 
 def test_a_chosen_identity_that_is_served_is_the_finding(only_file_service, monkeypatch) -> None:
@@ -188,7 +212,7 @@ def test_a_public_ingress_outranks_a_local_port(monkeypatch) -> None:
     monkeypatch.setattr(
         perimeter,
         "ingress_origins",
-        lambda: [Origin("file-service", "https://public", "values.yaml", Severity.CRITICAL)],
+        lambda target: [Origin("file-service", "https://public", "values.yaml", Severity.CRITICAL)],
     )
     monkeypatch.setattr(perimeter, "reachable", lambda origin, timeout=3.0: True)
     stub_direct(

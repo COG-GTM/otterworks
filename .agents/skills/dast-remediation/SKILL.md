@@ -114,7 +114,9 @@ the gateway cannot know which rows belong to whom.
    `make test-api-flows`).
 6. If the fix added or moved a route, `make dast-coverage` — a new endpoint is
    swept anonymously the moment it is declared, but nothing attacks it as a
-   logged-in caller until a probe does.
+   logged-in caller until a probe does. Coverage is graded from a full
+   `make dast-scan` (step 5): a `dast-verify` run marks its report `partial`,
+   and the gate refuses to grade one rather than calling the surface unattacked.
 
 A finding is only closed when the probe that reproduced it reports `secure`
 against a target running the new code.

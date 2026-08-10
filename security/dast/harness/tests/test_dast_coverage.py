@@ -75,12 +75,26 @@ def _report(tmp_path: Path, exercised: list[dict[str, object]]) -> list[str]:
     return ["--report", str(report)]
 
 
-def test_an_unattacked_route_fails_the_gate(tmp_path: Path, monkeypatch) -> None:
+def test_an_unattacked_route_fails_the_gate(tmp_path: Path, monkeypatch, capsys) -> None:
     monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([DOCUMENT, LIST], {}))
     monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
     argv = _report(tmp_path, [{"method": "GET", "path": "/api/v1/documents"}])
     assert dast_coverage.main(argv) == 1
+    capsys.readouterr()
     assert dast_coverage.main([*argv, "--warn-only"]) == 0
+    # Warning is not passing: the summary line must not contradict the rows above it.
+    assert "PASSED" not in capsys.readouterr().out
+
+
+def test_a_single_probe_report_cannot_be_graded_for_coverage(tmp_path: Path, monkeypatch) -> None:
+    """`make dast-verify` writes this same report having attacked one finding."""
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([DOCUMENT, LIST], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    report = tmp_path / "dast-report.json"
+    report.write_text(
+        json.dumps({"target": "http://localhost:8080", "partial": True, "exercised": []})
+    )
+    assert dast_coverage.main(["--report", str(report)]) == 2
 
 
 def test_an_exempted_route_passes_the_gate(tmp_path: Path, monkeypatch) -> None:

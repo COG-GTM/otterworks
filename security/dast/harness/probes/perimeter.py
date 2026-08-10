@@ -104,13 +104,27 @@ def compose_origins(target: str, compose: Path = COMPOSE) -> list[Origin]:
     return origins
 
 
-def ingress_origins(helm: Path = HELM) -> list[Origin]:
-    """Backends whose chart publishes its own ingress hostname.
+def _site(host: str) -> str:
+    """The registrable-ish domain of a host, used to decide what is in scope."""
+    return ".".join(host.lower().rsplit(".", 2)[-2:])
+
+
+def ingress_origins(target: str, helm: Path = HELM) -> list[Origin]:
+    """Backends whose chart publishes its own ingress hostname, within the target's site.
 
     The tenant deploy disables these, but the chart defaults do not: a plain
     ``helm install`` of a backend puts it on the public ingress controller,
     beside the gateway rather than behind it.
+
+    Authorization to scan is authorization to scan *something*: a chart hostname
+    is only attacked when it shares a domain with the target the operator named,
+    so a run aimed at localhost or at one tenant never sends traffic to whatever
+    host a chart happens to mention.
     """
+    host = urlparse(target).hostname or ""
+    if host in LOCAL_HOSTS or not host:
+        return []
+    site = _site(host)
     origins = []
     for values in sorted(helm.glob("*/values.yaml")):
         service = values.parent.name
@@ -121,12 +135,12 @@ def ingress_origins(helm: Path = HELM) -> list[Origin]:
         if not ingress.get("enabled"):
             continue
         for entry in ingress.get("hosts") or []:
-            host = (entry or {}).get("host")
-            if host:
+            declared = (entry or {}).get("host")
+            if declared and _site(declared) == site:
                 origins.append(
                     Origin(
                         service,
-                        f"https://{host}",
+                        f"https://{declared}",
                         f"{repo_relative(values)} ingress.enabled",
                     )
                 )
@@ -156,7 +170,7 @@ def reachable(origin: Origin, timeout: float = 3.0) -> bool:
 def gateway_bypass_identity(ctx: ScanContext) -> Result:
     """Assert the victim's identity straight at a backend, with no token at all."""
     self = gateway_bypass_identity.probe
-    origins = compose_origins(ctx.base_url) + ingress_origins()
+    origins = compose_origins(ctx.base_url) + ingress_origins(ctx.base_url)
     if not origins:
         return self.result(
             Verdict.SECURE,
@@ -167,8 +181,11 @@ def gateway_bypass_identity(ctx: ScanContext) -> Result:
     live = [origin for origin in origins if reachable(origin)]
     declared = ", ".join(f"{o.service} ({o.source})" for o in origins)
     if not live:
+        # Declared and unreachable is not the same as not declared: the origin may
+        # simply be unroutable from this host, so the perimeter is untested rather
+        # than proven.
         return self.result(
-            Verdict.SECURE,
+            Verdict.INCONCLUSIVE,
             f"backend origins are declared but none answered from here: {declared}",
         )
 

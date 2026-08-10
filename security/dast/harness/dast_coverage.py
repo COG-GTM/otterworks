@@ -125,6 +125,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+    if report.get("partial"):
+        # `make dast-verify` runs one probe and writes this same report. Grading it
+        # would report the whole surface as unattacked, which says nothing about
+        # coverage and everything about which probe was asked to run.
+        print(
+            f"{args.report} is from a single-probe run (`--only`), which requests a "
+            "fraction of the surface: coverage cannot be graded from it. Re-run "
+            "`make dast-scan` first.",
+            file=sys.stderr,
+        )
+        return 2
 
     routes, unknown = edge_routes()
     if not routes:

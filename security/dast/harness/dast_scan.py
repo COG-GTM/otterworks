@@ -36,9 +36,11 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from tabulate import tabulate
@@ -177,17 +179,57 @@ def is_gating(result: Result, baseline: dict[str, Any], threshold: int) -> bool:
     )
 
 
+def request_recorder(
+    target: str,
+) -> tuple[list[dict[str, str | bool]], Callable[[httpx.Request], None]]:
+    """A record of which routes a scan requested, and the hook that fills it in.
+
+    A tenant can be served under a base path (`https://<nlb>/t-abc`), so the
+    origin and that prefix are separated once here: requests are matched on the
+    origin, and recorded against the route as the service declares it, which is
+    what the inventory holds.
+    """
+    exercised: list[dict[str, str | bool]] = []
+    seen: set[tuple[str, str, bool]] = set()
+    parsed = urlparse(target)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    base_path = parsed.path.rstrip("/")
+
+    def record(request: httpx.Request) -> None:
+        # Probes that deliberately leave the gateway (the direct-backend bypass) are
+        # not edge coverage, so only requests to the target under test are recorded.
+        if f"{request.url.scheme}://{request.url.netloc.decode()}" != origin:
+            return
+        path = request.url.path
+        if base_path:
+            if not path.startswith(base_path):
+                return
+            path = path[len(base_path) :] or "/"
+        # Reaching a route and attacking it as a logged-in caller are different
+        # depths of coverage, so the report distinguishes them.
+        key = (request.method, path, "authorization" in request.headers)
+        if key not in seen:
+            seen.add(key)
+            exercised.append({"method": key[0], "path": key[1], "authenticated": key[2]})
+
+    return exercised, record
+
+
 def to_report(
     results: list[Result],
     target: str,
     baseline: dict[str, Any],
     threshold: int,
     exercised: list[dict[str, str | bool]] | None = None,
+    partial: bool = False,
 ) -> dict[str, Any]:
     gating = [r for r in results if is_gating(r, baseline, threshold)]
     return {
         "target": target,
         "scanned_at": datetime.now(UTC).isoformat(),
+        # A single-probe run (--only) requests a fraction of the surface, so its
+        # record of what was attacked must not be read as a coverage measurement.
+        "partial": partial,
         # Which routes were attacked, not just which attacks passed: dast_coverage.py
         # diffs this against the route inventory read from the services' source, so a
         # newly added endpoint cannot ride along untested behind a green gate.
@@ -346,21 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     baseline = {} if args.no_baseline else load_baseline(args.baseline)
     target = args.target.rstrip("/")
     results: list[Result] = []
-    exercised: list[dict[str, str | bool]] = []
-    seen: set[tuple[str, str, bool]] = set()
-
-    def record(request: httpx.Request) -> None:
-        # Probes that deliberately leave the gateway (the direct-backend bypass) are
-        # not edge coverage, so only requests to the target under test are recorded.
-        if f"{request.url.scheme}://{request.url.netloc.decode()}" != target:
-            return
-        # Reaching a route and attacking it as a logged-in caller are different
-        # depths of coverage, so the report distinguishes them.
-        authenticated = "authorization" in request.headers
-        key = (request.method, request.url.path, authenticated)
-        if key not in seen:
-            seen.add(key)
-            exercised.append({"method": key[0], "path": key[1], "authenticated": authenticated})
+    exercised, record = request_recorder(target)
 
     with httpx.Client(
         base_url=target,
@@ -435,7 +463,7 @@ def main(argv: list[str] | None = None) -> int:
     threshold = SEVERITY_ORDER[Severity(args.fail_on)]
 
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    report = to_report(results, target, baseline, threshold, exercised)
+    report = to_report(results, target, baseline, threshold, exercised, partial=bool(args.only))
     (args.report_dir / "dast-report.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.report_dir / "dast-report.md").write_text(to_markdown(report, baseline))
 
