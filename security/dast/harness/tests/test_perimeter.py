@@ -105,7 +105,7 @@ def test_ingress_origins_come_from_a_chart_that_publishes_its_own_host(tmp_path:
     (tmp_path / "search-service" / "values.yaml").write_text(
         "ingress:\n  enabled: false\n  hosts:\n    - host: search.example.test\n"
     )
-    origins = ingress_origins("https://api.example.test", tmp_path)
+    origins = ingress_origins("https://example.test", tmp_path)
     assert [(o.service, o.url, o.severity) for o in origins] == [
         ("file-service", "https://files.example.test", Severity.CRITICAL)
     ]
@@ -119,6 +119,19 @@ def test_ingress_origins_outside_the_target_site_are_left_alone(tmp_path: Path) 
     )
     assert ingress_origins("https://api.example.test", tmp_path) == []
     assert ingress_origins("http://localhost:8080", tmp_path) == []
+
+
+def test_scope_is_the_target_and_what_is_under_it(monkeypatch) -> None:
+    """Counting labels to guess a site puts strangers under a shared suffix in scope."""
+    assert perimeter.in_scope("api.example.test", "api.example.test")
+    assert perimeter.in_scope("files.api.example.test", "api.example.test")
+    assert not perimeter.in_scope("files.example.test", "api.example.test")
+    assert not perimeter.in_scope(
+        "someone-else.eu-west-1.amazonaws.com", "us.eu-west-1.amazonaws.com"
+    )
+    # A host the target does not cover is attacked only once an operator names it.
+    monkeypatch.setenv("DAST_ALLOW_ORIGIN_HOSTS", "files.example.test")
+    assert perimeter.in_scope("files.example.test", "api.example.test")
 
 
 # ── the bypass verdict ───────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ gateway would never have a URL to crawl to.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,27 +105,38 @@ def compose_origins(target: str, compose: Path = COMPOSE) -> list[Origin]:
     return origins
 
 
-def _site(host: str) -> str:
-    """The registrable-ish domain of a host, used to decide what is in scope."""
-    return ".".join(host.lower().rsplit(".", 2)[-2:])
+def in_scope(declared: str, target_host: str) -> bool:
+    """Is a chart-declared host covered by the target the operator named?
+
+    Only the target itself and hosts beneath it. Anything wider means deciding
+    what counts as "the same site", which needs the public suffix list —
+    approximating it by counting labels makes every host under a multi-label
+    suffix (``example.co.uk``, ``eu-west-1.amazonaws.com``) a sibling of every
+    other, i.e. permission to attack strangers. A chart host outside the target
+    has to be named by the operator, via ``DAST_ALLOW_ORIGIN_HOSTS``.
+    """
+    declared, target_host = declared.lower().rstrip("."), target_host.lower().rstrip(".")
+    if declared == target_host or declared.endswith(f".{target_host}"):
+        return True
+    allowed = {h.strip().lower() for h in os.getenv("DAST_ALLOW_ORIGIN_HOSTS", "").split(",")}
+    return declared in allowed - {""}
 
 
 def ingress_origins(target: str, helm: Path = HELM) -> list[Origin]:
-    """Backends whose chart publishes its own ingress hostname, within the target's site.
+    """Backends whose chart publishes its own ingress hostname, under the target.
 
     The tenant deploy disables these, but the chart defaults do not: a plain
     ``helm install`` of a backend puts it on the public ingress controller,
     beside the gateway rather than behind it.
 
-    Authorization to scan is authorization to scan *something*: a chart hostname
-    is only attacked when it shares a domain with the target the operator named,
-    so a run aimed at localhost or at one tenant never sends traffic to whatever
-    host a chart happens to mention.
+    Authorization to scan is authorization to scan *something*, so a chart host
+    is only attacked when the target covers it (see :func:`in_scope`): a run
+    aimed at localhost or at one tenant never sends traffic to whatever host a
+    chart happens to mention.
     """
     host = urlparse(target).hostname or ""
     if host in LOCAL_HOSTS or not host:
         return []
-    site = _site(host)
     origins = []
     for values in sorted(helm.glob("*/values.yaml")):
         service = values.parent.name
@@ -136,7 +148,7 @@ def ingress_origins(target: str, helm: Path = HELM) -> list[Origin]:
             continue
         for entry in ingress.get("hosts") or []:
             declared = (entry or {}).get("host")
-            if declared and _site(declared) == site:
+            if declared and in_scope(declared, host):
                 origins.append(
                     Origin(
                         service,

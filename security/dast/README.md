@@ -118,8 +118,10 @@ must not exit clean.
 - Always scan **through the gateway**. Hitting a backend port directly bypasses
   the very controls under test and produces findings that do not exist at the
   deployed edge. The one exception is `DAST-GATEWAY-BYPASS-IDENTITY`, whose
-  whole question is whether such an origin exists; it only attacks origins the
-  repository's own compose file or charts declare.
+  whole question is whether such an origin exists. Even then it stays inside the
+  target you named: a compose port only counts for a local target, and a chart
+  hostname only when the target covers it. To reach a chart host the target does
+  not cover, name it yourself in `DAST_ALLOW_ORIGIN_HOSTS`.
 - Scan a **tenant namespace or the local stack**, never a namespace someone else
   is presenting from. Every scan registers accounts and writes documents; those
   live in the target's database until the tenant is reaped.
