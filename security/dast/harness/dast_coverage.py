@@ -324,6 +324,18 @@ def main(argv: list[str] | None = None) -> int:
             + "\n  ".join(f"{prefix} ({service})" for prefix, service in sorted(unknown.items()))
         )
 
+    if never_answered and not reached:
+        # The unanswered excuse is for the odd service a deployment does not run. When
+        # it swallows the whole inventory the gate is measuring nothing, and saying
+        # "attacked or exempted" of a surface nothing answered would be the false pass
+        # this file exists to prevent.
+        print(
+            "\nnothing in the inventory was answered by a handler: the target was "
+            "unreachable, throttling, or not the application. Coverage is not graded.",
+            file=sys.stderr,
+        )
+        return 2
+
     if gating:
         verdict = (
             f"{len(gating)} edge-reachable route(s) were never attacked. Add a probe, or "

@@ -232,16 +232,19 @@ def test_a_route_the_target_could_not_answer_is_named_but_not_gated(
     That is the target's shape rather than a probe nobody wrote, so it must not
     fail the build — but it cannot be counted as covered either.
     """
-    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY], {}))
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY, LIST], {}))
     monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
     argv = _report(
         tmp_path,
-        [{"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 502}],
+        [
+            {"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 502},
+            {"method": "GET", "path": "/api/v1/documents", "probe": SWEEP, "status": 200},
+        ],
     )
     assert dast_coverage.main(argv) == 0
     out = capsys.readouterr().out
     assert "UNANSWERED" in out
-    assert "reached by a probe:              0/1" in out
+    assert "reached by a probe:              1/2" in out
 
 
 def test_a_route_nothing_requested_at_all_still_fails(tmp_path: Path, monkeypatch) -> None:
@@ -299,3 +302,17 @@ def test_a_documented_write_route_keeps_the_reason_its_owner_wrote(
     argv = _report(tmp_path, [], swept_unsafely=False)
     assert dast_coverage.main(argv) == 0
     assert "needs a probe that can undo it" in capsys.readouterr().out
+
+
+def test_a_target_that_answered_nothing_is_not_a_pass(tmp_path: Path, monkeypatch) -> None:
+    """Everything 502/429 is the gate measuring nothing, not a covered surface."""
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY, LIST], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    argv = _report(
+        tmp_path,
+        [
+            {"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 502},
+            {"method": "GET", "path": "/api/v1/documents", "probe": SWEEP, "status": 429},
+        ],
+    )
+    assert dast_coverage.main(argv) == 2
