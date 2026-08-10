@@ -121,6 +121,28 @@ def delivered(request: dict[str, str | bool | int]) -> bool:
     return status != 429 and not 300 <= status < 400 and status < 500
 
 
+def unanswered(
+    routes: list[Route], exercised: list[dict[str, str | bool | int]]
+) -> dict[str, list[int]]:
+    """Route key -> the statuses a request got when the handler never answered.
+
+    A 502 from the gateway means the backend is not part of *this* deployment — CI
+    brings up five services, not eleven — which is a fact about the target, not a
+    hole in the suite. So these are not counted as covered and not gated either;
+    they are named, with what came back, so a service that silently stopped
+    answering cannot be mistaken for one nobody wrote a probe for.
+    """
+    statuses: dict[str, list[int]] = {}
+    for request in exercised:
+        if delivered(request):
+            continue
+        index = best_match(routes, str(request.get("method", "")), str(request.get("path", "")))
+        status = request.get("status")
+        if index is not None and isinstance(status, int):
+            statuses.setdefault(routes[index].key, []).append(status)
+    return statuses
+
+
 def coverage(
     routes: list[Route], exercised: list[dict[str, str | bool | int]]
 ) -> tuple[list[Route], list[Route], list[Route], list[Route]]:
@@ -218,7 +240,12 @@ def main(argv: list[str] | None = None) -> int:
             if route.method in UNSAFE_METHODS
         }
     reached, attacked, authenticated, uncovered = coverage(routes, exercised)
-    gating = [route for route in uncovered if route.key not in exemptions]
+    never_answered = unanswered(routes, exercised)
+    gating = [
+        route
+        for route in uncovered
+        if route.key not in exemptions and route.key not in never_answered
+    ]
 
     print(
         f"Coverage of the edge-reachable surface, from the last scan of "
@@ -230,6 +257,13 @@ def main(argv: list[str] | None = None) -> int:
         "inventory, so read it as 'the sweep got there', not as 'this is tested'.\n"
         "The lower two are the depth an attacker's questions actually get asked at.\n"
     )
+    if never_answered:
+        print(
+            f"{len(never_answered)} route(s) below are UNANSWERED: something requested them "
+            "and the target replied without reaching the handler (a 502 for a service this "
+            "deployment does not run, say). Not covered, and not gated: that is the target's "
+            "shape, not a missing probe.\n"
+        )
     shallow = [route for route in reached if route not in authenticated]
     if shallow:
         print(
@@ -242,10 +276,19 @@ def main(argv: list[str] | None = None) -> int:
             tabulate(
                 [
                     [
-                        "EXEMPT" if route.key in exemptions else "UNCOVERED",
+                        "EXEMPT"
+                        if route.key in exemptions
+                        else "UNANSWERED"
+                        if route.key in never_answered
+                        else "UNCOVERED",
                         route.key,
                         route.service,
-                        exemptions.get(route.key, ""),
+                        exemptions.get(
+                            route.key,
+                            f"the target answered {never_answered[route.key][0]}, not the handler"
+                            if route.key in never_answered
+                            else "",
+                        ),
                     ]
                     for route in uncovered
                 ],

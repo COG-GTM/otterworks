@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import dast_coverage  # noqa: E402
-from dast_coverage import coverage, load_exemptions, matches  # noqa: E402
+from dast_coverage import SWEEP, coverage, load_exemptions, matches  # noqa: E402
 from route_inventory import Route  # noqa: E402
 
 DOCUMENT = Route("GET", "/api/v1/documents/{}", "document-service", "app/api/documents.py")
@@ -219,3 +219,33 @@ def test_a_write_route_the_scan_did_sweep_is_still_gated(
     capsys.readouterr()
     assert dast_coverage.main(_report(tmp_path, [], swept_unsafely=False)) == 0
     assert "not declared" in capsys.readouterr().out
+
+
+NOTIFY = Route("GET", "/api/v1/notifications", "notification-service", "Routing.kt")
+
+
+def test_a_route_the_target_could_not_answer_is_named_but_not_gated(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """CI runs five services of eleven, so the gateway 502s the rest.
+
+    That is the target's shape rather than a probe nobody wrote, so it must not
+    fail the build — but it cannot be counted as covered either.
+    """
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    argv = _report(
+        tmp_path,
+        [{"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 502}],
+    )
+    assert dast_coverage.main(argv) == 0
+    out = capsys.readouterr().out
+    assert "UNANSWERED" in out
+    assert "reached by a probe:              0/1" in out
+
+
+def test_a_route_nothing_requested_at_all_still_fails(tmp_path: Path, monkeypatch) -> None:
+    """The unanswered excuse needs a request behind it; silence is the gap."""
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    assert dast_coverage.main(_report(tmp_path, [])) == 1
