@@ -48,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from probes import REGISTRY, ScanContext, SeedError, Severity, Verdict
 from probes.base import SEVERITY_ORDER, Result
+from route_inventory import may_sweep_unsafely
 
 DAST_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = DAST_DIR / "baseline.json"
@@ -261,6 +262,11 @@ def to_report(
         # diffs this against the route inventory read from the services' source, so a
         # newly added endpoint cannot ride along untested behind a green gate.
         "exercised": exercised or [],
+        # Whether the sweep was allowed to send write methods, recorded here rather
+        # than re-read from the environment at grading time: the gate excuses a
+        # withheld write route, and reading a different answer than the scan acted
+        # on would excuse one that was swept and genuinely uncovered.
+        "swept_unsafely": may_sweep_unsafely(),
         "summary": {
             "probes_run": len(results),
             "findings": sum(1 for r in results if r.is_finding),

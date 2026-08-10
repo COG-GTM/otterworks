@@ -53,13 +53,7 @@ from tabulate import tabulate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from route_inventory import (
-    UNSAFE_METHODS,
-    Route,
-    edge_routes,
-    may_sweep_unsafely,
-    sweep_exclusions,
-)
+from route_inventory import UNSAFE_METHODS, Route, edge_routes, sweep_exclusions
 
 SWEEP = "DAST-ANONYMOUS-ROUTE-SWEEP"
 
@@ -206,7 +200,12 @@ def main(argv: list[str] | None = None) -> int:
     exemptions = load_exemptions() | {
         key: f"not swept: {reason}" for key, reason in sweep_exclusions().items()
     }
-    if not may_sweep_unsafely():
+    # Read from the report, not this process's environment: the two disagree the
+    # moment grading runs in a different step or shell from the scan, and an
+    # exemption applied to a route that *was* swept excuses a genuinely uncovered
+    # write route. A report predating the field is taken as having swept them, so
+    # the failure is a false alarm rather than a silent excuse.
+    if not report.get("swept_unsafely", True):
         # The sweep withholds a route whose method would write, unless the operator
         # declared the target theirs to destroy. Uncovered for a stated reason is an
         # exemption; failing the gate here would only teach people to set the flag.

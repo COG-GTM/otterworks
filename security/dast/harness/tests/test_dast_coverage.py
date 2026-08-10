@@ -88,9 +88,11 @@ def test_a_report_without_recorded_requests_is_a_setup_failure(tmp_path: Path) -
     assert dast_coverage.main(["--report", str(report)]) == 2
 
 
-def _report(tmp_path: Path, exercised: list[dict[str, object]]) -> list[str]:
+def _report(tmp_path: Path, exercised: list[dict[str, object]], **extra: object) -> list[str]:
     report = tmp_path / "dast-report.json"
-    report.write_text(json.dumps({"target": "http://localhost:8080", "exercised": exercised}))
+    report.write_text(
+        json.dumps({"target": "http://localhost:8080", "exercised": exercised, **extra})
+    )
     return ["--report", str(report)]
 
 
@@ -196,3 +198,24 @@ def test_a_refusal_is_still_coverage() -> None:
     ]
     reached, _, _, missed = coverage([DOCUMENT], exercised)
     assert (reached, missed) == ([DOCUMENT], [])
+
+
+WRITE = Route("DELETE", "/api/v1/documents/{}", "document-service", "app/api/documents.py")
+
+
+def test_a_write_route_the_scan_did_sweep_is_still_gated(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The excuse belongs to the scan that withheld the route, not to the grader.
+
+    Grading runs in its own step in CI, so reading DAST_SWEEP_UNSAFE_METHODS here
+    would excuse every write route the scan had in fact swept — and with it any
+    write route nothing covers, which is the case the gate exists for.
+    """
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([WRITE], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    monkeypatch.delenv("DAST_SWEEP_UNSAFE_METHODS", raising=False)
+    assert dast_coverage.main(_report(tmp_path, [], swept_unsafely=True)) == 1
+    capsys.readouterr()
+    assert dast_coverage.main(_report(tmp_path, [], swept_unsafely=False)) == 0
+    assert "not declared" in capsys.readouterr().out
