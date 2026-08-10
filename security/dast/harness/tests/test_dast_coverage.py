@@ -249,3 +249,20 @@ def test_a_route_nothing_requested_at_all_still_fails(tmp_path: Path, monkeypatc
     monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY], {}))
     monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
     assert dast_coverage.main(_report(tmp_path, [])) == 1
+
+
+def test_a_route_declared_twice_is_covered_once() -> None:
+    """Two files declaring one endpoint are two entries but one attack surface."""
+    twin = Route("GET", "/api/v1/documents/{}", "document-service", "app/api/legacy.py")
+    exercised = [
+        {
+            "method": "GET",
+            "path": "/api/v1/documents/9f1c2a04",
+            "authenticated": True,
+            "probe": "DAST-BOLA-DOCUMENTS",
+            "status": 200,
+        }
+    ]
+    reached, _, _, missed = coverage([DOCUMENT, twin], exercised)
+    assert reached == [DOCUMENT, twin]
+    assert missed == []

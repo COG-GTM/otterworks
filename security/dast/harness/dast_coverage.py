@@ -147,13 +147,21 @@ def coverage(
     routes: list[Route], exercised: list[dict[str, str | bool | int]]
 ) -> tuple[list[Route], list[Route], list[Route], list[Route]]:
     """(reached, attacked by a written probe, attacked as a caller, missed)."""
+    # Credited per method+path, not per inventory entry: the same route declared in
+    # two files is two entries, and crediting only the one `best_match` picked would
+    # report the other as never attacked forever, with no honest exemption to write.
+    by_key: dict[str, list[int]] = {}
+    for index, route in enumerate(routes):
+        by_key.setdefault(route.key, []).append(index)
+
     landed: dict[int, list[dict[str, str | bool | int]]] = {}
     for request in exercised:
         if not delivered(request):
             continue
         index = best_match(routes, str(request.get("method", "")), str(request.get("path", "")))
         if index is not None:
-            landed.setdefault(index, []).append(request)
+            for sibling in by_key[routes[index].key]:
+                landed.setdefault(sibling, []).append(request)
 
     reached, attacked, authenticated, missed = [], [], [], []
     for index, route in enumerate(routes):
