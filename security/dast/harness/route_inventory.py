@@ -22,6 +22,7 @@ module exists to prevent.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -61,6 +62,27 @@ def gateway_public_paths(source: Path = GATEWAY_JWT) -> tuple[set[str], tuple[st
     if not found.get("Public"):
         return None
     return found["Public"], tuple(sorted(found.get("Prefix", set())))
+
+
+#: Methods whose request, if the route turns out to be unauthenticated, is not a
+#: probe but the operation itself.
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def may_sweep_unsafely() -> bool:
+    """Has the operator declared this run's target theirs to destroy?
+
+    Sweeping with the route's real method is the point — a GET-only sweep cannot
+    find an unauthenticated DELETE — but a route that answers has been carried out,
+    and :func:`sweep_exclusions` only covers the tenant-wide operations someone
+    thought of. So it takes ``DAST_SWEEP_UNSAFE_METHODS``, and nothing else: an
+    address is not evidence of what is behind it, and this repo's own runbook
+    reaches a live shared tenant at ``localhost:8080`` through ``kubectl
+    port-forward``. Without the declaration those routes are reported unswept
+    rather than performed — here rather than in the probe, because the coverage
+    gate has to name the same routes as unswept for the hole to stay visible.
+    """
+    return os.getenv("DAST_SWEEP_UNSAFE_METHODS", "").strip().lower() in {"1", "true", "yes"}
 
 
 def sweep_exclusions(path: Path = ATTACK_SURFACE) -> dict[str, str]:

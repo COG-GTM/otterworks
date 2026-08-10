@@ -52,13 +52,20 @@ result — in CI, or in a loop that stops when a finding is proven closed — ca
 clean, `1` findings at or above `--fail-on` (default `medium`), `2` target
 unreachable or the scan accounts never registered (the authenticated probes then
 attacked nothing), `3` a probe reached no verdict while verifying one finding
-(`dast-verify`) — the remediation is unproven, not done.
+(`dast-verify`) — the remediation is unproven, not done — and, from `coverage`,
+`4` the route inventory read no routes, so the gate measures nothing.
+
+The anonymous sweep sends each route's real method, so it withholds
+POST/PUT/PATCH/DELETE unless you set `DAST_SWEEP_UNSAFE_METHODS=1` to declare the
+target yours to destroy. Set it for a stack you brought up yourself and will tear
+down; do not set it because the target says `localhost` — the multi-tenant runbook
+reaches a live shared tenant at `localhost:8080` via `kubectl port-forward`.
 
 ## Targets
 
 | Target | URL | Use |
 |---|---|---|
-| Local stack | `http://localhost:8080` | after `make up`; the default |
+| Local stack | `http://localhost:8080` | after `make up`; the default. Add `DAST_SWEEP_UNSAFE_METHODS=1` once you know the stack is yours, not a port-forward |
 | Your tenant | `https://api-t-<id>.demo.otterworks.app` | after `scripts/deploy-tenant.sh <id>` |
 | Perpetual tenant | `https://api-t-main.otterworks.app` | tracks `main`; never scan it — it is never reaped, so the accounts and documents a scan writes stay forever |
 

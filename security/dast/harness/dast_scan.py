@@ -180,8 +180,13 @@ def is_gating(result: Result, baseline: dict[str, Any], threshold: int) -> bool:
 
 def request_recorder(
     target: str, attribute_to: Callable[[], str] = lambda: ""
-) -> tuple[list[dict[str, str | bool]], Callable[[httpx.Request], None]]:
+) -> tuple[list[dict[str, str | bool | int]], Callable[[httpx.Response], None]]:
     """A record of which routes a scan requested, and the hook that fills it in.
+
+    Hooked on the response rather than the request: a route whose request timed
+    out, or that only ever answered 5xx, was not covered by anything, and
+    recording it as reached is the false assurance this gate exists to prevent.
+    The status is kept so the gate decides what "delivered" means.
 
     A tenant can be served under a base path (`https://<nlb>/t-abc`), so the
     origin and that prefix are separated once here: requests are matched on the
@@ -192,8 +197,8 @@ def request_recorder(
     route is the whole difference between a route being enumerated and a route
     being attacked.
     """
-    exercised: list[dict[str, str | bool]] = []
-    seen: set[tuple[str, str, bool, str]] = set()
+    exercised: list[dict[str, str | bool | int]] = []
+    seen: set[tuple[str, str, bool, str, int]] = set()
     # Parsed by httpx rather than urlparse, because the requests this is compared
     # against are httpx's: it lowercases the host and drops a default port, so a
     # target written `https://host:443` would otherwise match none of its own
@@ -202,7 +207,8 @@ def request_recorder(
     origin = (parsed.scheme, parsed.host, parsed.port)
     base_path = parsed.path.rstrip("/")
 
-    def record(request: httpx.Request) -> None:
+    def record(response: httpx.Response) -> None:
+        request = response.request
         # Probes that deliberately leave the gateway (the direct-backend bypass) are
         # not edge coverage, so only requests to the target under test are recorded.
         if (request.url.scheme, request.url.host, request.url.port) != origin:
@@ -214,11 +220,23 @@ def request_recorder(
             path = path[len(base_path) :] or "/"
         # Reaching a route and attacking it as a logged-in caller are different
         # depths of coverage, so the report distinguishes them.
-        key = (request.method, path, "authorization" in request.headers, attribute_to())
+        key = (
+            request.method,
+            path,
+            "authorization" in request.headers,
+            attribute_to(),
+            response.status_code,
+        )
         if key not in seen:
             seen.add(key)
             exercised.append(
-                {"method": key[0], "path": key[1], "authenticated": key[2], "probe": key[3]}
+                {
+                    "method": key[0],
+                    "path": key[1],
+                    "authenticated": key[2],
+                    "probe": key[3],
+                    "status": key[4],
+                }
             )
 
     return exercised, record
@@ -229,7 +247,7 @@ def to_report(
     target: str,
     baseline: dict[str, Any],
     threshold: int,
-    exercised: list[dict[str, str | bool]] | None = None,
+    exercised: list[dict[str, str | bool | int]] | None = None,
     partial: bool = False,
 ) -> dict[str, Any]:
     gating = [r for r in results if is_gating(r, baseline, threshold)]
@@ -404,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
         base_url=target,
         timeout=httpx.Timeout(args.timeout, connect=5.0),
         follow_redirects=False,
-        event_hooks={"request": [record]},
+        event_hooks={"response": [record]},
     ) as client:
         ctx = ScanContext(base_url=target, client=client)
         try:

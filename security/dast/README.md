@@ -118,9 +118,13 @@ the command returned, which would flatten the distinctions below.
 Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `medium`),
 `2` target unreachable or misconfigured — including a run whose scan accounts
 never registered, since the authenticated probes then attacked nothing — `3`
-nothing gating but a probe could not reach a verdict. `3` applies when a single
-finding is being verified
-(`--only`, i.e. `make dast-verify`) or with `--fail-on-inconclusive`: a
+nothing gating but a probe could not reach a verdict, `4` (coverage only) the
+route inventory read no routes, so the gate is measuring nothing at all, which
+is a louder failure than any uncovered route and must not be read as "nothing to
+grade".
+
+`3` applies when a single finding is being verified (`--only`, i.e.
+`make dast-verify`) or with `--fail-on-inconclusive`: a
 remediation is proven by an attack that ran and failed, so "could not tell"
 must not exit clean.
 
@@ -135,11 +139,13 @@ must not exit clean.
   not cover, name it yourself in `DAST_ALLOW_ORIGIN_HOSTS`.
 - The anonymous route sweep sends each route's **real method**, because a
   GET-only sweep cannot find an unauthenticated `DELETE` — and a write route that
-  answers has been carried out, not merely probed. So the write half only runs
-  against the local stack, or against a target you declare disposable with
-  `DAST_SWEEP_UNSAFE_METHODS=1`; elsewhere those routes are reported unswept and
-  the coverage gate shows the hole. Tenant-wide operations stay excluded either
-  way, by name, in `attack-surface.yaml`.
+  answers has been carried out, not merely probed. So the write half runs only
+  where you declare the target yours to destroy, with `DAST_SWEEP_UNSAFE_METHODS=1`
+  — including against `localhost`, which proves nothing: `docs/MULTI-TENANT-RUNBOOK.md`
+  reaches a live shared tenant at `localhost:8080` through `kubectl port-forward`.
+  Without it those routes are reported unswept and the coverage gate lists them
+  with that reason rather than pretending they were attacked. Tenant-wide
+  operations stay excluded either way, by name, in `attack-surface.yaml`.
 - Scan a **tenant namespace or the local stack**, never a namespace someone else
   is presenting from. Every scan registers accounts and writes documents; those
   live in the target's database until the tenant is reaped.

@@ -53,7 +53,13 @@ from tabulate import tabulate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from route_inventory import Route, edge_routes, sweep_exclusions
+from route_inventory import (
+    UNSAFE_METHODS,
+    Route,
+    edge_routes,
+    may_sweep_unsafely,
+    sweep_exclusions,
+)
 
 SWEEP = "DAST-ANONYMOUS-ROUTE-SWEEP"
 
@@ -106,12 +112,29 @@ def best_match(routes: list[Route], method: str, path: str) -> int | None:
     return min(candidates, key=lambda index: (routes[index].path.count("{}"), routes[index].path))
 
 
+def delivered(request: dict[str, str | bool | int]) -> bool:
+    """Did this request reach the route's handler and get an answer from it?
+
+    A request the transport never completed is not recorded at all; one that came
+    back 5xx, 429 or a redirect was answered by something short of the handler, so
+    counting it as coverage would report a route as attacked that nothing has yet
+    reached. A report written before statuses were recorded has none, and its
+    requests are taken at face value.
+    """
+    status = request.get("status")
+    if not isinstance(status, int):
+        return True
+    return status != 429 and not 300 <= status < 400 and status < 500
+
+
 def coverage(
-    routes: list[Route], exercised: list[dict[str, str | bool]]
+    routes: list[Route], exercised: list[dict[str, str | bool | int]]
 ) -> tuple[list[Route], list[Route], list[Route], list[Route]]:
     """(reached, attacked by a written probe, attacked as a caller, missed)."""
-    landed: dict[int, list[dict[str, str | bool]]] = {}
+    landed: dict[int, list[dict[str, str | bool | int]]] = {}
     for request in exercised:
+        if not delivered(request):
+            continue
         index = best_match(routes, str(request.get("method", "")), str(request.get("path", "")))
         if index is not None:
             landed.setdefault(index, []).append(request)
@@ -171,8 +194,11 @@ def main(argv: list[str] | None = None) -> int:
 
     routes, unknown = edge_routes()
     if not routes:
+        # Not "nothing to grade" (exit 2) but "the gate itself measures nothing":
+        # the surface it compares against is gone, which is a louder failure than
+        # any uncovered route and must not share an exit code with a missing report.
         print("no routes could be read from the services' source", file=sys.stderr)
-        return 2
+        return 4
 
     # A route the sweep is forbidden to send is uncovered for a recorded reason,
     # which is what an exemption is; keeping the reason where the operator wrote it
@@ -180,6 +206,18 @@ def main(argv: list[str] | None = None) -> int:
     exemptions = load_exemptions() | {
         key: f"not swept: {reason}" for key, reason in sweep_exclusions().items()
     }
+    if not may_sweep_unsafely():
+        # The sweep withholds a route whose method would write, unless the operator
+        # declared the target theirs to destroy. Uncovered for a stated reason is an
+        # exemption; failing the gate here would only teach people to set the flag.
+        exemptions |= {
+            route.key: (
+                "not swept: the method writes, and the target was not declared "
+                "disposable (DAST_SWEEP_UNSAFE_METHODS)"
+            )
+            for route in routes
+            if route.method in UNSAFE_METHODS
+        }
     reached, attacked, authenticated, uncovered = coverage(routes, exercised)
     gating = [route for route in uncovered if route.key not in exemptions]
 

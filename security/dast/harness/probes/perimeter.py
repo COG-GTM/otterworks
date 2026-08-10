@@ -32,8 +32,10 @@ from .context import ScanContext
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from route_inventory import (  # noqa: E402
+    UNSAFE_METHODS,
     edge_routes,
     gateway_public_paths,
+    may_sweep_unsafely,
     repo_relative,
     sweep_exclusions,
 )
@@ -56,26 +58,6 @@ HEADER_TRUSTING: dict[str, tuple[str, str, dict[str, str]]] = {
 #: Stand-in for a path parameter in a swept route. A random uuid belongs to
 #: nobody, so a 2xx for it is an authorization failure and not a real object.
 SWEEP_ID = "00000000-0000-4000-8000-000000000000"
-
-
-#: Methods whose request, if the route turns out to be unauthenticated, is not a
-#: probe but the operation itself.
-UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-
-
-def may_sweep_unsafely(target: str) -> bool:
-    """Is this target one where performing a write is acceptable?
-
-    Sweeping with the route's real method is the point — a GET-only sweep cannot
-    find an unauthenticated DELETE — but a route that answers is also carried out,
-    and the named exclusions only cover the tenant-wide operations someone thought
-    of. So the write half is limited to the local stack, or to a target the
-    operator has explicitly declared throwaway via ``DAST_SWEEP_UNSAFE_METHODS``.
-    Elsewhere those routes are reported unswept rather than quietly performed.
-    """
-    if (urlparse(target).hostname or "") in LOCAL_HOSTS:
-        return True
-    return os.getenv("DAST_SWEEP_UNSAFE_METHODS", "").strip().lower() in {"1", "true", "yes"}
 
 
 def follow_once(ctx: ScanContext, method: str, response: httpx.Response) -> httpx.Response | None:
@@ -466,7 +448,7 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
         )
 
     excluded = sweep_exclusions()
-    unsafe_allowed = may_sweep_unsafely(ctx.base_url)
+    unsafe_allowed = may_sweep_unsafely()
     withheld = 0
     served: list[Evidence] = []
     swept = 0

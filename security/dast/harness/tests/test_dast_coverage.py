@@ -165,3 +165,34 @@ def test_a_parameterized_request_still_lands_on_the_template() -> None:
     reached, _, _, missed = coverage([DOCUMENT, SEARCH], exercised)
     assert reached == [DOCUMENT]
     assert missed == [SEARCH]
+
+
+def test_a_request_the_target_never_answered_is_not_coverage() -> None:
+    """A 502 or a redirect was answered by something short of the handler."""
+    for status in (502, 429, 307):
+        exercised = [
+            {
+                "method": "GET",
+                "path": "/api/v1/documents/9f1c2a04",
+                "authenticated": True,
+                "probe": "DAST-BOLA-DOCUMENTS",
+                "status": status,
+            }
+        ]
+        reached, _, _, missed = coverage([DOCUMENT], exercised)
+        assert (reached, missed) == ([], [DOCUMENT]), status
+
+
+def test_a_refusal_is_still_coverage() -> None:
+    """401 is the handler's chain answering: the route was attacked and held."""
+    exercised = [
+        {
+            "method": "GET",
+            "path": "/api/v1/documents/9f1c2a04",
+            "authenticated": False,
+            "probe": "DAST-ANONYMOUS-ROUTE-SWEEP",
+            "status": 401,
+        }
+    ]
+    reached, _, _, missed = coverage([DOCUMENT], exercised)
+    assert (reached, missed) == ([DOCUMENT], [])

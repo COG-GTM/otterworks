@@ -81,6 +81,11 @@ jobs:
       - name: Run the DAST probe suite
         id: scan
         continue-on-error: true # informational until baseline.json is populated — see header
+        env:
+          # This stack was created by the step above and dies with the runner, so
+          # the sweep may send a route's real POST/DELETE here. Only here: an
+          # address is not evidence of what is behind it.
+          DAST_SWEEP_UNSAFE_METHODS: '1'
         run: make dast-scan DAST_TARGET=http://localhost:8080
 
       # A real gate, unlike the scan above: this fails only when a route the gateway
@@ -108,6 +113,12 @@ jobs:
           if [ "$status" = 2 ]; then
             echo "::warning::route coverage was not graded: no usable scan report (see the scan step)"
             exit 0
+          fi
+          # 4 is the inventory itself failing to read any route: the gate is then
+          # measuring nothing, which is worse than an uncovered route, not a
+          # variant of "nothing to grade".
+          if [ "$status" = 4 ]; then
+            echo "::error::the route inventory read no routes, so coverage is no longer measured"
           fi
           exit $status
 

@@ -267,6 +267,9 @@ def test_the_probe_evidence_carries_no_credential(only_file_service, monkeypatch
 
 @pytest.fixture
 def two_routes(monkeypatch):
+    # The fixture's POST is only swept where writes are declared acceptable, which
+    # is what most of these cases are about; the withholding case unsets it.
+    monkeypatch.setenv("DAST_SWEEP_UNSAFE_METHODS", "1")
     monkeypatch.setattr(
         perimeter,
         "edge_routes",
@@ -407,11 +410,11 @@ def test_a_port_bound_to_one_interface_is_attacked_there(tmp_path: Path) -> None
 
 
 def test_a_write_is_only_swept_where_it_may_be_performed(monkeypatch) -> None:
+    """localhost is not evidence: the runbook reaches a live tenant by port-forward."""
     monkeypatch.delenv("DAST_SWEEP_UNSAFE_METHODS", raising=False)
-    assert perimeter.may_sweep_unsafely("http://localhost:8080")
-    assert not perimeter.may_sweep_unsafely("https://api-t-x.demo.otterworks.app")
+    assert not perimeter.may_sweep_unsafely()
     monkeypatch.setenv("DAST_SWEEP_UNSAFE_METHODS", "1")
-    assert perimeter.may_sweep_unsafely("https://api-t-x.demo.otterworks.app")
+    assert perimeter.may_sweep_unsafely()
 
 
 def test_the_sweep_withholds_writes_from_an_undeclared_target(two_routes, monkeypatch) -> None:
@@ -428,7 +431,7 @@ def test_the_sweep_withholds_writes_from_an_undeclared_target(two_routes, monkey
             {},
         ),
     )
-    ctx = StubContext(base_url="https://api-t-x.demo.otterworks.app")
+    ctx = StubContext(base_url="http://localhost:8080")
     result = perimeter.anonymous_route_sweep(ctx)
     assert [method for method, _ in ctx.requests] == ["GET"]
     assert "not sent because their method would write" in result.detail
