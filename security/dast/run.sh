@@ -25,7 +25,14 @@ scan)
   exec uv run "$harness/dast_scan.py" --target "$target" "$@"
   ;;
 verify)
-  finding="${1:?usage: run.sh verify <FINDING-ID> [--target URL]}"
+  # 64, not the 1 that `${1:?}` would exit with: this script exists so a caller
+  # can branch on the outcome, and a mistyped command must not read as "the
+  # finding reproduced".
+  if [ $# -eq 0 ]; then
+    echo "usage: run.sh verify <FINDING-ID> [--target URL]" >&2
+    exit 64
+  fi
+  finding="$1"
   shift
   # A verification ignores the baseline on purpose: an accepted finding is still
   # a finding while you are proving you closed it.
