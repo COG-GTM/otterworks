@@ -1,0 +1,86 @@
+# OtterWorks attack surface for dynamic (runtime) security testing.
+#
+# This file is the target spec the DAST harness and the ZAP scan share: what is
+# reachable at the edge, what each route is supposed to require, and what must
+# never appear in a response. Probes in security/dast/harness/probes assert the
+# `expect` clauses below against the *running* application.
+
+target:
+  # Overridden with --target / OTTERWORKS_DAST_TARGET (a tenant URL, a preview
+  # environment, or the local docker-compose stack).
+  default_base_url: http://localhost:8080
+  entrypoint: api-gateway
+  notes: >
+    Every backend service is reachable only through the gateway. Scanning a
+    backend port directly bypasses the controls under test and produces
+    findings that do not reflect the deployed edge.
+
+identities:
+  # Seeded per scan, namespaced by run id, so concurrent scans never collide.
+  - name: attacker
+    role: standard user
+    purpose: the caller performing every attack
+  - name: victim
+    role: standard user
+    purpose: owns the private objects the attacker must not reach
+
+routes:
+  - prefix: /api/v1/auth
+    service: auth-service
+    public:
+      - POST /api/v1/auth/login
+      - POST /api/v1/auth/register
+    expect:
+      - failed logins are throttled or locked out per account
+      - responses never contain password, passwordHash, salt, or mfaSecret
+  - prefix: /api/v1/documents
+    service: document-service
+    auth: bearer JWT
+    expect:
+      - reads and writes are scoped to the document owner
+      - identity comes from validated JWT claims, never from a request header
+      - responses are application/json, never renderable HTML
+  - prefix: /api/v1/files
+    service: file-service
+    auth: bearer JWT
+    expect:
+      - object ids from another owner return 403/404
+  - prefix: /api/v1/search
+    service: search-service
+    auth: bearer JWT
+    expect:
+      - results are scoped to the caller's owner id
+      - query parameters never reach a SQL or filter expression unescaped
+  - prefix: /api/v1/admin
+    service: admin-service
+    auth: bearer JWT + admin role
+    expect:
+      - unauthenticated callers receive 401
+  - prefix: /api/v1/audit
+    service: audit-service
+    auth: bearer JWT
+    expect:
+      - unauthenticated callers receive 401
+
+operational:
+  - path: /health
+    expect: reachable unauthenticated, no build or dependency detail
+  - path: /metrics
+    expect: not exposed through the public edge
+
+global_expectations:
+  headers:
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options set
+    - Content-Security-Policy set
+    - Referrer-Policy set
+    - Strict-Transport-Security set on TLS listeners
+  cors:
+    - Access-Control-Allow-Origin only for configured origins
+    - never wildcard origin together with Allow-Credentials
+  rate_limiting:
+    - keyed on an identity the client cannot choose
+    - X-Forwarded-For honoured only from trusted proxy hops
+  errors:
+    - unhandled input returns a generic JSON envelope
+    - no stack traces, SQL text, or connection strings in any response body

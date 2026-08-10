@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap
 
 SHELL := /bin/bash
 
@@ -225,6 +225,65 @@ security-scan: ## Run security scans across all services
 	cd services/admin-service && bundle-audit check 2>/dev/null || true
 	@echo ""
 	@echo "=== Report Service (skipped - legacy) ==="
+
+# --- Dynamic Application Security Testing (DAST) ---
+#
+# DAST attacks the *running* application through the API gateway. TARGET can be
+# the local stack (default), a tenant URL, or a preview environment.
+
+DAST_TARGET ?= http://localhost:8080
+DAST := uv run --with httpx --with tabulate security/dast/harness/dast_scan.py
+
+dast-list: ## List the registered DAST attack probes
+	$(DAST) --list
+
+dast-scan: ## Run the DAST suite against a running app (DAST_TARGET=<url>), gated by the baseline
+	$(DAST) --target $(DAST_TARGET) $(if $(FAIL_ON),--fail-on $(FAIL_ON),)
+
+dast-verify: ## Prove one finding is remediated (FINDING=<id> DAST_TARGET=<url>); baseline is ignored
+ifndef FINDING
+	$(error FINDING is required, e.g. make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS)
+endif
+	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
+
+dast-baseline: ## Record current findings as accepted (REASON="...")
+	$(DAST) --target $(DAST_TARGET) --reason "$${REASON:-recorded by make dast-baseline}" --update-baseline
+
+dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
+	@mkdir -p security/dast/reports
+# ZAP writes its report *and* its generated automation plan into its working
+# directory, and the image runs as uid 1000 while a CI runner is 1001 (running the
+# container as the host uid instead is not an option: ZAP needs /home/zap, which
+# only exists for uid 1000). Rather than open up a host directory, the working
+# directory is a throwaway docker volume chowned to the image's uid from inside a
+# container, so nothing on the host is ever writable by another local user. The
+# rule file goes in read-only, and the report is read back out through the volume.
+# The stale report is removed first, so "a report exists" can only mean this run
+# produced one.
+	@rm -f security/dast/reports/zap-report.json
+	@set -e; \
+	vol="dast-zap-$$$$"; \
+	trap 'docker volume rm -f "$$vol" >/dev/null 2>&1' EXIT INT TERM; \
+	docker volume create "$$vol" >/dev/null; \
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" \
+		ghcr.io/zaproxy/zaproxy:stable chown 1000:1000 /zap/wrk; \
+	docker run --rm --network host \
+		-v "$$vol:/zap/wrk" \
+		-v "$(CURDIR)/security/dast/zap/zap-baseline.conf:/zap/wrk/zap-baseline.conf:ro" \
+		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+		-t $(DAST_TARGET) -c zap-baseline.conf -J zap-report.json -I || true; \
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+		sh -c 'cat /zap/wrk/zap-report.json 2>/dev/null' \
+		> security/dast/reports/zap-report.json || true; \
+	[ -s security/dast/reports/zap-report.json ] || rm -f security/dast/reports/zap-report.json
+# A ZAP failure must not cost the probe suite: the sweep still reports, without it.
+	@if [ -f security/dast/reports/zap-report.json ]; then \
+		$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json; \
+	else \
+		echo "::warning::ZAP produced no report (see the log above); the passive sweep is"\
+		     "missing from this run. Running the probe suite on its own."; \
+		$(DAST) --target $(DAST_TARGET); \
+	fi
 
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test
