@@ -369,7 +369,10 @@ def gateway_bypass_identity(ctx: ScanContext) -> Result:
                 f"{spoofed.status_code}/{anonymous.status_code}"
             )
             continue
-        if spoofed.status_code != 200:
+        # Either one answering is the bypass. A backend that rejects an identity it
+        # cannot resolve but serves a caller who claims none is exposed just as
+        # thoroughly, and reading only the spoofed request would call it protected.
+        if spoofed.status_code != 200 and anonymous.status_code != 200:
             evidence.append(
                 Evidence.from_response(
                     spoofed,

@@ -455,3 +455,13 @@ def test_a_followed_redirect_is_addressed_absolutely() -> None:
     # httpx merges a relative path onto the client's base path, so `/t-abc/...`
     # would be sent as `/t-abc/t-abc/...` and 404 without testing the route.
     assert ctx.requests == [("GET", "https://nlb.example.test/t-abc/api/v1/documents/")]
+
+
+def test_a_backend_that_serves_a_caller_claiming_nothing_is_the_finding(
+    only_file_service, monkeypatch
+) -> None:
+    """Rejecting an unknown identity is not protection if no identity works."""
+    stub_direct(monkeypatch, {("backend", True): 403, ("backend", False): 200})
+    result = gateway_bypass_identity(StubContext(gateway=401))
+    assert result.verdict is Verdict.VULNERABLE
+    assert "requires no identity at all" in result.detail
