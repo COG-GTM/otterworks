@@ -248,7 +248,15 @@ def main(argv: list[str] | None = None) -> int:
             if route.method in UNSAFE_METHODS
         }
     reached, attacked, authenticated, uncovered = coverage(routes, exercised)
-    never_answered = unanswered(routes, exercised)
+    # Only where nothing else got through: the sweep records a redirect and then
+    # follows it, so a route can have both a 307 and the 200 that covered it, and
+    # announcing that one as unanswered would print a count with no row under it.
+    uncovered_keys = {route.key for route in uncovered}
+    never_answered = {
+        key: statuses
+        for key, statuses in unanswered(routes, exercised).items()
+        if key in uncovered_keys
+    }
     gating = [
         route
         for route in uncovered

@@ -266,3 +266,20 @@ def test_a_route_declared_twice_is_covered_once() -> None:
     reached, _, _, missed = coverage([DOCUMENT, twin], exercised)
     assert reached == [DOCUMENT, twin]
     assert missed == []
+
+
+def test_a_redirect_followed_to_an_answer_is_not_reported_unanswered(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The sweep records the 307 and then follows it, so both statuses are there."""
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([NOTIFY], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    argv = _report(
+        tmp_path,
+        [
+            {"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 307},
+            {"method": "GET", "path": "/api/v1/notifications", "probe": SWEEP, "status": 200},
+        ],
+    )
+    assert dast_coverage.main(argv) == 0
+    assert "UNANSWERED" not in capsys.readouterr().out
