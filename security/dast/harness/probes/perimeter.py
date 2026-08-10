@@ -259,6 +259,12 @@ def gateway_bypass_identity(ctx: ScanContext) -> Result:
         # public endpoint and reaching it directly proves nothing.
         through_gateway = ctx.request(method, path, params=params)
         if through_gateway.status_code == 200:
+            # No bypass to demonstrate with this route, and no attack made either:
+            # the probe learned nothing about this origin.
+            inconclusive.append(
+                f"{origin.service}: the gateway serves {path} unauthenticated, so reaching "
+                "it directly would prove nothing and the backend was not attacked"
+            )
             evidence.append(
                 Evidence.from_response(
                     through_gateway,
@@ -342,8 +348,8 @@ def gateway_bypass_identity(ctx: ScanContext) -> Result:
         )
     return self.result(
         Verdict.SECURE,
-        f"backend origins are reachable ({declared}) but none served a gateway-protected "
-        "route to a direct caller",
+        f"backend origins are reachable ({declared}) and every one of them refused a "
+        "gateway-protected route sent directly",
         evidence,
     )
 

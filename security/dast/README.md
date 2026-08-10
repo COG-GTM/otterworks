@@ -110,6 +110,11 @@ make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS DAST_TARGET=...
 make dast-zap DAST_TARGET=...
 ```
 
+The make targets are for people; anything that *branches* on the result should
+call `./security/dast/run.sh {scan|verify|coverage|routes}`, which passes the
+harness's exit code through. `make` reports `2` for any failed recipe whatever
+the command returned, which would flatten the distinctions below.
+
 Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `medium`),
 `2` target unreachable or misconfigured — including a run whose scan accounts
 never registered, since the authenticated probes then attacked nothing — `3`

@@ -208,9 +208,10 @@ def test_a_route_the_gateway_serves_publicly_proves_nothing(only_file_service, m
     sent = stub_direct(monkeypatch, {("backend", True): 200, ("backend", False): 200})
     result = gateway_bypass_identity(StubContext(gateway=200))
     # Reaching a public route directly is not a bypass, so the backend is never
-    # even attacked.
-    assert result.verdict is Verdict.SECURE
+    # attacked — and a perimeter nothing was sent to is unproven, not proven.
     assert sent == []
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert "was not attacked" in result.detail
 
 
 def test_an_unavailable_backend_is_inconclusive(only_file_service, monkeypatch) -> None:

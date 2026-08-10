@@ -232,8 +232,11 @@ security-scan: ## Run security scans across all services
 # the local stack (default), a tenant URL, or a preview environment.
 
 DAST_TARGET ?= http://localhost:8080
-DAST := uv run --with httpx --with pyyaml --with tabulate security/dast/harness/dast_scan.py
-DAST_COVERAGE := uv run --with pyyaml --with tabulate security/dast/harness/dast_coverage.py
+# Each script declares its own dependencies (PEP 723), so `uv run` needs no --with.
+# Note that make reports 2 for any failed recipe: to act on the harness's own exit
+# codes (1 findings, 2 nothing tested, 3 no verdict), call security/dast/run.sh.
+DAST := uv run security/dast/harness/dast_scan.py
+DAST_COVERAGE := uv run security/dast/harness/dast_coverage.py
 
 dast-list: ## List the registered DAST attack probes
 	$(DAST) --list

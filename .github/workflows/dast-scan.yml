@@ -90,8 +90,10 @@ jobs:
         run: |
           # Capture stderr too: the gate writes its verdict there, and that is the
           # line that says which routes went unattacked.
+          # Not `make`: it reports 2 for any failed recipe, which would turn the
+          # gate's exit 1 into the "not graded" branch below and make it inert.
           status=0
-          make dast-coverage > /tmp/coverage.txt 2>&1 || status=$?
+          ./security/dast/run.sh coverage > /tmp/coverage.txt 2>&1 || status=$?
           {
             echo '## DAST route coverage'
             echo '```'

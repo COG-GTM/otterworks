@@ -45,7 +45,10 @@ make dast-test                                   # unit-test the harness (parser
 ```
 
 `DAST_TARGET` defaults to `http://localhost:8080`. Reports land in
-`security/dast/reports/dast-report.{json,md}` (gitignored). Exit codes: `0`
+`security/dast/reports/dast-report.{json,md}` (gitignored). To branch on the
+result — in CI, or in a loop that stops when a finding is proven closed — call
+`./security/dast/run.sh {scan|verify|coverage|routes}` instead: `make` reports
+`2` for any failed recipe and would flatten these apart. Exit codes: `0`
 clean, `1` findings at or above `--fail-on` (default `medium`), `2` target
 unreachable or the scan accounts never registered (the authenticated probes then
 attacked nothing), `3` a probe reached no verdict while verifying one finding
