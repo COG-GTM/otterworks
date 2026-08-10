@@ -62,6 +62,16 @@ routes:
     expect:
       - unauthenticated callers receive 401
 
+# Routes the coverage gate (`make dast-coverage`) is allowed to leave unattacked.
+# The inventory it compares against is read from the services' source, so an entry
+# here is a deliberate hole in the suite and needs a reason, exactly like an
+# accepted finding in baseline.json.
+#
+#   - method: GET
+#     path: /api/v1/example/{}
+#     reason: why nothing attacks this, and what would have to change to fix that
+coverage_exemptions: []
+
 operational:
   - path: /health
     expect: reachable unauthenticated, no build or dependency detail

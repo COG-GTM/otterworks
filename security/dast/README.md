@@ -11,6 +11,8 @@ security/dast/
 ├── baseline.json           accepted findings — an entry here suppresses the gate
 ├── harness/
 │   ├── dast_scan.py        orchestrator: seed identities, run probes, merge ZAP, gate, report
+│   ├── route_inventory.py  the edge-reachable route list, read from the services' source
+│   ├── dast_coverage.py    coverage gate: the inventory vs. the requests the scan issued
 │   └── probes/             one module per attack category; each probe is one abuse case
 ├── zap/zap-baseline.conf   ZAP passive-rule tuning for the broad sweep
 └── reports/                generated dast-report.{json,md} (gitignored)
@@ -25,6 +27,34 @@ whom. The probe suite fills that gap: each probe registers two real accounts at
 scan time, seeds an object owned by the *victim*, and then attacks it as the
 *attacker*. Both layers feed the same report and the same gate.
 
+## What the source buys the scan
+
+Three of the controls here exist because the harness lives *in the repository*
+rather than being pointed at a URL:
+
+- **`route_inventory.py`** reads the gateway's route table
+  (`api-gateway/internal/config/config.go`) and each service's own route
+  definitions — FastAPI, Flask, Actix and Spring — and produces the list of
+  endpoints reachable at the edge. A crawler can only find what something links
+  to; this finds what exists. `make dast-routes` prints it.
+- **`DAST-ANONYMOUS-ROUTE-SWEEP`** attacks that whole list with no credentials.
+  A route added tomorrow is attacked the day it lands, without anyone writing a
+  probe for it.
+- **`make dast-coverage`** diffs the inventory against the requests the last
+  scan actually issued (recorded in `dast-report.json`), so "attacked and held"
+  and "never attacked" stop looking the same in a green report. It reports two
+  depths: *reached* by any probe (gated) and *attacked as a logged-in caller*
+  (reported — authorization findings need a real identity, and those probes are
+  hand-written).
+- **`DAST-GATEWAY-BYPASS-IDENTITY`** reads `docker-compose.yml` port mappings
+  and each backend chart's `ingress.enabled`, then attacks whatever origin those
+  declare. Identity here is a header the gateway forwards, so any origin that
+  reaches a backend directly is an unauthenticated impersonation endpoint — and
+  it is not linked from anywhere the gateway serves, so a scanner aimed at the
+  deployed URL has no way to reach it. Severity follows the origin: a published
+  compose port is a developer's own host, a chart that publishes its own ingress
+  is the public internet.
+
 ## The verification loop
 
 Each probe returns one of `vulnerable` / `secure` / `inconclusive`.
@@ -38,6 +68,7 @@ Each probe returns one of `vulnerable` / `secure` / `inconclusive`.
 
 ```
 make dast-scan                                  # reproduce: which attacks work today?
+make dast-coverage                              # did the scan actually touch every route?
    ... fix the service code ...
 make dast-verify FINDING=DAST-RATE-LIMIT-BYPASS # prove that one finding is closed
 make dast-scan                                  # prove nothing else regressed
@@ -60,6 +91,12 @@ make dast-scan DAST_TARGET=https://api-t-<id>.demo.otterworks.app
 # list the attack cases
 make dast-list
 
+# list the edge-reachable routes read from the services' source
+make dast-routes
+
+# fail if the last scan left a proxied route unattacked
+make dast-coverage
+
 # one probe only, with baseline suppression off
 make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS DAST_TARGET=...
 
@@ -80,7 +117,9 @@ must not exit clean.
 
 - Always scan **through the gateway**. Hitting a backend port directly bypasses
   the very controls under test and produces findings that do not exist at the
-  deployed edge.
+  deployed edge. The one exception is `DAST-GATEWAY-BYPASS-IDENTITY`, whose
+  whole question is whether such an origin exists; it only attacks origins the
+  repository's own compose file or charts declare.
 - Scan a **tenant namespace or the local stack**, never a namespace someone else
   is presenting from. Every scan registers accounts and writes documents; those
   live in the target's database until the tenant is reaped.

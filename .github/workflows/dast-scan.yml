@@ -56,6 +56,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
+      # Before standing anything up: the harness reads the services' source to build
+      # the route inventory, so a parser that silently stops matching would quietly
+      # shrink the surface the coverage gate measures.
+      - name: Unit-test the harness
+        run: make dast-test
+
       - name: Start the application stack
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
@@ -76,6 +82,19 @@ jobs:
         id: scan
         continue-on-error: true # informational until baseline.json is populated — see header
         run: make dast-scan DAST_TARGET=http://localhost:8080
+
+      # A real gate, unlike the scan above: this fails only when a route the gateway
+      # proxies was never sent a request, which is a gap in the suite rather than one
+      # of the golden app's planted vulnerabilities.
+      - name: Gate on route coverage
+        run: |
+          make dast-coverage | tee /tmp/coverage.txt
+          {
+            echo '## DAST route coverage'
+            echo '```'
+            cat /tmp/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish the report
         if: always()

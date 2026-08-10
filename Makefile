@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap dast-coverage dast-routes dast-test
 
 SHELL := /bin/bash
 
@@ -232,7 +232,8 @@ security-scan: ## Run security scans across all services
 # the local stack (default), a tenant URL, or a preview environment.
 
 DAST_TARGET ?= http://localhost:8080
-DAST := uv run --with httpx --with tabulate security/dast/harness/dast_scan.py
+DAST := uv run --with httpx --with pyyaml --with tabulate security/dast/harness/dast_scan.py
+DAST_COVERAGE := uv run --with pyyaml --with tabulate security/dast/harness/dast_coverage.py
 
 dast-list: ## List the registered DAST attack probes
 	$(DAST) --list
@@ -245,6 +246,16 @@ ifndef FINDING
 	$(error FINDING is required, e.g. make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS)
 endif
 	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
+
+dast-routes: ## List the edge-reachable routes read from the services' source
+	uv run --with pyyaml --with tabulate security/dast/harness/route_inventory.py
+
+dast-coverage: ## Fail if a route the gateway proxies was never attacked by the last scan
+	$(DAST_COVERAGE)
+
+dast-test: ## Unit-test the harness itself (route extraction, coverage gate, perimeter verdicts)
+	uv run --with pytest --with httpx --with pyyaml --with tabulate \
+		python -m pytest security/dast/harness/tests -q
 
 dast-baseline: ## Record current findings as accepted (REASON="...")
 	$(DAST) --target $(DAST_TARGET) --reason "$${REASON:-recorded by make dast-baseline}" --update-baseline

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["httpx", "tabulate"]
+# dependencies = ["httpx", "pyyaml", "tabulate"]
 # ///
 """
 OtterWorks DAST harness.
@@ -182,11 +182,16 @@ def to_report(
     target: str,
     baseline: dict[str, Any],
     threshold: int,
+    exercised: list[dict[str, str | bool]] | None = None,
 ) -> dict[str, Any]:
     gating = [r for r in results if is_gating(r, baseline, threshold)]
     return {
         "target": target,
         "scanned_at": datetime.now(UTC).isoformat(),
+        # Which routes were attacked, not just which attacks passed: dast_coverage.py
+        # diffs this against the route inventory read from the services' source, so a
+        # newly added endpoint cannot ride along untested behind a green gate.
+        "exercised": exercised or [],
         "summary": {
             "probes_run": len(results),
             "findings": sum(1 for r in results if r.is_finding),
@@ -341,11 +346,27 @@ def main(argv: list[str] | None = None) -> int:
     baseline = {} if args.no_baseline else load_baseline(args.baseline)
     target = args.target.rstrip("/")
     results: list[Result] = []
+    exercised: list[dict[str, str | bool]] = []
+    seen: set[tuple[str, str, bool]] = set()
+
+    def record(request: httpx.Request) -> None:
+        # Probes that deliberately leave the gateway (the direct-backend bypass) are
+        # not edge coverage, so only requests to the target under test are recorded.
+        if f"{request.url.scheme}://{request.url.netloc.decode()}" != target:
+            return
+        # Reaching a route and attacking it as a logged-in caller are different
+        # depths of coverage, so the report distinguishes them.
+        authenticated = "authorization" in request.headers
+        key = (request.method, request.url.path, authenticated)
+        if key not in seen:
+            seen.add(key)
+            exercised.append({"method": key[0], "path": key[1], "authenticated": authenticated})
 
     with httpx.Client(
         base_url=target,
         timeout=httpx.Timeout(args.timeout, connect=5.0),
         follow_redirects=False,
+        event_hooks={"request": [record]},
     ) as client:
         ctx = ScanContext(base_url=target, client=client)
         try:
@@ -414,7 +435,7 @@ def main(argv: list[str] | None = None) -> int:
     threshold = SEVERITY_ORDER[Severity(args.fail_on)]
 
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    report = to_report(results, target, baseline, threshold)
+    report = to_report(results, target, baseline, threshold, exercised)
     (args.report_dir / "dast-report.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.report_dir / "dast-report.md").write_text(to_markdown(report, baseline))
 

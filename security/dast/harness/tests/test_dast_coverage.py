@@ -1,0 +1,102 @@
+"""The coverage gate decides whether a green scan actually attacked anything."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import dast_coverage  # noqa: E402
+from dast_coverage import coverage, load_exemptions, matches  # noqa: E402
+from route_inventory import Route  # noqa: E402
+
+DOCUMENT = Route("GET", "/api/v1/documents/{}", "document-service", "app/api/documents.py")
+LIST = Route("GET", "/api/v1/documents", "document-service", "app/api/documents.py")
+
+
+def test_a_concrete_request_matches_its_declared_template() -> None:
+    assert matches(DOCUMENT, "GET", "/api/v1/documents/9f1c2a04-0000-4000-8000-000000000000")
+    assert matches(DOCUMENT, "GET", "/api/v1/documents/anything/")
+
+
+def test_a_request_does_not_match_another_route() -> None:
+    assert not matches(DOCUMENT, "POST", "/api/v1/documents/abc")  # method
+    assert not matches(DOCUMENT, "GET", "/api/v1/documents")  # too few segments
+    assert not matches(DOCUMENT, "GET", "/api/v1/documents/abc/comments")  # too many
+    assert not matches(LIST, "GET", "/api/v1/files")
+
+
+def test_coverage_separates_reached_from_attacked_as_a_caller() -> None:
+    exercised = [
+        {"method": "GET", "path": "/api/v1/documents/abc", "authenticated": False},
+        {"method": "GET", "path": "/api/v1/documents", "authenticated": True},
+    ]
+    reached, authenticated, missed = coverage([DOCUMENT, LIST], exercised)
+    assert reached == [DOCUMENT, LIST]
+    # Swept anonymously is not the same as attacked: authorization findings need
+    # an identity, and the report must not imply one where there was none.
+    assert authenticated == [LIST]
+    assert missed == []
+
+
+def test_a_route_nothing_requested_is_missed() -> None:
+    _, _, missed = coverage([DOCUMENT, LIST], [{"method": "GET", "path": "/api/v1/documents"}])
+    assert missed == [DOCUMENT]
+
+
+def test_exemptions_are_keyed_by_method_and_path(tmp_path: Path) -> None:
+    spec = tmp_path / "attack-surface.yaml"
+    spec.write_text(
+        "coverage_exemptions:\n"
+        "  - method: get\n"
+        "    path: /api/v1/documents/{}\n"
+        "    reason: covered by the contract suite\n"
+    )
+    assert load_exemptions(spec) == {"GET /api/v1/documents/{}": "covered by the contract suite"}
+
+
+def test_no_report_is_a_setup_failure_not_a_pass(tmp_path: Path) -> None:
+    assert dast_coverage.main(["--report", str(tmp_path / "absent.json")]) == 2
+
+
+def test_a_report_without_recorded_requests_is_a_setup_failure(tmp_path: Path) -> None:
+    report = tmp_path / "dast-report.json"
+    report.write_text(json.dumps({"target": "http://localhost:8080", "results": []}))
+    # A scan from before request recording has no coverage information at all;
+    # reading that as full coverage is exactly the false pass this gate prevents.
+    assert dast_coverage.main(["--report", str(report)]) == 2
+
+
+def _report(tmp_path: Path, exercised: list[dict[str, object]]) -> list[str]:
+    report = tmp_path / "dast-report.json"
+    report.write_text(json.dumps({"target": "http://localhost:8080", "exercised": exercised}))
+    return ["--report", str(report)]
+
+
+def test_an_unattacked_route_fails_the_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([DOCUMENT, LIST], {}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    argv = _report(tmp_path, [{"method": "GET", "path": "/api/v1/documents"}])
+    assert dast_coverage.main(argv) == 1
+    assert dast_coverage.main([*argv, "--warn-only"]) == 0
+
+
+def test_an_exempted_route_passes_the_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([DOCUMENT, LIST], {}))
+    monkeypatch.setattr(
+        dast_coverage, "load_exemptions", lambda: {DOCUMENT.key: "needs a seeded document"}
+    )
+    argv = _report(tmp_path, [{"method": "GET", "path": "/api/v1/documents"}])
+    assert dast_coverage.main(argv) == 0
+
+
+def test_unknown_services_are_named_even_when_the_gate_passes(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([LIST], {"/api/v1/admin": "admin"}))
+    monkeypatch.setattr(dast_coverage, "load_exemptions", dict)
+    argv = _report(tmp_path, [{"method": "GET", "path": "/api/v1/documents"}])
+    assert dast_coverage.main(argv) == 0
+    assert "/api/v1/admin" in capsys.readouterr().out
