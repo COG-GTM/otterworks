@@ -58,6 +58,26 @@ HEADER_TRUSTING: dict[str, tuple[str, str, dict[str, str]]] = {
 SWEEP_ID = "00000000-0000-4000-8000-000000000000"
 
 
+def follow_once(ctx: ScanContext, method: str, response: httpx.Response) -> httpx.Response | None:
+    """Re-send an anonymous request to where a 3xx pointed, if it stays on the target.
+
+    Only one hop, and only within the target's own origin: chasing a redirect off
+    the host under test would attack somewhere nobody authorized, and a chain
+    means the route being swept is no longer the route being answered.
+    """
+    location = response.headers.get("location", "")
+    if not location:
+        return None
+    destination = response.url.join(location)
+    if (destination.scheme, destination.host, destination.port) != (
+        response.url.scheme,
+        response.url.host,
+        response.url.port,
+    ):
+        return None
+    return ctx.request(method, destination.raw_path.decode())
+
+
 def anonymous_by_design(path: str) -> bool | None:
     """Does the gateway's own JWT middleware serve this path without a token?
 
@@ -401,8 +421,17 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
         path = route.path.replace("{}", SWEEP_ID)
         try:
             response = ctx.request(route.method, path)
+            if response.is_redirect:
+                # The inventory holds paths without a trailing slash, and a framework
+                # that mounts the route with one answers 3xx without running the
+                # handler. A redirect is neither a refusal nor an answer: follow it
+                # once, or the route counts as swept having never been delivered.
+                response = follow_once(ctx, route.method, response)
         except HTTPError as exc:
             unreachable.append(f"{route.key}: {type(exc).__name__}")
+            continue
+        if response is None or response.is_redirect:
+            unreachable.append(f"{route.key}: redirected away from the route")
             continue
         if unavailable(response):
             unreachable.append(f"{route.key}: {response.status_code}")

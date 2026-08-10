@@ -339,3 +339,40 @@ def test_every_route_unavailable_is_inconclusive(two_routes) -> None:
 def test_an_empty_inventory_is_inconclusive(monkeypatch) -> None:
     monkeypatch.setattr(perimeter, "edge_routes", lambda: ([], {}))
     assert perimeter.anonymous_route_sweep(StubContext()).verdict is Verdict.INCONCLUSIVE
+
+
+# ── the sweep must actually reach the handler ────────────────────────────────
+
+
+class RedirectingContext(StubContext):
+    """A target that mounts its routes with a trailing slash, as FastAPI does."""
+
+    def __init__(self, slashed_status: int, location: str | None = None):
+        super().__init__()
+        self.slashed_status = slashed_status
+        self.location = location
+
+    def request(self, method: str, path: str, **_: object) -> httpx.Response:
+        self.requests.append((method, path))
+        url = f"{self.base_url}{path}"
+        if path.endswith("/"):
+            return response(self.slashed_status, url=url, method=method)
+        headers = {"location": self.location if self.location is not None else path + "/"}
+        return httpx.Response(307, headers=headers, request=httpx.Request(method, url), json={})
+
+
+def test_a_route_answered_behind_a_slash_redirect_is_followed(two_routes) -> None:
+    """A 307 is neither an answer nor a refusal, and counting it as one is a false pass."""
+    ctx = RedirectingContext(slashed_status=200)
+    result = perimeter.anonymous_route_sweep(ctx)
+    assert ("GET", f"/api/v1/documents/{perimeter.SWEEP_ID}/") in ctx.requests
+    assert result.verdict is Verdict.VULNERABLE
+
+
+def test_a_redirect_off_the_target_is_not_chased(two_routes) -> None:
+    """Following it would attack a host nobody authorized, so the route is unswept."""
+    ctx = RedirectingContext(slashed_status=200, location="https://elsewhere.example/api")
+    result = perimeter.anonymous_route_sweep(ctx)
+    assert all(host not in path for _, path in ctx.requests for host in ["elsewhere"])
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert "redirected away" in result.detail

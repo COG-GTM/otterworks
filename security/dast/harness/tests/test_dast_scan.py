@@ -60,3 +60,10 @@ def test_the_probe_that_made_a_request_is_recorded_with_it() -> None:
         "DAST-ANONYMOUS-ROUTE-SWEEP",
         "DAST-BOLA-DOCUMENTS",
     ]
+
+
+def test_a_target_written_with_its_default_port_still_matches_its_own_traffic() -> None:
+    """httpx normalizes host and port on the way out; the origin has to be normalized too."""
+    exercised, record = request_recorder("https://API.example.test:443")
+    record(httpx.Request("GET", "https://api.example.test/api/v1/files"))
+    assert [entry["path"] for entry in exercised] == ["/api/v1/files"]

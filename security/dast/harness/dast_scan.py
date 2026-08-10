@@ -40,7 +40,6 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 from tabulate import tabulate
@@ -195,14 +194,18 @@ def request_recorder(
     """
     exercised: list[dict[str, str | bool]] = []
     seen: set[tuple[str, str, bool, str]] = set()
-    parsed = urlparse(target)
-    origin = f"{parsed.scheme}://{parsed.netloc}"
+    # Parsed by httpx rather than urlparse, because the requests this is compared
+    # against are httpx's: it lowercases the host and drops a default port, so a
+    # target written `https://host:443` would otherwise match none of its own
+    # traffic and the coverage gate would report the whole surface unattacked.
+    parsed = httpx.URL(target)
+    origin = (parsed.scheme, parsed.host, parsed.port)
     base_path = parsed.path.rstrip("/")
 
     def record(request: httpx.Request) -> None:
         # Probes that deliberately leave the gateway (the direct-backend bypass) are
         # not edge coverage, so only requests to the target under test are recorded.
-        if f"{request.url.scheme}://{request.url.netloc.decode()}" != origin:
+        if (request.url.scheme, request.url.host, request.url.port) != origin:
             return
         path = request.url.path
         if base_path:
