@@ -310,6 +310,27 @@ def test_a_protected_route_served_without_a_token_is_the_finding(two_routes) -> 
     assert "1 of 2 route(s)" in result.detail
 
 
+def test_a_route_the_middleware_protects_is_not_excused(two_routes, monkeypatch) -> None:
+    """The public list is read from the gateway, so it cannot outlive the exemption."""
+    monkeypatch.setattr(
+        perimeter, "gateway_public_paths", lambda: ({"/api/v1/auth/login"}, ("/health",))
+    )
+    assert perimeter.anonymous_by_design("/api/v1/auth/login")
+    assert perimeter.anonymous_by_design("/health/ready")
+    assert not perimeter.anonymous_by_design("/api/v1/auth/refresh")
+
+
+def test_an_unreadable_middleware_makes_the_sweep_withhold_a_verdict(
+    two_routes, monkeypatch
+) -> None:
+    """Not knowing which routes are meant to answer makes every 2xx unjudgeable."""
+    monkeypatch.setattr(perimeter, "gateway_public_paths", lambda: None)
+    ctx = StubContext(gateway=200)
+    result = perimeter.anonymous_route_sweep(ctx)
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert ctx.requests == []
+
+
 def test_every_route_unavailable_is_inconclusive(two_routes) -> None:
     assert perimeter.anonymous_route_sweep(StubContext(gateway=503)).verdict is Verdict.INCONCLUSIVE
 

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml"]
+# dependencies = ["pyyaml", "tabulate"]
 # ///
 """Derive the edge-reachable route inventory from OtterWorks source.
 
@@ -31,7 +31,36 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SERVICES = REPO_ROOT / "services"
 GATEWAY_CONFIG = SERVICES / "api-gateway" / "internal" / "config" / "config.go"
+GATEWAY_JWT = SERVICES / "api-gateway" / "internal" / "middleware" / "jwt.go"
 ATTACK_SURFACE = REPO_ROOT / "security" / "dast" / "attack-surface.yaml"
+
+#: The bodies of DefaultPublicPaths() and DefaultPrefixPaths() in the gateway's
+#: JWT middleware — the only paths it serves without a validated token.
+_GO_PATH_LIST = re.compile(
+    r"func Default(?P<kind>Public|Prefix)Paths\(\)\s*\[\]string\s*\{.*?\{(?P<body>[^}]*)\}",
+    re.DOTALL,
+)
+
+
+def gateway_public_paths(source: Path = GATEWAY_JWT) -> tuple[set[str], tuple[str, ...]] | None:
+    """(exact paths, path prefixes) the gateway serves without a token, or None.
+
+    Hand-maintaining this list is how a suppression quietly stops matching what
+    the application does: a route that used to be public keeps its pass long
+    after the middleware started protecting it. Reading the middleware means the
+    sweep's idea of "expected to answer anonymously" cannot drift from the
+    gateway's, and None — rather than an empty set — when the middleware cannot
+    be read, because guessing either way produces a wrong verdict.
+    """
+    if not source.exists():
+        return None
+    found = {
+        match["kind"]: set(re.findall(r'"([^"]+)"', match["body"]))
+        for match in _GO_PATH_LIST.finditer(source.read_text())
+    }
+    if not found.get("Public"):
+        return None
+    return found["Public"], tuple(sorted(found.get("Prefix", set())))
 
 
 def sweep_exclusions(path: Path = ATTACK_SURFACE) -> dict[str, str]:

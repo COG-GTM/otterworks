@@ -21,6 +21,7 @@ from route_inventory import (  # noqa: E402
     _normalize,
     edge_routes,
     gateway_prefixes,
+    gateway_public_paths,
 )
 
 
@@ -200,3 +201,42 @@ def test_the_real_inventory_only_reports_proxied_routes() -> None:
     # module exists to prevent.
     assert set(unknown) <= set(prefixes)
     assert not set(unknown) & {route.path for route in routes}
+
+
+def test_the_public_paths_come_from_the_gateway_middleware(tmp_path: Path) -> None:
+    """A hand-kept list of public routes excuses them long after they stop being public."""
+    jwt = write(
+        tmp_path / "jwt.go",
+        """
+func DefaultPublicPaths() []string {
+	return []string{
+		"/api/v1/auth/login",
+		"/api/v1/auth/register",
+	}
+}
+
+func DefaultPrefixPaths() []string {
+	return []string{
+		"/health",
+		"/metrics",
+	}
+}
+""",
+    )
+    assert gateway_public_paths(jwt) == (
+        {"/api/v1/auth/login", "/api/v1/auth/register"},
+        ("/health", "/metrics"),
+    )
+
+
+def test_an_unreadable_middleware_is_not_an_empty_public_list(tmp_path: Path) -> None:
+    """None makes the sweep withhold a verdict; an empty set would invent findings."""
+    assert gateway_public_paths(tmp_path / "absent.go") is None
+    assert gateway_public_paths(write(tmp_path / "other.go", "package middleware")) is None
+
+
+def test_the_repository_gateway_serves_only_login_and_register_anonymously() -> None:
+    exact, prefixes = gateway_public_paths()
+    assert exact == {"/api/v1/auth/login", "/api/v1/auth/register"}
+    assert "/api/v1/auth/refresh" not in exact
+    assert "/metrics" in prefixes

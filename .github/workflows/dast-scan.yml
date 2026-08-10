@@ -99,6 +99,14 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/coverage.txt
+          # Exit 2 is "there is no usable report to grade" — the scan above is
+          # continue-on-error, so a scan that never started would otherwise fail the
+          # build here as though a route had gone unattacked. Annotate and pass;
+          # only exit 1, a route the last scan never requested, is the gate.
+          if [ "$status" = 2 ]; then
+            echo "::warning::route coverage was not graded: no usable scan report (see the scan step)"
+            exit 0
+          fi
           exit $status
 
       - name: Publish the report

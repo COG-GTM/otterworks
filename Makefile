@@ -248,7 +248,7 @@ endif
 	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
 
 dast-routes: ## List the edge-reachable routes read from the services' source
-	uv run --with pyyaml --with tabulate security/dast/harness/route_inventory.py
+	uv run security/dast/harness/route_inventory.py
 
 dast-coverage: ## Fail if a route the gateway proxies was never attacked by the last scan
 	$(DAST_COVERAGE)

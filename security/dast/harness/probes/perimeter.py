@@ -31,7 +31,12 @@ from .context import ScanContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from route_inventory import edge_routes, repo_relative, sweep_exclusions  # noqa: E402
+from route_inventory import (  # noqa: E402
+    edge_routes,
+    gateway_public_paths,
+    repo_relative,
+    sweep_exclusions,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.yml"
@@ -48,18 +53,26 @@ HEADER_TRUSTING: dict[str, tuple[str, str, dict[str, str]]] = {
 }
 
 
-#: Routes that are meant to answer without a token. Anything else the gateway
-#: proxies is expected to refuse an anonymous caller, whether a probe has been
-#: written for it or not.
-PUBLIC_ROUTES = {
-    "POST /api/v1/auth/login",
-    "POST /api/v1/auth/register",
-    "POST /api/v1/auth/refresh",
-}
-
 #: Stand-in for a path parameter in a swept route. A random uuid belongs to
 #: nobody, so a 2xx for it is an authorization failure and not a real object.
 SWEEP_ID = "00000000-0000-4000-8000-000000000000"
+
+
+def anonymous_by_design(path: str) -> bool | None:
+    """Does the gateway's own JWT middleware serve this path without a token?
+
+    The alternative is a hand-written list of public routes, which is a
+    suppression that ages: the day the middleware starts protecting a route, the
+    list keeps excusing it, and the sweep goes quiet on exactly the regression it
+    exists to catch. Returns None when the middleware cannot be read — with no
+    idea which routes are meant to answer, every 2xx is equally suspicious and
+    equally unprovable.
+    """
+    declared = gateway_public_paths()
+    if declared is None:
+        return None
+    exact, prefixes = declared
+    return path in exact or path.startswith(prefixes)
 
 
 @dataclass(frozen=True)
@@ -363,6 +376,13 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
             Verdict.INCONCLUSIVE, "no routes could be read from the services' source"
         )
 
+    if anonymous_by_design("/") is None:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the gateway's JWT middleware could not be read, so which routes are meant "
+            "to answer anonymously is unknown and no response can be judged",
+        )
+
     excluded = sweep_exclusions()
     served: list[Evidence] = []
     swept = 0
@@ -384,7 +404,7 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
         swept += 1
         # The declared-public routes are still requested, so the coverage report can
         # see them; only an unexpected 2xx on a protected route is a finding.
-        if response.is_success and route.key not in PUBLIC_ROUTES:
+        if response.is_success and not anonymous_by_design(route.path):
             served.append(
                 Evidence.from_response(
                     response,
