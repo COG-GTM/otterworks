@@ -283,3 +283,19 @@ def test_a_redirect_followed_to_an_answer_is_not_reported_unanswered(
     )
     assert dast_coverage.main(argv) == 0
     assert "UNANSWERED" not in capsys.readouterr().out
+
+
+def test_a_documented_write_route_keeps_the_reason_its_owner_wrote(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The blanket "not declared disposable" note must not bury real debt."""
+    reindex = Route("POST", "/api/v1/search/reindex", "search-service", "app/api/search.py")
+    monkeypatch.setattr(dast_coverage, "edge_routes", lambda: ([reindex], {}))
+    monkeypatch.setattr(
+        dast_coverage,
+        "load_exemptions",
+        lambda: {reindex.key: "rebuilds the whole index; needs a probe that can undo it"},
+    )
+    argv = _report(tmp_path, [], swept_unsafely=False)
+    assert dast_coverage.main(argv) == 0
+    assert "needs a probe that can undo it" in capsys.readouterr().out

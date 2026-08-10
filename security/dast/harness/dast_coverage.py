@@ -239,14 +239,17 @@ def main(argv: list[str] | None = None) -> int:
         # The sweep withholds a route whose method would write, unless the operator
         # declared the target theirs to destroy. Uncovered for a stated reason is an
         # exemption; failing the gate here would only teach people to set the flag.
-        exemptions |= {
+        # Underneath the operator's reasons, not over them: a write route someone
+        # already documented keeps what they wrote, which is the more specific and
+        # the more actionable of the two.
+        exemptions = {
             route.key: (
                 "not swept: the method writes, and the target was not declared "
                 "disposable (DAST_SWEEP_UNSAFE_METHODS)"
             )
             for route in routes
             if route.method in UNSAFE_METHODS
-        }
+        } | exemptions
     reached, attacked, authenticated, uncovered = coverage(routes, exercised)
     # Only where nothing else got through: the sweep records a redirect and then
     # follows it, so a route can have both a 307 and the 200 that covered it, and
