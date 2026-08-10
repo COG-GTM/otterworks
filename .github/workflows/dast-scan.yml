@@ -142,10 +142,11 @@ jobs:
       # the target's database until the tenant is reaped, so the target must be a
       # disposable (TTL'd) tenant somebody chose deliberately.
       TARGET: ${{ inputs.target || vars.DAST_SWEEP_TARGET }}
-      # Setting a target here is the declaration that it is disposable, which is
-      # also what lets the route sweep send a route's real POST/DELETE: those are
-      # withheld by default, since a route that answers is a route performed.
-      DAST_SWEEP_UNSAFE_METHODS: '1'
+      # The route sweep sends each route's real method, so an unauthenticated
+      # DELETE is carried out and not merely probed. Off unless someone sets the
+      # DAST_SWEEP_UNSAFE_WRITES repository variable, which is the declaration
+      # that the target is theirs to destroy; naming a target is not that.
+      DAST_SWEEP_UNSAFE_METHODS: ${{ vars.DAST_SWEEP_UNSAFE_WRITES }}
     steps:
       - name: Require an explicit target
         if: env.TARGET == ''

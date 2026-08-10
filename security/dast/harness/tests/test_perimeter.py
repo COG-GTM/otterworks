@@ -354,7 +354,8 @@ class RedirectingContext(StubContext):
 
     def request(self, method: str, path: str, **_: object) -> httpx.Response:
         self.requests.append((method, path))
-        url = f"{self.base_url}{path}"
+        # A followed redirect is addressed absolutely, as httpx requires.
+        url = path if path.startswith("http") else f"{self.base_url}{path}"
         if path.endswith("/"):
             return response(self.slashed_status, url=url, method=method)
         headers = {"location": self.location if self.location is not None else path + "/"}
@@ -365,7 +366,8 @@ def test_a_route_answered_behind_a_slash_redirect_is_followed(two_routes) -> Non
     """A 307 is neither an answer nor a refusal, and counting it as one is a false pass."""
     ctx = RedirectingContext(slashed_status=200)
     result = perimeter.anonymous_route_sweep(ctx)
-    assert ("GET", f"/api/v1/documents/{perimeter.SWEEP_ID}/") in ctx.requests
+    slashed = f"{ctx.base_url}/api/v1/documents/{perimeter.SWEEP_ID}/"
+    assert ("GET", slashed) in ctx.requests
     assert result.verdict is Verdict.VULNERABLE
 
 
@@ -430,3 +432,26 @@ def test_the_sweep_withholds_writes_from_an_undeclared_target(two_routes, monkey
     result = perimeter.anonymous_route_sweep(ctx)
     assert [method for method, _ in ctx.requests] == ["GET"]
     assert "not sent because their method would write" in result.detail
+
+
+def test_a_followed_redirect_is_addressed_absolutely() -> None:
+    """A relative retry would be merged onto a path-routed tenant's prefix twice."""
+
+    class Recorder(StubContext):
+        def __init__(self):
+            super().__init__(base_url="https://nlb.example.test/t-abc")
+
+        def request(self, method: str, path: str, **_: object) -> httpx.Response:
+            self.requests.append((method, path))
+            return response(200, url=path, method=method)
+
+    ctx = Recorder()
+    redirect = httpx.Response(
+        307,
+        headers={"location": "/t-abc/api/v1/documents/"},
+        request=httpx.Request("GET", "https://nlb.example.test/t-abc/api/v1/documents"),
+    )
+    perimeter.follow_once(ctx, "GET", redirect)
+    # httpx merges a relative path onto the client's base path, so `/t-abc/...`
+    # would be sent as `/t-abc/t-abc/...` and 404 without testing the route.
+    assert ctx.requests == [("GET", "https://nlb.example.test/t-abc/api/v1/documents/")]

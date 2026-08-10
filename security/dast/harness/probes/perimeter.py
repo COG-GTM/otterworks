@@ -95,7 +95,10 @@ def follow_once(ctx: ScanContext, method: str, response: httpx.Response) -> http
         response.url.port,
     ):
         return None
-    return ctx.request(method, destination.raw_path.decode())
+    # Absolute, so httpx does not merge the target's base path onto a path that
+    # already contains it: a path-routed tenant would be sent `/t-abc/t-abc/...`,
+    # get a 404, and the route would be graded as refusing anonymous callers.
+    return ctx.request(method, str(destination))
 
 
 def anonymous_by_design(path: str) -> bool | None:

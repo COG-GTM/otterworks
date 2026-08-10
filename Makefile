@@ -257,7 +257,7 @@ dast-coverage: ## Fail if a route the gateway proxies was never attacked by the 
 	$(DAST_COVERAGE)
 
 dast-test: ## Unit-test the harness itself (route extraction, coverage gate, perimeter verdicts)
-	uv run --with pytest --with httpx --with pyyaml --with tabulate \
+	uv run --python '>=3.11' --with pytest --with httpx --with pyyaml --with tabulate \
 		python -m pytest security/dast/harness/tests -q
 
 dast-baseline: ## Record current findings as accepted (REASON="...")
