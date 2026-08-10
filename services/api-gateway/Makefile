@@ -23,10 +23,12 @@ coverage: ## Run tests with whole-module coverage (the number the gate uses)
 coverage-html: coverage ## Write an HTML coverage report for eyeballing gaps
 	go tool cover -html=coverage.out -o coverage.html
 
+# Fails closed: a missing or unparseable total: line is a gate failure, not a pass.
 coverage-gate: coverage ## Fail if statement coverage drops below COVERAGE_MIN
 	@go tool cover -func=coverage.out | awk -v min=$(COVERAGE_MIN) '\
 	  /^total:/ { \
-	    c=$$NF; sub(/%/,"",c); \
+	    seen=1; c=$$NF; sub(/%/,"",c); \
 	    if (c+0 < min) { printf "FAIL coverage %.1f%% < %.1f%%\n", c, min; exit 1 } \
 	    printf "OK coverage %.1f%% >= %.1f%%\n", c, min \
-	  }'
+	  } \
+	  END { if (!seen) { print "FAIL no total: line in the coverage profile"; exit 1 } }'

@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +49,7 @@ func TestMetrics_RecordsRequestCountAndDuration(t *testing.T) {
 	require.NoError(t, err)
 
 	before := testutil.ToFloat64(counter)
-	durationsBefore := testutil.CollectAndCount(httpRequestDuration)
+	observationsBefore := histogramCount(t, http.MethodGet, "/api/v1/analytics")
 
 	handler := Metrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
@@ -60,7 +62,22 @@ func TestMetrics_RecordsRequestCountAndDuration(t *testing.T) {
 	assert.Equal(t, http.StatusTeapot, rec.Code)
 	assert.Equal(t, "brewing", rec.Body.String())
 	assert.Equal(t, before+1, testutil.ToFloat64(counter), "one request must be counted under the normalized path and status")
-	assert.GreaterOrEqual(t, testutil.CollectAndCount(httpRequestDuration), durationsBefore+1)
+	assert.Equal(t, observationsBefore+1, histogramCount(t, http.MethodGet, "/api/v1/analytics"),
+		"the request latency must be observed exactly once under the same labels")
+}
+
+// histogramCount reads the observation count of a single histogram child. The
+// collectors are package-level globals, so assertions must be deltas of one
+// label set: the number of children stays constant when the package is re-run
+// with -count=2, whereas the child's sample count keeps rising.
+func histogramCount(t *testing.T, method, path string) uint64 {
+	t.Helper()
+	observer, err := httpRequestDuration.GetMetricWithLabelValues(method, path)
+	require.NoError(t, err)
+
+	var m dto.Metric
+	require.NoError(t, observer.(prometheus.Metric).Write(&m))
+	return m.GetHistogram().GetSampleCount()
 }
 
 func TestMetrics_ReleasesActiveConnectionGauge(t *testing.T) {

@@ -114,9 +114,8 @@ func TestCircuitBreaker_ClosedGenerationRollsOverAfterInterval(t *testing.T) {
 	_, err := execute(t, cb, okHandler())
 	require.NoError(t, err)
 	require.Equal(t, StateClosed, cb.State())
-	require.False(t, cb.expiry.IsZero())
-
 	cb.mu.Lock()
+	require.False(t, cb.expiry.IsZero())
 	cb.counts.onFailure()
 	failuresBefore := cb.counts.totalFailures
 	cb.mu.Unlock()
@@ -144,8 +143,10 @@ func TestCircuitBreaker_ZeroIntervalClearsExpiryOnRollover(t *testing.T) {
 	// A stale generation expiry left over from a previous configuration: with
 	// no interval configured the rollover must clear it instead of re-arming
 	// it, otherwise every state read would reset the counts.
+	cb.mu.Lock()
 	cb.counts.onFailure()
 	cb.expiry = now.Add(-time.Second)
+	cb.mu.Unlock()
 
 	require.Equal(t, StateClosed, cb.State())
 

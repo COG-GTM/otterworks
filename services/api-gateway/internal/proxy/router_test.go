@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,28 +17,42 @@ import (
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
-// echoBackend records what the proxied request looked like when it arrived at
+// receivedRequest is what the proxied request looked like once it arrived at
 // the backend, so tests can assert on path and header rewriting.
+type receivedRequest struct {
+	path   string
+	userID string
+	method string
+}
+
+// echoBackend guards the recorded request with a mutex: the handler runs on the
+// httptest server's own connection goroutine, and the loopback TCP connection
+// alone is not a happens-before edge the race detector recognises.
 type echoBackend struct {
 	*httptest.Server
-	lastPath   string
-	lastUserID string
-	lastMethod string
+	mu   sync.Mutex
+	last receivedRequest
 }
 
 func newEchoBackend(t *testing.T) *echoBackend {
 	t.Helper()
 	b := &echoBackend{}
 	b.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b.lastPath = r.URL.Path
-		b.lastUserID = r.Header.Get("X-User-ID")
-		b.lastMethod = r.Method
+		b.mu.Lock()
+		b.last = receivedRequest{path: r.URL.Path, userID: r.Header.Get("X-User-ID"), method: r.Method}
+		b.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	t.Cleanup(b.Close)
 	return b
+}
+
+func (b *echoBackend) received() receivedRequest {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.last
 }
 
 func testRouter(t *testing.T, backendURL string, tracing bool) http.Handler {
@@ -65,8 +80,9 @@ func TestNewRouter_ProxiesPreservingFullPath(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 	assert.JSONEq(t, `{"ok":true}`, string(body))
-	assert.Equal(t, "/api/v1/auth/login", backend.lastPath)
-	assert.Equal(t, http.MethodPost, backend.lastMethod)
+	got := backend.received()
+	assert.Equal(t, "/api/v1/auth/login", got.path)
+	assert.Equal(t, http.MethodPost, got.method)
 }
 
 func TestNewRouter_ProxiesPrefixRootPath(t *testing.T) {
@@ -78,7 +94,7 @@ func TestNewRouter_ProxiesPrefixRootPath(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "/api/v1/auth", backend.lastPath)
+	assert.Equal(t, "/api/v1/auth", backend.received().path)
 }
 
 func TestNewRouter_WithTracingStillProxies(t *testing.T) {
@@ -90,7 +106,7 @@ func TestNewRouter_WithTracingStillProxies(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "/api/v1/auth/me", backend.lastPath)
+	assert.Equal(t, "/api/v1/auth/me", backend.received().path)
 }
 
 func TestNewRouter_UnknownRouteReturnsJSON404(t *testing.T) {
@@ -210,7 +226,7 @@ func TestNewRouter_ForwardsUserIdentityHeader(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			assert.Equal(t, tt.wantUserID, backend.lastUserID)
+			assert.Equal(t, tt.wantUserID, backend.received().userID)
 		})
 	}
 }
@@ -224,5 +240,5 @@ func TestNewRouter_WithoutClaimsSetsNoUserHeader(t *testing.T) {
 	r.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Empty(t, backend.lastUserID)
+	assert.Empty(t, backend.received().userID)
 }

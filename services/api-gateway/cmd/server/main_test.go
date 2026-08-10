@@ -67,7 +67,9 @@ func TestInitTracer_InstallsProviderAndReturnsShutdown(t *testing.T) {
 }
 
 // freePort reserves an ephemeral port and immediately releases it, so the
-// gateway under test binds a port nothing else in CI is using.
+// gateway under test binds a port nothing else in CI is using. The kernel does
+// not hand the same ephemeral port out again straight away, so the window in
+// which another process could steal it is negligible.
 func freePort(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -87,6 +89,20 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", what)
+}
+
+// backendPath reads the next path the stub backend saw, bounded so that a
+// regression which stops the request from reaching the backend fails the test
+// instead of hanging until the package timeout.
+func backendPath(t *testing.T, paths <-chan string) string {
+	t.Helper()
+	select {
+	case p := <-paths:
+		return p
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request never reached the stub backend")
+		return ""
+	}
 }
 
 func getJSON(t *testing.T, client *http.Client, req *http.Request) (*http.Response, map[string]any) {
@@ -186,7 +202,7 @@ func TestMain_WiresTheGatewayAndShutsDownGracefully(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.Equal(t, "ok", payload["backend"])
-		assert.Equal(t, "/api/v1/auth/login", <-backendPathsCh)
+		assert.Equal(t, "/api/v1/auth/login", backendPath(t, backendPathsCh))
 	})
 
 	t.Run("protected routes reject anonymous requests", func(t *testing.T) {
@@ -216,7 +232,7 @@ func TestMain_WiresTheGatewayAndShutsDownGracefully(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 		assert.Equal(t, "ok", payload["backend"])
-		assert.Equal(t, "/api/v1/files/report.pdf", <-backendPathsCh)
+		assert.Equal(t, "/api/v1/files/report.pdf", backendPath(t, backendPathsCh))
 	})
 
 	t.Run("CORS preflight is answered for the web app origin", func(t *testing.T) {
