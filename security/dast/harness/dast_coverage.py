@@ -90,17 +90,35 @@ def matches(route: Route, method: str, path: str) -> bool:
     return all(part in ("{}", other) for part, other in zip(declared, requested, strict=True))
 
 
+def best_match(routes: list[Route], method: str, path: str) -> int | None:
+    """Index of the one route a request landed on: the least wildcarded match.
+
+    A request goes to exactly one handler, so crediting every route of the same
+    shape hands coverage to routes nothing requested — `GET /api/v1/documents/
+    search` would cover `GET /api/v1/documents/{}`, and a route added later under
+    an existing shape would inherit an older scan's credit and never be reported
+    uncovered, which is the case this gate exists for. Frameworks resolve the
+    literal segment first; so does this.
+    """
+    candidates = [index for index, route in enumerate(routes) if matches(route, method, path)]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda index: (routes[index].path.count("{}"), routes[index].path))
+
+
 def coverage(
     routes: list[Route], exercised: list[dict[str, str | bool]]
 ) -> tuple[list[Route], list[Route], list[Route], list[Route]]:
     """(reached, attacked by a written probe, attacked as a caller, missed)."""
+    landed: dict[int, list[dict[str, str | bool]]] = {}
+    for request in exercised:
+        index = best_match(routes, str(request.get("method", "")), str(request.get("path", "")))
+        if index is not None:
+            landed.setdefault(index, []).append(request)
+
     reached, attacked, authenticated, missed = [], [], [], []
-    for route in routes:
-        hits = [
-            request
-            for request in exercised
-            if matches(route, str(request.get("method", "")), str(request.get("path", "")))
-        ]
+    for index, route in enumerate(routes):
+        hits = landed.get(index, [])
         if not hits:
             missed.append(route)
             continue

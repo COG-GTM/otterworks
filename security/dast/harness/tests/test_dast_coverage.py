@@ -133,3 +133,35 @@ def test_unknown_services_are_named_even_when_the_gate_passes(
     argv = _report(tmp_path, [{"method": "GET", "path": "/api/v1/documents"}])
     assert dast_coverage.main(argv) == 0
     assert "/api/v1/admin" in capsys.readouterr().out
+
+
+SEARCH = Route("GET", "/api/v1/documents/search", "document-service", "app/api/documents.py")
+
+
+def test_a_literal_route_does_not_cover_its_parameterized_sibling() -> None:
+    """A request reaches one handler, so it can only be credited to one route."""
+    exercised = [
+        {
+            "method": "GET",
+            "path": "/api/v1/documents/search",
+            "authenticated": True,
+            "probe": "DAST-SEARCH-LEAK",
+        }
+    ]
+    reached, _, _, missed = coverage([DOCUMENT, SEARCH], exercised)
+    assert reached == [SEARCH]
+    assert missed == [DOCUMENT]
+
+
+def test_a_parameterized_request_still_lands_on_the_template() -> None:
+    exercised = [
+        {
+            "method": "GET",
+            "path": "/api/v1/documents/9f1c2a04",
+            "authenticated": True,
+            "probe": "DAST-BOLA-DOCUMENTS",
+        }
+    ]
+    reached, _, _, missed = coverage([DOCUMENT, SEARCH], exercised)
+    assert reached == [DOCUMENT]
+    assert missed == [SEARCH]
