@@ -39,13 +39,19 @@ rather than being pointed at a URL:
   to; this finds what exists. `make dast-routes` prints it.
 - **`DAST-ANONYMOUS-ROUTE-SWEEP`** attacks that whole list with no credentials.
   A route added tomorrow is attacked the day it lands, without anyone writing a
-  probe for it.
+  probe for it. It sends each route's own method, so a route that turns out to
+  be unauthenticated is also *performed*: routes that act on the whole tenant
+  are listed under `sweep_exclusions` in `attack-surface.yaml` and left to a
+  hand-written probe, and the coverage gate reports them with that reason.
 - **`make dast-coverage`** diffs the inventory against the requests the last
   scan actually issued (recorded in `dast-report.json`), so "attacked and held"
-  and "never attacked" stop looking the same in a green report. It reports two
-  depths: *reached* by any probe (gated) and *attacked as a logged-in caller*
-  (reported — authorization findings need a real identity, and those probes are
-  hand-written).
+  and "never attacked" stop looking the same in a green report. It reports three
+  depths: *reached* by any probe, *attacked by a written probe*, and *attacked
+  as a logged-in caller*. Only the first is gated, and it is the weakest of the
+  three: within one scan the sweep walks the same inventory the gate reads, so
+  the gate's teeth are the remainder — routes excluded from the sweep, routes it
+  could not deliver, and routes added since the report being graded was written.
+  The lower two numbers are what says how deep the suite goes.
 - **`DAST-GATEWAY-BYPASS-IDENTITY`** reads `docker-compose.yml` port mappings
   and each backend chart's `ingress.enabled`, then attacks whatever origin those
   declare. Identity here is a header the gateway forwards, so any origin that

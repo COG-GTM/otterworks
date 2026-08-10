@@ -27,8 +27,8 @@ def test_requests_are_recorded_with_the_identity_that_made_them() -> None:
     )
     send(record, "GET", "http://localhost:8080/api/v1/documents")  # duplicate
     assert exercised == [
-        {"method": "GET", "path": "/api/v1/documents", "authenticated": False},
-        {"method": "GET", "path": "/api/v1/documents", "authenticated": True},
+        {"method": "GET", "path": "/api/v1/documents", "authenticated": False, "probe": ""},
+        {"method": "GET", "path": "/api/v1/documents", "authenticated": True, "probe": ""},
     ]
 
 
@@ -44,4 +44,19 @@ def test_a_path_routed_target_records_the_route_the_service_declares() -> None:
     exercised, record = request_recorder("https://nlb.example.test/t-abc")
     send(record, "GET", "https://nlb.example.test/t-abc/api/v1/documents")
     send(record, "GET", "https://nlb.example.test/t-other/api/v1/documents")
-    assert exercised == [{"method": "GET", "path": "/api/v1/documents", "authenticated": False}]
+    assert exercised == [
+        {"method": "GET", "path": "/api/v1/documents", "authenticated": False, "probe": ""}
+    ]
+
+
+def test_the_probe_that_made_a_request_is_recorded_with_it() -> None:
+    """Which probe reached a route is the difference between enumerated and attacked."""
+    running = ["DAST-ANONYMOUS-ROUTE-SWEEP"]
+    exercised, record = request_recorder("http://localhost:8080", lambda: running[0])
+    send(record, "GET", "http://localhost:8080/api/v1/documents")
+    running[0] = "DAST-BOLA-DOCUMENTS"
+    send(record, "GET", "http://localhost:8080/api/v1/documents")
+    assert [entry["probe"] for entry in exercised] == [
+        "DAST-ANONYMOUS-ROUTE-SWEEP",
+        "DAST-BOLA-DOCUMENTS",
+    ]

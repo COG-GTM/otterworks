@@ -72,6 +72,28 @@ routes:
 #     reason: why nothing attacks this, and what would have to change to fix that
 coverage_exemptions: []
 
+# Routes the anonymous sweep must not send. It issues each route's own method, so
+# a route that turns out to be unauthenticated is not just reported but carried
+# out. Creating an object under a scan-owned id is fine; an operation on the whole
+# tenant is not, however disposable the target is meant to be. A route listed here
+# is reported by the coverage gate as not swept, with this reason.
+sweep_exclusions:
+  - method: POST
+    path: /api/v1/search/reindex
+    reason: rebuilds the tenant's whole index; needs a probe that can undo it
+  - method: PUT
+    path: /api/v1/notifications/read-all
+    reason: mutates every notification in the tenant, including other identities'
+  - method: POST
+    path: /api/v1/search/index/document
+    reason: writes into the shared index rather than a scan-owned object
+  - method: POST
+    path: /api/v1/search/index/file
+    reason: writes into the shared index rather than a scan-owned object
+  - method: DELETE
+    path: /api/v1/search/index/{}/{}
+    reason: a swept id would be a real index entry, not a scan-owned one
+
 operational:
   - path: /health
     expect: reachable unauthenticated, no build or dependency detail

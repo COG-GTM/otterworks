@@ -15,18 +15,26 @@ This compares two facts:
 * the paths the last scan actually requested, recorded by the harness in
   ``dast-report.json``.
 
-Coverage has two depths, because they fail differently:
+Coverage has three depths, because they fail differently:
 
-* **reached** — some probe sent this route a request. The anonymous sweep does
-  this for the whole inventory, so a route added tomorrow is attacked the day it
-  lands. A route nothing reached is a hole in the suite and fails the gate,
-  unless ``security/dast/attack-surface.yaml`` accepts it under
-  ``coverage_exemptions`` with a reason — the same debt-with-an-owner rule the
+* **reached** — some probe sent this route a request. Within one full scan the
+  anonymous sweep enumerates the same inventory this gate reads, so a route it
+  managed to send is reached by construction; what the gate catches is the
+  remainder, which is not empty: routes excluded from the sweep because sending
+  them would carry out a tenant-wide operation, routes the sweep could not
+  deliver, and — grading an earlier report, as `make dast-coverage` does after a
+  scan of a previous revision — routes added since. A route nothing reached
+  fails the gate unless ``security/dast/attack-surface.yaml`` accepts it under
+  ``coverage_exemptions`` with a reason, the same debt-with-an-owner rule the
   finding baseline uses.
+* **attacked by a written probe** — a request from something other than the
+  sweep, i.e. an attack somebody designed for that route rather than a bare
+  method call.
 * **attacked as a caller** — a request carrying a seeded identity, which is what
-  authorization, tenant-isolation and mass-assignment findings need. This is
-  hand-written per route, so it is reported rather than gated: the number is the
-  honest measure of how deep the suite actually goes.
+  authorization, tenant-isolation and mass-assignment findings need. Both of
+  these are hand-written per route, so they are reported rather than gated: the
+  numbers are the honest measure of how deep the suite actually goes, and the
+  reason a green scan is not the same as a tested surface.
 
 Usage:
     uv run security/dast/harness/dast_coverage.py
@@ -45,7 +53,9 @@ from tabulate import tabulate
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from route_inventory import Route, edge_routes
+from route_inventory import Route, edge_routes, sweep_exclusions
+
+SWEEP = "DAST-ANONYMOUS-ROUTE-SWEEP"
 
 DAST_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = DAST_DIR / "reports" / "dast-report.json"
@@ -82,9 +92,9 @@ def matches(route: Route, method: str, path: str) -> bool:
 
 def coverage(
     routes: list[Route], exercised: list[dict[str, str | bool]]
-) -> tuple[list[Route], list[Route], list[Route]]:
-    """(routes reached, routes reached by an authenticated caller, routes missed)."""
-    reached, authenticated, missed = [], [], []
+) -> tuple[list[Route], list[Route], list[Route], list[Route]]:
+    """(reached, attacked by a written probe, attacked as a caller, missed)."""
+    reached, attacked, authenticated, missed = [], [], [], []
     for route in routes:
         hits = [
             request
@@ -95,9 +105,13 @@ def coverage(
             missed.append(route)
             continue
         reached.append(route)
+        # A report from before requests carried a probe id cannot tell the sweep
+        # from a written probe; counting it as written would overstate the depth.
+        if any(request.get("probe") not in (SWEEP, None, "") for request in hits):
+            attacked.append(route)
         if any(request.get("authenticated") for request in hits):
             authenticated.append(route)
-    return reached, authenticated, missed
+    return reached, attacked, authenticated, missed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,15 +156,24 @@ def main(argv: list[str] | None = None) -> int:
         print("no routes could be read from the services' source", file=sys.stderr)
         return 2
 
-    exemptions = load_exemptions()
-    reached, authenticated, uncovered = coverage(routes, exercised)
+    # A route the sweep is forbidden to send is uncovered for a recorded reason,
+    # which is what an exemption is; keeping the reason where the operator wrote it
+    # beats making them write it twice.
+    exemptions = load_exemptions() | {
+        key: f"not swept: {reason}" for key, reason in sweep_exclusions().items()
+    }
+    reached, attacked, authenticated, uncovered = coverage(routes, exercised)
     gating = [route for route in uncovered if route.key not in exemptions]
 
     print(
         f"Coverage of the edge-reachable surface, from the last scan of "
         f"{report.get('target', 'unknown target')}:\n"
-        f"  reached by a probe:            {len(reached)}/{len(routes)}\n"
-        f"  attacked as a logged-in caller: {len(authenticated)}/{len(routes)}\n"
+        f"  reached by a probe:              {len(reached)}/{len(routes)}\n"
+        f"  attacked by a written probe:     {len(attacked)}/{len(routes)}\n"
+        f"  attacked as a logged-in caller:  {len(authenticated)}/{len(routes)}\n\n"
+        "The first number is produced by the anonymous sweep walking this same\n"
+        "inventory, so read it as 'the sweep got there', not as 'this is tested'.\n"
+        "The lower two are the depth an attacker's questions actually get asked at.\n"
     )
     shallow = [route for route in reached if route not in authenticated]
     if shallow:

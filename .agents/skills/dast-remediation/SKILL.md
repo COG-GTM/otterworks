@@ -26,7 +26,9 @@ to decide what to attack. One report, one gate:
 | OWASP ZAP baseline | unauthenticated passive sweep — headers, cookies, information leakage | `security/dast/zap/zap-baseline.conf` |
 
 `security/dast/attack-surface.yaml` is the target spec all layers share, and
-holds `coverage_exemptions` for routes the gate may leave unattacked.
+holds `coverage_exemptions` for routes the gate may leave unattacked and
+`sweep_exclusions` for routes the anonymous sweep must not send because doing so
+would carry out a tenant-wide operation.
 `security/dast/README.md` documents adding a probe.
 
 ## Commands

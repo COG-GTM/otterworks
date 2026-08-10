@@ -180,7 +180,7 @@ def is_gating(result: Result, baseline: dict[str, Any], threshold: int) -> bool:
 
 
 def request_recorder(
-    target: str,
+    target: str, attribute_to: Callable[[], str] = lambda: ""
 ) -> tuple[list[dict[str, str | bool]], Callable[[httpx.Request], None]]:
     """A record of which routes a scan requested, and the hook that fills it in.
 
@@ -188,9 +188,13 @@ def request_recorder(
     origin and that prefix are separated once here: requests are matched on the
     origin, and recorded against the route as the service declares it, which is
     what the inventory holds.
+
+    Each request carries the probe that made it, because *which* probe reached a
+    route is the whole difference between a route being enumerated and a route
+    being attacked.
     """
     exercised: list[dict[str, str | bool]] = []
-    seen: set[tuple[str, str, bool]] = set()
+    seen: set[tuple[str, str, bool, str]] = set()
     parsed = urlparse(target)
     origin = f"{parsed.scheme}://{parsed.netloc}"
     base_path = parsed.path.rstrip("/")
@@ -207,10 +211,12 @@ def request_recorder(
             path = path[len(base_path) :] or "/"
         # Reaching a route and attacking it as a logged-in caller are different
         # depths of coverage, so the report distinguishes them.
-        key = (request.method, path, "authorization" in request.headers)
+        key = (request.method, path, "authorization" in request.headers, attribute_to())
         if key not in seen:
             seen.add(key)
-            exercised.append({"method": key[0], "path": key[1], "authenticated": key[2]})
+            exercised.append(
+                {"method": key[0], "path": key[1], "authenticated": key[2], "probe": key[3]}
+            )
 
     return exercised, record
 
@@ -388,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     baseline = {} if args.no_baseline else load_baseline(args.baseline)
     target = args.target.rstrip("/")
     results: list[Result] = []
-    exercised, record = request_recorder(target)
+    running = [""]
+    exercised, record = request_recorder(target, lambda: running[0])
 
     with httpx.Client(
         base_url=target,
@@ -425,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 continue
+            running[0] = entry.finding_id
             try:
                 results.append(entry.run(ctx))
             except Exception as exc:  # a broken probe must not mask the rest of the suite

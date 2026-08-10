@@ -31,7 +31,7 @@ from .context import ScanContext
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from route_inventory import edge_routes, repo_relative  # noqa: E402
+from route_inventory import edge_routes, repo_relative, sweep_exclusions  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 COMPOSE = REPO_ROOT / "docker-compose.yml"
@@ -122,6 +122,29 @@ def in_scope(declared: str, target_host: str) -> bool:
     return declared in allowed - {""}
 
 
+def declared_ingress_hosts(helm: Path = HELM) -> list[str]:
+    """Every backend host the charts publish, whatever the scan is aimed at.
+
+    Kept separate from :func:`ingress_origins` so that a chart origin dropped for
+    being outside the target is still visible to the probe: not attacking a host
+    is a reason to withhold a verdict, never a reason to issue a clean one.
+    """
+    hosts = []
+    for values in sorted(helm.glob("*/values.yaml")):
+        if values.parent.name not in HEADER_TRUSTING:
+            continue
+        spec = yaml.safe_load(values.read_text()) or {}
+        ingress = spec.get("ingress") or {}
+        if not ingress.get("enabled"):
+            continue
+        hosts += [
+            (entry or {}).get("host")
+            for entry in ingress.get("hosts") or []
+            if (entry or {}).get("host")
+        ]
+    return hosts
+
+
 def ingress_origins(target: str, helm: Path = HELM) -> list[Origin]:
     """Backends whose chart publishes its own ingress hostname, under the target.
 
@@ -184,6 +207,18 @@ def gateway_bypass_identity(ctx: ScanContext) -> Result:
     self = gateway_bypass_identity.probe
     origins = compose_origins(ctx.base_url) + ingress_origins(ctx.base_url)
     if not origins:
+        target_host = urlparse(ctx.base_url).hostname or ""
+        elsewhere = [h for h in declared_ingress_hosts() if not in_scope(h, target_host)]
+        if elsewhere:
+            # The charts do publish backends; this run just is not allowed to touch
+            # the hosts they name. Untested is not the same as not exposed.
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                "the service charts publish backend ingress hosts, but none of them is under "
+                f"the scan target {target_host}, so none was attacked: "
+                + ", ".join(sorted(set(elsewhere)))
+                + ". Set DAST_ALLOW_ORIGIN_HOSTS to the ones you are authorized to scan.",
+            )
         return self.result(
             Verdict.SECURE,
             "no backend origin is published outside the gateway by the compose file or the "
@@ -328,10 +363,15 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
             Verdict.INCONCLUSIVE, "no routes could be read from the services' source"
         )
 
+    excluded = sweep_exclusions()
     served: list[Evidence] = []
     swept = 0
     unreachable: list[str] = []
     for route in routes:
+        if route.key in excluded:
+            # Sending this one would perform it. The coverage gate reports the route
+            # as unswept with the reason, so the hole stays visible.
+            continue
         path = route.path.replace("{}", SWEEP_ID)
         try:
             response = ctx.request(route.method, path)
@@ -352,6 +392,11 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
                 )
             )
     scope = f"{swept} route(s) read from source"
+    if excluded:
+        scope += (
+            f"; {len(excluded)} route(s) are excluded from the sweep because sending them "
+            "would carry out a tenant-wide operation"
+        )
     if unknown:
         scope += (
             f"; {len(unknown)} proxied prefix(es) have no route extractor and were not swept: "

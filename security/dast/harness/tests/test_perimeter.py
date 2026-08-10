@@ -153,7 +153,19 @@ def only_file_service(monkeypatch):
 def test_no_declared_origin_is_secure(monkeypatch) -> None:
     monkeypatch.setattr(perimeter, "compose_origins", lambda target: [])
     monkeypatch.setattr(perimeter, "ingress_origins", lambda target: [])
+    monkeypatch.setattr(perimeter, "declared_ingress_hosts", lambda: [])
     assert gateway_bypass_identity(StubContext()).verdict is Verdict.SECURE
+
+
+def test_an_origin_dropped_for_being_out_of_scope_is_not_a_pass(monkeypatch) -> None:
+    """The charts publish backends; this run just may not touch the hosts they name."""
+    monkeypatch.setattr(perimeter, "compose_origins", lambda target: [])
+    monkeypatch.setattr(perimeter, "ingress_origins", lambda target: [])
+    monkeypatch.setattr(perimeter, "declared_ingress_hosts", lambda: ["files.somewhere-else.test"])
+    result = gateway_bypass_identity(StubContext())
+    assert result.verdict is Verdict.INCONCLUSIVE
+    assert "files.somewhere-else.test" in result.detail
+    assert "DAST_ALLOW_ORIGIN_HOSTS" in result.detail
 
 
 def test_a_declared_origin_that_never_answers_is_inconclusive(monkeypatch) -> None:
@@ -265,6 +277,19 @@ def two_routes(monkeypatch):
             {},
         ),
     )
+
+
+def test_a_route_that_would_be_performed_is_not_swept(two_routes, monkeypatch) -> None:
+    """Sending an unauthenticated tenant-wide write would carry it out."""
+    monkeypatch.setattr(
+        perimeter,
+        "sweep_exclusions",
+        lambda: {"POST /api/v1/auth/login": "stands in for a tenant-wide operation"},
+    )
+    ctx = StubContext()
+    result = perimeter.anonymous_route_sweep(ctx)
+    assert ctx.requests == [("GET", f"/api/v1/documents/{perimeter.SWEEP_ID}")]
+    assert "excluded from the sweep" in result.detail
 
 
 def test_the_sweep_requests_every_route_with_a_placeholder_id(two_routes) -> None:

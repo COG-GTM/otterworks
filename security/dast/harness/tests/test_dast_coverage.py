@@ -30,19 +30,38 @@ def test_a_request_does_not_match_another_route() -> None:
 
 def test_coverage_separates_reached_from_attacked_as_a_caller() -> None:
     exercised = [
-        {"method": "GET", "path": "/api/v1/documents/abc", "authenticated": False},
-        {"method": "GET", "path": "/api/v1/documents", "authenticated": True},
+        {
+            "method": "GET",
+            "path": "/api/v1/documents/abc",
+            "authenticated": False,
+            "probe": dast_coverage.SWEEP,
+        },
+        {
+            "method": "GET",
+            "path": "/api/v1/documents",
+            "authenticated": True,
+            "probe": "DAST-BOLA-DOCUMENTS",
+        },
     ]
-    reached, authenticated, missed = coverage([DOCUMENT, LIST], exercised)
+    reached, attacked, authenticated, missed = coverage([DOCUMENT, LIST], exercised)
     assert reached == [DOCUMENT, LIST]
-    # Swept anonymously is not the same as attacked: authorization findings need
-    # an identity, and the report must not imply one where there was none.
+    # Swept anonymously is not the same as attacked: the sweep walks the same
+    # inventory this gate reads, so counting its own requests as coverage would
+    # measure nothing but itself.
+    assert attacked == [LIST]
     assert authenticated == [LIST]
     assert missed == []
 
 
+def test_a_report_without_probe_attribution_is_not_credited_as_attacked() -> None:
+    """An older report cannot tell the sweep apart, so it claims the lower depth."""
+    exercised = [{"method": "GET", "path": "/api/v1/documents", "authenticated": True}]
+    reached, attacked, authenticated, _ = coverage([LIST], exercised)
+    assert (reached, attacked, authenticated) == ([LIST], [], [LIST])
+
+
 def test_a_route_nothing_requested_is_missed() -> None:
-    _, _, missed = coverage([DOCUMENT, LIST], [{"method": "GET", "path": "/api/v1/documents"}])
+    *_, missed = coverage([DOCUMENT, LIST], [{"method": "GET", "path": "/api/v1/documents"}])
     assert missed == [DOCUMENT]
 
 

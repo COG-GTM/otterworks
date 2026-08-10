@@ -1,5 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
+# dependencies = ["pyyaml"]
 # ///
 """Derive the edge-reachable route inventory from OtterWorks source.
 
@@ -25,9 +26,34 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SERVICES = REPO_ROOT / "services"
 GATEWAY_CONFIG = SERVICES / "api-gateway" / "internal" / "config" / "config.go"
+ATTACK_SURFACE = REPO_ROOT / "security" / "dast" / "attack-surface.yaml"
+
+
+def sweep_exclusions(path: Path = ATTACK_SURFACE) -> dict[str, str]:
+    """`METHOD /path` -> why the anonymous sweep must not send this route.
+
+    The sweep issues each route's own method, so a route that is served without
+    a token is not only reported but *performed*. For a route that creates an
+    object under a scan-owned id that is the point; for one that acts on the
+    whole tenant (reindex everything, mark every notification read) it is
+    collateral damage on the environment being scanned. Those are named here and
+    left to hand-written probes, and the coverage gate treats the exclusion as
+    the reason a route was not swept rather than pretending it was attacked.
+    """
+    if not path.exists():
+        return {}
+    spec = yaml.safe_load(path.read_text()) or {}
+    return {
+        f"{entry['method'].upper()} {entry['path']}": entry.get("reason", "")
+        for entry in spec.get("sweep_exclusions") or []
+        if entry.get("method") and entry.get("path")
+    }
+
 
 #: `"/api/v1/auth": c.AuthServiceURL,` inside ServiceRoutes().
 _GATEWAY_ROUTE = re.compile(r'"(?P<prefix>/[^"]+)":\s*c\.(?P<field>\w+)ServiceURL')
