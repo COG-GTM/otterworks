@@ -58,6 +58,26 @@ HEADER_TRUSTING: dict[str, tuple[str, str, dict[str, str]]] = {
 SWEEP_ID = "00000000-0000-4000-8000-000000000000"
 
 
+#: Methods whose request, if the route turns out to be unauthenticated, is not a
+#: probe but the operation itself.
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def may_sweep_unsafely(target: str) -> bool:
+    """Is this target one where performing a write is acceptable?
+
+    Sweeping with the route's real method is the point — a GET-only sweep cannot
+    find an unauthenticated DELETE — but a route that answers is also carried out,
+    and the named exclusions only cover the tenant-wide operations someone thought
+    of. So the write half is limited to the local stack, or to a target the
+    operator has explicitly declared throwaway via ``DAST_SWEEP_UNSAFE_METHODS``.
+    Elsewhere those routes are reported unswept rather than quietly performed.
+    """
+    if (urlparse(target).hostname or "") in LOCAL_HOSTS:
+        return True
+    return os.getenv("DAST_SWEEP_UNSAFE_METHODS", "").strip().lower() in {"1", "true", "yes"}
+
+
 def follow_once(ctx: ScanContext, method: str, response: httpx.Response) -> httpx.Response | None:
     """Re-send an anonymous request to where a 3xx pointed, if it stays on the target.
 
@@ -109,6 +129,32 @@ class Origin:
     severity: Severity = Severity.CRITICAL
 
 
+def published_port(mapping: object) -> tuple[str | None, str] | None:
+    """(bound address, host port) for a compose port entry, or None if there is none.
+
+    Compose accepts `CONTAINER`, `HOST:CONTAINER`, `IP:HOST:CONTAINER` and the long
+    mapping form, and this is the only input to a security verdict: reading
+    `IP:HOST:CONTAINER` as unpublished would report a reachable backend `SECURE`,
+    and reading a bare `CONTAINER` port as a host port would invent an origin that
+    is never reachable and leave the probe inconclusive forever.
+    """
+    if isinstance(mapping, dict):
+        published = mapping.get("published")
+        return (mapping.get("host_ip"), str(published)) if published else None
+    fields = str(mapping).split(":")
+    if len(fields) == 3:
+        address, host_port = fields[0].strip(), fields[1].strip()
+    elif len(fields) == 2:
+        address, host_port = None, fields[0].strip()
+    else:
+        # A container port on its own is published on an ephemeral host port, so
+        # there is no address to attack.
+        return None
+    # A range (`8080-8090`) publishes several; the first is enough to prove reach.
+    host_port = host_port.split("-")[0]
+    return (address, host_port) if host_port.isdigit() else None
+
+
 def compose_origins(target: str, compose: Path = COMPOSE) -> list[Origin]:
     """Backends published on the host by docker compose, for a local target.
 
@@ -124,17 +170,21 @@ def compose_origins(target: str, compose: Path = COMPOSE) -> list[Origin]:
         if service not in HEADER_TRUSTING or not isinstance(definition, dict):
             continue
         for mapping in definition.get("ports") or []:
-            published = str(mapping).split(":")[0].strip()
-            if published.isdigit():
-                origins.append(
-                    Origin(
-                        service,
-                        f"http://{host}:{published}",
-                        f"{compose.name} ports",
-                        severity=Severity.LOW,
-                    )
+            entry = published_port(mapping)
+            if entry is None:
+                continue
+            address, port = entry
+            origins.append(
+                Origin(
+                    service,
+                    # A port bound to one interface is only reachable there, so the
+                    # origin has to use that address rather than the target's host.
+                    f"http://{address or host}:{port}",
+                    f"{compose.name} ports",
+                    severity=Severity.LOW,
                 )
-                break
+            )
+            break
     return origins
 
 
@@ -410,6 +460,8 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
         )
 
     excluded = sweep_exclusions()
+    unsafe_allowed = may_sweep_unsafely(ctx.base_url)
+    withheld = 0
     served: list[Evidence] = []
     swept = 0
     unreachable: list[str] = []
@@ -417,6 +469,9 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
         if route.key in excluded:
             # Sending this one would perform it. The coverage gate reports the route
             # as unswept with the reason, so the hole stays visible.
+            continue
+        if route.method in UNSAFE_METHODS and not unsafe_allowed:
+            withheld += 1
             continue
         path = route.path.replace("{}", SWEEP_ID)
         try:
@@ -447,6 +502,11 @@ def anonymous_route_sweep(ctx: ScanContext) -> Result:
                 )
             )
     scope = f"{swept} route(s) read from source"
+    if withheld:
+        scope += (
+            f"; {withheld} route(s) were not sent because their method would write to a "
+            "target that has not been declared disposable (DAST_SWEEP_UNSAFE_METHODS)"
+        )
     if excluded:
         scope += (
             f"; {len(excluded)} route(s) are excluded from the sweep because sending them "

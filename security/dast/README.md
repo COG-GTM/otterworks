@@ -133,6 +133,13 @@ must not exit clean.
   target you named: a compose port only counts for a local target, and a chart
   hostname only when the target covers it. To reach a chart host the target does
   not cover, name it yourself in `DAST_ALLOW_ORIGIN_HOSTS`.
+- The anonymous route sweep sends each route's **real method**, because a
+  GET-only sweep cannot find an unauthenticated `DELETE` — and a write route that
+  answers has been carried out, not merely probed. So the write half only runs
+  against the local stack, or against a target you declare disposable with
+  `DAST_SWEEP_UNSAFE_METHODS=1`; elsewhere those routes are reported unswept and
+  the coverage gate shows the hole. Tenant-wide operations stay excluded either
+  way, by name, in `attack-surface.yaml`.
 - Scan a **tenant namespace or the local stack**, never a namespace someone else
   is presenting from. Every scan registers accounts and writes documents; those
   live in the target's database until the tenant is reaped.

@@ -376,3 +376,57 @@ def test_a_redirect_off_the_target_is_not_chased(two_routes) -> None:
     assert all(host not in path for _, path in ctx.requests for host in ["elsewhere"])
     assert result.verdict is Verdict.INCONCLUSIVE
     assert "redirected away" in result.detail
+
+
+# ── reading a compose port entry ─────────────────────────────────────────────
+
+
+def test_every_form_of_a_published_port_is_read(tmp_path: Path) -> None:
+    """This parse is the only input to the verdict, so a missed form reads SECURE."""
+    assert perimeter.published_port("8082:8082") == (None, "8082")
+    assert perimeter.published_port("127.0.0.1:8082:8082") == ("127.0.0.1", "8082")
+    assert perimeter.published_port({"target": 8082, "published": 8082}) == (None, "8082")
+    assert perimeter.published_port({"published": 8082, "host_ip": "127.0.0.1"}) == (
+        "127.0.0.1",
+        "8082",
+    )
+    # No fixed host port to attack: compose picks an ephemeral one.
+    assert perimeter.published_port("8082") is None
+
+
+def test_a_port_bound_to_one_interface_is_attacked_there(tmp_path: Path) -> None:
+    compose = tmp_path / "docker-compose.yml"
+    compose.write_text("services:\n  file-service:\n    ports:\n      - '127.0.0.1:8082:8082'\n")
+    origins = perimeter.compose_origins("http://localhost:8080", compose=compose)
+    assert [o.url for o in origins] == ["http://127.0.0.1:8082"]
+
+
+# ── writes are not sent to a target nobody called disposable ─────────────────
+
+
+def test_a_write_is_only_swept_where_it_may_be_performed(monkeypatch) -> None:
+    monkeypatch.delenv("DAST_SWEEP_UNSAFE_METHODS", raising=False)
+    assert perimeter.may_sweep_unsafely("http://localhost:8080")
+    assert not perimeter.may_sweep_unsafely("https://api-t-x.demo.otterworks.app")
+    monkeypatch.setenv("DAST_SWEEP_UNSAFE_METHODS", "1")
+    assert perimeter.may_sweep_unsafely("https://api-t-x.demo.otterworks.app")
+
+
+def test_the_sweep_withholds_writes_from_an_undeclared_target(two_routes, monkeypatch) -> None:
+    """A route that answers a DELETE has been deleted, so the report says it was withheld."""
+    monkeypatch.delenv("DAST_SWEEP_UNSAFE_METHODS", raising=False)
+    monkeypatch.setattr(
+        perimeter,
+        "edge_routes",
+        lambda: (
+            [
+                Route("GET", "/api/v1/documents/{}", "document-service", "app/api/documents.py"),
+                Route("DELETE", "/api/v1/documents/{}", "document-service", "app/api/documents.py"),
+            ],
+            {},
+        ),
+    )
+    ctx = StubContext(base_url="https://api-t-x.demo.otterworks.app")
+    result = perimeter.anonymous_route_sweep(ctx)
+    assert [method for method, _ in ctx.requests] == ["GET"]
+    assert "not sent because their method would write" in result.detail
