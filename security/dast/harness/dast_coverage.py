@@ -173,13 +173,16 @@ def main(argv: list[str] | None = None) -> int:
             + "\n  ".join(f"{prefix} ({service})" for prefix, service in sorted(unknown.items()))
         )
 
-    if gating and not args.warn_only:
-        print(
-            f"\nDAST coverage gate FAILED: {len(gating)} edge-reachable route(s) were never "
-            "attacked. Add a probe, or record the route under coverage_exemptions in "
-            f"{ATTACK_SURFACE.relative_to(DAST_DIR.parents[1])} with a reason.",
-            file=sys.stderr,
+    if gating:
+        verdict = (
+            f"{len(gating)} edge-reachable route(s) were never attacked. Add a probe, or "
+            "record the route under coverage_exemptions in "
+            f"{ATTACK_SURFACE.relative_to(DAST_DIR.parents[1])} with a reason."
         )
+        if args.warn_only:
+            print(f"\nDAST coverage gate WARNING (--warn-only): {verdict}")
+            return 0
+        print(f"\nDAST coverage gate FAILED: {verdict}", file=sys.stderr)
         return 1
     print("\nDAST coverage gate PASSED: every edge-reachable route is attacked or exempted.")
     return 0

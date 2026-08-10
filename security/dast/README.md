@@ -34,7 +34,7 @@ rather than being pointed at a URL:
 
 - **`route_inventory.py`** reads the gateway's route table
   (`api-gateway/internal/config/config.go`) and each service's own route
-  definitions — FastAPI, Flask, Actix and Spring — and produces the list of
+  definitions — FastAPI, Flask, Actix, Spring and Ktor — and produces the list of
   endpoints reachable at the edge. A crawler can only find what something links
   to; this finds what exists. `make dast-routes` prints it.
 - **`DAST-ANONYMOUS-ROUTE-SWEEP`** attacks that whole list with no credentials.

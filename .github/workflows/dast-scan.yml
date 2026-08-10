@@ -88,13 +88,18 @@ jobs:
       # of the golden app's planted vulnerabilities.
       - name: Gate on route coverage
         run: |
-          make dast-coverage | tee /tmp/coverage.txt
+          # Capture stderr too: the gate writes its verdict there, and that is the
+          # line that says which routes went unattacked.
+          status=0
+          make dast-coverage > /tmp/coverage.txt 2>&1 || status=$?
           {
             echo '## DAST route coverage'
             echo '```'
             cat /tmp/coverage.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/coverage.txt
+          exit $status
 
       - name: Publish the report
         if: always()

@@ -10,8 +10,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import route_inventory  # noqa: E402
 from route_inventory import (  # noqa: E402
     EXTRACTORS,
     Route,
@@ -131,6 +134,52 @@ public class AuthController {
         ("POST", "/api/v1/auth/login"),
         ("GET", "/api/v1/auth/users/by-id/{}"),
     ]
+
+
+def test_ktor_routes_nest_through_the_routing_dsl(tmp_path: Path) -> None:
+    service = tmp_path / "notification-service"
+    write(
+        service / "src/main/kotlin/com/otterworks/notification/routes/Routes.kt",
+        """
+routing {
+    get("/health") { call.respond(HealthResponse()) }
+
+    route("/api/v1/notifications") {
+        get {
+            call.respond(notificationService.list())
+        }
+        get("/unread-count") { call.respond(count) }
+        put("/{id}/read") { call.respond(HttpStatusCode.NoContent) }
+    }
+
+    route("/api/v1/preferences") {
+        get { call.respond(prefs) }
+    }
+}
+""",
+    )
+    routes = EXTRACTORS["notification-service"](service, "notification-service")
+    assert declared(routes, "Routes.kt") == [
+        ("GET", "/health"),
+        ("GET", "/api/v1/notifications"),
+        ("GET", "/api/v1/notifications/unread-count"),
+        # `{id}` lives inside a string literal, so it must not be counted as a
+        # block opening — the routes after it would otherwise nest one too deep.
+        ("PUT", "/api/v1/notifications/{}/read"),
+        ("GET", "/api/v1/preferences"),
+    ]
+
+
+def test_a_service_whose_extractor_matches_nothing_is_unknown_not_covered(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The parser pointed at the wrong framework must make the gate louder, not quieter."""
+    service = tmp_path / "notification-service"
+    write(service / "src" / "main" / "kotlin" / "Routes.kt", "routing { }")
+    monkeypatch.setattr(route_inventory, "SERVICES", tmp_path)
+    monkeypatch.setitem(route_inventory.EXTRACTORS, "notification-service", route_inventory._spring)
+
+    assert route_inventory.service_routes("notification-service") is None
 
 
 def test_path_parameters_normalize_across_frameworks() -> None:

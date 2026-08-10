@@ -202,6 +202,49 @@ def _spring(service: Path, name: str) -> list[Route]:
     return routes
 
 
+_KTOR_ROUTE = re.compile(r'\broute\(\s*"([^"]*)"\s*\)\s*\{')
+_KTOR_METHOD = re.compile(rf'\b({"|".join(_METHODS)})\s*(?:\(\s*"([^"]*)"\s*\))?\s*\{{')
+_KTOR_STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')
+
+
+def _ktor(service: Path, name: str) -> list[Route]:
+    """Ktor: nested `route("…") { }` blocks containing `get { }` / `put("…") { }`.
+
+    Ktor's routing is a DSL rather than annotations, so a path is the
+    concatenation of the blocks enclosing it and nesting has to be tracked by
+    brace depth.
+    """
+    routes: list[Route] = []
+    for path in sorted((service / "src" / "main").rglob("*.kt")):
+        text = path.read_text()
+        # A path parameter is written `{id}`, so braces inside string literals
+        # would corrupt the depth count. Blank the literals for counting only,
+        # keeping every offset (and therefore every match position) intact.
+        depth_text = _KTOR_STRING.sub(lambda m: " " * len(m[0]), text)
+        openers: dict[int, tuple[str, str]] = {}
+        for match in _KTOR_ROUTE.finditer(text):
+            openers[match.end() - 1] = ("route", match[1])
+        for match in _KTOR_METHOD.finditer(text):
+            openers.setdefault(match.end() - 1, (match[1].upper(), match[2] or ""))
+        stack: list[str] = []
+        for index, char in enumerate(depth_text):
+            if char == "{":
+                kind, declared = openers.get(index, ("", ""))
+                if kind and kind != "route":
+                    routes.append(
+                        Route(
+                            kind,
+                            _normalize(_join(*stack, declared)),
+                            name,
+                            repo_relative(path),
+                        )
+                    )
+                stack.append(declared if kind == "route" else "")
+            elif char == "}" and stack:
+                stack.pop()
+    return routes
+
+
 #: Only services whose routes can be read literally are extracted. The rest are
 #: reported as unknown coverage, which is the honest answer: see module docstring.
 EXTRACTORS = {
@@ -210,21 +253,31 @@ EXTRACTORS = {
     "file-service": _actix,
     "search-service": _flask,
     "report-service": _spring,
-    "notification-service": _spring,
+    "notification-service": _ktor,
 }
 
 
 def service_routes(name: str) -> list[Route] | None:
-    """Routes declared by a service, or None when it has no extractor."""
+    """Routes declared by a service, or None when its routes cannot be read.
+
+    An extractor that matches nothing is not evidence that a service has no
+    routes — far more likely it was pointed at the wrong framework, or the
+    source moved. Since the gateway only proxies a prefix for a service that
+    serves something there, an empty extraction is reported as *unknown*: a
+    parser that quietly stops matching has to make the gate louder, not
+    shrink the surface it measures.
+    """
     extractor = EXTRACTORS.get(name)
     if extractor is None:
         return None
     service = SERVICES / name
-    return extractor(service, name) if service.exists() else []
+    if not service.exists():
+        return None
+    return extractor(service, name) or None
 
 
 def edge_routes() -> tuple[list[Route], dict[str, str]]:
-    """(routes reachable through the gateway, prefixes whose service has no extractor).
+    """(routes reachable through the gateway, prefixes whose routes cannot be read).
 
     A backend route only counts when the gateway proxies its prefix: the suite
     attacks the deployed edge, and a route behind no proxied prefix is not part
