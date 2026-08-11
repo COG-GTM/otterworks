@@ -103,3 +103,40 @@ def test_unknown_target_marker_is_rejected(monkeypatch, tmp_path):
     code, errors = gate.validate_module("plans")
     assert code == gate.MARKER_INVALID
     assert "no ledger rule" in errors[0]
+
+
+def test_markers_from_other_ledgers_do_not_fail_this_module(monkeypatch, tmp_path):
+    root = fixture_tree(tmp_path)
+    (root / "procs" / "scenarios" / "rating").mkdir()
+    (root / "procs" / "scenarios" / "rating" / "001.yaml").write_text(
+        "id: RATING-001\n"
+    )
+    (root / "services" / "legacy-billing" / "db" / "procs" / "rating.sql").write_text(
+        "line one\nline two\n"
+    )
+    rating_rule = {
+        "id": "RATING-001",
+        "statement": "A rating statement",
+        "source": {
+            "file": "services/legacy-billing/db/procs/rating.sql",
+            "lines": [1, 2],
+        },
+        "inputs": ["input"],
+        "outputs": ["output"],
+        "confidence": "high",
+        "scenarios": ["RATING-001"],
+        "decision": {
+            "status": "approved",
+            "reviewer": "product-owner",
+            "date": "2026-01-01",
+        },
+    }
+    (root / "procs" / "rules" / "rating.rules.yaml").write_text(
+        yaml.safe_dump({"rules": [rating_rule]})
+    )
+    (root / "services" / "billing-service" / "tests" / "test_rating.py").write_text(
+        'pytest.mark.rule("RATING-001")\n'
+    )
+    patch_tree(monkeypatch, root)
+    assert gate.validate_module("plans") == (0, [])
+    assert gate.validate_module("rating") == (0, [])

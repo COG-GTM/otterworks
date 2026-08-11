@@ -55,7 +55,7 @@ export default function BillingPlansPage() {
         Retry
       </button>
       {isLoading && <p role="status">Loading plans…</p>}
-      {!isLoading && plans.length === 0 && (
+      {!isLoading && !error && plans.length === 0 && (
         <p className="rounded-lg bg-white p-6 text-gray-600">No plans are available.</p>
       )}
       {!isLoading && plans.length > 0 && (

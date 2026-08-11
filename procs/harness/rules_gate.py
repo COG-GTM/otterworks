@@ -44,12 +44,17 @@ def validate_module(module: str) -> tuple[int, list[str]]:
         for path in TESTS.rglob("*.py")
         for rule_id in re.findall(r'pytest\.mark\.rule\(["\']([^"\']+)["\']\)', path.read_text())
     }
-    rule_ids = {
-        rule.get("id")
-        for rule in rules
-        if isinstance(rule, dict) and isinstance(rule.get("id"), str)
-    }
-    for marker in sorted(markers - rule_ids):
+    all_rule_ids: set[str] = set()
+    for other_ledger_path in RULES.glob("*.rules.yaml"):
+        other_ledger = yaml.safe_load(other_ledger_path.read_text()) or {}
+        other_rules = other_ledger.get("rules", [])
+        if isinstance(other_rules, list):
+            all_rule_ids.update(
+                rule.get("id")
+                for rule in other_rules
+                if isinstance(rule, dict) and isinstance(rule.get("id"), str)
+            )
+    for marker in sorted(markers - all_rule_ids):
         errors[MARKER_INVALID].append(f"{marker}: target test marker has no ledger rule")
     proc_path = ROOT / "services" / "legacy-billing" / "db" / "procs" / f"{module}.sql"
     for index, rule in enumerate(rules):

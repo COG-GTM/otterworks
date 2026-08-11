@@ -87,7 +87,7 @@ export default function BillingChangePlanPage() {
         </button>
       )}
       {isLoading && <p role="status">Loading plans…</p>}
-      {!isLoading && plans.length === 0 && <p>No plans are available.</p>}
+      {!isLoading && !error && plans.length === 0 && <p>No plans are available.</p>}
       {!isLoading && plans.length > 0 && (
         <form
           className="space-y-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm"

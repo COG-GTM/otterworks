@@ -55,6 +55,7 @@ describe("Billing plans", () => {
     );
     renderPage();
     expect(await screen.findByRole("alert")).toHaveTextContent("Plans could not be loaded.");
+    expect(screen.queryByText("No plans are available.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("GROWTH")).toBeInTheDocument();
     expect(attempts).toBe(2);
