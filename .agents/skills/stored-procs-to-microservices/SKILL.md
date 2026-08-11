@@ -149,10 +149,17 @@ cd frontend/client-app
 npm run dev
 ```
 
-`VITE_ENABLE_BILLING_FIXTURE` controls the billing routes. Dev and preview
-enable them by default; production builds leave the routes unregistered unless
-`VITE_ENABLE_BILLING_FIXTURE=true` is explicitly supplied. The billing screens
-are local parity-fixture pages only: they are not deployed through the normal
+`VITE_ENABLE_BILLING_FIXTURE` controls the billing routes. Dev enables them by
+default. A preview build must opt in explicitly:
+
+```bash
+VITE_ENABLE_BILLING_FIXTURE=true npm run build
+npm run start -- --host 127.0.0.1 --port 4173
+```
+
+The `/billing-api` proxy is used by the dev server and by that flagged preview.
+Builds without the flag leave the routes unregistered. The billing screens are
+local parity-fixture pages only: they are not deployed through the normal
 client, Helm, or EKS paths.
 
 ## Clean run reversion
