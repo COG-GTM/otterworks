@@ -213,7 +213,7 @@ def check_immutability(
     if not existing:
         return
     if not allow or (
-        any(old_sha == digest for _, old_sha, _ in existing)
+        all(old_sha == digest for _, old_sha, _ in existing)
         and not any(old_fixture != fixture_digest for _, _, old_fixture in existing)
         and rerecord_reason not in {"harness-change", "scenario-redesign"}
     ):

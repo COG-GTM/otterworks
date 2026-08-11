@@ -73,6 +73,23 @@ def test_fixture_change_permits_rerecord_without_audited_reason(tmp_path) -> Non
     check_immutability(scenarios, "same", True, None, tmp_path, "new")
 
 
+def test_partial_rerecord_then_all_module_rerecord_is_allowed(tmp_path) -> None:
+    scenarios = [
+        {"module": "plans", "id": "PLANS-001"},
+        {"module": "rating", "id": "RATING-001"},
+    ]
+    for scenario in scenarios:
+        path = tmp_path / scenario["module"] / f"{scenario['id']}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"source_sha": "old", "fixture_sha": "fixture"}))
+
+    check_immutability([scenarios[0]], "new", True, None, tmp_path, "fixture")
+    (tmp_path / "plans" / "PLANS-001.json").write_text(
+        json.dumps({"source_sha": "new", "fixture_sha": "fixture"})
+    )
+    check_immutability(scenarios, "new", True, None, tmp_path, "fixture")
+
+
 def test_empty_recording_does_not_rewrite_index_or_fingerprint(tmp_path) -> None:
     index = tmp_path / "index.json"
     source = tmp_path / "SOURCE_SHA"
