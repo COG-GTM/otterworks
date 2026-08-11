@@ -41,6 +41,25 @@ audited escape `--allow-rerecord --rerecord-reason harness-change`; each
 resulting transcript records that reason. The namespace affects only the
 running database; it is not written into transcript content.
 
+Recording an existing checkout is intentionally refused unless the procedure
+source changed. Through Make, the normal command is:
+
+```bash
+make procs-record NS=dev
+```
+
+For a procedure-source change, explicitly authorize the refresh:
+
+```bash
+make procs-record NS=dev ALLOW_RERECORD=1
+```
+
+For a harness-only normalization or recorder change, use the auditable reason:
+
+```bash
+make procs-record NS=dev ALLOW_RERECORD=1 RERECORD_REASON=harness-change
+```
+
 ## Add a scenario
 
 1. Add a YAML file under `procs/scenarios/<module>/`.
