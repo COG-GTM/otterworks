@@ -97,7 +97,10 @@ impl S3Client {
         expires_in_secs: u64,
     ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
-            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(expires_in_secs, error = %e, "Invalid presigning config");
+                ServiceError::S3Error(format!("presign config error: {e}"))
+            })?;
 
         let presigned = self
             .client
