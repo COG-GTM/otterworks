@@ -101,7 +101,20 @@ def extract(payload: Any, spec: dict[str, Any]) -> Any:
             return UnresolvedPath(spec["json_path"], "expected a list of rows")
         rows = [normalize(row) for row in value]
         sort_by = spec.get("sort_by", ["starts_on", "plan_id"])
-        return sorted(rows, key=lambda row: tuple(row.get(key) for key in sort_by))
+        if any(not isinstance(row, dict) for row in rows):
+            return UnresolvedPath(spec["json_path"], "expected object rows")
+        for row in rows:
+            missing = next((key for key in sort_by if key not in row), None)
+            if missing is not None:
+                return UnresolvedPath(
+                    spec["json_path"], f"row missing sort field {missing}"
+                )
+        try:
+            return sorted(rows, key=lambda row: tuple(row[key] for key in sort_by))
+        except TypeError:
+            return UnresolvedPath(
+                spec["json_path"], "row sort fields have incompatible types"
+            )
     if spec.get("collect"):
         if not isinstance(value, list):
             return UnresolvedPath(spec["json_path"], "expected a list to collect")

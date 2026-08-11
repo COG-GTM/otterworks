@@ -152,6 +152,62 @@ def test_collect_on_non_list_is_a_reported_failure(tmp_path, monkeypatch) -> Non
     assert (tmp_path / "parity.md").exists()
 
 
+def test_rows_with_scalar_items_are_reported_and_written(tmp_path, monkeypatch) -> None:
+    transcript = {
+        "scenario": "PLANS-001",
+        "business_fields": {"rows": [{"id": "1"}]},
+        "probes": {},
+    }
+    contract = {
+        "response": {
+            "business_fields": {
+                "rows": {"json_path": "$.rows", "type": "rows", "sort_by": ["id"]}
+            },
+            "probes": {},
+        }
+    }
+    failures, errors = compare(transcript, contract, {"rows": ["scalar"]})
+    assert not errors
+    assert failures[0]["actual"].startswith("<unresolvable $.rows: expected object rows")
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report(
+        "sha",
+        [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}],
+        [],
+    )
+    assert (tmp_path / "parity.md").exists()
+    assert (tmp_path / "parity.json").exists()
+
+
+def test_rows_missing_sort_field_are_reported_and_written(tmp_path, monkeypatch) -> None:
+    transcript = {
+        "scenario": "PLANS-001",
+        "business_fields": {"rows": [{"id": "1"}]},
+        "probes": {},
+    }
+    contract = {
+        "response": {
+            "business_fields": {
+                "rows": {"json_path": "$.rows", "type": "rows", "sort_by": ["id", "code"]}
+            },
+            "probes": {},
+        }
+    }
+    failures, errors = compare(transcript, contract, {"rows": [{"id": "1"}]})
+    assert not errors
+    assert failures[0]["actual"].startswith(
+        "<unresolvable $.rows: row missing sort field code"
+    )
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report(
+        "sha",
+        [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}],
+        [],
+    )
+    assert (tmp_path / "parity.md").exists()
+    assert (tmp_path / "parity.json").exists()
+
+
 def test_empty_selection_fails_without_grading(monkeypatch) -> None:
     monkeypatch.setattr(replay, "load_transcripts", lambda _module: [])
     monkeypatch.setattr(replay, "source_matches", lambda _expected: True)
