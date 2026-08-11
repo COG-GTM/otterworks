@@ -1,5 +1,6 @@
 export const BILLING_BASE_URL =
-  import.meta.env.VITE_BILLING_SERVICE_URL || "http://localhost:8097";
+  import.meta.env.VITE_BILLING_SERVICE_URL ||
+  `${window.location.origin}/billing-api`;
 
 export type Plan = {
   plan_id: string;

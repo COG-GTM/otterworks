@@ -197,7 +197,11 @@ def load_scenarios(module: str | None) -> list[dict[str, Any]]:
 
 
 def check_immutability(
-    scenarios: list[dict[str, Any]], digest: str, allow: bool, transcript_root: Path
+    scenarios: list[dict[str, Any]],
+    digest: str,
+    allow: bool,
+    rerecord_reason: str | None,
+    transcript_root: Path,
 ) -> None:
     existing = []
     for scenario in scenarios:
@@ -206,9 +210,18 @@ def check_immutability(
             existing.append((path, json.loads(path.read_text()).get("source_sha")))
     if not existing:
         return
-    if not allow:
-        names = ", ".join(str(path.relative_to(ROOT)) for path, _ in existing)
-        raise RuntimeError(f"would overwrite immutable transcript(s): {names}")
+    if not allow or (any(old_sha == digest for _, old_sha in existing) and rerecord_reason != "harness-change"):
+        names = ", ".join(
+            str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
+            for path, _ in existing
+        )
+        reason = (
+            "unchanged procedure source; pass --rerecord-reason harness-change for a "
+            "harness-only re-record"
+            if allow
+            else "pass --allow-rerecord only after procedure source changes"
+        )
+        raise RuntimeError(f"would overwrite immutable transcript(s): {names} ({reason})")
 
 
 def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_root: Path) -> None:
@@ -243,12 +256,19 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--module")
     parser.add_argument("--allow-rerecord", action="store_true")
+    parser.add_argument("--rerecord-reason", choices=["harness-change"])
     parser.add_argument("--output-dir", type=Path, default=TRANSCRIPTS)
     args = parser.parse_args()
     scenarios = load_scenarios(args.module)
     digest = source_sha()
     try:
-        check_immutability(scenarios, digest, args.allow_rerecord, args.output_dir)
+        check_immutability(
+            scenarios,
+            digest,
+            args.allow_rerecord,
+            args.rerecord_reason,
+            args.output_dir,
+        )
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return WOULD_OVERWRITE
@@ -269,6 +289,9 @@ def main() -> int:
                 return SCENARIO_FAILED
     finally:
         connection_handle.close()
+    if args.rerecord_reason:
+        for record in records:
+            record["rerecord_reason"] = args.rerecord_reason
     write_transcripts(records, digest, args.output_dir)
     print(f"Recorded {len(records)} scenario(s), SOURCE_SHA={digest}")
     return 0

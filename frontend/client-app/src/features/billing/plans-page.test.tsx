@@ -16,7 +16,7 @@ function renderPage() {
 describe("Billing plans", () => {
   it("renders plans from the billing service", async () => {
     billingServer.use(
-      http.get("http://localhost:8097/api/plans", () =>
+      http.get("http://localhost:3000/billing-api/api/plans", () =>
         HttpResponse.json([
           {
             plan_id: "one",
@@ -37,7 +37,7 @@ describe("Billing plans", () => {
   it("shows and dismisses a retryable error", async () => {
     let attempts = 0;
     billingServer.use(
-      http.get("http://localhost:8097/api/plans", () => {
+      http.get("http://localhost:3000/billing-api/api/plans", () => {
         attempts += 1;
         return attempts === 1
           ? HttpResponse.json({ message: "nope" }, { status: 503 })
@@ -62,7 +62,7 @@ describe("Billing plans", () => {
 
   it("shows and dismisses a retryable error", async () => {
     billingServer.use(
-      http.get("http://localhost:8097/api/plans", () =>
+      http.get("http://localhost:3000/billing-api/api/plans", () =>
         HttpResponse.json({ message: "nope" }, { status: 503 })
       )
     );

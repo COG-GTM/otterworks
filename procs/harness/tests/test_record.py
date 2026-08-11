@@ -6,7 +6,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
-from procs.harness.record import normalized
+import pytest
+
+from procs.harness.record import check_immutability, normalized
 from procs.harness.record import write_transcripts
 from procs.harness.replay import normalize
 
@@ -47,3 +49,13 @@ def test_typed_capture_round_trips_with_replay_normalization() -> None:
         == normalize("2026-02-28", "date")
         == "2026-02-28"
     )
+
+
+def test_unchanged_source_rerecord_requires_audited_reason(tmp_path) -> None:
+    scenarios = [{"module": "plans", "id": "PLANS-001"}]
+    path = tmp_path / "plans" / "PLANS-001.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"source_sha": "same"}))
+    with pytest.raises(RuntimeError, match="harness-change"):
+        check_immutability(scenarios, "same", True, None, tmp_path)
+    check_immutability(scenarios, "same", True, "harness-change", tmp_path)

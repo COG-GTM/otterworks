@@ -33,3 +33,6 @@ For the extracted target, a plan change with an already-scheduled later
 subscription preserves that later row. The response's `latest_*` fields always
 identify the subscription created by the request, rather than relying on row
 ordering.
+
+When using the workshop client with the default disposable stack, the Vite
+development proxy forwards `/billing-api/*` to the service on port `12109`.

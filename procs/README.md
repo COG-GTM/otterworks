@@ -12,6 +12,7 @@ make procs-list
 make procs-record NS=dev
 make procs-rules-gate MODULE=plans
 make procs-parity NS=dev
+cd frontend/client-app && npm run dev
 make procs-down NS=dev
 ```
 
@@ -19,14 +20,22 @@ The Makefile derives the Postgres and HTTP host ports from `NS`, so separate
 namespaces can run concurrently. Use `OUTPUT_DIR` when recording isolated
 fixtures for a namespace-specific verification run.
 
+The client Vite server proxies `/billing-api/*` to the extracted service. With
+the default `NS=dev` stack, run the client command above and open
+`http://localhost:3000/billing/plans`; no billing URL environment variable is
+required. For another namespace, set `BILLING_SERVICE_URL` to that namespace's
+derived target port when starting Vite.
+
 Each scenario resets the `billing` schema to the checked-in schema, procedure
 definitions, and seed. The recorder invokes the declared entrypoint, captures
 the selected result fields, runs the named state probes, and writes one JSON
 transcript under `procs/transcripts/<module>/`.
 
-Transcripts are immutable. Re-recording requires both `--allow-rerecord` and a
-changed procedure source hash. The namespace affects only the running database;
-it is not written into transcript content.
+Transcripts are immutable. Re-recording requires `--allow-rerecord` and a
+changed procedure source hash. If only the harness changed, use the explicit
+audited escape `--allow-rerecord --rerecord-reason harness-change`; each
+resulting transcript records that reason. The namespace affects only the
+running database; it is not written into transcript content.
 
 ## Add a scenario
 
