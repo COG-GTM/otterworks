@@ -14,6 +14,7 @@ from procs.harness.replay import (
     stale_transcripts,
     write_report,
 )
+import procs.harness.replay as replay
 
 
 def test_pending_module_is_skip() -> None:
@@ -149,3 +150,11 @@ def test_collect_on_non_list_is_a_reported_failure(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
     write_report("sha", [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}], [])
     assert (tmp_path / "parity.md").exists()
+
+
+def test_empty_selection_fails_without_grading(monkeypatch) -> None:
+    monkeypatch.setattr(replay, "load_transcripts", lambda _module: [])
+    monkeypatch.setattr(replay, "source_matches", lambda _expected: True)
+    monkeypatch.setattr(replay, "source_sha", lambda: "sha")
+    monkeypatch.setattr(sys, "argv", ["replay.py", "--module", "typo"])
+    assert replay.main() == replay.SELECTION_EMPTY

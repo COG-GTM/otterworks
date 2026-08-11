@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
@@ -50,6 +51,7 @@ def test_typed_capture_round_trips_with_replay_normalization() -> None:
         == normalize("2026-02-28", "date")
         == "2026-02-28"
     )
+    assert normalized(Decimal("2.2506")) == normalize("2.2506") == "2.2506"
 
 
 def test_unchanged_source_rerecord_requires_audited_reason(tmp_path) -> None:

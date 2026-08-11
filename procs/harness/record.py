@@ -71,8 +71,10 @@ def typed(value: Any, kind: str) -> Any:
 def normalized(value: Any, kind: str | None = None) -> Any:
     if value is None:
         return None
-    if kind == "decimal" or isinstance(value, Decimal):
+    if kind == "decimal":
         return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    if isinstance(value, Decimal):
+        return str(value)
     if kind == "integer":
         return int(value)
     if kind == "date":

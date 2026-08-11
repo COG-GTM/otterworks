@@ -28,6 +28,7 @@ TARGET_UNREACHABLE = 3
 CONTRACT_MISSING = 6
 SOURCE_MISMATCH = 7
 RESET_FAILED = 8
+SELECTION_EMPTY = 9
 
 
 @dataclass(frozen=True)
@@ -262,6 +263,10 @@ def main() -> int:
         for item in load_transcripts(args.module)
         if args.scenario is None or item["scenario"] == args.scenario
     ]
+    if not selected:
+        selection = args.module or args.scenario or "requested selection"
+        print(f"no transcripts matched {selection}", file=sys.stderr)
+        return SELECTION_EMPTY
     stale = stale_transcripts(selected, current_sha)
     if stale:
         for error in stale:
