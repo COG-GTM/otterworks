@@ -29,6 +29,10 @@ The reset endpoint is disabled by default. Disposable local/CI Compose stacks
 enable it with `BILLING_SVC_ALLOW_INTERNAL_RESET=true`; published deployments
 should leave the setting disabled.
 
+The HTTP endpoints are intentionally unauthenticated in this parity fixture.
+Authentication and tenant scoping are out of scope here; an extraction that
+ships for real must add both at the edge before exposing these endpoints.
+
 For the extracted target, a plan change with an already-scheduled later
 subscription preserves that later row. The response's `latest_*` fields always
 identify the subscription created by the request, rather than relying on row
