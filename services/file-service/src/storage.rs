@@ -1,9 +1,25 @@
 use aws_sdk_s3::presigning::PresigningConfig;
+use aws_smithy_types::error::display::DisplayErrorContext;
 use bytes::Bytes;
 use std::time::Duration;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
+
+/// Render an AWS SDK error with its full source chain. The `Display` impl of
+/// `SdkError` alone yields only "service error", hiding the S3 code (e.g.
+/// `NoSuchBucket`) that identifies the failure.
+fn s3_error<E: std::error::Error + 'static>(
+    op: &str,
+    bucket: &str,
+    key: &str,
+    err: E,
+) -> ServiceError {
+    ServiceError::S3Error(format!(
+        "{op} failed for s3://{bucket}/{key}: {}",
+        DisplayErrorContext(&err)
+    ))
+}
 
 /// S3 client for file blob operations.
 #[derive(Clone)]
@@ -48,7 +64,7 @@ impl S3Client {
             .content_type(content_type)
             .send()
             .await
-            .map_err(|e| ServiceError::S3Error(format!("upload failed: {e}")))?;
+            .map_err(|e| s3_error("upload", &self.bucket, key, e))?;
 
         tracing::info!(key = %key, bucket = %self.bucket, "Uploaded object to S3");
         Ok(())
@@ -63,13 +79,13 @@ impl S3Client {
             .key(key)
             .send()
             .await
-            .map_err(|e| ServiceError::S3Error(format!("download failed: {e}")))?;
+            .map_err(|e| s3_error("download", &self.bucket, key, e))?;
 
         let body = resp
             .body
             .collect()
             .await
-            .map_err(|e| ServiceError::S3Error(format!("body read failed: {e}")))?;
+            .map_err(|e| s3_error("body read", &self.bucket, key, e))?;
 
         Ok(body.into_bytes())
     }
@@ -90,7 +106,7 @@ impl S3Client {
             .key(key)
             .presigned(presigning)
             .await
-            .map_err(|e| ServiceError::S3Error(format!("presign failed: {e}")))?;
+            .map_err(|e| s3_error("presign", &self.bucket, key, e))?;
 
         Ok(presigned.uri().to_string())
     }
@@ -103,7 +119,7 @@ impl S3Client {
             .key(key)
             .send()
             .await
-            .map_err(|e| ServiceError::S3Error(format!("delete failed: {e}")))?;
+            .map_err(|e| s3_error("delete", &self.bucket, key, e))?;
 
         tracing::info!(key = %key, "Deleted object from S3");
         Ok(())
@@ -119,7 +135,7 @@ impl S3Client {
             .key(dest_key)
             .send()
             .await
-            .map_err(|e| ServiceError::S3Error(format!("copy failed: {e}")))?;
+            .map_err(|e| s3_error("copy", &self.bucket, dest_key, e))?;
 
         tracing::info!(source = %source_key, dest = %dest_key, "Copied object in S3");
         Ok(())
