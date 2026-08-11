@@ -1,0 +1,21 @@
+{
+  "business_fields": {
+    "included_units": 100,
+    "plan_code": "STARTER",
+    "tier": "starter"
+  },
+  "entrypoint": "billing.fn_entitlement",
+  "inputs": {
+    "as_of": "2026-02-28",
+    "tenant_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "module": "plans",
+  "probes": {
+    "entitlement_values": "STARTER:starter:100"
+  },
+  "rules": [
+    "PLANS-002"
+  ],
+  "scenario": "PLANS-002",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

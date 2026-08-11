@@ -1,0 +1,15 @@
+id: RATING-005
+module: rating
+description: Rate tenant 6 for 2026-02-01 through 2026-02-28 with 201 units.
+entrypoint: billing.fn_usage_rating
+kind: function
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000006}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+fields:
+  - {name: first_tier_units, from: first_tier_units, type: integer}
+  - {name: second_tier_units, from: second_tier_units, type: integer}
+probes:
+  - {id: rating_values, query: "SELECT first_tier_units::text || ':' || second_tier_units::text FROM billing.fn_usage_rating('00000000-0000-0000-0000-000000000006', '2026-02-01', '2026-02-28')"}
+rules: [RATING-005]

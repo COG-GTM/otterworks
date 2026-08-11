@@ -1,0 +1,22 @@
+{
+  "business_fields": {
+    "billable_units": 0,
+    "rollover_units": 200,
+    "used_units": 260
+  },
+  "entrypoint": "billing.fn_usage_rating",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "module": "rating",
+  "probes": {
+    "rating_values": "260:200:0"
+  },
+  "rules": [
+    "RATING-001"
+  ],
+  "scenario": "RATING-001",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

@@ -1,0 +1,25 @@
+{
+  "business_fields": {
+    "amounts": [
+      "149.00",
+      "12.29"
+    ],
+    "line_types": [
+      "plan",
+      "usage"
+    ]
+  },
+  "entrypoint": "billing.fn_invoice_lines",
+  "inputs": {
+    "invoice_id": "60000000-0000-0000-0000-000000000001"
+  },
+  "module": "invoicing",
+  "probes": {
+    "line_values": "1:149.00,2:12.29"
+  },
+  "rules": [
+    "INVOICE-006"
+  ],
+  "scenario": "INVOICE-006",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

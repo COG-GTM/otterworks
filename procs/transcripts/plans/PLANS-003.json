@@ -1,0 +1,20 @@
+{
+  "business_fields": {
+    "plan_code": "GROWTH",
+    "subscription_status": "suspended"
+  },
+  "entrypoint": "billing.fn_entitlement",
+  "inputs": {
+    "as_of": "2026-02-28",
+    "tenant_id": "00000000-0000-0000-0000-000000000002"
+  },
+  "module": "plans",
+  "probes": {
+    "entitlement_values": "GROWTH:suspended"
+  },
+  "rules": [
+    "PLANS-003"
+  ],
+  "scenario": "PLANS-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

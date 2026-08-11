@@ -1,0 +1,21 @@
+{
+  "business_fields": {
+    "latest_plan": "10000000-0000-0000-0000-000000000002",
+    "latest_start": "2026-03-01"
+  },
+  "entrypoint": "billing.sp_change_plan",
+  "inputs": {
+    "effective_on": "2026-03-01",
+    "plan_id": "10000000-0000-0000-0000-000000000002",
+    "tenant_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "module": "plans",
+  "probes": {
+    "subscription_values": "10000000-0000-0000-0000-000000000001:2026-02-28,10000000-0000-0000-0000-000000000002:open"
+  },
+  "rules": [
+    "PLANS-004"
+  ],
+  "scenario": "PLANS-004",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

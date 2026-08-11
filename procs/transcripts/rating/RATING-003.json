@@ -1,0 +1,21 @@
+{
+  "business_fields": {
+    "billable_units": 100,
+    "overage_amount": "4.37"
+  },
+  "entrypoint": "billing.fn_usage_rating",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000002"
+  },
+  "module": "rating",
+  "probes": {
+    "rating_values": "100:4.37"
+  },
+  "rules": [
+    "RATING-003"
+  ],
+  "scenario": "RATING-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

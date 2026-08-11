@@ -1,0 +1,15 @@
+id: INVOICE-002
+module: invoicing
+description: Preview tenant 3 for 2026-02-01 through 2026-02-28.
+entrypoint: billing.fn_invoice_preview
+kind: function
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000003}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+fields:
+  - {name: line_types, from: line_type, type: text, collect: true}
+  - {name: tax_amount, from: tax_amount, type: decimal, collect: true}
+probes:
+  - {id: line_values, query: "SELECT string_agg(line_no::text || ':' || line_type || ':' || tax_amount::text, ',' ORDER BY line_no) FROM billing.fn_invoice_preview('00000000-0000-0000-0000-000000000003', '2026-02-01', '2026-02-28')"}
+rules: [INVOICE-002]

@@ -1,0 +1,33 @@
+{
+  "business_fields": {
+    "line_types": [
+      "plan",
+      "usage",
+      "tax",
+      "tax",
+      "credit"
+    ],
+    "tax_amount": [
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00",
+      "0.00"
+    ]
+  },
+  "entrypoint": "billing.fn_invoice_preview",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000003"
+  },
+  "module": "invoicing",
+  "probes": {
+    "line_values": "1:plan:0,2:usage:0,3:tax:0,4:tax:0,5:credit:0"
+  },
+  "rules": [
+    "INVOICE-002"
+  ],
+  "scenario": "INVOICE-002",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

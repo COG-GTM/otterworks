@@ -1,0 +1,27 @@
+{
+  "business_fields": {
+    "credit_ids": [
+      "70000000-0000-0000-0000-000000000001",
+      "70000000-0000-0000-0000-000000000002"
+    ],
+    "remaining": [
+      "0.00",
+      "6.96"
+    ]
+  },
+  "entrypoint": "billing.sp_issue_invoice",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000004"
+  },
+  "module": "invoicing",
+  "probes": {
+    "credit_values": "70000000-0000-0000-0000-000000000001:0.00,70000000-0000-0000-0000-000000000002:6.96"
+  },
+  "rules": [
+    "INVOICE-003"
+  ],
+  "scenario": "INVOICE-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

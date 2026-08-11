@@ -1,0 +1,25 @@
+{
+  "business_fields": {
+    "codes": [
+      "STARTER",
+      "GROWTH",
+      "SCALE"
+    ],
+    "fees": [
+      "49.00",
+      "149.00",
+      "499.00"
+    ]
+  },
+  "entrypoint": "billing.fn_list_plans",
+  "inputs": {},
+  "module": "plans",
+  "probes": {
+    "catalog_values": "GROWTH:149.00,SCALE:499.00,STARTER:49.00"
+  },
+  "rules": [
+    "PLANS-001"
+  ],
+  "scenario": "PLANS-001",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

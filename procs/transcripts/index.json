@@ -1,0 +1,170 @@
+[
+  {
+    "module": "dunning",
+    "rules": [
+      "DUNNING-001"
+    ],
+    "scenario": "DUNNING-001"
+  },
+  {
+    "module": "dunning",
+    "rules": [
+      "DUNNING-002"
+    ],
+    "scenario": "DUNNING-002"
+  },
+  {
+    "module": "dunning",
+    "rules": [
+      "DUNNING-003"
+    ],
+    "scenario": "DUNNING-003"
+  },
+  {
+    "module": "dunning",
+    "rules": [
+      "DUNNING-004"
+    ],
+    "scenario": "DUNNING-004"
+  },
+  {
+    "module": "dunning",
+    "rules": [
+      "DUNNING-005"
+    ],
+    "scenario": "DUNNING-005"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-001"
+    ],
+    "scenario": "INVOICE-001"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-002"
+    ],
+    "scenario": "INVOICE-002"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-003"
+    ],
+    "scenario": "INVOICE-003"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-004"
+    ],
+    "scenario": "INVOICE-004"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-005"
+    ],
+    "scenario": "INVOICE-005"
+  },
+  {
+    "module": "invoicing",
+    "rules": [
+      "INVOICE-006"
+    ],
+    "scenario": "INVOICE-006"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-001"
+    ],
+    "scenario": "PLANS-001"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-002"
+    ],
+    "scenario": "PLANS-002"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-003"
+    ],
+    "scenario": "PLANS-003"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-004"
+    ],
+    "scenario": "PLANS-004"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-005"
+    ],
+    "scenario": "PLANS-005"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-001"
+    ],
+    "scenario": "RATING-001"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-002"
+    ],
+    "scenario": "RATING-002"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-003"
+    ],
+    "scenario": "RATING-003"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-004"
+    ],
+    "scenario": "RATING-004"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-005"
+    ],
+    "scenario": "RATING-005"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-006"
+    ],
+    "scenario": "RATING-006"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-007"
+    ],
+    "scenario": "RATING-007"
+  },
+  {
+    "module": "rating",
+    "rules": [
+      "RATING-008"
+    ],
+    "scenario": "RATING-008"
+  }
+]

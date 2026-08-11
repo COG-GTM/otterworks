@@ -1,9 +1,27 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-up procs-down procs-record procs-list
 
 SHELL := /bin/bash
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+PROCS_COMPOSE := docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
+PROCS_UV := uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
+
+procs-up: ## Start the legacy billing stored-procedure stack (NS=<namespace>)
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
+	NS=$(NS) $(PROCS_COMPOSE) up -d --build
+
+procs-down: ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-down NS=dev" >&2; exit 2)
+	NS=$(NS) $(PROCS_COMPOSE) down -v
+
+procs-record: ## Record legacy billing transcripts (NS=<namespace>, MODULE=<module> optional)
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-record NS=dev" >&2; exit 2)
+	NS=$(NS) DB_NAME=billing_$(NS) DB_PORT=$${PROCS_DB_PORT:-55432} $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),)
+
+procs-list: ## List stored-procedure modules and scenarios
+	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
 
 # --- Local Development ---
 

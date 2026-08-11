@@ -1,0 +1,14 @@
+id: DUNNING-003
+module: dunning
+description: Schedule tenant accounts from 2026-02-17 with existing attempts.
+entrypoint: billing.sp_schedule_dunning
+kind: procedure
+inputs:
+  - {name: as_of, type: date, value: 2026-02-17}
+capture_query: "SELECT attempt_no, scheduled_for::text FROM billing.dunning_attempts WHERE invoice_id = '60000000-0000-0000-0000-000000000002' ORDER BY attempt_no DESC LIMIT 1"
+fields:
+  - {name: attempt_no, from: attempt_no, type: integer}
+  - {name: scheduled_for, from: scheduled_for, type: text}
+probes:
+  - {id: schedule_values, query: "SELECT string_agg(attempt_no::text || ':' || scheduled_for::text, ',' ORDER BY attempt_no) FROM billing.dunning_attempts WHERE invoice_id = '60000000-0000-0000-0000-000000000002'"}
+rules: [DUNNING-003]

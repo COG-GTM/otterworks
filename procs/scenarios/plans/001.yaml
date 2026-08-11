@@ -1,0 +1,12 @@
+id: PLANS-001
+module: plans
+description: Return the catalog for the active plans.
+entrypoint: billing.fn_list_plans
+kind: function
+inputs: []
+fields:
+  - {name: codes, from: code, type: text, collect: true}
+  - {name: fees, from: monthly_fee, type: decimal, collect: true}
+probes:
+  - {id: catalog_values, query: "SELECT string_agg(code || ':' || monthly_fee::text, ',' ORDER BY code) FROM billing.fn_list_plans()"}
+rules: [PLANS-001]

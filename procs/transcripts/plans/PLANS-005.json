@@ -1,0 +1,21 @@
+{
+  "business_fields": {
+    "prior_end": "2026-03-14",
+    "prior_status": "active"
+  },
+  "entrypoint": "billing.sp_change_plan",
+  "inputs": {
+    "effective_on": "2026-03-15",
+    "plan_id": "10000000-0000-0000-0000-000000000003",
+    "tenant_id": "00000000-0000-0000-0000-000000000004"
+  },
+  "module": "plans",
+  "probes": {
+    "subscription_values": "active:2026-03-14,active:open"
+  },
+  "rules": [
+    "PLANS-005"
+  ],
+  "scenario": "PLANS-005",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

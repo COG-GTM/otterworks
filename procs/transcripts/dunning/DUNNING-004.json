@@ -1,0 +1,19 @@
+{
+  "business_fields": {
+    "status": "suspended",
+    "suspended_on": "2026-02-28"
+  },
+  "entrypoint": "billing.sp_suspend_overdue",
+  "inputs": {
+    "as_of": "2026-02-28"
+  },
+  "module": "dunning",
+  "probes": {
+    "suspension_values": "suspended:2026-02-28:1"
+  },
+  "rules": [
+    "DUNNING-004"
+  ],
+  "scenario": "DUNNING-004",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

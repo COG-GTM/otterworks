@@ -1,0 +1,17 @@
+id: INVOICE-003
+module: invoicing
+description: Issue tenant 4 for 2026-02-01 through 2026-02-28 after two credit dates.
+entrypoint: billing.sp_issue_invoice
+kind: procedure
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000004}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+setup_sql: "UPDATE billing.credit_notes SET issued_on = CASE WHEN id = '70000000-0000-0000-0000-000000000001' THEN '2026-01-31'::date ELSE '2026-02-01'::date END WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"
+capture_query: "SELECT id::text, remaining_amount::text FROM billing.credit_notes WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY issued_on, id"
+fields:
+  - {name: credit_ids, from: id, type: text, collect: true}
+  - {name: remaining, from: remaining_amount, type: decimal, collect: true}
+probes:
+  - {id: credit_values, query: "SELECT string_agg(id::text || ':' || remaining_amount::text, ',' ORDER BY issued_on, id) FROM billing.credit_notes WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"}
+rules: [INVOICE-003]

@@ -1,0 +1,16 @@
+id: PLANS-004
+module: plans
+description: Change tenant 1 to plan 2 effective 2026-03-01.
+entrypoint: billing.sp_change_plan
+kind: procedure
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000001}
+  - {name: plan_id, type: uuid, value: 10000000-0000-0000-0000-000000000002}
+  - {name: effective_on, type: date, value: 2026-03-01}
+capture_query: "SELECT plan_id::text, starts_on::text, status FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000001' ORDER BY starts_on"
+fields:
+  - {name: latest_plan, from: plan_id, type: text, last: true}
+  - {name: latest_start, from: starts_on, type: text, last: true}
+probes:
+  - {id: subscription_values, query: "SELECT string_agg(plan_id::text || ':' || COALESCE(ends_on::text, 'open'), ',' ORDER BY starts_on) FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000001'"}
+rules: [PLANS-004]

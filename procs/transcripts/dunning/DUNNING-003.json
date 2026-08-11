@@ -1,0 +1,19 @@
+{
+  "business_fields": {
+    "attempt_no": 2,
+    "scheduled_for": "2026-02-17"
+  },
+  "entrypoint": "billing.sp_schedule_dunning",
+  "inputs": {
+    "as_of": "2026-02-17"
+  },
+  "module": "dunning",
+  "probes": {
+    "schedule_values": "1:2026-02-16,2:2026-02-17"
+  },
+  "rules": [
+    "DUNNING-003"
+  ],
+  "scenario": "DUNNING-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

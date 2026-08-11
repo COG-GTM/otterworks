@@ -1,0 +1,14 @@
+id: DUNNING-004
+module: dunning
+description: Apply account handling for 2026-02-28.
+entrypoint: billing.sp_suspend_overdue
+kind: procedure
+inputs:
+  - {name: as_of, type: date, value: 2026-02-28}
+capture_query: "SELECT status, suspended_on::text FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000005'"
+fields:
+  - {name: status, from: status, type: text}
+  - {name: suspended_on, from: suspended_on, type: text}
+probes:
+  - {id: suspension_values, query: "SELECT s.status || ':' || s.suspended_on::text || ':' || count(n.id)::text FROM billing.subscriptions s LEFT JOIN billing.notifications n ON n.tenant_id = s.tenant_id AND n.kind = 'suspension' WHERE s.tenant_id = '00000000-0000-0000-0000-000000000005' GROUP BY s.status, s.suspended_on"}
+rules: [DUNNING-004]

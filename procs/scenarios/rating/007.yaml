@@ -1,0 +1,15 @@
+id: RATING-007
+module: rating
+description: Summarize tenant 4 usage for 2026-02-01 through 2026-02-28.
+entrypoint: billing.fn_usage_summary
+kind: function
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000004}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+fields:
+  - {name: kinds, from: kind, type: text, collect: true}
+  - {name: units, from: units, type: integer, collect: true}
+probes:
+  - {id: summary_values, query: "SELECT string_agg(kind || ':' || units::text, ',' ORDER BY kind) FROM billing.fn_usage_summary('00000000-0000-0000-0000-000000000004', '2026-02-01', '2026-02-28')"}
+rules: [RATING-007]

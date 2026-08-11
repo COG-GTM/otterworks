@@ -1,0 +1,24 @@
+{
+  "business_fields": {
+    "billable_units": 0,
+    "overage_amount": "0.00",
+    "quota_units": 100,
+    "rollover_units": 0,
+    "used_units": 260
+  },
+  "entrypoint": "billing.sp_finalize_rating",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "module": "rating",
+  "probes": {
+    "persisted_values": "260:100:0:0:0.00"
+  },
+  "rules": [
+    "RATING-008"
+  ],
+  "scenario": "RATING-008",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}
