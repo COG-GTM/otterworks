@@ -2,6 +2,15 @@ export const BILLING_BASE_URL =
   import.meta.env.VITE_BILLING_SERVICE_URL ||
   `${window.location.origin}/billing-api`;
 
+export class BillingApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export type Plan = {
   plan_id: string;
   code: string;
@@ -37,7 +46,10 @@ export type PlanChangeResult = {
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BILLING_BASE_URL}${path}`, options);
   if (!response.ok) {
-    throw new Error(`Billing service returned ${response.status}`);
+    throw new BillingApiError(
+      `Billing service returned ${response.status}`,
+      response.status,
+    );
   }
   return response.json() as Promise<T>;
 }

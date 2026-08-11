@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { billingApi, type Plan, type PlanChangeResult } from "./api";
+import {
+  billingApi,
+  BillingApiError,
+  type Plan,
+  type PlanChangeResult,
+} from "./api";
 import { BillingAlert } from "./alert";
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -58,7 +63,13 @@ export default function BillingChangePlanPage() {
     billingApi
       .changePlan(tenantId, planId, effectiveOn)
       .then(setResult)
-      .catch(() => setError("The plan change could not be saved."))
+      .catch((error: unknown) => {
+        setError(
+          error instanceof BillingApiError && error.status === 409
+            ? "This plan change was already submitted."
+            : "The plan change could not be saved.",
+        );
+      })
       .finally(() => setIsSaving(false));
   };
 

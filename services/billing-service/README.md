@@ -34,5 +34,10 @@ subscription preserves that later row. The response's `latest_*` fields always
 identify the subscription created by the request, rather than relying on row
 ordering.
 
+The legacy procedure attempts a second insert for an identical plan change and
+therefore relies on the database uniqueness error. The extracted target returns
+HTTP 409 with an explicit conflict detail instead of leaking a 500; this is
+target-side error handling, not an additional parity rule.
+
 When using the workshop client with the default disposable stack, the Vite
 development proxy forwards `/billing-api/*` to the service on port `12109`.
