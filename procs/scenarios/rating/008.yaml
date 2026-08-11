@@ -18,4 +18,3 @@ probes:
   - id: rating_result
     collect_rows: true
     query: "SELECT used_units, quota_units, rollover_units, billable_units, overage_amount::text AS overage_amount FROM billing.rating_results rr JOIN billing.rating_periods rp ON rp.id = rr.period_id WHERE rp.tenant_id = '00000000-0000-0000-0000-000000000001' AND rp.period_start = '2026-02-01'"
-rules: [RATING-008]

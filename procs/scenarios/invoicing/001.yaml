@@ -12,4 +12,3 @@ fields:
   - {name: amounts, from: amount, type: decimal, collect: true}
   - {name: totals, from: total, type: decimal, collect: true}
 probes: []
-rules: [INVOICE-001]

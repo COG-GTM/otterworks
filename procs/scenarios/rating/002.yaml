@@ -11,4 +11,3 @@ fields:
   - {name: rollover_units, from: rollover_units, type: integer}
   - {name: overage_amount, from: overage_amount, type: decimal}
 probes: []
-rules: [RATING-002]

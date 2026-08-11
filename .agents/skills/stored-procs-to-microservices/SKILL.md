@@ -11,8 +11,8 @@ description: Applies when extracting business logic out of the legacy billing st
 - Thin legacy HTTP layer: `services/legacy-billing/app/` (Flask/Jinja).
 - Scenarios: `procs/scenarios/<module>/*.yaml`.
 - Immutable transcripts: `procs/transcripts/<module>/*.json`; global index
-  `procs/transcripts/index.json`; procedure fingerprint
-  `procs/transcripts/SOURCE_SHA`.
+  `procs/transcripts/index.json`; procedure and fixture fingerprints
+  `procs/transcripts/SOURCE_SHA` and `procs/transcripts/FIXTURE_SHA`.
 - Declarative parity contract: `procs/routes.yaml`.
 - Approved ledgers: `procs/rules/<module>.rules.yaml`.
 - Replay and gate harness: `procs/harness/{record,replay,rules_gate,list}.py`.

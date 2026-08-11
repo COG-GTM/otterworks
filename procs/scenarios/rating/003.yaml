@@ -11,4 +11,3 @@ fields:
   - {name: billable_units, from: billable_units, type: integer}
   - {name: overage_amount, from: overage_amount, type: decimal}
 probes: []
-rules: [RATING-003]

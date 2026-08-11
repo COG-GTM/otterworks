@@ -11,4 +11,3 @@ fields:
   - {name: overage_amount, from: overage_amount, type: decimal}
   - {name: first_tier_units, from: first_tier_units, type: integer}
 probes: []
-rules: [RATING-004]

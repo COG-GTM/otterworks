@@ -10,15 +10,14 @@
     ]
   },
   "entrypoint": "billing.fn_invoice_lines",
+  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
   "inputs": {
     "invoice_id": "60000000-0000-0000-0000-000000000001"
   },
   "module": "invoicing",
   "probes": {},
   "rerecord_reason": "scenario-redesign",
-  "rules": [
-    "INVOICE-006"
-  ],
+  "rules": [],
   "scenario": "INVOICE-006",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
 }

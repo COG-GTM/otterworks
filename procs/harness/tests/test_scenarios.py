@@ -30,4 +30,5 @@ def test_probe_shapes_are_stable_per_entrypoint() -> None:
                 )
             )
             shapes.setdefault(scenario["entrypoint"], set()).add(shape)
+            assert "rules" not in scenario
         assert all(len(entrypoint_shapes) == 1 for entrypoint_shapes in shapes.values())

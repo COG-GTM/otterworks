@@ -13,4 +13,3 @@ fields:
   - {name: rollover_units, from: rollover_units, type: integer}
   - {name: billable_units, from: billable_units, type: integer}
 probes: []
-rules: [RATING-001]

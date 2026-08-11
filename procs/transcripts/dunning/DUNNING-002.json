@@ -4,6 +4,7 @@
     "status": "scheduled"
   },
   "entrypoint": "billing.sp_schedule_dunning",
+  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
   "inputs": {
     "as_of": "2026-02-14"
   },
@@ -31,9 +32,7 @@
     ]
   },
   "rerecord_reason": "scenario-redesign",
-  "rules": [
-    "DUNNING-002"
-  ],
+  "rules": [],
   "scenario": "DUNNING-002",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
 }

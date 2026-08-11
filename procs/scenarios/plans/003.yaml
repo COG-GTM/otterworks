@@ -12,4 +12,3 @@ fields:
   - {name: included_units, from: included_units, type: integer}
   - {name: subscription_status, from: subscription_status, type: text}
 probes: []
-rules: [PLANS-003]

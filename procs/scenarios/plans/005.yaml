@@ -14,4 +14,3 @@ fields:
     columns: {plan_id: text, starts_on: date, ends_on: date, status: text}
 probes:
   - {id: subscription_rows, collect_rows: true, query: "SELECT plan_id::text, starts_on, ends_on, status FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY starts_on"}
-rules: [PLANS-005]

@@ -4,10 +4,15 @@ import argparse
 from pathlib import Path
 
 import yaml
+try:
+    from procs.harness.ledger import scenario_rule_map
+except ModuleNotFoundError:
+    from ledger import scenario_rule_map
 
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS = ROOT / "procs" / "scenarios"
 ROUTES = ROOT / "procs" / "routes.yaml"
+RULES = ROOT / "procs" / "rules"
 
 
 def main() -> int:
@@ -15,6 +20,7 @@ def main() -> int:
     parser.add_argument("--module")
     args = parser.parse_args()
     routes = yaml.safe_load(ROUTES.read_text()).get("modules", {})
+    rules_by_scenario = scenario_rule_map(RULES)
     scenario_modules = {
         path.name for path in SCENARIOS.iterdir() if path.is_dir()
     }
@@ -24,13 +30,15 @@ def main() -> int:
         if not paths:
             parser.error(f"unknown module: {module}")
         scenarios = [yaml.safe_load(path.read_text()) for path in paths]
-        rules = sorted({rule for scenario in scenarios for rule in scenario.get("rules", [])})
+        rules = sorted(
+            {rule for scenario in scenarios for rule in rules_by_scenario.get(scenario["id"], [])}
+        )
         print(
             f"{module:12} {routes.get(module, {}).get('status', 'pending'):9} "
             f"scenarios={len(scenarios):2} rule_claims={len(rules):2}"
         )
         for scenario in scenarios:
-            print(f"  {scenario['id']}: {', '.join(scenario.get('rules', []))}")
+            print(f"  {scenario['id']}: {', '.join(rules_by_scenario.get(scenario['id'], []))}")
     return 0
 
 

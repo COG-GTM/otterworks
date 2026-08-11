@@ -13,4 +13,3 @@ probes:
   - id: schedule_rows
     collect_rows: true
     query: "SELECT invoice_id::text AS invoice_id, attempt_no, scheduled_for::text AS scheduled_for, status FROM billing.dunning_attempts ORDER BY invoice_id, attempt_no"
-rules: [DUNNING-002]

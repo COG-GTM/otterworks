@@ -12,6 +12,7 @@
     ]
   },
   "entrypoint": "billing.fn_list_plans",
+  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
   "inputs": {},
   "module": "plans",
   "probes": {},

@@ -11,4 +11,3 @@ fields:
   - {name: kinds, from: kind, type: text, collect: true}
   - {name: units, from: units, type: integer, collect: true}
 probes: []
-rules: [RATING-007]

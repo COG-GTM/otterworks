@@ -9,4 +9,3 @@ fields:
   - {name: tenant_ids, from: tenant_id, type: uuid, collect: true}
   - {name: days_overdue, from: days_overdue, type: integer, collect: true}
 probes: []
-rules: [DUNNING-001]

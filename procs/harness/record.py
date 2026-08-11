@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -14,6 +13,12 @@ from uuid import UUID
 import psycopg
 from psycopg import sql
 import yaml
+try:
+    from procs.harness.fingerprints import fixture_sha, source_sha
+    from procs.harness.ledger import scenario_rule_map
+except ModuleNotFoundError:
+    from fingerprints import fixture_sha, source_sha
+    from ledger import scenario_rule_map
 
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS = ROOT / "procs" / "scenarios"
@@ -26,21 +31,10 @@ DB_FILES = [
     ROOT / "services" / "legacy-billing" / "db" / "procs" / "dunning.sql",
     ROOT / "services" / "legacy-billing" / "db" / "seed.sql",
 ]
-PROC_DIR = ROOT / "services" / "legacy-billing" / "db" / "procs"
 
 WOULD_OVERWRITE = 2
 STACK_UNREACHABLE = 3
 SCENARIO_FAILED = 4
-
-
-def source_sha() -> str:
-    digest = hashlib.sha256()
-    for path in sorted(PROC_DIR.glob("*.sql")):
-        digest.update(str(path.relative_to(PROC_DIR)).encode())
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def connection():
@@ -185,7 +179,7 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
         },
         "business_fields": capture_fields(result_rows, scenario.get("fields", [])),
         "probes": probes,
-        "rules": sorted(scenario.get("rules", [])),
+        "rules": [],
     }
 
 
@@ -204,32 +198,46 @@ def check_immutability(
     allow: bool,
     rerecord_reason: str | None,
     transcript_root: Path,
+    fixture_digest: str | None = None,
 ) -> None:
     existing = []
     for scenario in scenarios:
         path = transcript_root / scenario["module"] / f"{scenario['id']}.json"
         if path.exists():
-            existing.append((path, json.loads(path.read_text()).get("source_sha")))
+            payload = json.loads(path.read_text())
+            existing.append(
+                (
+                    path,
+                    payload.get("source_sha"),
+                    payload.get("fixture_sha"),
+                )
+            )
     if not existing:
         return
     if not allow or (
-        any(old_sha == digest for _, old_sha in existing)
+        any(old_sha == digest for _, old_sha, _ in existing)
+        and not any(old_fixture != fixture_digest for _, _, old_fixture in existing)
         and rerecord_reason not in {"harness-change", "scenario-redesign"}
     ):
         names = ", ".join(
             str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
-            for path, _ in existing
+            for path, _, _ in existing
         )
         reason = (
-            "unchanged procedure source; pass --rerecord-reason harness-change or "
-            "scenario-redesign for an audited non-procedure re-record"
+            "unchanged procedure and fixture; pass --rerecord-reason harness-change "
+            "or scenario-redesign for an audited non-procedure re-record"
             if allow
             else "pass --allow-rerecord only after procedure source changes"
         )
         raise RuntimeError(f"would overwrite immutable transcript(s): {names} ({reason})")
 
 
-def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_root: Path) -> None:
+def write_transcripts(
+    records: list[dict[str, Any]],
+    digest: str,
+    transcript_root: Path,
+    fixture_digest: str | None = None,
+) -> None:
     if not records:
         return
     transcript_root.mkdir(parents=True, exist_ok=True)
@@ -244,6 +252,8 @@ def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_roo
     payloads = []
     for record in records:
         record["source_sha"] = digest
+        if fixture_digest is not None:
+            record["fixture_sha"] = fixture_digest
         destination = transcript_root / record["module"] / f"{record['scenario']}.json"
         payloads.append((destination, json.dumps(record, indent=2, sort_keys=True) + "\n"))
         index_by_key[(record["module"], record["scenario"])] = {
@@ -257,6 +267,8 @@ def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_roo
     index = sorted(index_by_key.values(), key=lambda item: (item["module"], item["scenario"]))
     (transcript_root / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
     (transcript_root / "SOURCE_SHA").write_text(digest + "\n")
+    if fixture_digest is not None:
+        (transcript_root / "FIXTURE_SHA").write_text(fixture_digest + "\n")
 
 
 def main() -> int:
@@ -273,6 +285,8 @@ def main() -> int:
         print(f"unknown scenario module: {args.module}", file=sys.stderr)
         return SCENARIO_FAILED
     digest = source_sha()
+    current_fixture_sha = fixture_sha()
+    rules_by_scenario = scenario_rule_map()
     try:
         check_immutability(
             scenarios,
@@ -280,6 +294,7 @@ def main() -> int:
             args.allow_rerecord,
             args.rerecord_reason,
             args.output_dir,
+            current_fixture_sha,
         )
     except RuntimeError as error:
         print(error, file=sys.stderr)
@@ -304,7 +319,9 @@ def main() -> int:
     if args.rerecord_reason:
         for record in records:
             record["rerecord_reason"] = args.rerecord_reason
-    write_transcripts(records, digest, args.output_dir)
+    for record in records:
+        record["rules"] = rules_by_scenario.get(record["scenario"], [])
+    write_transcripts(records, digest, args.output_dir, current_fixture_sha)
     print(f"Recorded {len(records)} scenario(s), SOURCE_SHA={digest}")
     return 0
 

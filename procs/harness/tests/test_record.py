@@ -65,6 +65,14 @@ def test_unchanged_source_rerecord_requires_audited_reason(tmp_path) -> None:
     check_immutability(scenarios, "same", True, "scenario-redesign", tmp_path)
 
 
+def test_fixture_change_permits_rerecord_without_audited_reason(tmp_path) -> None:
+    scenarios = [{"module": "plans", "id": "PLANS-001"}]
+    path = tmp_path / "plans" / "PLANS-001.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({"source_sha": "same", "fixture_sha": "old"}))
+    check_immutability(scenarios, "same", True, None, tmp_path, "new")
+
+
 def test_empty_recording_does_not_rewrite_index_or_fingerprint(tmp_path) -> None:
     index = tmp_path / "index.json"
     source = tmp_path / "SOURCE_SHA"

@@ -11,6 +11,7 @@ from procs.harness.replay import (
     grade_response,
     normalize,
     source_matches,
+    stale_fixture_transcripts,
     stale_transcripts,
     write_report,
 )
@@ -31,6 +32,14 @@ def test_source_sha_mismatch_is_detected(monkeypatch) -> None:
 def test_stale_transcript_source_is_detected() -> None:
     errors = stale_transcripts(
         [{"scenario": "RATING-001", "source_sha": "old"}],
+        "current",
+    )
+    assert errors and "RATING-001" in errors[0]
+
+
+def test_stale_fixture_digest_is_detected() -> None:
+    errors = stale_fixture_transcripts(
+        [{"scenario": "RATING-001", "fixture_sha": "old"}],
         "current",
     )
     assert errors and "RATING-001" in errors[0]
@@ -208,9 +217,15 @@ def test_rows_missing_sort_field_are_reported_and_written(tmp_path, monkeypatch)
     assert (tmp_path / "parity.json").exists()
 
 
-def test_empty_selection_fails_without_grading(monkeypatch) -> None:
+def test_empty_selection_fails_without_grading(monkeypatch, tmp_path) -> None:
+    transcripts = tmp_path / "transcripts"
+    transcripts.mkdir()
+    (transcripts / "SOURCE_SHA").write_text("sha\n")
+    (transcripts / "FIXTURE_SHA").write_text("fixture\n")
+    monkeypatch.setattr(replay, "TRANSCRIPTS", transcripts)
     monkeypatch.setattr(replay, "load_transcripts", lambda _module: [])
     monkeypatch.setattr(replay, "source_matches", lambda _expected: True)
     monkeypatch.setattr(replay, "source_sha", lambda: "sha")
+    monkeypatch.setattr(replay, "fixture_sha", lambda: "fixture")
     monkeypatch.setattr(sys, "argv", ["replay.py", "--module", "typo"])
     assert replay.main() == replay.SELECTION_EMPTY

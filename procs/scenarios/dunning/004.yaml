@@ -13,4 +13,3 @@ probes:
   - id: suspension_notifications
     collect_rows: true
     query: "SELECT id::text AS id, tenant_id::text AS tenant_id, kind, sent_at FROM billing.notifications WHERE kind = 'suspension' ORDER BY tenant_id, sent_at"
-rules: [DUNNING-004]

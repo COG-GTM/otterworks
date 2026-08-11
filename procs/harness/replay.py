@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import http.client
 import json
 import os
@@ -16,9 +15,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
+try:
+    from procs.harness.fingerprints import fixture_sha, source_sha
+except ModuleNotFoundError:
+    from fingerprints import fixture_sha, source_sha
 
 ROOT = Path(__file__).resolve().parents[2]
-PROC_DIR = ROOT / "services" / "legacy-billing" / "db" / "procs"
 TRANSCRIPTS = ROOT / "procs" / "transcripts"
 ROUTES = ROOT / "procs" / "routes.yaml"
 REPORT_DIR = ROOT / "procs" / "reports"
@@ -38,16 +40,6 @@ class UnresolvedPath:
 
     def describe(self) -> str:
         return f"<unresolvable {self.path}: {self.reason}>"
-
-
-def source_sha() -> str:
-    digest = hashlib.sha256()
-    for path in sorted(PROC_DIR.glob("*.sql")):
-        digest.update(str(path.relative_to(PROC_DIR)).encode())
-        digest.update(b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def source_matches(expected: str) -> bool:
@@ -178,6 +170,17 @@ def stale_transcripts(transcripts: list[dict[str, Any]], current_sha: str) -> li
     ]
 
 
+def stale_fixture_transcripts(
+    transcripts: list[dict[str, Any]], current_sha: str
+) -> list[str]:
+    return [
+        f"{item['scenario']}: transcript FIXTURE_SHA {item.get('fixture_sha', '<missing>')} "
+        f"does not match current fixture {current_sha}"
+        for item in transcripts
+        if item.get("fixture_sha") != current_sha
+    ]
+
+
 def compare(
     transcript: dict[str, Any], contract: dict[str, Any], payload: Any
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -243,11 +246,21 @@ def reset_target(base_url: str) -> tuple[bool, str]:
     return True, ""
 
 
-def write_report(current_sha: str, results: list[dict[str, Any]], contract_errors: list[str]) -> None:
+def write_report(
+    current_sha: str,
+    results: list[dict[str, Any]],
+    contract_errors: list[str],
+    current_fixture_sha: str | None = None,
+) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = {"source_sha": current_sha, "results": results, "contract_errors": contract_errors}
+    if current_fixture_sha is not None:
+        report["fixture_sha"] = current_fixture_sha
     (REPORT_DIR / "parity.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    lines = ["# Billing parity report", "", f"Source SHA: `{current_sha}`", ""]
+    lines = ["# Billing parity report", "", f"Source SHA: `{current_sha}`"]
+    if current_fixture_sha is not None:
+        lines.append(f"Fixture SHA: `{current_fixture_sha}`")
+    lines.append("")
     for item in results:
         lines.append(f"- **{item['status']}** `{item['module']}/{item['scenario']}`")
         for failure in item.get("failures", []):
@@ -267,9 +280,18 @@ def main() -> int:
     args = parser.parse_args()
     routes = yaml.safe_load(ROUTES.read_text())["modules"]
     expected_sha = (TRANSCRIPTS / "SOURCE_SHA").read_text().strip()
+    expected_fixture_sha = (TRANSCRIPTS / "FIXTURE_SHA").read_text().strip()
     current_sha = source_sha()
+    current_fixture_digest = fixture_sha()
     if not source_matches(expected_sha):
         print(f"transcript SOURCE_SHA {expected_sha} does not match current procs {current_sha}", file=sys.stderr)
+        return SOURCE_MISMATCH
+    if expected_fixture_sha != current_fixture_digest:
+        print(
+            f"transcript FIXTURE_SHA {expected_fixture_sha} does not match "
+            f"current fixture {current_fixture_digest}",
+            file=sys.stderr,
+        )
         return SOURCE_MISMATCH
     selected = [
         item
@@ -283,6 +305,11 @@ def main() -> int:
     stale = stale_transcripts(selected, current_sha)
     if stale:
         for error in stale:
+            print(error, file=sys.stderr)
+        return SOURCE_MISMATCH
+    stale_fixtures = stale_fixture_transcripts(selected, current_fixture_digest)
+    if stale_fixtures:
+        for error in stale_fixtures:
             print(error, file=sys.stderr)
         return SOURCE_MISMATCH
     extracted_modules = {
@@ -339,7 +366,7 @@ def main() -> int:
         exit_code = CONTRACT_MISSING
     else:
         exit_code = FAIL if any(item["status"] == "FAIL" for item in results) else 0
-    write_report(current_sha, results, contract_errors)
+    write_report(current_sha, results, contract_errors, current_fixture_digest)
     print(
         f"Parity PASS={sum(item['status'] == 'PASS' for item in results)} "
         f"FAIL={sum(item['status'] == 'FAIL' for item in results)} "

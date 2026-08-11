@@ -6,6 +6,7 @@
     "tier": "growth"
   },
   "entrypoint": "billing.fn_entitlement",
+  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
   "inputs": {
     "as_of": "2026-02-28",
     "tenant_id": "00000000-0000-0000-0000-000000000002"
@@ -14,7 +15,7 @@
   "probes": {},
   "rerecord_reason": "scenario-redesign",
   "rules": [
-    "PLANS-003"
+    "PLANS-002"
   ],
   "scenario": "PLANS-003",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
