@@ -16,7 +16,9 @@ description: Applies when extracting business logic out of the legacy billing st
 - Declarative parity contract: `procs/routes.yaml`.
 - Approved ledgers: `procs/rules/<module>.rules.yaml`.
 - Replay and gate harness: `procs/harness/{record,replay,rules_gate,list}.py`.
-- Reports: `procs/reports/parity.{md,json}`.
+- Reports generated locally at `procs/reports/parity.{md,json}` and published
+  as CI artifacts; paste the parity summary and failure detail into the PR
+  body rather than committing the generated files.
 - Extracted target: `services/billing-service/` (`app/domain.py`,
   `app/repository.py`, `app/main.py`, `tests/`); target schema is `billing_svc`.
 - Local client fixture: `frontend/client-app/src/features/billing/`;
@@ -43,7 +45,8 @@ make procs-parity NS=dev MODULE=plans SCENARIO=PLANS-001
 `procs-up` builds and waits for healthy Compose services. `procs-list` prints
 module status, scenario count, rule claims, and scenario mappings. A healthy
 rules run prints `Rules gate PASS: plans`. A healthy full parity run prints
-`Parity PASS=5 FAIL=0 SKIP=19` and writes both report files. Extracted modules
+`Parity PASS=5 FAIL=0 SKIP=19` and writes both local report files, which CI
+uploads as artifacts. Extracted modules
 are graded; pending modules are `SKIP`, never `PASS`.
 
 ## Module contract and status
@@ -181,6 +184,7 @@ make procs-down NS=<namespace>
 
 This runs Compose `down -v`, removing that namespace's containers, networks,
 and volumes while leaving other namespaces untouched. Keep checked-in
-transcripts, ledgers, contracts, and reports unchanged unless an explicitly
-audited recording was required; restore any temporary source tweak before
-rerunning parity.
+transcripts, ledgers, and contracts unchanged unless an explicitly audited
+recording was required; parity reports are generated locally and uploaded by
+CI rather than committed. Restore any temporary source tweak before rerunning
+parity.

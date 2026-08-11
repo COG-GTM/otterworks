@@ -88,10 +88,12 @@ implement, then replay recorded legacy behavior and let it fail you.
    code. The parity fixture deliberately has no authentication because the
    procedures have no notion of a caller; a real extraction must add
    authentication and tenant scoping at the edge.
-8. **Open a PR per module** with the ledger, the parity report, and the mapping
-   notes in it, and let the automated review pass over it. The report is the
-   evidence a reviewer needs; a PR that says "extracted, tests pass" without a
-   green parity run against recorded legacy behavior has proven nothing.
+8. **Open a PR per module** with the ledger, the mapping notes, and the parity
+   evidence in it, and let the automated review pass over it. The parity report
+   is generated locally and published as a CI artifact; paste its `PASS/FAIL/SKIP`
+   summary line and any failure detail into the PR body alongside the ledger.
+   A PR that says "extracted, tests pass" without a green parity run against
+   recorded legacy behavior has proven nothing.
 9. **Fan out the remaining modules in parallel.** One child session per module,
    each in its own namespace on its own branch, each running this same procedure
    to its own green parity run and its own PR. Monitor them; a child that reports
@@ -113,8 +115,9 @@ implement, then replay recorded legacy behavior and let it fail you.
   the data layer holds no rule logic.
 - Concurrent runs do not collide: each run has its own namespace/branch and its
   own data.
-- The PR contains the ledger, the parity report, and the list of any accepted
-  intentional behavior changes.
+- The PR contains the ledger, the parity summary and failure detail, and the
+  list of any accepted intentional behavior changes; CI retains the full
+  generated report as an artifact.
 
 ## Worked example
 
