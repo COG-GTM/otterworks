@@ -113,8 +113,8 @@ unreachable, and `4` scenario/unknown-module failure.
 ## Replay diagnostics and exit codes
 
 Replay checks the global fingerprint and every selected transcript's own
-`source_sha`, resets the target before grading, and always writes
-`procs/reports/parity.{md,json}` after a grading run. Missing response paths,
+`source_sha`, resets the target before grading, and once grading begins writes
+`procs/reports/parity.{md,json}` on every exit path. Missing response paths,
 null/scalar parents, and non-list row/collect values are graded failures rather
 than traceback crashes. A target non-200 records a status failure without
 attempting response-field comparison.

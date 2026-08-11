@@ -313,12 +313,13 @@ def main() -> int:
         if gate.returncode:
             print(f"rules gate for {module} is not green:\n{gate.stderr or gate.stdout}", file=sys.stderr)
             return CONTRACT_MISSING
+    results = []
+    contract_errors = []
     ok, reset_error = reset_target(args.base_url)
     if not ok:
         print(reset_error, file=sys.stderr)
+        write_report(current_sha, results, contract_errors, current_fixture_digest)
         return TARGET_UNREACHABLE if reset_error.startswith("target unreachable") else RESET_FAILED
-    results = []
-    contract_errors = []
     for transcript in selected:
         module = routes.get(transcript["module"])
         if module is None:
@@ -334,11 +335,13 @@ def main() -> int:
         ok, reset_error = reset_target(args.base_url)
         if not ok:
             print(f"{transcript['scenario']}: {reset_error}", file=sys.stderr)
+            write_report(current_sha, results, contract_errors, current_fixture_digest)
             return TARGET_UNREACHABLE if reset_error.startswith("target unreachable") else RESET_FAILED
         try:
             status, payload = target_request(args.base_url, contract, transcript["inputs"])
         except (http.client.HTTPException, OSError) as error:
             print(f"target unreachable during {transcript['scenario']}: {error}", file=sys.stderr)
+            write_report(current_sha, results, contract_errors, current_fixture_digest)
             return TARGET_UNREACHABLE
         failures, errors = grade_response(transcript, contract, status, payload)
         contract_errors.extend(errors)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
@@ -263,3 +264,73 @@ def test_empty_selection_fails_without_grading(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(replay, "fixture_sha", lambda: "fixture")
     monkeypatch.setattr(sys, "argv", ["replay.py", "--module", "typo"])
     assert replay.main() == replay.SELECTION_EMPTY
+
+
+def test_mid_loop_target_failure_writes_partial_report(monkeypatch, tmp_path) -> None:
+    transcripts = tmp_path / "transcripts"
+    transcripts.mkdir()
+    (transcripts / "SOURCE_SHA").write_text("sha\n")
+    (transcripts / "FIXTURE_SHA").write_text("fixture\n")
+    routes = tmp_path / "routes.yaml"
+    routes.write_text(
+        "modules:\n"
+        "  plans:\n"
+        "    status: extracted\n"
+        "    entrypoints:\n"
+        "      billing.fn_list_plans:\n"
+        "        response:\n"
+        "          business_fields: {}\n"
+        "          probes: {}\n"
+    )
+    selected = [
+        {
+            "module": "plans",
+            "scenario": "PLANS-001",
+            "entrypoint": "billing.fn_list_plans",
+            "inputs": {},
+            "business_fields": {},
+            "probes": {},
+            "source_sha": "sha",
+            "fixture_sha": "fixture",
+        },
+        {
+            "module": "plans",
+            "scenario": "PLANS-002",
+            "entrypoint": "billing.fn_list_plans",
+            "inputs": {},
+            "business_fields": {},
+            "probes": {},
+            "source_sha": "sha",
+            "fixture_sha": "fixture",
+        },
+    ]
+    monkeypatch.setattr(replay, "TRANSCRIPTS", transcripts)
+    monkeypatch.setattr(replay, "ROUTES", routes)
+    monkeypatch.setattr(replay, "REPORT_DIR", tmp_path / "reports")
+    monkeypatch.setattr(replay, "load_transcripts", lambda _module: selected)
+    monkeypatch.setattr(replay, "source_matches", lambda _expected: True)
+    monkeypatch.setattr(replay, "source_sha", lambda: "sha")
+    monkeypatch.setattr(replay, "fixture_sha", lambda: "fixture")
+    monkeypatch.setattr(
+        replay.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+    monkeypatch.setattr(replay, "reset_target", lambda _url: (True, ""))
+    calls = 0
+
+    def target_request(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("connection reset")
+        return 200, {}
+
+    monkeypatch.setattr(replay, "target_request", target_request)
+    monkeypatch.setattr(sys, "argv", ["replay.py"])
+
+    assert replay.main() == replay.TARGET_UNREACHABLE
+    report = (tmp_path / "reports" / "parity.json").read_text()
+    assert "PLANS-001" in report
+    assert "PLANS-002" not in report
+    assert (tmp_path / "reports" / "parity.md").exists()
