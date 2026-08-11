@@ -12,6 +12,7 @@ from typing import Any
 from uuid import UUID
 
 import psycopg
+from psycopg import sql
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -137,15 +138,23 @@ def capture_fields(rows: list[dict[str, Any]], specs: list[dict[str, Any]]) -> d
 def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
     inputs = scenario.get("inputs", [])
     params = tuple(typed(item.get("value"), item["type"]) for item in inputs)
-    placeholder = ", ".join(["%s"] * len(params))
     entrypoint = scenario["entrypoint"]
+    namespace, function = entrypoint.split(".", maxsplit=1)
+    qualified_entrypoint = sql.Identifier(namespace, function)
+    placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in params)
     with connection_handle.cursor() as cursor:
         if scenario.get("setup_sql"):
             cursor.execute(scenario["setup_sql"])
         if scenario["kind"] == "function":
-            result_rows = query_rows(cursor, f"SELECT * FROM {entrypoint}({placeholder})", params)
+            query = sql.SQL("SELECT * FROM {}({})").format(qualified_entrypoint, placeholders)
+            cursor.execute(query, params)
+            names = [column.name for column in cursor.description] if cursor.description else []
+            result_rows = [
+                {name: normalized(value) for name, value in zip(names, row)}
+                for row in cursor.fetchall()
+            ]
         else:
-            cursor.execute(f"CALL {entrypoint}({placeholder})", params)
+            cursor.execute(sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params)
             result_rows = []
         if scenario.get("before_sql"):
             cursor.execute(scenario["before_sql"])

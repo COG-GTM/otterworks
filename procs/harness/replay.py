@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -11,8 +12,7 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -92,19 +92,23 @@ def request_json(
     body: dict[str, Any] | None = None,
 ) -> tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
-    request = Request(
-        f"{base_url}{path}",
-        method=method,
-        data=data,
-        headers={"Content-Type": "application/json"},
-    )
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise OSError(f"unsupported target URL: {base_url}")
+    connection_type = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
+    connection = connection_type(parsed.netloc, timeout=5)
     try:
-        with urlopen(request, timeout=5) as response:
-            raw = response.read()
-            return response.status, json.loads(raw) if raw else None
-    except HTTPError as error:
-        raw = error.read()
-        return error.code, json.loads(raw) if raw else None
+        connection.request(
+            method,
+            f"{parsed.path.rstrip('/')}{path}",
+            body=data,
+            headers={"Content-Type": "application/json"},
+        )
+        response = connection.getresponse()
+        raw = response.read()
+        return response.status, json.loads(raw) if raw else None
+    finally:
+        connection.close()
 
 
 def target_request(
@@ -164,7 +168,7 @@ def classify_transcript(transcript: dict[str, Any], routes: dict[str, Any]) -> s
 def reset_target(base_url: str) -> tuple[bool, str]:
     try:
         status, payload = request_json(base_url, "POST", "/internal/reset")
-    except (URLError, OSError) as error:
+    except (http.client.HTTPException, OSError) as error:
         return False, f"target unreachable during reset: {error}"
     if status != 204:
         return False, f"target reset returned HTTP {status}: {payload}"
@@ -241,7 +245,7 @@ def main() -> int:
             return TARGET_UNREACHABLE if reset_error.startswith("target unreachable") else RESET_FAILED
         try:
             status, payload = target_request(args.base_url, contract, transcript["inputs"])
-        except (URLError, OSError) as error:
+        except (http.client.HTTPException, OSError) as error:
             print(f"target unreachable during {transcript['scenario']}: {error}", file=sys.stderr)
             return TARGET_UNREACHABLE
         failures = [] if status == 200 else [

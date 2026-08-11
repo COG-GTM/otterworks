@@ -41,8 +41,7 @@ export default function BillingChangePlanPage() {
       })
       .finally(() => {
         if (mounted) setIsLoading(false);
-      })
-      .catch(() => undefined);
+      });
     return () => {
       mounted = false;
       setError("");
@@ -60,8 +59,7 @@ export default function BillingChangePlanPage() {
       .changePlan(tenantId, planId, effectiveOn)
       .then(setResult)
       .catch(() => setError("The plan change could not be saved."))
-      .finally(() => setIsSaving(false))
-      .catch(() => undefined);
+      .finally(() => setIsSaving(false));
   };
 
   return (

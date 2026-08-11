@@ -10,31 +10,25 @@ export default function BillingPlansPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const loadPlans = () => {
+  const loadPlans = (isMounted = () => true) => {
     setError("");
     setIsLoading(true);
     billingApi
       .listPlans()
-      .then(setPlans)
-      .catch(() => setError("Plans could not be loaded."))
-      .finally(() => setIsLoading(false))
-      .catch(() => undefined);
+      .then((items) => {
+        if (isMounted()) setPlans(items);
+      })
+      .catch(() => {
+        if (isMounted()) setError("Plans could not be loaded.");
+      })
+      .finally(() => {
+        if (isMounted()) setIsLoading(false);
+      });
   };
 
   useEffect(() => {
     let mounted = true;
-    billingApi
-      .listPlans()
-      .then((items) => {
-        if (mounted) setPlans(items);
-      })
-      .catch(() => {
-        if (mounted) setError("Plans could not be loaded.");
-      })
-      .finally(() => {
-        if (mounted) setIsLoading(false);
-      })
-      .catch(() => undefined);
+    loadPlans(() => mounted);
     return () => {
       mounted = false;
       setError("");

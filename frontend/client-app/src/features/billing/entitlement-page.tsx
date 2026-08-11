@@ -34,8 +34,7 @@ export default function BillingEntitlementPage() {
       })
       .finally(() => {
         if (mounted) setIsLoading(false);
-      })
-      .catch(() => undefined);
+      });
     return () => {
       mounted = false;
       setError("");
