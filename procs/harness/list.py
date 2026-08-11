@@ -6,8 +6,10 @@ from pathlib import Path
 import yaml
 try:
     from procs.harness.ledger import scenario_rule_map
+    from procs.harness.status import VALID_STATUSES, status_for
 except ModuleNotFoundError:
     from ledger import scenario_rule_map
+    from status import VALID_STATUSES, status_for
 
 ROOT = Path(__file__).resolve().parents[2]
 SCENARIOS = ROOT / "procs" / "scenarios"
@@ -26,6 +28,10 @@ def main() -> int:
     }
     modules = [args.module] if args.module else sorted(set(routes) | scenario_modules)
     for module in modules:
+        module_config = routes.get(module)
+        module_status = status_for(module_config)
+        if module_config is not None and module_status not in VALID_STATUSES:
+            parser.error(f"invalid status for module {module}: {module_status!r}")
         paths = sorted((SCENARIOS / module).glob("*.yaml"))
         if not paths:
             parser.error(f"unknown module: {module}")
@@ -34,7 +40,7 @@ def main() -> int:
             {rule for scenario in scenarios for rule in rules_by_scenario.get(scenario["id"], [])}
         )
         print(
-            f"{module:12} {routes.get(module, {}).get('status', 'pending'):9} "
+            f"{module:12} {module_status:9} "
             f"scenarios={len(scenarios):2} rule_claims={len(rules):2}"
         )
         for scenario in scenarios:

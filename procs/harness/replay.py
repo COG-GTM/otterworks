@@ -17,8 +17,10 @@ from urllib.parse import urlsplit
 import yaml
 try:
     from procs.harness.fingerprints import fixture_sha, source_sha
+    from procs.harness.status import EXTRACTED, PENDING, VALID_STATUSES, status_for
 except ModuleNotFoundError:
     from fingerprints import fixture_sha, source_sha
+    from status import EXTRACTED, PENDING, VALID_STATUSES, status_for
 
 ROOT = Path(__file__).resolve().parents[2]
 TRANSCRIPTS = ROOT / "procs" / "transcripts"
@@ -214,9 +216,12 @@ def grade_response(
 
 def classify_transcript(transcript: dict[str, Any], routes: dict[str, Any]) -> str:
     module = routes.get(transcript["module"])
-    if module and module.get("status") == "pending":
+    status = status_for(module)
+    if status == PENDING:
         return "SKIP"
-    return "GRADE"
+    if status == EXTRACTED:
+        return "GRADE"
+    return "CONTRACT_ERROR"
 
 
 def reset_target(base_url: str) -> tuple[bool, str]:
@@ -300,8 +305,17 @@ def main() -> int:
         for error in stale_fixtures:
             print(error, file=sys.stderr)
         return SOURCE_MISMATCH
+    invalid_statuses = {
+        (item["module"], status_for(routes.get(item["module"])))
+        for item in selected
+        if status_for(routes.get(item["module"])) not in VALID_STATUSES
+    }
+    if invalid_statuses:
+        for module, status in sorted(invalid_statuses):
+            print(f"{module}: invalid module status {status!r}", file=sys.stderr)
+        return CONTRACT_MISSING
     extracted_modules = {
-        item["module"] for item in selected if routes.get(item["module"], {}).get("status") == "extracted"
+        item["module"] for item in selected if status_for(routes.get(item["module"])) == EXTRACTED
     }
     for module in sorted(extracted_modules):
         gate = subprocess.run(

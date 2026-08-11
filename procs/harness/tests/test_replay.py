@@ -25,6 +25,12 @@ def test_pending_module_is_skip() -> None:
     assert classify_transcript(transcript, routes) == "SKIP"
 
 
+def test_unrecognized_module_status_is_contract_error() -> None:
+    transcript = {"module": "rating", "scenario": "RATING-001"}
+    routes = {"rating": {"status": "draft"}}
+    assert classify_transcript(transcript, routes) == "CONTRACT_ERROR"
+
+
 def test_source_sha_mismatch_is_detected(monkeypatch) -> None:
     monkeypatch.setattr("procs.harness.replay.source_sha", lambda: "actual")
     assert not source_matches("recorded")
