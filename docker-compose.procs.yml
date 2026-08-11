@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: billing
       POSTGRES_PASSWORD: ${DB_PASSWORD:-billing}
     ports:
-      - "${PROCS_DB_PORT:-55432}:5432"
+      - "127.0.0.1:${PROCS_DB_PORT:-55432}:5432"
     volumes:
       - ./services/legacy-billing/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./services/legacy-billing/db/procs/plans.sql:/docker-entrypoint-initdb.d/02-plans.sql:ro
@@ -37,7 +37,7 @@ services:
       DB_USER: billing
       DB_PASSWORD: ${DB_PASSWORD:-billing}
     ports:
-      - "${PROCS_APP_PORT:-8096}:8096"
+      - "127.0.0.1:${PROCS_APP_PORT:-8096}:8096"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8096/health')"]
       interval: 5s
@@ -55,7 +55,7 @@ services:
       BILLING_SVC_DATABASE_URL: postgresql://billing_svc:billing_svc@billing-service-db:5432/billing_svc_${NS:-dev}
       BILLING_SVC_ALLOW_INTERNAL_RESET: "true"
     ports:
-      - "${PROCS_TARGET_PORT:-8097}:8097"
+      - "127.0.0.1:${PROCS_TARGET_PORT:-8097}:8097"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8097/health')"]
       interval: 5s
@@ -69,7 +69,7 @@ services:
       POSTGRES_USER: billing_svc
       POSTGRES_PASSWORD: billing_svc
     ports:
-      - "${PROCS_TARGET_DB_PORT:-56432}:5432"
+      - "127.0.0.1:${PROCS_TARGET_DB_PORT:-56432}:5432"
     volumes:
       - billing-service-db-data:/var/lib/postgresql/data
     healthcheck:
