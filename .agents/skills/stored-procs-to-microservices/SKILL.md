@@ -167,6 +167,9 @@ The `/billing-api` proxy is used by the dev server and by that flagged preview.
 Builds without the flag leave the routes unregistered. The billing screens are
 local parity-fixture pages only: they are not deployed through the normal
 client, Helm, or EKS paths.
+The fixture deliberately has no authentication because the procedures have no
+notion of a caller; a real extraction must add authentication and tenant
+scoping at the edge.
 
 ## Clean run reversion
 

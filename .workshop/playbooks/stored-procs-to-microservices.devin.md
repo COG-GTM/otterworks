@@ -85,7 +85,9 @@ implement, then replay recorded legacy behavior and let it fail you.
    linters, and build.
 7. **Wire the UI to the service, not the database.** Where the module had screens,
    point them at the new service. Verify with the app running, not by reading the
-   code.
+   code. The parity fixture deliberately has no authentication because the
+   procedures have no notion of a caller; a real extraction must add
+   authentication and tenant scoping at the edge.
 8. **Open a PR per module** with the ledger, the parity report, and the mapping
    notes in it, and let the automated review pass over it. The report is the
    evidence a reviewer needs; a PR that says "extracted, tests pass" without a
