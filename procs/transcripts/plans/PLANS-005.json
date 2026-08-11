@@ -38,6 +38,7 @@
       }
     ]
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "PLANS-005"
   ],

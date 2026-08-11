@@ -17,6 +17,7 @@
   "probes": {
     "account_values": "00000000-0000-0000-0000-000000000002:27,00000000-0000-0000-0000-000000000005:15"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "DUNNING-001"
   ],

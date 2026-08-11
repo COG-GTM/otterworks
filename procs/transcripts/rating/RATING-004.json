@@ -13,6 +13,7 @@
   "probes": {
     "rating_values": "101:5.56"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "RATING-004"
   ],

@@ -14,6 +14,7 @@
   "probes": {
     "invoice_values": "issued:54.56:4.50:59.06"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "INVOICE-005"
   ],

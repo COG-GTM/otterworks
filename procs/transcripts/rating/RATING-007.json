@@ -19,6 +19,7 @@
   "probes": {
     "summary_values": "api:20,storage:30"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "RATING-007"
   ],

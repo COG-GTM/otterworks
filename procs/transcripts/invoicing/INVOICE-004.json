@@ -19,6 +19,7 @@
   "probes": {
     "credit_values": "70000000-0000-0000-0000-000000000001:0.00,70000000-0000-0000-0000-000000000002:6.96"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "INVOICE-004"
   ],

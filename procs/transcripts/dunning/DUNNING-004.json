@@ -11,6 +11,7 @@
   "probes": {
     "suspension_values": "suspended:2026-02-28:1"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "DUNNING-004"
   ],

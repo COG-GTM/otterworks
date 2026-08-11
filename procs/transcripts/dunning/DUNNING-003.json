@@ -11,6 +11,7 @@
   "probes": {
     "schedule_values": "1:2026-02-16,2:2026-02-17"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "DUNNING-003"
   ],

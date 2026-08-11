@@ -16,6 +16,7 @@
   "probes": {
     "persisted_values": "260:100:0:0:0.00"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "RATING-008"
   ],

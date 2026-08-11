@@ -10,6 +10,7 @@
   "probes": {
     "notification_values": "00000000-0000-0000-0000-000000000005:suspension:1"
   },
+  "rerecord_reason": "harness-change",
   "rules": [
     "DUNNING-005"
   ],
