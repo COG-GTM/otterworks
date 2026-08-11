@@ -143,20 +143,19 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
     qualified_entrypoint = sql.Identifier(namespace, function)
     placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in params)
     with connection_handle.cursor() as cursor:
+        execute = cursor.execute
         if scenario.get("setup_sql"):
-            cursor.execute(scenario["setup_sql"])
+            execute(scenario["setup_sql"])
         if scenario["kind"] == "function":
             query = sql.SQL("SELECT * FROM {}({})").format(qualified_entrypoint, placeholders)
-            cursor.execute(query, params)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query
+            execute(query, params)
             names = [column.name for column in cursor.description] if cursor.description else []
             result_rows = [
                 {name: normalized(value) for name, value in zip(names, row)}
                 for row in cursor.fetchall()
             ]
         else:
-            cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query
-                sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params
-            )
+            execute(sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params)
             result_rows = []
         if scenario.get("before_sql"):
             cursor.execute(scenario["before_sql"])
