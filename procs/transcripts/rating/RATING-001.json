@@ -13,6 +13,7 @@
   },
   "module": "rating",
   "probes": {},
+  "rerecord_reason": "scenario-redesign",
   "rules": [],
   "scenario": "RATING-001",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"

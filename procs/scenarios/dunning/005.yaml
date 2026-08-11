@@ -1,14 +1,14 @@
 id: DUNNING-005
 module: dunning
-description: Apply account handling twice for 2026-02-28.
+description: Apply account handling twice for 2026-02-28 without duplicating the suspension notification.
 entrypoint: billing.sp_suspend_overdue
 kind: procedure
 inputs:
   - {name: as_of, type: date, value: 2026-02-28}
-capture_query: "SELECT count(*)::text AS notification_count FROM billing.notifications WHERE tenant_id = '00000000-0000-0000-0000-000000000005' AND kind = 'suspension'"
-before_sql: "CALL billing.sp_suspend_overdue('2026-02-28')"
+capture_query: "SELECT kind FROM billing.notifications WHERE tenant_id = '00000000-0000-0000-0000-000000000005' AND kind = 'suspension' ORDER BY sent_at"
+after_sql: "CALL billing.sp_suspend_overdue('2026-02-28')"
 fields:
-  - {name: notification_count, from: notification_count, type: integer}
+  - {name: notification_kinds, from: kind, type: text, collect: true}
 probes:
   - id: suspension_notifications
     collect_rows: true

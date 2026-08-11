@@ -15,4 +15,4 @@ fields:
 probes:
   - id: invoice_state
     collect_rows: true
-    query: "SELECT status, subtotal::text AS subtotal, tax::text AS tax, total::text AS total FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000004' || '2026-02-01')::uuid"
+    query: "SELECT status, subtotal::text AS subtotal, tax::text AS tax, total::text AS total FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000009' || '2026-02-01')::uuid"

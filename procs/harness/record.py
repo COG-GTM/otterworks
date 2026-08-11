@@ -155,8 +155,8 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
         else:
             execute(sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params)
             result_rows = []
-        if scenario.get("before_sql"):
-            cursor.execute(scenario["before_sql"])
+        if scenario.get("after_sql"):
+            cursor.execute(scenario["after_sql"])
         if scenario.get("capture_query"):
             result_rows = query_rows(cursor, scenario["capture_query"])
         probes = {}

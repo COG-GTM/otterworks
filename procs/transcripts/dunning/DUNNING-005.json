@@ -1,6 +1,8 @@
 {
   "business_fields": {
-    "notification_count": 1
+    "notification_kinds": [
+      "suspension"
+    ]
   },
   "entrypoint": "billing.sp_suspend_overdue",
   "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
@@ -18,6 +20,7 @@
       }
     ]
   },
+  "rerecord_reason": "scenario-redesign",
   "rules": [],
   "scenario": "DUNNING-005",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"

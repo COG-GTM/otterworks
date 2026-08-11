@@ -22,8 +22,16 @@
   },
   "module": "invoicing",
   "probes": {
-    "invoice_state": []
+    "invoice_state": [
+      {
+        "status": "issued",
+        "subtotal": "49.00",
+        "tax": "4.04",
+        "total": "0.00"
+      }
+    ]
   },
+  "rerecord_reason": "scenario-redesign",
   "rules": [],
   "scenario": "INVOICE-003",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"

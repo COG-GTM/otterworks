@@ -13,6 +13,7 @@
   },
   "module": "plans",
   "probes": {},
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "PLANS-002"
   ],
