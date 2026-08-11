@@ -6,19 +6,19 @@ use std::time::Duration;
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
 
-/// Render an AWS SDK error with its full source chain. The `Display` impl of
-/// `SdkError` alone yields only "service error", hiding the S3 code (e.g.
-/// `NoSuchBucket`) that identifies the failure.
+/// Log the failing object keys and return an error carrying the AWS source
+/// chain. The `Display` impl of `SdkError` alone yields only "service error",
+/// hiding the S3 code (e.g. `NoSuchBucket`) that identifies the failure. Keys
+/// embed owner ids, so they stay in the logs and out of the client response.
 fn s3_error<E: std::error::Error + 'static>(
     op: &str,
     bucket: &str,
-    key: &str,
+    keys: &str,
     err: E,
 ) -> ServiceError {
-    ServiceError::S3Error(format!(
-        "{op} failed for s3://{bucket}/{key}: {}",
-        DisplayErrorContext(&err)
-    ))
+    let cause = DisplayErrorContext(&err).to_string();
+    tracing::error!(operation = %op, bucket = %bucket, keys = %keys, error = %cause, "S3 operation failed");
+    ServiceError::S3Error(format!("{op} failed on bucket {bucket}: {cause}"))
 }
 
 /// S3 client for file blob operations.
@@ -97,7 +97,7 @@ impl S3Client {
         expires_in_secs: u64,
     ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
-            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+            .map_err(|e| s3_error("presign config", &self.bucket, key, e))?;
 
         let presigned = self
             .client
@@ -135,7 +135,14 @@ impl S3Client {
             .key(dest_key)
             .send()
             .await
-            .map_err(|e| s3_error("copy", &self.bucket, dest_key, e))?;
+            .map_err(|e| {
+                s3_error(
+                    "copy",
+                    &self.bucket,
+                    &format!("{source_key} -> {dest_key}"),
+                    e,
+                )
+            })?;
 
         tracing::info!(source = %source_key, dest = %dest_key, "Copied object in S3");
         Ok(())
