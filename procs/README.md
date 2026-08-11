@@ -23,8 +23,12 @@ fixtures for a namespace-specific verification run.
 The client Vite server proxies `/billing-api/*` to the extracted service. With
 the default `NS=dev` stack, run the client command above and open
 `http://localhost:3000/billing/plans`; no billing URL environment variable is
-required. For another namespace, set `BILLING_SERVICE_URL` to that namespace's
-derived target port when starting Vite.
+required. The billing routes are enabled by default in Vite dev/preview mode
+and are controlled by `VITE_ENABLE_BILLING_FIXTURE`; production builds leave
+them unregistered unless that flag is explicitly enabled. These screens are
+part of this local parity fixture, not the deployed application. For another
+namespace, set `BILLING_SERVICE_URL` to that namespace's derived target port
+when starting Vite.
 
 Each scenario resets the `billing` schema to the checked-in schema, procedure
 definitions, and seed. The recorder invokes the declared entrypoint, captures

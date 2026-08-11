@@ -41,3 +41,8 @@ target-side error handling, not an additional parity rule.
 
 When using the workshop client with the default disposable stack, the Vite
 development proxy forwards `/billing-api/*` to the service on port `12109`.
+The billing screens are part of this local parity fixture only: Vite enables
+their routes for dev/preview, while production builds leave those routes
+unregistered unless `VITE_ENABLE_BILLING_FIXTURE=true` is explicitly supplied.
+No deployed app or shared-infrastructure deployment is provided for this
+fixture.

@@ -24,6 +24,10 @@ import BillingPlansPage from "@/features/billing/plans-page";
 import BillingEntitlementPage from "@/features/billing/entitlement-page";
 import BillingChangePlanPage from "@/features/billing/change-plan-page";
 
+const BILLING_FIXTURE_ENABLED =
+  import.meta.env.VITE_ENABLE_BILLING_FIXTURE === "true" ||
+  import.meta.env.MODE !== "production";
+
 function NotFound() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
@@ -58,9 +62,19 @@ export default function App() {
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/billing/plans" element={<BillingPlansPage />} />
-          <Route path="/billing/entitlement/:tenantId" element={<BillingEntitlementPage />} />
-          <Route path="/billing/change/:tenantId" element={<BillingChangePlanPage />} />
+          {BILLING_FIXTURE_ENABLED && (
+            <>
+              <Route path="/billing/plans" element={<BillingPlansPage />} />
+              <Route
+                path="/billing/entitlement/:tenantId"
+                element={<BillingEntitlementPage />}
+              />
+              <Route
+                path="/billing/change/:tenantId"
+                element={<BillingChangePlanPage />}
+              />
+            </>
+          )}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
