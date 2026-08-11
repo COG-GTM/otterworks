@@ -31,7 +31,8 @@ decisions in Python.
 
 ## Full verification loop
 
-The extracted reference service is `services/billing-service/`. The
+The extracted reference service is `services/billing-service/`, backed by a
+separate Postgres database and `billing_svc` schema. The
 declarative contract and human-approved ledger live under `procs/`. From the
 repository root:
 

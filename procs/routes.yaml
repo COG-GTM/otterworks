@@ -9,14 +9,6 @@ modules:
           business_fields:
             codes: {json_path: "$[*].code", type: text, collect: true}
             fees: {json_path: "$[*].monthly_fee", type: decimal, collect: true}
-          probes:
-            catalog_values:
-              json_path: "$[*]"
-              operation: join_fields
-              fields: [code, monthly_fee]
-              sort_by: code
-              separator: ","
-              field_separator: ":"
       billing.fn_entitlement:
         method: GET
         path: /api/tenants/{tenant_id}/entitlement
@@ -31,12 +23,6 @@ modules:
             tier: {json_path: "$.tier", type: text}
             included_units: {json_path: "$.included_units", type: integer}
             subscription_status: {json_path: "$.subscription_status", type: text}
-          probes:
-            entitlement_values:
-              json_path: "$"
-              operation: join_fields
-              fields: [plan_code, tier, included_units]
-              separator: ":"
       billing.sp_change_plan:
         method: POST
         path: /api/tenants/{tenant_id}/plan-change
@@ -48,53 +34,12 @@ modules:
             effective_on: effective_on
         response:
           business_fields:
-            latest_plan: {json_path: "$.latest_plan", type: text}
-            latest_start: {json_path: "$.latest_start", type: date}
-          probes:
-            subscription_values:
+            subscriptions:
               json_path: "$.subscriptions"
-              operation: join_rows
-              fields: [plan_id, ends_on]
-              sort_by: starts_on
-              separator: ","
-              row_separator: ":"
-              null_value: open
-    scenario_overrides:
-      PLANS-003:
-        response:
-          business_fields:
-            subscription_status: {json_path: "$.subscription_status", type: text}
+              type: rows
           probes:
-            entitlement_values:
-              json_path: "$"
-              operation: join_fields
-              fields: [plan_code, subscription_status]
-              separator: ":"
-      PLANS-005:
-        response:
-          business_fields:
-            prior_status: {json_path: "$.subscriptions[0].status", type: text}
-            prior_end: {json_path: "$.subscriptions[0].ends_on", type: date}
-          probes:
-            subscription_values:
+            subscription_rows:
               json_path: "$.subscriptions"
-              operation: join_rows
-              fields: [status, ends_on]
-              sort_by: starts_on
-              separator: ","
-              row_separator: ":"
-              null_value: open
-    probes:
-      PLANS-001:
-        catalog_values: {same_as: response.probes.catalog_values}
-      PLANS-002:
-        entitlement_values: {same_as: response.probes.entitlement_values}
-      PLANS-003:
-        entitlement_values: {same_as: response.probes.entitlement_values}
-      PLANS-004:
-        subscription_values: {same_as: response.probes.subscription_values}
-      PLANS-005:
-        subscription_values: {same_as: response.probes.subscription_values}
   rating:
     status: pending
     entrypoints: {}

@@ -89,6 +89,13 @@ infrastructure/terraform/plan.out
 security/dast/reports/
 procs/reports/
 
+# Python generated environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+
 # --- Misc ---
 *.bak
 *.tmp

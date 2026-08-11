@@ -14,9 +14,7 @@
   "entrypoint": "billing.fn_list_plans",
   "inputs": {},
   "module": "plans",
-  "probes": {
-    "catalog_values": "GROWTH:149.00,SCALE:499.00,STARTER:49.00"
-  },
+  "probes": {},
   "rules": [
     "PLANS-001"
   ],

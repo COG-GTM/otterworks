@@ -48,18 +48,35 @@ services:
     build:
       context: ./services/billing-service
       dockerfile: Dockerfile
+    depends_on:
+      billing-service-db:
+        condition: service_healthy
     environment:
-      BILLING_SVC_DATABASE_PATH: /data/billing_svc.sqlite3
+      BILLING_SVC_DATABASE_URL: postgresql://billing_svc:billing_svc@billing-service-db:5432/billing_svc_${NS:-dev}
     ports:
       - "${PROCS_TARGET_PORT:-8097}:8097"
-    volumes:
-      - billing-service-data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8097/health')"]
       interval: 5s
       timeout: 5s
       retries: 12
 
+  billing-service-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: billing_svc_${NS:-dev}
+      POSTGRES_USER: billing_svc
+      POSTGRES_PASSWORD: billing_svc
+    ports:
+      - "${PROCS_TARGET_DB_PORT:-56432}:5432"
+    volumes:
+      - billing-service-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing_svc -d billing_svc_${NS:-dev}"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
 volumes:
   legacy-billing-db-data:
-  billing-service-data:
+  billing-service-db-data:

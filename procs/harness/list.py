@@ -21,7 +21,10 @@ def main() -> int:
             parser.error(f"unknown module: {module}")
         scenarios = [yaml.safe_load(path.read_text()) for path in paths]
         rules = sorted({rule for scenario in scenarios for rule in scenario.get("rules", [])})
-        print(f"{module:12} {STATUS.get(module, 'pending'):9} scenarios={len(scenarios):2} rules={len(rules):2}")
+        print(
+            f"{module:12} {STATUS.get(module, 'pending'):9} "
+            f"scenarios={len(scenarios):2} rule_claims={len(rules):2}"
+        )
         for scenario in scenarios:
             print(f"  {scenario['id']}: {', '.join(scenario.get('rules', []))}")
     return 0

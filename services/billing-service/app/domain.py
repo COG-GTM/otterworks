@@ -1,99 +1,107 @@
 from __future__ import annotations
 
-import hashlib
-import sqlite3
+from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any
+from decimal import Decimal
+from typing import Protocol
+from uuid import UUID, uuid5
+
+PLAN_CHANGE_NAMESPACE = UUID("d8e9df63-6e46-4d6a-b9c2-2ef6e99cb5ee")
 
 
-class BillingDomain:
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self.connection = connection
+@dataclass(frozen=True)
+class PlanRow:
+    plan_id: UUID
+    code: str
+    tier: str
+    monthly_fee: Decimal
+    included_units: int
+    overage_rate: Decimal
+    active: bool
 
-    def list_plans(self) -> list[dict[str, Any]]:
-        rows = self.connection.execute(
-            """
-            SELECT id, code, tier, monthly_fee, included_units, overage_rate
-            FROM plans WHERE active = 1 ORDER BY monthly_fee, code
-            """
-        ).fetchall()
-        return [
-            {
-                "plan_id": row["id"],
-                "code": row["code"],
-                "tier": row["tier"],
-                "monthly_fee": f"{row['monthly_fee']:.2f}",
-                "included_units": row["included_units"],
-                "overage_rate": f"{row['overage_rate']:.6f}",
-            }
-            for row in rows
-        ]
 
-    def entitlement(self, tenant_id: str, on: date) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            """
-            SELECT t.id AS tenant_id, p.code AS plan_code, p.tier,
-                   p.monthly_fee, p.included_units, s.status,
-                   MAX(s.starts_on, ?) AS effective_on
-            FROM tenants t
-            JOIN subscriptions s ON s.tenant_id = t.id
-            JOIN plans p ON p.id = s.plan_id
-            WHERE t.id = ? AND s.starts_on <= ?
-              AND (s.ends_on IS NULL OR s.ends_on >= ?)
-            ORDER BY s.starts_on DESC LIMIT 1
-            """,
-            (on.isoformat(), tenant_id, on.isoformat(), on.isoformat()),
-        ).fetchone()
-        if row is None:
-            return None
-        return {
-            "tenant_id": row["tenant_id"],
-            "plan_code": row["plan_code"],
-            "tier": row["tier"],
-            "monthly_fee": f"{row['monthly_fee']:.2f}",
-            "included_units": row["included_units"],
-            "subscription_status": row["status"],
-            "effective_on": row["effective_on"],
-        }
+@dataclass(frozen=True)
+class SubscriptionRow:
+    subscription_id: UUID
+    tenant_id: UUID
+    plan_id: UUID
+    starts_on: date
+    ends_on: date | None
+    status: str
+    suspended_on: date | None
 
-    def change_plan(self, tenant_id: str, plan_id: str, effective_on: date) -> dict[str, Any]:
-        self.connection.execute(
-            """
-            UPDATE subscriptions
-            SET ends_on = ?, status = CASE WHEN status = 'cancelled' THEN status ELSE 'active' END
-            WHERE tenant_id = ? AND ends_on IS NULL AND starts_on < ?
-            """,
-            ((effective_on - timedelta(days=1)).isoformat(), tenant_id, effective_on.isoformat()),
-        )
-        subscription_id = hashlib.md5(
-            f"{tenant_id}{plan_id}{effective_on.isoformat()}".encode()
-        ).hexdigest()
-        self.connection.execute(
-            """
-            INSERT INTO subscriptions
-                (id, tenant_id, plan_id, starts_on, ends_on, status, suspended_on)
-            VALUES (?, ?, ?, ?, NULL, 'active', NULL)
-            """,
-            (subscription_id, tenant_id, plan_id, effective_on.isoformat()),
-        )
-        self.connection.commit()
-        subscriptions = self.connection.execute(
-            """
-            SELECT plan_id, starts_on, ends_on, status
-            FROM subscriptions WHERE tenant_id = ? ORDER BY starts_on
-            """,
-            (tenant_id,),
-        ).fetchall()
-        return {
-            "latest_plan": subscriptions[-1]["plan_id"],
-            "latest_start": subscriptions[-1]["starts_on"],
-            "subscriptions": [
-                {
-                    "plan_id": row["plan_id"],
-                    "starts_on": row["starts_on"],
-                    "ends_on": row["ends_on"],
-                    "status": row["status"],
-                }
-                for row in subscriptions
-            ],
-        }
+
+@dataclass(frozen=True)
+class EntitlementRow:
+    tenant_id: UUID
+    plan_code: str
+    tier: str
+    monthly_fee: Decimal
+    included_units: int
+    subscription_status: str
+    ends_on: date | None
+    starts_on: date
+
+
+class PlansRepository(Protocol):
+    def list_plans(self) -> list[PlanRow]: ...
+
+    def find_entitlements(self, tenant_id: UUID) -> list[EntitlementRow]: ...
+
+    def list_subscriptions(self, tenant_id: UUID) -> list[SubscriptionRow]: ...
+
+    def update_subscription(self, subscription_id: UUID, ends_on: date, status: str) -> None: ...
+
+    def insert_subscription(
+        self,
+        subscription_id: UUID,
+        tenant_id: UUID,
+        plan_id: UUID,
+        starts_on: date,
+        status: str,
+    ) -> None: ...
+
+
+def catalog(plans: list[PlanRow]) -> list[PlanRow]:
+    return sorted(
+        (plan for plan in plans if plan.active),
+        key=lambda plan: (plan.monthly_fee, plan.code),
+    )
+
+
+def entitlement(rows: list[EntitlementRow], tenant_id: UUID, on: date) -> EntitlementRow | None:
+    eligible = [
+        row
+        for row in rows
+        if row.tenant_id == tenant_id
+        and row.starts_on <= on
+        and (row.ends_on is None or row.ends_on >= on)
+    ]
+    return max(eligible, key=lambda row: row.starts_on, default=None)
+
+
+def change_plan(
+    repository: PlansRepository,
+    tenant_id: UUID,
+    plan_id: UUID,
+    effective_on: date,
+) -> list[SubscriptionRow]:
+    subscriptions = repository.list_subscriptions(tenant_id)
+    for subscription in subscriptions:
+        if subscription.ends_on is None and subscription.starts_on < effective_on:
+            next_status = (
+                subscription.status if subscription.status == "cancelled" else "active"
+            )
+            repository.update_subscription(
+                subscription.subscription_id,
+                effective_on - timedelta(days=1),
+                next_status,
+            )
+    repository.insert_subscription(
+        uuid5(PLAN_CHANGE_NAMESPACE, f"{tenant_id}{plan_id}{effective_on.isoformat()}"),
+        tenant_id,
+        plan_id,
+        effective_on,
+        "active",
+    )
+    return sorted(repository.list_subscriptions(tenant_id), key=lambda item: item.starts_on)

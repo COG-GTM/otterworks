@@ -20,7 +20,7 @@ def generate() -> str:
         )
         if match is None:
             raise RuntimeError(f"missing legacy seed section: {table}")
-        statements.append(match.group(0).replace(f"billing.{table}", table))
+        statements.append(match.group(0).replace(f"billing.{table}", f"billing_svc.{table}"))
     return "\n".join(statements)
 
 

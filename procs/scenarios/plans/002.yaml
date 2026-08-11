@@ -10,6 +10,6 @@ fields:
   - {name: plan_code, from: plan_code, type: text}
   - {name: tier, from: tier, type: text}
   - {name: included_units, from: included_units, type: integer}
-probes:
-  - {id: entitlement_values, query: "SELECT plan_code || ':' || tier || ':' || included_units::text FROM billing.fn_entitlement('00000000-0000-0000-0000-000000000001', '2026-02-28')"}
+  - {name: subscription_status, from: subscription_status, type: text}
+probes: []
 rules: [PLANS-002]

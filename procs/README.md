@@ -15,6 +15,10 @@ make procs-parity NS=dev
 make procs-down NS=dev
 ```
 
+The Makefile derives the Postgres and HTTP host ports from `NS`, so separate
+namespaces can run concurrently. Use `OUTPUT_DIR` when recording isolated
+fixtures for a namespace-specific verification run.
+
 Each scenario resets the `billing` schema to the checked-in schema, procedure
 definitions, and seed. The recorder invokes the declared entrypoint, captures
 the selected result fields, runs the named state probes, and writes one JSON

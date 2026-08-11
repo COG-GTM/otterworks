@@ -1,4 +1,4 @@
-INSERT INTO tenants (id, name, tax_exempt, status) VALUES
+INSERT INTO billing_svc.tenants (id, name, tax_exempt, status) VALUES
     ('00000000-0000-0000-0000-000000000001', 'Tenant One', false, 'active'),
     ('00000000-0000-0000-0000-000000000002', 'Tenant Two', false, 'suspended'),
     ('00000000-0000-0000-0000-000000000003', 'Tenant Three', true, 'active'),
@@ -6,14 +6,14 @@ INSERT INTO tenants (id, name, tax_exempt, status) VALUES
     ('00000000-0000-0000-0000-000000000005', 'Tenant Five', false, 'active'),
     ('00000000-0000-0000-0000-000000000006', 'Tenant Six', false, 'active');
 
-INSERT INTO plans (
+INSERT INTO billing_svc.plans (
     id, code, tier, monthly_fee, included_units, overage_rate
 ) VALUES
     ('10000000-0000-0000-0000-000000000001', 'STARTER', 'starter', 49.00, 100, 0.055000),
     ('10000000-0000-0000-0000-000000000002', 'GROWTH', 'growth', 149.00, 500, 0.035000),
     ('10000000-0000-0000-0000-000000000003', 'SCALE', 'scale', 499.00, 2000, 0.020000);
 
-INSERT INTO subscriptions (
+INSERT INTO billing_svc.subscriptions (
     id, tenant_id, plan_id, starts_on, ends_on, status, suspended_on
 ) VALUES
     ('20000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001',

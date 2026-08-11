@@ -7,10 +7,11 @@ inputs:
   - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000004}
   - {name: plan_id, type: uuid, value: 10000000-0000-0000-0000-000000000003}
   - {name: effective_on, type: date, value: 2026-03-15}
-capture_query: "SELECT status, ends_on::text FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY starts_on"
+capture_query: "SELECT plan_id::text, starts_on, ends_on, status FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY starts_on"
 fields:
-  - {name: prior_status, from: status, type: text, first: true}
-  - {name: prior_end, from: ends_on, type: text, first: true}
+  - name: subscriptions
+    collect_rows: true
+    columns: {plan_id: text, starts_on: date, ends_on: date, status: text}
 probes:
-  - {id: subscription_values, query: "SELECT string_agg(status || ':' || COALESCE(ends_on::text, 'open'), ',' ORDER BY starts_on) FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"}
+  - {id: subscription_rows, collect_rows: true, query: "SELECT plan_id::text, starts_on, ends_on, status FROM billing.subscriptions WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY starts_on"}
 rules: [PLANS-005]

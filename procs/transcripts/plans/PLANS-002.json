@@ -2,6 +2,7 @@
   "business_fields": {
     "included_units": 100,
     "plan_code": "STARTER",
+    "subscription_status": "active",
     "tier": "starter"
   },
   "entrypoint": "billing.fn_entitlement",
@@ -10,9 +11,7 @@
     "tenant_id": "00000000-0000-0000-0000-000000000001"
   },
   "module": "plans",
-  "probes": {
-    "entitlement_values": "STARTER:starter:100"
-  },
+  "probes": {},
   "rules": [
     "PLANS-002"
   ],

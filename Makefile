@@ -7,29 +7,35 @@ help: ## Show this help
 
 PROCS_COMPOSE := docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
 PROCS_UV := uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
+PROCS_PORT_OFFSET := $(shell python -c "import zlib; print(zlib.crc32('$(NS)'.encode()) % 1000)")
+PROCS_DB_PORT := $(shell python -c "print(55432 + $(PROCS_PORT_OFFSET))")
+PROCS_APP_PORT := $(shell python -c "print(8096 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_DB_PORT := $(shell python -c "print(56432 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_PORT := $(shell python -c "print(8196 + $(PROCS_PORT_OFFSET))")
+PROCS_ENV := NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
 procs-up: ## Start the legacy billing stored-procedure stack (NS=<namespace>)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
-	NS=$(NS) $(PROCS_COMPOSE) up -d --build
+	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build
 
 procs-down: ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-down NS=dev" >&2; exit 2)
-	NS=$(NS) $(PROCS_COMPOSE) down -v
+	$(PROCS_ENV) $(PROCS_COMPOSE) down -v
 
-procs-record: ## Record legacy billing transcripts (NS=<namespace>, MODULE=<module> optional)
+procs-record: ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-record NS=dev" >&2; exit 2)
-	NS=$(NS) DB_NAME=billing_$(NS) DB_PORT=$${PROCS_DB_PORT:-55432} $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),)
+	$(PROCS_ENV) DB_NAME=billing_$(NS) DB_PORT=$(PROCS_DB_PORT) $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),) $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
 
 procs-list: ## List stored-procedure modules and scenarios
 	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
 
 procs-parity: ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-parity NS=dev" >&2; exit 2)
-	NS=$(NS) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:8097} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
+	$(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
 
-procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module>)
-	@test -n "$(MODULE)" || (echo "MODULE is required, e.g. make procs-rules-gate MODULE=plans" >&2; exit 2)
-	uv run --with pyyaml==6.0.2 procs/harness/rules_gate.py --module $(MODULE)
+procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module> or ALL=1)
+	@test -n "$(MODULE)$(ALL)" || (echo "MODULE or ALL=1 is required" >&2; exit 2)
+	uv run --with pyyaml==6.0.2 procs/harness/rules_gate.py $(if $(ALL),--all,--module $(MODULE))
 
 # --- Local Development ---
 

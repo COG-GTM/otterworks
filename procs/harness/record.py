@@ -109,8 +109,8 @@ def reset_database(connection_handle) -> None:
 def capture_fields(rows: list[dict[str, Any]], specs: list[dict[str, Any]]) -> dict[str, Any]:
     captured: dict[str, Any] = {}
     for spec in specs:
-        source = str(spec["from"])
-        values = [row.get(source) for row in rows]
+        source = str(spec["from"]) if "from" in spec else None
+        values = [row.get(source) for row in rows] if source else []
         if spec.get("first"):
             values = values[:1]
         elif spec.get("last"):
@@ -118,6 +118,14 @@ def capture_fields(rows: list[dict[str, Any]], specs: list[dict[str, Any]]) -> d
         if spec.get("collect"):
             captured[spec["name"]] = [
                 normalized(value, spec.get("type")) for value in values
+            ]
+        elif spec.get("collect_rows"):
+            captured[spec["name"]] = [
+                {
+                    key: normalized(row.get(key), kind)
+                    for key, kind in spec["columns"].items()
+                }
+                for row in rows
             ]
         else:
             captured[spec["name"]] = normalized(
@@ -147,7 +155,9 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
         for probe in scenario.get("probes", []):
             probe_rows = query_rows(cursor, probe["query"])
             probes[probe["id"]] = (
-                probe_rows[0][next(iter(probe_rows[0]))] if probe_rows else None
+                probe_rows
+                if probe.get("collect_rows")
+                else (probe_rows[0][next(iter(probe_rows[0]))] if probe_rows else None)
             )
     return {
         "scenario": scenario["id"],

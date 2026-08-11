@@ -1,7 +1,19 @@
 {
   "business_fields": {
-    "prior_end": "2026-03-14",
-    "prior_status": "active"
+    "subscriptions": [
+      {
+        "ends_on": "2026-03-14",
+        "plan_id": "10000000-0000-0000-0000-000000000001",
+        "starts_on": "2026-01-01",
+        "status": "active"
+      },
+      {
+        "ends_on": null,
+        "plan_id": "10000000-0000-0000-0000-000000000003",
+        "starts_on": "2026-03-15",
+        "status": "active"
+      }
+    ]
   },
   "entrypoint": "billing.sp_change_plan",
   "inputs": {
@@ -11,7 +23,20 @@
   },
   "module": "plans",
   "probes": {
-    "subscription_values": "active:2026-03-14,active:open"
+    "subscription_rows": [
+      {
+        "ends_on": "2026-03-14",
+        "plan_id": "10000000-0000-0000-0000-000000000001",
+        "starts_on": "2026-01-01",
+        "status": "active"
+      },
+      {
+        "ends_on": null,
+        "plan_id": "10000000-0000-0000-0000-000000000003",
+        "starts_on": "2026-03-15",
+        "status": "active"
+      }
+    ]
   },
   "rules": [
     "PLANS-005"

@@ -1,7 +1,9 @@
 {
   "business_fields": {
+    "included_units": 500,
     "plan_code": "GROWTH",
-    "subscription_status": "suspended"
+    "subscription_status": "suspended",
+    "tier": "growth"
   },
   "entrypoint": "billing.fn_entitlement",
   "inputs": {
@@ -9,9 +11,7 @@
     "tenant_id": "00000000-0000-0000-0000-000000000002"
   },
   "module": "plans",
-  "probes": {
-    "entitlement_values": "GROWTH:suspended"
-  },
+  "probes": {},
   "rules": [
     "PLANS-003"
   ],
