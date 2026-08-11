@@ -16,7 +16,7 @@ PROCS_ENV := NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_
 
 procs-up: ## Start the legacy billing stored-procedure stack (NS=<namespace>)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
-	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build
+	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
 
 procs-down: ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-down NS=dev" >&2; exit 2)

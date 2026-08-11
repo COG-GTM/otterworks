@@ -49,6 +49,8 @@ def health() -> dict[str, str]:
 
 @app.post("/internal/reset", status_code=204)
 def internal_reset() -> Response:
+    if not settings.allow_internal_reset:
+        raise HTTPException(status_code=404, detail="internal reset is disabled")
     reset()
     return Response(status_code=204)
 

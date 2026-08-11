@@ -132,6 +132,15 @@ def load_transcripts(module: str | None) -> list[dict[str, Any]]:
     return [json.loads(path.read_text()) for path in paths]
 
 
+def stale_transcripts(transcripts: list[dict[str, Any]], current_sha: str) -> list[str]:
+    return [
+        f"{item['scenario']}: transcript SOURCE_SHA {item.get('source_sha', '<missing>')} "
+        f"does not match current procs {current_sha}"
+        for item in transcripts
+        if item.get("source_sha") != current_sha
+    ]
+
+
 def compare(
     transcript: dict[str, Any], contract: dict[str, Any], payload: Any
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -171,6 +180,11 @@ def reset_target(base_url: str) -> tuple[bool, str]:
     except (http.client.HTTPException, OSError) as error:
         return False, f"target unreachable during reset: {error}"
     if status != 204:
+        if status in {403, 404}:
+            return False, (
+                f"target reset refused with HTTP {status}: {payload}; "
+                "enable BILLING_SVC_ALLOW_INTERNAL_RESET for disposable stacks"
+            )
         return False, f"target reset returned HTTP {status}: {payload}"
     return True, ""
 
@@ -208,6 +222,11 @@ def main() -> int:
         for item in load_transcripts(args.module)
         if args.scenario is None or item["scenario"] == args.scenario
     ]
+    stale = stale_transcripts(selected, current_sha)
+    if stale:
+        for error in stale:
+            print(error, file=sys.stderr)
+        return SOURCE_MISMATCH
     extracted_modules = {
         item["module"] for item in selected if routes.get(item["module"], {}).get("status") == "extracted"
     }

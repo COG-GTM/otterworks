@@ -49,7 +49,7 @@ export default function BillingPlansPage() {
       {error && <BillingAlert message={error} onDismiss={() => setError("")} />}
       <button
         type="button"
-        onClick={loadPlans}
+        onClick={() => loadPlans()}
         className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm hover:bg-gray-50"
       >
         Retry

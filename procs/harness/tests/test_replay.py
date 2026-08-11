@@ -10,6 +10,7 @@ from procs.harness.replay import (
     compare,
     normalize,
     source_matches,
+    stale_transcripts,
     write_report,
 )
 
@@ -23,6 +24,14 @@ def test_pending_module_is_skip() -> None:
 def test_source_sha_mismatch_is_detected(monkeypatch) -> None:
     monkeypatch.setattr("procs.harness.replay.source_sha", lambda: "actual")
     assert not source_matches("recorded")
+
+
+def test_stale_transcript_source_is_detected() -> None:
+    errors = stale_transcripts(
+        [{"scenario": "RATING-001", "source_sha": "old"}],
+        "current",
+    )
+    assert errors and "RATING-001" in errors[0]
 
 
 def test_business_field_mismatch_is_diagnostic() -> None:

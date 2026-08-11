@@ -24,3 +24,7 @@ The generated-seed test prevents the target fixture from drifting from the
 legacy before-state. `POST /internal/reset` applies the migration, truncates
 the `billing_svc` schema, and reseeds it so the parity harness can isolate
 every scenario.
+
+The reset endpoint is disabled by default. Disposable local/CI Compose stacks
+enable it with `BILLING_SVC_ALLOW_INTERNAL_RESET=true`; published deployments
+should leave the setting disabled.

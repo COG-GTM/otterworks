@@ -35,6 +35,32 @@ describe("Billing plans", () => {
   });
 
   it("shows and dismisses a retryable error", async () => {
+    let attempts = 0;
+    billingServer.use(
+      http.get("http://localhost:8097/api/plans", () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json({ message: "nope" }, { status: 503 })
+          : HttpResponse.json([
+              {
+                plan_id: "two",
+                code: "GROWTH",
+                tier: "growth",
+                monthly_fee: "149.00",
+                included_units: 500,
+                overage_rate: "0.045000",
+              },
+            ]);
+      })
+    );
+    renderPage();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Plans could not be loaded.");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("GROWTH")).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("shows and dismisses a retryable error", async () => {
     billingServer.use(
       http.get("http://localhost:8097/api/plans", () =>
         HttpResponse.json({ message: "nope" }, { status: 503 })

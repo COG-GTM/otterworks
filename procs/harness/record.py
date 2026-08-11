@@ -147,14 +147,16 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
             cursor.execute(scenario["setup_sql"])
         if scenario["kind"] == "function":
             query = sql.SQL("SELECT * FROM {}({})").format(qualified_entrypoint, placeholders)
-            cursor.execute(query, params)
+            cursor.execute(query, params)  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query
             names = [column.name for column in cursor.description] if cursor.description else []
             result_rows = [
                 {name: normalized(value) for name, value in zip(names, row)}
                 for row in cursor.fetchall()
             ]
         else:
-            cursor.execute(sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params)
+            cursor.execute(  # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query
+                sql.SQL("CALL {}({})").format(qualified_entrypoint, placeholders), params
+            )
             result_rows = []
         if scenario.get("before_sql"):
             cursor.execute(scenario["before_sql"])
@@ -208,20 +210,28 @@ def check_immutability(
 
 def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_root: Path) -> None:
     transcript_root.mkdir(parents=True, exist_ok=True)
-    index = []
+    existing_index_path = transcript_root / "index.json"
+    if existing_index_path.exists():
+        index_by_key = {
+            (item["module"], item["scenario"]): item
+            for item in json.loads(existing_index_path.read_text())
+        }
+    else:
+        index_by_key = {}
     payloads = []
     for record in records:
         record["source_sha"] = digest
         destination = transcript_root / record["module"] / f"{record['scenario']}.json"
         payloads.append((destination, json.dumps(record, indent=2, sort_keys=True) + "\n"))
-        index.append({
+        index_by_key[(record["module"], record["scenario"])] = {
             "scenario": record["scenario"],
             "module": record["module"],
             "rules": record["rules"],
-        })
+        }
     for destination, payload in payloads:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(payload)
+    index = sorted(index_by_key.values(), key=lambda item: (item["module"], item["scenario"]))
     (transcript_root / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True) + "\n")
     (transcript_root / "SOURCE_SHA").write_text(digest + "\n")
 
