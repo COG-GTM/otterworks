@@ -33,10 +33,20 @@ function TenantSwitcher() {
 function renderChangePlan() {
   return render(
     <MemoryRouter initialEntries={[`/billing/change/${TENANT_A}`]}>
+      <ChangeTenantSwitcher />
       <Routes>
         <Route path="/billing/change/:tenantId" element={<BillingChangePlanPage />} />
       </Routes>
     </MemoryRouter>,
+  );
+}
+
+function ChangeTenantSwitcher() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(`/billing/change/${TENANT_B}`)}>
+      Switch change tenant
+    </button>
   );
 }
 
@@ -68,9 +78,12 @@ describe("Billing page state transitions", () => {
 
   it("clears a previous success when a later plan submission fails", async () => {
     let attempts = 0;
+    let planLoads = 0;
     billingServer.use(
-      http.get("http://localhost:3000/billing-api/api/plans", () =>
-        HttpResponse.json([
+      http.get("http://localhost:3000/billing-api/api/plans", async () => {
+        planLoads += 1;
+        if (planLoads > 1) await delay(100);
+        return HttpResponse.json([
           {
             plan_id: PLAN,
             code: "STARTER",
@@ -79,8 +92,8 @@ describe("Billing page state transitions", () => {
             included_units: 100,
             overage_rate: "0.055000",
           },
-        ]),
-      ),
+        ]);
+      }),
       http.post("http://localhost:3000/billing-api/api/tenants/:tenantId/plan-change", () => {
         attempts += 1;
         return attempts === 1
@@ -99,6 +112,11 @@ describe("Billing page state transitions", () => {
     await screen.findByRole("button", { name: "Save plan change" });
     fireEvent.click(screen.getByRole("button", { name: "Save plan change" }));
     expect(await screen.findByText("Plan change saved for 2026-03-01.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Switch change tenant" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Plan change saved for 2026-03-01.")).not.toBeInTheDocument(),
+    );
+    await screen.findByRole("button", { name: "Save plan change" });
     fireEvent.click(screen.getByRole("button", { name: "Save plan change" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "This plan change was already submitted.",

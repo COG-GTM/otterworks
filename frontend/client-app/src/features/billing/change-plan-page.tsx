@@ -25,6 +25,9 @@ export default function BillingChangePlanPage() {
 
   useEffect(() => {
     let mounted = true;
+    setError("");
+    setResult(null);
+    setIsLoading(true);
     if (!tenantId || !UUID.test(tenantId)) {
       setError("A valid tenant id is required.");
       setIsLoading(false);
