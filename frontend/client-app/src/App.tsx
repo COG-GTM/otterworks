@@ -26,7 +26,7 @@ import BillingChangePlanPage from "@/features/billing/change-plan-page";
 
 const BILLING_FIXTURE_ENABLED =
   import.meta.env.VITE_ENABLE_BILLING_FIXTURE === "true" ||
-  import.meta.env.MODE !== "production";
+  import.meta.env.DEV;
 
 function NotFound() {
   return (
