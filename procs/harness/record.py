@@ -144,8 +144,6 @@ def run_scenario(connection_handle, scenario: dict[str, Any]) -> dict[str, Any]:
     placeholders = sql.SQL(", ").join(sql.Placeholder() for _ in params)
     with connection_handle.cursor() as cursor:
         execute = cursor.execute
-        if scenario.get("setup_sql"):
-            execute(scenario["setup_sql"])
         if scenario["kind"] == "function":
             query = sql.SQL("SELECT * FROM {}({})").format(qualified_entrypoint, placeholders)
             execute(query, params)

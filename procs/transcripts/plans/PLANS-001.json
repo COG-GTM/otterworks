@@ -12,11 +12,10 @@
     ]
   },
   "entrypoint": "billing.fn_list_plans",
-  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
   "inputs": {},
   "module": "plans",
   "probes": {},
-  "rerecord_reason": "scenario-redesign",
   "rules": [
     "PLANS-001"
   ],

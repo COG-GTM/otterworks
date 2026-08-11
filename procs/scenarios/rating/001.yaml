@@ -1,13 +1,12 @@
 id: RATING-001
 module: rating
-description: Rate tenant 1 without prior finalized periods for 2026-02-01 through 2026-02-28.
+description: Rate tenant 7 without prior finalized periods for 2026-02-01 through 2026-02-28.
 entrypoint: billing.fn_usage_rating
 kind: function
 inputs:
-  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000001}
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000007}
   - {name: period_start, type: date, value: 2026-02-01}
   - {name: period_end, type: date, value: 2026-02-28}
-setup_sql: "DELETE FROM billing.rating_results WHERE period_id IN (SELECT id FROM billing.rating_periods WHERE tenant_id = '00000000-0000-0000-0000-000000000001')"
 fields:
   - {name: used_units, from: used_units, type: integer}
   - {name: rollover_units, from: rollover_units, type: integer}

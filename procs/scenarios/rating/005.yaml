@@ -1,13 +1,12 @@
 id: RATING-005
 module: rating
-description: Rate tenant 6 just beyond the first-tier boundary with 202 units.
+description: Rate tenant 8 just beyond the first-tier boundary with 202 units.
 entrypoint: billing.fn_usage_rating
 kind: function
 inputs:
-  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000006}
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000008}
   - {name: period_start, type: date, value: 2026-02-01}
   - {name: period_end, type: date, value: 2026-02-28}
-setup_sql: "UPDATE billing.usage_events SET units = 202 WHERE id = '30000000-0000-0000-0000-000000000007'"
 fields:
   - {name: first_tier_units, from: first_tier_units, type: integer}
   - {name: second_tier_units, from: second_tier_units, type: integer}

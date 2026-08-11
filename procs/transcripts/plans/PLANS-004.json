@@ -16,7 +16,7 @@
     ]
   },
   "entrypoint": "billing.sp_change_plan",
-  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
   "inputs": {
     "effective_on": "2026-03-01",
     "plan_id": "10000000-0000-0000-0000-000000000002",
@@ -39,7 +39,6 @@
       }
     ]
   },
-  "rerecord_reason": "scenario-redesign",
   "rules": [
     "PLANS-003"
   ],

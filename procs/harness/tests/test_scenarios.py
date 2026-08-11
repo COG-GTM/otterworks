@@ -15,6 +15,7 @@ def test_probe_shapes_are_stable_per_entrypoint() -> None:
         shapes: dict[str, set[tuple[tuple[str, bool], ...]]] = {}
         for scenario_path in sorted(module_path.glob("*.yaml")):
             scenario = yaml.safe_load(scenario_path.read_text())
+            assert "setup_sql" not in scenario
             probes = scenario.get("probes", [])
             for probe in probes:
                 query = probe["query"]

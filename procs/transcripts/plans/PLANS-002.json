@@ -6,14 +6,13 @@
     "tier": "starter"
   },
   "entrypoint": "billing.fn_entitlement",
-  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
   "inputs": {
     "as_of": "2026-02-28",
     "tenant_id": "00000000-0000-0000-0000-000000000001"
   },
   "module": "plans",
   "probes": {},
-  "rerecord_reason": "scenario-redesign",
   "rules": [
     "PLANS-002"
   ],

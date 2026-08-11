@@ -5,7 +5,7 @@
     "second_tier_units": 100
   },
   "entrypoint": "billing.fn_usage_rating",
-  "fixture_sha": "1364098e851cbdcb7544076cb99de19f438877e23d5f327b060e38d29884a054",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
   "inputs": {
     "period_end": "2026-02-28",
     "period_start": "2026-02-01",
@@ -13,7 +13,6 @@
   },
   "module": "rating",
   "probes": {},
-  "rerecord_reason": "scenario-redesign",
   "rules": [],
   "scenario": "RATING-006",
   "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
