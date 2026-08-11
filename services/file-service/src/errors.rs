@@ -84,9 +84,16 @@ impl ResponseError for ServiceError {
             ),
         };
 
+        // S3 messages carry AWS-internal detail (bucket, S3 code, request ids)
+        // kept for logs and alerting; clients get a generic message.
+        let message = match self {
+            ServiceError::S3Error(_) => "storage backend error".to_string(),
+            _ => self.to_string(),
+        };
+
         HttpResponse::build(status).json(ErrorResponse {
             error: error_type.to_string(),
-            message: self.to_string(),
+            message,
         })
     }
 }
