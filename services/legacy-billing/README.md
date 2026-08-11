@@ -29,6 +29,24 @@ decisions in Python.
 - PostgreSQL owns the state transitions and computed billing results.
 - The database can be reset to a deterministic seed for repeatable recordings.
 
+## Full verification loop
+
+The extracted reference service is `services/billing-service/`. The
+declarative contract and human-approved ledger live under `procs/`. From the
+repository root:
+
+```bash
+make procs-up NS=dev
+make procs-rules-gate MODULE=plans
+make procs-parity NS=dev
+make procs-down NS=dev
+```
+
+The parity report compares the target's returned fields and target-side state
+probes with immutable recordings. Modules not yet extracted remain skipped.
+The legacy procedure files and recordings remain the source of truth for the
+before-state.
+
 ## Run locally
 
 From the repository root:

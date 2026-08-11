@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-up procs-down procs-record procs-list
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-up procs-down procs-record procs-list procs-parity procs-rules-gate
 
 SHELL := /bin/bash
 
@@ -22,6 +22,14 @@ procs-record: ## Record legacy billing transcripts (NS=<namespace>, MODULE=<modu
 
 procs-list: ## List stored-procedure modules and scenarios
 	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
+
+procs-parity: ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-parity NS=dev" >&2; exit 2)
+	NS=$(NS) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:8097} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
+
+procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module>)
+	@test -n "$(MODULE)" || (echo "MODULE is required, e.g. make procs-rules-gate MODULE=plans" >&2; exit 2)
+	uv run --with pyyaml==6.0.2 procs/harness/rules_gate.py --module $(MODULE)
 
 # --- Local Development ---
 

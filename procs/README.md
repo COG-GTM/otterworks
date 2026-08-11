@@ -10,6 +10,8 @@ the running PostgreSQL stack, not against a Python reimplementation.
 make procs-up NS=dev
 make procs-list
 make procs-record NS=dev
+make procs-rules-gate MODULE=plans
+make procs-parity NS=dev
 make procs-down NS=dev
 ```
 
@@ -36,3 +38,21 @@ it is not written into transcript content.
 
 Scenario SQL should observe the legacy state. It should not duplicate
 procedure logic in Python.
+
+## Extraction verification
+
+`routes.yaml` maps extracted legacy entrypoints to target HTTP endpoints. The
+replay harness resets the target before each scenario, replays only modules
+marked `extracted`, and records semantic field/probe comparisons in
+`procs/reports/parity.md` and `parity.json`. Pending modules are reported as
+`SKIP`, never as a pass. Replay also checks that the transcript source hash
+still matches the checked-in procedure files.
+
+The rules gate is a separate human-approval check:
+
+```bash
+make procs-rules-gate MODULE=plans
+```
+
+It validates the ledger decision, scenario coverage, source ranges, and
+target-test markers before parity is allowed to grade an extracted module.

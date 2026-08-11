@@ -44,7 +44,22 @@ services:
       timeout: 5s
       retries: 12
 
-  # Handoff B adds the extracted billing-service target here.
+  billing-service:
+    build:
+      context: ./services/billing-service
+      dockerfile: Dockerfile
+    environment:
+      BILLING_SVC_DATABASE_PATH: /data/billing_svc.sqlite3
+    ports:
+      - "${PROCS_TARGET_PORT:-8097}:8097"
+    volumes:
+      - billing-service-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8097/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
 volumes:
   legacy-billing-db-data:
+  billing-service-data:

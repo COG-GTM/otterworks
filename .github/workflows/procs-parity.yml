@@ -1,0 +1,46 @@
+name: Stored procedure parity
+
+on:
+  push:
+    paths:
+      - "procs/**"
+      - "services/legacy-billing/**"
+      - "services/billing-service/**"
+      - "frontend/client-app/src/features/billing/**"
+      - "docker-compose.procs.yml"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "procs/**"
+      - "services/legacy-billing/**"
+      - "services/billing-service/**"
+      - "frontend/client-app/src/features/billing/**"
+      - "docker-compose.procs.yml"
+      - "Makefile"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/client-app/package-lock.json
+      - run: uv run --with ruff==0.9.10 ruff check procs/harness services/billing-service
+      - run: uv run --with pytest==8.3.5 --with httpx==0.28.1 --with fastapi==0.115.6 --with pydantic-settings==2.7.1 pytest services/billing-service/tests
+      - run: cd frontend/client-app && npm ci && npm run lint && npm test
+      - run: make procs-up NS=ci
+      - run: make procs-rules-gate MODULE=plans
+      - run: make procs-parity NS=ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stored-procedure-parity-report
+          path: procs/reports/parity.*
+      - if: always()
+        run: make procs-down NS=ci

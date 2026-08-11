@@ -20,6 +20,9 @@ import StarredPage from "@/pages/starred";
 import TrashPage from "@/pages/trash";
 import TermsPage from "@/pages/terms";
 import PrivacyPage from "@/pages/privacy";
+import BillingPlansPage from "@/features/billing/plans-page";
+import BillingEntitlementPage from "@/features/billing/entitlement-page";
+import BillingChangePlanPage from "@/features/billing/change-plan-page";
 
 function NotFound() {
   return (
@@ -55,6 +58,9 @@ export default function App() {
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/billing/plans" element={<BillingPlansPage />} />
+          <Route path="/billing/entitlement/:tenantId" element={<BillingEntitlementPage />} />
+          <Route path="/billing/change/:tenantId" element={<BillingChangePlanPage />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
