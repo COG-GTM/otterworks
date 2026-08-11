@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { billingApi, type Plan } from "./api";
 import { BillingAlert } from "./alert";
@@ -9,20 +9,23 @@ export default function BillingPlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestVersion = useRef(0);
 
   const loadPlans = (isMounted = () => true) => {
+    const submittedVersion = ++requestVersion.current;
+    const isCurrent = () => submittedVersion === requestVersion.current && isMounted();
     setError("");
     setIsLoading(true);
     billingApi
       .listPlans()
       .then((items) => {
-        if (isMounted()) setPlans(items);
+        if (isCurrent()) setPlans(items);
       })
       .catch(() => {
-        if (isMounted()) setError("Plans could not be loaded.");
+        if (isCurrent()) setError("Plans could not be loaded.");
       })
       .finally(() => {
-        if (isMounted()) setIsLoading(false);
+        if (isCurrent()) setIsLoading(false);
       });
   };
 
