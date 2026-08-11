@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[3]))
 from procs.harness.replay import (
     classify_transcript,
     compare,
+    grade_response,
     normalize,
     source_matches,
     stale_transcripts,
@@ -82,3 +83,27 @@ def test_contract_errors_are_written_to_report(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
     write_report("sha", [], ["PLANS-001: business field missing"])
     assert "Contract error" in (tmp_path / "parity.md").read_text()
+
+
+def test_non_200_response_is_reported_without_comparing_error_body(tmp_path, monkeypatch) -> None:
+    transcript = {
+        "scenario": "PLANS-001",
+        "business_fields": {"code": "STARTER"},
+        "probes": {},
+    }
+    contract = {
+        "response": {
+            "business_fields": {"code": {"json_path": "$.code"}},
+            "probes": {},
+        }
+    }
+    failures, errors = grade_response(transcript, contract, 503, {"detail": "unavailable"})
+    assert failures == [{"kind": "status", "name": "status", "expected": 200, "actual": 503}]
+    assert not errors
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report(
+        "sha",
+        [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}],
+        [],
+    )
+    assert "actual `503`" in (tmp_path / "parity.md").read_text()

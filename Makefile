@@ -11,7 +11,7 @@ PROCS_PORT_OFFSET := $(shell python -c "import zlib; print(zlib.crc32('$(NS)'.en
 PROCS_DB_PORT := $(shell python -c "print(55432 + $(PROCS_PORT_OFFSET))")
 PROCS_APP_PORT := $(shell python -c "print(8096 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_DB_PORT := $(shell python -c "print(56432 + $(PROCS_PORT_OFFSET))")
-PROCS_TARGET_PORT := $(shell python -c "print(8196 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_PORT := $(shell python -c "print(12096 + $(PROCS_PORT_OFFSET))")
 PROCS_ENV := NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
 procs-up: ## Start the legacy billing stored-procedure stack (NS=<namespace>)

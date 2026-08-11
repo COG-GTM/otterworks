@@ -167,6 +167,19 @@ def compare(
     return failures, contract_errors
 
 
+def grade_response(
+    transcript: dict[str, Any], contract: dict[str, Any], status: int, payload: Any
+) -> tuple[list[dict[str, Any]], list[str]]:
+    failures = [] if status == 200 else [
+        {"kind": "status", "name": "status", "expected": 200, "actual": status}
+    ]
+    if status != 200:
+        return failures, []
+    compare_failures, contract_errors = compare(transcript, contract, payload)
+    failures.extend(compare_failures)
+    return failures, contract_errors
+
+
 def classify_transcript(transcript: dict[str, Any], routes: dict[str, Any]) -> str:
     module = routes.get(transcript["module"])
     if module and module.get("status") == "pending":
@@ -267,11 +280,7 @@ def main() -> int:
         except (http.client.HTTPException, OSError) as error:
             print(f"target unreachable during {transcript['scenario']}: {error}", file=sys.stderr)
             return TARGET_UNREACHABLE
-        failures = [] if status == 200 else [
-            {"kind": "status", "name": "status", "expected": 200, "actual": status}
-        ]
-        compare_failures, errors = compare(transcript, contract, payload)
-        failures.extend(compare_failures)
+        failures, errors = grade_response(transcript, contract, status, payload)
         contract_errors.extend(errors)
         results.append({
             "scenario": transcript["scenario"],
