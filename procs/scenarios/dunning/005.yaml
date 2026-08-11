@@ -10,5 +10,7 @@ before_sql: "CALL billing.sp_suspend_overdue('2026-02-28')"
 fields:
   - {name: notification_count, from: notification_count, type: integer}
 probes:
-  - {id: notification_values, query: "SELECT tenant_id::text || ':' || kind || ':' || count(*)::text FROM billing.notifications WHERE tenant_id = '00000000-0000-0000-0000-000000000005' AND kind = 'suspension' GROUP BY tenant_id, kind"}
+  - id: suspension_notifications
+    collect_rows: true
+    query: "SELECT id::text AS id, tenant_id::text AS tenant_id, kind, sent_at FROM billing.notifications WHERE kind = 'suspension' ORDER BY tenant_id, sent_at"
 rules: [DUNNING-005]

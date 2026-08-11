@@ -10,6 +10,5 @@ inputs:
 fields:
   - {name: billable_units, from: billable_units, type: integer}
   - {name: overage_amount, from: overage_amount, type: decimal}
-probes:
-  - {id: rating_values, query: "SELECT billable_units::text || ':' || overage_amount::text FROM billing.fn_usage_rating('00000000-0000-0000-0000-000000000002', '2026-02-01', '2026-02-28')"}
+probes: []
 rules: [RATING-003]

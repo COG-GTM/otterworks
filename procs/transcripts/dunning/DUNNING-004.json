@@ -9,9 +9,16 @@
   },
   "module": "dunning",
   "probes": {
-    "suspension_values": "suspended:2026-02-28:1"
+    "suspension_notifications": [
+      {
+        "id": "8cd558f5-d843-8d3d-be19-fb94c21ab81f",
+        "kind": "suspension",
+        "sent_at": "2026-02-28T00:00:00Z",
+        "tenant_id": "00000000-0000-0000-0000-000000000005"
+      }
+    ]
   },
-  "rerecord_reason": "harness-change",
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "DUNNING-004"
   ],

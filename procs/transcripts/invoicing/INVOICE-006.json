@@ -14,10 +14,8 @@
     "invoice_id": "60000000-0000-0000-0000-000000000001"
   },
   "module": "invoicing",
-  "probes": {
-    "line_values": "1:149.00,2:12.29"
-  },
-  "rerecord_reason": "harness-change",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "INVOICE-006"
   ],

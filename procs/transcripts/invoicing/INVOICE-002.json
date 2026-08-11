@@ -22,10 +22,8 @@
     "tenant_id": "00000000-0000-0000-0000-000000000003"
   },
   "module": "invoicing",
-  "probes": {
-    "line_values": "1:plan:0,2:usage:0,3:tax:0,4:tax:0,5:credit:0"
-  },
-  "rerecord_reason": "harness-change",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "INVOICE-002"
   ],

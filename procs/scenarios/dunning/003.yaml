@@ -10,5 +10,7 @@ fields:
   - {name: attempt_no, from: attempt_no, type: integer}
   - {name: scheduled_for, from: scheduled_for, type: text}
 probes:
-  - {id: schedule_values, query: "SELECT string_agg(attempt_no::text || ':' || scheduled_for::text, ',' ORDER BY attempt_no) FROM billing.dunning_attempts WHERE invoice_id = '60000000-0000-0000-0000-000000000002'"}
+  - id: schedule_rows
+    collect_rows: true
+    query: "SELECT invoice_id::text AS invoice_id, attempt_no, scheduled_for::text AS scheduled_for, status FROM billing.dunning_attempts ORDER BY invoice_id, attempt_no"
 rules: [DUNNING-003]

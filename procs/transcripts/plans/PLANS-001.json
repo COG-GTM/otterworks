@@ -15,7 +15,7 @@
   "inputs": {},
   "module": "plans",
   "probes": {},
-  "rerecord_reason": "harness-change",
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "PLANS-001"
   ],

@@ -10,10 +10,8 @@
     "tenant_id": "00000000-0000-0000-0000-000000000006"
   },
   "module": "rating",
-  "probes": {
-    "rating_values": "101:5.56"
-  },
-  "rerecord_reason": "harness-change",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "RATING-004"
   ],

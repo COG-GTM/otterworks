@@ -12,9 +12,16 @@
   },
   "module": "invoicing",
   "probes": {
-    "invoice_values": "issued:54.56:4.50:59.06"
+    "invoice_state": [
+      {
+        "status": "issued",
+        "subtotal": "54.56",
+        "tax": "4.50",
+        "total": "59.06"
+      }
+    ]
   },
-  "rerecord_reason": "harness-change",
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "INVOICE-005"
   ],

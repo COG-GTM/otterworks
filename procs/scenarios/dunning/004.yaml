@@ -10,5 +10,7 @@ fields:
   - {name: status, from: status, type: text}
   - {name: suspended_on, from: suspended_on, type: text}
 probes:
-  - {id: suspension_values, query: "SELECT s.status || ':' || s.suspended_on::text || ':' || count(n.id)::text FROM billing.subscriptions s LEFT JOIN billing.notifications n ON n.tenant_id = s.tenant_id AND n.kind = 'suspension' WHERE s.tenant_id = '00000000-0000-0000-0000-000000000005' GROUP BY s.status, s.suspended_on"}
+  - id: suspension_notifications
+    collect_rows: true
+    query: "SELECT id::text AS id, tenant_id::text AS tenant_id, kind, sent_at FROM billing.notifications WHERE kind = 'suspension' ORDER BY tenant_id, sent_at"
 rules: [DUNNING-004]

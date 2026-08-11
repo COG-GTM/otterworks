@@ -44,9 +44,11 @@ transcript under `procs/transcripts/<module>/`.
 
 Transcripts are immutable. Re-recording requires `--allow-rerecord` and a
 changed procedure source hash. If only the harness changed, use the explicit
-audited escape `--allow-rerecord --rerecord-reason harness-change`; each
-resulting transcript records that reason. The namespace affects only the
-running database; it is not written into transcript content.
+audited escape `--allow-rerecord --rerecord-reason harness-change`; if the
+scenario/probe design changed, use
+`--allow-rerecord --rerecord-reason scenario-redesign`. Each resulting
+transcript records that reason. The namespace affects only the running
+database; it is not written into transcript content.
 
 Recording an existing checkout is intentionally refused unless the procedure
 source changed. Through Make, the normal command is:
@@ -66,6 +68,15 @@ For a harness-only normalization or recorder change, use the auditable reason:
 ```bash
 make procs-record NS=dev ALLOW_RERECORD=1 RERECORD_REASON=harness-change
 ```
+
+For a scenario/probe redesign with unchanged procedures, use:
+
+```bash
+make procs-record NS=dev ALLOW_RERECORD=1 RERECORD_REASON=scenario-redesign
+```
+
+Each non-procedure reason is valid only for the named change; neither is a
+substitute for recording changed procedures.
 
 ## Add a scenario
 

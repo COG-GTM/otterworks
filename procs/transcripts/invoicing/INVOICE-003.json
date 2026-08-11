@@ -4,6 +4,10 @@
       "70000000-0000-0000-0000-000000000001",
       "70000000-0000-0000-0000-000000000002"
     ],
+    "issued_on": [
+      "2026-01-31",
+      "2026-02-01"
+    ],
     "remaining": [
       "0.00",
       "6.96"
@@ -17,9 +21,16 @@
   },
   "module": "invoicing",
   "probes": {
-    "credit_values": "70000000-0000-0000-0000-000000000001:0.00,70000000-0000-0000-0000-000000000002:6.96"
+    "invoice_state": [
+      {
+        "status": "issued",
+        "subtotal": "49.00",
+        "tax": "4.04",
+        "total": "0.00"
+      }
+    ]
   },
-  "rerecord_reason": "harness-change",
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "INVOICE-003"
   ],

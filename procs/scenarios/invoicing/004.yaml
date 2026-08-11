@@ -7,11 +7,14 @@ inputs:
   - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000004}
   - {name: period_start, type: date, value: 2026-02-01}
   - {name: period_end, type: date, value: 2026-02-28}
-setup_sql: "UPDATE billing.credit_notes SET issued_on = '2026-02-01'::date WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"
-capture_query: "SELECT id::text, remaining_amount::text FROM billing.credit_notes WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY issued_on, id"
+setup_sql: "UPDATE billing.credit_notes SET issued_on = '2026-02-01'::date, amount = CASE WHEN id = '70000000-0000-0000-0000-000000000001' THEN 55.00 ELSE 5.00 END, remaining_amount = CASE WHEN id = '70000000-0000-0000-0000-000000000001' THEN 55.00 ELSE 5.00 END WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"
+capture_query: "SELECT id::text, issued_on::text, remaining_amount::text FROM billing.credit_notes WHERE tenant_id = '00000000-0000-0000-0000-000000000004' ORDER BY issued_on, id"
 fields:
   - {name: credit_ids, from: id, type: text, collect: true}
+  - {name: issued_on, from: issued_on, type: date, collect: true}
   - {name: remaining, from: remaining_amount, type: decimal, collect: true}
 probes:
-  - {id: credit_values, query: "SELECT string_agg(id::text || ':' || remaining_amount::text, ',' ORDER BY issued_on, id) FROM billing.credit_notes WHERE tenant_id = '00000000-0000-0000-0000-000000000004'"}
+  - id: invoice_state
+    collect_rows: true
+    query: "SELECT status, subtotal::text AS subtotal, tax::text AS tax, total::text FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000004' || '2026-02-01')::uuid"
 rules: [INVOICE-004]

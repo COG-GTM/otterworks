@@ -8,6 +8,5 @@ inputs:
 fields:
   - {name: tenant_ids, from: tenant_id, type: uuid, collect: true}
   - {name: days_overdue, from: days_overdue, type: integer, collect: true}
-probes:
-  - {id: account_values, query: "SELECT string_agg(tenant_id::text || ':' || days_overdue::text, ',' ORDER BY invoice_id) FROM billing.fn_overdue_accounts('2026-02-28')"}
+probes: []
 rules: [DUNNING-001]

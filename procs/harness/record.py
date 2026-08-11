@@ -212,14 +212,17 @@ def check_immutability(
             existing.append((path, json.loads(path.read_text()).get("source_sha")))
     if not existing:
         return
-    if not allow or (any(old_sha == digest for _, old_sha in existing) and rerecord_reason != "harness-change"):
+    if not allow or (
+        any(old_sha == digest for _, old_sha in existing)
+        and rerecord_reason not in {"harness-change", "scenario-redesign"}
+    ):
         names = ", ".join(
             str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path)
             for path, _ in existing
         )
         reason = (
-            "unchanged procedure source; pass --rerecord-reason harness-change for a "
-            "harness-only re-record"
+            "unchanged procedure source; pass --rerecord-reason harness-change or "
+            "scenario-redesign for an audited non-procedure re-record"
             if allow
             else "pass --allow-rerecord only after procedure source changes"
         )
@@ -260,7 +263,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--module")
     parser.add_argument("--allow-rerecord", action="store_true")
-    parser.add_argument("--rerecord-reason", choices=["harness-change"])
+    parser.add_argument(
+        "--rerecord-reason", choices=["harness-change", "scenario-redesign"]
+    )
     parser.add_argument("--output-dir", type=Path, default=TRANSCRIPTS)
     args = parser.parse_args()
     scenarios = load_scenarios(args.module)

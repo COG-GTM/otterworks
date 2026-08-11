@@ -9,9 +9,28 @@
   },
   "module": "dunning",
   "probes": {
-    "schedule_values": "1:2026-02-16,2:2026-02-17"
+    "schedule_rows": [
+      {
+        "attempt_no": 1,
+        "invoice_id": "60000000-0000-0000-0000-000000000001",
+        "scheduled_for": "2026-02-17",
+        "status": "scheduled"
+      },
+      {
+        "attempt_no": 1,
+        "invoice_id": "60000000-0000-0000-0000-000000000002",
+        "scheduled_for": "2026-02-16",
+        "status": "sent"
+      },
+      {
+        "attempt_no": 2,
+        "invoice_id": "60000000-0000-0000-0000-000000000002",
+        "scheduled_for": "2026-02-17",
+        "status": "scheduled"
+      }
+    ]
   },
-  "rerecord_reason": "harness-change",
+  "rerecord_reason": "scenario-redesign",
   "rules": [
     "DUNNING-003"
   ],

@@ -95,11 +95,17 @@ audited path:
 make procs-record NS=dev ALLOW_RERECORD=1 RERECORD_REASON=harness-change
 ```
 
-The reason is written into regenerated transcripts. This path is legitimate
-only for a harness change with unchanged procedures; it is not a substitute for
-recording a changed procedure source. Partial recordings merge `index.json`
-entries by module/scenario. Unknown modules fail and an empty recording does
-not rewrite the index or fingerprint.
+For a scenario/probe redesign with unchanged procedures, use:
+
+```bash
+make procs-record NS=dev ALLOW_RERECORD=1 RERECORD_REASON=scenario-redesign
+```
+
+The reason is written into regenerated transcripts. Each reason is legitimate
+only for its named non-procedure change with unchanged procedures; neither is a
+substitute for recording a changed procedure source. Partial recordings merge
+`index.json` entries by module/scenario. Unknown modules fail and an empty
+recording does not rewrite the index or fingerprint.
 
 Recorder exit codes are `2` immutable transcript overwrite, `3` legacy stack
 unreachable, and `4` scenario/unknown-module failure.

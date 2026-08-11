@@ -11,6 +11,5 @@ fields:
   - {name: first_tier_units, from: first_tier_units, type: integer}
   - {name: second_tier_units, from: second_tier_units, type: integer}
   - {name: overage_amount, from: overage_amount, type: decimal}
-probes:
-  - {id: rating_values, query: "SELECT first_tier_units::text || ':' || second_tier_units::text || ':' || overage_amount::text FROM billing.fn_usage_rating('00000000-0000-0000-0000-000000000003', '2026-02-01', '2026-02-28')"}
+probes: []
 rules: [RATING-006]

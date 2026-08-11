@@ -11,6 +11,5 @@ fields:
   - {name: line_numbers, from: line_no, type: integer, collect: true}
   - {name: amounts, from: amount, type: decimal, collect: true}
   - {name: totals, from: total, type: decimal, collect: true}
-probes:
-  - {id: line_values, query: "SELECT string_agg(line_no::text || ':' || amount::text || ':' || total::text, ',' ORDER BY line_no) FROM billing.fn_invoice_preview('00000000-0000-0000-0000-000000000006', '2026-02-01', '2026-02-28')"}
+probes: []
 rules: [INVOICE-001]

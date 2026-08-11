@@ -10,6 +10,5 @@ inputs:
 fields:
   - {name: kinds, from: kind, type: text, collect: true}
   - {name: units, from: units, type: integer, collect: true}
-probes:
-  - {id: summary_values, query: "SELECT string_agg(kind || ':' || units::text, ',' ORDER BY kind) FROM billing.fn_usage_summary('00000000-0000-0000-0000-000000000004', '2026-02-01', '2026-02-28')"}
+probes: []
 rules: [RATING-007]

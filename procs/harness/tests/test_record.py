@@ -62,6 +62,7 @@ def test_unchanged_source_rerecord_requires_audited_reason(tmp_path) -> None:
     with pytest.raises(RuntimeError, match="harness-change"):
         check_immutability(scenarios, "same", True, None, tmp_path)
     check_immutability(scenarios, "same", True, "harness-change", tmp_path)
+    check_immutability(scenarios, "same", True, "scenario-redesign", tmp_path)
 
 
 def test_empty_recording_does_not_rewrite_index_or_fingerprint(tmp_path) -> None:

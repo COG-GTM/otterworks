@@ -8,6 +8,5 @@ inputs:
 fields:
   - {name: line_types, from: line_type, type: text, collect: true}
   - {name: amounts, from: amount, type: decimal, collect: true}
-probes:
-  - {id: line_values, query: "SELECT string_agg(line_no::text || ':' || amount::text, ',' ORDER BY line_no) FROM billing.invoice_lines WHERE invoice_id = '60000000-0000-0000-0000-000000000001'"}
+probes: []
 rules: [INVOICE-006]

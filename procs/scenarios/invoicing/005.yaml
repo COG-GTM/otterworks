@@ -13,5 +13,7 @@ fields:
   - {name: tax, from: tax, type: decimal}
   - {name: total, from: total, type: decimal}
 probes:
-  - {id: invoice_values, query: "SELECT status || ':' || subtotal::text || ':' || tax::text || ':' || total::text FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000006' || '2026-02-01')::uuid"}
+  - id: invoice_state
+    collect_rows: true
+    query: "SELECT status, subtotal::text AS subtotal, tax::text AS tax, total::text FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000006' || '2026-02-01')::uuid"
 rules: [INVOICE-005]
