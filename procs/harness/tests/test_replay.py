@@ -73,11 +73,11 @@ def test_unmapped_business_field_and_probe_are_contract_errors() -> None:
     assert "probe missing_probe" in errors[1]
 
 
-def test_structured_rows_are_sorted_and_normalized() -> None:
+def test_structured_rows_preserve_recorded_order_and_normalize() -> None:
     contract = {
         "response": {
             "business_fields": {
-                "rows": {"json_path": "$.rows", "type": "rows", "sort_by": ["id"]}
+                "rows": {"json_path": "$.rows", "type": "rows"}
             },
             "probes": {},
         }
@@ -87,6 +87,42 @@ def test_structured_rows_are_sorted_and_normalized() -> None:
     assert not failures
     assert not errors
     assert normalize({"b": 2, "a": 1}) == {"a": 1, "b": 2}
+
+
+def test_structured_rows_wrong_order_is_a_failure() -> None:
+    contract = {
+        "response": {
+            "business_fields": {"rows": {"json_path": "$.rows", "type": "rows"}},
+            "probes": {},
+        }
+    }
+    transcript = {
+        "scenario": "x",
+        "business_fields": {"rows": [{"id": "1"}, {"id": "2"}]},
+        "probes": {},
+    }
+    failures, errors = compare(
+        transcript, contract, {"rows": [{"id": "2"}, {"id": "1"}]}
+    )
+    assert not errors
+    assert failures[0]["kind"] == "field"
+
+
+def test_structured_rows_missing_column_is_a_reported_failure() -> None:
+    contract = {
+        "response": {
+            "business_fields": {"rows": {"json_path": "$.rows", "type": "rows"}},
+            "probes": {},
+        }
+    }
+    transcript = {
+        "scenario": "x",
+        "business_fields": {"rows": [{"id": "1", "code": "STARTER"}]},
+        "probes": {},
+    }
+    failures, errors = compare(transcript, contract, {"rows": [{"id": "1"}]})
+    assert not errors
+    assert failures[0]["kind"] == "field"
 
 
 def test_contract_errors_are_written_to_report(tmp_path, monkeypatch) -> None:
@@ -170,7 +206,7 @@ def test_rows_with_scalar_items_are_reported_and_written(tmp_path, monkeypatch) 
     contract = {
         "response": {
             "business_fields": {
-                "rows": {"json_path": "$.rows", "type": "rows", "sort_by": ["id"]}
+                "rows": {"json_path": "$.rows", "type": "rows"}
             },
             "probes": {},
         }
@@ -188,25 +224,23 @@ def test_rows_with_scalar_items_are_reported_and_written(tmp_path, monkeypatch) 
     assert (tmp_path / "parity.json").exists()
 
 
-def test_rows_missing_sort_field_are_reported_and_written(tmp_path, monkeypatch) -> None:
+def test_rows_with_missing_column_are_reported_and_written(tmp_path, monkeypatch) -> None:
     transcript = {
         "scenario": "PLANS-001",
-        "business_fields": {"rows": [{"id": "1"}]},
+        "business_fields": {"rows": [{"id": "1", "code": "STARTER"}]},
         "probes": {},
     }
     contract = {
         "response": {
             "business_fields": {
-                "rows": {"json_path": "$.rows", "type": "rows", "sort_by": ["id", "code"]}
+                "rows": {"json_path": "$.rows", "type": "rows"}
             },
             "probes": {},
         }
     }
     failures, errors = compare(transcript, contract, {"rows": [{"id": "1"}]})
     assert not errors
-    assert failures[0]["actual"].startswith(
-        "<unresolvable $.rows: row missing sort field code"
-    )
+    assert failures[0]["kind"] == "field"
     monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
     write_report(
         "sha",
