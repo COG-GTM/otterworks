@@ -101,15 +101,15 @@ def change_tenant_plan(tenant_id: Annotated[UUID, Path()], request: PlanChange) 
     try:
         with connect() as connection:
             repository = PostgresPlansRepository(connection)
-            subscriptions = change_plan(
+            subscriptions, created = change_plan(
                 repository,
                 tenant_id,
                 request.plan_id,
                 request.effective_on,
             )
             return {
-                "latest_plan": str(subscriptions[-1].plan_id),
-                "latest_start": subscriptions[-1].starts_on.isoformat(),
+                "latest_plan": str(created.plan_id),
+                "latest_start": created.starts_on.isoformat(),
                 "subscriptions": [
                     {
                         "plan_id": str(item.plan_id),

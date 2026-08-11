@@ -99,9 +99,33 @@ def test_change_plan_uses_stable_uuid5_and_preserves_history() -> None:
     repository = FakeRepository(
         [SubscriptionRow(SUBSCRIPTION, TENANT, STARTER, date(2026, 1, 1), None, "active", None)]
     )
-    result = change_plan(repository, TENANT, GROWTH, date(2026, 3, 1))
+    result, created = change_plan(repository, TENANT, GROWTH, date(2026, 3, 1))
     assert len(result) == 2
+    assert created.plan_id == GROWTH
     assert repository.inserted[0][0].version == 5
+
+
+def test_change_plan_reports_new_subscription_with_later_dated_history() -> None:
+    later = SubscriptionRow(
+        UUID("20000000-0000-0000-0000-000000000002"),
+        TENANT,
+        GROWTH,
+        date(2026, 6, 1),
+        None,
+        "active",
+        None,
+    )
+    repository = FakeRepository(
+        [
+            SubscriptionRow(
+                SUBSCRIPTION, TENANT, STARTER, date(2026, 1, 1), None, "active", None
+            ),
+            later,
+        ]
+    )
+    subscriptions, created = change_plan(repository, TENANT, GROWTH, date(2026, 3, 1))
+    assert subscriptions[-1].starts_on == date(2026, 6, 1)
+    assert created.starts_on == date(2026, 3, 1)
 
 
 def test_generated_seed_is_current() -> None:

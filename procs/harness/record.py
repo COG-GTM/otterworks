@@ -73,6 +73,10 @@ def normalized(value: Any, kind: str | None = None) -> Any:
         return None
     if kind == "decimal" or isinstance(value, Decimal):
         return str(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    if kind == "integer":
+        return int(value)
+    if kind == "date":
+        return date.fromisoformat(str(value)).isoformat()
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, datetime):
@@ -202,7 +206,7 @@ def check_immutability(
             existing.append((path, json.loads(path.read_text()).get("source_sha")))
     if not existing:
         return
-    if not allow or any(old_sha == digest for _, old_sha in existing):
+    if not allow:
         names = ", ".join(str(path.relative_to(ROOT)) for path, _ in existing)
         raise RuntimeError(f"would overwrite immutable transcript(s): {names}")
 

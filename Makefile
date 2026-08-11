@@ -1,36 +1,37 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-up procs-down procs-record procs-list procs-parity procs-rules-gate
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate
 
 SHELL := /bin/bash
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-PROCS_COMPOSE := docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
-PROCS_UV := uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
-PROCS_PORT_OFFSET := $(shell python -c "import zlib; print(zlib.crc32('$(NS)'.encode()) % 1000)")
-PROCS_DB_PORT := $(shell python -c "print(55432 + $(PROCS_PORT_OFFSET))")
-PROCS_APP_PORT := $(shell python -c "print(8096 + $(PROCS_PORT_OFFSET))")
-PROCS_TARGET_DB_PORT := $(shell python -c "print(56432 + $(PROCS_PORT_OFFSET))")
-PROCS_TARGET_PORT := $(shell python -c "print(12096 + $(PROCS_PORT_OFFSET))")
-PROCS_ENV := NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
+PROCS_COMPOSE = docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
+PROCS_UV = uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
+PROCS_PORT_OFFSET = $(shell if command -v python3 >/dev/null 2>&1 && test -n "$(NS)"; then python3 -c "import zlib; print(zlib.crc32('$(NS)'.encode()) % 1000)"; fi)
+PROCS_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(55432 + $(PROCS_PORT_OFFSET))")
+PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(8096 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
+PROCS_ENV = NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
-procs-up: ## Start the legacy billing stored-procedure stack (NS=<namespace>)
+procs-validate:
 	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
+	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required for namespace port derivation" >&2; exit 2)
+	@test -n "$(PROCS_PORT_OFFSET)" || (echo "could not derive namespace port offset" >&2; exit 2)
+
+procs-up: procs-validate ## Start the legacy billing stored-procedure stack (NS=<namespace>)
 	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
 
-procs-down: ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
-	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-down NS=dev" >&2; exit 2)
+procs-down: procs-validate ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
 	$(PROCS_ENV) $(PROCS_COMPOSE) down -v
 
-procs-record: ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
-	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-record NS=dev" >&2; exit 2)
+procs-record: procs-validate ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
 	$(PROCS_ENV) DB_NAME=billing_$(NS) DB_PORT=$(PROCS_DB_PORT) $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),) $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),)
 
 procs-list: ## List stored-procedure modules and scenarios
 	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
 
-procs-parity: ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
-	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-parity NS=dev" >&2; exit 2)
+procs-parity: procs-validate ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
 	$(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
 
 procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module> or ALL=1)

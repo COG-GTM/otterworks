@@ -85,7 +85,7 @@ def change_plan(
     tenant_id: UUID,
     plan_id: UUID,
     effective_on: date,
-) -> list[SubscriptionRow]:
+) -> tuple[list[SubscriptionRow], SubscriptionRow]:
     subscriptions = repository.list_subscriptions(tenant_id)
     for subscription in subscriptions:
         if subscription.ends_on is None and subscription.starts_on < effective_on:
@@ -97,11 +97,16 @@ def change_plan(
                 effective_on - timedelta(days=1),
                 next_status,
             )
+    created_id = uuid5(PLAN_CHANGE_NAMESPACE, f"{tenant_id}{plan_id}{effective_on.isoformat()}")
     repository.insert_subscription(
-        uuid5(PLAN_CHANGE_NAMESPACE, f"{tenant_id}{plan_id}{effective_on.isoformat()}"),
+        created_id,
         tenant_id,
         plan_id,
         effective_on,
         "active",
     )
-    return sorted(repository.list_subscriptions(tenant_id), key=lambda item: item.starts_on)
+    subscriptions = sorted(
+        repository.list_subscriptions(tenant_id), key=lambda item: item.starts_on
+    )
+    created = next(item for item in subscriptions if item.subscription_id == created_id)
+    return subscriptions, created

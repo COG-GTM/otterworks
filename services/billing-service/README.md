@@ -28,3 +28,8 @@ every scenario.
 The reset endpoint is disabled by default. Disposable local/CI Compose stacks
 enable it with `BILLING_SVC_ALLOW_INTERNAL_RESET=true`; published deployments
 should leave the setting disabled.
+
+For the extracted target, a plan change with an already-scheduled later
+subscription preserves that later row. The response's `latest_*` fields always
+identify the subscription created by the request, rather than relying on row
+ordering.
