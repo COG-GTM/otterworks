@@ -10,6 +10,7 @@ import subprocess
 import sys
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -27,6 +28,15 @@ TARGET_UNREACHABLE = 3
 CONTRACT_MISSING = 6
 SOURCE_MISMATCH = 7
 RESET_FAILED = 8
+
+
+@dataclass(frozen=True)
+class UnresolvedPath:
+    path: str
+    reason: str
+
+    def describe(self) -> str:
+        return f"<unresolvable {self.path}: {self.reason}>"
 
 
 def source_sha() -> str:
@@ -66,22 +76,35 @@ def json_path(value: Any, path: str) -> Any:
     tokens = re.findall(r"\[\*\]|\[\d+\]|[^.\[\]]+", path[1:])
     for token in tokens:
         if token == "[*]":
+            if any(not isinstance(item, list) for item in current):
+                return UnresolvedPath(path, "expected a list for [*]")
             current = [child for item in current for child in item]
         elif token.startswith("["):
-            current = [item[int(token[1:-1])] for item in current]
+            index = int(token[1:-1])
+            if any(not isinstance(item, list) or index >= len(item) for item in current):
+                return UnresolvedPath(path, f"missing list index {index}")
+            current = [item[index] for item in current]
         else:
+            if any(not isinstance(item, dict) or token not in item for item in current):
+                return UnresolvedPath(path, f"missing field {token}")
             current = [item[token] for item in current]
     return current if "[*]" in path else (current[0] if current else None)
 
 
 def extract(payload: Any, spec: dict[str, Any]) -> Any:
     value = json_path(payload, spec["json_path"])
+    if isinstance(value, UnresolvedPath):
+        return value
     if spec.get("type") == "rows":
-        rows = [normalize(row) for row in value or []]
+        if not isinstance(value, list):
+            return UnresolvedPath(spec["json_path"], "expected a list of rows")
+        rows = [normalize(row) for row in value]
         sort_by = spec.get("sort_by", ["starts_on", "plan_id"])
         return sorted(rows, key=lambda row: tuple(row.get(key) for key in sort_by))
     if spec.get("collect"):
-        return [normalize(item, spec.get("type")) for item in value or []]
+        if not isinstance(value, list):
+            return UnresolvedPath(spec["json_path"], "expected a list to collect")
+        return [normalize(item, spec.get("type")) for item in value]
     return normalize(value, spec.get("type"))
 
 
@@ -153,6 +176,8 @@ def compare(
             contract_errors.append(f"{transcript['scenario']}: business field {field} is unmapped")
             continue
         actual = extract(payload, spec)
+        if isinstance(actual, UnresolvedPath):
+            actual = actual.describe()
         if expected != actual:
             failures.append({"kind": "field", "name": field, "expected": expected, "actual": actual})
     probe_contract = contract["response"].get("probes", {})
@@ -162,6 +187,8 @@ def compare(
             contract_errors.append(f"{transcript['scenario']}: probe {probe_id} is unmapped")
             continue
         actual = extract(payload, spec)
+        if isinstance(actual, UnresolvedPath):
+            actual = actual.describe()
         if expected != actual:
             failures.append({"kind": "probe", "name": probe_id, "expected": expected, "actual": actual})
     return failures, contract_errors

@@ -107,3 +107,45 @@ def test_non_200_response_is_reported_without_comparing_error_body(tmp_path, mon
         [],
     )
     assert "actual `503`" in (tmp_path / "parity.md").read_text()
+
+
+def test_missing_mapped_field_is_a_reported_failure(tmp_path, monkeypatch) -> None:
+    transcript = {"scenario": "PLANS-001", "business_fields": {"code": "STARTER"}, "probes": {}}
+    contract = {
+        "response": {"business_fields": {"code": {"json_path": "$.code"}}, "probes": {}}
+    }
+    failures, errors = compare(transcript, contract, {"name": "missing"})
+    assert not errors
+    assert failures[0]["actual"].startswith("<unresolvable $.code:")
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report("sha", [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}], [])
+    assert "unresolvable" in (tmp_path / "parity.md").read_text()
+
+
+def test_scalar_payload_under_mapped_path_is_a_reported_failure(tmp_path, monkeypatch) -> None:
+    transcript = {"scenario": "PLANS-001", "business_fields": {"code": "STARTER"}, "probes": {}}
+    contract = {
+        "response": {"business_fields": {"code": {"json_path": "$.code.value"}}, "probes": {}}
+    }
+    failures, errors = compare(transcript, contract, {"code": None})
+    assert not errors
+    assert failures[0]["actual"].startswith("<unresolvable $.code.value:")
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report("sha", [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}], [])
+    assert (tmp_path / "parity.md").exists()
+
+
+def test_collect_on_non_list_is_a_reported_failure(tmp_path, monkeypatch) -> None:
+    transcript = {"scenario": "PLANS-001", "business_fields": {"codes": ["STARTER"]}, "probes": {}}
+    contract = {
+        "response": {
+            "business_fields": {"codes": {"json_path": "$.codes", "collect": True}},
+            "probes": {},
+        }
+    }
+    failures, errors = compare(transcript, contract, {"codes": "STARTER"})
+    assert not errors
+    assert failures[0]["actual"].startswith("<unresolvable $.codes:")
+    monkeypatch.setattr("procs.harness.replay.REPORT_DIR", tmp_path)
+    write_report("sha", [{"module": "plans", "scenario": "PLANS-001", "status": "FAIL", "failures": failures}], [])
+    assert (tmp_path / "parity.md").exists()
