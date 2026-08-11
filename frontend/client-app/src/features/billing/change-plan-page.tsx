@@ -59,6 +59,7 @@ export default function BillingChangePlanPage() {
       return;
     }
     setError("");
+    setResult(null);
     setIsSaving(true);
     billingApi
       .changePlan(tenantId, planId, effectiveOn)
