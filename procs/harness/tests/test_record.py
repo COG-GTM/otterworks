@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).parents[3]))
 
 import pytest
 
+import procs.harness.record as record
 from procs.harness.record import check_immutability, normalized
 from procs.harness.record import write_transcripts
 from procs.harness.replay import normalize
@@ -59,3 +60,19 @@ def test_unchanged_source_rerecord_requires_audited_reason(tmp_path) -> None:
     with pytest.raises(RuntimeError, match="harness-change"):
         check_immutability(scenarios, "same", True, None, tmp_path)
     check_immutability(scenarios, "same", True, "harness-change", tmp_path)
+
+
+def test_empty_recording_does_not_rewrite_index_or_fingerprint(tmp_path) -> None:
+    index = tmp_path / "index.json"
+    source = tmp_path / "SOURCE_SHA"
+    index.write_text("original index\n")
+    source.write_text("original source\n")
+    record.write_transcripts([], "new source", tmp_path)
+    assert index.read_text() == "original index\n"
+    assert source.read_text() == "original source\n"
+
+
+def test_unknown_module_fails_before_recording(monkeypatch) -> None:
+    monkeypatch.setattr(record, "load_scenarios", lambda _module: [])
+    monkeypatch.setattr(sys, "argv", ["record.py", "--module", "typo"])
+    assert record.main() == record.SCENARIO_FAILED

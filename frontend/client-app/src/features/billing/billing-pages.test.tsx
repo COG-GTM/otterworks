@@ -125,4 +125,38 @@ describe("Billing page state transitions", () => {
       expect(screen.queryByText("Plan change saved for 2026-03-01.")).not.toBeInTheDocument(),
     );
   });
+
+  it("ignores a plan response after switching tenants", async () => {
+    billingServer.use(
+      http.get("http://localhost:3000/billing-api/api/plans", () =>
+        HttpResponse.json([
+          {
+            plan_id: PLAN,
+            code: "STARTER",
+            tier: "starter",
+            monthly_fee: "49.00",
+            included_units: 100,
+            overage_rate: "0.055000",
+          },
+        ]),
+      ),
+      http.post(
+        "http://localhost:3000/billing-api/api/tenants/:tenantId/plan-change",
+        async () => {
+          await delay(100);
+          return HttpResponse.json({
+            latest_plan: PLAN,
+            latest_start: "2026-03-01",
+            subscriptions: [],
+          });
+        },
+      ),
+    );
+    renderChangePlan();
+    await screen.findByRole("button", { name: "Save plan change" });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan change" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch change tenant" }));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(screen.queryByText("Plan change saved for 2026-03-01.")).not.toBeInTheDocument();
+  });
 });

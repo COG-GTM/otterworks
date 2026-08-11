@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   billingApi,
@@ -22,12 +22,15 @@ export default function BillingChangePlanPage() {
   const [error, setError] = useState("");
   const [result, setResult] = useState<PlanChangeResult | null>(null);
   const [retry, setRetry] = useState(0);
+  const requestVersion = useRef(0);
 
   useEffect(() => {
     let mounted = true;
+    requestVersion.current += 1;
     setError("");
     setResult(null);
     setIsLoading(true);
+    setIsSaving(false);
     if (!tenantId || !UUID.test(tenantId)) {
       setError("A valid tenant id is required.");
       setIsLoading(false);
@@ -64,17 +67,25 @@ export default function BillingChangePlanPage() {
     setError("");
     setResult(null);
     setIsSaving(true);
+    const submittedVersion = ++requestVersion.current;
+    const isCurrent = () => submittedVersion === requestVersion.current;
     billingApi
       .changePlan(tenantId, planId, effectiveOn)
-      .then(setResult)
-      .catch((error: unknown) => {
-        setError(
-          error instanceof BillingApiError && error.status === 409
-            ? "This plan change was already submitted."
-            : "The plan change could not be saved.",
-        );
+      .then((value) => {
+        if (isCurrent()) setResult(value);
       })
-      .finally(() => setIsSaving(false));
+      .catch((error: unknown) => {
+        if (isCurrent()) {
+          setError(
+            error instanceof BillingApiError && error.status === 409
+              ? "This plan change was already submitted."
+              : "The plan change could not be saved.",
+          );
+        }
+      })
+      .finally(() => {
+        if (isCurrent()) setIsSaving(false);
+      });
   };
 
   return (

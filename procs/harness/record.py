@@ -225,6 +225,8 @@ def check_immutability(
 
 
 def write_transcripts(records: list[dict[str, Any]], digest: str, transcript_root: Path) -> None:
+    if not records:
+        return
     transcript_root.mkdir(parents=True, exist_ok=True)
     existing_index_path = transcript_root / "index.json"
     if existing_index_path.exists():
@@ -260,6 +262,9 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, default=TRANSCRIPTS)
     args = parser.parse_args()
     scenarios = load_scenarios(args.module)
+    if args.module and not scenarios:
+        print(f"unknown scenario module: {args.module}", file=sys.stderr)
+        return SCENARIO_FAILED
     digest = source_sha()
     try:
         check_immutability(
