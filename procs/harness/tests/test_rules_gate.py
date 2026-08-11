@@ -92,3 +92,14 @@ def test_target_marker_is_required(monkeypatch, tmp_path):
     patch_tree(monkeypatch, root)
     code, _ = gate.validate_module("plans")
     assert code == gate.MARKER_INVALID
+
+
+def test_unknown_target_marker_is_rejected(monkeypatch, tmp_path):
+    root = fixture_tree(tmp_path)
+    (root / "services" / "billing-service" / "tests" / "test_rule.py").write_text(
+        'pytest.mark.rule("PLANS-999")\n'
+    )
+    patch_tree(monkeypatch, root)
+    code, errors = gate.validate_module("plans")
+    assert code == gate.MARKER_INVALID
+    assert "no ledger rule" in errors[0]

@@ -77,7 +77,7 @@ def test_entitlement_selects_effective_subscription() -> None:
     assert entitlement(rows, TENANT, date(2026, 2, 28)).plan_code == "STARTER"
 
 
-@pytest.mark.rule("PLANS-003")
+@pytest.mark.rule("PLANS-002")
 def test_entitlement_preserves_suspended_status() -> None:
     row = EntitlementRow(
         TENANT, "GROWTH", "growth", Decimal("149"), 500, "suspended", None, date(2026, 1, 1)
@@ -85,7 +85,7 @@ def test_entitlement_preserves_suspended_status() -> None:
     assert entitlement([row], TENANT, date(2026, 2, 28)).subscription_status == "suspended"
 
 
-@pytest.mark.rule("PLANS-004")
+@pytest.mark.rule("PLANS-003")
 def test_change_plan_closes_prior_subscription() -> None:
     repository = FakeRepository(
         [SubscriptionRow(SUBSCRIPTION, TENANT, STARTER, date(2026, 1, 1), None, "active", None)]
@@ -94,7 +94,7 @@ def test_change_plan_closes_prior_subscription() -> None:
     assert repository.updates == [(SUBSCRIPTION, date(2026, 2, 28), "active")]
 
 
-@pytest.mark.rule("PLANS-005")
+@pytest.mark.rule("PLANS-004")
 def test_change_plan_uses_stable_uuid5_and_preserves_history() -> None:
     repository = FakeRepository(
         [SubscriptionRow(SUBSCRIPTION, TENANT, STARTER, date(2026, 1, 1), None, "active", None)]
