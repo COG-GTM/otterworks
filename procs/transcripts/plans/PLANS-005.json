@@ -1,0 +1,48 @@
+{
+  "business_fields": {
+    "subscriptions": [
+      {
+        "ends_on": "2026-03-14",
+        "plan_id": "10000000-0000-0000-0000-000000000001",
+        "starts_on": "2026-01-01",
+        "status": "active"
+      },
+      {
+        "ends_on": null,
+        "plan_id": "10000000-0000-0000-0000-000000000003",
+        "starts_on": "2026-03-15",
+        "status": "active"
+      }
+    ]
+  },
+  "entrypoint": "billing.sp_change_plan",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "effective_on": "2026-03-15",
+    "plan_id": "10000000-0000-0000-0000-000000000003",
+    "tenant_id": "00000000-0000-0000-0000-000000000004"
+  },
+  "module": "plans",
+  "probes": {
+    "subscription_rows": [
+      {
+        "ends_on": "2026-03-14",
+        "plan_id": "10000000-0000-0000-0000-000000000001",
+        "starts_on": "2026-01-01",
+        "status": "active"
+      },
+      {
+        "ends_on": null,
+        "plan_id": "10000000-0000-0000-0000-000000000003",
+        "starts_on": "2026-03-15",
+        "status": "active"
+      }
+    ]
+  },
+  "rerecord_reason": "scenario-redesign",
+  "rules": [
+    "PLANS-004"
+  ],
+  "scenario": "PLANS-005",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}
