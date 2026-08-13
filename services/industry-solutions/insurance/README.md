@@ -19,7 +19,8 @@ irrelevant for this fixture. It runs locally in Docker Compose, bound to
 
 ```
 services/industry-solutions/insurance/
-  db/setup/    00_init.sh, 01_users.sql   — first-boot schema creation (runs once)
+  db/startup/  00_init.sh                 — idempotent init orchestrator (auto-run by the image on boot)
+  db/setup/    01_users.sql               — schema/user creation (run by 00_init.sh as SYSTEM)
   db/oltp/     01_tables.sql              — agents, products, policies, rates, splits, ledger, audit
                02_seed.sql                — deterministic test data
                03_commission_pkg.sql      — COMMISSION_PKG: all business rules (PL/SQL)
