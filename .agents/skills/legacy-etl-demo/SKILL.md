@@ -5,7 +5,7 @@ description: How to run and verify the legacy polyglot batch estate under etl/le
 
 # Legacy ETL batch estate (etl/legacy-extra/)
 
-CLI-only demo estate; no web UI. Requires `ksh` (`sudo apt-get install -y ksh`) and, for the SFTP fixture, docker + `sshpass`.
+CLI-only demo estate; no web UI. The estate lives on the `tech-partnerships` branch (added by PR #842) — it does not exist on `main`; check out `tech-partnerships` (or a branch derived from it) before following these steps. Requires `ksh` (`sudo apt-get install -y ksh`) and, for the SFTP fixture, docker + `sshpass`.
 
 ## Run the chain
 - `export OTTERWORKS_LEGACY_ROOT=/tmp/otterworks-legacy-<something>` for an isolated run root (default /tmp/otterworks-legacy). Dirs: sftp-drop/upload, incoming, archive, parsed, reports.
