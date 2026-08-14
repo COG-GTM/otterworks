@@ -5,6 +5,11 @@ description: How to run, seed, and query the legacy Oracle billing fixture (serv
 
 # Oracle billing estate (services/legacy-billing/db/oracle/)
 
+The estate lives on the `tech-partnerships` branch (added by PR #844) — it does not exist
+on `main`; check out `tech-partnerships` (or a branch derived from it) before following
+these steps. The `oracle-billing-*` / `seed-legacy*` make targets and
+`services/legacy-billing/db/oracle/` only exist there.
+
 - `make oracle-billing-up` starts Oracle Free on host port 52521. First boot pulls a
   multi-GB image (10–20 min) — never tear it down mid-session just to restart; reuse the
   container (`otterworks-oracle-billing-oracle-billing-1`). `make oracle-billing-seed NS=<ns>`
