@@ -108,6 +108,28 @@ all read from environment variables.
   into the default schema. Use as a structural reference for how the data fits
   together (UUIDs, timestamps, relationships).
 
+## Legacy Seed Generators (testdata/legacy/)
+
+Deterministic multi-store seeders for migration demos (Postgres + DynamoDB +
+S3 on LocalStack). Run via uv (inline script deps — no venv needed):
+
+```bash
+make infra-up                          # postgres:5432 + localstack:4566 (if host postgres holds 5432: sudo systemctl stop postgresql postgresql@14-main)
+make seed-legacy NS=<ns> [SCALE=demo|full] [TARGETS=postgres,dynamodb,s3]
+make seed-legacy-validate NS=<ns>      # re-derives counts/checksums vs testdata/legacy/manifests/<ns>.json
+```
+
+- demo scale seeds in ~30s (2k docs, 10k dynamo items, 3 days of hourly s3 events).
+- Manifests are gitignored runtime artifacts; reruns are byte-identical per (ns, scale).
+- NS must fullmatch `[A-Za-z0-9_]+`; DynamoDB rows use plain-UUID `id` + `ns` attribute
+  (clears are ns-scoped scans, safe for the shared table).
+- Cleanup: drop schema `otterworks_<ns>`, delete dynamo items where ns=<ns>,
+  delete `s3://otterworks-data-lake/events/<ns>/`, remove the manifest.
+- Gotcha: `uv run - <<EOF` stdin scripts don't read inline-deps headers — pass
+  `--with psycopg2-binary --with boto3` when importing legacy_common ad hoc.
+- Gotcha: `$(printf 'x\n')` strips the trailing newline — use `$'x\n'` when
+  testing newline rejection.
+
 ## Reverting a Run
 
 ```bash
