@@ -12,12 +12,14 @@ RSpec.describe FeatureFlag do
     it 'includes a user whose bucket falls under the rollout percentage' do
       user_id = (1..500).map(&:to_s).find { |id| bucket_for(id) < flag.rollout_percentage }
 
+      expect(user_id).to be_present
       expect(flag.enabled_for_user?(user_id)).to be(true)
     end
 
     it 'excludes a user whose bucket falls above the rollout percentage' do
       user_id = (1..500).map(&:to_s).find { |id| bucket_for(id) >= flag.rollout_percentage }
 
+      expect(user_id).to be_present
       expect(flag.enabled_for_user?(user_id)).to be(false)
     end
 

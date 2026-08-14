@@ -1,6 +1,10 @@
 require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::AlertsController do
+  # The webhook is unauthenticated only when the secret is unset; pin it so the
+  # suite behaves the same inside the docker-compose container, which sets one.
+  around { |example| with_env('ALERT_WEBHOOK_SECRET' => nil) { example.run } }
+
   before do
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
@@ -155,11 +159,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
     it 'warns when the matching incident cannot be resolved' do
       incident = create(:incident, :investigating, affected_service: 'search-service')
       allow(Rails.logger).to receive(:warn)
-      relation = instance_double(ActiveRecord::Relation)
-      allow(Incident).to receive(:where).and_return(relation)
-      allow(relation).to receive(:where).and_return(relation)
-      allow(relation).to receive(:first).and_return(incident)
-      allow(incident).to receive(:resolve!).and_raise(Incident::InvalidTransitionError, 'already closed')
+      stub_const('Incident::VALID_TRANSITIONS', { 'investigating' => [] })
 
       post :ingest, params: { alerts: [firing_alert(status: 'resolved')] }
 

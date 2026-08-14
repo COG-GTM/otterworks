@@ -1,6 +1,10 @@
 require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::ChaosController do
+  # The endpoint is unauthenticated only when the secret is unset; pin it so the
+  # suite behaves the same inside the docker-compose container, which sets one.
+  around { |example| with_env('CHAOS_SECRET' => nil) { example.run } }
+
   let(:redis) { instance_double(Redis) }
 
   before do
