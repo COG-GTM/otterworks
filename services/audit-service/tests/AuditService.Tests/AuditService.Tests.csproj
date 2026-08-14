@@ -7,10 +7,26 @@
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+
+    <!-- Coverage ratchet, kept with the project so it needs no shared CI wiring: a full
+         `dotnet test` of this csproj fails below these floors. Raise, never lower.
+         The run must build (coverlet.msbuild instruments during build, so a no-build run
+         skips the check); ad-hoc filtered runs can opt out with /p:CollectCoverage=false.
+         NOTE: the audit-service CI job currently runs a no-build `dotnet test` from
+         services/audit-service, where only the web csproj lives, so it discovers no tests
+         and this gate does not fire there yet - see the PR description. -->
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <CoverletOutput>./coverage/</CoverletOutput>
+    <Threshold>99,92</Threshold>
+    <ThresholdType>line,branch</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="coverlet.msbuild" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="xunit" Version="2.5.3" />
