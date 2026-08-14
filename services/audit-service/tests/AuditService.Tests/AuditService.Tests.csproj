@@ -8,8 +8,13 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
 
-    <!-- Coverage ratchet. CI runs a plain `dotnet test`, so the gate lives with the
-         project: coverlet.msbuild fails the run below these floors. Raise, never lower. -->
+    <!-- Coverage ratchet, kept with the project so it needs no shared CI wiring: a full
+         `dotnet test` of this csproj fails below these floors. Raise, never lower.
+         The run must build (coverlet.msbuild instruments during build, so a no-build run
+         skips the check); ad-hoc filtered runs can opt out with /p:CollectCoverage=false.
+         NOTE: the audit-service CI job currently runs a no-build `dotnet test` from
+         services/audit-service, where only the web csproj lives, so it discovers no tests
+         and this gate does not fire there yet - see the PR description. -->
     <CollectCoverage>true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
     <CoverletOutput>./coverage/</CoverletOutput>
