@@ -228,7 +228,10 @@ public class AuditControllerTests : IDisposable
         Assert.Equal("json", result!.Format);
         Assert.Equal(5, result.EventCount);
         Assert.True(capturedTo >= before);
-        Assert.Equal(-30, Math.Round((capturedFrom - capturedTo).TotalDays));
+        Assert.InRange(
+            capturedTo - capturedFrom,
+            TimeSpan.FromDays(30),
+            TimeSpan.FromDays(30) + TimeSpan.FromSeconds(5));
     }
 
     [Fact]
