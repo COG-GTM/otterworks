@@ -1,6 +1,12 @@
 require 'rails_helper'
 
 RSpec.describe ChaosProbeService do
+  # Bounded join: a probe loop that never terminates fails the example instead of
+  # hanging the suite.
+  def run_and_join(thread)
+    expect(thread.join(5)).to eq(thread)
+  end
+
   let(:redis) { instance_double(Redis, close: nil) }
   let(:http) { instance_double(Net::HTTP, :open_timeout= => nil, :read_timeout= => nil, request: nil) }
 
@@ -19,7 +25,7 @@ RSpec.describe ChaosProbeService do
     it 'stops immediately when the chaos key is already gone' do
       allow(redis).to receive(:exists?).with('chaos:search-service:suggest_500').and_return(false)
 
-      described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500').join
+      run_and_join(described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500'))
 
       expect(described_class).not_to have_received(:fire_probe)
       expect(redis).to have_received(:close)
@@ -28,7 +34,7 @@ RSpec.describe ChaosProbeService do
     it 'fires a batch of probes per iteration while the chaos key exists' do
       allow(redis).to receive(:exists?).and_return(true, true, false)
 
-      described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500').join
+      run_and_join(described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500'))
 
       expect(described_class).to have_received(:fire_probe)
         .with(described_class::SERVICE_PROBES['search-service'])
@@ -41,7 +47,7 @@ RSpec.describe ChaosProbeService do
       allow(Rails.logger).to receive(:error)
       allow(Redis).to receive(:new).and_raise(Redis::CannotConnectError, 'no route')
 
-      described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500').join
+      run_and_join(described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500'))
 
       expect(Rails.logger).to have_received(:error).with(/Thread error for search-service/)
       expect(described_class).not_to have_received(:fire_probe)
@@ -52,7 +58,7 @@ RSpec.describe ChaosProbeService do
       allow(Rails.logger).to receive(:error)
       allow(redis).to receive(:exists?).and_raise(Redis::CannotConnectError, 'gone')
 
-      described_class.start(service: 'file-service', redis_key: 'chaos:file-service:upload_s3_error').join
+      run_and_join(described_class.start(service: 'file-service', redis_key: 'chaos:file-service:upload_s3_error'))
 
       expect(Rails.logger).to have_received(:error).with(/Thread error for file-service/)
       expect(redis).to have_received(:close)

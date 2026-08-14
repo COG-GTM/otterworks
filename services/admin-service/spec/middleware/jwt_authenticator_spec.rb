@@ -1,6 +1,10 @@
 require 'rails_helper'
 
 RSpec.describe JwtAuthenticator do
+  # The helper signs with Rails.application.secrets.jwt_secret, which the middleware
+  # only falls back to when JWT_SECRET is unset (the compose container sets one).
+  around { |example| with_env('JWT_SECRET' => nil) { example.run } }
+
   let(:downstream) do
     lambda do |env|
       [200, { 'Content-Type' => 'application/json' }, [env.slice('jwt.user_id', 'jwt.user_email',

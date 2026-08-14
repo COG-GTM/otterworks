@@ -61,9 +61,9 @@ RSpec.describe Api::V1::Admin::AlertsController do
     end
 
     it 'maps grafana severities onto incident severities' do
-      post :ingest, params: { alerts: [firing_alert(labels: { severity: 'warning' })] }
+      post :ingest, params: { alerts: [firing_alert(labels: { severity: 'info' })] }
 
-      expect(Incident.last.severity).to eq('medium')
+      expect(Incident.last.severity).to eq('low')
     end
 
     it 'defaults an unknown severity to medium' do
