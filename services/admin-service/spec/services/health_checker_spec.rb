@@ -9,6 +9,13 @@ RSpec.describe HealthChecker do
   end
 
   describe '.check_service' do
+    # Host/port come from <SERVICE>_HOST/<SERVICE>_PORT; clear them so the defaults
+    # under test do not depend on the ambient environment.
+    around do |example|
+      keys = %w[AUTH FILE SEARCH AUDIT MYSTERY].flat_map { |s| ["#{s}_SERVICE_HOST", "#{s}_SERVICE_PORT"] }
+      with_env(keys.index_with { nil }) { example.run }
+    end
+
     before { allow(Net::HTTP).to receive(:new).and_return(http) }
 
     it 'reports a healthy service with a latency measurement' do

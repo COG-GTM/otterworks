@@ -23,12 +23,14 @@ RSpec.describe FeatureFlag do
       expect(flag.enabled_for_user?(user_id)).to be(false)
     end
 
+    # MD5('partial_feature:stable-user') % 100 == 48, i.e. inside a 50% rollout.
     it 'buckets a user by an md5 of the flag name and user id' do
       user_id = 'stable-user'
-      reloaded = described_class.find(flag.id)
 
-      expect(flag.enabled_for_user?(user_id)).to be(bucket_for(user_id) < flag.rollout_percentage)
-      expect(reloaded.enabled_for_user?(user_id)).to eq(flag.enabled_for_user?(user_id))
+      expect(bucket_for(user_id)).to eq(48)
+      expect(flag.rollout_percentage).to eq(50)
+      expect(flag.enabled_for_user?(user_id)).to be(true)
+      expect(described_class.find(flag.id).enabled_for_user?(user_id)).to be(true)
     end
 
     it 'excludes everybody once the flag has expired' do
