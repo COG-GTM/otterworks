@@ -19,7 +19,9 @@ RSpec.describe JwtAuthenticator do
   end
 
   describe 'excluded paths' do
-    it 'passes health and metrics through without a token' do
+    # EXCLUDED_PATHS also covers the alert-webhook and chaos endpoints, which are
+    # guarded by their own shared secrets rather than by JWT.
+    it 'passes every excluded path through without a token' do
       described_class::EXCLUDED_PATHS.each do |path|
         status, = call(path)
 
