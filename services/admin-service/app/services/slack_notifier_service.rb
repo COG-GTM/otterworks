@@ -91,9 +91,25 @@ class SlackNotifierService
 
     # Environment wins; the Redis-backed settings store is the fallback so the
     # webhook can be supplied at runtime on tenants whose deploy pipeline does
-    # not wire it as an env var.
+    # not wire it as an env var. The stored URL is re-validated at send time
+    # so a value planted in Redis outside the settings API cannot redirect
+    # incident payloads to an arbitrary host.
     def resolve_webhook_url
-      ENV.fetch('SLACK_WEBHOOK_URL', nil).presence || AdminSettingsService.slack_webhook_url
+      ENV.fetch('SLACK_WEBHOOK_URL', nil).presence || stored_webhook_url
+    end
+
+    def stored_webhook_url
+      url = AdminSettingsService.slack_webhook_url
+      return nil unless url
+
+      uri = URI.parse(url)
+      return url if uri.scheme == 'https' && uri.host == 'hooks.slack.com' && uri.userinfo.nil?
+
+      Rails.logger.error('Stored Slack webhook URL is not a hooks.slack.com HTTPS URL, ignoring it')
+      nil
+    rescue URI::InvalidURIError
+      Rails.logger.error('Stored Slack webhook URL is not a valid URI, ignoring it')
+      nil
     end
 
     def build_payload(incident, session_url, reporter_email)
