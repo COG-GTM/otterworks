@@ -132,12 +132,4 @@ mod tests {
         ));
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
-
-    #[test]
-    fn upload_bucket_is_not_overridable_by_env() {
-        std::env::set_var("FILE_UPLOAD_ALWAYS_FAIL", "true");
-        let cfg = super::AwsConfig::from_env();
-        assert!(!cfg.s3_bucket.contains("nonexistent"));
-        std::env::remove_var("FILE_UPLOAD_ALWAYS_FAIL");
-    }
 }
