@@ -92,26 +92,35 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    /// Restores the captured environment when dropped, so a panicking test
+    /// cannot leak mutated variables into the rest of the test binary.
+    struct EnvRestore(Vec<(String, Option<String>)>);
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in &self.0 {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
+            }
+        }
+    }
+
     fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous: Vec<(String, Option<String>)> = vars
-            .iter()
-            .map(|(key, _)| ((*key).to_string(), env::var(key).ok()))
-            .collect();
+        let _restore = EnvRestore(
+            vars.iter()
+                .map(|(key, _)| ((*key).to_string(), env::var(key).ok()))
+                .collect(),
+        );
         for (key, value) in vars {
             match value {
                 Some(value) => env::set_var(key, value),
                 None => env::remove_var(key),
             }
         }
-        let result = f();
-        for (key, value) in previous {
-            match value {
-                Some(value) => env::set_var(&key, value),
-                None => env::remove_var(&key),
-            }
-        }
-        result
+        f()
     }
 
     #[test]
