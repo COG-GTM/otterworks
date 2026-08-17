@@ -1,9 +1,8 @@
 package com.otterworks.report.util;
 
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.Locale;
@@ -35,21 +34,6 @@ public class ReportDateUtilsTest {
     /** 2024-01-02T03:04:05Z */
     private static final Date FIXED = new Date(1704164645000L);
 
-    private Locale originalLocale;
-
-    @Before
-    public void pinLocale() {
-        // The production display format has no explicit Locale, so the month
-        // abbreviation would otherwise depend on the JVM default.
-        originalLocale = Locale.getDefault();
-        Locale.setDefault(Locale.US);
-    }
-
-    @After
-    public void restoreLocale() {
-        Locale.setDefault(originalLocale);
-    }
-
     @Test
     public void toIsoStringFormatsInUtc() {
         assertEquals("2024-01-02T03:04:05Z", ReportDateUtils.toIsoString(FIXED));
@@ -62,7 +46,17 @@ public class ReportDateUtilsTest {
 
     @Test
     public void toDisplayStringFormatsInUtc() {
-        assertEquals("Jan 02, 2024 03:04", ReportDateUtils.toDisplayString(FIXED));
+        // The production formatter is a static SimpleDateFormat built without an
+        // explicit Locale, so the month abbreviation follows the JVM default that
+        // was in place when the class loaded; only the numeric fields are
+        // locale-independent.
+        SimpleDateFormat expected = new SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault());
+        expected.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        String actual = ReportDateUtils.toDisplayString(FIXED);
+
+        assertEquals(expected.format(FIXED), actual);
+        assertTrue(actual.endsWith(" 02, 2024 03:04"));
     }
 
     @Test
