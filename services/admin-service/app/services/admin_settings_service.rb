@@ -76,9 +76,11 @@ class AdminSettingsService
     # successful revoke while the old pair survives would let the next read
     # adopt it straight back into Postgres.
     def clear_devin_credentials
-      SystemConfig.where(key: [DEVIN_API_KEY_CONFIG, DEVIN_ORG_ID_CONFIG]).delete_all
+      # Legacy copy first: if it survives while the durable rows are gone, the
+      # next read adopts it straight back.
       redis = Redis.new(url: ServiceEnv.redis_url, timeout: 2)
       redis.del(*LEGACY_DEVIN_KEYS)
+      SystemConfig.where(key: [DEVIN_API_KEY_CONFIG, DEVIN_ORG_ID_CONFIG]).delete_all
     ensure
       redis&.close
     end
