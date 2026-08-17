@@ -21,19 +21,21 @@ MIN_LINES="${MIN_LINES:-98}"
 MIN_REGIONS="${MIN_REGIONS:-95}"
 
 # cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
-# added when the caller asked for no other output.
-# `${@:-}` keeps this safe under `set -u` on bash < 4.4, where an empty "$@"
-# counts as an unbound variable.
+# added when the caller asked for no other output. Every expansion of "$@" is
+# guarded, because bash < 4.4 (e.g. macOS 3.2) treats an empty "$@" as an unbound
+# variable under `set -u`.
 format=""
-for arg in "${@:-}"; do
-  case "$arg" in
-    --html | --open | --lcov | --json | --cobertura | --codecov | --text)
-      format="yes"
-      ;;
-  esac
-done
+if [ "$#" -gt 0 ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      --html | --open | --lcov | --json | --cobertura | --codecov | --text)
+        format="yes"
+        ;;
+    esac
+  done
+fi
 if [ -z "$format" ]; then
-  set -- --summary-only "$@"
+  set -- --summary-only ${1+"$@"}
 fi
 
 exec cargo llvm-cov \

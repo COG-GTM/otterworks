@@ -260,26 +260,55 @@ pub(crate) fn write_ok() -> (u16, String) {
 
 // -- In-process Redis stub --
 
-/// Length of the first complete RESP command (`*N` followed by N bulk strings)
-/// at the front of `buf`, or `None` while it is still incomplete.
-fn resp_command_len(buf: &[u8]) -> Option<usize> {
-    fn line<'a>(buf: &'a [u8], pos: &mut usize) -> Option<&'a str> {
-        let rest = buf.get(*pos..)?;
-        let end = rest.windows(2).position(|w| w == b"\r\n")?;
+/// Outcome of inspecting the front of the stub's receive buffer.
+enum Frame {
+    /// A complete RESP command occupying this many bytes.
+    Complete(usize),
+    /// A well-formed prefix: more bytes are needed.
+    Incomplete,
+    /// Not a RESP array. The stub closes the connection so the client fails
+    /// fast instead of awaiting a reply that will never come.
+    Malformed,
+}
+
+/// Classify the front of `buf` as one RESP command (`*N` followed by N bulk
+/// strings), a partial command, or garbage.
+fn resp_frame(buf: &[u8]) -> Frame {
+    /// `Ok(None)` means the line has not fully arrived yet.
+    fn line<'a>(buf: &'a [u8], pos: &mut usize) -> Result<Option<&'a str>, ()> {
+        let rest = &buf[*pos..];
+        let Some(end) = rest.windows(2).position(|w| w == b"\r\n") else {
+            return Ok(None);
+        };
         *pos += end + 2;
-        std::str::from_utf8(&rest[..end]).ok()
+        std::str::from_utf8(&rest[..end]).map(Some).map_err(|_| ())
+    }
+
+    fn header(l: &str, prefix: char) -> Result<usize, ()> {
+        l.strip_prefix(prefix)
+            .ok_or(())?
+            .parse::<usize>()
+            .map_err(|_| ())
     }
 
     let mut pos = 0;
-    let argc: usize = line(buf, &mut pos)?.strip_prefix('*')?.parse().ok()?;
+    let argc = match line(buf, &mut pos).map(|l| l.map(|l| header(l, '*'))) {
+        Ok(Some(Ok(argc))) => argc,
+        Ok(None) => return Frame::Incomplete,
+        _ => return Frame::Malformed,
+    };
     for _ in 0..argc {
-        let len: usize = line(buf, &mut pos)?.strip_prefix('$')?.parse().ok()?;
+        let len = match line(buf, &mut pos).map(|l| l.map(|l| header(l, '$'))) {
+            Ok(Some(Ok(len))) => len,
+            Ok(None) => return Frame::Incomplete,
+            _ => return Frame::Malformed,
+        };
         if buf.len() < pos + len + 2 {
-            return None;
+            return Frame::Incomplete;
         }
         pos += len + 2;
     }
-    Some(pos)
+    Frame::Complete(pos)
 }
 
 /// A minimal RESP server that answers every command with the same integer
@@ -320,13 +349,28 @@ impl RedisStub {
                         // read or an argument whose bytes start with '*' cannot
                         // desynchronise the stream.
                         let mut replies = String::new();
-                        while let Some(len) = resp_command_len(&pending) {
-                            pending.drain(..len);
-                            replies.push_str(&format!(":{integer_reply}\r\n"));
+                        let mut malformed = false;
+                        loop {
+                            match resp_frame(&pending) {
+                                Frame::Complete(len) => {
+                                    pending.drain(..len);
+                                    replies.push_str(&format!(":{integer_reply}\r\n"));
+                                }
+                                Frame::Incomplete => break,
+                                Frame::Malformed => {
+                                    malformed = true;
+                                    break;
+                                }
+                            }
                         }
                         if !replies.is_empty()
                             && socket.write_all(replies.as_bytes()).await.is_err()
                         {
+                            break;
+                        }
+                        // Hang up instead of leaving the client awaiting a reply
+                        // to something this stub cannot parse.
+                        if malformed {
                             break;
                         }
                     }
@@ -343,5 +387,75 @@ impl RedisStub {
     pub(crate) async fn connection_manager(&self) -> redis::aio::ConnectionManager {
         let client = redis::Client::open(self.url.clone()).unwrap();
         redis::aio::ConnectionManager::new(client).await.unwrap()
+    }
+}
+
+#[cfg(test)]
+mod redis_stub_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn resp_frame_separates_complete_partial_and_malformed_input() {
+        let exists = b"*2\r\n$6\r\nEXISTS\r\n$3\r\nkey\r\n";
+        assert!(matches!(resp_frame(exists), Frame::Complete(25)));
+
+        // An argument whose bytes start with '*' is skipped by its length,
+        // not mistaken for a second command header.
+        let starry = b"*2\r\n$6\r\nEXISTS\r\n$3\r\n*ab\r\n";
+        assert!(matches!(resp_frame(starry), Frame::Complete(25)));
+
+        for partial in [
+            &exists[..2],  // header not terminated
+            &exists[..10], // argument body still arriving
+            &exists[..exists.len() - 1],
+        ] {
+            assert!(
+                matches!(resp_frame(partial), Frame::Incomplete),
+                "{:?} is a prefix, not a whole command",
+                std::str::from_utf8(partial).unwrap()
+            );
+        }
+
+        for garbage in [b"PING\r\n".as_slice(), b"*x\r\n", b"*1\r\nPING\r\n"] {
+            assert!(
+                matches!(resp_frame(garbage), Frame::Malformed),
+                "{:?} is not a RESP array",
+                std::str::from_utf8(garbage).unwrap()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn stub_answers_each_whole_command_and_hangs_up_on_garbage() {
+        let stub = RedisStub::start(1).await;
+        let addr = stub.url.trim_start_matches("redis://").to_string();
+
+        let mut sock = tokio::net::TcpStream::connect(&addr).await.unwrap();
+        // Two pipelined commands, delivered in three writes that split them at
+        // arbitrary points: still exactly two replies, in order.
+        for part in [
+            "*2\r\n$6\r\nEXISTS\r\n$1\r\na\r\n*2\r\n$6\r\nEX",
+            "ISTS\r\n$1\r\n",
+            "b\r\n",
+        ] {
+            sock.write_all(part.as_bytes()).await.unwrap();
+        }
+        let mut buf = [0u8; 16];
+        let mut seen = Vec::new();
+        while seen.len() < 8 {
+            let n = sock.read(&mut buf).await.unwrap();
+            assert_ne!(n, 0, "the stub closed on well-formed input");
+            seen.extend_from_slice(&buf[..n]);
+        }
+        assert_eq!(seen, b":1\r\n:1\r\n");
+
+        let mut garbage_sock = tokio::net::TcpStream::connect(&addr).await.unwrap();
+        garbage_sock.write_all(b"PING\r\n").await.unwrap();
+        assert_eq!(
+            garbage_sock.read(&mut buf).await.unwrap(),
+            0,
+            "unparseable input closes the connection instead of hanging the client"
+        );
     }
 }
