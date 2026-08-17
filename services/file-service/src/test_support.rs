@@ -212,8 +212,9 @@ pub(crate) fn sns_client(http: StaticReplayClient) -> aws_sdk_sns::Client {
     aws_sdk_sns::Client::from_conf(conf)
 }
 
-/// Decode an `application/x-www-form-urlencoded` body -- the wire format of the
-/// SNS query protocol -- into its parameters. A `%` not followed by two hex
+/// Decode an aws-query body -- the wire format of SNS `Publish` -- into its
+/// parameters. Percent decoding is RFC 3986, matching what the SDK emits: a
+/// space is `%20` and `+` is a literal plus. A `%` not followed by two hex
 /// digits is left as-is rather than panicking.
 pub(crate) fn form_params(body: &str) -> std::collections::HashMap<String, String> {
     body.split('&')
@@ -223,7 +224,9 @@ pub(crate) fn form_params(body: &str) -> std::collections::HashMap<String, Strin
 }
 
 fn percent_decode(raw: &str) -> String {
-    let bytes = raw.replace('+', " ").into_bytes();
+    // No `+`-as-space: the aws-query protocol is strict RFC 3986, so a literal
+    // `+` in the body is a plus sign (a space arrives as `%20`).
+    let bytes = raw.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
@@ -516,12 +519,17 @@ mod form_params_tests {
 
     #[test]
     fn decodes_escapes_and_leaves_a_truncated_escape_alone() {
-        let params =
-            form_params("Action=Publish&Message=%7B%22a%22%3A1%7D&Note=a+b&Odd=100%25&Cut=%4");
+        let params = form_params(
+            "Action=Publish&Message=%7B%22a%22%3A1%7D&Note=a%20b&Sign=1+1&Odd=100%25&Cut=%4",
+        );
 
         assert_eq!(params["Action"], "Publish");
         assert_eq!(params["Message"], r#"{"a":1}"#);
         assert_eq!(params["Note"], "a b");
+        assert_eq!(
+            params["Sign"], "1+1",
+            "aws-query is RFC 3986: `+` is a plus, not a space"
+        );
         assert_eq!(params["Odd"], "100%", "a trailing escape decodes normally");
         assert_eq!(
             params["Cut"], "%4",

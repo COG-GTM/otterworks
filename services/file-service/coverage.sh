@@ -23,13 +23,16 @@ FLOOR_LINES=98
 FLOOR_REGIONS=95
 
 at_least() { # at_least <name> <floor> <requested>
+  # A percentage is at most three digits; anything longer is rejected here
+  # rather than reaching `[ -gt ]`, which errors on values outside intmax_t.
   case "$3" in
     '') echo "$2" ;;
-    *[!0-9]*)
+    *[!0-9]* | ????*)
       echo "coverage.sh: ignoring $1=$3 (whole numbers only), gating at $2" >&2
       echo "$2"
       ;;
     *)
+      set -- "$1" "$2" "$((10#$3))" # normalise 098 -> 98
       if [ "$3" -gt "$2" ]; then
         echo "$3"
       else
