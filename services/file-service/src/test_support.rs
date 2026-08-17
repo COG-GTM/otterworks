@@ -445,10 +445,18 @@ impl RedisStub {
                     if consecutive_errors > 16 {
                         return;
                     }
-                    tokio::task::yield_now().await;
+                    // Back off rather than yield-spin: the usual cause is fd
+                    // exhaustion, which needs another task to make progress and
+                    // release one. 16 x 10ms also keeps the give-up path from
+                    // firing in the microseconds it takes to burn the retries.
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     continue;
                 };
                 consecutive_errors = 0;
+                // Reap connections that have already hung up, so a stub kept
+                // alive across many client connections does not grow the set
+                // for the whole test.
+                while connections.try_join_next().is_some() {}
                 connections.spawn(async move {
                     let mut chunk = [0u8; 4096];
                     let mut pending: Vec<u8> = Vec::new();

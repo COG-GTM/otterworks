@@ -906,6 +906,8 @@ mod handler_tests {
 
     #[actix_rt::test]
     async fn metrics_serves_the_prometheus_exposition_as_plain_text() {
+        // `HTTP_REQUESTS_TOTAL` is process-global and shared with the tests in
+        // `middleware.rs`: this label set must stay unique to this test.
         middleware::HTTP_REQUESTS_TOTAL
             .with_label_values(&["GET", "/metrics-handler", "200"])
             .inc();
