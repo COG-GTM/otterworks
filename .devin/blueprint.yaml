@@ -66,10 +66,10 @@ initialize: |
       [ "$sdkm_rc" -eq 0 ] || echo "sdkmanager exited $sdkm_rc but all required packages verified; continuing"
       break
     fi
-    n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
-    # Only remove broken packages when a retry will actually follow: sdkmanager trusts
-    # package.xml, so a stale one would make the retry skip the package as installed.
+    # sdkmanager trusts package.xml, so a stale one would make a retry (or a later re-run of
+    # this script) skip the package as installed -- always drop broken ones.
     for d in $sdk_broken; do rm -rf "$ANDROID_HOME/$d"; done
+    n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
     backoff=$((15 * (2 ** n)))
     echo "retrying sdkmanager install ($n) in ${backoff}s"; sleep "$backoff"
   done
