@@ -34,12 +34,14 @@ initialize: |
   # "Failed to find target with hash string 'android-37'". Same package list installed with
   # sdkmanager 19 builds fine. Re-installed whenever the on-disk tools predate 19.
   SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-  SDKM_MAJOR=$("$SDKM" --version 2>/dev/null | cut -d. -f1)
+  SDKM_MAJOR=$("$SDKM" --version 2>/dev/null | grep -Eo '^[0-9]+' | head -n1)
   if [ "${SDKM_MAJOR:-0}" -lt 19 ]; then
-    curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+    # Download and unpack fully before dropping the old tools, so a failed fetch leaves a
+    # working cmdline-tools/latest behind instead of an empty SDK.
+    curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+    rm -rf /tmp/cmdtools && unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
     rm -rf $ANDROID_HOME/cmdline-tools/latest
-    unzip -q -o /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
-    mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+    mv /tmp/cmdtools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
   fi
   yes | $SDKM --licenses >/dev/null
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
@@ -48,7 +50,8 @@ initialize: |
   $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
         "platforms;android-36" "system-images;android-36;google_apis;x86_64"
   # Fail loudly rather than let a silent package substitution surface later as a Gradle error.
-  for p in platforms/android-37.0 build-tools/37.0.0 platforms/android-36; do
+  for p in platforms/android-37.0 build-tools/37.0.0 platforms/android-36 \
+           system-images/android-36/google_apis/x86_64; do
     [ -d "$ANDROID_HOME/$p" ] || { echo "sdkmanager did not install $p"; exit 1; }
   done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
