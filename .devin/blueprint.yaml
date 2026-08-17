@@ -38,10 +38,11 @@ initialize: |
   if [ "${SDKM_MAJOR:-0}" -lt 19 ]; then
     # Download and unpack fully before dropping the old tools, so a failed fetch leaves a
     # working cmdline-tools/latest behind instead of an empty SDK.
-    curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
-    rm -rf /tmp/cmdtools && unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools
-    rm -rf $ANDROID_HOME/cmdline-tools/latest
-    mv /tmp/cmdtools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
+    curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip \
+      && rm -rf /tmp/cmdtools && unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools \
+      && rm -rf $ANDROID_HOME/cmdline-tools/latest \
+      && mv /tmp/cmdtools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest \
+      || { echo "failed to install Android cmdline-tools 19"; exit 1; }
   fi
   yes | $SDKM --licenses >/dev/null
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
