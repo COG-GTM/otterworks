@@ -91,7 +91,7 @@ module Api
         def valid_slack_webhook_url?(url)
           uri = URI.parse(url)
           uri.scheme == 'https' && uri.host.to_s.downcase == 'hooks.slack.com' && uri.userinfo.nil?
-        rescue URI::InvalidURIError
+        rescue URI::Error
           false
         end
 

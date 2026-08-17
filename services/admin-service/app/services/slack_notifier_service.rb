@@ -104,7 +104,7 @@ class SlackNotifierService
 
       Rails.logger.error('Stored Slack webhook URL is not a hooks.slack.com HTTPS URL, ignoring it')
       nil
-    rescue URI::InvalidURIError
+    rescue URI::Error
       Rails.logger.error('Stored Slack webhook URL is not a valid URI, ignoring it')
       nil
     end

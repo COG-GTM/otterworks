@@ -10,7 +10,8 @@ class SlackAlertRoutes
 
   class << self
     def channel_for(alert_name)
-      route_for(alert_name)['channel'].presence || FALLBACK_CHANNEL
+      channel = route_for(alert_name)['channel']
+      channel.is_a?(String) && channel.present? ? channel : FALLBACK_CHANNEL
     end
 
     # Sections left empty in the YAML parse as nil, and entries may be
