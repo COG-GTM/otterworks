@@ -41,15 +41,22 @@ initialize: |
   # surfaces later at assembleDebug as a misleading "Failed to find target with hash string
   # 'android-37'" (AGP's auto-installer then races in and can't satisfy it, since only the
   # minor-versioned "platforms;android-37.0" package exists upstream).
+  sdk_complete() {
+    # package.xml is written on install finalization; the payload artifact catches a
+    # package whose metadata survived but whose payload is missing or truncated.
+    for p in "platforms/android-37.0:android.jar" "build-tools/37.0.0:aapt2" \
+             "platforms/android-36:android.jar" "platform-tools:adb" \
+             "emulator:emulator" "system-images/android-36/google_apis/x86_64:system.img"; do
+      d=${p%%:*}; f=${p##*:}
+      [ -f "$ANDROID_HOME/$d/package.xml" ] && [ -s "$ANDROID_HOME/$d/$f" ] \
+        || { echo "SDK package $d missing or incomplete"; return 1; }
+    done
+  }
   n=0
   until $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
-        "platforms;android-36" "system-images;android-36;google_apis;x86_64"; do
+        "platforms;android-36" "system-images;android-36;google_apis;x86_64" && sdk_complete; do
     n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
     echo "retrying sdkmanager install ($n)"; sleep $((30 * n))
-  done
-  for p in platforms/android-37.0 build-tools/37.0.0 platforms/android-36 \
-           platform-tools emulator system-images/android-36/google_apis/x86_64; do
-    [ -f "$ANDROID_HOME/$p/package.xml" ] || { echo "SDK package $p missing or incomplete"; exit 1; }
   done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
