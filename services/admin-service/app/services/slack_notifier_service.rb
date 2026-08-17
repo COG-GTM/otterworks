@@ -22,7 +22,7 @@ class SlackNotifierService
 
       bot_token = ENV.fetch('SLACK_BOT_TOKEN', nil).presence
       if bot_token
-        post_via_api(bot_token, channel, payload, incident)
+        post_via_api(bot_token, channel, payload)
         return
       end
 
@@ -41,15 +41,12 @@ class SlackNotifierService
 
     # chat.postMessage honors an explicit channel, unlike incoming webhooks,
     # so this is the path that guarantees delivery to the routed channel.
-    def post_via_api(bot_token, channel, payload, incident)
+    def post_via_api(bot_token, channel, payload)
       uri = URI('https://slack.com/api/chat.postMessage')
       request = Net::HTTP::Post.new(uri)
       request['Content-Type'] = 'application/json; charset=utf-8'
       request['Authorization'] = "Bearer #{bot_token}"
-      request.body = payload.merge(
-        channel: channel,
-        text: "OtterWorks Alert — #{incident.affected_service.presence || 'unknown-service'} — #{incident.title}"
-      ).to_json
+      request.body = payload.merge(channel: channel).to_json
 
       response = http_for(uri).request(request)
       if response.is_a?(Net::HTTPSuccess)
@@ -149,6 +146,9 @@ class SlackNotifierService
       body = body_lines.map { |l| l == :description ? description : l }.join("\n")
 
       {
+        # The top-level text is Slack's notification/fallback string; without
+        # it, pushes and screen readers for a blocks-only message are blank.
+        text: truncate("OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
         blocks: [
           {
             type: 'header',
