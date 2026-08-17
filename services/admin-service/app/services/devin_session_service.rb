@@ -1,7 +1,7 @@
 require 'net/http'
 require 'json'
 require 'uri'
-require 'cgi'
+require 'erb'
 
 class DevinSessionService
   API_HOST = 'https://api.devin.ai'.freeze
@@ -16,7 +16,7 @@ class DevinSessionService
 
       prompt = build_prompt(incident)
 
-      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions")
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions")
       request = Net::HTTP::Post.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
       request['Content-Type'] = 'application/json'
@@ -46,7 +46,7 @@ class DevinSessionService
       api_key, org_id = credentials
       return nil unless api_key && org_id && session_id
 
-      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions/#{session_id}")
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions/#{ERB::Util.url_encode(session_id.to_s)}")
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 
@@ -90,7 +90,7 @@ class DevinSessionService
     def verify_credentials(api_key:, org_id:)
       # A typo'd org id is bad input, not an outage: escape it so it cannot
       # raise out of URI() and get reported as "retry later".
-      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions?limit=1")
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions?limit=1")
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 

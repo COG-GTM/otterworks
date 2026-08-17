@@ -10,6 +10,7 @@ require 'json'
 #   {"api_key": "...", "org_id": "..."}
 class DevinSecretsManagerSource
   CACHE_TTL = 300
+  MUTEX = Mutex.new
 
   class << self
     def enabled?
@@ -20,13 +21,19 @@ class DevinSecretsManagerSource
       return { api_key: nil, org_id: nil } unless enabled?
       return @cache[:value] if fresh_cache?
 
-      fetch(secret_id)
+      # Puma serves requests on many threads; without this every concurrent
+      # incident would race to refresh the same secret.
+      MUTEX.synchronize do
+        return @cache[:value] if fresh_cache?
+
+        fetch(secret_id)
+      end
     end
 
     # Rotation only takes effect after the TTL; this lets an operator (or a
     # spec) drop the memo immediately.
     def reset_cache!
-      @cache = nil
+      MUTEX.synchronize { @cache = nil }
     end
 
     private
@@ -47,13 +54,15 @@ class DevinSecretsManagerSource
         api_key: payload['api_key'].presence,
         org_id: payload['org_id'].presence
       }
-      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value } if value[:api_key] && value[:org_id]
+      # Also memoize an unusable payload, so a misconfigured secret does not
+      # mean an AWS call on every incident and status check.
+      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value }
       value
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")
       # A Secrets Manager blip must not stop incident triage: keep serving the
       # last pair that worked, and fall through to the stored pair otherwise.
-      @cache&.fetch(:value, nil) || { api_key: nil, org_id: nil }
+      @cache&.dig(:value) || { api_key: nil, org_id: nil }
     end
 
     def client

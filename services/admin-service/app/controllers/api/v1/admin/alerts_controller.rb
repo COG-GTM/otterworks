@@ -96,7 +96,7 @@ module Api
               devin_session_url:    session_result[:url],
               devin_session_status: 'running',
             )
-          elsif auto_investigate
+          elsif auto_investigate && DevinSessionService.configured?
             # Record the miss: without it the incident is indistinguishable
             # from one whose session is still being created, and a broken
             # credential looks like slowness for as long as nobody checks.

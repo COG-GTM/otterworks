@@ -106,6 +106,10 @@ class AdminSettingsService
       { api_key: nil, org_id: nil }
     end
 
+    def uniqueness_conflict?(error)
+      error.record.errors.of_kind?(:key, :taken)
+    end
+
     def devin_credentials_revoked?
       SystemConfig.exists?(key: DEVIN_REVOKED_CONFIG)
     rescue StandardError
@@ -124,8 +128,11 @@ class AdminSettingsService
       SystemConfig.transaction(requires_new: true) do
         SystemConfig.find_or_initialize_by(key: key).update!(attrs)
       end
-    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
-      # A concurrent writer inserted the row first; last write wins.
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+      # Only a lost insert race is retryable; a real validation failure has no
+      # row to update and must surface as itself rather than as a 404.
+      raise if e.is_a?(ActiveRecord::RecordInvalid) && !uniqueness_conflict?(e)
+
       SystemConfig.find_by!(key: key).update!(attrs)
     end
 

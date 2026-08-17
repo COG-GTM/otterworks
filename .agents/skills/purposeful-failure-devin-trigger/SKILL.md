@@ -81,18 +81,30 @@ second Devin client:
 ## Step 4 — Devin credentials on the tenant
 
 Nothing in the deploy scripts wires `DEVIN_API_KEY`/`DEVIN_ORG_ID` to any service,
-so out of the box `DevinSessionService` no-ops on tenants. Options:
+so out of the box `DevinSessionService` no-ops on tenants.
 
-- **Runtime settings endpoint (PR #92)**: `PUT /api/v1/admin/settings/devin_credentials`
-  (JWT-authenticated via api-gateway) stores the credentials in the tenant's Redis;
-  `DevinSessionService` falls back to it when env vars are absent (env vars take
-  precedence). Load once after each fresh deploy; no infra access needed.
+`DevinSessionService` resolves a whole pair from the first source that has one:
+`DEVIN_API_KEY` + `DEVIN_ORG_ID` env (`source: env`) → Secrets Manager
+(`source: secrets_manager`) → the settings store (`source: settings`).
+`GET /api/v1/admin/settings/devin_credentials?verify=true` reports which, plus
+`valid` / `unreachable`.
+
+- **Secrets Manager (preferred)**: set `DEVIN_CREDENTIALS_SECRET_ID` on
+  admin-service (export it before the deploy; `tenant-common.sh` passes it
+  through) pointing at a secret holding `{"api_key": ..., "org_id": ...}`, named
+  `otterworks/<env>/devin-*` to match the IRSA policy in
+  `infrastructure/terraform/main.tf`. Encrypted at rest, rotatable without
+  touching the tenant, cached 5 minutes in-process. Needs an **upstream** deploy
+  plus `terraform apply`.
+- **Runtime settings endpoint**: `PUT /api/v1/admin/settings/devin_credentials`
+  (JWT-authenticated via api-gateway) verifies the pair against the Devin API
+  before storing it — `422` if the API rejects it, `503` if the API is
+  unreachable (retry or pass `force=true`) — then stores it in Postgres
+  (`system_configs`), so it survives Redis restarts and redeploys. A pair left in
+  the old Redis keys is adopted on first read. `DELETE` on the same path revokes
+  it durably. Load once; no infra access needed.
 - One-off with cluster access: `kubectl -n otterworks-<id> set env deploy/admin-service DEVIN_API_KEY=... DEVIN_ORG_ID=...`
   (overwritten by the next redeploy).
-- Durable CD wiring needs `add_secret` entries in the admin-service case of
-  `scripts/lib/tenant-common.sh` + secrets in the deploy workflow — an **upstream**
-  change for dashboard-deployed tenants (fork CD runs its own copy of the scripts,
-  so for a fork-CD-deployed tenant the fork branch is enough).
 - GitHub Actions cannot talk to EKS: the OIDC role
   (`demo-platform/infra/terraform/iam_github_actions.tf`) has ECR push + dashboard
   passcode only, by design. Don't design workflows that run helm/kubectl from CI

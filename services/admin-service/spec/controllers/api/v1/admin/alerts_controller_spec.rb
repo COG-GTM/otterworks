@@ -4,6 +4,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    allow(DevinSessionService).to receive(:configured?).and_return(true)
   end
 
   def firing_alert(labels: {}, summary: 'File upload failed: a.txt')
@@ -29,6 +30,13 @@ RSpec.describe Api::V1::Admin::AlertsController do
     it 'marks the incident when the session could not be created' do
       post :ingest, params: { alerts: [firing_alert] }
       expect(Incident.last.devin_session_status).to eq('failed')
+    end
+
+    it 'leaves the status blank on a tenant with no Devin credentials' do
+      allow(DevinSessionService).to receive(:configured?).and_return(false)
+
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(Incident.last.devin_session_status).to be_nil
     end
 
     it 'dedupes repeated alerts for the same service by default' do
