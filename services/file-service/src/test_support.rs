@@ -185,13 +185,13 @@ pub(crate) fn metadata_client(http: StaticReplayClient) -> MetadataClient {
 }
 
 /// Assert the code under test made exactly `expected` HTTP calls through this
-/// replay client. Pass the number of responses the test primed, so a skipped
-/// call (an unconsumed response) fails instead of passing silently.
+/// replay client. Counts requests only -- it says nothing about how many
+/// responses were primed -- so it catches both a skipped call and a retry.
 pub(crate) fn assert_calls(http: &StaticReplayClient, expected: usize) {
     assert_eq!(
         http.actual_requests().count(),
         expected,
-        "every primed response should have been consumed"
+        "unexpected number of requests through this client"
     );
 }
 
