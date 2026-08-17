@@ -37,11 +37,11 @@ jobs:
       - run: uv run --with ruff==0.9.10 ruff check security/deps/harness
       - run: make deps-inventory
       - run: make deps-tests
-      # The advisory gate decides which behavioural contract applies, so neither
+      # The advisory gate decides which behavioral contract applies, so neither
       # branch can be skipped: while the vulnerable version is still present the
       # recorded before-state must reproduce exactly; once it is gone the recorded
-      # contract cases must be unchanged *and* the attack cases must be neutralised.
-      - name: Gate on the advisory, then grade behaviour for that state
+      # contract cases must be unchanged *and* the attack cases must be neutralized.
+      - name: Gate on the advisory, then grade behavior for that state
         run: |
           if make deps-gate; then
             echo "::notice::no vulnerable version reachable — grading the remediated contract"

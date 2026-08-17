@@ -46,7 +46,7 @@ public class PortalBrandingSettings {
     /**
      * Resolve an arbitrary settings template through the configuration's interpolator.
      * Used by the settings file itself and by the dependency transcript that pins the
-     * interpolation behaviour of the Commons Text release on the classpath.
+     * interpolation behavior of the Commons Text release on the classpath.
      */
     public String interpolate(String template) {
         return String.valueOf(configuration.getInterpolator().interpolate(template));

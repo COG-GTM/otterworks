@@ -10,7 +10,7 @@ claims into commands that pass or fail.
 security/deps/
 ├── advisory.yaml           the advisory under remediation: artifact, vulnerable range, candidate fixes
 ├── modules.yaml            every JVM module the gate measures, plus explicit exemptions
-├── cases/<module>.json     behaviour cases per module, each tagged policy=contract|attack
+├── cases/<module>.json     behavior cases per module, each tagged policy=contract|attack
 ├── expected/<module>.json  recorded transcripts (the evidence the gate compares against)
 ├── harness/deps_check.py   inventory + advisory gate + suite runner + transcript grading
 └── reports/                generated inventory/gate/tests/transcript JSON (gitignored)
@@ -23,7 +23,7 @@ security/deps/
 | `make deps-inventory` | Which module pulls the artifact, at which version, directly or through which parent, and where is the version declared? | a module's tree cannot be resolved (exit 2) |
 | `make deps-gate` | Can the vulnerable version still be reached from any module? | any tree contains a version in the advisory's range (exit 1), or a module is unmeasured (exit 2) |
 | `make deps-tests` | Does every affected module still build and pass its own suite? | any module's suite fails (exit 1) |
-| `make deps-transcript` | Did the libraries' observable behaviour change where it must not, and stop where it must? | a contract case changed, or an attack case still resolves (exit 1) |
+| `make deps-transcript` | Did the libraries' observable behavior change where it must not, and stop where it must? | a contract case changed, or an attack case still resolves (exit 1) |
 
 Run `make deps-inventory` and `make deps-tests` **before** touching a version, so
 the "after" numbers have something to be compared against.
@@ -33,7 +33,7 @@ the "after" numbers have something to be compared against.
 Each case in `cases/<module>.json` carries a `policy`:
 
 - **`contract`** — the value must be byte-identical to the recording. These are the
-  business behaviours the remediation is not allowed to disturb: rendered report
+  business behaviors the remediation is not allowed to disturb: rendered report
   banners, notification bodies, portal branding, the strict rejection of an
   undefined variable.
 - **`attack`** — the lookup the advisory is about. After remediation it must stop
@@ -70,7 +70,7 @@ the root; neither is fixed by re-recording the evidence.
 Register it in `modules.yaml`. Discovery cross-checks the registry against the
 `pom.xml` / `build.gradle{,.kts}` files on disk: a JVM build file that is neither
 registered nor listed under `exempt` (with a reason) fails every command, so the
-blast radius cannot quietly become partial. To give a module behaviour cases, add
+blast radius cannot quietly become partial. To give a module behavior cases, add
 `cases/<module>.json` and a `DependencyTranscriptEmitterTest` in its own test
 sources — the emitter records outcomes and the harness grades them, so one
 comparator governs Java, Kotlin, Maven and Gradle alike.

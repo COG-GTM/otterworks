@@ -4,7 +4,7 @@
   "artifact": "org.apache.commons:commons-text",
   "cases_sha256": "ecde5a24ace4f1501d955b9a959d2ba05d07ba3f79095f66900b21fb106cd8ef",
   "recorded_at": "2026-08-17T22:51:49.397577+00:00",
-  "reason": "baseline: commons-text 1.9 behaviour before CVE-2022-42889 remediation",
+  "reason": "baseline: commons-text 1.9 behavior before CVE-2022-42889 remediation",
   "cases": [
     {
       "id": "settings-banner-resolves-keys",

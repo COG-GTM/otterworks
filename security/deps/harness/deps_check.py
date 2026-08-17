@@ -598,7 +598,7 @@ def grade_module(module: Module, stage: str) -> dict[str, Any]:
                 and not same_outcome(want, got)
             )
             why = "" if ok else (
-                f"lookup not neutralised: recorded {summarise(want)}, observed "
+                f"lookup not neutralized: recorded {summarise(want)}, observed "
                 f"{summarise(got)}, expected the literal {marker!r} to survive"
             )
         else:
@@ -658,7 +658,7 @@ def command_transcript(modules: list[Module], stage: str, only: str | None) -> i
               file=sys.stderr)
         return 2
     if statuses & BLOCKING:
-        print("\nTRANSCRIPT FAILED: behaviour diverged from the recording.", file=sys.stderr)
+        print("\nTRANSCRIPT FAILED: behavior diverged from the recording.", file=sys.stderr)
         return 1
     print(f"\nTRANSCRIPT PASSED: {sum(len(r['cases']) for r in results)} cases across "
           f"{len(results)} modules.")

@@ -353,7 +353,7 @@ deps-gate: ## Fail if the vulnerable version is still reachable from any depende
 deps-tests: ## Build and run every affected module's own suite (MODULE=<id> optional)
 	$(DEPS) tests $(if $(MODULE),--module $(MODULE),)
 
-deps-transcript: ## Grade interpolation behaviour after remediation (MODULE=<id> optional)
+deps-transcript: ## Grade interpolation behavior after remediation (MODULE=<id> optional)
 	$(DEPS) transcript --stage remediated $(if $(MODULE),--module $(MODULE),)
 
 deps-transcript-baseline: ## Prove the recorded before-state still reproduces (MODULE=<id> optional)

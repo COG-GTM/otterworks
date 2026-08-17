@@ -4,7 +4,7 @@
   "artifact": "org.apache.commons:commons-text",
   "cases_sha256": "4f33c94623421e8289c7f1f5bfaa9ec58f9d25f248583142727cf269cdb24b7e",
   "recorded_at": "2026-08-17T22:51:57.613323+00:00",
-  "reason": "baseline: commons-text 1.9 behaviour before CVE-2022-42889 remediation",
+  "reason": "baseline: commons-text 1.9 behavior before CVE-2022-42889 remediation",
   "cases": [
     {
       "id": "notification-actor-variable",
