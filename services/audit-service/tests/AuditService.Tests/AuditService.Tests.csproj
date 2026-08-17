@@ -8,8 +8,10 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
 
-    <CollectCoverage>true</CollectCoverage>
+    <!-- msbuild-driven coverage gate; skipped when the VSTest collector runs -->
+    <CollectCoverage Condition="'$(VSTestCollect)' == ''">true</CollectCoverage>
     <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <CoverletOutput>$(MSBuildThisFileDirectory)coverage/</CoverletOutput>
     <Threshold>95,85</Threshold>
     <ThresholdType>line,branch</ThresholdType>
   </PropertyGroup>
