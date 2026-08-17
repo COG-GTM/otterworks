@@ -306,3 +306,64 @@ def sensitive_data_in_response(ctx: ScanContext) -> Result:
             [Evidence.from_response(response)],
         )
     return self.result(Verdict.SECURE, "login response exposed no credential material")
+
+
+#: A file that exists on every container image and belongs to no export archive,
+#: so serving it is unambiguous proof the handler left its own directory.
+TRAVERSAL_TARGETS = (
+    ("../../../../etc/passwd", "root:x:0:0"),
+    ("..%2f..%2f..%2f..%2fetc%2fpasswd", "root:x:0:0"),
+    ("../../etc/hostname", ""),
+)
+
+
+@probe(
+    finding_id="DAST-PATH-TRAVERSAL-EXPORT",
+    title="Export archive serves a file from outside the archive root",
+    severity=Severity.CRITICAL,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-22",
+    service="document-service",
+    remediation=(
+        "Resolve the requested path and require the result to stay inside the resolved "
+        "archive root before opening it; reject anything else as a 404."
+    ),
+    requires_identity=False,  # the export route is served without a caller identity
+)
+def path_traversal_export(ctx: ScanContext) -> Result:
+    """Attacker asks the export route for a path that climbs out of the archive."""
+    self = path_traversal_export.probe
+    # Control first: FastAPI answers a missing required query parameter with 422, so a
+    # 404 here means the route does not exist on this target and every traversal 404
+    # below would be the router refusing, not the handler defending.
+    control = ctx.get("/api/v1/documents/exports", identity=ctx.attacker)
+    if control.status_code != 422:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the export route is not present on this target (control returned "
+            f"{control.status_code}, expected 422 for a missing name)",
+            [Evidence.from_response(control)],
+        )
+
+    evidence: list[Evidence] = []
+    for name, signature in TRAVERSAL_TARGETS:
+        response = ctx.get(
+            "/api/v1/documents/exports", params={"name": name}, identity=ctx.attacker
+        )
+        if unavailable(response):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the export route was unavailable or throttled (status {response.status_code})",
+                [Evidence.from_response(response)],
+            )
+        served = response.status_code == 200 and (
+            signature in response.text if signature else bool(response.text.strip())
+        )
+        if served:
+            evidence.append(Evidence.from_response(response, note=f"name={name!r} was served"))
+            return self.result(
+                Verdict.VULNERABLE,
+                f"name={name!r} returned a file from outside the export archive",
+                evidence,
+            )
+    return self.result(Verdict.SECURE, "every traversal attempt was refused")

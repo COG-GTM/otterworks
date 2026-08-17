@@ -1,0 +1,64 @@
+# Source-level security findings under refactor, and the modules they live in.
+#
+# A finding is only "remediated" when the harness can prove two things at once:
+# the recorded contract cases are byte-identical (functional equivalence) and the
+# attack cases no longer fire (the vulnerability is closed). Both claims are
+# graded from security/equivalence/expected/<finding>.json, which is recorded
+# against the before-state and fingerprinted.
+
+harness_version: 1
+
+modules:
+  document-service:
+    path: services/document-service
+    seed: security/equivalence/seed/document-service.json
+    emitter: security/equivalence/harness/emit_document_service.py
+    # Run from the module directory. {emitter}/{cases}/{seed}/{out}/{junit} are
+    # absolute paths substituted by the harness.
+    emit_command: poetry run python {emitter} --cases {cases} --seed {seed} --out {out}
+    test_command: poetry run pytest -q --junitxml={junit}
+
+findings:
+  - id: OW-SEC-401
+    title: SQL built by string concatenation in the document filter repository
+    cwe: CWE-89
+    module: document-service
+    class: DocumentQueryRepository
+    methods: [_where, count_documents, search_documents]
+    subject:
+      - services/document-service/app/services/document_query_repository.py
+    secure_pattern: >
+      Bind every caller-supplied value as a query parameter and resolve ORDER BY
+      from an allow-list of column names and directions; never interpolate a
+      caller value into SQL text, and never return the database error text.
+    dast_finding: DAST-SQLI-ERROR-BASED
+    dast_route: /api/v1/documents/
+
+  - id: OW-SEC-402
+    title: Export archive reader joins a caller-supplied path without containment
+    cwe: CWE-22
+    module: document-service
+    class: ExportArchive
+    methods: [read_export]
+    subject:
+      - services/document-service/app/services/export_archive.py
+    secure_pattern: >
+      Resolve the joined path and require it to stay inside the resolved archive
+      root before opening it, keeping legitimate subdirectory reads working.
+    dast_finding: DAST-PATH-TRAVERSAL-EXPORT
+    dast_route: /api/v1/documents/exports
+
+  - id: OW-SEC-403
+    title: Share tokens derived from MD5 over a source-visible salt
+    cwe: CWE-328
+    module: document-service
+    class: ShareLinkService
+    methods: [mint_token, verify_token]
+    subject:
+      - services/document-service/app/services/share_link.py
+    secure_pattern: >
+      Derive the token with a keyed MAC (HMAC-SHA256 over the document id using
+      SHARE_LINK_SECRET) and compare in constant time, so a token cannot be
+      derived from public information.
+    dast_finding: DAST-SHARE-TOKEN-FORGERY
+    dast_route: /api/v1/documents/shared

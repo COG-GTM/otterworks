@@ -1,0 +1,101 @@
+{
+ "notes": [
+  "The only fixture input the emitter is allowed to use. Every recorded case must",
+  "be reproducible from this seed alone - no per-case setup steps.",
+  "Two owners are seeded so a broken owner predicate is observable as a",
+  "cross-owner row rather than as a count that looks plausible."
+ ],
+ "documents": [
+  {
+   "id": "d0c00001-0000-4000-8000-000000000001",
+   "title": "Quarterly Revenue Report",
+   "content": "Revenue for the quarter came in ahead of plan.",
+   "content_type": "text/markdown",
+   "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+   "folder_id": null,
+   "is_deleted": false,
+   "is_template": false,
+   "word_count": 8,
+   "version": 3,
+   "created_at": "2026-01-02T09:00:00+00:00",
+   "updated_at": "2026-01-05T09:00:00+00:00"
+  },
+  {
+   "id": "d0c00002-0000-4000-8000-000000000002",
+   "title": "Meeting Notes",
+   "content": "Agenda, decisions and follow-ups.",
+   "content_type": "text/markdown",
+   "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+   "folder_id": null,
+   "is_deleted": false,
+   "is_template": false,
+   "word_count": 5,
+   "version": 1,
+   "created_at": "2026-01-03T09:00:00+00:00",
+   "updated_at": "2026-01-06T09:00:00+00:00"
+  },
+  {
+   "id": "d0c00003-0000-4000-8000-000000000003",
+   "title": "Onboarding Page",
+   "content": "<h1>Welcome</h1>",
+   "content_type": "text/html",
+   "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+   "folder_id": null,
+   "is_deleted": false,
+   "is_template": false,
+   "word_count": 2,
+   "version": 2,
+   "created_at": "2026-01-04T09:00:00+00:00",
+   "updated_at": "2026-01-07T09:00:00+00:00"
+  },
+  {
+   "id": "d0c00004-0000-4000-8000-000000000004",
+   "title": "Acquisition Report",
+   "content": "Confidential: term sheet for the acquisition.",
+   "content_type": "text/markdown",
+   "owner_id": "bbbbbbbb-0000-4000-8000-00000000000b",
+   "folder_id": null,
+   "is_deleted": false,
+   "is_template": false,
+   "word_count": 7,
+   "version": 1,
+   "created_at": "2026-01-04T10:00:00+00:00",
+   "updated_at": "2026-01-08T10:00:00+00:00"
+  },
+  {
+   "id": "d0c00005-0000-4000-8000-000000000005",
+   "title": "Deleted Report",
+   "content": "Superseded draft.",
+   "content_type": "text/markdown",
+   "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+   "folder_id": null,
+   "is_deleted": true,
+   "is_template": false,
+   "word_count": 2,
+   "version": 1,
+   "created_at": "2026-01-01T09:00:00+00:00",
+   "updated_at": "2026-01-09T09:00:00+00:00"
+  },
+  {
+   "id": "d0c00006-0000-4000-8000-000000000006",
+   "title": "Report Template",
+   "content": "# {{title}}",
+   "content_type": "text/markdown",
+   "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+   "folder_id": null,
+   "is_deleted": false,
+   "is_template": true,
+   "word_count": 1,
+   "version": 1,
+   "created_at": "2026-01-01T10:00:00+00:00",
+   "updated_at": "2026-01-10T10:00:00+00:00"
+  }
+ ],
+ "export_archive": {
+  "report.md": "# Quarterly Revenue Report\n\nRevenue for the quarter came in ahead of plan.\n",
+  "reports/q3.md": "# Q3 Revenue\n\nQ3 closed at 104% of plan.\n"
+ },
+ "outside_archive": {
+  "tenant-secrets.env": "SUPPLIER_API_KEY=sk-fixture-not-a-real-key\n"
+ }
+}

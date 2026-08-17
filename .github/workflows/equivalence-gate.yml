@@ -1,0 +1,46 @@
+name: Functional-equivalence gate
+
+on:
+  push:
+    paths:
+      - "security/equivalence/**"
+      - "services/document-service/**"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "security/equivalence/**"
+      - "services/document-service/**"
+      - "Makefile"
+
+jobs:
+  equivalence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: latest
+      # The harness shells into the module and runs its emitter and its suite with
+      # the module's own toolchain, so document-service must be installed.
+      - run: pipx install poetry==1.8.5
+      - run: poetry install --no-interaction
+        working-directory: services/document-service
+      - run: uv run --with ruff==0.9.10 ruff check --config security/equivalence/harness/ruff.toml security/equivalence/harness
+      - run: make eq-list
+      # eq-gate reads the fingerprints and grades each finding for the state it is
+      # actually in: the recorded before-state must still reproduce exactly, and a
+      # refactored subject must keep every contract case byte-identical while its
+      # attack cases stop firing. Exit 2 is "no verdict" (missing, stale or
+      # unmeasured evidence) and fails the job rather than passing quietly.
+      - run: make eq-gate
+      # The module suite is a regression gate against the pass list recorded with
+      # the evidence, so a test that used to pass cannot be deleted to go green.
+      - run: make eq-tests
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: equivalence-reports
+          path: security/equivalence/reports/*.json

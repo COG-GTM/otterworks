@@ -10,6 +10,7 @@ import redis as redis_lib
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -22,7 +23,10 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
+from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
+from app.services.export_archive import ExportArchive
+from app.services.share_link import ShareLinkService
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -166,6 +170,31 @@ async def search_documents(
     )
 
 
+@router.get("/exports", response_class=PlainTextResponse)
+async def read_export(name: str = Query(..., min_length=1)):
+    """Return a previously rendered export from the export archive."""
+    archive = ExportArchive()
+    try:
+        return archive.read_export(name)
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
+        raise HTTPException(status_code=404, detail="Export not found") from exc
+
+
+@router.get("/shared", response_model=DocumentResponse)
+async def get_shared_document(
+    document_id: UUID,
+    token: str = Query(..., min_length=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a document through its read-only share link."""
+    if not ShareLinkService().verify_token(str(document_id), token):
+        raise HTTPException(status_code=403, detail="Invalid share token")
+    document = await DocumentService(db).get(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document
+
+
 async def _do_list_documents(
     owner_id: UUID | None,
     folder_id: UUID | None,
@@ -187,17 +216,67 @@ async def _do_list_documents(
     )
 
 
+async def _do_filter_documents(
+    owner_id: UUID | None,
+    title: str | None,
+    content_type: str | None,
+    sort: str,
+    direction: str,
+    page: int,
+    size: int,
+    db: AsyncSession,
+) -> DocumentListResponse:
+    await _maybe_inject_latency()
+    repo = DocumentQueryRepository(db)
+    filters = {
+        "owner_id": str(owner_id) if owner_id else None,
+        "title_contains": title,
+        "content_type": content_type,
+    }
+    try:
+        total = await repo.count_documents(**filters)
+        rows = await repo.search_documents(
+            **filters,
+            sort=sort,
+            direction=direction,
+            limit=size,
+            offset=(page - 1) * size,
+        )
+    except SQLAlchemyError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid filter: {exc}") from exc
+    pages = (total + size - 1) // size if total else 0
+    return DocumentListResponse(
+        items=[DocumentResponse.model_validate(row) for row in rows],
+        total=total,
+        page=page,
+        size=size,
+        pages=pages,
+    )
+
+
+def _is_filtered(title: str | None, content_type: str | None) -> bool:
+    return title is not None or content_type is not None
+
+
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     request: Request,
     owner_id: UUID | None = None,
     folder_id: UUID | None = None,
+    title: str | None = None,
+    content_type: str | None = None,
+    sort: str = "updated_at",
+    direction: str = "desc",
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
     effective_owner = owner_id or _extract_user_id(request)
+    if _is_filtered(title, content_type):
+        return await _do_filter_documents(
+            effective_owner, title, content_type, sort, direction, page, size, db
+        )
     return await _do_list_documents(effective_owner, folder_id, page, size, db)
 
 
@@ -210,12 +289,20 @@ async def list_documents_no_slash(
     request: Request,
     owner_id: UUID | None = None,
     folder_id: UUID | None = None,
+    title: str | None = None,
+    content_type: str | None = None,
+    sort: str = "updated_at",
+    direction: str = "desc",
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
     effective_owner = owner_id or _extract_user_id(request)
+    if _is_filtered(title, content_type):
+        return await _do_filter_documents(
+            effective_owner, title, content_type, sort, direction, page, size, db
+        )
     return await _do_list_documents(effective_owner, folder_id, page, size, db)
 
 
@@ -339,6 +426,24 @@ async def restore_version(
         version_id=str(version_id),
     )
     return document
+
+
+@router.post("/{document_id}/share")
+async def create_share_link(
+    document_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mint a read-only share link for a document."""
+    user_id = _require_user_id(request)
+    service = DocumentService(db)
+    document = await service.get(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _ensure_owner(document, user_id)
+    token = ShareLinkService().mint_token(str(document_id))
+    logger.info("share_link_created", document_id=str(document_id))
+    return {"document_id": str(document_id), "token": token}
 
 
 @router.get("/{document_id}/export")

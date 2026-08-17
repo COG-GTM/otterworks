@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 
 from .base import Evidence, Result, Severity, Verdict, probe, redact, unavailable
@@ -421,4 +422,74 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
         Verdict.SECURE,
         "the owner finds the document but the attacker's search does not",
         [Evidence.from_response(response)],
+    )
+
+
+def _forge_share_token(document_id: str, salt: str, length: int) -> str:
+    """Derive a share token the way an unkeyed digest lets anyone derive it.
+
+    This is the attacker's side of the finding: when the token is a plain digest
+    of the document id and a value that lives in the source, possession of the
+    link proves nothing, because anyone can compute the link. A keyed construction
+    (HMAC over a server-held secret) makes this derivation impossible.
+    """
+    digest = hashlib.md5(f"{document_id}:{salt}".encode(), usedforsecurity=False).hexdigest()
+    return digest[:length]
+
+
+@probe(
+    finding_id="DAST-SHARE-TOKEN-FORGERY",
+    title="Share-link token can be derived without the server",
+    severity=Severity.HIGH,
+    owasp="API2:2023 Broken Authentication",
+    cwe="CWE-328",
+    service="document-service",
+    remediation=(
+        "Mint share tokens as an HMAC over the document id keyed with a server-held "
+        "secret, and compare them in constant time."
+    ),
+)
+def share_token_forgery(ctx: ScanContext) -> Result:
+    """Attacker computes the victim's share token offline and opens the document."""
+    self = share_token_forgery.probe
+    victim_doc = ctx.victim_document()
+    if victim_doc is None:
+        return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned document")
+
+    # Control: a missing token is a 422 from the route itself, so a rejection below
+    # is the handler refusing a forged token rather than the router refusing the path.
+    control = ctx.get(
+        "/api/v1/documents/shared",
+        params={"document_id": victim_doc["id"]},
+        identity=ctx.attacker,
+    )
+    if control.status_code != 422:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the share route is not present on this target (control returned "
+            f"{control.status_code}, expected 422 for a missing token)",
+            [Evidence.from_response(control)],
+        )
+
+    for salt in ("otterworks-share",):
+        token = _forge_share_token(str(victim_doc["id"]), salt, 16)
+        response = ctx.get(
+            "/api/v1/documents/shared",
+            params={"document_id": victim_doc["id"], "token": token},
+            identity=ctx.attacker,
+        )
+        if unavailable(response):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the share route was unavailable or throttled (status {response.status_code})",
+                [Evidence.from_response(response)],
+            )
+        if response.status_code == 200 and victim_doc["title"] in response.text:
+            return self.result(
+                Verdict.VULNERABLE,
+                "a token derived offline from the document id opened the victim's document",
+                [Evidence.from_response(response, note=f"forged token for salt {salt!r}")],
+            )
+    return self.result(
+        Verdict.SECURE, "offline-derived tokens were rejected by the share route"
     )

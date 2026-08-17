@@ -1,0 +1,137 @@
+{
+ "cases": [
+  {
+   "id": "contract-share-token-behaviour",
+   "outcome": "ok",
+   "value": {
+    "garbage_token_rejected": true,
+    "minted_token_verifies": true,
+    "other_documents_token_rejected": true,
+    "token_stable_across_calls": true
+   }
+  },
+  {
+   "id": "contract-http-share-link-round-trip",
+   "outcome": "ok",
+   "value": {
+    "mint_status": 200,
+    "shared_document_id": "d0c00001-0000-4000-8000-000000000001",
+    "shared_status": 200,
+    "tampered_status": 403
+   }
+  },
+  {
+   "id": "contract-http-share-link-rejects-unknown-token",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "detail": "Invalid share token"
+    },
+    "content_type": "application/json",
+    "status": 403
+   }
+  },
+  {
+   "id": "attack-offline-token-forgery",
+   "outcome": "ok",
+   "value": {
+    "forged_token_accepted": true
+   }
+  }
+ ],
+ "finding": "OW-SEC-403",
+ "fingerprint": {
+  "cases_sha256": "104960933564086e69c28b8fd32c649c63b1eb9c2f102fa47479957489dd65cb",
+  "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
+  "seed_sha256": "47fd80157a98466ff445b412bbf5397c1d789f51695387c0c40d97aca45bdca4",
+  "subject_sha256": {
+   "services/document-service/app/services/share_link.py": "71adeb86900759533bf15dcea3c3ca37555cf523faedf6bf1fba8581343083d7"
+  }
+ },
+ "harness_version": 1,
+ "interface": {
+  "app.services.share_link:ShareLinkService.mint_token": "mint_token(self, document_id: 'str') -> 'str'",
+  "app.services.share_link:ShareLinkService.verify_token": "verify_token(self, document_id: 'str', token: 'str') -> 'bool'"
+ },
+ "module": "document-service",
+ "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
+ "recorded_at": "2026-08-17T23:53:39.154528+00:00",
+ "rerecorded_from": {
+  "fingerprint": {
+   "cases_sha256": "104960933564086e69c28b8fd32c649c63b1eb9c2f102fa47479957489dd65cb",
+   "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
+   "seed_sha256": "47fd80157a98466ff445b412bbf5397c1d789f51695387c0c40d97aca45bdca4",
+   "subject_sha256": {
+    "services/document-service/app/services/share_link.py": "71adeb86900759533bf15dcea3c3ca37555cf523faedf6bf1fba8581343083d7"
+   }
+  },
+  "reason": "re-record: emitter isinstance style change altered its fingerprint; behaviour and observations unchanged",
+  "recorded_at": "2026-08-17T23:52:04.249315+00:00"
+ },
+ "suite": {
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-rlp1ij9g/junit.xml",
+  "exit_code": 1,
+  "failed": [
+   "tests.test_documents_api::test_delete_document",
+   "tests.test_documents_api::test_document_versions",
+   "tests.test_documents_api::test_export_document_html",
+   "tests.test_documents_api::test_export_document_markdown",
+   "tests.test_documents_api::test_get_document",
+   "tests.test_documents_api::test_get_document_not_found",
+   "tests.test_documents_api::test_patch_document",
+   "tests.test_documents_api::test_restore_version",
+   "tests.test_documents_api::test_update_document"
+  ],
+  "passed": [
+   "tests.test_comments_api::test_add_comment",
+   "tests.test_comments_api::test_add_comment_document_not_found",
+   "tests.test_comments_api::test_delete_comment",
+   "tests.test_comments_api::test_delete_comment_not_found",
+   "tests.test_comments_api::test_list_comments",
+   "tests.test_document_filters::test_filter_by_content_type",
+   "tests.test_document_filters::test_filter_by_title_fragment",
+   "tests.test_document_filters::test_filter_no_match_returns_empty",
+   "tests.test_document_filters::test_filter_orders_by_title_ascending",
+   "tests.test_document_filters::test_filter_paginates",
+   "tests.test_document_filters::test_unfiltered_list_is_unchanged",
+   "tests.test_document_service::test_add_comment_to_nonexistent_document",
+   "tests.test_document_service::test_comments_crud",
+   "tests.test_document_service::test_create_and_get",
+   "tests.test_document_service::test_create_from_nonexistent_template",
+   "tests.test_document_service::test_delete_nonexistent",
+   "tests.test_document_service::test_export_formats",
+   "tests.test_document_service::test_list_documents_with_filters",
+   "tests.test_document_service::test_paginate_helper",
+   "tests.test_document_service::test_patch_partial_update",
+   "tests.test_document_service::test_restore_version",
+   "tests.test_document_service::test_search",
+   "tests.test_document_service::test_soft_delete",
+   "tests.test_document_service::test_template_crud_and_create_from",
+   "tests.test_document_service::test_update_creates_version",
+   "tests.test_documents_api::test_create_document",
+   "tests.test_documents_api::test_create_document_no_auth_returns_401",
+   "tests.test_documents_api::test_create_document_via_jwt",
+   "tests.test_documents_api::test_create_document_via_jwt_hs384",
+   "tests.test_documents_api::test_create_document_x_user_id_header_ignored",
+   "tests.test_documents_api::test_list_documents",
+   "tests.test_documents_api::test_list_documents_pagination",
+   "tests.test_documents_api::test_search_documents",
+   "tests.test_export_archive::test_export_endpoint_404s_for_unknown_name",
+   "tests.test_export_archive::test_export_endpoint_serves_archived_file",
+   "tests.test_export_archive::test_missing_export_raises",
+   "tests.test_export_archive::test_reads_export",
+   "tests.test_export_archive::test_reads_export_in_subdirectory",
+   "tests.test_health::test_health_check",
+   "tests.test_health::test_metrics",
+   "tests.test_share_link::test_garbage_token_is_rejected",
+   "tests.test_share_link::test_minted_token_verifies",
+   "tests.test_share_link::test_share_endpoint_round_trip",
+   "tests.test_share_link::test_token_is_stable_across_calls",
+   "tests.test_share_link::test_token_of_another_document_is_rejected",
+   "tests.test_templates_api::test_create_document_from_template",
+   "tests.test_templates_api::test_create_from_template_not_found",
+   "tests.test_templates_api::test_create_template",
+   "tests.test_templates_api::test_list_templates"
+  ]
+ }
+}
