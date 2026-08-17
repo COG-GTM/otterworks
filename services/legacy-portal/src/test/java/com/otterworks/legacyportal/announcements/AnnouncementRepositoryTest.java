@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -16,6 +18,16 @@ class AnnouncementRepositoryTest {
 
     @Autowired private AnnouncementRepository repository;
     @Autowired private TestEntityManager entityManager;
+
+    /**
+     * The suite shares one named in-memory database, so ordering assertions look only at rows this
+     * test created and pin their timestamps instead of relying on clock resolution.
+     */
+    private static Announcement dated(String title, boolean published, String createdAt) {
+        Announcement announcement = new Announcement(title, "body", published);
+        ReflectionTestUtils.setField(announcement, "createdAt", Instant.parse(createdAt));
+        return announcement;
+    }
 
     @Test
     void everyFieldSurvivesAReloadFromTheDatabase() {
@@ -54,14 +66,19 @@ class AnnouncementRepositoryTest {
 
     @Test
     void findByPublishedTrueSkipsDraftsAndOrdersNewestFirst() {
-        entityManager.persist(new Announcement("older", "body", true));
-        entityManager.persist(new Announcement("newer", "body", true));
-        entityManager.persist(new Announcement("draft", "body", false));
+        entityManager.persist(dated("slice-older", true, "2024-01-01T00:00:00Z"));
+        entityManager.persist(dated("slice-newer", true, "2024-06-01T00:00:00Z"));
+        entityManager.persist(dated("slice-draft", false, "2024-12-01T00:00:00Z"));
         entityManager.flush();
         entityManager.clear();
 
-        List<Announcement> published = repository.findByPublishedTrueOrderByCreatedAtDesc();
+        List<String> titles =
+                repository.findByPublishedTrueOrderByCreatedAtDesc().stream()
+                        .map(Announcement::getTitle)
+                        .collect(Collectors.toList());
 
-        assertThat(published).extracting(Announcement::getTitle).containsExactly("newer", "older");
+        assertThat(titles).doesNotContain("slice-draft");
+        assertThat(titles.stream().filter(t -> t.startsWith("slice-")).collect(Collectors.toList()))
+                .containsExactly("slice-newer", "slice-older");
     }
 }
