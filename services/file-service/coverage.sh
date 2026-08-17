@@ -20,8 +20,21 @@ cd "$(dirname "$0")"
 MIN_LINES="${MIN_LINES:-98}"
 MIN_REGIONS="${MIN_REGIONS:-95}"
 
+# cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
+# added when the caller asked for no other output.
+format=""
+for arg in "$@"; do
+  case "$arg" in
+    --html | --open | --lcov | --json | --cobertura | --codecov | --text)
+      format="yes"
+      ;;
+  esac
+done
+if [ -z "$format" ]; then
+  set -- --summary-only "$@"
+fi
+
 exec cargo llvm-cov \
-  --summary-only \
   --fail-under-lines "$MIN_LINES" \
   --fail-under-regions "$MIN_REGIONS" \
   "$@"

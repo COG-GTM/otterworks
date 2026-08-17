@@ -17,26 +17,35 @@ use crate::storage::S3Client;
 /// test that touches the environment is serialized and restores what it found.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+/// Restores the captured environment on drop, so a panicking test body (a
+/// failed assertion) cannot leak its mutations into the tests that follow.
+struct EnvRestore(Vec<(String, Option<String>)>);
+
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        for (k, v) in self.0.drain(..) {
+            match v {
+                Some(v) => std::env::set_var(&k, v),
+                None => std::env::remove_var(&k),
+            }
+        }
+    }
+}
+
 pub(crate) fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let saved: Vec<(String, Option<String>)> = vars
-        .iter()
-        .map(|(k, _)| ((*k).to_string(), std::env::var(k).ok()))
-        .collect();
+    let _restore = EnvRestore(
+        vars.iter()
+            .map(|(k, _)| ((*k).to_string(), std::env::var(k).ok()))
+            .collect(),
+    );
     for (k, v) in vars {
         match v {
             Some(v) => std::env::set_var(k, v),
             None => std::env::remove_var(k),
         }
     }
-    let out = f();
-    for (k, v) in saved {
-        match v {
-            Some(v) => std::env::set_var(&k, v),
-            None => std::env::remove_var(&k),
-        }
-    }
-    out
+    f()
 }
 
 /// Run an async body inside `with_env` on a private current-thread runtime.
@@ -254,9 +263,19 @@ pub(crate) fn write_ok() -> (u16, String) {
 /// A minimal RESP server that answers every command with the same integer
 /// reply. Used to build a real `ConnectionManager` without a Redis server:
 /// `1` makes the chaos flag look present, `0` absent.
+///
+/// Only integer-reply commands (`EXISTS`, as used by `chaos_active`) are
+/// modelled. A handler that starts issuing `GET`/`SETEX` needs a stub that
+/// dispatches on the command name, not this one.
 pub(crate) struct RedisStub {
     pub(crate) url: String,
-    _handle: tokio::task::JoinHandle<()>,
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for RedisStub {
+    fn drop(&mut self) {
+        self.handle.abort();
+    }
 }
 
 impl RedisStub {
@@ -292,7 +311,7 @@ impl RedisStub {
 
         Self {
             url: format!("redis://{addr}"),
-            _handle: handle,
+            handle,
         }
     }
 
