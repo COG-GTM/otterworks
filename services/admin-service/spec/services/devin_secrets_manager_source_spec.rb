@@ -59,6 +59,14 @@ RSpec.describe DevinSecretsManagerSource do
     expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
   end
 
+  it 'does not call AWS on every resolution while the secret keeps failing' do
+    allow(client).to receive(:get_secret_value).and_raise(StandardError, 'denied')
+
+    3.times { described_class.credentials }
+
+    expect(client).to have_received(:get_secret_value).once
+  end
+
   it 'ignores a half-populated secret' do
     allow(client).to receive(:get_secret_value).and_return(secret({ api_key: 'sm-key' }.to_json))
 

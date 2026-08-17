@@ -59,9 +59,10 @@ module Api
         end
 
         # DELETE /api/v1/admin/settings/devin_credentials
-        # Clears the stored pair. Env-supplied credentials take precedence and
-        # are not revocable here, so the returned status still reports
-        # `configured` wherever DEVIN_API_KEY/DEVIN_ORG_ID are both set.
+        # Clears the stored pair. Only that pair: env vars and a Secrets Manager
+        # secret take precedence and are not revocable here, so the returned
+        # status still reports `configured` on a tenant wired to either — revoke
+        # those at their source.
         def destroy_devin_credentials
           begin
             cache_cleared = AdminSettingsService.clear_devin_credentials

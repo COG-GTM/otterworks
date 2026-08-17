@@ -10,6 +10,9 @@ require 'json'
 #   {"api_key": "...", "org_id": "..."}
 class DevinSecretsManagerSource
   CACHE_TTL = 300
+  # A failing read is remembered too, but briefly: a broken IRSA policy would
+  # otherwise mean an AWS call per incident and per status check.
+  ERROR_CACHE_TTL = 30
   MUTEX = Mutex.new
 
   class << self
@@ -19,12 +22,17 @@ class DevinSecretsManagerSource
 
     def credentials
       return { api_key: nil, org_id: nil } unless enabled?
-      return @cache[:value] if fresh_cache?
+
+      # Read the memo once: another thread may drop it between the freshness
+      # check and the use.
+      cached = @cache
+      return cached[:value] if fresh?(cached)
 
       # Puma serves requests on many threads; without this every concurrent
       # incident would race to refresh the same secret.
       MUTEX.synchronize do
-        return @cache[:value] if fresh_cache?
+        cached = @cache
+        next cached[:value] if fresh?(cached)
 
         fetch(secret_id)
       end
@@ -42,10 +50,11 @@ class DevinSecretsManagerSource
       ENV.fetch('DEVIN_CREDENTIALS_SECRET_ID', nil).presence
     end
 
-    def fresh_cache?
-      @cache.present? &&
-        @cache[:secret_id] == secret_id &&
-        @cache[:fetched_at] > Time.now.to_f - CACHE_TTL
+    def fresh?(cached)
+      return false if cached.nil? || cached[:secret_id] != secret_id
+
+      ttl = cached[:error] ? ERROR_CACHE_TTL : CACHE_TTL
+      cached[:fetched_at] > Time.now.to_f - ttl
     end
 
     def fetch(id)
@@ -54,7 +63,12 @@ class DevinSecretsManagerSource
         api_key: payload['api_key'].presence,
         org_id: payload['org_id'].presence
       }
-      # Also memoize an unusable payload, so a misconfigured secret does not
+      unless value[:api_key] && value[:org_id]
+        # Half a pair is unusable and would look like "no Secrets Manager
+        # wiring" at the status endpoint, so say so.
+        Rails.logger.warn("Devin secret #{id} is missing api_key or org_id; falling back to the stored pair")
+      end
+      # An unusable payload is memoized too, so a misconfigured secret does not
       # mean an AWS call on every incident and status check.
       @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value }
       value
@@ -62,7 +76,9 @@ class DevinSecretsManagerSource
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")
       # A Secrets Manager blip must not stop incident triage: keep serving the
       # last pair that worked, and fall through to the stored pair otherwise.
-      @cache&.dig(:value) || { api_key: nil, org_id: nil }
+      value = @cache&.dig(:value) || { api_key: nil, org_id: nil }
+      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, error: true }
+      value
     end
 
     def client

@@ -372,13 +372,15 @@ build_helm_args() {
       # Settings (auto-investigate, Devin credentials) and chaos flags live in
       # the tenant's Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      # Set unconditionally, like the other AWS-calling services: the chart has
+      # no default, so an SDK client would otherwise fall back to its own.
+      EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       # Devin credentials: preferred source is Secrets Manager, read through
       # the service account's IRSA role, so the key is never stored in a Helm
       # value, a ConfigMap or the tenant database. Falls back to the pair
       # stored via the settings API when unset.
       if [ -n "${DEVIN_CREDENTIALS_SECRET_ID:-}" ]; then
         EXTRA_ARGS+=(--set-string "config.DEVIN_CREDENTIALS_SECRET_ID=${DEVIN_CREDENTIALS_SECRET_ID}")
-        EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       fi
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
       add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
