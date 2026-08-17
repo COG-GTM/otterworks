@@ -24,8 +24,6 @@ internal sealed class AuditServiceTestHost : IDisposable
             }));
     }
 
-    public IServiceProvider Services => _factory.Services;
-
     public HttpClient CreateClient() => _factory.CreateClient();
 
     public void Dispose() => _factory.Dispose();
