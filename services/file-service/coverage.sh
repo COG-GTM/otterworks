@@ -60,6 +60,13 @@ if [ "$#" -gt 0 ]; then
         --output-path | --output-path=*)
         format="yes"
         ;;
+      # The gate is always applied below, so a caller-supplied threshold would
+      # be passed twice. Reject it rather than leave the effective floor up to
+      # how cargo-llvm-cov happens to resolve a duplicate flag.
+      --fail-under-lines* | --fail-under-regions* | --fail-under-functions*)
+        echo "coverage.sh: $arg is set by this script; use MIN_LINES/MIN_REGIONS to tighten it" >&2
+        exit 2
+        ;;
     esac
   done
 fi
