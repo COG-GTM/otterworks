@@ -86,8 +86,15 @@ class DevinSessionService
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 
-      response = raw_request(uri, request)
+      response = raw_request(uri, request, open_timeout: 5, read_timeout: 5)
       return { valid: true } if response.is_a?(Net::HTTPSuccess)
+
+      # 5xx and 429 say nothing about the key, so they must not be reported as
+      # a rejection.
+      code = response.code.to_i
+      if code >= 500 || code == 429
+        return { valid: false, unreachable: true, error: "Devin API returned #{response.code}" }
+      end
 
       { valid: false, error: "Devin API returned #{response.code}" }
     rescue StandardError => e
@@ -111,7 +118,7 @@ class DevinSessionService
       return [api_key, org_id, 'env'] if api_key && org_id
 
       stored = AdminSettingsService.devin_credentials
-      source = stored[:api_key] && stored[:org_id] ? 'settings' : 'none'
+      source = stored[:api_key] || stored[:org_id] ? 'settings' : 'none'
       [stored[:api_key], stored[:org_id], source]
     end
 
@@ -165,11 +172,11 @@ class DevinSessionService
       response
     end
 
-    def raw_request(uri, request)
+    def raw_request(uri, request, open_timeout: 10, read_timeout: 30)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = uri.scheme == 'https'
-      http.open_timeout = 10
-      http.read_timeout = 30
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
       http.request(request)
     end
   end

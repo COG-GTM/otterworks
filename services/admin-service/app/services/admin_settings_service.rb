@@ -72,9 +72,15 @@ class AdminSettingsService
       with_redis { |redis| redis.del(*LEGACY_DEVIN_KEYS) }
     end
 
+    # Raises if the leftover Redis copy cannot be removed: reporting a
+    # successful revoke while the old pair survives would let the next read
+    # adopt it straight back into Postgres.
     def clear_devin_credentials
       SystemConfig.where(key: [DEVIN_API_KEY_CONFIG, DEVIN_ORG_ID_CONFIG]).delete_all
-      with_redis { |redis| redis.del(*LEGACY_DEVIN_KEYS) }
+      redis = Redis.new(url: ServiceEnv.redis_url, timeout: 2)
+      redis.del(*LEGACY_DEVIN_KEYS)
+    ensure
+      redis&.close
     end
 
     private
@@ -97,9 +103,15 @@ class AdminSettingsService
     end
 
     def write_config(key, value, description)
-      config = SystemConfig.find_or_initialize_by(key: key)
-      config.assign_attributes(value: value, value_type: 'string', is_secret: true, description: description)
-      config.save!
+      attrs = { value: value, value_type: 'string', is_secret: true, description: description }
+      # Savepoint so a losing insert race does not poison the enclosing
+      # transaction before the update retry.
+      SystemConfig.transaction(requires_new: true) do
+        SystemConfig.find_or_initialize_by(key: key).update!(attrs)
+      end
+    rescue ActiveRecord::RecordNotUnique
+      # A concurrent writer inserted the row first; last write wins.
+      SystemConfig.find_by!(key: key).update!(attrs)
     end
 
     # Redis only holds credentials left over from the old store, so its

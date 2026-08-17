@@ -66,5 +66,11 @@ RSpec.describe AdminSettingsService do
 
       expect(described_class.devin_credentials).to eq({ api_key: nil, org_id: nil })
     end
+
+    it 'raises when the legacy copy cannot be removed, so it cannot be re-adopted' do
+      allow(redis).to receive(:del).and_raise(Redis::BaseError, 'down')
+
+      expect { described_class.clear_devin_credentials }.to raise_error(Redis::BaseError)
+    end
   end
 end

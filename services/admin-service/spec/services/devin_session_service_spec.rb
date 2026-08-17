@@ -69,6 +69,24 @@ RSpec.describe DevinSessionService do
       expect(status).to include(source: 'settings', valid: false, error: 'Devin API returned 403')
     end
 
+    it 'treats a Devin-side 503 as unreachable rather than a bad key' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request)
+        .and_return(instance_double(Net::HTTPServiceUnavailable, code: '503'))
+
+      expect(described_class.credentials_status(verify: true)).to include(valid: false, unreachable: true)
+    end
+
+    it 'treats a rate limit as unreachable rather than a bad key' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request)
+        .and_return(instance_double(Net::HTTPTooManyRequests, code: '429'))
+
+      expect(described_class.credentials_status(verify: true)).to include(valid: false, unreachable: true)
+    end
+
     it 'marks a transport failure as unreachable rather than invalid credentials' do
       allow(AdminSettingsService).to receive(:devin_credentials)
         .and_return({ api_key: 'stored-key', org_id: 'org-123' })

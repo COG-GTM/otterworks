@@ -54,6 +54,7 @@ module Api
 
           AdminSettingsService.set_devin_credentials(api_key: api_key, org_id: org_id)
           Rails.logger.info('Devin credentials updated via settings API')
+          audit('settings.devin_credentials_updated', org_id: org_id, api_key: '********')
           render json: DevinSessionService.credentials_status
         end
 
@@ -64,7 +65,25 @@ module Api
         def destroy_devin_credentials
           AdminSettingsService.clear_devin_credentials
           Rails.logger.info('Devin credentials cleared via settings API')
+          audit('settings.devin_credentials_cleared', {})
           render json: DevinSessionService.credentials_status
+        rescue StandardError => e
+          # The clear is only complete once the leftover cache copy is gone;
+          # reporting success otherwise invites the pair to come back.
+          Rails.logger.error("Failed to clear Devin credentials: #{e.message}")
+          render json: { error: 'Could not fully clear the credentials; retry', detail: e.message },
+                 status: :service_unavailable
+        end
+
+        private
+
+        def audit(action, changes_made)
+          AuditLogger.log(
+            action: action,
+            resource_type: 'DevinCredentials',
+            request: request,
+            changes_made: changes_made
+          )
         end
       end
     end
