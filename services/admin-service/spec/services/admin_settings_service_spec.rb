@@ -43,6 +43,14 @@ RSpec.describe AdminSettingsService do
       expect(redis).to have_received(:del).with('admin:devin_api_key', 'admin:devin_org_id')
     end
 
+    it 'still returns the legacy pair when adopting it fails' do
+      allow(redis).to receive(:mget).and_return(%w[legacy-key legacy-org])
+      allow(described_class).to receive(:set_devin_credentials)
+        .and_raise(ActiveRecord::StatementInvalid, 'db down')
+
+      expect(described_class.devin_credentials).to eq({ api_key: 'legacy-key', org_id: 'legacy-org' })
+    end
+
     it 'ignores a half-populated legacy pair' do
       allow(redis).to receive(:mget).and_return(['legacy-key', nil])
 

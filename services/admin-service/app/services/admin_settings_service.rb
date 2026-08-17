@@ -52,7 +52,13 @@ class AdminSettingsService
       legacy = legacy_devin_credentials
       return stored unless legacy[:api_key] && legacy[:org_id]
 
-      set_devin_credentials(api_key: legacy[:api_key], org_id: legacy[:org_id])
+      begin
+        set_devin_credentials(api_key: legacy[:api_key], org_id: legacy[:org_id])
+      rescue StandardError => e
+        # Adoption is opportunistic: the caller still gets a usable pair, and a
+        # failed read above must not turn a status check into a 500.
+        Rails.logger.error("Failed to adopt legacy Devin credentials: #{e.message}")
+      end
       legacy
     end
 

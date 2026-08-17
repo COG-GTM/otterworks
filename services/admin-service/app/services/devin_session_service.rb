@@ -25,6 +25,13 @@ class DevinSessionService
       return nil unless response
 
       body = JSON.parse(response.body)
+      if body['session_id'].blank?
+        # A 2xx without an id is not a session: reporting it as one leaves the
+        # incident "running" forever with nothing to link to.
+        Rails.logger.error('Devin API returned no session_id')
+        return nil
+      end
+
       {
         session_id: body['session_id'],
         url: body['url']
@@ -67,7 +74,8 @@ class DevinSessionService
         org_id_configured: org_id.present?,
         source: source
       }
-      return status unless verify && api_key && org_id
+      return status unless verify
+      return status.merge(valid: false, error: 'Credentials not configured') unless api_key && org_id
 
       status.merge(verify_credentials(api_key: api_key, org_id: org_id))
     end
@@ -83,7 +91,7 @@ class DevinSessionService
 
       { valid: false, error: "Devin API returned #{response.code}" }
     rescue StandardError => e
-      { valid: false, error: "Devin API unreachable: #{e.message}" }
+      { valid: false, unreachable: true, error: "Devin API unreachable: #{e.message}" }
     end
 
     private

@@ -43,8 +43,12 @@ module Api
             check = DevinSessionService.verify_credentials(api_key: api_key, org_id: org_id)
             unless check[:valid]
               Rails.logger.warn("Rejected Devin credentials: #{check[:error]}")
-              return render json: { error: 'Credentials rejected by the Devin API', detail: check[:error] },
-                            status: :unprocessable_entity
+              # A transient outage is not a bad key: 503 tells the operator to
+              # retry (or pass force=true) instead of hunting for a new key.
+              return render json: {
+                error: check[:unreachable] ? 'Could not reach the Devin API to verify; retry or send force=true' : 'Credentials rejected by the Devin API',
+                detail: check[:error]
+              }, status: check[:unreachable] ? :service_unavailable : :unprocessable_entity
             end
           end
 

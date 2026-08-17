@@ -81,6 +81,16 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(AdminSettingsService).not_to have_received(:set_devin_credentials)
     end
 
+    it 'reports an unreachable Devin API separately from a rejected key' do
+      allow(AdminSettingsService).to receive(:set_devin_credentials)
+      allow(DevinSessionService).to receive(:verify_credentials)
+        .and_return({ valid: false, unreachable: true, error: 'Devin API unreachable: timeout' })
+
+      put :update_devin_credentials, params: { api_key: 'key', org_id: 'org-1' }
+      expect(response).to have_http_status(:service_unavailable)
+      expect(AdminSettingsService).not_to have_received(:set_devin_credentials)
+    end
+
     it 'stores an unverifiable pair when forced' do
       allow(AdminSettingsService).to receive(:set_devin_credentials)
       allow(AdminSettingsService).to receive(:devin_credentials)

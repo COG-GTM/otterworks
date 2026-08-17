@@ -54,6 +54,8 @@ module Api
                 devin_session_url: session_result[:url],
                 devin_session_status: 'running'
               )
+            else
+              incident.update(devin_session_status: 'failed')
             end
 
             AuditLogger.log(
@@ -147,6 +149,7 @@ module Api
             )
             render json: @incident, serializer: IncidentSerializer
           else
+            @incident.update(devin_session_status: 'failed')
             render json: { error: 'Failed to create Devin session' }, status: :service_unavailable
           end
         end
