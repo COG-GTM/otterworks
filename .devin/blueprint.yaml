@@ -10,8 +10,8 @@ initialize: |
   for svc in $($COMPOSE config --services); do
     n=0
     until $COMPOSE build "$svc"; do
-      n=$((n+1)); [ "$n" -ge 5 ] && { echo "build failed for $svc after $n attempts"; exit 1; }
-      backoff=$((15 * (2 ** n)))
+      n=$((n+1)); [ "$n" -ge 8 ] && { echo "build failed for $svc after $n attempts"; exit 1; }
+      backoff=$((15 * (2 ** n))); [ "$backoff" -gt 480 ] && backoff=480
       echo "retrying build for $svc ($n) in ${backoff}s"; sleep "$backoff"
     done
   done
