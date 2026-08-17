@@ -149,7 +149,7 @@ RSpec.describe SlackNotifierService do
   it 'ignores a stored webhook that is not a hooks.slack.com HTTPS URL' do
     allow(AdminSettingsService).to receive(:slack_webhook_url)
       .and_return('http://169.254.169.254/latest')
-    read_posted = stub_post
+    read_posted, = stub_post
 
     described_class.notify_incident(incident: incident)
 
