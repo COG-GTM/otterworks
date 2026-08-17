@@ -13,9 +13,11 @@ class SlackAlertRoutes
       route_for(alert_name)['channel'].presence || FALLBACK_CHANNEL
     end
 
+    # Sections left empty in the YAML parse as nil, and entries may be
+    # malformed scalars, so every layer is coerced to a Hash before merging.
     def route_for(alert_name)
-      defaults = config.fetch('default', {})
-      overrides = config.fetch('alerts', {})[alert_name.to_s] || {}
+      defaults = as_hash(config['default'])
+      overrides = as_hash(as_hash(config['alerts'])[alert_name.to_s])
       defaults.merge(overrides)
     end
 
@@ -24,6 +26,10 @@ class SlackAlertRoutes
     end
 
     private
+
+    def as_hash(value)
+      value.is_a?(Hash) ? value : {}
+    end
 
     def config
       @config ||= load_config
