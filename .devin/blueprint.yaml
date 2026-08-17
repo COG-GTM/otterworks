@@ -37,8 +37,20 @@ initialize: |
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
   # here ("Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma") on every software
   # renderer, since the microVM has no GPU. minSdk is 24, so the API 37 APK runs on API 36.
-  $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
-        "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+  # Retry + verify: a partially-failed sdkmanager run doesn't stop the script here, but
+  # surfaces later at assembleDebug as a misleading "Failed to find target with hash string
+  # 'android-37'" (AGP's auto-installer then races in and can't satisfy it, since only the
+  # minor-versioned "platforms;android-37.0" package exists upstream).
+  n=0
+  until $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
+        "platforms;android-36" "system-images;android-36;google_apis;x86_64"; do
+    n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
+    echo "retrying sdkmanager install ($n)"; sleep $((30 * n))
+  done
+  for p in platforms/android-37.0 build-tools/37.0.0 platforms/android-36 \
+           platform-tools emulator system-images/android-36/google_apis/x86_64; do
+    [ -f "$ANDROID_HOME/$p/package.xml" ] || { echo "SDK package $p missing or incomplete"; exit 1; }
+  done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
   AVD_CFG=$HOME/.android/avd/otter.avd/config.ini
