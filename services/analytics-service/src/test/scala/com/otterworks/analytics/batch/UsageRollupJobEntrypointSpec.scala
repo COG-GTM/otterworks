@@ -18,19 +18,26 @@ class UsageRollupJobEntrypointSpec extends AnyFlatSpec with Matchers:
     config.output shouldBe sys.env.getOrElse("ROLLUP_OUTPUT", UsageRollupJob.DefaultOutput)
   }
 
-  "UsageRollupJob.main" should "run the job end to end and write the default output document" in {
-    val output: Path = Paths.get(UsageRollupJob.DefaultOutput)
-    val preexisting = Files.exists(output)
+  "UsageRollupJob.main" should "run the job end to end and write the configured output document" in {
+    // Honour ROLLUP_OUTPUT/ROLLUP_INPUT exactly as the job does, and never clobber an existing
+    // report: back it up and restore it afterwards.
+    val config = UsageRollupJob.loadConfig()
+    val output: Path = Paths.get(config.output)
+    val backup = Option.when(Files.exists(output))(Files.readAllBytes(output))
+    val expected = UsageRollupJob.buildReport(
+      EventLoader.load(config.input), config.input, Instant.parse("2024-03-04T00:00:00Z"))
     try
       UsageRollupJob.main(Array.empty)
 
       Files.exists(output) shouldBe true
       val report = new String(Files.readAllBytes(output), StandardCharsets.UTF_8)
         .parseJson.convertTo[UsageRollupReport]
-      report.dayCount shouldBe 3L
-      report.totalEvents shouldBe 165L
-      report.source shouldBe UsageRollupJob.DefaultInput
-    finally if !preexisting then Files.deleteIfExists(output): Unit
+      report.dayCount shouldBe expected.dayCount
+      report.totalEvents shouldBe expected.totalEvents
+      report.rollups shouldBe expected.rollups
+      report.source shouldBe config.input
+    finally
+      backup.fold(Files.deleteIfExists(output): Unit)(bytes => Files.write(output, bytes): Unit)
   }
 
   "UsageRollupJob.run" should "create missing parent directories for the output path" in {

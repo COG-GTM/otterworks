@@ -58,6 +58,9 @@ lazy val root = project
       "com.dimafeng" %% "testcontainers-scala-scalatest" % "0.41.4" % Test,
       "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.41.4" % Test,
     ),
+    // MainSpec boots the service from JVM-global system properties, so suites must not
+    // interleave with each other in the same JVM.
+    Test / parallelExecution := false,
     // Coverage ratchet: measured 96.24% statement / 89.57% branch. Raise these as coverage
     // improves, never lower them.
     coverageMinimumStmtTotal := 95,

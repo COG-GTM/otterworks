@@ -228,6 +228,8 @@ class EventProcessorSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
       }
       delegate.getUserActivity("user-6").futureValue.totalEvents shouldBe 1L
       delegate.getUserActivity("user-5").futureValue.totalEvents shouldBe 0L
-      stub.deleted should have size 1
+      eventually {
+        stub.deleted should have size 1 // only the successfully stored message is acknowledged
+      }
     }
   }
