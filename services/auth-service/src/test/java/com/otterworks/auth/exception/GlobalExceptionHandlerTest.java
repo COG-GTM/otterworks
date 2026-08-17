@@ -3,7 +3,6 @@ package com.otterworks.auth.exception;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import io.jsonwebtoken.JwtException;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -77,6 +76,6 @@ class GlobalExceptionHandlerTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
     assertThat(response.getBody()).containsEntry("message", "Internal server error");
-    assertThat(response.getBody().values()).doesNotContain(List.of("jdbc pool exhausted"));
+    assertThat(response.getBody().values()).doesNotContain("jdbc pool exhausted");
   }
 }

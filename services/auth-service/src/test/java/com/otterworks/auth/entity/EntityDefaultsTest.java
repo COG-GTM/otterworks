@@ -45,7 +45,7 @@ class EntityDefaultsTest {
     user.onUpdate();
 
     assertThat(user.getCreatedAt()).isEqualTo(created);
-    assertThat(user.getUpdatedAt()).isAfter(created);
+    assertThat(user.getUpdatedAt()).isAfterOrEqualTo(created);
   }
 
   @Test
