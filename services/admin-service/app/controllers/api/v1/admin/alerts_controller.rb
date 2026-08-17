@@ -96,6 +96,11 @@ module Api
               devin_session_url:    session_result[:url],
               devin_session_status: 'running',
             )
+          elsif auto_investigate
+            # Record the miss: without it the incident is indistinguishable
+            # from one whose session is still being created, and a broken
+            # credential looks like slowness for as long as nobody checks.
+            incident.update!(devin_session_status: 'failed')
           end
 
           Rails.logger.info("Incident #{incident.id} created from alert #{alert_name}, devin=#{session_result.present?}")

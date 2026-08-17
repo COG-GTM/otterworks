@@ -18,12 +18,14 @@ module Api
           render json: { enabled: AdminSettingsService.auto_investigate_enabled? }
         end
 
-        # GET /api/v1/admin/settings/devin_credentials
+        # GET /api/v1/admin/settings/devin_credentials[?verify=true]
         # Reports presence only — credential values are never returned. Uses the
-        # same resolution as session creation, so a "configured" answer here
-        # means sessions will actually be created.
+        # same resolution as session creation; `verify=true` additionally calls
+        # the Devin API, because a key that is present but not authorized for
+        # the organization reads as "configured" while creating no sessions.
         def devin_credentials
-          render json: DevinSessionService.credentials_status
+          verify = ActiveModel::Type::Boolean.new.cast(params[:verify]) || false
+          render json: DevinSessionService.credentials_status(verify: verify)
         end
 
         # PUT /api/v1/admin/settings/devin_credentials
@@ -32,6 +34,18 @@ module Api
           org_id  = params[:org_id].to_s.strip
           if api_key.empty? || org_id.empty?
             return render json: { error: 'Missing required parameters: api_key, org_id' }, status: :bad_request
+          end
+
+          # Reject a pair the Devin API will not accept rather than storing it
+          # and discovering at the next incident that no session was created.
+          # `force=true` stores it anyway (e.g. when the API is unreachable).
+          unless ActiveModel::Type::Boolean.new.cast(params[:force])
+            check = DevinSessionService.verify_credentials(api_key: api_key, org_id: org_id)
+            unless check[:valid]
+              Rails.logger.warn("Rejected Devin credentials: #{check[:error]}")
+              return render json: { error: 'Credentials rejected by the Devin API', detail: check[:error] },
+                            status: :unprocessable_entity
+            end
           end
 
           AdminSettingsService.set_devin_credentials(api_key: api_key, org_id: org_id)

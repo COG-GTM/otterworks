@@ -56,26 +56,55 @@ class DevinSessionService
     end
 
     # Whether a usable credential pair resolves right now, from the same
-    # resolution the API calls use.
-    def credentials_status
-      api_key, org_id = credentials
-      { api_key_configured: api_key.present?, org_id_configured: org_id.present? }
+    # resolution the API calls use. `verify: true` also asks the Devin API
+    # whether the pair actually works: presence alone has silently meant "no
+    # sessions get created" whenever the stored key was not authorized for the
+    # organization.
+    def credentials_status(verify: false)
+      api_key, org_id, source = resolve_credentials
+      status = {
+        api_key_configured: api_key.present?,
+        org_id_configured: org_id.present?,
+        source: source
+      }
+      return status unless verify && api_key && org_id
+
+      status.merge(verify_credentials(api_key: api_key, org_id: org_id))
+    end
+
+    # Cheapest call that exercises the same authorization as session creation.
+    def verify_credentials(api_key:, org_id:)
+      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions?limit=1")
+      request = Net::HTTP::Get.new(uri)
+      request['Authorization'] = "Bearer #{api_key}"
+
+      response = raw_request(uri, request)
+      return { valid: true } if response.is_a?(Net::HTTPSuccess)
+
+      { valid: false, error: "Devin API returned #{response.code}" }
+    rescue StandardError => e
+      { valid: false, error: "Devin API unreachable: #{e.message}" }
     end
 
     private
 
+    def credentials
+      resolve_credentials.first(2)
+    end
+
     # A key and an org id must come from the same source: pairing an env key
     # with a stored org id (or vice versa) yields credentials that never
-    # belonged together. Environment wins; the Redis-backed settings store is
-    # the fallback so credentials can be supplied at runtime on tenants whose
-    # deploy pipeline does not wire them as env vars.
-    def credentials
+    # belonged together. Environment wins; the settings store is the fallback
+    # so credentials can be supplied at runtime on tenants whose deploy
+    # pipeline does not wire them as env vars.
+    def resolve_credentials
       api_key = ENV.fetch('DEVIN_API_KEY', nil).presence
       org_id  = ENV.fetch('DEVIN_ORG_ID', nil).presence
-      return [api_key, org_id] if api_key && org_id
+      return [api_key, org_id, 'env'] if api_key && org_id
 
       stored = AdminSettingsService.devin_credentials
-      [stored[:api_key], stored[:org_id]]
+      source = stored[:api_key] && stored[:org_id] ? 'settings' : 'none'
+      [stored[:api_key], stored[:org_id], source]
     end
 
     def build_prompt(incident)
@@ -118,12 +147,7 @@ class DevinSessionService
     end
 
     def make_request(uri, request)
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == 'https'
-      http.open_timeout = 10
-      http.read_timeout = 30
-
-      response = http.request(request)
+      response = raw_request(uri, request)
 
       unless response.is_a?(Net::HTTPSuccess)
         Rails.logger.error("Devin API returned #{response.code}: #{response.body}")
@@ -131,6 +155,14 @@ class DevinSessionService
       end
 
       response
+    end
+
+    def raw_request(uri, request)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == 'https'
+      http.open_timeout = 10
+      http.read_timeout = 30
+      http.request(request)
     end
   end
 end

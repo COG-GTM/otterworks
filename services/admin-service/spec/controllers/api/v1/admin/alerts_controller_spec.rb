@@ -26,6 +26,11 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(DevinSessionService).to have_received(:create_session).once
     end
 
+    it 'marks the incident when the session could not be created' do
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(Incident.last.devin_session_status).to eq('failed')
+    end
+
     it 'dedupes repeated alerts for the same service by default' do
       post :ingest, params: { alerts: [firing_alert] }
       post :ingest, params: { alerts: [firing_alert] }

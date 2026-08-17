@@ -19,6 +19,19 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(body['org_id_configured']).to be(false)
       expect(response.body).not_to include('sekrit-value-123')
     end
+
+    it 'reports a configured pair the Devin API rejects as invalid' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'key', org_id: 'org-1' })
+      allow(DevinSessionService).to receive(:verify_credentials)
+        .and_return({ valid: false, error: 'Devin API returned 403' })
+
+      get :devin_credentials, params: { verify: 'true' }
+      body = response.parsed_body
+      expect(body['source']).to eq('settings')
+      expect(body['valid']).to be(false)
+      expect(body['error']).to eq('Devin API returned 403')
+    end
   end
 
   describe 'DELETE #destroy_devin_credentials' do
@@ -41,6 +54,7 @@ RSpec.describe Api::V1::Admin::SettingsController do
       allow(AdminSettingsService).to receive(:set_devin_credentials)
       allow(AdminSettingsService).to receive(:devin_credentials)
         .and_return({ api_key: 'key', org_id: 'org-1' })
+      allow(DevinSessionService).to receive(:verify_credentials).and_return({ valid: true })
 
       put :update_devin_credentials, params: { api_key: 'key', org_id: 'org-1' }
       expect(response).to have_http_status(:ok)
@@ -54,6 +68,28 @@ RSpec.describe Api::V1::Admin::SettingsController do
     it 'rejects a missing parameter' do
       put :update_devin_credentials, params: { api_key: 'key' }
       expect(response).to have_http_status(:bad_request)
+    end
+
+    it 'refuses to store a pair the Devin API rejects' do
+      allow(AdminSettingsService).to receive(:set_devin_credentials)
+      allow(DevinSessionService).to receive(:verify_credentials)
+        .and_return({ valid: false, error: 'Devin API returned 403' })
+
+      put :update_devin_credentials, params: { api_key: 'bad', org_id: 'org-1' }
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['detail']).to eq('Devin API returned 403')
+      expect(AdminSettingsService).not_to have_received(:set_devin_credentials)
+    end
+
+    it 'stores an unverifiable pair when forced' do
+      allow(AdminSettingsService).to receive(:set_devin_credentials)
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'key', org_id: 'org-1' })
+      allow(DevinSessionService).to receive(:verify_credentials)
+
+      put :update_devin_credentials, params: { api_key: 'key', org_id: 'org-1', force: 'true' }
+      expect(response).to have_http_status(:ok)
+      expect(DevinSessionService).not_to have_received(:verify_credentials)
     end
   end
 end
