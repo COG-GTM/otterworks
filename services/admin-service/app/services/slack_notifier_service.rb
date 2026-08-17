@@ -2,9 +2,11 @@ require 'net/http'
 require 'json'
 require 'uri'
 
-# Posts incident alerts to a Slack channel via an incoming webhook. The
-# channel is bound to the webhook itself. Every failure is logged and
-# swallowed — a Slack outage must never block incident creation.
+# Posts incident alerts to Slack. When SLACK_BOT_TOKEN is set, delivery goes
+# through chat.postMessage to the channel resolved by SlackAlertRoutes
+# (default #automated-alerts); otherwise it falls back to an incoming
+# webhook, whose channel is bound to the webhook itself. Every failure is
+# logged and swallowed — a Slack outage must never block incident creation.
 class SlackNotifierService
   # Slack Block Kit rejects the whole message (400 invalid_blocks) when a
   # header exceeds 150 chars or a section exceeds 3000 chars.
@@ -12,38 +14,80 @@ class SlackNotifierService
   SECTION_MAX = 3000
 
   class << self
-    def notify_incident(incident:, session_url: nil, reporter_email: nil)
+    def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
       return unless AdminSettingsService.slack_notifications_enabled?
 
-      webhook_url = resolve_webhook_url
-      unless webhook_url
-        Rails.logger.info('Slack webhook not configured, skipping incident notification')
+      channel = SlackAlertRoutes.channel_for(alert_name.presence || infer_alert_name(incident))
+      payload = build_payload(incident, session_url, reporter_email)
+
+      bot_token = ENV.fetch('SLACK_BOT_TOKEN', nil).presence
+      if bot_token
+        post_via_api(bot_token, channel, payload, incident)
         return
       end
 
-      payload = build_payload(incident, session_url, reporter_email)
-
-      uri = URI(webhook_url)
-      request = Net::HTTP::Post.new(uri)
-      request['Content-Type'] = 'application/json'
-      request.body = payload.to_json
-
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == 'https'
-      http.open_timeout = 5
-      http.read_timeout = 10
-
-      response = http.request(request)
-      unless response.is_a?(Net::HTTPSuccess)
-        Rails.logger.error("Slack webhook returned #{response.code}: #{response.body.to_s[0, 200]}")
+      webhook_url = resolve_webhook_url
+      unless webhook_url
+        Rails.logger.info('Slack not configured (no SLACK_BOT_TOKEN or webhook), skipping incident notification')
+        return
       end
-      nil
+      post_via_webhook(webhook_url, payload)
     rescue StandardError => e
       Rails.logger.error("Slack incident notification failed: #{e.message}")
       nil
     end
 
     private
+
+    # chat.postMessage honors an explicit channel, unlike incoming webhooks,
+    # so this is the path that guarantees delivery to the routed channel.
+    def post_via_api(bot_token, channel, payload, incident)
+      uri = URI('https://slack.com/api/chat.postMessage')
+      request = Net::HTTP::Post.new(uri)
+      request['Content-Type'] = 'application/json; charset=utf-8'
+      request['Authorization'] = "Bearer #{bot_token}"
+      request.body = payload.merge(
+        channel: channel,
+        text: "OtterWorks Alert — #{incident.affected_service.presence || 'unknown-service'} — #{incident.title}"
+      ).to_json
+
+      response = http_for(uri).request(request)
+      if response.is_a?(Net::HTTPSuccess)
+        body = JSON.parse(response.body) rescue {}
+        Rails.logger.error("Slack chat.postMessage failed: #{body['error']}") unless body['ok']
+      else
+        Rails.logger.error("Slack chat.postMessage returned #{response.code}: #{response.body.to_s[0, 200]}")
+      end
+      nil
+    end
+
+    def post_via_webhook(webhook_url, payload)
+      uri = URI(webhook_url)
+      request = Net::HTTP::Post.new(uri)
+      request['Content-Type'] = 'application/json'
+      request.body = payload.to_json
+
+      response = http_for(uri).request(request)
+      unless response.is_a?(Net::HTTPSuccess)
+        Rails.logger.error("Slack webhook returned #{response.code}: #{response.body.to_s[0, 200]}")
+      end
+      nil
+    end
+
+    def http_for(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == 'https'
+      http.open_timeout = 5
+      http.read_timeout = 10
+      http
+    end
+
+    # Alerts ingested via AlertsController carry an explicit alertname; for
+    # incidents created elsewhere the leading "Type:" segment of the title
+    # is the closest equivalent.
+    def infer_alert_name(incident)
+      incident.title.to_s.split(':').first.to_s.strip
+    end
 
     # Environment wins; the Redis-backed settings store is the fallback so the
     # webhook can be supplied at runtime on tenants whose deploy pipeline does
