@@ -29,6 +29,7 @@ interface UploadingFile {
   error?: string;
   abortController?: AbortController;
   devinSessionUrl?: string;
+  sessionLookupExhausted?: boolean;
   failedAt?: number;
 }
 
@@ -159,6 +160,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             entry.id,
             setTimeout(() => void check(), SESSION_POLL_INTERVAL_MS),
           );
+        } else {
+          setUploadingFiles((prev) =>
+            prev.map((f) => (f.id === entry.id ? { ...f, sessionLookupExhausted: true } : f)),
+          );
         }
       };
       void check();
@@ -180,6 +185,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 progress: 0,
                 error: undefined,
                 devinSessionUrl: undefined,
+                sessionLookupExhausted: false,
                 abortController,
               }
             : f,
@@ -287,7 +293,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           className="mb-4"
           title="File upload failed"
           message={
-            lastFailed && !lastFailed.devinSessionUrl
+            lastFailed && !lastFailed.devinSessionUrl && !lastFailed.sessionLookupExhausted
               ? "One or more files could not be uploaded. Devin is investigating — the session link will appear here shortly."
               : "One or more files could not be uploaded. Please try again."
           }
