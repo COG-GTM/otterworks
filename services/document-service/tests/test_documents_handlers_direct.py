@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from httpx import Headers
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.api.documents as documents_mod
 from app.api.comments import add_comment, delete_comment, list_comments
 from app.api.documents import (
     create_document,
@@ -36,6 +37,12 @@ from app.schemas.document import (
 from app.services.document_service import DocumentService
 
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
+
+
+@pytest.fixture(autouse=True)
+def _chaos_off(monkeypatch):
+    """Keep the chaos check off the network: no Redis connect attempt per handler call."""
+    monkeypatch.setattr(documents_mod, "_chaos_active", lambda key: False)
 
 
 class _FakeRequest:

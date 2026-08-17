@@ -6,7 +6,15 @@ import jwt
 import pytest
 from httpx import AsyncClient
 
+import app.api.documents as documents_mod
+
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
+
+
+@pytest.fixture(autouse=True)
+def _chaos_off(monkeypatch):
+    """Keep the chaos check off the network: no Redis connect attempt per request."""
+    monkeypatch.setattr(documents_mod, "_chaos_active", lambda key: False)
 
 
 def _auth_header(user_id: uuid.UUID) -> dict[str, str]:
