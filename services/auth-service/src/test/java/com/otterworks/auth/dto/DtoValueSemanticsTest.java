@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.entity.UserSettings;
+import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -58,6 +60,8 @@ class DtoValueSemanticsTest {
         "$2a$12$hashedpassword"); // nosemgrep: generic.secrets.security.detected-bcrypt-hash
 
     assertThat(UserDTO.fromEntity(user).toString()).doesNotContain("hashedpassword");
+    assertThat(Stream.of(UserDTO.class.getDeclaredFields()).map(Field::getName))
+        .noneMatch(name -> name.toLowerCase(Locale.ROOT).matches(".*(password|secret|hash).*"));
   }
 
   @Test

@@ -77,7 +77,9 @@ class AuthServiceRefreshAndLogoutTest {
     when(jwtTokenProvider.getRefreshTokenExpiry()).thenReturn(2592000L);
     when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(i -> i.getArgument(0));
 
+    Instant before = Instant.now();
     AuthResponse response = authService.refreshToken(OLD_TOKEN);
+    Instant after = Instant.now();
 
     assertThat(stored.isRevoked()).isTrue();
     assertThat(response.getAccessToken()).isEqualTo("new-access");
@@ -91,7 +93,7 @@ class AuthServiceRefreshAndLogoutTest {
     assertThat(persisted.getTokenId()).isEqualTo("jti-new");
     assertThat(persisted.getUser()).isSameAs(user);
     assertThat(persisted.getExpiresAt())
-        .isBetween(Instant.now().plusSeconds(2592000 - 60), Instant.now().plusSeconds(2592000));
+        .isBetween(before.plusSeconds(2592000), after.plusSeconds(2592000));
   }
 
   @Test
