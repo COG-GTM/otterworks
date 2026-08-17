@@ -19,6 +19,14 @@ const loggerMock = {
 };
 const logger = loggerMock as unknown as Logger;
 
+// Shared across every test: each MetricsCollector installs process-level default collectors
+// (GC observer, event-loop monitor) that registry.clear() does not tear down.
+const metrics = new MetricsCollector();
+
+afterAll(() => {
+  metrics.registry.clear();
+});
+
 interface FakeSocket {
   socket: Socket;
   id: string;
@@ -51,7 +59,6 @@ describe('CollaborationManager (faked sockets)', () => {
   let manager: CollaborationManager;
   let awareness: AwarenessService;
   let presenceHandler: PresenceHandler;
-  let metrics: MetricsCollector;
   let documentStore: DocumentStoreMock;
   let io: SocketIOServer;
   let ioRoomEmit: jest.Mock;
@@ -118,7 +125,6 @@ describe('CollaborationManager (faked sockets)', () => {
 
     awareness = new AwarenessService(logger);
     presenceHandler = new PresenceHandler(awareness, logger);
-    metrics = new MetricsCollector();
     documentStore = createDocumentStoreMock();
 
     manager = new CollaborationManager({
@@ -136,7 +142,6 @@ describe('CollaborationManager (faked sockets)', () => {
 
   afterEach(async () => {
     await manager.stop();
-    metrics.registry.clear();
     jest.useRealTimers();
   });
 
@@ -736,7 +741,6 @@ describe('setupCollaborationHandlers', () => {
       sockets: { sockets: new Map() },
     } as unknown as SocketIOServer;
     const awareness = new AwarenessService(logger);
-    const metrics = new MetricsCollector();
     const documentStore = createDocumentStoreMock();
 
     const manager = setupCollaborationHandlers(
