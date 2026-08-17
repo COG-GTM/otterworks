@@ -53,4 +53,56 @@ RSpec.describe DevinSessionService do
 
     described_class.create_session(incident: incident)
   end
+
+  describe 'the Slack alert the prompt opens with' do
+    let(:upload_incident) do
+      Incident.create!(
+        title: 'File upload failed: q3-report.pdf',
+        description: 'Upload of "q3-report.pdf" failed in file-service: StorageBackendError: bucket unavailable',
+        severity: 'critical',
+        affected_service: 'file-service',
+        status: 'open',
+        created_at: Time.utc(2026, 8, 17, 21, 50, 34)
+      )
+    end
+
+    subject(:prompt) { described_class.send(:build_prompt, upload_incident) }
+
+    it 'comes before anything else in the prompt' do
+      expect(prompt).to start_with('## Step 0 — Post this alert to Slack IMMEDIATELY')
+      expect(prompt).to include('#automated-alerts')
+      expect(prompt.index('Step 0')).to be < prompt.index('## Incident Details')
+    end
+
+    it 'renders every field from the incident' do
+      expect(prompt).to include(':rotating_light: Sentry Alert — OtterWorks — File Upload Error')
+      expect(prompt).to include("Error:\nFile upload failed: q3-report.pdf")
+      expect(prompt).to include("Severity:\ncritical")
+      expect(prompt).to include("Location:\nservices/file-service/src/handlers.rs — upload_file")
+      expect(prompt).to include("Type:\nStorageBackendError")
+      expect(prompt).to include('Message: StorageBackendError: bucket unavailable')
+      expect(prompt).to include('Service: file-service | 2026-08-17T21:50:34.000Z')
+    end
+
+    it 'lists both on-call entries and leaves the session URL to the session' do
+      expect(prompt).to include(':robot_face: Devin AI (auto-investigating) — <DEVIN_SESSION_URL>')
+      expect(prompt).to include('@golden demos')
+    end
+
+    it 'falls back for incidents from other services' do
+      other = Incident.create!(
+        title: 'Search degraded',
+        description: 'MeiliSearch unreachable',
+        severity: 'medium',
+        affected_service: 'search-service',
+        status: 'open'
+      )
+
+      other_prompt = described_class.send(:build_prompt, other)
+      expect(other_prompt).to include('Sentry Alert — OtterWorks — Search Service Error')
+      expect(other_prompt).to include("Location:\nservices/search-service")
+      expect(other_prompt).to include("Type:\nServiceError")
+      expect(other_prompt).to include('Message: MeiliSearch unreachable')
+    end
+  end
 end
