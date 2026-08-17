@@ -141,3 +141,174 @@ mod tests {
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
 }
+
+#[cfg(test)]
+mod env_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // `std::env` is process-global: serialize every test that touches it.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Restores the saved variables on drop, so a panicking assertion cannot
+    /// leak a mutated environment into the rest of the binary.
+    struct RestoreEnv {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (k, v) in &self.saved {
+                match v {
+                    Some(v) => env::set_var(k, v),
+                    None => env::remove_var(k),
+                }
+            }
+        }
+    }
+
+    fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
+        let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _restore = RestoreEnv {
+            _guard: guard,
+            saved: vars
+                .iter()
+                .map(|(k, _)| ((*k).to_string(), env::var(k).ok()))
+                .collect(),
+        };
+        for (k, v) in vars {
+            match v {
+                Some(v) => env::set_var(k, v),
+                None => env::remove_var(k),
+            }
+        }
+        f()
+    }
+
+    const SERVER_VARS: [&str; 2] = ["PORT", "MAX_UPLOAD_BYTES"];
+    const AWS_VARS: [&str; 7] = [
+        "AWS_REGION",
+        "AWS_ENDPOINT_URL",
+        "S3_BUCKET",
+        "DYNAMODB_TABLE",
+        "DYNAMODB_FOLDERS_TABLE",
+        "DYNAMODB_VERSIONS_TABLE",
+        "DYNAMODB_SHARES_TABLE",
+    ];
+
+    fn unset(keys: &[&'static str]) -> Vec<(&'static str, Option<&'static str>)> {
+        keys.iter().map(|k| (*k, None)).collect()
+    }
+
+    #[test]
+    fn server_config_falls_back_to_defaults() {
+        let cfg = with_env(&unset(&SERVER_VARS), ServerConfig::from_env);
+        assert_eq!(cfg.port, 8082);
+        assert_eq!(cfg.max_upload_bytes, 104_857_600);
+    }
+
+    #[test]
+    fn server_config_reads_overrides_and_ignores_garbage() {
+        let cfg = with_env(
+            &[
+                ("PORT", Some("9999")),
+                ("MAX_UPLOAD_BYTES", Some("not-a-number")),
+            ],
+            ServerConfig::from_env,
+        );
+        assert_eq!(cfg.port, 9999);
+        assert_eq!(
+            cfg.max_upload_bytes, 104_857_600,
+            "unparseable value falls back to the default"
+        );
+    }
+
+    #[test]
+    fn server_config_accepts_a_custom_upload_ceiling() {
+        let cfg = with_env(
+            &[("PORT", Some("bogus")), ("MAX_UPLOAD_BYTES", Some("2048"))],
+            ServerConfig::from_env,
+        );
+        assert_eq!(cfg.port, 8082, "unparseable port falls back to the default");
+        assert_eq!(cfg.max_upload_bytes, 2048);
+    }
+
+    #[test]
+    fn aws_config_uses_defaults_when_nothing_is_set() {
+        let cfg = with_env(&unset(&AWS_VARS), AwsConfig::from_env);
+        assert_eq!(cfg.region, "us-east-1");
+        assert_eq!(cfg.endpoint_url, None);
+        assert_eq!(cfg.s3_bucket, "otterworks-files");
+        assert_eq!(cfg.dynamodb_table, "otterworks-file-metadata");
+        assert_eq!(cfg.dynamodb_folders_table, "otterworks-folders");
+        assert_eq!(cfg.dynamodb_versions_table, "otterworks-file-versions");
+        assert_eq!(cfg.dynamodb_shares_table, "otterworks-file-shares");
+    }
+
+    #[test]
+    fn aws_config_reads_every_override() {
+        let cfg = with_env(
+            &[
+                ("AWS_REGION", Some("eu-west-2")),
+                ("AWS_ENDPOINT_URL", Some("http://localstack:4566")),
+                ("S3_BUCKET", Some("my-bucket")),
+                ("DYNAMODB_TABLE", Some("files")),
+                ("DYNAMODB_FOLDERS_TABLE", Some("folders")),
+                ("DYNAMODB_VERSIONS_TABLE", Some("versions")),
+                ("DYNAMODB_SHARES_TABLE", Some("shares")),
+            ],
+            AwsConfig::from_env,
+        );
+        assert_eq!(cfg.region, "eu-west-2");
+        assert_eq!(cfg.endpoint_url.as_deref(), Some("http://localstack:4566"));
+        assert_eq!(cfg.s3_bucket, "my-bucket");
+        assert_eq!(cfg.dynamodb_table, "files");
+        assert_eq!(cfg.dynamodb_folders_table, "folders");
+        assert_eq!(cfg.dynamodb_versions_table, "versions");
+        assert_eq!(cfg.dynamodb_shares_table, "shares");
+    }
+
+    #[test]
+    fn sns_config_topic_arn_is_optional() {
+        let unset = with_env(&[("SNS_TOPIC_ARN", None)], SnsConfig::from_env);
+        assert_eq!(unset.topic_arn, None);
+
+        let set = with_env(
+            &[("SNS_TOPIC_ARN", Some("arn:aws:sns:us-east-1:1:files"))],
+            SnsConfig::from_env,
+        );
+        assert_eq!(
+            set.topic_arn.as_deref(),
+            Some("arn:aws:sns:us-east-1:1:files")
+        );
+    }
+
+    #[test]
+    fn app_config_composes_the_three_sections() {
+        let cfg = with_env(
+            &[
+                ("PORT", Some("1234")),
+                ("S3_BUCKET", Some("composed-bucket")),
+                ("SNS_TOPIC_ARN", None),
+            ],
+            AppConfig::from_env,
+        );
+        assert_eq!(cfg.server.port, 1234);
+        assert_eq!(cfg.aws.s3_bucket, "composed-bucket");
+        assert_eq!(cfg.sns.topic_arn, None);
+    }
+
+    #[test]
+    fn parse_bool_env_reads_the_environment() {
+        assert!(with_env(&[("OTTERWORKS_TEST_FLAG", Some("1"))], || {
+            parse_bool_env("OTTERWORKS_TEST_FLAG", false)
+        }));
+        assert!(!with_env(&[("OTTERWORKS_TEST_FLAG", Some("0"))], || {
+            parse_bool_env("OTTERWORKS_TEST_FLAG", true)
+        }));
+        assert!(with_env(&[("OTTERWORKS_TEST_FLAG", Some("maybe"))], || {
+            parse_bool_env("OTTERWORKS_TEST_FLAG", true)
+        }));
+    }
+}
