@@ -15,14 +15,6 @@ class ChaosProbeService
       url: 'http://search-service:8087/api/v1/search/suggest?q=test',
       headers: { 'X-User-ID' => 'chaos-probe' },
     },
-    # file-service upload expects multipart/form-data with a "file" field.
-    # Sending JSON results in a 400 before the chaos flag is ever checked.
-    # X-User-ID must be a valid UUID (parsed by the handler).
-    'file-service' => {
-      url: 'http://file-service:8082/api/v1/files/upload',
-      method: :multipart,
-      headers: { 'X-User-ID' => '00000000-0000-0000-0000-000000000001' },
-    },
     # notification-service chaos works by switching to a strict JSON parser
     # that rejects messages with integer (Unix epoch) timestamps.  Hitting
     # /health does nothing — we need to push a malformed message into the SQS
@@ -80,8 +72,6 @@ class ChaosProbeService
     http.read_timeout = config.fetch(:read_timeout, 3)
 
     request = case config[:method]
-              when :multipart
-                build_multipart_request(uri)
               when :sqs
                 build_sqs_request(uri)
               when :post
@@ -96,22 +86,6 @@ class ChaosProbeService
     http.request(request)
   rescue StandardError
     nil
-  end
-
-  # Builds a multipart/form-data POST with a small dummy file.
-  def self.build_multipart_request(uri)
-    boundary = "chaos-probe-#{SecureRandom.hex(8)}"
-    body = "--#{boundary}\r\n" \
-           "Content-Disposition: form-data; name=\"file\"; filename=\"probe.txt\"\r\n" \
-           "Content-Type: text/plain\r\n" \
-           "\r\n" \
-           "chaos probe\r\n" \
-           "--#{boundary}--\r\n"
-
-    req = Net::HTTP::Post.new(uri.request_uri)
-    req['Content-Type'] = "multipart/form-data; boundary=#{boundary}"
-    req.body = body
-    req
   end
 
   # Sends an SQS SendMessage request with a malformed timestamp (integer
