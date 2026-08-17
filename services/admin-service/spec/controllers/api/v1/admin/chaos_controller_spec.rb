@@ -31,7 +31,7 @@ RSpec.describe Api::V1::Admin::ChaosController do
       post :trigger, params: { service: 'search-service', scenario: 'slow_queries' }
 
       expect(response).to have_http_status(:unprocessable_entity)
-      expect(JSON.parse(response.body)['valid']).to eq(described_class::VALID_SCENARIOS.stringify_keys)
+      expect(JSON.parse(response.body)['valid']).to eq(described_class::VALID_SCENARIOS)
       expect(ChaosProbeService).not_to have_received(:start)
     end
 

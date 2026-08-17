@@ -9,6 +9,12 @@ RSpec.describe ChaosProbeService do
     allow(described_class).to receive(:sleep)
   end
 
+  # Joins with a timeout so a probe loop that never terminates fails the example instead of
+  # hanging the suite.
+  def join_probe(thread)
+    expect(thread.join(5)).to eq(thread)
+  end
+
   describe '.start' do
     it 'does nothing for an unknown service' do
       expect(described_class.start(service: 'unknown-service', redis_key: 'chaos:x')).to be_nil
@@ -19,7 +25,7 @@ RSpec.describe ChaosProbeService do
       allow(redis).to receive(:exists?).with('chaos:search-service:suggest_500').and_return(false)
       allow(described_class).to receive(:fire_probe)
 
-      described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500').join
+      join_probe(described_class.start(service: 'search-service', redis_key: 'chaos:search-service:suggest_500'))
 
       expect(described_class).not_to have_received(:fire_probe)
       expect(redis).to have_received(:close)
@@ -29,7 +35,7 @@ RSpec.describe ChaosProbeService do
       allow(redis).to receive(:exists?).and_return(true, true, false)
       allow(described_class).to receive(:fire_probe)
 
-      described_class.start(service: 'file-service', redis_key: 'chaos:file-service:upload_s3_error').join
+      join_probe(described_class.start(service: 'file-service', redis_key: 'chaos:file-service:upload_s3_error'))
 
       expect(described_class).to have_received(:fire_probe).exactly(described_class::PROBE_BATCH * 2).times
       expect(described_class).to have_received(:sleep).with(described_class::PROBE_INTERVAL).twice
@@ -39,7 +45,8 @@ RSpec.describe ChaosProbeService do
       allow(redis).to receive(:exists?).and_raise(Redis::BaseConnectionError, 'gone')
       allow(Rails.logger).to receive(:error)
 
-      described_class.start(service: 'document-service', redis_key: 'chaos:document-service:slow_queries').join
+      join_probe(described_class.start(service: 'document-service',
+                                       redis_key: 'chaos:document-service:slow_queries'))
 
       expect(Rails.logger).to have_received(:error).with(/Thread error for document-service/)
       expect(redis).to have_received(:close)
