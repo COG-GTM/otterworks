@@ -74,6 +74,7 @@ describe('MetricsCollector', () => {
   it('also collects default process metrics', async () => {
     const output = await metrics.getMetrics();
 
-    expect(output).toContain('process_cpu_user_seconds_total');
+    expect(output).toContain('process_start_time_seconds');
+    expect(output).toContain('nodejs_eventloop_lag_seconds');
   });
 });
