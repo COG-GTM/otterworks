@@ -56,7 +56,7 @@ After PR #31 (this PR):
 ### Immediate (No Changes Required)
 1. **Change detection is working well** — Only affected services are built on PRs, keeping CI fast (~2-5 min per service vs 30+ min for full monorepo build).
 2. **Security scanning is comprehensive** — Trivy + Gitleaks + Semgrep covers dependencies, secrets, and static analysis.
-3. **Legacy service isolation** — Report service (Java 8) is correctly skipped by Trivy since it's intentionally outdated for upgrade exercises.
+3. **Report service Trivy exclusion** — Still skipped by Trivy from when it was intentionally outdated; now that it runs on Java 17 / Spring Boot 3.2, the exclusion should be re-enabled.
 
 ### Short-Term Improvements
 1. **Add `concurrency` groups** to cancel stale CI runs when new commits are pushed:

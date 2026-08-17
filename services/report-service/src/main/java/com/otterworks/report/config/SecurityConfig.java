@@ -1,6 +1,7 @@
 package com.otterworks.report.config;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.Customizer;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -26,8 +27,8 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/reports/**").permitAll())
                 .headers(headers -> headers
-                        .frameOptions(options -> options.deny()
-                                .contentTypeOptions())
+                        .frameOptions(options -> options.deny())
+                        .contentTypeOptions(Customizer.withDefaults())
                         .xssProtection(protection -> protection
                                 .headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK)));
         return http.build();
