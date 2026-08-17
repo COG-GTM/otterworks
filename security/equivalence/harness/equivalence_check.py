@@ -24,16 +24,17 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
-import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
+from defusedxml import ElementTree
 from tabulate import tabulate
 
 HARNESS_VERSION = 1
@@ -259,8 +260,7 @@ def run_module(finding: Finding, command: str) -> subprocess.CompletedProcess[st
     for variable in ("VIRTUAL_ENV", "POETRY_ACTIVE", "PYTHONPATH", "PYTHONHOME"):
         env.pop(variable, None)
     return subprocess.run(
-        command,
-        shell=True,
+        shlex.split(command),
         cwd=finding.module_dir,
         capture_output=True,
         text=True,

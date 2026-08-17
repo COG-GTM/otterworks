@@ -74,8 +74,8 @@
   "app.services.export_archive:ExportArchive.read_export": "read_export(self, name: 'str') -> 'str'"
  },
  "module": "document-service",
- "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
- "recorded_at": "2026-08-17T23:53:35.691261+00:00",
+ "reason": "re-record: the unknown-token case literal was changed to a non-secret-looking string so the secret scanner does not flag the fixture",
+ "recorded_at": "2026-08-17T23:56:07.684078+00:00",
  "rerecorded_from": {
   "fingerprint": {
    "cases_sha256": "e84a2ec74dc214b87339d6dbae79de8e239ef189154819296c676b95e2e97a0f",
@@ -85,11 +85,11 @@
     "services/document-service/app/services/export_archive.py": "7c0c51c23d5a4f349003d484492cb42578652cd2b503161cd0667be4f8bbdae9"
    }
   },
-  "reason": "re-record: emitter isinstance style change altered its fingerprint; behaviour and observations unchanged",
-  "recorded_at": "2026-08-17T23:52:00.174173+00:00"
+  "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
+  "recorded_at": "2026-08-17T23:53:35.691261+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-4jdzmgrd/junit.xml",
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-t9lfontc/junit.xml",
   "exit_code": 1,
   "failed": [
    "tests.test_documents_api::test_delete_document",

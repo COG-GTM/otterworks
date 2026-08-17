@@ -358,7 +358,7 @@ batch-usage-rollup-seed: ## Regenerate the deterministic usage-rollup seed event
 # in security/equivalence/reports/ (git-ignored: collect them as CI artifacts and
 # paste the summary into the PR).
 
-EQ := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 security/equivalence/harness/equivalence_check.py
+EQ := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 --with defusedxml==0.7.1 security/equivalence/harness/equivalence_check.py
 
 eq-list: ## List the registered findings and the state of their recorded evidence
 	$(EQ) list

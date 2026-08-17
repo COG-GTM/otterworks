@@ -494,8 +494,8 @@
   "app.services.document_query_repository:DocumentQueryRepository.search_documents": "search_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, sort: 'str' = 'updated_at', direction: 'str' = 'desc', limit: 'int' = 20, offset: 'int' = 0) -> 'list[dict[str, Any]]'"
  },
  "module": "document-service",
- "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
- "recorded_at": "2026-08-17T23:53:32.250974+00:00",
+ "reason": "re-record: the unknown-token case literal was changed to a non-secret-looking string so the secret scanner does not flag the fixture",
+ "recorded_at": "2026-08-17T23:56:03.923458+00:00",
  "rerecorded_from": {
   "fingerprint": {
    "cases_sha256": "bfe74486d94b98bcf8256348b37e380a66eb1660871f07b8a1532372391b84cd",
@@ -505,11 +505,11 @@
     "services/document-service/app/services/document_query_repository.py": "d58f1c740222d123e02e4c81dcf5cf53c88ea405445f04ebb5ac3a0cfa30ee49"
    }
   },
-  "reason": "re-record: emitter isinstance style change altered its fingerprint; behaviour and observations unchanged",
-  "recorded_at": "2026-08-17T23:51:56.161848+00:00"
+  "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
+  "recorded_at": "2026-08-17T23:53:32.250974+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-q0zxpwrx/junit.xml",
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-od42muma/junit.xml",
   "exit_code": 1,
   "failed": [
    "tests.test_documents_api::test_delete_document",
