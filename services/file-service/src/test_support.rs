@@ -32,6 +32,12 @@ impl Drop for EnvRestore {
     }
 }
 
+/// Every test that reads or writes an AWS/config environment variable must go
+/// through here (or [`with_env_blocking`]): the assertions in `storage.rs` need
+/// `AWS_ENDPOINT_URL` cleared while `config.rs` sets it, and only the shared
+/// `ENV_LOCK` keeps those from racing. A bare `std::env::set_var` -- or a client
+/// built from the AWS default provider chain outside this helper -- reintroduces
+/// cross-test flakiness.
 pub(crate) fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _restore = EnvRestore(
@@ -407,13 +413,21 @@ impl RedisStub {
             // Connections are owned by the accept loop's `JoinSet`, so aborting
             // the loop on drop tears down every parked reader with it.
             let mut connections = tokio::task::JoinSet::new();
+            let mut consecutive_errors = 0;
             loop {
                 // A transient accept error (EMFILE under parallel tests) must not
                 // kill the stub: keep serving so later connections still succeed.
+                // A persistent one gives up instead of spinning, so the client
+                // sees a connection refusal rather than a hung runtime slot.
                 let Ok((mut socket, _)) = listener.accept().await else {
+                    consecutive_errors += 1;
+                    if consecutive_errors > 16 {
+                        return;
+                    }
                     tokio::task::yield_now().await;
                     continue;
                 };
+                consecutive_errors = 0;
                 connections.spawn(async move {
                     let mut chunk = [0u8; 4096];
                     let mut pending: Vec<u8> = Vec::new();

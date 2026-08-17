@@ -22,15 +22,27 @@ cd "$(dirname "$0")"
 FLOOR_LINES=98
 FLOOR_REGIONS=95
 
-at_least() { # at_least <floor> <requested>
-  case "$2" in
-    '' | *[!0-9]*) echo "$1" ;;
-    *) [ "$2" -gt "$1" ] && echo "$2" || echo "$1" ;;
+at_least() { # at_least <name> <floor> <requested>
+  case "$3" in
+    '') echo "$2" ;;
+    *[!0-9]*)
+      echo "coverage.sh: ignoring $1=$3 (whole numbers only), gating at $2" >&2
+      echo "$2"
+      ;;
+    *)
+      if [ "$3" -gt "$2" ]; then
+        echo "$3"
+      else
+        [ "$3" -eq "$2" ] ||
+          echo "coverage.sh: ignoring $1=$3 (below the $2 floor), gating at $2" >&2
+        echo "$2"
+      fi
+      ;;
   esac
 }
 
-MIN_LINES=$(at_least "$FLOOR_LINES" "${MIN_LINES:-}")
-MIN_REGIONS=$(at_least "$FLOOR_REGIONS" "${MIN_REGIONS:-}")
+MIN_LINES=$(at_least MIN_LINES "$FLOOR_LINES" "${MIN_LINES:-}")
+MIN_REGIONS=$(at_least MIN_REGIONS "$FLOOR_REGIONS" "${MIN_REGIONS:-}")
 
 # cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
 # added when the caller asked for no other output -- and not added twice when the
