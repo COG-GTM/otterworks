@@ -29,7 +29,8 @@ format=""
 if [ "$#" -gt 0 ]; then
   for arg in "$@"; do
     case "$arg" in
-      --summary-only | --html | --open | --lcov | --json | --cobertura | --codecov | --text)
+      --summary-only | --html | --open | --lcov | --json | --cobertura | --codecov | --text | \
+        --output-path | --output-path=*)
         format="yes"
         ;;
     esac
