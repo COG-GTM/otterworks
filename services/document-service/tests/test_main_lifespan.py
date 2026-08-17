@@ -78,7 +78,10 @@ async def test_lifespan_survives_opentelemetry_failure(monkeypatch):
         async def dispose(self):
             disposed.append(True)
 
+    attempted = []
+
     def _boom(target, **kwargs):
+        attempted.append(target)
         raise RuntimeError("otel exporter unreachable")
 
     monkeypatch.setattr(main_mod, "init_db", _fake_init_db)
@@ -86,9 +89,11 @@ async def test_lifespan_survives_opentelemetry_failure(monkeypatch):
     monkeypatch.setattr(main_mod.settings, "otel_enabled", True)
     monkeypatch.setitem(sys.modules, OTEL_MODULE, _fake_otel_module(_boom))
 
-    async with lifespan(FastAPI()):
+    target_app = FastAPI()
+    async with lifespan(target_app):
         pass
 
+    assert attempted == [target_app]  # the failing instrumentation really ran
     assert disposed == [True]
 
 
