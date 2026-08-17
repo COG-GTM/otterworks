@@ -114,3 +114,112 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{test, web, App, HttpResponse};
+
+    async fn ok_handler() -> HttpResponse {
+        HttpResponse::Ok().body("ok")
+    }
+
+    #[actix_web::test]
+    async fn request_id_middleware_passes_the_response_through() {
+        let app = test::init_service(
+            App::new()
+                .wrap(RequestId)
+                .route("/thing/{id}", web::get().to(ok_handler)),
+        )
+        .await;
+
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/thing/42").to_request()).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn request_id_middleware_counts_requests_per_route_pattern() {
+        let app = test::init_service(
+            App::new()
+                .wrap(RequestId)
+                .route("/counted/{id}", web::get().to(ok_handler)),
+        )
+        .await;
+
+        let before = HTTP_REQUESTS_TOTAL
+            .with_label_values(&["GET", "/counted/{id}", "200"])
+            .get();
+
+        // An explicit request id is accepted, and a missing one is generated.
+        let with_header = test::TestRequest::get()
+            .uri("/counted/7")
+            .insert_header(("x-request-id", "abc-123"))
+            .to_request();
+        assert!(test::call_service(&app, with_header)
+            .await
+            .status()
+            .is_success());
+        let without_header = test::TestRequest::get().uri("/counted/8").to_request();
+        assert!(test::call_service(&app, without_header)
+            .await
+            .status()
+            .is_success());
+
+        let after = HTTP_REQUESTS_TOTAL
+            .with_label_values(&["GET", "/counted/{id}", "200"])
+            .get();
+        assert_eq!(after - before, 2, "both requests are counted once each");
+
+        let observations = HTTP_REQUEST_DURATION
+            .with_label_values(&["GET", "/counted/{id}"])
+            .get_sample_count();
+        assert!(observations >= 2, "latency is observed per request");
+    }
+
+    #[actix_web::test]
+    async fn unmatched_routes_are_counted_under_a_placeholder_path() {
+        let app = test::init_service(
+            App::new()
+                .wrap(RequestId)
+                .route("/known", web::get().to(ok_handler)),
+        )
+        .await;
+
+        let before = HTTP_REQUESTS_TOTAL
+            .with_label_values(&["GET", "unmatched", "404"])
+            .get();
+        let resp =
+            test::call_service(&app, test::TestRequest::get().uri("/nope").to_request()).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+        let after = HTTP_REQUESTS_TOTAL
+            .with_label_values(&["GET", "unmatched", "404"])
+            .get();
+
+        assert_eq!(after - before, 1);
+    }
+
+    #[actix_web::test]
+    async fn render_metrics_emits_the_prometheus_text_exposition_format() {
+        let app = test::init_service(
+            App::new()
+                .wrap(RequestId)
+                .route("/rendered", web::get().to(ok_handler)),
+        )
+        .await;
+        test::call_service(&app, test::TestRequest::get().uri("/rendered").to_request()).await;
+
+        let rendered = render_metrics();
+
+        assert!(
+            rendered.contains("# TYPE http_requests_total counter"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("path=\"/rendered\""), "{rendered}");
+        assert!(
+            rendered.contains("http_request_duration_seconds_bucket"),
+            "{rendered}"
+        );
+    }
+}
