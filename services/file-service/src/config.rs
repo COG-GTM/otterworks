@@ -150,26 +150,40 @@ mod env_tests {
     // `std::env` is process-global: serialize every test that touches it.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    /// Restores the saved variables on drop, so a panicking assertion cannot
+    /// leak a mutated environment into the rest of the binary.
+    struct RestoreEnv {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        saved: Vec<(String, Option<String>)>,
+    }
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (k, v) in &self.saved {
+                match v {
+                    Some(v) => env::set_var(k, v),
+                    None => env::remove_var(k),
+                }
+            }
+        }
+    }
+
     fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved: Vec<(String, Option<String>)> = vars
-            .iter()
-            .map(|(k, _)| ((*k).to_string(), env::var(k).ok()))
-            .collect();
+        let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _restore = RestoreEnv {
+            _guard: guard,
+            saved: vars
+                .iter()
+                .map(|(k, _)| ((*k).to_string(), env::var(k).ok()))
+                .collect(),
+        };
         for (k, v) in vars {
             match v {
                 Some(v) => env::set_var(k, v),
                 None => env::remove_var(k),
             }
         }
-        let out = f();
-        for (k, v) in saved {
-            match v {
-                Some(v) => env::set_var(&k, v),
-                None => env::remove_var(&k),
-            }
-        }
-        out
+        f()
     }
 
     const SERVER_VARS: [&str; 2] = ["PORT", "MAX_UPLOAD_BYTES"];
