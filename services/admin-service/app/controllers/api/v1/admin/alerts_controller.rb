@@ -98,7 +98,11 @@ module Api
             )
           end
 
-          SlackNotifierService.notify_incident(incident: incident, session_url: session_result&.dig(:url))
+          SlackNotifierService.notify_incident(
+            incident: incident,
+            session_url: session_result&.dig(:url),
+            alert_name: alert_name
+          )
 
           Rails.logger.info("Incident #{incident.id} created from alert #{alert_name}, devin=#{session_result.present?}")
 
