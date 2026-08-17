@@ -1,13 +1,15 @@
 import { MetricsCollector } from '../metrics';
 
 describe('MetricsCollector', () => {
-  let metrics: MetricsCollector;
+  // Constructed once: every MetricsCollector installs process-level default collectors
+  // (GC observer, event-loop monitor) that registry.clear() does not tear down.
+  const metrics = new MetricsCollector();
 
   beforeEach(() => {
-    metrics = new MetricsCollector();
+    metrics.registry.resetMetrics();
   });
 
-  afterEach(() => {
+  afterAll(() => {
     metrics.registry.clear();
   });
 
