@@ -48,13 +48,22 @@ jobs:
       # contract cases must be unchanged *and* the attack cases must be neutralized.
       - name: Gate on the advisory, then grade behavior for that state
         run: |
-          if make deps-gate; then
+          set +e
+          make deps-gate
+          gate=$?
+          set -e
+          if [ "$gate" -eq 0 ]; then
             echo "::notice::no vulnerable version reachable — grading the remediated contract"
             make deps-transcript
-          else
+          elif [ "$gate" -eq 1 ]; then
             echo "::notice::the vulnerable version is still present (this is the documented" \
                  "before-state) — grading the recorded baseline transcript instead"
             make deps-transcript-baseline
+          else
+            # Exit 2 is "no verdict reached" (a tree failed to resolve), never a pass:
+            # grading either contract off an unmeasured estate would invent confidence.
+            echo "::error::the advisory gate was inconclusive (exit $gate); refusing to grade"
+            exit "$gate"
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()

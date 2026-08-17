@@ -24,6 +24,17 @@ class NotificationFooterTest {
     }
 
     @Test
+    fun eventValuesContainingATokenAreInsertedLiterally() {
+        assertEquals(
+            "hello {{sys:user.name}}",
+            NotificationTemplates.replaceVariables(
+                "hello {{actorId}}",
+                mapOf("actorId" to "{{sys:user.name}}"),
+            ),
+        )
+    }
+
+    @Test
     fun renderedEmailBodyCarriesTheFooter() {
         val rendered = NotificationTemplates.render(
             com.otterworks.notification.model.SqsNotificationMessage(

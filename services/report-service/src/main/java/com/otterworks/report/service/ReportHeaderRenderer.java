@@ -77,12 +77,15 @@ public class ReportHeaderRenderer {
      * Render one banner line against the supplied report variables.
      *
      * An undefined variable is an operator error: it must fail loudly instead of
-     * leaking a raw ${...} token into a customer-facing export.
+     * leaking a raw ${...} token into a customer-facing export. Report values are
+     * inserted literally: a report whose name happens to contain ${...} is data,
+     * not a template, so resolved values are never re-scanned.
      */
     public String renderBanner(String template, Map<String, String> vars) {
         StringSubstitutor substitutor =
                 new StringSubstitutor(StringLookupFactory.INSTANCE.interpolatorStringLookup(vars));
         substitutor.setEnableUndefinedVariableException(true);
+        substitutor.setDisableSubstitutionInValues(true);
         return substitutor.replace(template);
     }
 

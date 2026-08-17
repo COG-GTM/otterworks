@@ -52,6 +52,12 @@ public class ReportHeaderRendererTest {
         }
     }
 
+    @Test
+    public void reportNameContainingATokenIsInsertedLiterally() {
+        assertEquals("# OtterWorks Report: Q1 ${cost} review",
+                renderer.title(vars("reportName", "Q1 ${cost} review")));
+    }
+
     private Map<String, String> vars(String key, String value) {
         Map<String, String> vars = new LinkedHashMap<String, String>();
         vars.put(key, value);

@@ -143,13 +143,18 @@ object NotificationTemplates {
 
     fun footer(): String = resolveOperatorString(FOOTER_TEMPLATE)
 
+    /**
+     * Render a notification template against event variables. Event-supplied values are
+     * inserted literally — a value that happens to contain `{{...}}` is data, not a
+     * template, so resolved values are never re-scanned.
+     */
     fun replaceVariables(template: String, variables: Map<String, String>): String {
         val substitutor = StringSubstitutor(
             StringLookupFactory.INSTANCE.interpolatorStringLookup(variables),
             TOKEN_PREFIX,
             TOKEN_SUFFIX,
             StringSubstitutor.DEFAULT_ESCAPE,
-        )
+        ).setDisableSubstitutionInValues(true)
         return substitutor.replace(template)
     }
 }

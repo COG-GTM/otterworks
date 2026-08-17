@@ -63,9 +63,19 @@ EMITTER_TEST = "DependencyTranscriptEmitterTest"
 
 # Status values are a closed set: a typo becomes a KeyError here rather than a
 # module that quietly skips its gate.
-PASS, FAIL, MISSING, STALE, UNMEASURED = "pass", "fail", "missing", "stale", "unmeasured"
+PASS, FAIL, MISSING, STALE, UNMEASURED, UNRECORDED = (
+    "pass",
+    "fail",
+    "missing",
+    "stale",
+    "unmeasured",
+    "unrecorded",
+)
+# MISSING is a mismatch between the recording and the cases it claims to cover (a
+# count or ordering divergence) and is a real failure; UNRECORDED means there is no
+# recording to compare against at all, which cannot support any verdict.
 BLOCKING = {FAIL, MISSING}
-INCONCLUSIVE = {STALE, UNMEASURED}
+INCONCLUSIVE = {STALE, UNMEASURED, UNRECORDED}
 
 
 class ConfigError(RuntimeError):
@@ -557,7 +567,7 @@ def same_outcome(recorded: dict[str, Any], observed: dict[str, Any]) -> bool:
 def grade_module(module: Module, stage: str) -> dict[str, Any]:
     expected_path = EXPECTED_DIR / f"{module.id}.json"
     if not expected_path.exists():
-        return {"module": module.id, "status": MISSING,
+        return {"module": module.id, "status": UNRECORDED,
                 "detail": f"no recorded transcript at {expected_path.relative_to(REPO_ROOT)}"}
     recorded = json.loads(expected_path.read_text())
     if recorded.get("cases_sha256") != cases_digest(module):
@@ -654,7 +664,7 @@ def command_transcript(modules: list[Module], stage: str, only: str | None) -> i
 
     statuses = {result["status"] for result in results}
     if statuses & INCONCLUSIVE:
-        print("\nTRANSCRIPT INCONCLUSIVE: recorded evidence is stale or missing.",
+        print("\nTRANSCRIPT INCONCLUSIVE: recorded evidence is stale or absent.",
               file=sys.stderr)
         return 2
     if statuses & BLOCKING:
