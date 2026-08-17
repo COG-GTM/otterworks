@@ -42,6 +42,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -50,7 +51,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from xml.etree import ElementTree  # noqa: N817  -- reading our own build output only
 
 import yaml
 from tabulate import tabulate
@@ -216,9 +216,8 @@ def run(command: str, cwd: Path, module: Module) -> subprocess.CompletedProcess[
     if module.java_home:
         env["JAVA_HOME"] = module.java_home
     return subprocess.run(
-        command,
+        shlex.split(command),
         cwd=cwd,
-        shell=True,
         env=env,
         capture_output=True,
         text=True,
@@ -485,6 +484,7 @@ TEST_COUNTS = (
     re.compile(r"Tests run: \d+, Failures: \d+, Errors: \d+, Skipped: \d+"),  # surefire
     re.compile(r"\d+ tests? completed(?:, \d+ failed)?(?:, \d+ skipped)?"),  # gradle
 )
+TESTSUITE_ATTRS = re.compile(r"<testsuite\s([^>]*)>")
 
 
 def test_summary(module: Module, output: str) -> str:
@@ -493,16 +493,22 @@ def test_summary(module: Module, output: str) -> str:
         matches = pattern.findall(output)
         if matches:
             return matches[-1]
-    # Gradle only prints counts when a test fails, so read its JUnit XML instead.
+    # Gradle only prints counts when a test fails, so read the counts off its JUnit XML
+    # instead. Attributes are pulled with a regex rather than an XML parser: this is our
+    # own build output, and the harness stays dependency-free.
     reports = sorted(module.path.glob("build/test-results/test/TEST-*.xml"))
     if reports:
         totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
         for report in reports:
-            attrs = ElementTree.parse(report).getroot().attrib
+            found = TESTSUITE_ATTRS.search(report.read_text())
+            attrs = found.group(1) if found else ""
             for key in totals:
-                totals[key] += int(attrs.get(key, 0))
-        return (f"Tests run: {totals['tests']}, Failures: {totals['failures']}, "
-                f"Errors: {totals['errors']}, Skipped: {totals['skipped']}")
+                count = re.search(rf'{key}="(\d+)"', attrs)
+                totals[key] += int(count.group(1)) if count else 0
+        return (
+            f"Tests run: {totals['tests']}, Failures: {totals['failures']}, "
+            f"Errors: {totals['errors']}, Skipped: {totals['skipped']}"
+        )
     return "(no count line in the build log)"
 
 
