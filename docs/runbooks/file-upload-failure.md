@@ -20,7 +20,9 @@
    ```
 2. Check which bucket the pod is actually writing to, and that it exists:
    ```
-   kubectl get deploy/file-service -n otterworks -o jsonpath='{.spec.template.spec.containers[0].env}'
+   S3_BUCKET="$(kubectl get deploy/file-service -n otterworks \
+     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="S3_BUCKET")].value}')"
+   echo "$S3_BUCKET"
    aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
    `NoSuchBucket` with a bucket name that differs from the tenant's configured
