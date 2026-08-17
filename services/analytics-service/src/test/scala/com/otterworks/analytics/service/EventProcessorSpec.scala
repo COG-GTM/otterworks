@@ -75,14 +75,19 @@ class EventProcessorSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
     private val receiveCalls = AtomicInteger(0)
     val deletedReceiptHandles = ConcurrentLinkedQueue[String]()
 
-    server.setExecutor(Executors.newFixedThreadPool(2))
+    private val executor = Executors.newFixedThreadPool(2)
+
+    server.setExecutor(executor)
     server.createContext("/", (exchange: HttpExchange) => handle(exchange))
     server.start()
 
     val endpoint: String = s"http://127.0.0.1:${server.getAddress.getPort}"
 
     def deleted: List[String] = deletedReceiptHandles.asScala.toList
-    def stop(): Unit = server.stop(0)
+    // HttpServer.stop never disposes of a caller-supplied executor, whose threads are non-daemon.
+    def stop(): Unit =
+      server.stop(0)
+      executor.shutdownNow(): Unit
 
     private def handle(exchange: HttpExchange): Unit =
       val body = new String(exchange.getRequestBody.readAllBytes(), StandardCharsets.UTF_8)
@@ -101,8 +106,9 @@ class EventProcessorSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
       if receiveCalls.getAndIncrement() < receiveFailures then
         (500, """{"__type":"InternalFailure","message":"stub failure"}""")
       else
-        val batchNumber = batches.size - synchronized(remaining.size)
-        val batch = synchronized(if remaining.isEmpty then List.empty else remaining.dequeue())
+        val (batchNumber, batch) = synchronized {
+          (batches.size - remaining.size, if remaining.isEmpty then List.empty else remaining.dequeue())
+        }
         val messages = batch.zipWithIndex.map { case (msgBody, i) =>
           val escaped = msgBody.replace("\\", "\\\\").replace("\"", "\\\"")
           // Handles are unique by construction so duplicate bodies stay distinguishable.
