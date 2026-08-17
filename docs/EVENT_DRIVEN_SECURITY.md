@@ -134,7 +134,7 @@ Required GitHub Actions secrets:
 |---------|-------|--------|
 | Trivy scanner | Trivy v0.62.2 | `.github/workflows/sast-auto-remediate.yml` |
 | Trivy severity filter | CRITICAL, HIGH | `SEVERITY_THRESHOLD` env var |
-| Trivy excluded dirs | `services/report-service` | Excluded historically as a legacy service; now on Java 17 (re-enable as follow-up) |
+| Trivy excluded dirs | `services/report-service` | Excluded historically as a legacy service; now on Java 17 (follow-up: drop the exclusion so the service is scanned) |
 | Trivy suppressions | `.trivyignore` | Acknowledged CVEs with documented justification |
 | SonarCloud project key | `Cognition-Partner-Workshops_otterworks` | `sonar-project.properties` |
 | SonarCloud org | `cognition-partner-workshops` | `sonar-project.properties` |
@@ -153,7 +153,7 @@ Required GitHub Actions secrets:
 | analytics-service | Scala 3.4 | `build.sbt` | sbt dependencies |
 | admin-service | Ruby 3.3 | `Gemfile` | Bundler gems |
 | audit-service | C# 12 | `AuditService.csproj` | NuGet packages |
-| report-service | Java 17 | `pom.xml` | **Excluded** (re-enable as follow-up) |
+| report-service | Java 17 | `pom.xml` | **Excluded** (follow-up: drop the exclusion so it is scanned) |
 
 ## Extending to Snyk
 
