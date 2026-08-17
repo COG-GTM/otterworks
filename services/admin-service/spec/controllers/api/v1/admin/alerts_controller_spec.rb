@@ -12,6 +12,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
   end
 
   before do
+    stub_const('ENV', ENV.to_hash.except('ALERT_WEBHOOK_SECRET'))
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
   end

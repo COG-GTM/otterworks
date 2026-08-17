@@ -4,6 +4,7 @@ RSpec.describe Api::V1::Admin::ChaosController do
   let(:redis) { instance_double(Redis) }
 
   before do
+    stub_const('ENV', ENV.to_hash.except('CHAOS_SECRET'))
     allow(Redis).to receive(:new).and_return(redis)
     allow(ChaosProbeService).to receive(:start)
   end
