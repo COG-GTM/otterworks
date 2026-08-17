@@ -38,14 +38,15 @@ class EntityDefaultsTest {
     user.onCreate();
 
     Instant created = user.getCreatedAt();
+    Instant firstUpdate = user.getUpdatedAt();
     assertThat(created).isNotNull();
-    assertThat(user.getUpdatedAt()).isNotNull();
+    assertThat(firstUpdate).isNotNull();
 
-    Thread.sleep(2);
+    Thread.sleep(20);
     user.onUpdate();
 
     assertThat(user.getCreatedAt()).isEqualTo(created);
-    assertThat(user.getUpdatedAt()).isAfterOrEqualTo(created);
+    assertThat(user.getUpdatedAt()).isAfter(firstUpdate);
   }
 
   @Test

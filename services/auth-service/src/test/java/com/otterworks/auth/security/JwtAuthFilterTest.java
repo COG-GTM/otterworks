@@ -8,6 +8,8 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.FilterChain;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -105,6 +107,25 @@ class JwtAuthFilterTest {
     Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
     assertThat(authentication.getPrincipal()).isEqualTo(subject);
     assertThat(authentication.getAuthorities()).isEmpty();
+    verify(filterChain).doFilter(request, response);
+  }
+
+  @Test
+  void expiredAccessTokenLeavesTheContextUnauthenticated() throws Exception {
+    Instant expiry = Instant.now().minusSeconds(60);
+    String token =
+        Jwts.builder()
+            .subject(UUID.randomUUID().toString())
+            .claim("type", "access")
+            .issuedAt(Date.from(expiry.minusSeconds(3600)))
+            .expiration(Date.from(expiry))
+            .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8)))
+            .compact();
+    request.addHeader("Authorization", "Bearer " + token);
+
+    filter.doFilter(request, response, filterChain);
+
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     verify(filterChain).doFilter(request, response);
   }
 

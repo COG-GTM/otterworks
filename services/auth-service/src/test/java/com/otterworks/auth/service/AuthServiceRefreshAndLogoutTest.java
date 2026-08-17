@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,6 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -82,6 +84,14 @@ class AuthServiceRefreshAndLogoutTest {
     assertThat(response.getRefreshToken()).isEqualTo("new-refresh");
     assertThat(response.getExpiresIn()).isEqualTo(3600L);
     assertThat(response.getUser().getId()).isEqualTo(userId.toString());
+
+    ArgumentCaptor<RefreshToken> saved = ArgumentCaptor.forClass(RefreshToken.class);
+    verify(refreshTokenRepository, times(2)).save(saved.capture());
+    RefreshToken persisted = saved.getAllValues().get(1);
+    assertThat(persisted.getTokenId()).isEqualTo("jti-new");
+    assertThat(persisted.getUser()).isSameAs(user);
+    assertThat(persisted.getExpiresAt())
+        .isBetween(Instant.now().plusSeconds(2592000 - 60), Instant.now().plusSeconds(2592000));
   }
 
   @Test
