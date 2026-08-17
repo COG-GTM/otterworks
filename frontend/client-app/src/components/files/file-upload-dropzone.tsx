@@ -35,8 +35,10 @@ interface UploadingFile {
 let fileIdCounter = 0;
 
 // A failed upload opens an incident, and the Devin session it launches is
-// attached a moment later, so poll briefly rather than reading once.
-const SESSION_POLL_ATTEMPTS = 6;
+// attached a moment later, so poll rather than reading once. The window has to
+// cover a slow session creation (the API call itself can take tens of seconds),
+// not just the common few-second case.
+const SESSION_POLL_ATTEMPTS = 48;
 const SESSION_POLL_INTERVAL_MS = 2500;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
@@ -284,7 +286,11 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         <ChaosErrorBanner
           className="mb-4"
           title="File upload failed"
-          message="One or more files could not be uploaded. Please try again."
+          message={
+            lastFailed && !lastFailed.devinSessionUrl
+              ? "One or more files could not be uploaded. Devin is investigating — the session link will appear here shortly."
+              : "One or more files could not be uploaded. Please try again."
+          }
           actionHref={lastFailed?.devinSessionUrl}
           actionLabel={`View Devin session for ${lastFailed?.file.name ?? "this upload"}`}
           onDismiss={dismissErrorBanner}
