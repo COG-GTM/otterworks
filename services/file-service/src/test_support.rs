@@ -260,6 +260,28 @@ pub(crate) fn write_ok() -> (u16, String) {
 
 // -- In-process Redis stub --
 
+/// Length of the first complete RESP command (`*N` followed by N bulk strings)
+/// at the front of `buf`, or `None` while it is still incomplete.
+fn resp_command_len(buf: &[u8]) -> Option<usize> {
+    fn line<'a>(buf: &'a [u8], pos: &mut usize) -> Option<&'a str> {
+        let rest = buf.get(*pos..)?;
+        let end = rest.windows(2).position(|w| w == b"\r\n")?;
+        *pos += end + 2;
+        std::str::from_utf8(&rest[..end]).ok()
+    }
+
+    let mut pos = 0;
+    let argc: usize = line(buf, &mut pos)?.strip_prefix('*')?.parse().ok()?;
+    for _ in 0..argc {
+        let len: usize = line(buf, &mut pos)?.strip_prefix('$')?.parse().ok()?;
+        if buf.len() < pos + len + 2 {
+            return None;
+        }
+        pos += len + 2;
+    }
+    Some(pos)
+}
+
 /// A minimal RESP server that answers every command with the same integer
 /// reply. Used to build a real `ConnectionManager` without a Redis server:
 /// `1` makes the chaos flag look present, `0` absent.
@@ -287,22 +309,25 @@ impl RedisStub {
         let handle = tokio::spawn(async move {
             while let Ok((mut socket, _)) = listener.accept().await {
                 tokio::spawn(async move {
-                    let mut buf = [0u8; 4096];
+                    let mut chunk = [0u8; 4096];
+                    let mut pending: Vec<u8> = Vec::new();
                     loop {
-                        match socket.read(&mut buf).await {
+                        match socket.read(&mut chunk).await {
                             Ok(0) | Err(_) => break,
-                            Ok(n) => {
-                                // One reply per inbound command (RESP arrays start with '*').
-                                let commands = buf[..n]
-                                    .split(|b| *b == b'\n')
-                                    .filter(|line| line.first() == Some(&b'*'))
-                                    .count()
-                                    .max(1);
-                                let reply = format!(":{integer_reply}\r\n").repeat(commands);
-                                if socket.write_all(reply.as_bytes()).await.is_err() {
-                                    break;
-                                }
-                            }
+                            Ok(n) => pending.extend_from_slice(&chunk[..n]),
+                        }
+                        // Reply once per *fully received* command, so a partial
+                        // read or an argument whose bytes start with '*' cannot
+                        // desynchronise the stream.
+                        let mut replies = String::new();
+                        while let Some(len) = resp_command_len(&pending) {
+                            pending.drain(..len);
+                            replies.push_str(&format!(":{integer_reply}\r\n"));
+                        }
+                        if !replies.is_empty()
+                            && socket.write_all(replies.as_bytes()).await.is_err()
+                        {
+                            break;
                         }
                     }
                 });

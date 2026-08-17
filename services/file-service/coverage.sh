@@ -22,8 +22,10 @@ MIN_REGIONS="${MIN_REGIONS:-95}"
 
 # cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
 # added when the caller asked for no other output.
+# `${@:-}` keeps this safe under `set -u` on bash < 4.4, where an empty "$@"
+# counts as an unbound variable.
 format=""
-for arg in "$@"; do
+for arg in "${@:-}"; do
   case "$arg" in
     --html | --open | --lcov | --json | --cobertura | --codecov | --text)
       format="yes"
