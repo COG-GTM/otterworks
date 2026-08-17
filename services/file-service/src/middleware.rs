@@ -114,3 +114,129 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod middleware_tests {
+    // The Prometheus registry is process-global and these tests run in parallel,
+    // so each one asserts a delta on a label set no other test emits. Give any
+    // new test its own route path -- reusing one (or adding a second unmatched
+    // GET) turns these into order-dependent failures. The convention spans
+    // files: `handlers.rs` emits `/metrics-handler` against the same registry.
+    use super::*;
+    use actix_web::{test as actix_test, web, App, HttpResponse};
+
+    fn sample_count(method: &str, path: &str, status: &str) -> u64 {
+        HTTP_REQUESTS_TOTAL
+            .with_label_values(&[method, path, status])
+            .get()
+    }
+
+    #[actix_rt::test]
+    async fn middleware_passes_the_response_through_and_counts_it() {
+        let app = actix_test::init_service(App::new().wrap(RequestId).route(
+            "/probe/{id}",
+            web::get().to(|| async { HttpResponse::Ok().body("pong") }),
+        ))
+        .await;
+
+        let before = sample_count("GET", "/probe/{id}", "200");
+
+        let req = actix_test::TestRequest::get().uri("/probe/42").to_request();
+        let resp = actix_test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+        assert_eq!(actix_test::read_body(resp).await, "pong");
+
+        assert_eq!(
+            sample_count("GET", "/probe/{id}", "200"),
+            before + 1,
+            "the matched route pattern is used as the metric label"
+        );
+        assert_eq!(
+            HTTP_REQUEST_DURATION
+                .with_label_values(&["GET", "/probe/{id}"])
+                .get_sample_count(),
+            sample_count("GET", "/probe/{id}", "200"),
+            "one duration observation per counted request"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn unmatched_routes_are_recorded_under_the_unmatched_label() {
+        let app = actix_test::init_service(
+            App::new()
+                .wrap(RequestId)
+                .route("/known", web::get().to(HttpResponse::Ok)),
+        )
+        .await;
+
+        let before = sample_count("GET", "unmatched", "404");
+
+        let req = actix_test::TestRequest::get().uri("/nope").to_request();
+        let resp = actix_test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::NOT_FOUND);
+
+        assert_eq!(sample_count("GET", "unmatched", "404"), before + 1);
+    }
+
+    #[actix_rt::test]
+    async fn an_incoming_request_id_header_is_accepted() {
+        let app = actix_test::init_service(App::new().wrap(RequestId).route(
+            "/echo",
+            web::post().to(|| async { HttpResponse::Accepted().finish() }),
+        ))
+        .await;
+
+        let before = sample_count("POST", "/echo", "202");
+
+        let req = actix_test::TestRequest::post()
+            .uri("/echo")
+            .insert_header(("x-request-id", "abc-123"))
+            .to_request();
+        let resp = actix_test::call_service(&app, req).await;
+
+        assert_eq!(resp.status(), actix_web::http::StatusCode::ACCEPTED);
+        assert_eq!(sample_count("POST", "/echo", "202"), before + 1);
+    }
+
+    #[actix_rt::test]
+    async fn errors_from_the_inner_service_are_propagated() {
+        let app =
+            actix_test::init_service(App::new().wrap(RequestId).route(
+                "/boom",
+                web::get().to(|| async {
+                    Err::<HttpResponse, _>(actix_web::error::ErrorImATeapot("no"))
+                }),
+            ))
+            .await;
+
+        let req = actix_test::TestRequest::get().uri("/boom").to_request();
+        let resp = actix_test::call_service(&app, req).await;
+        assert_eq!(resp.status(), actix_web::http::StatusCode::IM_A_TEAPOT);
+    }
+
+    #[test]
+    fn render_metrics_emits_the_prometheus_text_exposition_format() {
+        HTTP_REQUESTS_TOTAL
+            .with_label_values(&["GET", "/rendered", "200"])
+            .inc();
+        HTTP_REQUEST_DURATION
+            .with_label_values(&["GET", "/rendered"])
+            .observe(0.02);
+
+        let rendered = render_metrics();
+
+        assert!(
+            rendered.contains("# TYPE http_requests_total counter"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(r#"http_requests_total{method="GET",path="/rendered",status="200"}"#),
+            "{rendered}"
+        );
+        assert!(
+            rendered
+                .contains(r#"http_request_duration_seconds_count{method="GET",path="/rendered"}"#),
+            "{rendered}"
+        );
+    }
+}
