@@ -101,10 +101,12 @@ class EventProcessorSpec extends AnyFlatSpec with Matchers with BeforeAndAfterAl
       if receiveCalls.getAndIncrement() < receiveFailures then
         (500, """{"__type":"InternalFailure","message":"stub failure"}""")
       else
+        val batchNumber = batches.size - synchronized(remaining.size)
         val batch = synchronized(if remaining.isEmpty then List.empty else remaining.dequeue())
         val messages = batch.zipWithIndex.map { case (msgBody, i) =>
           val escaped = msgBody.replace("\\", "\\\\").replace("\"", "\\\"")
-          s"""{"MessageId":"m-$i","ReceiptHandle":"rh-${md5Hex(msgBody).take(8)}",""" +
+          // Handles are unique by construction so duplicate bodies stay distinguishable.
+          s"""{"MessageId":"m-$batchNumber-$i","ReceiptHandle":"rh-$batchNumber-$i",""" +
             s""""MD5OfBody":"${md5Hex(msgBody)}","Body":"$escaped"}"""
         }
         (200, s"""{"Messages":[${messages.mkString(",")}]}""")
