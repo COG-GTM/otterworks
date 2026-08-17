@@ -87,18 +87,49 @@ impl SnsConfig {
 #[cfg(test)]
 mod tests {
     use super::{AwsConfig, ServerConfig};
+    use std::env;
+    use std::sync::Mutex;
 
-    #[test]
-    fn server_defaults() {
-        let cfg = ServerConfig::from_env();
-        assert!(cfg.port > 0);
-        assert!(cfg.max_upload_bytes > 0);
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous: Vec<(String, Option<String>)> = vars
+            .iter()
+            .map(|(key, _)| ((*key).to_string(), env::var(key).ok()))
+            .collect();
+        for (key, value) in vars {
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
+        }
+        let result = f();
+        for (key, value) in previous {
+            match value {
+                Some(value) => env::set_var(&key, value),
+                None => env::remove_var(&key),
+            }
+        }
+        result
     }
 
     #[test]
-    fn uploads_target_the_configured_bucket() {
-        let aws = AwsConfig::from_env();
-        assert!(!aws.s3_bucket.is_empty());
-        assert!(!aws.s3_bucket.contains("nonexistent"));
+    fn server_config_reads_env_and_falls_back_to_defaults() {
+        let cfg = with_env(
+            &[("PORT", Some("9001")), ("MAX_UPLOAD_BYTES", None)],
+            ServerConfig::from_env,
+        );
+        assert_eq!(cfg.port, 9001);
+        assert_eq!(cfg.max_upload_bytes, 104_857_600);
+    }
+
+    #[test]
+    fn s3_bucket_comes_from_env_with_a_real_default() {
+        let configured = with_env(&[("S3_BUCKET", Some("tenant-bucket"))], AwsConfig::from_env);
+        assert_eq!(configured.s3_bucket, "tenant-bucket");
+
+        let defaulted = with_env(&[("S3_BUCKET", None)], AwsConfig::from_env);
+        assert_eq!(defaulted.s3_bucket, "otterworks-files");
     }
 }

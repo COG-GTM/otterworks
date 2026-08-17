@@ -9,7 +9,7 @@
 ## Symptoms
 
 - Users cannot upload files; the UI shows generic upload error messages.
-- The Chaos Scenarios dashboard shows elevated error rates on the file-service panel.
+- The file-service panel shows elevated error rates.
 - Application logs contain `NoSuchBucket` errors from the AWS S3 SDK.
 
 ## Investigation Steps
@@ -18,10 +18,13 @@
    ```
    kubectl logs -l app=file-service --tail=100 -n otterworks | grep -i "NoSuchBucket\|S3\|500"
    ```
-2. Check whether the chaos flag `chaos:file-service:upload_s3_error` is set in Redis:
+2. Check which bucket the pod is actually writing to, and that it exists:
    ```
-   redis-cli EXISTS chaos:file-service:upload_s3_error
+   kubectl get deploy/file-service -n otterworks -o jsonpath='{.spec.template.spec.containers[0].env}'
+   aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
+   `NoSuchBucket` with a bucket name that differs from the tenant's configured
+   `S3_BUCKET` means the upload path is not using the configured client.
 
 <!-- TODO: Complete investigation steps -->
 
