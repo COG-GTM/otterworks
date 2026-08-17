@@ -1,6 +1,9 @@
 // repo.maven.apache.org aggressively rate-limits shared CI egress IPs (HTTP 429).
 // Prefer Google's Maven Central mirror everywhere and keep the original
 // repositories as fallback for artifacts the mirror doesn't carry.
+// NOTE: services/auth-service and services/notification-service each carry a
+// byte-identical copy of this file (the Docker build context is the service
+// directory, so a shared root-level file cannot be COPY'd) -- keep them in sync.
 def MIRROR = 'https://maven-central.storage-download.googleapis.com/maven2'
 
 def preferMirror = { repos ->
@@ -12,13 +15,6 @@ def preferMirror = { repos ->
         repos.remove(m)
         repos.add(0, m)
     }
-    repos.configureEach { repo ->
-        if (repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository
-                && repo.name != 'MavenCentralMirror'
-                && repo.url.toString().startsWith('https://repo.maven.apache.org')) {
-            repo.setUrl(MIRROR)
-        }
-    }
 }
 
 settingsEvaluated { settings ->
@@ -26,14 +22,16 @@ settingsEvaluated { settings ->
     preferMirror(repos)
     // Declaring any repository here removes the implicit plugin portal; re-add
     // it as fallback for plugins whose markers aren't on Maven Central.
-    if (repos.findByName('Gradle Central Plugin Repository') == null) {
+    def hasPortal = repos.any { repo ->
+        repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository &&
+                repo.url.toString().contains('plugins.gradle.org')
+    }
+    if (!hasPortal) {
         repos.gradlePluginPortal()
     }
 }
 
 allprojects { project ->
     preferMirror(project.buildscript.repositories)
-    project.afterEvaluate {
-        preferMirror(project.repositories)
-    }
+    preferMirror(project.repositories)
 }
