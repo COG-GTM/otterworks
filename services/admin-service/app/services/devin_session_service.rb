@@ -1,6 +1,7 @@
 require 'net/http'
 require 'json'
 require 'uri'
+require 'cgi'
 
 class DevinSessionService
   API_HOST = 'https://api.devin.ai'.freeze
@@ -15,7 +16,7 @@ class DevinSessionService
 
       prompt = build_prompt(incident)
 
-      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions")
+      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions")
       request = Net::HTTP::Post.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
       request['Content-Type'] = 'application/json'
@@ -45,7 +46,7 @@ class DevinSessionService
       api_key, org_id = credentials
       return nil unless api_key && org_id && session_id
 
-      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions/#{session_id}")
+      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions/#{session_id}")
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 
@@ -80,9 +81,16 @@ class DevinSessionService
       status.merge(verify_credentials(api_key: api_key, org_id: org_id))
     end
 
+    def configured?
+      api_key, org_id, = resolve_credentials
+      api_key.present? && org_id.present?
+    end
+
     # Cheapest call that exercises the same authorization as session creation.
     def verify_credentials(api_key:, org_id:)
-      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions?limit=1")
+      # A typo'd org id is bad input, not an outage: escape it so it cannot
+      # raise out of URI() and get reported as "retry later".
+      uri = URI("#{API_HOST}/v3/organizations/#{CGI.escape(org_id)}/sessions?limit=1")
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 

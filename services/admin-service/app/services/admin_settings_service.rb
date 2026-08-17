@@ -10,6 +10,11 @@ class AdminSettingsService
   DEVIN_ORG_ID_CONFIG = 'devin_org_id'.freeze
   LEGACY_DEVIN_KEYS = [DEVIN_API_KEY_KEY, DEVIN_ORG_ID_KEY].freeze
 
+  # Durable tombstone: a revoke must stick even if the leftover Redis copy
+  # cannot be deleted at that moment, so adoption is suppressed from Postgres
+  # rather than from the availability of the cache.
+  DEVIN_REVOKED_CONFIG = 'devin_credentials_revoked'.freeze
+
   class << self
     def auto_investigate_enabled?
       redis = Redis.new(
@@ -47,6 +52,8 @@ class AdminSettingsService
       stored = stored_devin_credentials
       return stored if stored[:api_key] && stored[:org_id]
 
+      return stored if devin_credentials_revoked?
+
       # Credentials loaded while Redis was the store live only there; adopt
       # them rather than losing session creation on the next restart.
       legacy = legacy_devin_credentials
@@ -68,21 +75,21 @@ class AdminSettingsService
       SystemConfig.transaction do
         write_config(DEVIN_API_KEY_CONFIG, api_key, 'Devin API key used for incident auto-triage')
         write_config(DEVIN_ORG_ID_CONFIG, org_id, 'Devin organization id used for incident auto-triage')
+        SystemConfig.where(key: DEVIN_REVOKED_CONFIG).delete_all
       end
       with_redis { |redis| redis.del(*LEGACY_DEVIN_KEYS) }
     end
 
-    # Raises if the leftover Redis copy cannot be removed: reporting a
-    # successful revoke while the old pair survives would let the next read
-    # adopt it straight back into Postgres.
+    # Revocation always takes effect: the durable rows go away and a tombstone
+    # blocks re-adoption, so a Redis outage can delay cleanup of the leftover
+    # copy but never keep a revoked key in use. Returns false when that copy
+    # could not be deleted.
     def clear_devin_credentials
-      # Legacy copy first: if it survives while the durable rows are gone, the
-      # next read adopts it straight back.
-      redis = Redis.new(url: ServiceEnv.redis_url, timeout: 2)
-      redis.del(*LEGACY_DEVIN_KEYS)
-      SystemConfig.where(key: [DEVIN_API_KEY_CONFIG, DEVIN_ORG_ID_CONFIG]).delete_all
-    ensure
-      redis&.close
+      SystemConfig.transaction do
+        SystemConfig.where(key: [DEVIN_API_KEY_CONFIG, DEVIN_ORG_ID_CONFIG]).delete_all
+        write_config(DEVIN_REVOKED_CONFIG, 'true', 'Devin credentials were revoked; ignore any cached copy')
+      end
+      !with_redis { |redis| redis.del(*LEGACY_DEVIN_KEYS) }.nil?
     end
 
     private
@@ -99,6 +106,12 @@ class AdminSettingsService
       { api_key: nil, org_id: nil }
     end
 
+    def devin_credentials_revoked?
+      SystemConfig.exists?(key: DEVIN_REVOKED_CONFIG)
+    rescue StandardError
+      false
+    end
+
     def legacy_devin_credentials
       api_key, org_id = with_redis { |redis| redis.mget(*LEGACY_DEVIN_KEYS) }
       { api_key: blank_to_nil(api_key), org_id: blank_to_nil(org_id) }
@@ -111,7 +124,7 @@ class AdminSettingsService
       SystemConfig.transaction(requires_new: true) do
         SystemConfig.find_or_initialize_by(key: key).update!(attrs)
       end
-    rescue ActiveRecord::RecordNotUnique
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
       # A concurrent writer inserted the row first; last write wins.
       SystemConfig.find_by!(key: key).update!(attrs)
     end

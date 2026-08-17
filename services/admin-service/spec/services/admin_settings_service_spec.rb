@@ -67,10 +67,29 @@ RSpec.describe AdminSettingsService do
       expect(described_class.devin_credentials).to eq({ api_key: nil, org_id: nil })
     end
 
-    it 'raises when the legacy copy cannot be removed, so it cannot be re-adopted' do
+    it 'revokes durably and reports the cache copy as not cleared when Redis is down' do
+      described_class.set_devin_credentials(api_key: 'key-1', org_id: 'org-1')
       allow(redis).to receive(:del).and_raise(Redis::BaseError, 'down')
 
-      expect { described_class.clear_devin_credentials }.to raise_error(Redis::BaseError)
+      expect(described_class.clear_devin_credentials).to be(false)
+      expect(SystemConfig.where(key: 'devin_api_key')).to be_empty
+    end
+
+    it 'does not re-adopt a legacy pair that survived a revoke' do
+      allow(redis).to receive(:del).and_raise(Redis::BaseError, 'down')
+      described_class.clear_devin_credentials
+      allow(redis).to receive(:mget).and_return(%w[legacy-key legacy-org])
+
+      expect(described_class.devin_credentials).to eq({ api_key: nil, org_id: nil })
+    end
+
+    it 'adopts again once credentials are deliberately set after a revoke' do
+      allow(redis).to receive(:del).and_raise(Redis::BaseError, 'down')
+      described_class.clear_devin_credentials
+      allow(redis).to receive(:del).and_return(2)
+      described_class.set_devin_credentials(api_key: 'key-2', org_id: 'org-2')
+
+      expect(described_class.devin_credentials).to eq({ api_key: 'key-2', org_id: 'org-2' })
     end
   end
 end

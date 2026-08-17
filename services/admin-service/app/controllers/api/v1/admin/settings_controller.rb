@@ -63,16 +63,15 @@ module Api
         # are not revocable here, so the returned status still reports
         # `configured` wherever DEVIN_API_KEY/DEVIN_ORG_ID are both set.
         def destroy_devin_credentials
-          AdminSettingsService.clear_devin_credentials
-          Rails.logger.info('Devin credentials cleared via settings API')
-          audit('settings.devin_credentials_cleared', {})
-          render json: DevinSessionService.credentials_status
+          cache_cleared = AdminSettingsService.clear_devin_credentials
+          Rails.logger.info("Devin credentials cleared via settings API (cache_cleared=#{cache_cleared})")
+          audit('settings.devin_credentials_cleared', cache_cleared: cache_cleared)
+          # The revoke is already durable; the flag only says whether the
+          # leftover cache copy could be deleted too.
+          render json: DevinSessionService.credentials_status.merge(legacy_cache_cleared: cache_cleared)
         rescue StandardError => e
-          # The clear is only complete once the leftover cache copy is gone;
-          # reporting success otherwise invites the pair to come back.
           Rails.logger.error("Failed to clear Devin credentials: #{e.message}")
-          render json: { error: 'Could not fully clear the credentials; retry', detail: e.message },
-                 status: :service_unavailable
+          render json: { error: 'Could not clear the credentials; retry' }, status: :service_unavailable
         end
 
         private
