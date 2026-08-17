@@ -48,8 +48,12 @@ jobs:
       # contract cases must be unchanged *and* the attack cases must be neutralized.
       - name: Gate on the advisory, then grade behavior for that state
         run: |
+          # Invoked through the harness directly, not `make deps-gate`: make reports
+          # any recipe failure as its own exit 2, which would erase the difference
+          # between "vulnerable" (1) and "no verdict reached" (2).
+          deps=$(make -s deps-command)
           set +e
-          make deps-gate
+          $deps gate
           gate=$?
           set -e
           if [ "$gate" -eq 0 ]; then

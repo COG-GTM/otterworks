@@ -22,11 +22,17 @@ security/deps/
 |---|---|---|
 | `make deps-inventory` | Which module pulls the artifact, at which version, directly or through which parent, and where is the version declared? | a module's tree cannot be resolved (exit 2) |
 | `make deps-gate` | Can the vulnerable version still be reached from any module? | any tree contains a version in the advisory's range (exit 1), or a module is unmeasured (exit 2) |
-| `make deps-tests` | Does every affected module still build and pass its own suite? | any module's suite fails (exit 1) |
+| `make deps-tests` | Does every affected module still build and pass its own suite? | any module's suite fails (exit 1), or a module cannot be run here (exit 2) |
 | `make deps-transcript` | Did the libraries' observable behavior change where it must not, and stop where it must? | a contract case changed, or an attack case still resolves (exit 1) |
 
 Run `make deps-inventory` and `make deps-tests` **before** touching a version, so
 the "after" numbers have something to be compared against.
+
+A caller that branches on *which* failure happened must not read `make`'s own exit
+status: `make` reports any recipe failure as exit 2, which erases the difference
+between "vulnerable" (1) and "no verdict reached" (2). Get the harness invocation
+with `make -s deps-command` and run the subcommand through it, which is what the
+CI workflow does.
 
 ## Contract cases vs attack cases
 

@@ -114,6 +114,10 @@ class Module:
     test: str
     cases: Path | None
     java_home: str | None
+    # Set when this module cannot be measured on this machine (e.g. none of its JDK
+    # candidates exist). Carried per module rather than raised, so every module that
+    # can be measured still is and only this one is reported unmeasured.
+    unmeasurable: str | None = None
 
 
 @dataclass
@@ -176,10 +180,11 @@ def load_modules() -> list[Module]:
         cases = entry.get("cases")
         candidates = entry.get("java_home")
         java_home = resolve_java_home(candidates)
+        unmeasurable = None
         if candidates and java_home is None:
-            raise ConfigError(
-                f"{entry['id']}: none of its JDK candidates exist ({', '.join(candidates)}). "
-                "Install one or add a candidate rather than measuring it on the wrong JDK."
+            unmeasurable = (
+                f"none of its JDK candidates exist ({', '.join(candidates)}). Install one "
+                "or add a candidate rather than measuring it on the wrong JDK."
             )
         modules.append(
             Module(
@@ -189,6 +194,7 @@ def load_modules() -> list[Module]:
                 test=entry["test"],
                 cases=(DEPS_DIR / cases) if cases else None,
                 java_home=java_home,
+                unmeasurable=unmeasurable,
             )
         )
     discovery_check(modules, raw.get("exempt", []))
@@ -315,6 +321,9 @@ def find_declarations(module: Module, advisory: Advisory) -> list[str]:
 def collect_trees(advisory: Advisory, modules: list[Module]) -> list[ModuleTree]:
     trees = []
     for module in modules:
+        if module.unmeasurable:
+            trees.append(ModuleTree(module=module, status=UNMEASURED, detail=module.unmeasurable))
+            continue
         reader = maven_tree if module.build == "maven" else gradle_tree
         status, lines, detail = reader(module)
         tree = ModuleTree(module=module, status=status, detail=detail)
@@ -429,8 +438,7 @@ def command_gate(advisory: Advisory, modules: list[Module]) -> int:
     if unmeasured:
         for tree in trees:
             if tree.status != PASS:
-                print(f"\n{tree.module.id}: could not resolve its dependency tree\n{tree.detail}",
-                      file=sys.stderr)
+                print(f"\n{tree.module.id}: not measured\n{tree.detail}", file=sys.stderr)
         print(f"\nGATE INCONCLUSIVE: {len(unmeasured)} module(s) unmeasured: "
               f"{', '.join(unmeasured)}", file=sys.stderr)
         return 2
@@ -452,6 +460,11 @@ def command_tests(modules: list[Module], only: str | None) -> int:
         raise ConfigError(f"no registered module matches {only!r}")
     results = []
     for module in targets:
+        if module.unmeasurable:
+            results.append({"module": module.id, "command": module.test,
+                            "status": UNMEASURED, "exit_code": None, "seconds": 0.0,
+                            "summary": "(not run)", "tail": module.unmeasurable})
+            continue
         started = datetime.now(UTC)
         result = run(module.test, module.path, module)
         output = result.stdout + result.stderr
@@ -478,10 +491,18 @@ def command_tests(modules: list[Module], only: str | None) -> int:
         {"generated_at": datetime.now(UTC).isoformat(), "modules": results},
     )
     print(f"\nreport: {path.relative_to(REPO_ROOT)}")
+    unmeasured = [result for result in results if result["status"] == UNMEASURED]
     failed = [result for result in results if result["status"] == FAIL]
     for result in failed:
         print(f"\n{result['module']}: `{result['command']}` exited {result['exit_code']}\n"
               f"{result['tail']}", file=sys.stderr)
+    for result in unmeasured:
+        print(f"\n{result['module']}: not measured — {result['tail']}", file=sys.stderr)
+    if unmeasured:
+        print("\nTESTS INCONCLUSIVE: "
+              f"{', '.join(result['module'] for result in unmeasured)} could not be run.",
+              file=sys.stderr)
+        return 2
     if failed:
         print(f"\nTESTS FAILED: {', '.join(result['module'] for result in failed)}",
               file=sys.stderr)
@@ -565,6 +586,8 @@ def same_outcome(recorded: dict[str, Any], observed: dict[str, Any]) -> bool:
 
 
 def grade_module(module: Module, stage: str) -> dict[str, Any]:
+    if module.unmeasurable:
+        return {"module": module.id, "status": UNMEASURED, "detail": module.unmeasurable}
     expected_path = EXPECTED_DIR / f"{module.id}.json"
     if not expected_path.exists():
         return {"module": module.id, "status": UNRECORDED,
@@ -664,7 +687,8 @@ def command_transcript(modules: list[Module], stage: str, only: str | None) -> i
 
     statuses = {result["status"] for result in results}
     if statuses & INCONCLUSIVE:
-        print("\nTRANSCRIPT INCONCLUSIVE: recorded evidence is stale or absent.",
+        print("\nTRANSCRIPT INCONCLUSIVE: a module could not be measured, or its recorded "
+              "evidence is stale or absent.",
               file=sys.stderr)
         return 2
     if statuses & BLOCKING:

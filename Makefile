@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-transcript deps-transcript-baseline deps-tests deps-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record
 
 SHELL := /bin/bash
 
@@ -349,6 +349,9 @@ deps-inventory: ## Report the blast radius of the advisory across every JVM modu
 
 deps-gate: ## Fail if the vulnerable version is still reachable from any dependency tree
 	$(DEPS) gate
+
+deps-command: ## Print the harness invocation, for callers that need its exact exit code
+	@echo '$(DEPS)'
 
 deps-tests: ## Build and run every affected module's own suite (MODULE=<id> optional)
 	$(DEPS) tests $(if $(MODULE),--module $(MODULE),)
