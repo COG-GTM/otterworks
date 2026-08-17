@@ -50,6 +50,11 @@ pub(crate) fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) 
 
 /// Run an async body inside `with_env` on a private current-thread runtime.
 /// Keeps the (blocking) env guard off `.await` points.
+///
+/// Call it from a plain `#[test]` only: `block_on` panics with "Cannot start a
+/// runtime from within a runtime" under `#[tokio::test]`/`#[actix_rt::test]`.
+/// `ENV_LOCK` is a plain (non-reentrant) `Mutex`, so nesting `with_env` inside
+/// the body deadlocks.
 pub(crate) fn with_env_blocking<F, T>(vars: &[(&str, Option<&str>)], fut: F) -> T
 where
     F: std::future::Future<Output = T>,
@@ -177,6 +182,16 @@ pub(crate) fn metadata_client(http: StaticReplayClient) -> MetadataClient {
         versions_table: "versions".into(),
         shares_table: "shares".into(),
     }
+}
+
+/// Assert a replay client was driven exactly as many times as it was primed
+/// for: a queued-but-unused response means the code under test skipped a call.
+pub(crate) fn assert_calls(http: &StaticReplayClient, expected: usize) {
+    assert_eq!(
+        http.actual_requests().count(),
+        expected,
+        "every primed response should have been consumed"
+    );
 }
 
 pub(crate) fn sns_client(http: StaticReplayClient) -> aws_sdk_sns::Client {

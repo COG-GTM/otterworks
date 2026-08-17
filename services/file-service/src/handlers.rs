@@ -720,7 +720,7 @@ mod handler_tests {
     use crate::config::{AppConfig, ServerConfig, SnsConfig};
     use crate::models::SharePermission;
     use crate::test_support::{
-        aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
+        assert_calls, aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
         folder_item_json, get_item_response, metadata_client, replay, s3_client, scan_response,
         share_item_json, uuid_from, version_item_json, write_ok, RedisStub,
     };
@@ -1029,6 +1029,7 @@ mod handler_tests {
             uri.contains("otterworks-files-chaos-nonexistent"),
             "chaos flag redirects the upload: {uri}"
         );
+        assert_calls(&s3_http, 1);
     }
 
     #[actix_rt::test]
@@ -1061,6 +1062,7 @@ mod handler_tests {
             uri.contains("otterworks-files-chaos-nonexistent"),
             "FILE_UPLOAD_ALWAYS_FAIL redirects the upload: {uri}"
         );
+        assert_calls(&s3_http, 1);
     }
 
     #[actix_rt::test]
