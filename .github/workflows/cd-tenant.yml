@@ -132,7 +132,6 @@ jobs:
           if [ "${full}" = "true" ]; then pin=true; fi
           echo "pin=${pin}" >> "$GITHUB_OUTPUT"
 
->>>>>>> origin/demo-coggtm
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
           # back byte-identical, minutes later, for no reason. Neither does a
