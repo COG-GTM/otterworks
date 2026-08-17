@@ -4,7 +4,7 @@
 #
 # Runs the unit-test suite under cargo-llvm-cov and fails when coverage drops
 # below the floors below. The floors are the measured coverage of this branch,
-# rounded down (98.36% lines / 95.67% regions at the time of writing): ratchet
+# rounded down (98.28% lines / 95.68% regions at the time of writing): ratchet
 # them up as coverage improves, never down.
 #
 #   ./coverage.sh                 # gate, summary only

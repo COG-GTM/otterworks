@@ -722,7 +722,7 @@ mod handler_tests {
     use crate::test_support::{
         assert_calls, aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
         folder_item_json, get_item_response, metadata_client, replay, s3_client, scan_response,
-        share_item_json, uuid_from, version_item_json, write_ok, RedisStub,
+        share_item_json, sns_publish_ok, uuid_from, version_item_json, write_ok, RedisStub,
     };
     use actix_web::body::MessageBody;
     use actix_web::http::StatusCode;
@@ -763,6 +763,56 @@ mod handler_tests {
             crate::test_support::sns_client(replay(vec![])),
             None,
         ))
+    }
+
+    /// A publisher with a topic configured, so `publish` actually reaches SNS
+    /// and the test can read back the event payload the handler built.
+    fn recording_events(
+        responses: Vec<(u16, String)>,
+    ) -> (web::Data<EventPublisher>, StaticReplayClient) {
+        let http = replay(responses);
+        let publisher = EventPublisher::from_parts(
+            crate::test_support::sns_client(http.clone()),
+            Some("arn:aws:sns:us-east-1:000000000000:file-events".into()),
+        );
+        (web::Data::new(publisher), http)
+    }
+
+    /// The single event published through `http`, decoded from the aws-query
+    /// `Message` parameter of the SNS `Publish` call.
+    fn published_event(http: &StaticReplayClient) -> Value {
+        let requests: Vec<_> = http.actual_requests().collect();
+        assert_eq!(requests.len(), 1, "exactly one SNS Publish");
+        let body = std::str::from_utf8(requests[0].body().bytes().unwrap()).unwrap();
+        let message = body
+            .split('&')
+            .find_map(|pair| pair.strip_prefix("Message="))
+            .expect("Publish carries a Message parameter");
+        serde_json::from_str(&form_decode(message)).unwrap()
+    }
+
+    fn form_decode(raw: &str) -> String {
+        let bytes = raw.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'%' => {
+                    let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap();
+                    out.push(u8::from_str_radix(hex, 16).unwrap());
+                    i += 3;
+                }
+                b'+' => {
+                    out.push(b' ');
+                    i += 1;
+                }
+                b => {
+                    out.push(b);
+                    i += 1;
+                }
+            }
+        }
+        String::from_utf8(out).unwrap()
     }
 
     fn app_config(max_upload_bytes: u64) -> web::Data<AppConfig> {
@@ -961,6 +1011,73 @@ mod handler_tests {
         assert_eq!(writes[1]["TableName"], "versions");
         assert_eq!(writes[1]["Item"]["version"]["N"], "1");
         assert_eq!(writes[1]["Item"]["size_bytes"]["N"], "11");
+    }
+
+    #[actix_rt::test]
+    async fn upload_file_publishes_the_uploaded_files_descriptor() {
+        let redis = RedisStub::start(0).await;
+        let (s3, _) = s3_data(vec![s3_ok()]);
+        let (meta, _) = meta_data(vec![write_ok(), write_ok()]);
+        let (events, sns) = recording_events(vec![sns_publish_ok()]);
+        let (req, payload) = multipart_request(
+            Some(&uuid_from(OWNER).to_string()),
+            &[
+                Part::file("file", "report.pdf", "application/pdf", "hello world"),
+                Part::field("folder_id", &uuid_from(FOLDER).to_string()),
+            ],
+        )
+        .await;
+
+        upload_file(
+            req,
+            s3,
+            meta,
+            events,
+            app_config(1024),
+            web::Data::new(redis.connection_manager().await),
+            payload,
+        )
+        .await
+        .expect("upload succeeds");
+
+        let event = published_event(&sns);
+        assert_eq!(event["eventType"], "file_uploaded");
+        assert_eq!(event["ownerId"], uuid_from(OWNER).to_string());
+        assert_eq!(event["folderId"], uuid_from(FOLDER).to_string());
+        assert_eq!(event["name"], "report.pdf");
+        assert_eq!(event["mimeType"], "application/pdf");
+        assert_eq!(event["sizeBytes"], 11);
+    }
+
+    #[actix_rt::test]
+    async fn upload_file_survives_a_failing_event_publish() {
+        let redis = RedisStub::start(0).await;
+        let (s3, _) = s3_data(vec![s3_ok()]);
+        let (meta, _) = meta_data(vec![write_ok(), write_ok()]);
+        let (events, sns) = recording_events(vec![(
+            500,
+            "<ErrorResponse><Error><Code>InternalFailure</Code></Error></ErrorResponse>".into(),
+        )]);
+        let (req, payload) = multipart_request(
+            Some(&uuid_from(OWNER).to_string()),
+            &[Part::file("file", "a.txt", "text/plain", "x")],
+        )
+        .await;
+
+        let resp = upload_file(
+            req,
+            s3,
+            meta,
+            events,
+            app_config(1024),
+            web::Data::new(redis.connection_manager().await),
+            payload,
+        )
+        .await
+        .expect("SNS is best-effort: the upload still succeeds");
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        assert_calls(&sns, 1);
     }
 
     #[actix_rt::test]
@@ -1897,6 +2014,61 @@ mod handler_tests {
             uuid_from(OTHER_USER).to_string()
         );
         assert_eq!(dynamo_bodies(&http)[2]["Item"]["permission"]["S"], "editor");
+    }
+
+    #[actix_rt::test]
+    async fn share_file_publishes_the_share_event_on_create_only() {
+        // Creating a share notifies downstream consumers ...
+        let (meta, _) = meta_data(vec![
+            get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
+            scan_response(&[]),
+            write_ok(),
+        ]);
+        let (events, sns) = recording_events(vec![sns_publish_ok()]);
+
+        share_file(
+            meta,
+            events,
+            uuid_from(FILE).to_string().into(),
+            share_request(SharePermission::Editor),
+        )
+        .await
+        .expect("ok");
+
+        let event = published_event(&sns);
+        assert_eq!(event["eventType"], "file_shared");
+        assert_eq!(event["fileId"], uuid_from(FILE).to_string());
+        assert_eq!(event["ownerId"], uuid_from(OWNER).to_string());
+        assert_eq!(
+            event["sharedWithUserId"],
+            uuid_from(OTHER_USER).to_string(),
+            "consumers learn who gained access"
+        );
+
+        // ... but upgrading an existing share returns early and publishes nothing.
+        let (meta, _) = meta_data(vec![
+            get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
+            scan_response(&[share_item_json(
+                uuid_from(SHARE),
+                uuid_from(FILE),
+                uuid_from(OTHER_USER),
+                uuid_from(OWNER),
+                "viewer",
+            )]),
+            write_ok(),
+        ]);
+        let (events, sns) = recording_events(vec![sns_publish_ok()]);
+
+        share_file(
+            meta,
+            events,
+            uuid_from(FILE).to_string().into(),
+            share_request(SharePermission::Editor),
+        )
+        .await
+        .expect("ok");
+
+        assert_calls(&sns, 0);
     }
 
     #[actix_rt::test]
