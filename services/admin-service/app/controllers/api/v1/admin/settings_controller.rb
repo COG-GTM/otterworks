@@ -99,7 +99,8 @@ module Api
           {
             enabled: AdminSettingsService.slack_notifications_enabled?,
             webhook_configured: ENV.fetch('SLACK_WEBHOOK_URL', nil).present? ||
-              AdminSettingsService.slack_webhook_url.present?
+              AdminSettingsService.slack_webhook_url.present?,
+            bot_token_configured: ENV.fetch('SLACK_BOT_TOKEN', nil).present?
           }
         end
       end

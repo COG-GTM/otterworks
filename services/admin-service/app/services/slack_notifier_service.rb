@@ -113,7 +113,7 @@ class SlackNotifierService
       raw_service = incident.affected_service.presence || 'unknown-service'
       service = escape_mrkdwn(raw_service)
       title = escape_mrkdwn(incident.title)
-      on_call_devin = if session_url
+      on_call_devin = if session_url.present?
                         "<#{session_url}|Devin AI (auto-investigating)>"
                       else
                         'No Devin session'
@@ -184,7 +184,7 @@ class SlackNotifierService
     def human_mention(reporter_email)
       if reporter_email.present?
         slack_id = slack_user_map[reporter_email]
-        return slack_id ? "<@#{slack_id}>" : reporter_email
+        return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(reporter_email)
       end
 
       fallback = ENV.fetch('SLACK_ONCALL_MEMBER', nil).presence
