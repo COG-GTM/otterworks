@@ -184,8 +184,9 @@ pub(crate) fn metadata_client(http: StaticReplayClient) -> MetadataClient {
     }
 }
 
-/// Assert a replay client was driven exactly as many times as it was primed
-/// for: a queued-but-unused response means the code under test skipped a call.
+/// Assert the code under test made exactly `expected` HTTP calls through this
+/// replay client. Pass the number of responses the test primed, so a skipped
+/// call (an unconsumed response) fails instead of passing silently.
 pub(crate) fn assert_calls(http: &StaticReplayClient, expected: usize) {
     assert_eq!(
         http.actual_requests().count(),

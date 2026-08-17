@@ -3,9 +3,9 @@
 # Coverage gate for file-service.
 #
 # Runs the unit-test suite under cargo-llvm-cov and fails when coverage drops
-# below the floors below. The floors are the values actually measured on the
-# commit that introduced this script (98.41% lines / 95.64% regions, rounded
-# down): ratchet them up as coverage improves, never down.
+# below the floors below. The floors are the measured coverage of this branch,
+# rounded down (98.36% lines / 95.67% regions at the time of writing): ratchet
+# them up as coverage improves, never down.
 #
 #   ./coverage.sh                 # gate, summary only
 #   ./coverage.sh --html          # gate + HTML report in target/llvm-cov/html
@@ -21,14 +21,15 @@ MIN_LINES="${MIN_LINES:-98}"
 MIN_REGIONS="${MIN_REGIONS:-95}"
 
 # cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
-# added when the caller asked for no other output. Every expansion of "$@" is
+# added when the caller asked for no other output -- and not added twice when the
+# caller passed it explicitly. Every expansion of "$@" is
 # guarded, because bash < 4.4 (e.g. macOS 3.2) treats an empty "$@" as an unbound
 # variable under `set -u`.
 format=""
 if [ "$#" -gt 0 ]; then
   for arg in "$@"; do
     case "$arg" in
-      --html | --open | --lcov | --json | --cobertura | --codecov | --text)
+      --summary-only | --html | --open | --lcov | --json | --cobertura | --codecov | --text)
         format="yes"
         ;;
     esac
