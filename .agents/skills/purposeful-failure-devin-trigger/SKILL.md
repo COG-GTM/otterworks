@@ -92,10 +92,15 @@ so out of the box `DevinSessionService` no-ops on tenants.
 - **Secrets Manager (preferred)**: set `DEVIN_CREDENTIALS_SECRET_ID` on
   admin-service (export it before the deploy; `tenant-common.sh` passes it
   through) pointing at a secret holding `{"api_key": ..., "org_id": ...}`, named
-  `otterworks/<env>/devin-*` to match the IRSA policy in
-  `infrastructure/terraform/main.tf`. Encrypted at rest, rotatable without
-  touching the tenant, cached 5 minutes in-process. Needs an **upstream** deploy
-  plus `terraform apply`.
+  `otterworks/<env>/devin-<tenant>` (e.g. `otterworks/dev/devin-coggtm`) — the
+  IRSA policy in `infrastructure/terraform/main.tf` matches
+  `otterworks/<env>/devin-*` in the deploying account only, so a name like
+  `otterworks/dev/devin_api` gets AccessDenied. Encrypted at rest, rotatable
+  without touching the tenant, cached 5 minutes in-process; a read failure keeps
+  serving the last good pair for at most 15 minutes, and a deleted or
+  access-denied secret drops it immediately. `secrets_manager_unusable: true` in
+  the status response means the secret is wired but unreadable or malformed.
+  Needs an **upstream** deploy plus `terraform apply`.
 - **Runtime settings endpoint**: `PUT /api/v1/admin/settings/devin_credentials`
   (JWT-authenticated via api-gateway) verifies the pair against the Devin API
   before storing it — `422` if the API rejects it, `503` if the API is

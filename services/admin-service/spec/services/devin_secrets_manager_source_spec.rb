@@ -78,6 +78,18 @@ RSpec.describe DevinSecretsManagerSource do
     expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
   end
 
+  it 'stops serving the cached pair once transient failures outlast the stale window' do
+    allow(client).to receive(:get_secret_value)
+      .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))
+    described_class.credentials
+    cache = described_class.instance_variable_get(:@cache)
+    cache[:fetched_at] = 0
+    cache[:good_at] = Time.now.to_f - described_class::MAX_STALE_AGE - 1
+    allow(client).to receive(:get_secret_value).and_raise(StandardError, 'timeout')
+
+    expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
+  end
+
   it 'ignores a half-populated secret' do
     allow(client).to receive(:get_secret_value).and_return(secret({ api_key: 'sm-key' }.to_json))
 

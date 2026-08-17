@@ -75,6 +75,12 @@ class DevinSessionService
         org_id_configured: org_id.present?,
         source: source
       }
+      # A secret that is wired but unreadable or missing a field otherwise looks
+      # exactly like a tenant with no Secrets Manager wiring at all, which is
+      # the hard case to diagnose from this endpoint.
+      if DevinSecretsManagerSource.enabled? && source != 'secrets_manager'
+        status[:secrets_manager_unusable] = true
+      end
       return status unless verify
       return status.merge(valid: false, error: 'Credentials not configured') unless api_key && org_id
 

@@ -21,6 +21,10 @@ class DevinSecretsManagerSource
     Aws::SecretsManager::Errors::AccessDeniedException,
     Aws::SecretsManager::Errors::InvalidRequestException
   ].freeze
+  # Even a transient-looking failure cannot keep a pair alive forever: past
+  # this window since the last good read the pair is dropped, so a rotated key
+  # ages out without a pod restart.
+  MAX_STALE_AGE = 900
   MUTEX = Mutex.new
 
   class << self
@@ -65,6 +69,11 @@ class DevinSecretsManagerSource
       cached[:fetched_at] > Time.now.to_f - ttl
     end
 
+    def stale?(cached)
+      good_at = cached&.dig(:good_at)
+      good_at.nil? || good_at < Time.now.to_f - MAX_STALE_AGE
+    end
+
     def fetch(id)
       payload = JSON.parse(client.get_secret_value(secret_id: id).secret_string.to_s)
       value = {
@@ -78,19 +87,26 @@ class DevinSecretsManagerSource
       end
       # An unusable payload is memoized too, so a misconfigured secret does not
       # mean an AWS call on every incident and status check.
-      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value }
+      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, good_at: Time.now.to_f }
       value
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")
       # A Secrets Manager blip must not stop incident triage: keep serving the
       # last pair that worked. A definitive error drops it instead, so a
       # deleted or locked-down secret revokes the pair on a running pod.
-      value = if DEFINITIVE_ERRORS.any? { |klass| e.is_a?(klass) }
+      previous = @cache
+      value = if DEFINITIVE_ERRORS.any? { |klass| e.is_a?(klass) } || stale?(previous)
                 { api_key: nil, org_id: nil }
               else
-                @cache&.dig(:value) || { api_key: nil, org_id: nil }
+                previous&.dig(:value) || { api_key: nil, org_id: nil }
               end
-      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, error: true }
+      @cache = {
+        secret_id: id,
+        fetched_at: Time.now.to_f,
+        value: value,
+        error: true,
+        good_at: previous&.dig(:good_at)
+      }
       value
     end
 

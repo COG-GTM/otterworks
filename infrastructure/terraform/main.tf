@@ -66,6 +66,8 @@ locals {
   oidc_provider_url = data.terraform_remote_state.platform.outputs.oidc_provider_url
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_eks_cluster_auth" "platform" {
   name = local.cluster_name
 }
@@ -372,7 +374,7 @@ module "irsa" {
           # rotatable without redeploying or re-entering it on a tenant.
           Effect   = "Allow"
           Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-          Resource = ["arn:aws:secretsmanager:${var.aws_region}:*:secret:otterworks/${var.environment}/devin-*"]
+          Resource = ["arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:otterworks/${var.environment}/devin-*"]
         },
       ]
     })
