@@ -27,18 +27,30 @@ initialize: |
 
   export ANDROID_HOME=$HOME/Android/Sdk
   mkdir -p $ANDROID_HOME/cmdline-tools
-  if [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-    curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+  # sdkmanager >=19 is required: API 37 ships only as minor-versioned packages
+  # (platforms;android-37.0) declared in SDK repository XML v4. Older command-line tools
+  # understand v3 only, and instead of failing they silently install the wrong package --
+  # "build-tools;37.0.0" lands as Build-Tools 35 -- and register the platform in a way AGP
+  # cannot resolve, so assembleDebug dies with "Failed to find target with hash string
+  # 'android-37'". Re-installed whenever the on-disk tools predate 19.
+  SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+  SDKM_MAJOR=$("$SDKM" --version 2>/dev/null | cut -d. -f1)
+  if [ "${SDKM_MAJOR:-0}" -lt 19 ]; then
+    curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+    rm -rf $ANDROID_HOME/cmdline-tools/latest
     unzip -q -o /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
     mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
   fi
-  SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
   yes | $SDKM --licenses >/dev/null
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
   # here ("Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma") on every software
   # renderer, since the microVM has no GPU. minSdk is 24, so the API 37 APK runs on API 36.
   $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
         "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+  # Fail loudly rather than let a silent package substitution surface later as a Gradle error.
+  for p in platforms/android-37.0 build-tools/37.0.0 platforms/android-36; do
+    [ -d "$ANDROID_HOME/$p" ] || { echo "sdkmanager did not install $p"; exit 1; }
+  done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
   AVD_CFG=$HOME/.android/avd/otter.avd/config.ini
