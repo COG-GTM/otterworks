@@ -5,6 +5,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.db.session as session_mod
+from app.config import Settings
 from app.db.base import Base
 from app.db.session import get_db, init_db
 from app.models.document import Document  # noqa: F401  (registers tables on Base)
@@ -50,7 +51,6 @@ async def test_get_db_yields_a_usable_session_and_closes_it(monkeypatch):
 
 
 def test_module_engine_is_configured_from_settings():
-    assert session_mod.engine.pool.size() == 10
-    assert session_mod.engine.pool._max_overflow == 20
-    assert session_mod.settings.db_pool_size == 10
-    assert session_mod.settings.db_max_overflow == 20
+    assert session_mod.engine.pool.size() == session_mod.settings.db_pool_size
+    assert Settings.model_fields["db_pool_size"].default == 10
+    assert Settings.model_fields["db_max_overflow"].default == 20

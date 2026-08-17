@@ -65,12 +65,15 @@ async def test_health_endpoint_reports_degraded_through_the_app(client: AsyncCli
     async def _override_get_db():
         yield _FailingSession()
 
-    previous = app.dependency_overrides[get_db]
+    previous = app.dependency_overrides.get(get_db)
     app.dependency_overrides[get_db] = _override_get_db
     try:
         resp = await client.get("/health")
     finally:
-        app.dependency_overrides[get_db] = previous
+        if previous is None:
+            app.dependency_overrides.pop(get_db, None)
+        else:
+            app.dependency_overrides[get_db] = previous
 
     assert resp.status_code == 200
     assert resp.json()["status"] == "degraded"
