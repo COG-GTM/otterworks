@@ -721,8 +721,9 @@ mod handler_tests {
     use crate::models::SharePermission;
     use crate::test_support::{
         assert_calls, aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
-        folder_item_json, get_item_response, metadata_client, replay, s3_client, scan_response,
-        share_item_json, sns_publish_ok, uuid_from, version_item_json, write_ok, RedisStub,
+        folder_item_json, form_params, get_item_response, metadata_client, replay, s3_client,
+        scan_response, share_item_json, sns_publish_ok, uuid_from, version_item_json, write_ok,
+        RedisStub,
     };
     use actix_web::body::MessageBody;
     use actix_web::http::StatusCode;
@@ -784,35 +785,10 @@ mod handler_tests {
         let requests: Vec<_> = http.actual_requests().collect();
         assert_eq!(requests.len(), 1, "exactly one SNS Publish");
         let body = std::str::from_utf8(requests[0].body().bytes().unwrap()).unwrap();
-        let message = body
-            .split('&')
-            .find_map(|pair| pair.strip_prefix("Message="))
+        let message = form_params(body)
+            .remove("Message")
             .expect("Publish carries a Message parameter");
-        serde_json::from_str(&form_decode(message)).unwrap()
-    }
-
-    fn form_decode(raw: &str) -> String {
-        let bytes = raw.as_bytes();
-        let mut out = Vec::with_capacity(bytes.len());
-        let mut i = 0;
-        while i < bytes.len() {
-            match bytes[i] {
-                b'%' => {
-                    let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap();
-                    out.push(u8::from_str_radix(hex, 16).unwrap());
-                    i += 3;
-                }
-                b'+' => {
-                    out.push(b' ');
-                    i += 1;
-                }
-                b => {
-                    out.push(b);
-                    i += 1;
-                }
-            }
-        }
-        String::from_utf8(out).unwrap()
+        serde_json::from_str(&message).unwrap()
     }
 
     fn app_config(max_upload_bytes: u64) -> web::Data<AppConfig> {

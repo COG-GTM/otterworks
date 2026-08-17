@@ -206,6 +206,42 @@ pub(crate) fn sns_client(http: StaticReplayClient) -> aws_sdk_sns::Client {
     aws_sdk_sns::Client::from_conf(conf)
 }
 
+/// Decode an `application/x-www-form-urlencoded` body -- the wire format of the
+/// SNS query protocol -- into its parameters. A `%` not followed by two hex
+/// digits is left as-is rather than panicking.
+pub(crate) fn form_params(body: &str) -> std::collections::HashMap<String, String> {
+    body.split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .map(|(k, v)| (percent_decode(k), percent_decode(v)))
+        .collect()
+}
+
+fn percent_decode(raw: &str) -> String {
+    let bytes = raw.replace('+', " ").into_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let decoded = if bytes[i] == b'%' && i + 2 < bytes.len() {
+            std::str::from_utf8(&bytes[i + 1..i + 3])
+                .ok()
+                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+        } else {
+            None
+        };
+        match decoded {
+            Some(byte) => {
+                out.push(byte);
+                i += 3;
+            }
+            None => {
+                out.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 pub(crate) fn sns_publish_ok() -> (u16, String) {
     (
         200,
@@ -422,6 +458,26 @@ impl RedisStub {
     pub(crate) async fn connection_manager(&self) -> redis::aio::ConnectionManager {
         let client = redis::Client::open(self.url.clone()).unwrap();
         redis::aio::ConnectionManager::new(client).await.unwrap()
+    }
+}
+
+#[cfg(test)]
+mod form_params_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_escapes_and_leaves_a_truncated_escape_alone() {
+        let params =
+            form_params("Action=Publish&Message=%7B%22a%22%3A1%7D&Note=a+b&Odd=100%25&Cut=%4");
+
+        assert_eq!(params["Action"], "Publish");
+        assert_eq!(params["Message"], r#"{"a":1}"#);
+        assert_eq!(params["Note"], "a b");
+        assert_eq!(params["Odd"], "100%", "a trailing escape decodes normally");
+        assert_eq!(
+            params["Cut"], "%4",
+            "an escape cut short is kept verbatim rather than panicking"
+        );
     }
 }
 

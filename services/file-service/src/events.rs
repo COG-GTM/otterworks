@@ -235,8 +235,8 @@ impl EventPublisher {
 mod publish_tests {
     use super::*;
     use crate::test_support::{
-        aws_config_fixture, offline_aws_env, replay, sns_client, sns_publish_ok, uuid_from,
-        with_env_blocking,
+        aws_config_fixture, form_params, offline_aws_env, replay, sns_client, sns_publish_ok,
+        uuid_from, with_env_blocking,
     };
     use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
 
@@ -257,40 +257,12 @@ mod publish_tests {
     fn published_message(http: &StaticReplayClient) -> serde_json::Value {
         let request = http.actual_requests().next().expect("one publish request");
         let body = std::str::from_utf8(request.body().bytes().unwrap()).unwrap();
-        let form: std::collections::HashMap<String, String> =
-            url_decode_form(body).into_iter().collect();
-        serde_json::from_str(form.get("Message").expect("Message parameter")).unwrap()
+        serde_json::from_str(form_params(body).get("Message").expect("Message parameter")).unwrap()
     }
 
     fn published_form(http: &StaticReplayClient) -> std::collections::HashMap<String, String> {
         let request = http.actual_requests().next().expect("one publish request");
-        let body = std::str::from_utf8(request.body().bytes().unwrap()).unwrap();
-        url_decode_form(body).into_iter().collect()
-    }
-
-    /// SNS uses `application/x-www-form-urlencoded` for its query protocol.
-    fn url_decode_form(body: &str) -> Vec<(String, String)> {
-        body.split('&')
-            .filter_map(|pair| pair.split_once('='))
-            .map(|(k, v)| (percent_decode(k), percent_decode(v)))
-            .collect()
-    }
-
-    fn percent_decode(raw: &str) -> String {
-        let bytes = raw.replace('+', " ").into_bytes();
-        let mut out = Vec::with_capacity(bytes.len());
-        let mut i = 0;
-        while i < bytes.len() {
-            if bytes[i] == b'%' && i + 2 < bytes.len() {
-                let hex = std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap();
-                out.push(u8::from_str_radix(hex, 16).unwrap());
-                i += 3;
-            } else {
-                out.push(bytes[i]);
-                i += 1;
-            }
-        }
-        String::from_utf8(out).unwrap()
+        form_params(std::str::from_utf8(request.body().bytes().unwrap()).unwrap())
     }
 
     #[test]
