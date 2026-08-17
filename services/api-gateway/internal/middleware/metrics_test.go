@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,12 +40,24 @@ func TestNormalizePath(t *testing.T) {
 	}
 }
 
+// durationSamples reports how many latencies the histogram has observed for
+// one label set, so tests assert on their own observation instead of the
+// shared collector's absolute state.
+func durationSamples(t *testing.T, method, path string) uint64 {
+	t.Helper()
+	observer, err := httpRequestDuration.GetMetricWithLabelValues(method, path)
+	require.NoError(t, err)
+	var m dto.Metric
+	require.NoError(t, observer.(prometheus.Metric).Write(&m))
+	return m.GetHistogram().GetSampleCount()
+}
+
 func TestMetrics_RecordsRequestCountAndDuration(t *testing.T) {
 	// The collectors are package-level globals shared with other tests, so
 	// assert on deltas for this label set rather than absolute values.
 	const method, path, status = http.MethodGet, "/api/v1/search", "201"
 	before := testutil.ToFloat64(httpRequestsTotal.WithLabelValues(method, path, status))
-	durationBefore := testutil.CollectAndCount(httpRequestDuration)
+	durationBefore := durationSamples(t, method, path)
 
 	handler := Metrics(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -54,7 +68,7 @@ func TestMetrics_RecordsRequestCountAndDuration(t *testing.T) {
 
 	require.Equal(t, http.StatusCreated, rec.Code)
 	assert.Equal(t, before+1, testutil.ToFloat64(httpRequestsTotal.WithLabelValues(method, path, status)))
-	assert.GreaterOrEqual(t, testutil.CollectAndCount(httpRequestDuration), durationBefore)
+	assert.Equal(t, durationBefore+1, durationSamples(t, method, path), "the request latency must be observed exactly once")
 }
 
 func TestMetrics_CollapsesPathCardinality(t *testing.T) {

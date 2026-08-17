@@ -140,7 +140,8 @@ func TestCircuitBreaker_OpenCircuitRejectsWithoutCallingHandler(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "is open")
 	assert.False(t, called)
-	assert.Equal(t, http.StatusOK, rec.Code, "nothing should have been written")
+	assert.Zero(t, rec.Body.Len(), "nothing should have been written")
+	assert.Empty(t, rec.Result().Header)
 }
 
 func TestStatusRecorder_WriteImpliesStatusOK(t *testing.T) {
