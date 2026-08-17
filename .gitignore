@@ -29,6 +29,9 @@ services/auth-service/out/
 # --- Rust ---
 services/file-service/target/
 
+# --- Java (Maven) ---
+services/report-service/target/
+
 # --- Python ---
 __pycache__/
 *.py[cod]
