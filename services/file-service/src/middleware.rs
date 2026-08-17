@@ -117,6 +117,10 @@ where
 
 #[cfg(test)]
 mod middleware_tests {
+    // The Prometheus registry is process-global and these tests run in parallel,
+    // so each one asserts a delta on a label set no other test emits. Give any
+    // new test its own route path -- reusing one (or adding a second unmatched
+    // GET) turns these into order-dependent failures.
     use super::*;
     use actix_web::{test as actix_test, web, App, HttpResponse};
 

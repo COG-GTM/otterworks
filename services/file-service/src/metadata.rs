@@ -771,9 +771,10 @@ fn parse_file_share(
 mod client_tests {
     use super::*;
     use crate::test_support::{
-        aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
+        aws_config_fixture, dated, dynamo_error, empty_get_item_response, file_item_json,
         folder_item_json, get_item_response, offline_aws_env, ok_json, query_response, replay,
-        scan_response, share_item_json, uuid_from, version_item_json, with_env_blocking, write_ok,
+        scan_response, share_item_json, trashed, uuid_from, version_item_json, with_env_blocking,
+        write_ok,
     };
     use crate::test_support::{fixed_time, metadata_client};
     use aws_smithy_runtime::client::http::test_util::StaticReplayClient;
@@ -947,12 +948,8 @@ mod client_tests {
 
     #[tokio::test]
     async fn trash_file_sets_the_flag_then_returns_the_updated_file() {
-        let mut trashed = file_item_json(uuid_from(FILE), uuid_from(OWNER), None);
-        trashed = trashed.replace(
-            r#""is_trashed":{"BOOL":false}"#,
-            r#""is_trashed":{"BOOL":true}"#,
-        );
-        let http = replay(vec![write_ok(), get_item_response(&trashed)]);
+        let trashed_item = trashed(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None));
+        let http = replay(vec![write_ok(), get_item_response(&trashed_item)]);
         let client = metadata_client(http.clone());
 
         let file = client
@@ -1174,8 +1171,10 @@ mod client_tests {
 
     #[tokio::test]
     async fn list_trashed_without_an_owner_filters_only_on_the_flag_and_sorts_newest_first() {
-        let older = file_item_json(uuid_from(FILE), uuid_from(OWNER), None)
-            .replace(&fixed_time().to_rfc3339(), "2020-01-01T00:00:00+00:00");
+        let older = dated(
+            &file_item_json(uuid_from(FILE), uuid_from(OWNER), None),
+            "2020-01-01T00:00:00+00:00",
+        );
         let http = replay(vec![scan_response(&[
             older,
             file_item_json(uuid_from(OTHER_USER), uuid_from(OWNER), None),

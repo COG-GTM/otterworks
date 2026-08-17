@@ -284,6 +284,27 @@ pub(crate) fn folder_item_json(id: Uuid, owner: Uuid, parent: Option<Uuid>) -> S
     )
 }
 
+/// Rewrite part of a fixture, asserting the pattern was there. A silent no-op
+/// replacement would leave the test asserting against the unmodified item.
+pub(crate) fn rewrite(json: &str, from: &str, to: &str) -> String {
+    assert!(json.contains(from), "fixture has no {from:?} to replace");
+    json.replace(from, to)
+}
+
+/// The same file fixture, flagged as trashed.
+pub(crate) fn trashed(file_json: &str) -> String {
+    rewrite(
+        file_json,
+        r#""is_trashed":{"BOOL":false}"#,
+        r#""is_trashed":{"BOOL":true}"#,
+    )
+}
+
+/// The same fixture with its `fixed_time()` timestamps moved to `rfc3339`.
+pub(crate) fn dated(json: &str, rfc3339: &str) -> String {
+    rewrite(json, &fixed_time().to_rfc3339(), rfc3339)
+}
+
 pub(crate) fn version_item_json(file_id: Uuid, owner: Uuid, version: u32) -> String {
     let ts = fixed_time().to_rfc3339();
     format!(
@@ -498,6 +519,31 @@ mod form_params_tests {
             params["Cut"], "%4",
             "an escape cut short is kept verbatim rather than panicking"
         );
+    }
+}
+
+#[cfg(test)]
+mod fixture_rewrite_tests {
+    use super::*;
+
+    #[test]
+    fn trashed_and_dated_rewrite_the_file_fixture() {
+        let file = file_item_json(uuid_from(1), uuid_from(2), None);
+
+        assert!(trashed(&file).contains(r#""is_trashed":{"BOOL":true}"#));
+        assert!(dated(&file, "2020-01-01T00:00:00+00:00").contains("2020-01-01T00:00:00+00:00"));
+        assert!(
+            !dated(&file, "2020-01-01T00:00:00+00:00").contains(&fixed_time().to_rfc3339()),
+            "every timestamp moves, so nothing is left at the fixed time"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "fixture has no")]
+    fn rewriting_an_absent_pattern_fails_loudly() {
+        // A silent no-op here would leave a test asserting against the
+        // unmodified fixture, which is the failure mode this guards.
+        rewrite(r#"{"a":1}"#, "not-present", "x");
     }
 }
 

@@ -720,10 +720,10 @@ mod handler_tests {
     use crate::config::{AppConfig, ServerConfig, SnsConfig};
     use crate::models::SharePermission;
     use crate::test_support::{
-        assert_calls, aws_config_fixture, dynamo_error, empty_get_item_response, file_item_json,
-        folder_item_json, form_params, get_item_response, metadata_client, replay, s3_client,
-        scan_response, share_item_json, sns_publish_ok, uuid_from, version_item_json, write_ok,
-        RedisStub,
+        assert_calls, aws_config_fixture, dated, dynamo_error, empty_get_item_response,
+        file_item_json, folder_item_json, form_params, get_item_response, metadata_client, replay,
+        s3_client, scan_response, share_item_json, sns_publish_ok, trashed, uuid_from,
+        version_item_json, write_ok, RedisStub,
     };
     use actix_web::body::MessageBody;
     use actix_web::http::StatusCode;
@@ -1536,10 +1536,11 @@ mod handler_tests {
 
     #[actix_rt::test]
     async fn list_shared_files_deduplicates_and_hides_trashed_files() {
-        let trashed = file_item_json(uuid_from(OTHER_USER), uuid_from(OWNER), None).replace(
-            r#""is_trashed":{"BOOL":false}"#,
-            r#""is_trashed":{"BOOL":true}"#,
-        );
+        let trashed_item = trashed(&file_item_json(
+            uuid_from(OTHER_USER),
+            uuid_from(OWNER),
+            None,
+        ));
         let (meta, _) = meta_data(vec![
             scan_response(&[
                 share_item_json(
@@ -1573,7 +1574,7 @@ mod handler_tests {
                 ),
             ]),
             get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
-            get_item_response(&trashed),
+            get_item_response(&trashed_item),
             empty_get_item_response(),
         ]);
 
@@ -1898,11 +1899,8 @@ mod handler_tests {
 
     #[actix_rt::test]
     async fn trash_file_flags_the_file() {
-        let trashed = file_item_json(uuid_from(FILE), uuid_from(OWNER), None).replace(
-            r#""is_trashed":{"BOOL":false}"#,
-            r#""is_trashed":{"BOOL":true}"#,
-        );
-        let (meta, _) = meta_data(vec![write_ok(), get_item_response(&trashed)]);
+        let trashed_item = trashed(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None));
+        let (meta, _) = meta_data(vec![write_ok(), get_item_response(&trashed_item)]);
 
         let body = body_json(
             trash_file(meta, silent_events(), uuid_from(FILE).to_string().into())
@@ -2381,8 +2379,10 @@ mod handler_tests {
 
     #[actix_rt::test]
     async fn list_activity_merges_uploads_and_shares_newest_first() {
-        let older_file = file_item_json(uuid_from(FILE), uuid_from(OWNER), None)
-            .replace("2024-05-17T12:30:45+00:00", "2024-01-01T00:00:00+00:00");
+        let older_file = dated(
+            &file_item_json(uuid_from(FILE), uuid_from(OWNER), None),
+            "2024-01-01T00:00:00+00:00",
+        );
         let (meta, _) = meta_data(vec![
             scan_response(&[older_file]),
             scan_response(&[
