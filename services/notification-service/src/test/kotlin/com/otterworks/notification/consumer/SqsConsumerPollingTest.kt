@@ -17,6 +17,8 @@ import io.mockk.mockk
 import io.mockk.slot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -60,6 +62,14 @@ class SqsConsumerPollingTest {
         receiptHandle = "receipt-$id"
     }
 
+    private suspend fun awaitTrue(timeoutMs: Long = 10_000, condition: () -> Boolean) {
+        withTimeout(timeoutMs) {
+            while (!condition()) {
+                delay(10)
+            }
+        }
+    }
+
     private fun pollOnce(block: suspend () -> Unit) = runBlocking {
         val job = launch(Dispatchers.Default) { consumer.startPolling() }
         try {
@@ -100,7 +110,7 @@ class SqsConsumerPollingTest {
         coEvery { sqsClient.deleteMessage(any<DeleteMessageRequest>()) } returns DeleteMessageResponse {}
 
         pollOnce {
-            coVerify(timeout = 10_000, atLeast = 2) { sqsClient.receiveMessage(any<ReceiveMessageRequest>()) }
+            awaitTrue { meterRegistry.counter("notifications.processing.errors").count() >= 1.0 }
         }
 
         coVerify(exactly = 0) { sqsClient.deleteMessage(any<DeleteMessageRequest>()) }

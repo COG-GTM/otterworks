@@ -13,6 +13,8 @@ import io.ktor.server.testing.testApplication
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
 import io.mockk.mockk
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
 import kotlin.test.AfterTest
@@ -72,6 +74,12 @@ class NotificationWebSocketRouteTest {
             send(Frame.Text("hello"))
         }
 
+        // the server drops the connection in its own coroutine once the close frame lands
+        withTimeoutOrNull(10_000) {
+            while (webSocketManager.isUserConnected("user-1")) {
+                delay(10)
+            }
+        }
         assertFalse(webSocketManager.isUserConnected("user-1"))
     }
 }
