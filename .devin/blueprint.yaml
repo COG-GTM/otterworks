@@ -43,7 +43,7 @@ initialize: |
   # minor-versioned "platforms;android-37.0" package exists upstream).
   sdk_complete() {
     # package.xml is written on install finalization; the payload artifact catches a
-    # package whose metadata survived but whose payload is missing or truncated.
+    # package whose metadata survived but whose payload is missing or zero-byte.
     sdk_broken=""
     for p in "platforms/android-37.0:android.jar" "build-tools/37.0.0:aapt2" \
              "platforms/android-36:android.jar" "platform-tools:adb" \
@@ -59,9 +59,13 @@ initialize: |
     yes | $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
           "platforms;android-36" "system-images;android-36;google_apis;x86_64"
     sdkm_rc=$?
-    # Verify even when sdkmanager fails, so a corrupt package is repaired on the very
-    # next attempt rather than an iteration later.
-    sdk_complete && [ "$sdkm_rc" -eq 0 ] && break
+    # Verification is authoritative: if all packages are present, proceed even when
+    # sdkmanager exited non-zero for some unrelated sub-step; if any is broken, repair
+    # it on the very next attempt regardless of sdkmanager's exit code.
+    if sdk_complete; then
+      [ "$sdkm_rc" -eq 0 ] || echo "sdkmanager exited $sdkm_rc but all required packages verified; continuing"
+      break
+    fi
     n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
     # Only remove broken packages when a retry will actually follow: sdkmanager trusts
     # package.xml, so a stale one would make the retry skip the package as installed.
