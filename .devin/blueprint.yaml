@@ -70,7 +70,8 @@ initialize: |
     # Only remove broken packages when a retry will actually follow: sdkmanager trusts
     # package.xml, so a stale one would make the retry skip the package as installed.
     for d in $sdk_broken; do rm -rf "$ANDROID_HOME/$d"; done
-    echo "retrying sdkmanager install ($n)"; sleep $((30 * n))
+    backoff=$((15 * (2 ** n)))
+    echo "retrying sdkmanager install ($n) in ${backoff}s"; sleep "$backoff"
   done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
