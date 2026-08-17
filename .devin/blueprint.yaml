@@ -28,11 +28,11 @@ initialize: |
   export ANDROID_HOME=$HOME/Android/Sdk
   mkdir -p $ANDROID_HOME/cmdline-tools
   # sdkmanager >=19 is required: API 37 ships only as minor-versioned packages
-  # (platforms;android-37.0) declared in SDK repository XML v4. Older command-line tools
-  # understand v3 only, and instead of failing they silently install the wrong package --
-  # "build-tools;37.0.0" lands as Build-Tools 35 -- and register the platform in a way AGP
-  # cannot resolve, so assembleDebug dies with "Failed to find target with hash string
-  # 'android-37'". Re-installed whenever the on-disk tools predate 19.
+  # (platforms;android-37.0), declared in SDK repository XML v4. sdkmanager 12 understands v3
+  # only; it installs the platform without complaining but records it under the old schema,
+  # which AGP 8.13's SDK loader will not match to compileSdk 37 -- assembleDebug then dies with
+  # "Failed to find target with hash string 'android-37'". Same package list installed with
+  # sdkmanager 19 builds fine. Re-installed whenever the on-disk tools predate 19.
   SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
   SDKM_MAJOR=$("$SDKM" --version 2>/dev/null | cut -d. -f1)
   if [ "${SDKM_MAJOR:-0}" -lt 19 ]; then
