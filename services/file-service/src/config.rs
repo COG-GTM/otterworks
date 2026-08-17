@@ -103,9 +103,10 @@ mod config_tests {
     use super::*;
     use crate::test_support::with_env;
 
-    const ALL_VARS: [&str; 10] = [
+    const ALL_VARS: [&str; 11] = [
         "PORT",
         "MAX_UPLOAD_BYTES",
+        "FILE_UPLOAD_ALWAYS_FAIL",
         "AWS_REGION",
         "AWS_ENDPOINT_URL",
         "S3_BUCKET",
