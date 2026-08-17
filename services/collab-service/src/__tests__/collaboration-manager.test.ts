@@ -47,7 +47,7 @@ function encodeUpdate(text: string): string {
   return Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
 }
 
-describe('CollaborationManager', () => {
+describe('CollaborationManager (faked sockets)', () => {
   let manager: CollaborationManager;
   let awareness: AwarenessService;
   let presenceHandler: PresenceHandler;
