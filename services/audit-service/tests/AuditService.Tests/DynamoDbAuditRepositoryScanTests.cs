@@ -210,8 +210,8 @@ public class DynamoDbAuditRepositoryScanTests
             });
 
     /// <summary>
-    /// Stubs a scan that returns one item per page and records the ExclusiveStartKey used for
-    /// each call, so paging can be asserted on the mutated request object.
+    /// Stubs a scan that returns one item per page and snapshots the ExclusiveStartKey used for
+    /// each call, so paging can be asserted independently of how the request object is reused.
     /// </summary>
     private List<Dictionary<string, AttributeValue>?> StubTwoPageScan(
         Dictionary<string, AttributeValue>? firstPage = null,
@@ -222,7 +222,8 @@ public class DynamoDbAuditRepositoryScanTests
 
         _mockDynamoDb
             .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .Callback<ScanRequest, CancellationToken>((req, _) => startKeys.Add(req.ExclusiveStartKey))
+            .Callback<ScanRequest, CancellationToken>((req, _) => startKeys.Add(
+                req.ExclusiveStartKey is null ? null : new Dictionary<string, AttributeValue>(req.ExclusiveStartKey)))
             .ReturnsAsync(() =>
             {
                 call++;
