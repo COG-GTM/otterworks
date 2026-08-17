@@ -17,8 +17,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-MIN_LINES="${MIN_LINES:-98}"
-MIN_REGIONS="${MIN_REGIONS:-95}"
+# The ratchet. MIN_LINES/MIN_REGIONS may raise these for a stricter local run,
+# but never lower them: lowering the gate has to be a reviewed edit to this file.
+FLOOR_LINES=98
+FLOOR_REGIONS=95
+
+at_least() { # at_least <floor> <requested>
+  case "$2" in
+    '' | *[!0-9]*) echo "$1" ;;
+    *) [ "$2" -gt "$1" ] && echo "$2" || echo "$1" ;;
+  esac
+}
+
+MIN_LINES=$(at_least "$FLOOR_LINES" "${MIN_LINES:-}")
+MIN_REGIONS=$(at_least "$FLOOR_REGIONS" "${MIN_REGIONS:-}")
 
 # cargo-llvm-cov rejects --summary-only alongside a report format, so it is only
 # added when the caller asked for no other output -- and not added twice when the
