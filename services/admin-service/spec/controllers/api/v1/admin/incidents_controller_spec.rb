@@ -10,8 +10,8 @@ RSpec.describe Api::V1::Admin::IncidentsController do
   end
 
   describe 'GET #index' do
-    let!(:critical) { create(:incident, severity: 'critical', status: 'open') }
-    let!(:resolved) { create(:incident, :resolved, severity: 'low') }
+    let!(:critical) { create(:incident, severity: 'critical', status: 'open', created_at: 2.hours.ago) }
+    let!(:resolved) { create(:incident, :resolved, severity: 'low', created_at: 1.hour.ago) }
 
     it 'lists incidents newest first with pagination metadata' do
       get :index

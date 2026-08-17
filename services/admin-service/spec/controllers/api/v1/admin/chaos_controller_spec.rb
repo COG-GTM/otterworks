@@ -113,7 +113,8 @@ RSpec.describe Api::V1::Admin::ChaosController do
       expect(response).to have_http_status(:unauthorized)
     end
 
-    it 'allows every request when the secret is empty' do
+    # Demo-mode behaviour: an unconfigured CHAOS_SECRET deliberately fails open.
+    it 'fails open for an unauthenticated request when the secret is unconfigured' do
       stub_const('ENV', ENV.to_hash.merge('CHAOS_SECRET' => ''))
 
       post :trigger, params: { service: 'file-service', scenario: 'upload_s3_error' }

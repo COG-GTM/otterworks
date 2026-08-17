@@ -4,7 +4,11 @@ RSpec.describe HealthChecker do
   let(:http) { instance_double(Net::HTTP, :open_timeout= => nil, :read_timeout= => nil) }
   let(:ok_response) { instance_double(Net::HTTPResponse, code: '200') }
 
-  before { allow(Net::HTTP).to receive(:new).and_return(http) }
+  before do
+    allow(Net::HTTP).to receive(:new).and_return(http)
+    # Pin the environment so injected *_SERVICE_HOST/_PORT variables cannot change the defaults.
+    stub_const('ENV', ENV.to_hash.except(*ENV.keys.grep(/_SERVICE_(HOST|PORT)\z/)))
+  end
 
   describe '.check_service' do
     it 'reports a healthy service with a latency measurement' do
