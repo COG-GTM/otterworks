@@ -59,7 +59,7 @@ class SlackNotifierService
       return nil unless url
 
       uri = URI.parse(url)
-      return url if uri.scheme == 'https' && uri.host == 'hooks.slack.com' && uri.userinfo.nil?
+      return url if uri.scheme == 'https' && uri.host.to_s.downcase == 'hooks.slack.com' && uri.userinfo.nil?
 
       Rails.logger.error('Stored Slack webhook URL is not a hooks.slack.com HTTPS URL, ignoring it')
       nil
