@@ -1,0 +1,39 @@
+// repo.maven.apache.org aggressively rate-limits shared CI egress IPs (HTTP 429).
+// Prefer Google's Maven Central mirror everywhere and keep the original
+// repositories as fallback for artifacts the mirror doesn't carry.
+def MIRROR = 'https://maven-central.storage-download.googleapis.com/maven2'
+
+def preferMirror = { repos ->
+    if (repos.findByName('MavenCentralMirror') == null) {
+        def m = repos.maven { repo ->
+            repo.name = 'MavenCentralMirror'
+            repo.url = MIRROR
+        }
+        repos.remove(m)
+        repos.add(0, m)
+    }
+    repos.configureEach { repo ->
+        if (repo instanceof org.gradle.api.artifacts.repositories.MavenArtifactRepository
+                && repo.name != 'MavenCentralMirror'
+                && repo.url.toString().startsWith('https://repo.maven.apache.org')) {
+            repo.setUrl(MIRROR)
+        }
+    }
+}
+
+settingsEvaluated { settings ->
+    def repos = settings.pluginManagement.repositories
+    preferMirror(repos)
+    // Declaring any repository here removes the implicit plugin portal; re-add
+    // it as fallback for plugins whose markers aren't on Maven Central.
+    if (repos.findByName('Gradle Central Plugin Repository') == null) {
+        repos.gradlePluginPortal()
+    }
+}
+
+allprojects { project ->
+    preferMirror(project.buildscript.repositories)
+    project.afterEvaluate {
+        preferMirror(project.repositories)
+    }
+}
