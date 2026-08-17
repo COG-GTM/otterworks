@@ -1,9 +1,12 @@
 package com.otterworks.report.util;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Locale;
 import java.util.TimeZone;
 
 import static org.junit.Assert.assertEquals;
@@ -22,8 +25,30 @@ import static org.junit.Assert.fail;
  */
 public class ReportDateUtilsTest {
 
+    private static long calendarDaysBefore(Date reference, int days) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(reference);
+        cal.add(Calendar.DAY_OF_MONTH, -days);
+        return cal.getTimeInMillis();
+    }
+
     /** 2024-01-02T03:04:05Z */
     private static final Date FIXED = new Date(1704164645000L);
+
+    private Locale originalLocale;
+
+    @Before
+    public void pinLocale() {
+        // The production display format has no explicit Locale, so the month
+        // abbreviation would otherwise depend on the JVM default.
+        originalLocale = Locale.getDefault();
+        Locale.setDefault(Locale.US);
+    }
+
+    @After
+    public void restoreLocale() {
+        Locale.setDefault(originalLocale);
+    }
 
     @Test
     public void toIsoStringFormatsInUtc() {
@@ -122,9 +147,10 @@ public class ReportDateUtilsTest {
         Date sevenDaysAgo = ReportDateUtils.daysAgo(7);
         Date after = new Date();
 
-        long sevenDaysMs = 7L * 24 * 60 * 60 * 1000;
-        assertTrue(sevenDaysAgo.getTime() <= after.getTime() - sevenDaysMs);
-        assertTrue(sevenDaysAgo.getTime() >= before.getTime() - sevenDaysMs - 1000);
+        // Calendar arithmetic keeps the local wall-clock time, so a DST
+        // transition inside the window shifts the result by up to an hour.
+        assertTrue(sevenDaysAgo.getTime() <= calendarDaysBefore(after, 7) + 1000);
+        assertTrue(sevenDaysAgo.getTime() >= calendarDaysBefore(before, 7) - 1000);
     }
 
     @Test

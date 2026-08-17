@@ -22,6 +22,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -85,6 +86,13 @@ public class ReportServiceUnitTest {
         }
     }
 
+    private static long calendarDaysBefore(Date reference, int days) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(reference);
+        cal.add(Calendar.DAY_OF_MONTH, -days);
+        return cal.getTimeInMillis();
+    }
+
     private ReportRequest buildRequest() {
         ReportRequest request = new ReportRequest();
         request.setReportName("Quarterly Usage");
@@ -136,9 +144,12 @@ public class ReportServiceUnitTest {
         Report saved = service.createReport(buildRequest());
 
         Date after = new Date();
-        long thirtyDaysMs = 30L * 24 * 60 * 60 * 1000;
-        assertTrue(saved.getDateFrom().getTime() <= after.getTime() - thirtyDaysMs);
-        assertTrue(saved.getDateFrom().getTime() >= before.getTime() - thirtyDaysMs - 1000);
+        // Calendar arithmetic keeps the local wall-clock time, so the expected
+        // bounds are computed the same way rather than as 30 * 24h.
+        assertTrue(saved.getDateFrom().getTime()
+                <= calendarDaysBefore(after, 30) + 1000);
+        assertTrue(saved.getDateFrom().getTime()
+                >= calendarDaysBefore(before, 30) - 1000);
         assertTrue(saved.getDateTo().getTime() >= before.getTime());
         assertTrue(saved.getDateTo().getTime() <= after.getTime());
     }
