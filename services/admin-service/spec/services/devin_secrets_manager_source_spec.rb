@@ -67,6 +67,17 @@ RSpec.describe DevinSecretsManagerSource do
     expect(client).to have_received(:get_secret_value).once
   end
 
+  it 'stops serving the cached pair once the secret is gone' do
+    allow(client).to receive(:get_secret_value)
+      .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))
+    described_class.credentials
+    described_class.instance_variable_get(:@cache)[:fetched_at] = 0
+    allow(client).to receive(:get_secret_value)
+      .and_raise(Aws::SecretsManager::Errors::ResourceNotFoundException.new(nil, 'gone'))
+
+    expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
+  end
+
   it 'ignores a half-populated secret' do
     allow(client).to receive(:get_secret_value).and_return(secret({ api_key: 'sm-key' }.to_json))
 

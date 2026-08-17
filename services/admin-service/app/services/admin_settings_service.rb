@@ -133,7 +133,12 @@ class AdminSettingsService
       # row to update and must surface as itself rather than as a 404.
       raise if e.is_a?(ActiveRecord::RecordInvalid) && !uniqueness_conflict?(e)
 
-      SystemConfig.find_by!(key: key).update!(attrs)
+      row = SystemConfig.find_by(key: key)
+      # The racing insert may not have committed yet, in which case there is
+      # nothing to update: report the conflict rather than a 404.
+      raise e if row.nil?
+
+      row.update!(attrs)
     end
 
     # Redis only holds credentials left over from the old store, so its

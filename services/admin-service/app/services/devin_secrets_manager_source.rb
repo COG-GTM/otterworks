@@ -13,6 +13,14 @@ class DevinSecretsManagerSource
   # A failing read is remembered too, but briefly: a broken IRSA policy would
   # otherwise mean an AWS call per incident and per status check.
   ERROR_CACHE_TTL = 30
+  # A secret that is gone or no longer readable is an answer, not a blip: the
+  # last good pair must stop being served, or a revoke at the source would
+  # never take effect on a running pod.
+  DEFINITIVE_ERRORS = [
+    Aws::SecretsManager::Errors::ResourceNotFoundException,
+    Aws::SecretsManager::Errors::AccessDeniedException,
+    Aws::SecretsManager::Errors::InvalidRequestException
+  ].freeze
   MUTEX = Mutex.new
 
   class << self
@@ -75,14 +83,26 @@ class DevinSecretsManagerSource
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")
       # A Secrets Manager blip must not stop incident triage: keep serving the
-      # last pair that worked, and fall through to the stored pair otherwise.
-      value = @cache&.dig(:value) || { api_key: nil, org_id: nil }
+      # last pair that worked. A definitive error drops it instead, so a
+      # deleted or locked-down secret revokes the pair on a running pod.
+      value = if DEFINITIVE_ERRORS.any? { |klass| e.is_a?(klass) }
+                { api_key: nil, org_id: nil }
+              else
+                @cache&.dig(:value) || { api_key: nil, org_id: nil }
+              end
       @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, error: true }
       value
     end
 
     def client
-      @client ||= Aws::SecretsManager::Client.new(region: ENV.fetch('AWS_REGION', 'us-east-1'))
+      # Bounded: this call happens under MUTEX, so an unbounded retry would
+      # stall every thread resolving credentials on the pod.
+      @client ||= Aws::SecretsManager::Client.new(
+        region: ENV.fetch('AWS_REGION', 'us-east-1'),
+        http_open_timeout: 2,
+        http_read_timeout: 3,
+        retry_limit: 1
+      )
     end
   end
 end
