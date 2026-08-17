@@ -9,16 +9,25 @@
 # none exist the module is reported unmeasured rather than measured on the wrong
 # JDK. Modules without the key build on the ambient JDK.
 modules:
+  # Both Maven modules pin JDK 11: their recorded transcripts include the
+  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
+  # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
+  # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
   - id: report-service
     path: services/report-service
     build: maven
-    # Java 8 target; the default JDK on the image builds it.
+    java_home:
+      - $JAVA_HOME_11_X64
+      - /usr/lib/jvm/java-11-openjdk-amd64
     test: mvn -B test
     cases: cases/report-service.json
 
   - id: legacy-portal
     path: services/legacy-portal
     build: maven
+    java_home:
+      - $JAVA_HOME_11_X64
+      - /usr/lib/jvm/java-11-openjdk-amd64
     test: mvn -B test
     cases: cases/legacy-portal.json
 

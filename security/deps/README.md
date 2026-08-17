@@ -34,6 +34,13 @@ between "vulnerable" (1) and "no verdict reached" (2). Get the harness invocatio
 with `make -s deps-command` and run the subcommand through it, which is what the
 CI workflow does.
 
+The tree readers treat an unreadable version as *no verdict*, never as an absence.
+A Gradle coordinate is counted whether it carries a declared version, a version
+Gradle overrode (`1.9 -> 1.10.0`) or none at all because a platform/BOM supplies it
+(`group:name -> 1.10.0`); a `(c)` constraint entry is not on the classpath and is
+not counted; and a `(n)` unresolved coordinate for the advisory's artifact reports
+the module `unmeasured` (exit 2) rather than clean.
+
 ## Contract cases vs attack cases
 
 Each case in `cases/<module>.json` carries a `policy`:

@@ -243,7 +243,13 @@ def run(command: str, cwd: Path, module: Module) -> subprocess.CompletedProcess[
 
 # Maven indents 3 characters per level ("+- ", "|  "), Gradle 5 ("+--- ", "|    ").
 MAVEN_LINE = re.compile(r"^([| +\\-]*)([\w.\-]+):([\w.\-]+):(\w+):([\w.\-]+)")
-GRADLE_LINE = re.compile(r"^([| +\\-]*)([\w.\-]+):([\w.\-]+):([\w.\-]+(?: -> [\w.\-]+)?)")
+# Gradle prints a coordinate three ways: with a declared version, with a declared
+# version it overrode ("1.9 -> 1.10.0"), and version-less when a platform/BOM or a
+# constraint supplies it ("group:name -> 1.10.0"). All three have to match, or an
+# artifact on the runtime classpath would be invisible to the gate.
+GRADLE_LINE = re.compile(
+    r"^([| +\\-]*)([\w.\-]+):([\w.\-]+)(?::([\w.\-]+))?(?:\s*->\s*([\w.\-]+))?(.*)$"
+)
 INDENT_WIDTH = {"maven": 3, "gradle": 5}
 
 
@@ -271,13 +277,18 @@ def gradle_tree(module: Module) -> tuple[str, list[str], str]:
     return PASS, result.stdout.splitlines(), ""
 
 
-def parse_tree(lines: list[str], advisory: Advisory, build: str) -> list[Occurrence]:
+def parse_tree(
+    lines: list[str], advisory: Advisory, build: str
+) -> tuple[list[Occurrence], list[str]]:
     """Walk the printed tree, tracking the ancestor stack to name the parent.
 
     `depth` is the tree level: 1 is a dependency the module declares itself, 2+
-    arrives through the parent recorded at the level above.
+    arrives through the parent recorded at the level above. Returns the advisory's
+    occurrences plus any line that names the artifact without a readable version: an
+    unreadable version is no verdict, never an absence.
     """
     occurrences: list[Occurrence] = []
+    unreadable: list[str] = []
     pattern = MAVEN_LINE if build == "maven" else GRADLE_LINE
     width = INDENT_WIDTH[build]
     stack: dict[int, str] = {}
@@ -289,11 +300,22 @@ def parse_tree(lines: list[str], advisory: Advisory, build: str) -> list[Occurre
         if build == "maven":
             group, name, version = match.group(2), match.group(3), match.group(5)
         else:
-            group, name, raw_version = match.group(2), match.group(3), match.group(4)
-            # "1.9 -> 1.10.0" means Gradle resolved the conflict to the right-hand side.
-            version = raw_version.split("->")[-1].strip()
+            group, name = match.group(2), match.group(3)
+            # A version Gradle resolved to ("1.9 -> 1.10.0", or "group:name -> 1.10.0"
+            # when a platform supplies it) wins over the declared one.
+            version = match.group(5) or match.group(4)
+            markers = match.group(6)
+            # "(c)" is a constraint, not something on the classpath; "(n)" is a
+            # coordinate Gradle did not resolve, so it carries no version to judge.
+            if "(c)" in markers:
+                continue
+        is_advisory = group == advisory.group and name == advisory.name
+        if version is None:
+            if is_advisory:
+                unreadable.append(line.strip())
+            continue
         stack[depth] = f"{group}:{name}:{version}"
-        if group == advisory.group and name == advisory.name:
+        if is_advisory:
             occurrences.append(
                 Occurrence(
                     version=version,
@@ -302,7 +324,7 @@ def parse_tree(lines: list[str], advisory: Advisory, build: str) -> list[Occurre
                     vulnerable=advisory.is_vulnerable(version),
                 )
             )
-    return occurrences
+    return occurrences, unreadable
 
 
 def find_declarations(module: Module, advisory: Advisory) -> list[str]:
@@ -328,8 +350,15 @@ def collect_trees(advisory: Advisory, modules: list[Module]) -> list[ModuleTree]
         status, lines, detail = reader(module)
         tree = ModuleTree(module=module, status=status, detail=detail)
         if status == PASS:
-            tree.occurrences = parse_tree(lines, advisory, module.build)
+            occurrences, unreadable = parse_tree(lines, advisory, module.build)
+            tree.occurrences = occurrences
             tree.declarations = find_declarations(module, advisory)
+            if unreadable:
+                tree.status = UNMEASURED
+                tree.detail = (
+                    f"{advisory.artifact} appears with no readable version, so it cannot "
+                    "be judged against the advisory range: " + "; ".join(unreadable)
+                )
         trees.append(tree)
     return trees
 
