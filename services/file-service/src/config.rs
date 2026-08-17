@@ -14,9 +14,6 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -57,22 +54,7 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
         }
-    }
-}
-
-fn parse_bool_env(key: &str, default: bool) -> bool {
-    env::var(key)
-        .ok()
-        .map_or(default, |raw| parse_bool(&raw, default))
-}
-
-fn parse_bool(raw: &str, default: bool) -> bool {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" => true,
-        "false" | "0" => false,
-        _ => default,
     }
 }
 
@@ -104,44 +86,59 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{AwsConfig, ServerConfig};
+    use std::env;
+    use std::sync::Mutex;
 
-    #[test]
-    fn parse_bool_accepts_true_and_one() {
-        for raw in ["true", "TRUE", " True ", "1"] {
-            assert!(parse_bool(raw, false), "raw={raw}");
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Restores the captured environment when dropped, so a panicking test
+    /// cannot leak mutated variables into the rest of the test binary.
+    struct EnvRestore(Vec<(String, Option<String>)>);
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            for (key, value) in &self.0 {
+                match value {
+                    Some(value) => env::set_var(key, value),
+                    None => env::remove_var(key),
+                }
+            }
         }
     }
 
-    #[test]
-    fn parse_bool_accepts_false_and_zero() {
-        for raw in ["false", "FALSE", " False ", "0"] {
-            assert!(!parse_bool(raw, true), "raw={raw}");
+    fn with_env<T>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> T) -> T {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _restore = EnvRestore(
+            vars.iter()
+                .map(|(key, _)| ((*key).to_string(), env::var(key).ok()))
+                .collect(),
+        );
+        for (key, value) in vars {
+            match value {
+                Some(value) => env::set_var(key, value),
+                None => env::remove_var(key),
+            }
         }
+        f()
     }
 
     #[test]
-    fn parse_bool_falls_back_to_default_on_empty_or_garbage() {
-        for raw in ["", "  ", "yes"] {
-            assert!(!parse_bool(raw, false), "raw={raw}");
-            assert!(parse_bool(raw, true), "raw={raw}");
-        }
+    fn server_config_reads_env_and_falls_back_to_defaults() {
+        let cfg = with_env(
+            &[("PORT", Some("9001")), ("MAX_UPLOAD_BYTES", None)],
+            ServerConfig::from_env,
+        );
+        assert_eq!(cfg.port, 9001);
+        assert_eq!(cfg.max_upload_bytes, 104_857_600);
     }
 
     #[test]
-    fn parse_bool_env_defaults_when_unset() {
-        assert!(!parse_bool_env(
-            "OTTERWORKS_DEFINITELY_UNSET_ENV_VAR",
-            false
-        ));
-        assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
-    }
+    fn s3_bucket_comes_from_env_with_a_real_default() {
+        let configured = with_env(&[("S3_BUCKET", Some("tenant-bucket"))], AwsConfig::from_env);
+        assert_eq!(configured.s3_bucket, "tenant-bucket");
 
-    #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
-        }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+        let defaulted = with_env(&[("S3_BUCKET", None)], AwsConfig::from_env);
+        assert_eq!(defaulted.s3_bucket, "otterworks-files");
     }
 }

@@ -6,10 +6,14 @@ module Api
 
         VALID_SCENARIOS = {
           'search-service'       => 'suggest_500',
-          'file-service'         => 'upload_s3_error',
           'notification-service' => 'consumer_strict_schema',
           'document-service'     => 'slow_queries',
         }.freeze
+
+        # Services whose open incidents the reset action resolves. This is a
+        # superset of VALID_SCENARIOS: services can raise incidents (e.g.
+        # file-service's FileUploadFailed alerts) without a chaos scenario.
+        RESETTABLE_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).freeze
 
         before_action :verify_chaos_secret
 
@@ -46,10 +50,10 @@ module Api
           keys = redis.keys('chaos:*')
           redis.del(*keys) if keys.any?
 
-          # Resolve any open incidents for chaos-managed services so the next
+          # Resolve any open incidents for the demo services so the next
           # demo run can create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          VALID_SCENARIOS.each_key do |svc|
+          RESETTABLE_SERVICES.each do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|
