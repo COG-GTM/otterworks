@@ -195,8 +195,12 @@ mod storage_tests {
 
         let sent = http.actual_requests().next().expect("one request");
         assert_eq!(sent.method(), "PUT");
-        assert!(sent.uri().contains("test-bucket"), "{}", sent.uri());
-        assert!(sent.uri().contains("/some/key"), "{}", sent.uri());
+        assert!(
+            sent.uri()
+                .starts_with("https://s3.us-east-1.amazonaws.com/test-bucket/some/key"),
+            "path-style addressing, as `new` configures for LocalStack/MinIO: {}",
+            sent.uri()
+        );
         assert_eq!(
             sent.headers().get("content-type"),
             Some("text/plain"),

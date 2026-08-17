@@ -64,7 +64,10 @@ where
 }
 
 /// Credentials + region for code paths that build a real AWS client from the
-/// default provider chain. Keeps those paths entirely offline.
+/// default provider chain. Keeps those paths entirely offline *and* independent
+/// of the developer's machine: endpoint overrides and the shared config files
+/// are neutralised too, so a shell with LocalStack exported cannot change the
+/// URLs these tests assert on.
 pub(crate) fn offline_aws_env() -> Vec<(&'static str, Option<&'static str>)> {
     vec![
         ("AWS_ACCESS_KEY_ID", Some("test-access-key")),
@@ -72,6 +75,16 @@ pub(crate) fn offline_aws_env() -> Vec<(&'static str, Option<&'static str>)> {
         ("AWS_SESSION_TOKEN", None),
         ("AWS_PROFILE", None),
         ("AWS_EC2_METADATA_DISABLED", Some("true")),
+        ("AWS_ENDPOINT_URL", None),
+        ("AWS_ENDPOINT_URL_S3", None),
+        ("AWS_ENDPOINT_URL_DYNAMODB", None),
+        ("AWS_ENDPOINT_URL_SNS", None),
+        ("AWS_USE_FIPS_ENDPOINT", None),
+        ("AWS_USE_DUALSTACK_ENDPOINT", None),
+        // Point at a file that exists and defines nothing, so `~/.aws/config`
+        // cannot supply a region, endpoint or profile either.
+        ("AWS_CONFIG_FILE", Some("/dev/null")),
+        ("AWS_SHARED_CREDENTIALS_FILE", Some("/dev/null")),
     ]
 }
 
@@ -138,6 +151,9 @@ pub(crate) fn s3_client(http: StaticReplayClient) -> S3Client {
         .region(aws_sdk_s3::config::Region::new("us-east-1"))
         .credentials_provider(aws_sdk_s3::config::Credentials::for_tests())
         .retry_config(aws_sdk_s3::config::retry::RetryConfig::disabled())
+        // `S3Client::new` sets this, so the fake addresses objects the same way
+        // the deployed service does (path style, as LocalStack/MinIO require).
+        .force_path_style(true)
         .http_client(http)
         .build();
     S3Client {
@@ -336,8 +352,11 @@ impl RedisStub {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let handle = tokio::spawn(async move {
+            // Connections are owned by the accept loop's `JoinSet`, so aborting
+            // the loop on drop tears down every parked reader with it.
+            let mut connections = tokio::task::JoinSet::new();
             while let Ok((mut socket, _)) = listener.accept().await {
-                tokio::spawn(async move {
+                connections.spawn(async move {
                     let mut chunk = [0u8; 4096];
                     let mut pending: Vec<u8> = Vec::new();
                     loop {
@@ -424,6 +443,23 @@ mod redis_stub_tests {
                 std::str::from_utf8(garbage).unwrap()
             );
         }
+    }
+
+    #[tokio::test]
+    async fn dropping_the_stub_tears_down_live_connections() {
+        let stub = RedisStub::start(0).await;
+        let mut sock = tokio::net::TcpStream::connect(stub.url.trim_start_matches("redis://"))
+            .await
+            .unwrap();
+        drop(stub);
+
+        // The connection task is parked in `read`; aborting the accept loop must
+        // take it with it rather than leaking it for the runtime's lifetime.
+        let mut buf = [0u8; 4];
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(5), sock.read(&mut buf))
+            .await
+            .expect("the socket closes instead of staying open");
+        assert!(matches!(closed, Ok(0) | Err(_)), "{closed:?}");
     }
 
     #[tokio::test]
