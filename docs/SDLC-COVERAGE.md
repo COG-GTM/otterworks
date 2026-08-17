@@ -174,11 +174,11 @@ the IaC never defined; only file-metadata was present. Added `otterworks-folders
 into the chart. Verified end-to-end: `POST /api/v1/folders` → `201` and `GET /api/v1/folders` lists
 it back; `/api/v1/files`, `/api/v1/files/shared` return `200`.
 
-**Intentional (do not "fix").**
-- **`admin-service` (Rails) crash-loops** by design: `config/environments/production.rb` calls
+**Intentional (do not "fix") — retired on this fork.**
+- **`admin-service` (Rails) crash-loop** planted bug: `config/environments/production.rb` called
   `ActiveSupport::TaggedLogging.logger(...)` (should be `.new(Logger.new(...))`), invalid on
-  Rails 7.1 → boot fails. This is a **planted bug** for bug-hunt / remediation labs and is kept on
-  the golden app (see `AGENTS.md`). Demos that need a passing admin-service fix it in their variant.
+  Rails 7.1 → boot failed. The bug is kept on the **upstream** golden app for bug-hunt /
+  remediation labs, but has been fixed on this fork so admin-service boots (see `AGENTS.md`).
 
 **Remaining, honest gaps.**
 - Still needed for a clean CD story: ingress-nginx + cert-manager + Prometheus Operator (per org

@@ -136,10 +136,17 @@ pub async fn upload_file(
     let now = Utc::now();
     let size = file_bytes.len() as u64;
 
-    // CHAOS: when this flag is active the S3 client targets a nonexistent
-    // bucket, simulating a misconfigured bucket name after a recent infra
-    // change.  The AWS SDK returns NoSuchBucket which surfaces as a 500.
-    let effective_bucket = if chaos_active(
+    // CHAOS: when FILE_UPLOAD_ALWAYS_FAIL is set, or the Redis chaos flag is
+    // active, the S3 client targets a nonexistent bucket, simulating a
+    // misconfigured bucket name after a recent infra change.  The AWS SDK
+    // returns NoSuchBucket which surfaces as a 500.  The env var is a
+    // permanent, per-deployment switch; the Redis flag is transient.
+    let effective_bucket = if config.server.upload_always_fail {
+        tracing::warn!(
+            "FILE_UPLOAD_ALWAYS_FAIL is enabled: redirecting upload to nonexistent bucket"
+        );
+        "otterworks-files-chaos-nonexistent".to_string()
+    } else if chaos_active(
         &mut redis_cm.get_ref().clone(),
         "chaos:file-service:upload_s3_error",
     )
@@ -763,10 +770,19 @@ mod handler_tests {
             server: ServerConfig {
                 port: 8082,
                 max_upload_bytes,
+                upload_always_fail: false,
             },
             aws: aws_config_fixture(),
             sns: SnsConfig { topic_arn: None },
         })
+    }
+
+    /// The `FILE_UPLOAD_ALWAYS_FAIL` deployment switch, set on the config the
+    /// handler actually reads (no process-wide env mutation needed).
+    fn app_config_always_failing() -> web::Data<AppConfig> {
+        let mut cfg = (**app_config(1024)).clone();
+        cfg.server.upload_always_fail = true;
+        web::Data::new(cfg)
     }
 
     fn request_with_user(user_id: Option<&str>) -> HttpRequest {
@@ -1012,6 +1028,38 @@ mod handler_tests {
         assert!(
             uri.contains("otterworks-files-chaos-nonexistent"),
             "chaos flag redirects the upload: {uri}"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn upload_file_redirects_to_the_chaos_bucket_when_always_fail_is_configured() {
+        // Redis says the transient flag is *absent*, so only the deployment
+        // switch can redirect this upload.
+        let redis = RedisStub::start(0).await;
+        let (s3, s3_http) = s3_data(vec![s3_ok()]);
+        let (meta, _) = meta_data(vec![write_ok(), write_ok()]);
+        let (req, payload) = multipart_request(
+            Some(&uuid_from(OWNER).to_string()),
+            &[Part::file("file", "a.txt", "text/plain", "x")],
+        )
+        .await;
+
+        upload_file(
+            req,
+            s3,
+            meta,
+            silent_events(),
+            app_config_always_failing(),
+            web::Data::new(redis.connection_manager().await),
+            payload,
+        )
+        .await
+        .expect("upload still runs against the chaos bucket");
+
+        let uri = s3_http.actual_requests().next().unwrap().uri().to_string();
+        assert!(
+            uri.contains("otterworks-files-chaos-nonexistent"),
+            "FILE_UPLOAD_ALWAYS_FAIL redirects the upload: {uri}"
         );
     }
 
