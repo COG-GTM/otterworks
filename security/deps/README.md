@@ -34,6 +34,12 @@ between "vulnerable" (1) and "no verdict reached" (2). Get the harness invocatio
 with `make -s deps-command` and run the subcommand through it, which is what the
 CI workflow does.
 
+Exit 1 is reserved for something the harness *measured*: the vulnerable version is
+reachable, a suite failed, or a graded case diverged. Anything else — no `mvn` or
+`gradle` on `PATH`, a corrupt recording, any unanticipated crash — measured nothing
+and exits 2 with a traceback, so a run that never inspected the estate is never read
+as the documented before-state.
+
 The tree readers treat an unreadable version as *no verdict*, never as an absence.
 A Gradle coordinate is counted whether it carries a declared version, a version
 Gradle overrode (`1.9 -> 1.10.0`) or none at all because a platform/BOM supplies it

@@ -32,7 +32,8 @@ Exit codes:
     0 = gate passed
     1 = gate failed (vulnerable version present, or a graded case diverged)
     2 = could not reach a verdict: a module failed to resolve or build, a module on
-        disk is not registered, or a recording is stale. Ambiguity fails closed.
+        disk is not registered, a recording is stale, or the harness itself failed
+        (e.g. no `mvn`/`gradle` on PATH). Ambiguity fails closed.
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -231,14 +233,21 @@ def run(command: str, cwd: Path, module: Module) -> subprocess.CompletedProcess[
     env = dict(os.environ)
     if module.java_home:
         env["JAVA_HOME"] = module.java_home
-    return subprocess.run(
-        shlex.split(command),
-        cwd=cwd,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    argv = shlex.split(command)
+    try:
+        return subprocess.run(
+            argv,
+            cwd=cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as error:
+        # An absent build tool is reported like any other unmeasurable module — 127 with
+        # the reason on stderr — so the rest of the estate is still measured and this
+        # module reads `unmeasured`, never clean and never "still vulnerable".
+        return subprocess.CompletedProcess(argv, 127, "", f"cannot run {argv[0]!r}: {error}")
 
 
 # Maven indents 3 characters per level ("+- ", "|  "), Gradle 5 ("+--- ", "|    ").
@@ -801,6 +810,18 @@ def main(argv: list[str] | None = None) -> int:
         return command_transcript(modules, args.stage, args.module)
     except ConfigError as error:
         print(f"configuration error: {error}", file=sys.stderr)
+        return 2
+    except Exception:
+        # Exit 1 is reserved for a measured failure (the vulnerable version is present,
+        # or a graded case diverged). Anything the harness did not anticipate — a missing
+        # `mvn`/`gradle` on PATH, a corrupt recording — measured nothing, so it must
+        # surface as "no verdict reached" and not be read as the documented before-state.
+        traceback.print_exc()
+        print(
+            "\nNO VERDICT: the harness failed before it could measure the estate "
+            "(traceback above). This is not a statement about the advisory.",
+            file=sys.stderr,
+        )
         return 2
 
 
