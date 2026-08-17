@@ -37,8 +37,42 @@ initialize: |
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
   # here ("Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma") on every software
   # renderer, since the microVM has no GPU. minSdk is 24, so the API 37 APK runs on API 36.
-  $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
-        "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+  # Retry + verify: a partially-failed sdkmanager run doesn't stop the script here, but
+  # surfaces later at assembleDebug as a misleading "Failed to find target with hash string
+  # 'android-37'" (AGP's auto-installer then races in and can't satisfy it, since only the
+  # minor-versioned "platforms;android-37.0" package exists upstream).
+  sdk_complete() {
+    # package.xml is written on install finalization; the payload artifact catches a
+    # package whose metadata survived but whose payload is missing or zero-byte.
+    sdk_broken=""
+    for p in "platforms/android-37.0:android.jar" "build-tools/37.0.0:aapt2" \
+             "platforms/android-36:android.jar" "platform-tools:adb" \
+             "emulator:emulator" "system-images/android-36/google_apis/x86_64:system.img"; do
+      d=${p%%:*}; f=${p##*:}
+      [ -f "$ANDROID_HOME/$d/package.xml" ] && [ -s "$ANDROID_HOME/$d/$f" ] \
+        || { echo "SDK package $d missing or incomplete"; sdk_broken="$sdk_broken $d"; }
+    done
+    [ -z "$sdk_broken" ]
+  }
+  n=0
+  while :; do
+    yes | $SDKM "platform-tools" "emulator" "platforms;android-37.0" "build-tools;37.0.0" \
+          "platforms;android-36" "system-images;android-36;google_apis;x86_64"
+    sdkm_rc=$?
+    # Verification is authoritative: if all packages are present, proceed even when
+    # sdkmanager exited non-zero for some unrelated sub-step; if any is broken, repair
+    # it on the very next attempt regardless of sdkmanager's exit code.
+    if sdk_complete; then
+      [ "$sdkm_rc" -eq 0 ] || echo "sdkmanager exited $sdkm_rc but all required packages verified; continuing"
+      break
+    fi
+    # sdkmanager trusts package.xml, so a stale one would make a retry (or a later re-run of
+    # this script) skip the package as installed -- always drop broken ones.
+    for d in $sdk_broken; do rm -rf "$ANDROID_HOME/$d"; done
+    n=$((n+1)); [ "$n" -ge 4 ] && { echo "sdkmanager install failed after $n attempts"; exit 1; }
+    backoff=$((15 * (2 ** n)))
+    echo "retrying sdkmanager install ($n) in ${backoff}s"; sleep "$backoff"
+  done
   echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n otter -k "system-images;android-36;google_apis;x86_64" -d pixel_6 --force
   # Shrink the display to conserve GPU/RAM in the microVM.
   AVD_CFG=$HOME/.android/avd/otter.avd/config.ini

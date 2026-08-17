@@ -102,7 +102,19 @@ jobs:
           if [ "${GITHUB_REF_NAME}" = "main" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
           echo "golden=${golden}" >> "$GITHUB_OUTPUT"
 
-          if [ "${REBUILD_ALL}" = "true" ]; then
+          # The CI role cannot move the tenant-<id> pointer tag (no
+          # ecr:BatchDeleteImage grant), so an incremental push build fails
+          # at the retag step and the deploy never runs. Until that grant
+          # lands, deployable tenant-branch pushes behave like rebuild_all:
+          # build every service so the deploy can pin this run's immutable
+          # tag instead of the stale pointer.
+          full="${REBUILD_ALL}"
+          if [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ] \
+             && [ "${DEPLOYABLE}" = "true" ]; then
+            full=true
+          fi
+
+          if [ "${full}" = "true" ]; then
             services="$(printf '%s\n' "${ALL_SERVICES[@]}" | jq -R . | jq -sc .)"
           else
             # paths-filter emits every matching filter, including the
@@ -117,9 +129,10 @@ jobs:
           # (ecr:BatchDeleteImage). Pinning is only safe on a full rebuild:
           # the tag must exist for every service the tenant deploys.
           pin=false
-          if [ "${REBUILD_ALL}" = "true" ]; then pin=true; fi
+          if [ "${full}" = "true" ]; then pin=true; fi
           echo "pin=${pin}" >> "$GITHUB_OUTPUT"
 
+>>>>>>> origin/demo-coggtm
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
           # back byte-identical, minutes later, for no reason. Neither does a
