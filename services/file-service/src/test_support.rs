@@ -407,7 +407,13 @@ impl RedisStub {
             // Connections are owned by the accept loop's `JoinSet`, so aborting
             // the loop on drop tears down every parked reader with it.
             let mut connections = tokio::task::JoinSet::new();
-            while let Ok((mut socket, _)) = listener.accept().await {
+            loop {
+                // A transient accept error (EMFILE under parallel tests) must not
+                // kill the stub: keep serving so later connections still succeed.
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    tokio::task::yield_now().await;
+                    continue;
+                };
                 connections.spawn(async move {
                     let mut chunk = [0u8; 4096];
                     let mut pending: Vec<u8> = Vec::new();
