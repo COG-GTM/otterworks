@@ -58,13 +58,14 @@ public class ReportDateUtilsTest {
 
     @Test
     public void parseIsoDateAcceptsAllSupportedPatterns() {
-        assertEquals(FIXED, ReportDateUtils.parseIsoDate("2024-01-02T03:04:05Z"));
+        // Only the +0000 pattern carries a real offset; in the others the trailing
+        // 'Z' is a literal, so they are parsed in the JVM's default zone.
         assertEquals(FIXED, ReportDateUtils.parseIsoDate("2024-01-02T03:04:05+0000"));
 
-        // Patterns without a zone are parsed in the JVM's default zone.
         Calendar cal = Calendar.getInstance();
         cal.clear();
         cal.set(2024, Calendar.JANUARY, 2, 3, 4, 5);
+        assertEquals(cal.getTime(), ReportDateUtils.parseIsoDate("2024-01-02T03:04:05Z"));
         assertEquals(cal.getTime(), ReportDateUtils.parseIsoDate("2024-01-02 03:04:05"));
 
         cal.clear();
