@@ -1993,7 +1993,7 @@ mod handler_tests {
     #[actix_rt::test]
     async fn share_file_publishes_the_share_event_on_create_only() {
         // Creating a share notifies downstream consumers ...
-        let (meta, _) = meta_data(vec![
+        let (meta, meta_http) = meta_data(vec![
             get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
             scan_response(&[]),
             write_ok(),
@@ -2018,9 +2018,10 @@ mod handler_tests {
             uuid_from(OTHER_USER).to_string(),
             "consumers learn who gained access"
         );
+        assert_calls(&meta_http, 3);
 
         // ... but upgrading an existing share returns early and publishes nothing.
-        let (meta, _) = meta_data(vec![
+        let (meta, meta_http) = meta_data(vec![
             get_item_response(&file_item_json(uuid_from(FILE), uuid_from(OWNER), None)),
             scan_response(&[share_item_json(
                 uuid_from(SHARE),
@@ -2043,6 +2044,9 @@ mod handler_tests {
         .expect("ok");
 
         assert_calls(&sns, 0);
+        // get the file, find the existing share, update its permission -- the
+        // early return skips only the publish.
+        assert_calls(&meta_http, 3);
     }
 
     #[actix_rt::test]
