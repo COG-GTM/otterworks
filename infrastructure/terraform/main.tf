@@ -366,6 +366,14 @@ module "irsa" {
           Action   = ["cloudwatch:GetMetricData", "cloudwatch:ListMetrics"]
           Resource = ["*"]
         },
+        {
+          # Devin API credentials for incident auto-triage. Read at runtime by
+          # DevinSecretsManagerSource so the key is encrypted at rest and
+          # rotatable without redeploying or re-entering it on a tenant.
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = ["arn:aws:secretsmanager:${var.aws_region}:*:secret:otterworks/${var.environment}/devin-*"]
+        },
       ]
     })
 

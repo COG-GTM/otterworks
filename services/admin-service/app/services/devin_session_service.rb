@@ -125,6 +125,12 @@ class DevinSessionService
       org_id  = ENV.fetch('DEVIN_ORG_ID', nil).presence
       return [api_key, org_id, 'env'] if api_key && org_id
 
+      # Secrets Manager, when wired, is authoritative over the Postgres copy:
+      # it is the only store where the key is encrypted at rest and rotatable
+      # without touching the tenant.
+      secret = DevinSecretsManagerSource.credentials
+      return [secret[:api_key], secret[:org_id], 'secrets_manager'] if secret[:api_key] && secret[:org_id]
+
       stored = AdminSettingsService.devin_credentials
       source = stored[:api_key] || stored[:org_id] ? 'settings' : 'none'
       [stored[:api_key], stored[:org_id], source]

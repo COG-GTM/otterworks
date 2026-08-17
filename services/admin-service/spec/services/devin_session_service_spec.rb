@@ -59,6 +59,24 @@ RSpec.describe DevinSessionService do
       expect(status).to include(source: 'none', valid: false, error: 'Credentials not configured')
     end
 
+    it 'prefers a Secrets Manager pair over the stored one' do
+      allow(DevinSecretsManagerSource).to receive(:credentials)
+        .and_return({ api_key: 'sm-key', org_id: 'sm-org' })
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+      expect(described_class.credentials_status).to include(source: 'secrets_manager', api_key_configured: true)
+      expect(described_class.send(:credentials)).to eq(%w[sm-key sm-org])
+    end
+
+    it 'falls back to the stored pair when the secret is unavailable' do
+      allow(DevinSecretsManagerSource).to receive(:credentials).and_return({ api_key: nil, org_id: nil })
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+      expect(described_class.credentials_status).to include(source: 'settings')
+    end
+
     it 'flags a pair the Devin API rejects' do
       allow(AdminSettingsService).to receive(:devin_credentials)
         .and_return({ api_key: 'stored-key', org_id: 'org-123' })
