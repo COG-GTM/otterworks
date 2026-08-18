@@ -7,6 +7,7 @@ export interface User {
   email: string;
   displayName: string;
   avatarUrl?: string;
+  quotaBytes?: number;
   createdAt?: string;
   updatedAt?: string;
 }

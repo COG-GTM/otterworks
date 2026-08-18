@@ -3,6 +3,7 @@ import type { Ref } from "react";
 import { useDropzone } from "react-dropzone";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
+import { getQuotaExceededInfo } from "@/lib/api";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
 import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
 
@@ -37,6 +38,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
+  const [showStorageFullBanner, setShowStorageFullBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -49,6 +51,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     if (uploadingFiles.length === 0) {
       setDismissing(false);
       setShowUploadErrorBanner(false);
+      setShowStorageFullBanner(false);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
@@ -56,6 +59,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
     if (!uploadingFiles.some((f) => f.status === "error")) {
       setShowUploadErrorBanner(false);
+      setShowStorageFullBanner(false);
     }
 
     if (allDone && !hasUploading) {
@@ -87,7 +91,13 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
       setUploadingFiles((prev) =>
         prev.map((f) =>
           f.id === entry.id
-            ? { ...f, status: "uploading" as const, progress: 0, error: undefined, abortController }
+            ? {
+                ...f,
+                status: "uploading" as const,
+                progress: 0,
+                error: undefined,
+                abortController,
+              }
             : f,
         ),
       );
@@ -111,18 +121,28 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const quota = getQuotaExceededInfo(err);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
-                  ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
+                  ? {
+                      ...f,
+                      status: "error" as const,
+                      error: quota ? "Storage full" : "Upload failed",
+                      abortController: undefined,
+                    }
                   : f,
               ),
             );
-            setShowUploadErrorBanner(true);
+            if (quota) {
+              setShowStorageFullBanner(true);
+            } else {
+              setShowUploadErrorBanner(true);
+            }
             void notifyUploadFailed(entry.file.name);
           }
         });
@@ -167,6 +187,14 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
+      {showStorageFullBanner && (
+        <ChaosErrorBanner
+          className="mb-4"
+          title="Storage full"
+          message="You've reached your storage quota, so this upload couldn't be completed. Free up space by deleting files, or ask an administrator to increase your quota."
+          onDismiss={() => setShowStorageFullBanner(false)}
+        />
+      )}
       {showUploadErrorBanner && (
         <ChaosErrorBanner
           className="mb-4"
