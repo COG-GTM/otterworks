@@ -58,20 +58,6 @@ impl ServerConfig {
     }
 }
 
-fn parse_bool_env(key: &str, default: bool) -> bool {
-    env::var(key)
-        .ok()
-        .map_or(default, |raw| parse_bool(&raw, default))
-}
-
-fn parse_bool(raw: &str, default: bool) -> bool {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" => true,
-        "false" | "0" => false,
-        _ => default,
-    }
-}
-
 impl AwsConfig {
     pub fn from_env() -> Self {
         Self {
@@ -95,41 +81,5 @@ impl SnsConfig {
         Self {
             topic_arn: env::var("SNS_TOPIC_ARN").ok(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{parse_bool, parse_bool_env};
-
-    #[test]
-    fn parse_bool_accepts_true_and_one() {
-        for raw in ["true", "TRUE", " True ", "1"] {
-            assert!(parse_bool(raw, false), "raw={raw}");
-        }
-    }
-
-    #[test]
-    fn parse_bool_accepts_false_and_zero() {
-        for raw in ["false", "FALSE", " False ", "0"] {
-            assert!(!parse_bool(raw, true), "raw={raw}");
-        }
-    }
-
-    #[test]
-    fn parse_bool_falls_back_to_default_on_empty_or_garbage() {
-        for raw in ["", "  ", "yes"] {
-            assert!(!parse_bool(raw, false), "raw={raw}");
-            assert!(parse_bool(raw, true), "raw={raw}");
-        }
-    }
-
-    #[test]
-    fn parse_bool_env_defaults_when_unset() {
-        assert!(!parse_bool_env(
-            "OTTERWORKS_DEFINITELY_UNSET_ENV_VAR",
-            false
-        ));
-        assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 }
