@@ -21,6 +21,9 @@ pub enum ServiceError {
     #[error("File too large: max {max_bytes} bytes, got {actual_bytes} bytes")]
     FileTooLarge { max_bytes: u64, actual_bytes: u64 },
 
+    #[error("Storage quota exceeded: quota {quota_bytes} bytes, used {used_bytes} bytes")]
+    QuotaExceeded { quota_bytes: u64, used_bytes: u64 },
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -42,6 +45,18 @@ pub enum ServiceError {
 
 impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
+        if let ServiceError::QuotaExceeded {
+            quota_bytes,
+            used_bytes,
+        } = self
+        {
+            return HttpResponse::PayloadTooLarge().json(QuotaExceededResponse {
+                error: "quota_exceeded".into(),
+                quota_bytes: *quota_bytes,
+                used_bytes: *used_bytes,
+            });
+        }
+
         let (status, error_type) = match self {
             ServiceError::FileNotFound(_) => {
                 (actix_web::http::StatusCode::NOT_FOUND, "file_not_found")
@@ -58,6 +73,8 @@ impl ResponseError for ServiceError {
             ServiceError::BadRequest(_) => {
                 (actix_web::http::StatusCode::BAD_REQUEST, "bad_request")
             }
+            // QuotaExceeded is handled above with its structured body.
+            ServiceError::QuotaExceeded { .. } => unreachable!("handled above"),
             ServiceError::FileTooLarge { .. } => (
                 actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",
@@ -89,6 +106,13 @@ impl ResponseError for ServiceError {
             message: self.to_string(),
         })
     }
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct QuotaExceededResponse {
+    pub error: String,
+    pub quota_bytes: u64,
+    pub used_bytes: u64,
 }
 
 #[derive(Debug, serde::Serialize)]

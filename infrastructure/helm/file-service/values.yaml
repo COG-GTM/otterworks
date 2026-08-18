@@ -60,6 +60,8 @@ config:
   #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
   #   kubectl -n otterworks-<ID> rollout restart deploy/file-service
   FILE_UPLOAD_ALWAYS_FAIL: "false"
+  # In-cluster auth-service base URL used for per-user quota lookups on upload.
+  AUTH_SERVICE_URL: "http://auth-service:8081"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
