@@ -10,6 +10,10 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        # Services whose open incidents a reset should clear.  file-service has no
+        # chaos scenario but its upload alerts still create incidents.
+        RESOLVABLE_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).freeze
+
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -45,10 +49,10 @@ module Api
           keys = redis.keys('chaos:*')
           redis.del(*keys) if keys.any?
 
-          # Resolve any open incidents for chaos-managed services so the next
-          # demo run can create fresh incidents without hitting the dedup guard.
+          # Resolve any open incidents for these services so the next run can
+          # create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          VALID_SCENARIOS.each_key do |svc|
+          RESOLVABLE_SERVICES.each do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|
