@@ -135,6 +135,21 @@ class Module:
     unmeasurable: str | None = None
 
 
+@dataclass(frozen=True)
+class Exemption:
+    """A JVM build file deliberately left out of the blast radius.
+
+    Exempting a module removes it from every report, so an exemption is itself evidence:
+    it is printed under the inventory table and carried in the JSON reports, and its
+    `reason` is required. Otherwise moving the one vulnerable module under `exempt:`
+    would turn a vulnerable estate into `GATE PASSED` with nothing in the output saying
+    a module went unmeasured.
+    """
+
+    path: str
+    reason: str
+
+
 @dataclass
 class Occurrence:
     version: str
@@ -215,7 +230,7 @@ def resolve_tool(
     return None
 
 
-def load_modules() -> list[Module]:
+def load_registry() -> tuple[list[Module], list[Exemption]]:
     raw = yaml.safe_load((DEPS_DIR / "modules.yaml").read_text())
     modules = []
     for entry in raw["modules"]:
@@ -249,14 +264,23 @@ def load_modules() -> list[Module]:
                 unmeasurable=unmeasurable,
             )
         )
-    discovery_check(modules, raw.get("exempt", []))
-    return modules
+    exemptions = []
+    for item in raw.get("exempt", []):
+        reason = (item.get("reason") or "").strip()
+        if not reason:
+            raise ConfigError(
+                f"exempt entry {item['path']!r} has no reason: an unmeasured module is "
+                "only defensible with a stated one, and the reason is reported."
+            )
+        exemptions.append(Exemption(path=item["path"], reason=" ".join(reason.split())))
+    discovery_check(modules, exemptions)
+    return modules, exemptions
 
 
-def discovery_check(modules: list[Module], exempt: list[dict[str, str]]) -> None:
+def discovery_check(modules: list[Module], exempt: list[Exemption]) -> None:
     """A JVM build file that is neither registered nor exempt fails the run."""
     registered = {module.path.resolve() for module in modules}
-    exempt_paths = [(REPO_ROOT / item["path"]).resolve() for item in exempt]
+    exempt_paths = [(REPO_ROOT / item.path).resolve() for item in exempt]
     unregistered = []
     for pattern in ("**/pom.xml", "**/build.gradle", "**/build.gradle.kts"):
         for build_file in REPO_ROOT.glob(pattern):
@@ -457,7 +481,9 @@ def inventory_rows(advisory: Advisory, trees: list[ModuleTree]) -> list[list[str
     return rows
 
 
-def print_inventory(advisory: Advisory, trees: list[ModuleTree]) -> None:
+def print_inventory(
+    advisory: Advisory, trees: list[ModuleTree], exemptions: list[Exemption]
+) -> None:
     print(f"{advisory.id}: {advisory.artifact} vulnerable in "
           f"[{advisory.introduced}, {advisory.fixed}) — {advisory.title}")
     print()
@@ -468,9 +494,15 @@ def print_inventory(advisory: Advisory, trees: list[ModuleTree]) -> None:
             tablefmt="github",
         )
     )
+    # Printed with the table, never only in the file: what was left out of the blast
+    # radius has to be as visible as what was measured.
+    for exemption in exemptions:
+        print(f"\nnot measured (exempt): {exemption.path} — {exemption.reason}")
 
 
-def inventory_payload(advisory: Advisory, trees: list[ModuleTree]) -> dict[str, Any]:
+def inventory_payload(
+    advisory: Advisory, trees: list[ModuleTree], exemptions: list[Exemption]
+) -> dict[str, Any]:
     return {
         "advisory": advisory.id,
         "artifact": advisory.artifact,
@@ -496,24 +528,31 @@ def inventory_payload(advisory: Advisory, trees: list[ModuleTree]) -> dict[str, 
             }
             for tree in trees
         ],
+        "exempt": [
+            {"path": exemption.path, "reason": exemption.reason} for exemption in exemptions
+        ],
     }
 
 
 # --------------------------------------------------------------------------- gates
 
 
-def command_inventory(advisory: Advisory, modules: list[Module]) -> int:
+def command_inventory(
+    advisory: Advisory, modules: list[Module], exemptions: list[Exemption]
+) -> int:
     trees = collect_trees(advisory, modules)
-    print_inventory(advisory, trees)
-    path = write_report("inventory.json", inventory_payload(advisory, trees))
+    print_inventory(advisory, trees, exemptions)
+    path = write_report("inventory.json", inventory_payload(advisory, trees, exemptions))
     print(f"\nreport: {path.relative_to(REPO_ROOT)}")
     return 2 if any(tree.status != PASS for tree in trees) else 0
 
 
-def command_gate(advisory: Advisory, modules: list[Module]) -> int:
+def command_gate(
+    advisory: Advisory, modules: list[Module], exemptions: list[Exemption]
+) -> int:
     trees = collect_trees(advisory, modules)
-    print_inventory(advisory, trees)
-    payload = inventory_payload(advisory, trees)
+    print_inventory(advisory, trees, exemptions)
+    payload = inventory_payload(advisory, trees, exemptions)
     unmeasured = [tree.module.id for tree in trees if tree.status != PASS]
     vulnerable = [
         f"{tree.module.id} -> {advisory.artifact}:{occurrence.version}"
@@ -538,9 +577,15 @@ def command_gate(advisory: Advisory, modules: list[Module]) -> int:
         for item in vulnerable:
             print(f"  - {item}", file=sys.stderr)
         return 1
+    exempt_note = (
+        f"; {len(exemptions)} build file(s) exempt and unmeasured: "
+        + ", ".join(exemption.path for exemption in exemptions)
+        if exemptions
+        else ""
+    )
     print(f"\nGATE PASSED: no {advisory.artifact} version in "
           f"[{advisory.introduced}, {advisory.fixed}) in any measured tree "
-          f"({len(trees)} modules).")
+          f"({len(trees)} modules{exempt_note}).")
     return 0
 
 
@@ -656,7 +701,10 @@ def emit_transcript(module: Module) -> dict[str, Any]:
         )
     else:
         command = (
-            f"{module.tool} test --no-daemon --console=plain "
+            # `--rerun-tasks`: the observed transcript is written by the test itself, and
+            # Gradle does not see the `-D` properties as task inputs, so an UP-TO-DATE
+            # `:test` would leave the harness grading a previous run's output.
+            f"{module.tool} test --rerun-tasks --no-daemon --console=plain "
             f"--tests '*{EMITTER_TEST}' {properties}"
         )
     result = run(command, module.path, module)
@@ -711,7 +759,7 @@ def grade_module(module: Module, stage: str) -> dict[str, Any]:
                           f"observed {len(observed_cases)}"}
 
     results = []
-    # Order is compared as recorded: neither side is sorted or canonicalised.
+    # Order is compared as recorded: neither side is sorted or canonicalized.
     for spec, want, got in zip(specs, recorded_cases, observed_cases, strict=True):
         if not (spec["id"] == want["id"] == got["id"]):
             return {"module": module.id, "status": MISSING,
@@ -720,7 +768,7 @@ def grade_module(module: Module, stage: str) -> dict[str, Any]:
         policy = spec["policy"]
         if policy == "contract" or stage == "baseline":
             ok = same_outcome(want, got)
-            why = "" if ok else f"recorded {summarise(want)}, observed {summarise(got)}"
+            why = "" if ok else f"recorded {summarize(want)}, observed {summarize(got)}"
         elif policy == "attack":
             marker = spec["attack_marker"]
             ok = (
@@ -729,8 +777,8 @@ def grade_module(module: Module, stage: str) -> dict[str, Any]:
                 and not same_outcome(want, got)
             )
             why = "" if ok else (
-                f"lookup not neutralized: recorded {summarise(want)}, observed "
-                f"{summarise(got)}, expected the literal {marker!r} to survive"
+                f"lookup not neutralized: recorded {summarize(want)}, observed "
+                f"{summarize(got)}, expected the literal {marker!r} to survive"
             )
         else:
             raise ConfigError(f"{module.id}/{spec['id']}: unknown policy {policy!r}")
@@ -747,7 +795,7 @@ def grade_module(module: Module, stage: str) -> dict[str, Any]:
     }
 
 
-def summarise(case: dict[str, Any]) -> str:
+def summarize(case: dict[str, Any]) -> str:
     if case["outcome"] == "ok":
         return f"ok {case.get('value')!r}"
     return f"error {case.get('error_type')} ({case.get('error_message')})"
@@ -856,11 +904,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         advisory = load_advisory()
-        modules = load_modules()
+        modules, exemptions = load_registry()
         if args.command == "inventory":
-            return command_inventory(advisory, modules)
+            return command_inventory(advisory, modules, exemptions)
         if args.command == "gate":
-            return command_gate(advisory, modules)
+            return command_gate(advisory, modules, exemptions)
         if args.command == "tests":
             return command_tests(modules, args.module)
         if args.record:

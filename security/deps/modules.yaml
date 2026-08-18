@@ -51,8 +51,10 @@ modules:
       - $JAVA_HOME_17_X64
       - /usr/lib/jvm/java-17-openjdk-amd64
     # No wrapper in this module, so the `gradle` on PATH — which both ci.yml and the
-    # dependency workflow pin to 8.6 with setup-gradle.
-    test: test --no-daemon
+    # dependency workflow pin to 8.6 with setup-gradle. `--rerun-tasks` because the
+    # suite counts are the evidence: an UP-TO-DATE `:test` would let the harness read
+    # the previous run's XML and present it as a fresh measurement.
+    test: test --rerun-tasks --no-daemon
     cases: cases/notification-service.json
 
   - id: auth-service
@@ -66,7 +68,7 @@ modules:
     tool:
       - ./gradlew
       - gradle
-    test: test --no-daemon
+    test: test --rerun-tasks --no-daemon
     # No interpolation call path: measured for the dependency tree only. A tree
     # hit here would still be reported, which is the point of measuring it.
     cases: null

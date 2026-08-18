@@ -66,7 +66,7 @@ recording: that is how the before-state proves it still reproduces.
 advisory gate's own verdict, so neither contract can be skipped.
 
 Cases are self-contained: a case that needs a file on disk carries its
-`fixture_content` and the harness materialises it, so a recording never depends
+`fixture_content` and the harness materializes it, so a recording never depends
 on setup the replay does not reproduce.
 
 ## Recording is audited
@@ -101,9 +101,14 @@ measured instead of silently skipping a module.
 Register it in `modules.yaml`. Discovery cross-checks the registry against the
 `pom.xml` / `build.gradle{,.kts}` files on disk: a JVM build file that is neither
 registered nor listed under `exempt` (with a reason) fails every command, so the
-blast radius cannot quietly become partial. To give a module behavior cases, add
-`cases/<module>.json` and a `DependencyTranscriptEmitterTest` in its own test
-sources — the emitter records outcomes and the harness grades them, so one
+blast radius cannot quietly become partial. An exemption is itself reported — the
+`reason` is required, each one is printed under the inventory table, carried in
+`inventory.json`/`gate.json` and named on the `GATE PASSED` line — so moving a
+module under `exempt:` cannot turn a vulnerable estate into a silent pass.
+
+To give a module behavior cases, add `cases/<module>.json` and a
+`DependencyTranscriptEmitterTest` in its own test sources — the emitter records
+outcomes and the harness grades them, so one
 comparator governs Java, Kotlin, Maven and Gradle alike.
 
 ## Reports
