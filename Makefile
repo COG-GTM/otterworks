@@ -1,9 +1,59 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap dast-coverage dast-routes dast-test
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test
 
 SHELL := /bin/bash
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+PROCS_COMPOSE = docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
+PROCS_UV = uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
+PROCS_PORT_OFFSET = $(shell if command -v python3 >/dev/null 2>&1 && test -n "$(NS)"; then python3 -c "import zlib; print(zlib.crc32('$(NS)'.encode()) % 1000)"; fi)
+PROCS_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(55432 + $(PROCS_PORT_OFFSET))")
+PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(8096 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
+PROCS_ENV = NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
+
+procs-validate:
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
+	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required for namespace port derivation" >&2; exit 2)
+	@test -n "$(PROCS_PORT_OFFSET)" || (echo "could not derive namespace port offset" >&2; exit 2)
+
+procs-up: procs-validate ## Start the legacy billing stored-procedure stack (NS=<namespace>)
+	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
+
+procs-down: procs-validate ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
+	$(PROCS_ENV) $(PROCS_COMPOSE) down -v
+
+procs-record: procs-validate ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
+	$(PROCS_ENV) DB_NAME=billing_$(NS) DB_PORT=$(PROCS_DB_PORT) $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),) $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),) $(if $(ALLOW_RERECORD),--allow-rerecord,) $(if $(RERECORD_REASON),--rerecord-reason $(RERECORD_REASON),)
+
+procs-list: ## List stored-procedure modules and scenarios
+	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
+
+procs-parity: procs-validate ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
+	$(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
+
+procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module> or ALL=1)
+	@test -n "$(MODULE)$(ALL)" || (echo "MODULE or ALL=1 is required" >&2; exit 2)
+	uv run --with pyyaml==6.0.2 procs/harness/rules_gate.py $(if $(ALL),--all,--module $(MODULE))
+
+# --- Industry Solutions: insurance Commission Pay (Oracle) ---
+
+INSURANCE_COMPOSE = docker compose -f docker-compose.insurance.yml -p otterworks-insurance-$(NS)
+INSURANCE_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(51521 + $(PROCS_PORT_OFFSET))")
+INSURANCE_ENV = NS=$(NS) INSURANCE_DB_PORT=$(INSURANCE_DB_PORT)
+INSURANCE_SQLPLUS = docker exec -i otterworks-insurance-$(NS)-insurance-oracle-1 sqlplus -s
+
+insurance-up: procs-validate ## Start the Oracle insurance Commission Pay fixture (NS=<namespace>)
+	$(INSURANCE_ENV) $(INSURANCE_COMPOSE) up -d --wait --wait-timeout 900
+
+insurance-down: procs-validate ## Stop the Oracle insurance fixture and drop its data (NS=<namespace>)
+	$(INSURANCE_ENV) $(INSURANCE_COMPOSE) down -v
+
+insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites (NS=<namespace>)
+	$(INSURANCE_SQLPLUS) commission_pay/commission_pay@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_tests.sql
+	$(INSURANCE_SQLPLUS) commission_dw/commission_dw@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_olap_tests.sql
 
 # --- Local Development ---
 
@@ -298,6 +348,37 @@ dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
 		     "missing from this run. Running the probe suite on its own."; \
 		$(DAST) --target $(DAST_TARGET); \
 	fi
+
+# --- Dependency CVE remediation ---
+#
+# The advisory (security/deps/advisory.yaml) names the artifact and its vulnerable
+# range; modules.yaml registers every JVM module so the blast radius cannot be
+# partial. Reports land in security/deps/reports/ (git-ignored: collect them as CI
+# artifacts and paste the summary into the PR).
+
+DEPS := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 security/deps/harness/deps_check.py
+
+deps-inventory: ## Report the blast radius of the advisory across every JVM module
+	$(DEPS) inventory
+
+deps-gate: ## Fail if the vulnerable version is still reachable from any dependency tree
+	$(DEPS) gate
+
+deps-command: ## Print the harness invocation, for callers that need its exact exit code
+	@echo '$(DEPS)'
+
+deps-tests: ## Build and run every affected module's own suite (MODULE=<id> optional)
+	$(DEPS) tests $(if $(MODULE),--module $(MODULE),)
+
+deps-transcript: ## Grade interpolation behavior after remediation (MODULE=<id> optional)
+	$(DEPS) transcript --stage remediated $(if $(MODULE),--module $(MODULE),)
+
+deps-transcript-baseline: ## Prove the recorded before-state still reproduces (MODULE=<id> optional)
+	$(DEPS) transcript --stage baseline $(if $(MODULE),--module $(MODULE),)
+
+deps-record: ## Record the transcripts as the reference evidence (REASON="..." required)
+	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make deps-record REASON="baseline on commons-text 1.9"' >&2; exit 2)
+	$(DEPS) transcript --record --reason "$(REASON)" $(if $(MODULE),--module $(MODULE),) $(if $(ALLOW_RERECORD),--allow-rerecord,)
 
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test

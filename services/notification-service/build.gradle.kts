@@ -21,6 +21,7 @@ val awsSdkVersion = "1.0.70"
 val coroutinesVersion = "1.8.0"
 val koinVersion = "3.5.3"
 val micrometerVersion = "1.12.4"
+val commonsTextVersion = "1.9"
 
 dependencies {
     // Ktor Server
@@ -45,6 +46,9 @@ dependencies {
     implementation("aws.sdk.kotlin:sns:$awsSdkVersion")
     implementation("aws.sdk.kotlin:ses:$awsSdkVersion")
     implementation("aws.sdk.kotlin:dynamodb:$awsSdkVersion")
+
+    // Notification template interpolation
+    implementation("org.apache.commons:commons-text:$commonsTextVersion")
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
@@ -84,4 +88,9 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnit()
+    // Passthrough for the dependency transcript harness (security/deps); without these
+    // properties the emitter test skips itself.
+    listOf("ow.deps.cases", "ow.deps.observed").forEach { key ->
+        System.getProperty(key)?.let { systemProperty(key, it) }
+    }
 }

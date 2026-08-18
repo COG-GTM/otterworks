@@ -1,0 +1,13 @@
+id: RATING-003
+module: rating
+description: Rate tenant 2 for 2026-02-01 through 2026-02-28 with 700 units.
+entrypoint: billing.fn_usage_rating
+kind: function
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000002}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+fields:
+  - {name: billable_units, from: billable_units, type: integer}
+  - {name: overage_amount, from: overage_amount, type: decimal}
+probes: []
