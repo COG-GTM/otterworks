@@ -10,6 +10,7 @@ mod handlers;
 mod metadata;
 mod middleware;
 mod models;
+mod quota;
 mod storage;
 
 #[actix_web::main]
@@ -28,6 +29,7 @@ async fn main() -> std::io::Result<()> {
     let s3_client = storage::S3Client::new(&app_config.aws).await;
     let meta_client = metadata::MetadataClient::new(&app_config.aws).await;
     let event_publisher = events::EventPublisher::new(&app_config.sns, &app_config.aws).await;
+    let quota_client = quota::QuotaClient::new(&app_config.server.auth_service_url);
 
     let redis_url = {
         let host = std::env::var("REDIS_HOST").unwrap_or_else(|_| "localhost".into());
@@ -47,6 +49,7 @@ async fn main() -> std::io::Result<()> {
     let meta_data = web::Data::new(meta_client);
     let events_data = web::Data::new(event_publisher);
     let redis_data = web::Data::new(redis_cm);
+    let quota_data = web::Data::new(quota_client);
 
     HttpServer::new(move || {
         App::new()
@@ -58,6 +61,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(meta_data.clone())
             .app_data(events_data.clone())
             .app_data(redis_data.clone())
+            .app_data(quota_data.clone())
             .route("/health", web::get().to(handlers::health))
             .route("/metrics", web::get().to(handlers::metrics))
             .service(

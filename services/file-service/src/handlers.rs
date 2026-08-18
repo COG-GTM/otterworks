@@ -15,6 +15,8 @@ use crate::errors::ServiceError;
 use crate::events::EventPublisher;
 use crate::metadata::MetadataClient;
 use crate::middleware;
+use crate::quota::{check_quota, QuotaClient};
+
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
@@ -42,6 +44,7 @@ pub async fn metrics() -> HttpResponse {
 
 // -- File Handlers --
 
+#[allow(clippy::too_many_arguments)]
 pub async fn upload_file(
     req: HttpRequest,
     s3: web::Data<S3Client>,
@@ -49,6 +52,7 @@ pub async fn upload_file(
     events: web::Data<EventPublisher>,
     config: web::Data<AppConfig>,
     redis_cm: web::Data<redis::aio::ConnectionManager>,
+    quota_client: web::Data<QuotaClient>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
     // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
@@ -135,6 +139,23 @@ pub async fn upload_file(
     let s3_key = format!("files/{}/{}", owner, file_id);
     let now = Utc::now();
     let size = file_bytes.len() as u64;
+
+    // Per-user storage quota: usage is the sum of the owner's non-trashed
+    // files; the quota comes from auth-service. Fail open if the quota
+    // cannot be fetched so uploads keep working when auth-service is down.
+    let bearer = req
+        .headers()
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok());
+    if let Some(quota_bytes) = quota_client.fetch_quota_bytes(&owner, bearer).await {
+        let used_bytes: u64 = meta
+            .list_files(None, Some(owner), false)
+            .await?
+            .iter()
+            .map(|f| f.size_bytes)
+            .sum();
+        check_quota(quota_bytes, used_bytes, size)?;
+    }
 
     // CHAOS: when FILE_UPLOAD_ALWAYS_FAIL is set, or the Redis chaos flag is
     // active, the S3 client targets a nonexistent bucket, simulating a

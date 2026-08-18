@@ -14,6 +14,8 @@ pub struct ServerConfig {
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
+    /// Base URL of auth-service, used to look up per-user storage quotas.
+    pub auth_service_url: String,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +56,8 @@ impl ServerConfig {
                 .parse()
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
+            auth_service_url: env::var("AUTH_SERVICE_URL")
+                .unwrap_or_else(|_| "http://auth-service:8081".into()),
         }
     }
 }
