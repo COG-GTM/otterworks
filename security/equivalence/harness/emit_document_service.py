@@ -25,6 +25,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 from uuid import UUID
 
@@ -264,7 +265,7 @@ async def probe_case(fixture: Fixture, case: dict[str, Any]) -> Any:
         # default salt; nothing secret is needed to derive a token.
         document_id = args["document_id"]
         guess = hashlib.md5(
-            f"{document_id}:{args['salt']}".encode()
+            f"{document_id}:{args['salt']}".encode(), usedforsecurity=False
         ).hexdigest()[: args.get("length", 16)]
         return {
             "forged_token_accepted": ShareLinkService().verify_token(document_id, guess),
@@ -291,14 +292,32 @@ async def observe(fixture: Fixture, case: dict[str, Any]) -> dict[str, Any]:
     return {"id": case["id"], "outcome": "ok", "value": json_ready(value)}
 
 
+def interface_modules() -> dict[str, ModuleType]:
+    """The modules whose signatures a finding may pin, keyed by dotted name.
+
+    An allowlist rather than an import of whatever the case file names: the case
+    file is data, and importing an arbitrary module named in data would execute
+    it.
+    """
+    from app.services import document_query_repository, export_archive, share_link
+
+    return {
+        "app.services.document_query_repository": document_query_repository,
+        "app.services.export_archive": export_archive,
+        "app.services.share_link": share_link,
+    }
+
+
 def capture_interface(members: list[str]) -> dict[str, str]:
     """Record the signature of every public member the finding must preserve."""
-    import importlib
-
+    modules = interface_modules()
     signatures: dict[str, str] = {}
     for member in members:
         module_name, _, attribute = member.partition(":")
-        obj = importlib.import_module(module_name)
+        module = modules.get(module_name)
+        if module is None:
+            raise KeyError(f"module is not an interface subject: {module_name}")
+        obj: object = module
         for part in attribute.split("."):
             obj = getattr(obj, part)
         signatures[member] = f"{attribute.split('.')[-1]}{inspect.signature(obj)}"

@@ -502,9 +502,10 @@
  "finding": "OW-SEC-401",
  "fingerprint": {
   "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
-  "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
+  "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
   "subject_sha256": {
+   "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1",
    "services/document-service/app/services/document_query_repository.py": "bee47ac5251c824f53a43b60abae79b42eef0c347d2b14ffbf04540b7764c769"
   }
  },
@@ -514,22 +515,22 @@
   "app.services.document_query_repository:DocumentQueryRepository.search_documents": "search_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, folder_id: 'str | None' = None, sort: 'str' = 'updated_at', direction: 'str' = 'desc', limit: 'int' = 20, offset: 'int' = 0) -> 'list[dict[str, Any]]'"
  },
  "module": "document-service",
- "reason": "Seed gains a folder and OW-SEC-401 gains a folder-scoped contract case so the filtered list path's folder predicate is covered by the equivalence contract.",
- "recorded_at": "2026-08-18T00:06:41.445786+00:00",
+ "reason": "Fingerprint coverage widened: the HTTP contract cases traverse app/api/documents.py, so the route module is now part of every finding's subject list; the filtered list path also now reuses DocumentService.paginate and routes caller-chosen ordering through the same query path.",
+ "recorded_at": "2026-08-18T00:14:28.002630+00:00",
  "rerecorded_from": {
   "fingerprint": {
-   "cases_sha256": "bfe74486d94b98bcf8256348b37e380a66eb1660871f07b8a1532372391b84cd",
-   "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
-   "seed_sha256": "47fd80157a98466ff445b412bbf5397c1d789f51695387c0c40d97aca45bdca4",
+   "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
+   "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
+   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
    "subject_sha256": {
-    "services/document-service/app/services/document_query_repository.py": "d58f1c740222d123e02e4c81dcf5cf53c88ea405445f04ebb5ac3a0cfa30ee49"
+    "services/document-service/app/services/document_query_repository.py": "bee47ac5251c824f53a43b60abae79b42eef0c347d2b14ffbf04540b7764c769"
    }
   },
-  "reason": "re-record: the unknown-token case literal was changed to a non-secret-looking string so the secret scanner does not flag the fixture",
-  "recorded_at": "2026-08-17T23:56:03.923458+00:00"
+  "reason": "Harness hardening only: the emitter now derives the forged token with usedforsecurity=False and resolves interface modules from an allowlist instead of importlib on case data; observable behaviour is unchanged.",
+  "recorded_at": "2026-08-18T00:10:36.702574+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-bbujqnqk/junit.xml",
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-xvsetkss/junit.xml",
   "exit_code": 1,
   "failed": [
    "tests.test_documents_api::test_delete_document",

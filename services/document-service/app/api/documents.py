@@ -31,6 +31,9 @@ from app.services.share_link import ShareLinkService
 logger = structlog.get_logger()
 router = APIRouter()
 
+DEFAULT_SORT = "updated_at"
+DEFAULT_DIRECTION = "desc"
+
 _redis_client: redis_lib.Redis | None = None
 
 
@@ -246,18 +249,29 @@ async def _do_filter_documents(
         )
     except SQLAlchemyError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid filter: {exc}") from exc
-    pages = (total + size - 1) // size if total else 0
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(row) for row in rows],
         total=total,
         page=page,
         size=size,
-        pages=pages,
+        pages=DocumentService.paginate(total, page, size),
     )
 
 
-def _is_filtered(title: str | None, content_type: str | None) -> bool:
-    return title is not None or content_type is not None
+def _is_filtered(
+    title: str | None, content_type: str | None, sort: str, direction: str
+) -> bool:
+    """Whether the request needs the metadata-filter query path.
+
+    Caller-chosen ordering only exists on that path, so a request that asks for
+    one goes there too rather than silently getting the default order.
+    """
+    return (
+        title is not None
+        or content_type is not None
+        or sort != DEFAULT_SORT
+        or direction != DEFAULT_DIRECTION
+    )
 
 
 @router.get("/", response_model=DocumentListResponse)
@@ -267,15 +281,15 @@ async def list_documents(
     folder_id: UUID | None = None,
     title: str | None = None,
     content_type: str | None = None,
-    sort: str = "updated_at",
-    direction: str = "desc",
+    sort: str = DEFAULT_SORT,
+    direction: str = DEFAULT_DIRECTION,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
     effective_owner = owner_id or _extract_user_id(request)
-    if _is_filtered(title, content_type):
+    if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
             folder_id,
@@ -301,15 +315,15 @@ async def list_documents_no_slash(
     folder_id: UUID | None = None,
     title: str | None = None,
     content_type: str | None = None,
-    sort: str = "updated_at",
-    direction: str = "desc",
+    sort: str = DEFAULT_SORT,
+    direction: str = DEFAULT_DIRECTION,
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
     effective_owner = owner_id or _extract_user_id(request)
-    if _is_filtered(title, content_type):
+    if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
             folder_id,

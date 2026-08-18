@@ -338,7 +338,11 @@ def write_report(name: str, payload: dict[str, Any]) -> Path:
 def worst(statuses: list[str]) -> str:
     if any(status in INCONCLUSIVE for status in statuses):
         return next(status for status in statuses if status in INCONCLUSIVE)
-    return FAIL if FAIL in statuses else OK
+    if FAIL in statuses:
+        return FAIL
+    # A finding nothing could be judged for is not closed: an exploit run over a
+    # finding with no attack cases must exit 3, never 0.
+    return NO_VERDICT if NO_VERDICT in statuses else OK
 
 
 def exit_code_for(status: str) -> int:

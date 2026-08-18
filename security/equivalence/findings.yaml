@@ -27,6 +27,9 @@ findings:
     methods: [_where, count_documents, search_documents]
     subject:
       - services/document-service/app/services/document_query_repository.py
+      # The HTTP cases traverse the route module, so it is part of what the
+      # recording observes and must invalidate stale evidence too.
+      - services/document-service/app/api/documents.py
     secure_pattern: >
       Bind every caller-supplied value as a query parameter and resolve ORDER BY
       from an allow-list of column names and directions; never interpolate a
@@ -42,6 +45,9 @@ findings:
     methods: [read_export]
     subject:
       - services/document-service/app/services/export_archive.py
+      # The HTTP cases traverse the route module, so it is part of what the
+      # recording observes and must invalidate stale evidence too.
+      - services/document-service/app/api/documents.py
     secure_pattern: >
       Resolve the joined path and require it to stay inside the resolved archive
       root before opening it, keeping legitimate subdirectory reads working.
@@ -56,6 +62,9 @@ findings:
     methods: [mint_token, verify_token]
     subject:
       - services/document-service/app/services/share_link.py
+      # The HTTP cases traverse the route module, so it is part of what the
+      # recording observes and must invalidate stale evidence too.
+      - services/document-service/app/api/documents.py
     secure_pattern: >
       Derive the token with a keyed MAC (HMAC-SHA256 over the document id using
       SHARE_LINK_SECRET) and compare in constant time, so a token cannot be

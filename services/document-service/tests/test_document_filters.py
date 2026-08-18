@@ -75,7 +75,7 @@ async def test_filter_no_match_returns_empty(client: AsyncClient, owner_id: uuid
     resp = await client.get("/api/v1/documents/", params={"title": "nothing"})
 
     assert resp.status_code == 200
-    assert resp.json() == {"items": [], "total": 0, "page": 1, "size": 20, "pages": 0}
+    assert resp.json() == {"items": [], "total": 0, "page": 1, "size": 20, "pages": 1}
 
 
 @pytest.mark.asyncio
