@@ -47,6 +47,18 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(body['api_key_configured']).to be(false)
       expect(body['org_id_configured']).to be(false)
     end
+
+    it 'keeps the response shape when the post-revoke status read fails' do
+      allow(AdminSettingsService).to receive(:clear_devin_credentials).and_return(true)
+      allow(DevinSessionService).to receive(:credentials_status).and_raise(StandardError, 'pg down')
+
+      delete :destroy_devin_credentials
+      expect(response).to have_http_status(:ok)
+      body = response.parsed_body
+      # nil, not false: the revoke happened but presence could not be read.
+      expect(body).to include('api_key_configured' => nil, 'org_id_configured' => nil,
+                              'status_unavailable' => true, 'legacy_cache_cleared' => true)
+    end
   end
 
   describe 'PUT #update_devin_credentials' do
@@ -68,6 +80,16 @@ RSpec.describe Api::V1::Admin::SettingsController do
     it 'rejects a missing parameter' do
       put :update_devin_credentials, params: { api_key: 'key' }
       expect(response).to have_http_status(:bad_request)
+    end
+
+    it 'refuses an org id that would reshape the outbound Devin request' do
+      allow(AdminSettingsService).to receive(:set_devin_credentials)
+      allow(DevinSessionService).to receive(:verify_credentials)
+
+      put :update_devin_credentials, params: { api_key: 'key', org_id: 'org-1/sessions/../../foo' }
+      expect(response).to have_http_status(:bad_request)
+      expect(DevinSessionService).not_to have_received(:verify_credentials)
+      expect(AdminSettingsService).not_to have_received(:set_devin_credentials)
     end
 
     it 'refuses to store a pair the Devin API rejects' do

@@ -2,6 +2,11 @@ module Api
   module V1
     module Admin
       class SettingsController < ApplicationController
+        # An org id ends up in the path of an outbound Devin API call whose
+        # status comes back to the caller, so it is constrained to what an id
+        # can contain rather than merely escaped.
+        ORG_ID_FORMAT = /\A[A-Za-z0-9._-]{1,128}\z/
+
         # GET /api/v1/admin/settings/auto_investigate
         def auto_investigate
           render json: { enabled: AdminSettingsService.auto_investigate_enabled? }
@@ -34,6 +39,9 @@ module Api
           org_id  = params[:org_id].to_s.strip
           if api_key.empty? || org_id.empty?
             return render json: { error: 'Missing required parameters: api_key, org_id' }, status: :bad_request
+          end
+          unless org_id.match?(ORG_ID_FORMAT)
+            return render json: { error: 'Invalid org_id' }, status: :bad_request
           end
 
           # Reject a pair the Devin API will not accept rather than storing it
@@ -83,7 +91,9 @@ module Api
             DevinSessionService.credentials_status
           rescue StandardError => e
             Rails.logger.error("Devin credentials cleared, but the status read failed: #{e.message}")
-            {}
+            # Keep the response shape stable; nil says "could not tell", which
+            # is not the same answer as "not configured".
+            { api_key_configured: nil, org_id_configured: nil, status_unavailable: true }
           end
           render json: status.merge(legacy_cache_cleared: cache_cleared)
         end
