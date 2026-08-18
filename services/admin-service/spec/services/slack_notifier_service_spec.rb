@@ -113,6 +113,20 @@ RSpec.describe SlackNotifierService do
     expect(footer).to start_with('Service: `file-service` | ')
   end
 
+  it 'escapes Slack control sequences in the description so alert text cannot inject mentions or links' do
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    incident.update!(description: 'boom <!channel> & <https://evil.example|click>')
+    read_posted, = stub_post
+
+    described_class.notify_incident(incident: incident, session_url: nil)
+
+    message = read_posted.call['blocks'][3]['text']['text']
+    expect(message).to eq(
+      "*Message:*\n```boom &lt;!channel&gt; &amp; &lt;https://evil.example|click&gt;```"
+    )
+  end
+
   it 'truncates long titles so Slack does not reject the message' do
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')
