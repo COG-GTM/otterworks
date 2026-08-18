@@ -45,8 +45,11 @@ of the SQS notification message model.
 | `document_edited` | `userId`, falling back to `ownerId` | `documentId` | `document` | `IN_APP` |
 | `user_mentioned` | `mentionedUserId`, falling back to `userId` | `documentId` | `document` | `EMAIL` + `IN_APP` + `PUSH` |
 
-The channels above are `NotificationPreference` defaults: they apply only when a
-user has no stored preferences, which otherwise override them.
+The channels above are `NotificationPreference` defaults, resolved per event
+type: a user's stored channels for that event type win, otherwise the default for
+that event type applies, and an event type absent from both falls back to
+`IN_APP`. Stored preferences for one event type therefore do not affect the
+defaults used for another.
 
 For `comment_resolved`, `userId` is the comment author. This keeps the
 resolution notification targeted at the author rather than the document owner.
