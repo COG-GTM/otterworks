@@ -57,6 +57,9 @@ Rails.application.routes.draw do
         get 'settings/devin_credentials', to: 'settings#devin_credentials'
         put 'settings/devin_credentials', to: 'settings#update_devin_credentials'
         delete 'settings/devin_credentials', to: 'settings#destroy_devin_credentials'
+        get 'settings/slack_notifications', to: 'settings#slack_notifications'
+        put 'settings/slack_notifications', to: 'settings#update_slack_notifications'
+        delete 'settings/slack_notifications', to: 'settings#destroy_slack_notifications'
 
         # Grafana alert webhook (no JWT — protected by X-Alert-Secret header)
         post 'alerts/ingest', to: 'alerts#ingest'

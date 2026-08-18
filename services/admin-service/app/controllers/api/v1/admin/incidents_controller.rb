@@ -56,6 +56,12 @@ module Api
               )
             end
 
+            SlackNotifierService.notify_incident(
+              incident: incident,
+              session_url: session_result&.dig(:url),
+              reporter_email: current_user_email
+            )
+
             AuditLogger.log(
               action: 'incident.created',
               resource_type: 'Incident',
@@ -144,6 +150,11 @@ module Api
               devin_session_id: session_result[:session_id],
               devin_session_url: session_result[:url],
               devin_session_status: 'running'
+            )
+            SlackNotifierService.notify_incident(
+              incident: @incident,
+              session_url: session_result[:url],
+              reporter_email: current_user_email
             )
             render json: @incident, serializer: IncidentSerializer
           else
