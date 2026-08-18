@@ -163,6 +163,36 @@ The work is done when all of these hold:
 
 ### Worked example: a real bug this loop caught
 
+The refactor was the textbook one. A `WHERE` clause that interpolated the
+caller's search term became a bound parameter:
+
+```diff
+-clauses.append(f"lower(title) LIKE lower('%{title_contains}%')")
++clauses.append("lower(title) LIKE lower(:title_contains)")
++params["title_contains"] = title_contains
+```
+
+The injection was closed, every attack case flipped to neutralised, and the
+service's own suite passed. The gate failed anyway, on five contract cases:
+
+```
+contract-title-fragment-is-case-insensitive  fail  behaviour changed
+  recorded: [{"title": "Quarterly Revenue Report", ...}]
+  observed: []
+contract-count-matches-filter                fail  behaviour changed
+  recorded: 1
+  observed: 0
+```
+
+The `%` wildcards had lived in the *statement*, so moving the value into a
+parameter turned a substring search into an exact match: document search returned
+nothing for every partial term. A complete outage of the feature, shipped by a
+change that genuinely fixed a real SQL injection and passed its tests. The fix
+was one line — `params["title_contains"] = f"%{title_contains}%"` — and nothing
+except a recorded before-state would have found it, because there is nothing
+wrong with the code you are reading.
+
+Two more examples, both fixture defects the same gate refused to grade around.
 The subject was `DocumentQueryRepository` in an OtterWorks document service,
 which built its `WHERE` clause by interpolating caller values, and the
 characterization run looked perfectly healthy: twelve contract cases recorded,
