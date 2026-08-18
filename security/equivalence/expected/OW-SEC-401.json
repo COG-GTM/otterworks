@@ -1,0 +1,605 @@
+{
+ "cases": [
+  {
+   "id": "contract-owner-scoped-default-order",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "<h1>Welcome</h1>",
+     "content_type": "text/html",
+     "created_at": "2026-01-04 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00003-0000-4000-8000-000000000003",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Onboarding Page",
+     "updated_at": "2026-01-07 09:00:00.000000",
+     "version": 2,
+     "word_count": 2
+    },
+    {
+     "content": "Agenda, decisions and follow-ups.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-03 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00002-0000-4000-8000-000000000002",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Meeting Notes",
+     "updated_at": "2026-01-06 09:00:00.000000",
+     "version": 1,
+     "word_count": 5
+    },
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "contract-title-fragment-is-case-insensitive",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "contract-count-matches-filter",
+   "outcome": "ok",
+   "value": 1
+  },
+  {
+   "id": "contract-content-type-filter",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "<h1>Welcome</h1>",
+     "content_type": "text/html",
+     "created_at": "2026-01-04 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00003-0000-4000-8000-000000000003",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Onboarding Page",
+     "updated_at": "2026-01-07 09:00:00.000000",
+     "version": 2,
+     "word_count": 2
+    }
+   ]
+  },
+  {
+   "id": "contract-sort-title-ascending",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Agenda, decisions and follow-ups.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-03 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00002-0000-4000-8000-000000000002",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Meeting Notes",
+     "updated_at": "2026-01-06 09:00:00.000000",
+     "version": 1,
+     "word_count": 5
+    },
+    {
+     "content": "<h1>Welcome</h1>",
+     "content_type": "text/html",
+     "created_at": "2026-01-04 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00003-0000-4000-8000-000000000003",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Onboarding Page",
+     "updated_at": "2026-01-07 09:00:00.000000",
+     "version": 2,
+     "word_count": 2
+    },
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "contract-sort-word-count-descending",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    },
+    {
+     "content": "Agenda, decisions and follow-ups.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-03 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00002-0000-4000-8000-000000000002",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Meeting Notes",
+     "updated_at": "2026-01-06 09:00:00.000000",
+     "version": 1,
+     "word_count": 5
+    },
+    {
+     "content": "<h1>Welcome</h1>",
+     "content_type": "text/html",
+     "created_at": "2026-01-04 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00003-0000-4000-8000-000000000003",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Onboarding Page",
+     "updated_at": "2026-01-07 09:00:00.000000",
+     "version": 2,
+     "word_count": 2
+    }
+   ]
+  },
+  {
+   "id": "contract-limit-and-offset",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Agenda, decisions and follow-ups.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-03 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00002-0000-4000-8000-000000000002",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Meeting Notes",
+     "updated_at": "2026-01-06 09:00:00.000000",
+     "version": 1,
+     "word_count": 5
+    },
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "contract-no-match-is-empty",
+   "outcome": "ok",
+   "value": []
+  },
+  {
+   "id": "contract-unowned-filter-spans-owners",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Confidential: term sheet for the acquisition.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-04 10:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00004-0000-4000-8000-000000000004",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "bbbbbbbb-0000-4000-8000-00000000000b",
+     "title": "Acquisition Report",
+     "updated_at": "2026-01-08 10:00:00.000000",
+     "version": 1,
+     "word_count": 7
+    },
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "contract-http-filtered-list",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "items": [
+      {
+       "content": "Revenue for the quarter came in ahead of plan.",
+       "content_type": "text/markdown",
+       "created_at": "2026-01-02T09:00:00",
+       "folder_id": "f01de001-0000-4000-8000-00000000000f",
+       "id": "d0c00001-0000-4000-8000-000000000001",
+       "is_deleted": false,
+       "is_template": false,
+       "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+       "title": "Quarterly Revenue Report",
+       "updated_at": "2026-01-05T09:00:00",
+       "version": 3,
+       "word_count": 8
+      }
+     ],
+     "page": 1,
+     "pages": 1,
+     "size": 20,
+     "total": 1
+    },
+    "content_type": "application/json",
+    "status": 200
+   }
+  },
+  {
+   "id": "contract-http-filtered-list-second-page",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "items": [],
+     "page": 2,
+     "pages": 1,
+     "size": 1,
+     "total": 1
+    },
+    "content_type": "application/json",
+    "status": 200
+   }
+  },
+  {
+   "id": "contract-http-unfiltered-list-untouched",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "items": [
+      {
+       "content": "<h1>Welcome</h1>",
+       "content_type": "text/html",
+       "created_at": "2026-01-04T09:00:00",
+       "folder_id": "f01de001-0000-4000-8000-00000000000f",
+       "id": "d0c00003-0000-4000-8000-000000000003",
+       "is_deleted": false,
+       "is_template": false,
+       "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+       "title": "Onboarding Page",
+       "updated_at": "2026-01-07T09:00:00",
+       "version": 2,
+       "word_count": 2
+      },
+      {
+       "content": "Agenda, decisions and follow-ups.",
+       "content_type": "text/markdown",
+       "created_at": "2026-01-03T09:00:00",
+       "folder_id": null,
+       "id": "d0c00002-0000-4000-8000-000000000002",
+       "is_deleted": false,
+       "is_template": false,
+       "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+       "title": "Meeting Notes",
+       "updated_at": "2026-01-06T09:00:00",
+       "version": 1,
+       "word_count": 5
+      },
+      {
+       "content": "Revenue for the quarter came in ahead of plan.",
+       "content_type": "text/markdown",
+       "created_at": "2026-01-02T09:00:00",
+       "folder_id": "f01de001-0000-4000-8000-00000000000f",
+       "id": "d0c00001-0000-4000-8000-000000000001",
+       "is_deleted": false,
+       "is_template": false,
+       "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+       "title": "Quarterly Revenue Report",
+       "updated_at": "2026-01-05T09:00:00",
+       "version": 3,
+       "word_count": 8
+      }
+     ],
+     "page": 1,
+     "pages": 1,
+     "size": 20,
+     "total": 3
+    },
+    "content_type": "application/json",
+    "status": 200
+   }
+  },
+  {
+   "id": "contract-folder-scoped-title-filter",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "id": "attack-content-type-tautology-crosses-owners",
+   "outcome": "ok",
+   "value": [
+    {
+     "content": "# {{title}}",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-01 10:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00006-0000-4000-8000-000000000006",
+     "is_deleted": 0,
+     "is_template": 1,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Report Template",
+     "updated_at": "2026-01-10 10:00:00.000000",
+     "version": 1,
+     "word_count": 1
+    },
+    {
+     "content": "Superseded draft.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-01 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00005-0000-4000-8000-000000000005",
+     "is_deleted": 1,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Deleted Report",
+     "updated_at": "2026-01-09 09:00:00.000000",
+     "version": 1,
+     "word_count": 2
+    },
+    {
+     "content": "Confidential: term sheet for the acquisition.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-04 10:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00004-0000-4000-8000-000000000004",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "bbbbbbbb-0000-4000-8000-00000000000b",
+     "title": "Acquisition Report",
+     "updated_at": "2026-01-08 10:00:00.000000",
+     "version": 1,
+     "word_count": 7
+    },
+    {
+     "content": "<h1>Welcome</h1>",
+     "content_type": "text/html",
+     "created_at": "2026-01-04 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00003-0000-4000-8000-000000000003",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Onboarding Page",
+     "updated_at": "2026-01-07 09:00:00.000000",
+     "version": 2,
+     "word_count": 2
+    },
+    {
+     "content": "Agenda, decisions and follow-ups.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-03 09:00:00.000000",
+     "folder_id": null,
+     "id": "d0c00002-0000-4000-8000-000000000002",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Meeting Notes",
+     "updated_at": "2026-01-06 09:00:00.000000",
+     "version": 1,
+     "word_count": 5
+    },
+    {
+     "content": "Revenue for the quarter came in ahead of plan.",
+     "content_type": "text/markdown",
+     "created_at": "2026-01-02 09:00:00.000000",
+     "folder_id": "f01de001-0000-4000-8000-00000000000f",
+     "id": "d0c00001-0000-4000-8000-000000000001",
+     "is_deleted": 0,
+     "is_template": 0,
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "Quarterly Revenue Report",
+     "updated_at": "2026-01-05 09:00:00.000000",
+     "version": 3,
+     "word_count": 8
+    }
+   ]
+  },
+  {
+   "error_message": "(sqlite3.OperationalError) unrecognized token: \"') ORDER BY updated_at desc LIMIT 20 OFFSET 0\"\n[SQL: SELECT id, title, content, content_type, owner_id, folder_id, is_deleted, is_template, word_count, version, created_at, updated_at FROM documents WHERE is_deleted = false AND is_template = false AND owner_id = 'aaaaaaaa-0000-4000-8000-00000000000a' AND lower(title) LIKE lower('%report'%') ORDER BY updated_at desc LIMIT 20 OFFSET 0]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)",
+   "error_type": "OperationalError",
+   "id": "attack-title-quote-breaks-the-statement",
+   "outcome": "error"
+  },
+  {
+   "error_message": "(sqlite3.ProgrammingError) You can only execute one statement at a time.\n[SQL: SELECT id, title, content, content_type, owner_id, folder_id, is_deleted, is_template, word_count, version, created_at, updated_at FROM documents WHERE is_deleted = false AND is_template = false AND owner_id = 'aaaaaaaa-0000-4000-8000-00000000000a' ORDER BY title; DROP TABLE documents desc LIMIT 20 OFFSET 0]\n(Background on this error at: https://sqlalche.me/e/20/f405)",
+   "error_type": "ProgrammingError",
+   "id": "attack-sort-parameter-is-injectable",
+   "outcome": "error"
+  },
+  {
+   "id": "attack-http-error-based-probe",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "detail": "Invalid filter: (sqlite3.OperationalError) unrecognized token: \"')\"\n[SQL: SELECT count(*) FROM documents WHERE is_deleted = false AND is_template = false AND owner_id = 'aaaaaaaa-0000-4000-8000-00000000000a' AND lower(title) LIKE lower('%report'%')]\n(Background on this error at: https://sqlalche.me/e/20/e3q8)"
+    },
+    "content_type": "application/json",
+    "status": 400
+   }
+  }
+ ],
+ "finding": "OW-SEC-401",
+ "fingerprint": {
+  "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
+  "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
+  "observed_sha256": {
+   "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
+  },
+  "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
+  "subject_sha256": {
+   "services/document-service/app/services/document_query_repository.py": "a79c49a410fe174bab2247f776088d76d747c8bacc96c8f91fd5e0d281b95e6d"
+  }
+ },
+ "harness_version": 2,
+ "interface": {
+  "app.services.document_query_repository:DocumentQueryRepository.count_documents": "count_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, folder_id: 'str | None' = None) -> 'int'",
+  "app.services.document_query_repository:DocumentQueryRepository.search_documents": "search_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, folder_id: 'str | None' = None, sort: 'str' = 'updated_at', direction: 'str' = 'desc', limit: 'int' = 20, offset: 'int' = 0) -> 'list[dict[str, Any]]'"
+ },
+ "module": "document-service",
+ "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
+ "recorded_at": "2026-08-18T01:19:28.827608+00:00",
+ "rerecorded_from": {
+  "fingerprint": {
+   "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
+   "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
+   "observed_sha256": {
+    "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1"
+   },
+   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
+   "subject_sha256": {
+    "services/document-service/app/services/document_query_repository.py": "a79c49a410fe174bab2247f776088d76d747c8bacc96c8f91fd5e0d281b95e6d"
+   }
+  },
+  "reason": "harness v2: subject vs observes split so one finding's refactor no longer regrades its neighbours",
+  "recorded_at": "2026-08-18T00:47:16.618672+00:00"
+ },
+ "suite": {
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-y77h6q2j/junit.xml",
+  "exit_code": 1,
+  "failed": [
+   "tests.test_documents_api::test_delete_document",
+   "tests.test_documents_api::test_document_versions",
+   "tests.test_documents_api::test_export_document_html",
+   "tests.test_documents_api::test_export_document_markdown",
+   "tests.test_documents_api::test_get_document",
+   "tests.test_documents_api::test_get_document_not_found",
+   "tests.test_documents_api::test_patch_document",
+   "tests.test_documents_api::test_restore_version",
+   "tests.test_documents_api::test_update_document"
+  ],
+  "passed": [
+   "tests.test_comments_api::test_add_comment",
+   "tests.test_comments_api::test_add_comment_document_not_found",
+   "tests.test_comments_api::test_delete_comment",
+   "tests.test_comments_api::test_delete_comment_not_found",
+   "tests.test_comments_api::test_list_comments",
+   "tests.test_document_filters::test_filter_by_content_type",
+   "tests.test_document_filters::test_filter_by_title_fragment",
+   "tests.test_document_filters::test_filter_no_match_returns_empty",
+   "tests.test_document_filters::test_filter_orders_by_title_ascending",
+   "tests.test_document_filters::test_filter_paginates",
+   "tests.test_document_filters::test_unfiltered_list_is_unchanged",
+   "tests.test_document_service::test_add_comment_to_nonexistent_document",
+   "tests.test_document_service::test_comments_crud",
+   "tests.test_document_service::test_create_and_get",
+   "tests.test_document_service::test_create_from_nonexistent_template",
+   "tests.test_document_service::test_delete_nonexistent",
+   "tests.test_document_service::test_export_formats",
+   "tests.test_document_service::test_list_documents_with_filters",
+   "tests.test_document_service::test_paginate_helper",
+   "tests.test_document_service::test_patch_partial_update",
+   "tests.test_document_service::test_restore_version",
+   "tests.test_document_service::test_search",
+   "tests.test_document_service::test_soft_delete",
+   "tests.test_document_service::test_template_crud_and_create_from",
+   "tests.test_document_service::test_update_creates_version",
+   "tests.test_documents_api::test_create_document",
+   "tests.test_documents_api::test_create_document_no_auth_returns_401",
+   "tests.test_documents_api::test_create_document_via_jwt",
+   "tests.test_documents_api::test_create_document_via_jwt_hs384",
+   "tests.test_documents_api::test_create_document_x_user_id_header_ignored",
+   "tests.test_documents_api::test_list_documents",
+   "tests.test_documents_api::test_list_documents_pagination",
+   "tests.test_documents_api::test_search_documents",
+   "tests.test_export_archive::test_export_endpoint_404s_for_undecodable_file",
+   "tests.test_export_archive::test_export_endpoint_404s_for_unknown_name",
+   "tests.test_export_archive::test_export_endpoint_404s_for_unreadable_file",
+   "tests.test_export_archive::test_export_endpoint_serves_archived_file",
+   "tests.test_export_archive::test_missing_export_raises",
+   "tests.test_export_archive::test_reads_export",
+   "tests.test_export_archive::test_reads_export_in_subdirectory",
+   "tests.test_health::test_health_check",
+   "tests.test_health::test_metrics",
+   "tests.test_share_link::test_garbage_token_is_rejected",
+   "tests.test_share_link::test_minted_token_verifies",
+   "tests.test_share_link::test_share_endpoint_round_trip",
+   "tests.test_share_link::test_token_is_stable_across_calls",
+   "tests.test_share_link::test_token_of_another_document_is_rejected",
+   "tests.test_templates_api::test_create_document_from_template",
+   "tests.test_templates_api::test_create_from_template_not_found",
+   "tests.test_templates_api::test_create_template",
+   "tests.test_templates_api::test_list_templates"
+  ]
+ }
+}

@@ -40,6 +40,9 @@ routes:
       - reads and writes are scoped to the document owner
       - identity comes from validated JWT claims, never from a request header
       - responses are application/json, never renderable HTML
+      - list filters (title, content_type, sort, direction) never reach SQL unescaped
+      - GET /api/v1/documents/exports only serves files inside the export archive root
+      - GET /api/v1/documents/shared only accepts tokens that cannot be derived offline
   - prefix: /api/v1/files
     service: file-service
     auth: bearer JWT

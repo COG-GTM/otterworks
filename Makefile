@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -393,3 +393,39 @@ batch-usage-rollup: ## Run the nightly usage-rollup batch job locally (OUT=<path
 
 batch-usage-rollup-seed: ## Regenerate the deterministic usage-rollup seed events
 	cd services/analytics-service && python3 scripts/generate_seed_events.py
+
+# --- Functional-equivalence gate for source-level security refactors ---
+#
+# security/equivalence/findings.yaml registers each finding (subject class,
+# methods, secure pattern) and each module's emit/test commands. The recorded
+# before-state lives in security/equivalence/expected/ and is fingerprinted
+# against the cases, the seed, the emitter and the subject sources. Reports land
+# in security/equivalence/reports/ (git-ignored: collect them as CI artifacts and
+# paste the summary into the PR).
+
+EQ := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 --with defusedxml==0.7.1 security/equivalence/harness/equivalence_check.py
+
+eq-list: ## List the registered findings and the state of their recorded evidence
+	$(EQ) list
+
+eq-gate: ## Grade every finding against its recorded evidence, before-state or refactored
+	$(EQ) grade --stage auto $(if $(FINDING),--finding $(FINDING),)
+
+eq-baseline: ## Prove the recorded before-state still reproduces (FINDING=<id> optional)
+	$(EQ) grade --stage baseline $(if $(FINDING),--finding $(FINDING),)
+
+eq-verify: ## Grade a refactor: contract cases unchanged, attacks neutralised (FINDING=<id> optional)
+	$(EQ) grade --stage remediated $(if $(FINDING),--finding $(FINDING),)
+
+eq-exploit: ## Report whether the attack cases still fire, ignoring the recording
+	$(EQ) exploit $(if $(FINDING),--finding $(FINDING),)
+
+eq-exploit-refactored: ## Require a closed exploit verdict from every finding whose subject changed
+	$(EQ) exploit --refactored-only $(if $(FINDING),--finding $(FINDING),)
+
+eq-tests: ## Run the affected module's own suite against the recorded pass list
+	$(EQ) tests $(if $(FINDING),--finding $(FINDING),)
+
+eq-record: ## Record the before-state as the reference evidence (REASON="..." required)
+	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make eq-record REASON="baseline before OW-SEC-401 refactor"' >&2; exit 2)
+	$(EQ) record --reason "$(REASON)" $(if $(FINDING),--finding $(FINDING),) $(if $(ALLOW_RERECORD),--allow-rerecord,)
