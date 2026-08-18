@@ -24,13 +24,13 @@ class ApplicationController < ActionController::API
     render json: { error: "Missing parameter: #{e.param}" }, status: :bad_request
   end
 
-  RequestUser = Struct.new(:id, :email, :role, keyword_init: true)
-
-  def pundit_user
-    RequestUser.new(id: current_user_id, email: current_user_email, role: current_user_role)
-  end
+  RequestUser = Struct.new(:id, :email, :roles, keyword_init: true)
 
   private
+
+  def pundit_user
+    RequestUser.new(id: current_user_id, email: current_user_email, roles: current_user_roles)
+  end
 
   def current_user_id
     request.env['jwt.user_id']
@@ -40,8 +40,8 @@ class ApplicationController < ActionController::API
     request.env['jwt.user_email']
   end
 
-  def current_user_role
-    request.env['jwt.user_role']
+  def current_user_roles
+    Array(request.env['jwt.user_roles'] || request.env['jwt.user_role']).map(&:to_s)
   end
 
   def set_request_metadata

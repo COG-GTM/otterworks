@@ -4,6 +4,7 @@ module JwtHelper
       sub: user_id,
       email: email,
       role: role,
+      roles: [role],
       exp: 24.hours.from_now.to_i,
       iat: Time.current.to_i
     }
@@ -20,6 +21,7 @@ module JwtHelper
     request.env['jwt.user_id'] = user_id
     request.env['jwt.user_email'] = email
     request.env['jwt.user_role'] = role
+    request.env['jwt.user_roles'] = Array(role)
   end
 end
 

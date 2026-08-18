@@ -4,13 +4,17 @@ RSpec.describe StorageQuotaPolicy do
   let(:quota) { build(:storage_quota) }
 
   def user_with_role(role)
-    ApplicationController::RequestUser.new(id: SecureRandom.uuid, email: 'user@otterworks.com', role: role)
+    ApplicationController::RequestUser.new(id: SecureRandom.uuid, email: 'user@otterworks.com', roles: Array(role))
   end
 
   describe '#show?' do
     it 'permits admins and super_admins' do
       expect(described_class.new(user_with_role('admin'), quota).show?).to be(true)
       expect(described_class.new(user_with_role('super_admin'), quota).show?).to be(true)
+    end
+
+    it 'permits the uppercase ADMIN role from auth-service tokens' do
+      expect(described_class.new(user_with_role('ADMIN'), quota).show?).to be(true)
     end
 
     it 'denies other roles' do

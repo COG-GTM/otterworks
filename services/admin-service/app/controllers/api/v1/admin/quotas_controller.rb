@@ -2,17 +2,18 @@ module Api
   module V1
     module Admin
       class QuotasController < ApplicationController
+        # Authorize before the lookup so non-admins always get 403 and
+        # cannot probe which users have quota records.
+        before_action :authorize_quota_access
         before_action :set_quota, only: %i[show update]
 
         # GET /api/v1/admin/quotas/:user_id
         def show
-          authorize @quota
           render json: @quota, serializer: StorageQuotaSerializer
         end
 
         # PATCH/PUT /api/v1/admin/quotas/:user_id
         def update
-          authorize @quota
           previous_attributes = @quota.attributes.slice('quota_bytes', 'tier')
 
           if @quota.update(quota_params)
@@ -32,6 +33,10 @@ module Api
         end
 
         private
+
+        def authorize_quota_access
+          authorize StorageQuota, policy_class: StorageQuotaPolicy
+        end
 
         # auth-service owns users.quota_bytes; push updates so file-service
         # enforcement sees the new limit.
