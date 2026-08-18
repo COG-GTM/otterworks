@@ -44,7 +44,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -692,30 +691,31 @@ def cases_digest(module: Module) -> str:
 
 def emit_transcript(module: Module) -> dict[str, Any]:
     """Run the module's own emitter test and read back the observed transcript."""
-    observed = Path(tempfile.mkdtemp(prefix="ow-deps-")) / f"{module.id}.json"
-    properties = f"-Dow.deps.cases={module.cases} -Dow.deps.observed={observed}"
-    if module.build == "maven":
-        command = (
-            f"{module.tool} -B test -Dtest={EMITTER_TEST} -DfailIfNoTests=false "
-            f"-Dsurefire.failIfNoSpecifiedTests=false {properties}"
-        )
-    else:
-        command = (
-            # `--rerun-tasks`: the observed transcript is written by the test itself, and
-            # Gradle does not see the `-D` properties as task inputs, so an UP-TO-DATE
-            # `:test` would leave the harness grading a previous run's output.
-            f"{module.tool} test --rerun-tasks --no-daemon --console=plain "
-            f"--tests '*{EMITTER_TEST}' {properties}"
-        )
-    result = run(command, module.path, module)
-    if not observed.exists():
-        raise ConfigError(
-            f"{module.id}: the transcript emitter produced no output. Command:\n  {command}\n"
-            + (result.stderr or result.stdout)[-2000:]
-        )
-    payload = json.loads(observed.read_text())
-    shutil.rmtree(observed.parent, ignore_errors=True)
-    return payload
+    # The scratch directory goes away on both paths: an emitter that fails is exactly the
+    # case that would otherwise be repeated, so leaking it would leak once per attempt.
+    with tempfile.TemporaryDirectory(prefix="ow-deps-") as scratch:
+        observed = Path(scratch) / f"{module.id}.json"
+        properties = f"-Dow.deps.cases={module.cases} -Dow.deps.observed={observed}"
+        if module.build == "maven":
+            command = (
+                f"{module.tool} -B test -Dtest={EMITTER_TEST} -DfailIfNoTests=false "
+                f"-Dsurefire.failIfNoSpecifiedTests=false {properties}"
+            )
+        else:
+            command = (
+                # `--rerun-tasks`: the observed transcript is written by the test itself, and
+                # Gradle does not see the `-D` properties as task inputs, so an UP-TO-DATE
+                # `:test` would leave the harness grading a previous run's output.
+                f"{module.tool} test --rerun-tasks --no-daemon --console=plain "
+                f"--tests '*{EMITTER_TEST}' {properties}"
+            )
+        result = run(command, module.path, module)
+        if not observed.exists():
+            raise ConfigError(
+                f"{module.id}: the transcript emitter produced no output. Command:\n  {command}\n"
+                + (result.stderr or result.stdout)[-2000:]
+            )
+        return json.loads(observed.read_text())
 
 
 def case_specs(module: Module) -> list[dict[str, Any]]:
