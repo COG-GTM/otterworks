@@ -35,7 +35,12 @@ does not flip the other two into refactor grading.
 
 Routes that reach them: `GET /api/v1/documents/` (filters `title`,
 `content_type`, `sort`, `direction`), `GET /api/v1/documents/exports?name=`,
-`GET /api/v1/documents/shared?document_id=&token=`.
+`GET /api/v1/documents/shared?document_id=&token=`. The exports and shared
+routes are deliberately unauthenticated **in this service**: in the deployed
+topology they sit behind `api-gateway`, which owns authentication and tenant
+scoping at the edge. A real extraction of these handlers adds that boundary;
+closing the three findings here does not, and must not widen the routes'
+contract to compensate.
 
 ## Commands
 
@@ -45,6 +50,7 @@ make eq-gate                        # grade every finding for the state it is in
 make eq-baseline                    # prove the recorded before-state still reproduces
 make eq-verify                      # grade a refactor: contracts unchanged, attacks closed
 make eq-exploit                     # do the attack cases still fire? (ignores the recording)
+make eq-exploit-refactored          # closed exploit verdict required from every changed subject
 make eq-tests                       # module suite vs. the recorded pass list
 make eq-record REASON="..."         # record the before-state as reference evidence
 ```
@@ -58,7 +64,8 @@ an unmeasured case, a subject graded at the wrong stage. `3` no verdict reached.
 `eq-gate` picks the stage per finding from the fingerprints: a subject that still
 matches the recording is graded as the before-state, a changed subject is graded
 as a refactor. A run cannot choose the easier contract for itself. CI runs
-`eq-gate` and `eq-tests` (`.github/workflows/equivalence-gate.yml`) and uploads
+`eq-gate`, `eq-exploit-refactored` and `eq-tests`
+(`.github/workflows/equivalence-gate.yml`) and uploads
 `security/equivalence/reports/*.json` as artifacts — those reports are
 git-ignored generated output, so paste the summary lines into the PR instead of
 committing them.
@@ -84,7 +91,15 @@ committing them.
   the fingerprint of the subject sources, the seed, the cases and the emitter, the
   captured interface signatures, and the suite pass list. Committed, and **not**
   to be hand-edited: `record` refuses to overwrite without `ALLOW_RERECORD=1` and
-  a `REASON`, and refuses entirely if an attack case does not reproduce.
+  a `REASON`, and refuses entirely if an attack case does not reproduce. Be
+  precise about what the control actually is: the fingerprints staleness-flag
+  changes to the *inputs* (subject, seed, cases, emitter), a recorded case that
+  disappears from the case file grades as `missing`, and a changed subject owes
+  `eq-exploit-refactored` a closed verdict — but the evidence file itself is
+  guarded by review of its committed diff plus the audited re-record path, not
+  by a self-certifying hash. The `observed` files (`app/api/documents.py`) are
+  fingerprinted as provenance only; a route-only divergence is caught by the
+  contract comparison, not by staleness.
 
 Two fixture facts worth knowing before you debug a red gate:
 
@@ -126,6 +141,13 @@ for a finding it already covers. Rebuild the changed service before re-probing
 image and a "closed" verdict is meaningless. See
 `.agents/skills/dast-remediation/SKILL.md` for the DAST loop in detail. Never
 point a scan at `t-main.otterworks.app`.
+
+If the full stack will not build in your environment (e.g. `auth-service`'s
+Maven resolution is rate-limited), a loopback-bound shim that imports the
+unchanged document-service app and adds only registration/login endpoints is
+enough to exercise the document-service-owned probes — but every gateway-,
+auth- or search-owned row in the DAST report is then **untested**, and must be
+reported as untested, never as passing.
 
 `DAST-PATH-TRAVERSAL-EXPORT` first reads the `dast-control.txt` export the
 document-service image seeds into `EXPORT_ARCHIVE_DIR` and reports

@@ -513,6 +513,22 @@ def grade_finding(finding: Finding, stage: str) -> dict[str, Any]:
     results = []
     for case in spec["cases"]:
         results.append(grade_case(case, recorded.get(case["id"]), observations[case["id"]], stage))
+    # Grading only the cases still registered would let a refactor delete the
+    # coverage that fails it - drop a finding's attack cases and every remaining
+    # case passes. A recorded case that is no longer registered is missing
+    # coverage, which is inconclusive, never a pass.
+    for case_id in recorded:
+        if case_id not in {case["id"] for case in spec["cases"]}:
+            results.append(
+                {
+                    "id": case_id,
+                    "policy": "recorded",
+                    "status": MISSING,
+                    "detail": "recorded in the evidence but no longer registered in "
+                    f"{finding.cases_path.relative_to(ROOT)}; restore the case or "
+                    "re-record with a reason",
+                }
+            )
 
     interface = grade_interface(recording, observed)
     statuses = [row["status"] for row in results] + [interface["status"]]
@@ -646,11 +662,24 @@ def command_grade(findings: list[Finding], stage: str) -> int:
 # --- exploit-only run -----------------------------------------------------
 
 
-def command_exploit(findings: list[Finding]) -> int:
+def command_exploit(findings: list[Finding], refactored_only: bool = False) -> int:
     rows = []
     statuses = []
     payload = []
     for finding in findings:
+        if refactored_only:
+            # CI runs this on every branch, including the before-state, where the
+            # attacks are meant to fire. Only a finding whose own subject moved is
+            # claiming to be fixed, so only that one owes a closed verdict - and a
+            # recording that cannot say whether the subject moved is inconclusive.
+            recording, state = load_recording(finding)
+            if state != OK:
+                rows.append([finding.id, "-", state, "cannot tell the state from the recording"])
+                statuses.append(state)
+                continue
+            if not subject_changed(finding, recording):
+                rows.append([finding.id, "-", "skipped", "subject unchanged (before-state)"])
+                continue
         spec = load_cases(finding)
         attacks = [case for case in spec["cases"] if case["policy"] == "attack"]
         if not attacks:
@@ -668,9 +697,23 @@ def command_exploit(findings: list[Finding]) -> int:
             payload.append({"finding": finding.id, "case": case["id"], "exploited": fires,
                             "observation": observation})
     print(tabulate(rows, headers=["finding", "case", "status", "observation"]))
-    status = worst(statuses) if statuses else NO_VERDICT
+    if statuses:
+        status = worst(statuses)
+    elif refactored_only:
+        # Nothing claimed to be fixed, so there is nothing to hold to a closed
+        # verdict; the before-state's own exploitability is eq-baseline's job.
+        status = OK
+    else:
+        status = NO_VERDICT
     write_report("exploit", {"status": status, "cases": payload})
-    print(f"\nexploit: {status} ({'exploitable' if status == FAIL else 'closed'})")
+    if not statuses and refactored_only:
+        print(f"\nexploit: {status} (no subject changed, nothing claims to be fixed)")
+    elif status == FAIL:
+        print(f"\nexploit: {status} (exploitable)")
+    elif status == OK:
+        print(f"\nexploit: {status} (closed)")
+    else:
+        print(f"\nexploit: {status} (no verdict, which is never a pass)")
     return exit_code_for(status)
 
 
@@ -772,6 +815,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stage", default="remediated")
     parser.add_argument("--reason", default="")
     parser.add_argument("--allow-rerecord", action="store_true")
+    parser.add_argument("--refactored-only", action="store_true")
     args = parser.parse_args(argv)
 
     try:
@@ -786,7 +830,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "grade":
             return command_grade(chosen, args.stage)
         if args.command == "exploit":
-            return command_exploit(chosen)
+            return command_exploit(chosen, refactored_only=args.refactored_only)
         return command_tests(chosen)
     except HarnessError as exc:
         print(f"error: {exc}", file=sys.stderr)

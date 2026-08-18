@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record eq-list eq-gate eq-baseline eq-verify eq-exploit eq-tests eq-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -405,6 +405,9 @@ eq-verify: ## Grade a refactor: contract cases unchanged, attacks neutralised (F
 
 eq-exploit: ## Report whether the attack cases still fire, ignoring the recording
 	$(EQ) exploit $(if $(FINDING),--finding $(FINDING),)
+
+eq-exploit-refactored: ## Require a closed exploit verdict from every finding whose subject changed
+	$(EQ) exploit --refactored-only $(if $(FINDING),--finding $(FINDING),)
 
 eq-tests: ## Run the affected module's own suite against the recorded pass list
 	$(EQ) tests $(if $(FINDING),--finding $(FINDING),)

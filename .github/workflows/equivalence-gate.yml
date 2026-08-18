@@ -36,6 +36,11 @@ jobs:
       # attack cases stop firing. Exit 2 is "no verdict" (missing, stale or
       # unmeasured evidence) and fails the job rather than passing quietly.
       - run: make eq-gate
+      # Independent of the recordings: every finding whose subject changed must
+      # produce a closed exploit verdict from at least one registered attack case.
+      # A refactor that deletes its attack coverage exits 3 here instead of
+      # sailing through on the contract cases alone.
+      - run: make eq-exploit-refactored
       # The module suite is a regression gate against the pass list recorded with
       # the evidence, so a test that used to pass cannot be deleted to go green.
       - run: make eq-tests
