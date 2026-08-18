@@ -658,32 +658,35 @@ export interface Incident {
   createdAt?: string;
 }
 
-// Browser and admin-service clocks are not synchronised; a margin this side of
-// the failure keeps a just-created incident from being filtered out.
-const INCIDENT_CLOCK_SKEW_MS = 30_000;
+// The list is newest-first and paginated; the default page of 20 can be filled
+// by a burst of other failures while an upload is still polling for its own.
+const INCIDENT_PAGE_SIZE = 100;
+
+// The incident admin-service opens for a failed upload is titled
+// "File upload failed: <name>".
+const titledFor = (incident: Incident, fileName: string) =>
+  incident.title?.endsWith(`: ${fileName}`) ?? false;
 
 export const incidentsApi = {
   list: async (): Promise<Incident[]> => {
-    const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents");
+    const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents", {
+      params: { per_page: INCIDENT_PAGE_SIZE },
+    });
     return data.incidents ?? [];
   },
-  // The incident admin-service opens for a failed upload is titled
-  // "File upload failed: <name>"; the newest match is this upload's. Retrying
-  // a file that failed before leaves an older incident with the same title, so
-  // `notBefore` (the moment this attempt failed, less a clock-skew margin)
-  // keeps the poll from linking the previous attempt's session.
-  findForUpload: async (fileName: string, notBefore?: number): Promise<Incident | null> => {
+  // Retrying a file that failed before leaves an older incident with the same
+  // title. Which one is "this attempt's" is decided by id against a snapshot
+  // taken when the upload failed, not by timestamp: the browser clock and the
+  // server clock disagree often enough that a skewed client would filter out
+  // its own incident and never show the link.
+  idsForUpload: async (fileName: string): Promise<Set<string>> => {
     const incidents = await incidentsApi.list();
-    const floor = notBefore === undefined ? undefined : notBefore - INCIDENT_CLOCK_SKEW_MS;
-    return (
-      incidents.find((i) => {
-        if (!i.title?.endsWith(`: ${fileName}`)) return false;
-        if (floor === undefined) return true;
-        const createdAt = i.createdAt ? Date.parse(i.createdAt) : NaN;
-        return Number.isNaN(createdAt) || createdAt >= floor;
-      }) ?? null
-    );
+    return new Set(incidents.filter((i) => titledFor(i, fileName)).map((i) => i.id));
   },
+  findForUpload: async (fileName: string, exclude?: Set<string>): Promise<Incident | null> =>
+    (await incidentsApi.list()).find(
+      (i) => titledFor(i, fileName) && !exclude?.has(i.id),
+    ) ?? null,
 };
 
 // ── Settings ──────────────────────────────────────────────────

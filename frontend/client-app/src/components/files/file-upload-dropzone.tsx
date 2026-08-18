@@ -128,7 +128,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   // shows the session belonging to an earlier file. One in-flight lookup per
   // upload; retrying, cancelling or dismissing stops it.
   const pollForDevinSession = useCallback(
-    (entry: UploadingFile, failedAt: number) => {
+    (entry: UploadingFile, known: Promise<Set<string>>) => {
       stopPolling(entry.id);
       const generation = pollGenerationRef.current.get(entry.id) ?? 0;
       const superseded = () =>
@@ -138,7 +138,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         pollTimersRef.current.delete(entry.id);
         attempt += 1;
         try {
-          const incident = await incidentsApi.findForUpload(entry.file.name, failedAt);
+          const incident = await incidentsApi.findForUpload(entry.file.name, await known);
           if (superseded()) return;
           if (incident?.devinSessionUrl) {
             const url = incident.devinSessionUrl;
@@ -166,6 +166,14 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   const startUpload = useCallback(
     (entry: UploadingFile) => {
       const abortController = new AbortController();
+      // Snapshotted before the upload can fail: admin-service opens the
+      // incident while the request is still in flight, so anything matching
+      // this filename from here on is this attempt's. Ids rather than a
+      // timestamp — a browser clock compared against server timestamps drops
+      // the real incident whenever the two disagree.
+      const knownIncidents = incidentsApi
+        .idsForUpload(entry.file.name)
+        .catch(() => new Set<string>());
 
       stopPolling(entry.id);
       setUploadingFiles((prev) =>
@@ -223,7 +231,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            pollForDevinSession(entry, failedAt);
+            pollForDevinSession(entry, knownIncidents);
           }
         });
     },
