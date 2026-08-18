@@ -179,7 +179,7 @@ async def read_export(name: str = Query(..., min_length=1)):
     archive = ExportArchive()
     try:
         return archive.read_export(name)
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError) as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=404, detail="Export not found") from exc
 
 
