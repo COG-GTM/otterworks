@@ -10,6 +10,12 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        # Services whose open incidents `reset` resolves. A superset of the
+        # triggerable scenarios: incidents outlive the scenario that raised them,
+        # and an open incident suppresses later alerts for the same service via
+        # the dedup guard in AlertsController.
+        RESETTABLE_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).uniq.freeze
+
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -48,7 +54,7 @@ module Api
           # Resolve any open incidents for chaos-managed services so the next
           # demo run can create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          VALID_SCENARIOS.each_key do |svc|
+          RESETTABLE_SERVICES.each do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|

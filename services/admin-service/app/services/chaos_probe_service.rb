@@ -15,14 +15,6 @@ class ChaosProbeService
       url: 'http://search-service:8087/api/v1/search/suggest?q=test',
       headers: { 'X-User-ID' => 'chaos-probe' },
     },
-    # file-service upload expects multipart/form-data with a "file" field.
-    # Sending JSON results in a 400 before the chaos flag is ever checked.
-    # X-User-ID must be a valid UUID (parsed by the handler).
-    'file-service' => {
-      url: 'http://file-service:8082/api/v1/files/upload',
-      method: :multipart,
-      headers: { 'X-User-ID' => '00000000-0000-0000-0000-000000000001' },
-    },
     # notification-service chaos works by switching to a strict JSON parser
     # that rejects messages with integer (Unix epoch) timestamps.  Hitting
     # /health does nothing — we need to push a malformed message into the SQS
