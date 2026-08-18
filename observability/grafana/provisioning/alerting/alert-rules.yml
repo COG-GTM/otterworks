@@ -100,8 +100,8 @@ groups:
 
       # -----------------------------------------------------------------------
       # File Service: Uploads failing with S3 errors
-      # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window.
-      # Triggered by chaos flag: chaos:file-service:upload_s3_error
+      # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window,
+      # e.g. a misconfigured S3_BUCKET or an S3 outage.
       # -----------------------------------------------------------------------
       - uid: file-upload-errors
         title: FileUploadHighErrorRate

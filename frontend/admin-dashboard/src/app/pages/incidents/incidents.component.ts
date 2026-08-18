@@ -485,6 +485,7 @@ export class IncidentsComponent implements OnInit, OnDestroy {
         this.chaosState = Object.fromEntries(
           Object.entries(parsed).filter(([svc]) => CHAOS_SERVICES.includes(svc)),
         );
+        this.saveChaosState();
       } catch {
         this.chaosState = {};
       }
