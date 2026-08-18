@@ -367,11 +367,25 @@ build_helm_args() {
       # from the image's CMD on every boot and shares one connection URL with
       # the app -- so the whole service uses the session-mode port.
       EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
+      # Without this the image falls back to its built-in default, which is one
+      # specific tenant's database -- every other tenant would then read and
+      # write that tenant's incidents and settings.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_NAME=${T_DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
       # Settings (auto-investigate, Devin credentials) and chaos flags live in
       # the tenant's Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      # Set unconditionally, like the other AWS-calling services: the chart has
+      # no default, so an SDK client would otherwise fall back to its own.
+      EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
+      # Devin credentials: preferred source is Secrets Manager, read through
+      # the service account's IRSA role, so the key is never stored in a Helm
+      # value, a ConfigMap or the tenant database. Falls back to the pair
+      # stored via the settings API when unset.
+      if [ -n "${DEVIN_CREDENTIALS_SECRET_ID:-}" ]; then
+        EXTRA_ARGS+=(--set-string "config.DEVIN_CREDENTIALS_SECRET_ID=${DEVIN_CREDENTIALS_SECRET_ID}")
+      fi
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
       add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
     audit-service)

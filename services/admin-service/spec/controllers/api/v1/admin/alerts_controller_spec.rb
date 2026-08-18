@@ -4,6 +4,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    allow(DevinSessionService).to receive(:configured?).and_return(true)
   end
 
   def firing_alert(labels: {}, summary: 'File upload failed: a.txt')
@@ -26,6 +27,18 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(DevinSessionService).to have_received(:create_session).once
     end
 
+    it 'marks the incident when the session could not be created' do
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(Incident.last.devin_session_status).to eq('failed')
+    end
+
+    it 'leaves the status blank on a tenant with no Devin credentials' do
+      allow(DevinSessionService).to receive(:configured?).and_return(false)
+
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(Incident.last.devin_session_status).to be_nil
+    end
+
     it 'dedupes repeated alerts for the same service by default' do
       post :ingest, params: { alerts: [firing_alert] }
       post :ingest, params: { alerts: [firing_alert] }
@@ -44,6 +57,38 @@ RSpec.describe Api::V1::Admin::AlertsController do
       post :ingest, params: { alerts: [firing_alert] }
       post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
       expect(Incident.count).to eq(2)
+    end
+
+    it 'stops opening dedup=false incidents once the per-service ceiling is hit' do
+      stub_const("#{described_class}::UNDEDUPED_LIMIT", 2)
+
+      3.times do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+
+      expect(Incident.count).to eq(2)
+      expect(DevinSessionService).to have_received(:create_session).twice
+      expect(response.parsed_body['incidents'].first['reason']).to eq('rate_limited')
+    end
+
+    it 'keeps the filename when it makes the summary too long' do
+      # The client finds an upload's incident by the filename at the end of the
+      # title, so shortening has to keep the whole tail.
+      file_name = "#{'a' * 240}.txt"
+      post :ingest, params: { alerts: [firing_alert(summary: "File upload failed: #{file_name}")] }
+
+      expect(Incident.count).to eq(1)
+      expect(Incident.last.title.length).to eq(255)
+      expect(Incident.last.title).to end_with(": #{file_name}")
+      expect(DevinSessionService).to have_received(:create_session).once
+    end
+
+    it 'still opens an incident when even the filename does not fit' do
+      post :ingest, params: { alerts: [firing_alert(summary: "File upload failed: #{'a' * 400}.txt")] }
+
+      expect(Incident.count).to eq(1)
+      expect(Incident.last.title.length).to eq(255)
+      expect(DevinSessionService).to have_received(:create_session).once
     end
 
     it 'rejects payloads without an alerts array' do

@@ -20,6 +20,17 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
+        # A `dedup=false` alert opens one incident (and one paid Devin session)
+        # per occurrence. The chaos probe fires three uploads every five seconds
+        # for the whole chaos window, so without a ceiling one trigger is a few
+        # hundred sessions. The ceiling is well above what a demo does by hand.
+        UNDEDUPED_WINDOW = 10.minutes
+        UNDEDUPED_LIMIT  = 20
+
+        # Matches the Incident model's own title validation.
+        TITLE_LIMIT = 255
+        ELLIPSIS = '…'.freeze
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -40,6 +51,17 @@ module Api
         end
 
         private
+
+        # Titles carry a user-supplied filename and the model caps them at 255;
+        # an over-long one would raise and leave the upload with no incident and
+        # no triage session at all. The filename sits at the end and is what the
+        # client matches an upload's incident on, so the front is dropped and
+        # the whole tail kept.
+        def incident_title(title)
+          return title if title.length <= TITLE_LIMIT
+
+          "#{ELLIPSIS}#{title.last(TITLE_LIMIT - ELLIPSIS.length)}"
+        end
 
         def process_alert(alert)
           status           = alert[:status].to_s
@@ -62,7 +84,15 @@ module Api
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          if labels[:dedup].to_s == 'false'
+            recent = Incident.where(affected_service: affected_service)
+                             .where(created_at: UNDEDUPED_WINDOW.ago..)
+                             .count
+            if recent >= UNDEDUPED_LIMIT
+              Rails.logger.warn("Alert #{alert_name} throttled — #{recent} incidents for #{affected_service} in the last #{UNDEDUPED_WINDOW.inspect}")
+              return { skipped: true, reason: 'rate_limited' }
+            end
+          else
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -75,7 +105,7 @@ module Api
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
           incident = Incident.create!(
-            title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
+            title:            incident_title(summary.presence || "#{alert_name}: #{affected_service} alert firing"),
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',
@@ -96,6 +126,11 @@ module Api
               devin_session_url:    session_result[:url],
               devin_session_status: 'running',
             )
+          elsif auto_investigate && DevinSessionService.configured?
+            # Record the miss: without it the incident is indistinguishable
+            # from one whose session is still being created, and a broken
+            # credential looks like slowness for as long as nobody checks.
+            incident.update(devin_session_status: 'failed')
           end
 
           SlackNotifierService.notify_incident(

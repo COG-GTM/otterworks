@@ -1,6 +1,7 @@
 require 'net/http'
 require 'json'
 require 'uri'
+require 'erb'
 
 class DevinSessionService
   API_HOST = 'https://api.devin.ai'.freeze
@@ -15,7 +16,7 @@ class DevinSessionService
 
       prompt = build_prompt(incident)
 
-      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions")
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions")
       request = Net::HTTP::Post.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
       request['Content-Type'] = 'application/json'
@@ -25,6 +26,13 @@ class DevinSessionService
       return nil unless response
 
       body = JSON.parse(response.body)
+      if body['session_id'].blank?
+        # A 2xx without an id is not a session: reporting it as one leaves the
+        # incident "running" forever with nothing to link to.
+        Rails.logger.error('Devin API returned no session_id')
+        return nil
+      end
+
       {
         session_id: body['session_id'],
         url: body['url']
@@ -38,7 +46,7 @@ class DevinSessionService
       api_key, org_id = credentials
       return nil unless api_key && org_id && session_id
 
-      uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions/#{session_id}")
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions/#{ERB::Util.url_encode(session_id.to_s)}")
       request = Net::HTTP::Get.new(uri)
       request['Authorization'] = "Bearer #{api_key}"
 
@@ -56,26 +64,82 @@ class DevinSessionService
     end
 
     # Whether a usable credential pair resolves right now, from the same
-    # resolution the API calls use.
-    def credentials_status
-      api_key, org_id = credentials
-      { api_key_configured: api_key.present?, org_id_configured: org_id.present? }
+    # resolution the API calls use. `verify: true` also asks the Devin API
+    # whether the pair actually works: presence alone has silently meant "no
+    # sessions get created" whenever the stored key was not authorized for the
+    # organization.
+    def credentials_status(verify: false)
+      api_key, org_id, source = resolve_credentials
+      status = {
+        api_key_configured: api_key.present?,
+        org_id_configured: org_id.present?,
+        source: source
+      }
+      # A secret that is wired but unreadable or missing a field otherwise looks
+      # exactly like a tenant with no Secrets Manager wiring at all, which is
+      # the hard case to diagnose from this endpoint.
+      if DevinSecretsManagerSource.enabled? && %w[settings none].include?(source)
+        status[:secrets_manager_unusable] = true
+      end
+      return status unless verify
+      return status.merge(valid: false, error: 'Credentials not configured') unless api_key && org_id
+
+      status.merge(verify_credentials(api_key: api_key, org_id: org_id))
+    end
+
+    def configured?
+      api_key, org_id, = resolve_credentials
+      api_key.present? && org_id.present?
+    end
+
+    # Cheapest call that exercises the same authorization as session creation.
+    def verify_credentials(api_key:, org_id:)
+      # A typo'd org id is bad input, not an outage: escape it so it cannot
+      # raise out of URI() and get reported as "retry later".
+      uri = URI("#{API_HOST}/v3/organizations/#{ERB::Util.url_encode(org_id)}/sessions?limit=1")
+      request = Net::HTTP::Get.new(uri)
+      request['Authorization'] = "Bearer #{api_key}"
+
+      response = raw_request(uri, request, open_timeout: 5, read_timeout: 5)
+      return { valid: true } if response.is_a?(Net::HTTPSuccess)
+
+      # 5xx and 429 say nothing about the key, so they must not be reported as
+      # a rejection.
+      code = response.code.to_i
+      if code >= 500 || code == 429
+        return { valid: false, unreachable: true, error: "Devin API returned #{response.code}" }
+      end
+
+      { valid: false, error: "Devin API returned #{response.code}" }
+    rescue StandardError => e
+      { valid: false, unreachable: true, error: "Devin API unreachable: #{e.message}" }
     end
 
     private
 
+    def credentials
+      resolve_credentials.first(2)
+    end
+
     # A key and an org id must come from the same source: pairing an env key
     # with a stored org id (or vice versa) yields credentials that never
-    # belonged together. Environment wins; the Redis-backed settings store is
-    # the fallback so credentials can be supplied at runtime on tenants whose
-    # deploy pipeline does not wire them as env vars.
-    def credentials
+    # belonged together. Environment wins; the settings store is the fallback
+    # so credentials can be supplied at runtime on tenants whose deploy
+    # pipeline does not wire them as env vars.
+    def resolve_credentials
       api_key = ENV.fetch('DEVIN_API_KEY', nil).presence
       org_id  = ENV.fetch('DEVIN_ORG_ID', nil).presence
-      return [api_key, org_id] if api_key && org_id
+      return [api_key, org_id, 'env'] if api_key && org_id
+
+      # Secrets Manager, when wired, is authoritative over the Postgres copy:
+      # it is the only store where the key is encrypted at rest and rotatable
+      # without touching the tenant.
+      secret = DevinSecretsManagerSource.credentials
+      return [secret[:api_key], secret[:org_id], 'secrets_manager'] if secret[:api_key] && secret[:org_id]
 
       stored = AdminSettingsService.devin_credentials
-      [stored[:api_key], stored[:org_id]]
+      source = stored[:api_key] || stored[:org_id] ? 'settings' : 'none'
+      [stored[:api_key], stored[:org_id], source]
     end
 
     def build_prompt(incident)
@@ -118,12 +182,7 @@ class DevinSessionService
     end
 
     def make_request(uri, request)
-      http = Net::HTTP.new(uri.host, uri.port)
-      http.use_ssl = uri.scheme == 'https'
-      http.open_timeout = 10
-      http.read_timeout = 30
-
-      response = http.request(request)
+      response = raw_request(uri, request)
 
       unless response.is_a?(Net::HTTPSuccess)
         Rails.logger.error("Devin API returned #{response.code}: #{response.body}")
@@ -131,6 +190,14 @@ class DevinSessionService
       end
 
       response
+    end
+
+    def raw_request(uri, request, open_timeout: 10, read_timeout: 30)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = uri.scheme == 'https'
+      http.open_timeout = open_timeout
+      http.read_timeout = read_timeout
+      http.request(request)
     end
   end
 end

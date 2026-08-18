@@ -35,9 +35,11 @@ interface UploadingFile {
 let fileIdCounter = 0;
 
 // A failed upload opens an incident, and the Devin session it launches is
-// attached a moment later, so poll briefly rather than reading once.
-const SESSION_POLL_ATTEMPTS = 6;
-const SESSION_POLL_INTERVAL_MS = 2500;
+// attached a moment later, so poll rather than reading once.
+// Session creation is synchronous inside alert ingest and the Devin call is
+// allowed 30s, so the window has to outlast a slow-but-successful create.
+const SESSION_POLL_ATTEMPTS = 40;
+const SESSION_POLL_INTERVAL_MS = 3000;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
@@ -100,14 +102,11 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     pollGenerationRef.current.set(id, (pollGenerationRef.current.get(id) ?? 0) + 1);
   }, []);
 
-  // An upload that will never be polled again drops its bookkeeping entirely.
-  const forgetPolling = useCallback(
-    (id: string) => {
-      stopPolling(id);
-      pollGenerationRef.current.delete(id);
-    },
-    [stopPolling],
-  );
+  // An upload that will never be polled again only cancels: the generation
+  // counter stays so it keeps increasing. Deleting it would restart numbering,
+  // and a lookup still in flight from before could then match the count of a
+  // later chain and write its stale result.
+  const forgetPolling = stopPolling;
 
   const stopAllPolling = useCallback(() => {
     [...pollGenerationRef.current.keys()].forEach(stopPolling);
@@ -129,7 +128,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   // shows the session belonging to an earlier file. One in-flight lookup per
   // upload; retrying, cancelling or dismissing stops it.
   const pollForDevinSession = useCallback(
-    (entry: UploadingFile) => {
+    (entry: UploadingFile, known: Set<string>) => {
       stopPolling(entry.id);
       const generation = pollGenerationRef.current.get(entry.id) ?? 0;
       const superseded = () =>
@@ -139,7 +138,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         pollTimersRef.current.delete(entry.id);
         attempt += 1;
         try {
-          const incident = await incidentsApi.findForUpload(entry.file.name);
+          const incident = await incidentsApi.findForUpload(entry.file.name, known);
           if (superseded()) return;
           if (incident?.devinSessionUrl) {
             const url = incident.devinSessionUrl;
@@ -184,6 +183,26 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         ),
       );
 
+      // Which incidents already carried this filename, so a retry does not
+      // resolve to the previous attempt's session. Ids rather than a timestamp:
+      // a browser clock compared against server timestamps drops the real
+      // incident whenever the two disagree.
+      //
+      // Runs alongside the upload rather than ahead of it — admin-service can
+      // be waking from idle-suspend, and no file should wait on it. Only a
+      // snapshot that arrived *before* the failure is used: a later one could
+      // already list this attempt's own incident and exclude it forever. Both
+      // times come from this browser, so no clock comparison is involved.
+      let knownIncidents: Set<string> | null = null;
+      let snapshotAt = Number.POSITIVE_INFINITY;
+      void incidentsApi
+        .idsForUpload(entry.file.name)
+        .then((known) => {
+          knownIncidents = known;
+          snapshotAt = Date.now();
+        })
+        .catch(() => undefined);
+
       uploadFile(entry.file, {
         onProgress: (percent) => {
           setUploadingFiles((prev) =>
@@ -208,6 +227,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const failedAt = Date.now();
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
@@ -215,7 +235,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                       ...f,
                       status: "error" as const,
                       error: "Upload failed",
-                      failedAt: Date.now(),
+                      failedAt,
                       abortController: undefined,
                     }
                   : f,
@@ -223,7 +243,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            pollForDevinSession(entry);
+            pollForDevinSession(
+              entry,
+              snapshotAt <= failedAt && knownIncidents ? knownIncidents : new Set<string>(),
+            );
           }
         });
     },

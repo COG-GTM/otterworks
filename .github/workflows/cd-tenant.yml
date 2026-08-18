@@ -302,13 +302,23 @@ jobs:
                 # only for the tenant pointer on a run that pins the immutable
                 # tag: everything else (throttling, transient API errors, the
                 # golden `main` pointer every other tenant falls back to) would
-                # deploy the previous build behind a green run. Match the exact
-                # authorization failure -- an AccessDenied for any other reason
-                # is not something this run should paper over.
+                # deploy the previous build behind a green run. So only an
+                # authorization failure naming BatchDeleteImage is tolerated --
+                # an AccessDenied for anything else is not. The two halves
+                # are matched independently: AWS is free to reorder or reword
+                # the message, and a single fixed pattern would then hard-fail
+                # the case this branch exists to tolerate.
                 case "${err}" in
-                  *AccessDenied*ecr:BatchDeleteImage*) ;;
-                  *) echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1 ;;
+                  *AccessDenied*|*AccessDeniedException*|*"not authorized to perform"*) authz=true ;;
+                  *) authz=false ;;
                 esac
+                case "${err}" in
+                  *BatchDeleteImage*) ;;
+                  *) authz=false ;;
+                esac
+                if [ "${authz}" != "true" ]; then
+                  echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1
+                fi
                 if [ "${tag}" = "main" ] || [ "${PIN}" != "true" ]; then
                   echo "::error::cannot untag ${repo}:${tag} and this run does not pin ${IMAGE_TAG}, so the deploy would ship the previous build: ${err}"
                   exit 1

@@ -41,6 +41,79 @@ RSpec.describe DevinSessionService do
     expect(result).to eq({ session_id: 's-1', url: 'https://app.devin.ai/s-1' })
   end
 
+  it 'treats a success without a session id as no session' do
+    allow(AdminSettingsService).to receive(:devin_credentials)
+      .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+    allow(described_class).to receive(:make_request)
+      .and_return(instance_double(Net::HTTPOK, body: { url: 'https://app.devin.ai/x' }.to_json))
+
+    expect(described_class.create_session(incident: incident)).to be_nil
+  end
+
+  describe '.credentials_status' do
+    it 'answers explicitly when verification is asked for without credentials' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: nil, org_id: nil })
+
+      status = described_class.credentials_status(verify: true)
+      expect(status).to include(source: 'none', valid: false, error: 'Credentials not configured')
+    end
+
+    it 'prefers a Secrets Manager pair over the stored one' do
+      allow(DevinSecretsManagerSource).to receive(:credentials)
+        .and_return({ api_key: 'sm-key', org_id: 'sm-org' })
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+      expect(described_class.credentials_status).to include(source: 'secrets_manager', api_key_configured: true)
+      expect(described_class.send(:credentials)).to eq(%w[sm-key sm-org])
+    end
+
+    it 'falls back to the stored pair when the secret is unavailable' do
+      allow(DevinSecretsManagerSource).to receive(:credentials).and_return({ api_key: nil, org_id: nil })
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+      expect(described_class.credentials_status).to include(source: 'settings')
+    end
+
+    it 'flags a pair the Devin API rejects' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request)
+        .and_return(instance_double(Net::HTTPForbidden, code: '403'))
+
+      status = described_class.credentials_status(verify: true)
+      expect(status).to include(source: 'settings', valid: false, error: 'Devin API returned 403')
+    end
+
+    it 'treats a Devin-side 503 as unreachable rather than a bad key' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request)
+        .and_return(instance_double(Net::HTTPServiceUnavailable, code: '503'))
+
+      expect(described_class.credentials_status(verify: true)).to include(valid: false, unreachable: true)
+    end
+
+    it 'treats a rate limit as unreachable rather than a bad key' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request)
+        .and_return(instance_double(Net::HTTPTooManyRequests, code: '429'))
+
+      expect(described_class.credentials_status(verify: true)).to include(valid: false, unreachable: true)
+    end
+
+    it 'marks a transport failure as unreachable rather than invalid credentials' do
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+      allow(described_class).to receive(:raw_request).and_raise(Errno::ECONNREFUSED)
+
+      expect(described_class.credentials_status(verify: true)).to include(valid: false, unreachable: true)
+    end
+  end
+
   it 'does not pair an env api key with a stored org id' do
     allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return('env-key')
     allow(AdminSettingsService).to receive(:devin_credentials)

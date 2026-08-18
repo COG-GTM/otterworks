@@ -658,17 +658,42 @@ export interface Incident {
   createdAt?: string;
 }
 
+// The list is newest-first and paginated; the default page of 20 can be filled
+// by a burst of other failures while an upload is still polling for its own.
+const INCIDENT_PAGE_SIZE = 100;
+
+// The incident admin-service opens for a failed upload is titled
+// "File upload failed: <name>".
+const titledFor = (incident: Incident, fileName: string) =>
+  incident.title?.endsWith(`: ${fileName}`) ?? false;
+
+// apiClient has no timeout of its own, and a lookup that never settles takes
+// the whole retry chain with it — the caller only schedules the next attempt
+// once this one has finished. A waking admin-service is exactly the case both
+// lookups exist for, so both give up rather than hang.
+const LOOKUP_TIMEOUT_MS = 10000;
+
 export const incidentsApi = {
-  list: async (): Promise<Incident[]> => {
-    const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents");
+  list: async (timeoutMs?: number): Promise<Incident[]> => {
+    const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents", {
+      params: { per_page: INCIDENT_PAGE_SIZE },
+      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
+    });
     return data.incidents ?? [];
   },
-  // The incident admin-service opens for a failed upload is titled
-  // "File upload failed: <name>"; the newest match is this upload's.
-  findForUpload: async (fileName: string): Promise<Incident | null> => {
-    const incidents = await incidentsApi.list();
-    return incidents.find((i) => i.title?.endsWith(`: ${fileName}`)) ?? null;
+  // Retrying a file that failed before leaves an older incident with the same
+  // title. Which one is "this attempt's" is decided by id against a snapshot
+  // taken when the upload failed, not by timestamp: the browser clock and the
+  // server clock disagree often enough that a skewed client would filter out
+  // its own incident and never show the link.
+  idsForUpload: async (fileName: string): Promise<Set<string>> => {
+    const incidents = await incidentsApi.list(LOOKUP_TIMEOUT_MS);
+    return new Set(incidents.filter((i) => titledFor(i, fileName)).map((i) => i.id));
   },
+  findForUpload: async (fileName: string, exclude?: Set<string>): Promise<Incident | null> =>
+    (await incidentsApi.list(LOOKUP_TIMEOUT_MS)).find(
+      (i) => titledFor(i, fileName) && !exclude?.has(i.id),
+    ) ?? null,
 };
 
 // ── Settings ──────────────────────────────────────────────────

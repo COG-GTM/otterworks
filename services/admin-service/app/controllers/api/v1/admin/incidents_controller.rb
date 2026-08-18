@@ -55,6 +55,10 @@ module Api
                 devin_session_url: session_result[:url],
                 devin_session_status: 'running'
               )
+            elsif DevinSessionService.configured?
+              # Only a real miss is a failure; a tenant with no Devin wiring
+              # leaves the field blank rather than showing an error.
+              incident.update(devin_session_status: 'failed')
             end
 
             SlackNotifierService.notify_incident(
@@ -159,6 +163,7 @@ module Api
             )
             render json: @incident, serializer: IncidentSerializer
           else
+            @incident.update(devin_session_status: 'failed') if DevinSessionService.configured?
             render json: { error: 'Failed to create Devin session' }, status: :service_unavailable
           end
         end

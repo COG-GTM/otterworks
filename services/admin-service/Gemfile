@@ -2,6 +2,7 @@ source 'https://rubygems.org'
 ruby '~> 3.3.0'
 
 gem 'active_model_serializers', '~> 0.10'
+gem 'aws-sdk-secretsmanager', '~> 1.95'
 gem 'bootsnap', require: false
 gem 'jbuilder', '~> 2.11'
 gem 'jwt', '~> 2.8'

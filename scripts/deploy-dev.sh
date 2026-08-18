@@ -393,10 +393,22 @@ build_helm_args() {
       # advisory lock, and Rails has one connection URL for both, so the whole
       # service uses the session-mode pooler port.
       EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
+      # The image's built-in default names one tenant's database; the golden
+      # deploy has its own.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_NAME=${DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
       # Settings (auto-investigate, Devin credentials) and chaos flags live in Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      # Same as the tenant path: the chart has no default, so an SDK client
+      # would otherwise fall back to its own region.
+      EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
+      # Devin credentials from Secrets Manager, read through the service
+      # account's IRSA role. Unset falls back to the pair stored via the
+      # settings API.
+      if [ -n "${DEVIN_CREDENTIALS_SECRET_ID:-}" ]; then
+        EXTRA_ARGS+=(--set-string "config.DEVIN_CREDENTIALS_SECRET_ID=${DEVIN_CREDENTIALS_SECRET_ID}")
+      fi
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
       add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
     audit-service)

@@ -16,6 +16,13 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        # Config lands in the pod through envFrom, which Kubernetes only reads at
+        # container start: without this the ConfigMap changes and the running pod
+        # keeps the old environment until someone restarts it by hand.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Same for the Secret, also injected via envFrom.
+        checksum/secrets: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
       labels:
         app.kubernetes.io/name: {{ .Chart.Name }}
         app.kubernetes.io/instance: {{ .Release.Name }}
