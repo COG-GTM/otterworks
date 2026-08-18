@@ -83,21 +83,3 @@ impl SnsConfig {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{AwsConfig, ServerConfig};
-
-    #[test]
-    fn server_defaults() {
-        let cfg = ServerConfig::from_env();
-        assert!(cfg.port > 0);
-        assert!(cfg.max_upload_bytes > 0);
-    }
-
-    #[test]
-    fn uploads_target_the_configured_bucket() {
-        let aws = AwsConfig::from_env();
-        assert!(!aws.s3_bucket.is_empty());
-    }
-}

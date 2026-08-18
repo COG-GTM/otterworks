@@ -18,16 +18,18 @@
    ```
    kubectl logs -l app=file-service --tail=100 -n otterworks | grep -i "NoSuchBucket\|S3\|500"
    ```
-2. Check whether the chaos flag `chaos:file-service:upload_s3_error` is set in Redis:
+2. Confirm which bucket the service is writing to and that it exists:
    ```
-   redis-cli EXISTS chaos:file-service:upload_s3_error
+   kubectl get cm file-service-config -n otterworks -o jsonpath='{.data.S3_BUCKET}'
+   aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
-
-<!-- TODO: Complete investigation steps -->
+3. Check the service account's IAM role still grants `s3:PutObject` on that bucket.
 
 ## Resolution Steps
 
-<!-- TODO -->
+- Wrong or missing bucket name: correct `S3_BUCKET` in the service config and restart the
+  deployment.
+- Missing permissions: reattach the S3 policy to the file-service IRSA role.
 
 ## Post-Incident
 
