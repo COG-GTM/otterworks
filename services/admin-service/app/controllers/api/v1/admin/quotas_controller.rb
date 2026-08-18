@@ -6,14 +6,17 @@ module Api
 
         # GET /api/v1/admin/quotas/:user_id
         def show
+          authorize @quota
           render json: @quota, serializer: StorageQuotaSerializer
         end
 
-        # PUT /api/v1/admin/quotas/:user_id
+        # PATCH/PUT /api/v1/admin/quotas/:user_id
         def update
+          authorize @quota
           previous_attributes = @quota.attributes.slice('quota_bytes', 'tier')
 
           if @quota.update(quota_params)
+            sync_quota_to_auth_service
             AuditLogger.log(
               action: 'quota.updated',
               resource_type: 'StorageQuota',
@@ -29,6 +32,18 @@ module Api
         end
 
         private
+
+        # auth-service owns users.quota_bytes; push updates so file-service
+        # enforcement sees the new limit.
+        def sync_quota_to_auth_service
+          return unless @quota.saved_change_to_quota_bytes?
+
+          AuthServiceClient.update_quota(
+            user_id: @quota.user_id,
+            quota_bytes: @quota.quota_bytes,
+            authorization: request.headers['Authorization']
+          )
+        end
 
         def set_quota
           @quota = StorageQuota.find_by!(user_id: params[:user_id])

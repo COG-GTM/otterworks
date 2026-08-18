@@ -1,9 +1,15 @@
 class ApplicationController < ActionController::API
+  include Pundit::Authorization
+
   before_action :set_request_metadata
 
   rescue_from StandardError do |e|
     Rails.logger.error("Unhandled error: #{e.message}")
     render json: { error: 'Internal server error' }, status: :internal_server_error
+  end
+
+  rescue_from Pundit::NotAuthorizedError do
+    render json: { error: 'Forbidden' }, status: :forbidden
   end
 
   rescue_from ActiveRecord::RecordNotFound do
@@ -16,6 +22,12 @@ class ApplicationController < ActionController::API
 
   rescue_from ActionController::ParameterMissing do |e|
     render json: { error: "Missing parameter: #{e.param}" }, status: :bad_request
+  end
+
+  RequestUser = Struct.new(:id, :email, :role, keyword_init: true)
+
+  def pundit_user
+    RequestUser.new(id: current_user_id, email: current_user_email, role: current_user_role)
   end
 
   private
