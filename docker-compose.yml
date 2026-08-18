@@ -381,6 +381,10 @@ services:
       SECRET_KEY_BASE: dev-secret-key-base-otterworks-change-in-production
       DEVIN_API_KEY: ${DEVIN_API_KEY:-}
       DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
+      SLACK_USER_MAP: ${SLACK_USER_MAP:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
       CHAOS_SECRET: ${CHAOS_SECRET:-}
     depends_on:
