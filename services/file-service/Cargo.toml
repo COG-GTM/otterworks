@@ -39,3 +39,6 @@ redis = { version = "0.25", features = ["tokio-comp", "connection-manager"] }
 actix-rt = "2"
 actix-web = "4"
 tokio = { version = "1", features = ["full", "test-util"] }
+# Fake the AWS HTTP boundary in tests (StaticReplayClient). Test-only.
+aws-smithy-runtime = { version = "1", features = ["test-util", "client"] }
+http = "1"
