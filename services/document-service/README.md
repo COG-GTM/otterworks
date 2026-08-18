@@ -48,6 +48,12 @@ no `UPDATE` when values are unchanged). Unresolving clears `is_resolved`,
 `resolved_by`, and `resolved_at`. Only the unresolved-to-resolved transition
 publishes an event: repeated resolves and unresolve publish nothing.
 
+Neither endpoint performs an authorization check: `resolve` takes `resolved_by`
+from the request body and `unresolve` requires no identity at all, so any caller
+can resolve or unresolve any comment. This matches the existing comment routes
+(add, list, and delete are equally unauthenticated at the service) — the
+gateway-verified principal is not threaded through to this service.
+
 `GET /api/v1/documents/{document_id}/comments` accepts the
 `include_resolved` query parameter, which defaults to `true` to preserve the
 existing behavior. When it is `false`, resolved comments are excluded. Results

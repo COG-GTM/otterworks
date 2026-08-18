@@ -79,7 +79,11 @@ aligned.
 
 When the chaos flag `chaos:notification-service:consumer_strict_schema` is set,
 intake switches to a strict JSON parser and messages fail to parse and stay in
-the queue. That is an intentional lab mechanism (see `AGENTS.md`).
+the queue, so queue depth climbs while the consumer still looks healthy. That is
+an intentional lab mechanism (see `AGENTS.md`). Note the strict parser sets
+`ignoreUnknownKeys = false` and `isLenient = false`, so it rejects any body
+carrying unknown fields — including every SNS envelope — and not only the legacy
+integer timestamps its code comment describes.
 
 ## Build and test
 
