@@ -38,6 +38,14 @@ module Api
         # the organization reads as "configured" while creating no sessions.
         def devin_credentials
           verify = ActiveModel::Type::Boolean.new.cast(params[:verify]) || false
+          # Presence is a harmless read, but verification spends an outbound call
+          # on the tenant's own key and tells the caller whether it is accepted,
+          # so it is admin-only while the plain read stays open.
+          if verify
+            require_admin!
+            return if performed?
+          end
+
           render json: DevinSessionService.credentials_status(verify: verify)
         end
 
@@ -76,7 +84,7 @@ module Api
           # tenant the status describes a pair the operator did not just write
           # and the new one will never be used. Say so rather than looking like
           # a successful change.
-          if status[:source] && status[:source] != 'settings'
+          if %w[env secrets_manager].include?(status[:source].to_s)
             Rails.logger.warn("Stored Devin credentials are shadowed by #{status[:source]}")
             status = status.merge(stored_pair_shadowed_by: status[:source])
           end

@@ -667,10 +667,11 @@ const INCIDENT_PAGE_SIZE = 100;
 const titledFor = (incident: Incident, fileName: string) =>
   incident.title?.endsWith(`: ${fileName}`) ?? false;
 
-// The snapshot below is only useful while the upload is still running, and
-// apiClient has no timeout of its own; past this it is cheaper to give up than
-// to keep a request open against a waking admin-service.
-const SNAPSHOT_TIMEOUT_MS = 10000;
+// apiClient has no timeout of its own, and a lookup that never settles takes
+// the whole retry chain with it — the caller only schedules the next attempt
+// once this one has finished. A waking admin-service is exactly the case both
+// lookups exist for, so both give up rather than hang.
+const LOOKUP_TIMEOUT_MS = 10000;
 
 export const incidentsApi = {
   list: async (timeoutMs?: number): Promise<Incident[]> => {
@@ -686,11 +687,11 @@ export const incidentsApi = {
   // server clock disagree often enough that a skewed client would filter out
   // its own incident and never show the link.
   idsForUpload: async (fileName: string): Promise<Set<string>> => {
-    const incidents = await incidentsApi.list(SNAPSHOT_TIMEOUT_MS);
+    const incidents = await incidentsApi.list(LOOKUP_TIMEOUT_MS);
     return new Set(incidents.filter((i) => titledFor(i, fileName)).map((i) => i.id));
   },
   findForUpload: async (fileName: string, exclude?: Set<string>): Promise<Incident | null> =>
-    (await incidentsApi.list()).find(
+    (await incidentsApi.list(LOOKUP_TIMEOUT_MS)).find(
       (i) => titledFor(i, fileName) && !exclude?.has(i.id),
     ) ?? null,
 };

@@ -242,6 +242,26 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
     end
 
+    it 'refuses to spend a Devin API call on a non-admin verify request' do
+      set_jwt_env(request, role: 'viewer')
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'key', org_id: 'org-1' })
+      allow(DevinSessionService).to receive(:verify_credentials)
+
+      get :devin_credentials, params: { verify: 'true' }
+      expect(response).to have_http_status(:forbidden)
+      expect(DevinSessionService).not_to have_received(:verify_credentials)
+    end
+
+    it 'still reports credential presence to non-admin roles' do
+      set_jwt_env(request, role: 'viewer')
+      allow(AdminSettingsService).to receive(:devin_credentials)
+        .and_return({ api_key: 'key', org_id: 'org-1' })
+
+      get :devin_credentials
+      expect(response).to have_http_status(:ok)
+    end
+
     it 'allows settings reads for non-admin roles' do
       set_jwt_env(request, role: 'viewer')
       allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
