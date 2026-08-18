@@ -4,8 +4,6 @@ require 'uri'
 
 class DevinSessionService
   API_HOST = 'https://api.devin.ai'.freeze
-  SLACK_ALERT_CHANNEL = '#automated-alerts'.freeze
-  ON_CALL_HANDLE = '@golden demos'.freeze
 
   class << self
     def create_session(incident:)
@@ -80,82 +78,8 @@ class DevinSessionService
       [stored[:api_key], stored[:org_id]]
     end
 
-    # Rendered from the incident alone so the session can post it before it
-    # knows anything about the failure. Only the session link is left for the
-    # session to fill in, since the URL does not exist until the session does.
-    def slack_alert_message(incident)
-      service = incident.affected_service.presence || 'unknown-service'
-      detail = error_detail(incident)
-      reported_at = (incident.created_at || Time.current).utc.iso8601(3)
-
-      <<~ALERT
-        :rotating_light: Sentry Alert — OtterWorks — #{alert_headline(service)}
-
-        Error:
-        #{incident.title}
-        Severity:
-        #{incident.severity}
-
-        Location:
-        #{source_location(service)}
-        Type:
-        #{error_type(detail)}
-
-        Message: #{detail}
-
-        Release:
-        otterworks-#{service}@#{ENV.fetch('APP_VERSION', '1.0.0')}
-        Environment:
-        #{environment_name}
-
-        On-Call:
-        :robot_face: Devin AI (auto-investigating) — <DEVIN_SESSION_URL>
-        On-Call:
-        #{ON_CALL_HANDLE}
-
-        Service: #{service} | #{reported_at}
-      ALERT
-    end
-
-    def alert_headline(service)
-      return 'File Upload Error' if service == 'file-service'
-
-      "#{service.split(/[-_]/).map(&:capitalize).join(' ')} Error"
-    end
-
-    def source_location(service)
-      return 'services/file-service/src/handlers.rs — upload_file' if service == 'file-service'
-
-      "services/#{service}"
-    end
-
-    # The alert description leads with "<context>: <error>"; the error tail is
-    # what belongs in the Slack Message field.
-    def error_detail(incident)
-      first_line = incident.description.to_s.split("\n").first.to_s.strip
-      first_line[/:\s*(.+)\z/, 1].presence || first_line.presence || incident.title.to_s
-    end
-
-    def error_type(detail)
-      detail[/\b([A-Z][A-Za-z0-9]*(?:Error|Exception|Failure))\b/, 1] || 'ServiceError'
-    end
-
-    def environment_name
-      Rails.env.production? ? 'prod' : Rails.env.to_s
-    end
-
     def build_prompt(incident)
       <<~PROMPT
-        ## Step 0 — Post this alert to Slack IMMEDIATELY
-
-        Before you read any code, run any command, or say anything else, post the message below to the Slack channel #{SLACK_ALERT_CHANNEL} using your Slack integration. Post it verbatim — same wording, same field order — with `<DEVIN_SESSION_URL>` replaced by the URL of this session (it is in your session information). Do not wait for triage results, and do not summarize or restructure it.
-
-        #{slack_alert_message(incident).strip}
-
-        Once that message is posted, continue with the investigation below.
-
-        ## Context
-
         You are investigating an incident in the OtterWorks platform, a collaborative file storage and document editing system (similar to Google Drive + Google Docs) built as a polyglot microservices architecture.
 
         ## Incident Details
