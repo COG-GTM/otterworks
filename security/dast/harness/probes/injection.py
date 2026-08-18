@@ -331,7 +331,6 @@ TRAVERSAL_TARGETS = (
         "Resolve the requested path and require the result to stay inside the resolved "
         "archive root before opening it; reject anything else as a 404."
     ),
-    requires_identity=False,  # the export route is served without a caller identity
 )
 def path_traversal_export(ctx: ScanContext) -> Result:
     """Attacker asks the export route for a path that climbs out of the archive."""

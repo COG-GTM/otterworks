@@ -37,7 +37,7 @@ import yaml
 from defusedxml import ElementTree
 from tabulate import tabulate
 
-HARNESS_VERSION = 1
+HARNESS_VERSION = 2
 
 ROOT = Path(__file__).resolve().parents[3]
 EQUIVALENCE_DIR = ROOT / "security" / "equivalence"
@@ -93,6 +93,7 @@ class Finding:
     module: Module
     subject: list[str]
     secure_pattern: str
+    observes: list[str] = field(default_factory=list)
     klass: str = ""
     methods: list[str] = field(default_factory=list)
     dast_finding: str = ""
@@ -132,6 +133,7 @@ def load_registry() -> tuple[dict[str, Module], list[Finding]]:
                 module=module,
                 subject=spec["subject"],
                 secure_pattern=" ".join(spec["secure_pattern"].split()),
+                observes=spec.get("observes", []),
                 klass=spec.get("class", ""),
                 methods=spec.get("methods", []),
                 dast_finding=spec.get("dast_finding", ""),
@@ -162,7 +164,11 @@ def fingerprint(finding: Finding) -> dict[str, Any]:
         "cases_sha256": sha256(finding.cases_path),
         "seed_sha256": sha256(ROOT / finding.module.seed),
         "emitter_sha256": sha256(ROOT / finding.module.emitter),
+        # Only the finding's own class decides whether it has been refactored.
         "subject_sha256": {path: sha256(ROOT / path) for path in finding.subject},
+        # Provenance for the files the cases travel through but that other
+        # findings also own; never used to pick a grading stage.
+        "observed_sha256": {path: sha256(ROOT / path) for path in finding.observes},
     }
 
 
@@ -457,6 +463,12 @@ def load_recording(finding: Finding) -> tuple[dict[str, Any] | None, str]:
 
 
 def subject_changed(finding: Finding, recording: dict[str, Any]) -> list[str]:
+    """Return the finding's own subject files that differ from the recording.
+
+    Deliberately blind to ``observes`` files: the route module is shared by every
+    finding in the module, so a refactor of one finding must not make its
+    neighbours look refactored and be graded against the post-fix contract.
+    """
     current = fingerprint(finding)["subject_sha256"]
     recorded = recording["fingerprint"]["subject_sha256"]
     if set(current) != set(recorded):

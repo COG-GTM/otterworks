@@ -5,8 +5,17 @@
 # attack cases no longer fire (the vulnerability is closed). Both claims are
 # graded from security/equivalence/expected/<finding>.json, which is recorded
 # against the before-state and fingerprinted.
+#
+# Two file lists, deliberately separate:
+#   subject:  the files that *are* the refactor. A change here is what tells the
+#             harness to grade this finding as a refactor instead of the
+#             before-state, so only this finding's own class may appear.
+#   observes: other files the recorded cases travel through (the shared route
+#             module). They are fingerprinted as provenance, but changing one
+#             must not make a neighbouring finding look refactored - the cases
+#             are replayed either way, so a real divergence is still caught.
 
-harness_version: 1
+harness_version: 2
 
 modules:
   document-service:
@@ -27,8 +36,7 @@ findings:
     methods: [_where, count_documents, search_documents]
     subject:
       - services/document-service/app/services/document_query_repository.py
-      # The HTTP cases traverse the route module, so it is part of what the
-      # recording observes and must invalidate stale evidence too.
+    observes:
       - services/document-service/app/api/documents.py
     secure_pattern: >
       Bind every caller-supplied value as a query parameter and resolve ORDER BY
@@ -45,8 +53,7 @@ findings:
     methods: [read_export]
     subject:
       - services/document-service/app/services/export_archive.py
-      # The HTTP cases traverse the route module, so it is part of what the
-      # recording observes and must invalidate stale evidence too.
+    observes:
       - services/document-service/app/api/documents.py
     secure_pattern: >
       Resolve the joined path and require it to stay inside the resolved archive
@@ -62,8 +69,7 @@ findings:
     methods: [mint_token, verify_token]
     subject:
       - services/document-service/app/services/share_link.py
-      # The HTTP cases traverse the route module, so it is part of what the
-      # recording observes and must invalidate stale evidence too.
+    observes:
       - services/document-service/app/api/documents.py
     secure_pattern: >
       Derive the token with a keyed MAC (HMAC-SHA256 over the document id using

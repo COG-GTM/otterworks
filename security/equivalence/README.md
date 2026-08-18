@@ -45,9 +45,15 @@ stage), `3` no verdict reached. `2` and `3` are never a pass.
 
 ## How it fails closed
 
-- Evidence is fingerprinted over the **subject sources, the seed, the cases and
-  the emitter**. Change any of them and the recording is stale, which is
-  inconclusive — not a pass.
+- Evidence is fingerprinted over the **subject sources, the shared files the
+  cases travel through, the seed, the cases and the emitter**. Change the seed,
+  the cases or the emitter and the recording is stale, which is inconclusive —
+  not a pass.
+- `findings.yaml` keeps those two file lists apart on purpose. `subject` is the
+  finding's own class, and a change there is what selects the refactor contract.
+  `observes` holds files several findings share (the route module): fingerprinted
+  as provenance, but never used to pick a stage, so closing one finding cannot
+  make its neighbours look refactored and fail for still being exploitable.
 - `record` refuses to overwrite existing evidence without an explicit
   `ALLOW_RERECORD=1` and a `REASON`, which is stored in the recording alongside
   the previous fingerprint. Re-recording to get green leaves an audit trail.

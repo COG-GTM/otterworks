@@ -27,6 +27,10 @@ be "fixed" outside a refactor branch.
 
 `security/equivalence/findings.yaml` is the machine-readable source of truth
 (subject paths, class and methods, the secure pattern expected, the linked probe).
+A finding's `subject` is its own class only — changing it is what makes the
+harness grade that finding as a refactor. The shared route module is listed under
+`observes` instead, so editing `app/api/documents.py` while closing one finding
+does not flip the other two into refactor grading.
 `make eq-list` prints it together with the state of each finding's evidence.
 
 Routes that reach them: `GET /api/v1/documents/` (filters `title`,
