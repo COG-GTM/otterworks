@@ -142,7 +142,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 Each user has a storage quota, defaulting to 10 GiB (10,737,418,240 bytes).
 
 - **Source of truth**: `users.quota_bytes` in the Auth Service database (Flyway migration `V5`). Exposed as `quotaBytes` on `GET /api/v1/auth/profile` and the user-lookup endpoints; mutated via the ADMIN-only `PATCH /api/v1/auth/users/{id}/quota`.
-- **Enforcement**: the File Service computes a user's usage by summing the sizes of their non-trashed files in DynamoDB metadata. If `used_bytes + incoming_bytes > quota_bytes`, the upload is rejected with HTTP `413` and body `{ "error": "quota_exceeded", "quota_bytes": ..., "used_bytes": ... }`.
+- **Enforcement**: the File Service computes a user's usage by summing the sizes of their non-trashed files in DynamoDB metadata. If `used_bytes + incoming_bytes > quota_bytes`, the upload is rejected with HTTP `413` and body `{ "error": "quota_exceeded", "quota_bytes": ..., "used_bytes": ... }`. If the quota cannot be fetched from the Auth Service (unreachable, error, or timeout), enforcement fails open and the upload proceeds with a warning logged.
 - **Administration**: the Admin Service offers `GET`/`PATCH /api/v1/admin/quotas/:user_id` (Pundit-authorized, admin/super_admin only) and pushes quota updates to the Auth Service.
 - **Frontend**: the web app's dashboard shows a storage-usage bar (used vs. quota from the user's profile) and the upload dropzone shows a dedicated "Storage full" error state when the API returns `413 quota_exceeded`.
 

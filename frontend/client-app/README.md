@@ -32,7 +32,8 @@ defaults below), `VITE_API_BASE_URL` (native builds only, see below).
 ## Storage quotas
 
 The dashboard shows a storage-usage bar comparing the user's usage against their
-quota (`quotaBytes` from `GET /api/v1/auth/profile`, default 10 GiB). When an upload
+quota (`quotaBytes` from `GET /api/v1/auth/profile`, default 10 GiB). Usage is
+computed client-side by paginating `/files` and summing file sizes. When an upload
 is rejected with `413` and `{ "error": "quota_exceeded", ... }`, the upload dropzone
 shows a dedicated "Storage full" error state instead of the generic upload failure.
 
