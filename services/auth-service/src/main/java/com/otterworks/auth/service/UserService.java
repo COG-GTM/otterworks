@@ -51,6 +51,18 @@ public class UserService {
     return UserDTO.fromEntity(user);
   }
 
+  @Transactional
+  public UserDTO updateQuota(UUID userId, long quotaBytes) {
+    User user =
+        userRepository
+            .findById(userId)
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    user.setQuotaBytes(quotaBytes);
+    user = userRepository.save(user);
+    log.info("Quota updated for user: {} to {} bytes", userId, quotaBytes);
+    return UserDTO.fromEntity(user);
+  }
+
   @Transactional(readOnly = true)
   public Page<UserDTO> listUsers(Pageable pageable) {
     return userRepository.findAll(pageable).map(UserDTO::fromEntity);

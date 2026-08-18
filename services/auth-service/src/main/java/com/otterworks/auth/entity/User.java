@@ -55,6 +55,9 @@ public class User {
 
   @Column private Instant lastLoginAt;
 
+  @Column(nullable = false)
+  private long quotaBytes = 10_737_418_240L;
+
   @PrePersist
   protected void onCreate() {
     createdAt = Instant.now();
