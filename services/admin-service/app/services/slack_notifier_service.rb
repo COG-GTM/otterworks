@@ -2,16 +2,18 @@ require 'net/http'
 require 'json'
 require 'uri'
 
-# Posts incident alerts to Slack. When SLACK_BOT_TOKEN is set, delivery goes
-# through chat.postMessage to the channel resolved by SlackAlertRoutes
-# (default #automated-alerts); otherwise it falls back to an incoming
-# webhook, whose channel is bound to the webhook itself. Every failure is
+# Posts incident alerts to Slack. When a bot token is configured (the
+# SLACK_BOT_TOKEN env var, or one stored at runtime via the settings API),
+# delivery goes through chat.postMessage to the channel resolved by
+# SlackAlertRoutes (default #automated-alerts); otherwise it falls back to an
+# incoming webhook, whose channel is bound to the webhook itself. Every failure is
 # logged and swallowed — a Slack outage must never block incident creation.
 class SlackNotifierService
   # Slack Block Kit rejects the whole message (400 invalid_blocks) when a
   # header exceeds 150 chars, a section exceeds 3000 chars, or a section
   # field exceeds 2000 chars.
   HEADER_MAX = 150
+  BOT_TOKEN_SHAPE = /\Axoxb-[A-Za-z0-9-]+\z/
   SECTION_MAX = 3000
   FIELD_MAX = 2000
 
@@ -30,13 +32,17 @@ class SlackNotifierService
 
       webhook_url = resolve_webhook_url
       unless webhook_url
-        Rails.logger.info('Slack not configured (no SLACK_BOT_TOKEN or webhook), skipping incident notification')
+        Rails.logger.info('Slack not configured (no bot token or webhook), skipping incident notification')
         return
       end
       post_via_webhook(webhook_url, payload)
     rescue StandardError => e
       Rails.logger.error("Slack incident notification failed: #{e.message}")
       nil
+    end
+
+    def valid_bot_token?(token)
+      token.to_s.match?(BOT_TOKEN_SHAPE)
     end
 
     private
@@ -90,9 +96,21 @@ class SlackNotifierService
 
     # Environment wins; the Redis-backed settings store is the fallback so the
     # token can be supplied at runtime on tenants whose deploy pipeline does
-    # not wire it as an env var.
+    # not wire it as an env var. Like the stored webhook URL, the stored token
+    # is re-validated at send time so a value planted in Redis outside the
+    # settings API cannot reach the Authorization header or silently suppress
+    # the webhook fallback.
     def resolve_bot_token
-      ENV.fetch('SLACK_BOT_TOKEN', nil).presence || AdminSettingsService.slack_bot_token
+      ENV.fetch('SLACK_BOT_TOKEN', nil).presence || stored_bot_token
+    end
+
+    def stored_bot_token
+      token = AdminSettingsService.slack_bot_token
+      return nil unless token
+      return token if valid_bot_token?(token)
+
+      Rails.logger.error('Stored Slack bot token is not an xoxb- token, ignoring it')
+      nil
     end
 
     # Environment wins; the Redis-backed settings store is the fallback so the

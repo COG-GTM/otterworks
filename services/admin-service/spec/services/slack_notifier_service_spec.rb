@@ -75,6 +75,18 @@ RSpec.describe SlackNotifierService do
     expect(read_posted.call['channel']).to eq('#automated-alerts')
   end
 
+  it 'ignores a malformed stored token and falls back to the webhook' do
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return("garbage\r\nvalue")
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    _, read_request = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(Net::HTTP).to have_received(:new).with('hooks.slack.com', 443)
+    expect(read_request.call['Authorization']).to be_nil
+  end
+
   it 'routes unknown alert names to the default channel' do
     allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
     read_posted, = stub_post

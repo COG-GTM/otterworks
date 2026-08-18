@@ -177,14 +177,16 @@ class AdminSettingsService
       redis&.close
     end
 
-    def clear_slack_bot_token
+    # Clears the webhook URL and bot token in a single DEL so a revocation
+    # cannot partially succeed.
+    def clear_slack_credentials
       redis = Redis.new(
         url: ServiceEnv.redis_url,
         timeout: 2
       )
-      redis.del(SLACK_BOT_TOKEN_KEY)
+      redis.del(SLACK_WEBHOOK_URL_KEY, SLACK_BOT_TOKEN_KEY)
     rescue StandardError => e
-      Rails.logger.error("Failed to clear Slack bot token: #{e.message}")
+      Rails.logger.error("Failed to clear Slack credentials: #{e.message}")
       raise
     ensure
       redis&.close

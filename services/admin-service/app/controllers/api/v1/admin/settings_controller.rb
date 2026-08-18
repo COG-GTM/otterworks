@@ -98,8 +98,7 @@ module Api
         # SLACK_WEBHOOK_URL / SLACK_BOT_TOKEN take precedence and are not
         # revocable here.
         def destroy_slack_notifications
-          AdminSettingsService.clear_slack_webhook_url
-          AdminSettingsService.clear_slack_bot_token
+          AdminSettingsService.clear_slack_credentials
           Rails.logger.info('Slack webhook URL and bot token cleared via settings API')
           render json: slack_status
         end
@@ -114,7 +113,7 @@ module Api
         end
 
         def valid_slack_bot_token?(token)
-          token.match?(/\Axox[a-z]-[A-Za-z0-9-]+\z/)
+          SlackNotifierService.valid_bot_token?(token)
         end
 
         def slack_status
