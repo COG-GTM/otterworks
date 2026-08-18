@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import { CheckCircle2, MessageSquare, RotateCcw, Trash2, X } from "lucide-react";
 import { commentsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
@@ -16,13 +17,13 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
   const user = useAuthStore((s) => s.user);
   const [newComment, setNewComment] = useState("");
 
-  const { data: comments = [], isLoading } = useQuery({
-    queryKey: ["documents", documentId, "comments"],
+  const { data: comments = [], isLoading, isError, refetch } = useQuery({
+    queryKey: ["document-comments", documentId],
     queryFn: () => commentsApi.list(documentId),
   });
 
   const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["documents", documentId, "comments"] });
+    queryClient.invalidateQueries({ queryKey: ["document-comments", documentId] });
 
   const addMutation = useMutation({
     mutationFn: (content: string) => commentsApi.create(documentId, user?.id ?? "", content),
@@ -30,26 +31,30 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
       setNewComment("");
       invalidate();
     },
+    onError: () => toast.error("Failed to post comment"),
   });
 
   const resolveMutation = useMutation({
     mutationFn: (commentId: string) => commentsApi.resolve(documentId, commentId, user?.id ?? ""),
     onSuccess: invalidate,
+    onError: () => toast.error("Failed to resolve comment"),
   });
 
   const unresolveMutation = useMutation({
     mutationFn: (commentId: string) => commentsApi.unresolve(documentId, commentId),
     onSuccess: invalidate,
+    onError: () => toast.error("Failed to reopen comment"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (commentId: string) => commentsApi.delete(documentId, commentId),
     onSuccess: invalidate,
+    onError: () => toast.error("Failed to delete comment"),
   });
 
   const submitComment = () => {
     const content = newComment.trim();
-    if (content && !addMutation.isPending) {
+    if (content && user && !addMutation.isPending) {
       addMutation.mutate(content);
     }
   };
@@ -75,6 +80,16 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {isLoading ? (
           <p className="text-sm text-gray-400">Loading comments...</p>
+        ) : isError ? (
+          <div className="space-y-2">
+            <p className="text-sm text-red-600">Failed to load comments.</p>
+            <button
+              onClick={() => refetch()}
+              className="text-sm text-otter-600 hover:underline"
+            >
+              Retry
+            </button>
+          </div>
         ) : comments.length === 0 ? (
           <p className="text-sm text-gray-400">No comments yet. Start the conversation!</p>
         ) : (
@@ -122,7 +137,7 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
         />
         <button
           onClick={submitComment}
-          disabled={!newComment.trim() || addMutation.isPending}
+          disabled={!newComment.trim() || !user || addMutation.isPending}
           className="w-full px-4 py-2 bg-otter-600 text-white rounded-lg text-sm hover:bg-otter-700 transition disabled:opacity-50"
         >
           {addMutation.isPending ? "Posting..." : "Comment"}
@@ -142,6 +157,7 @@ interface CommentCardProps {
 function CommentCard({ comment, onResolve, onUnresolve, onDelete }: CommentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const collapsed = comment.isResolved && !expanded;
+  const toggleable = comment.isResolved;
 
   return (
     <div
@@ -188,12 +204,16 @@ function CommentCard({ comment, onResolve, onUnresolve, onDelete }: CommentCardP
           </button>
         </div>
       </div>
-      {collapsed ? (
+      {toggleable ? (
         <button
           type="button"
-          onClick={() => setExpanded(true)}
-          className="text-sm text-gray-500 truncate w-full text-left bg-transparent border-0 p-0"
-          title="Show resolved comment"
+          onClick={() => setExpanded(!expanded)}
+          title={collapsed ? "Show resolved comment" : "Collapse resolved comment"}
+          className={`w-full text-left bg-transparent border-0 p-0 ${
+            collapsed
+              ? "text-sm text-gray-500 truncate"
+              : "text-sm text-gray-700 whitespace-pre-wrap break-words"
+          }`}
         >
           {comment.content}
         </button>
