@@ -84,6 +84,14 @@ class ConfigError(RuntimeError):
     """The harness cannot be trusted to reach a verdict."""
 
 
+class ToolMissing(subprocess.CompletedProcess):
+    """The build tool could not be started, so nothing about the module was measured."""
+
+
+DEFAULT_TOOL = {"maven": ["mvn"], "gradle": ["gradle"]}
+VERSION_FLAG = {"maven": "-v", "gradle": "--version"}
+
+
 # --------------------------------------------------------------------------- model
 
 
@@ -113,6 +121,11 @@ class Module:
     id: str
     path: Path
     build: str
+    # The build tool that measured this module: the first `tool` candidate that can
+    # actually start here. Its suite and its dependency tree are read with the same one,
+    # and it is named in every report so evidence says which toolchain produced it.
+    tool: str | None
+    # The arguments the suite runs with, appended to `tool`.
     test: str
     cases: Path | None
     java_home: str | None
@@ -175,6 +188,33 @@ def resolve_java_home(candidates: list[str] | None) -> str | None:
     return None
 
 
+def resolve_tool(
+    path: Path, build: str, candidates: list[str], java_home: str | None
+) -> str | None:
+    """First candidate build tool that can actually start in this module.
+
+    Candidates are ordered most-pinned first (a checked-in wrapper, then the tool on
+    PATH): the wrapper pins the version the module is built with everywhere else, but a
+    wrapper is not always usable — `services/auth-service` ships no `gradle-wrapper.jar`,
+    and `./mvnw` cannot pin anything on a machine that cannot reach the distribution.
+    Falling back keeps the module measured; the tool that did it is named in the report.
+    """
+    env = dict(os.environ)
+    if java_home:
+        env["JAVA_HOME"] = java_home
+    for candidate in candidates:
+        argv = shlex.split(f"{candidate} {VERSION_FLAG[build]}")
+        try:
+            probe = subprocess.run(
+                argv, cwd=path, env=env, capture_output=True, text=True, check=False
+            )
+        except OSError:
+            continue
+        if probe.returncode == 0:
+            return candidate
+    return None
+
+
 def load_modules() -> list[Module]:
     raw = yaml.safe_load((DEPS_DIR / "modules.yaml").read_text())
     modules = []
@@ -188,11 +228,21 @@ def load_modules() -> list[Module]:
                 f"none of its JDK candidates exist ({', '.join(candidates)}). Install one "
                 "or add a candidate rather than measuring it on the wrong JDK."
             )
+        tools = entry.get("tool") or DEFAULT_TOOL[entry["build"]]
+        tool = None if unmeasurable else resolve_tool(
+            REPO_ROOT / entry["path"], entry["build"], tools, java_home
+        )
+        if tool is None and not unmeasurable:
+            unmeasurable = (
+                f"none of its build tools can run here ({', '.join(tools)}). Install one "
+                "or add a candidate rather than reporting the module as clean."
+            )
         modules.append(
             Module(
                 id=entry["id"],
                 path=REPO_ROOT / entry["path"],
                 build=entry["build"],
+                tool=tool,
                 test=entry["test"],
                 cases=(DEPS_DIR / cases) if cases else None,
                 java_home=java_home,
@@ -244,10 +294,10 @@ def run(command: str, cwd: Path, module: Module) -> subprocess.CompletedProcess[
             check=False,
         )
     except OSError as error:
-        # An absent build tool is reported like any other unmeasurable module — 127 with
-        # the reason on stderr — so the rest of the estate is still measured and this
-        # module reads `unmeasured`, never clean and never "still vulnerable".
-        return subprocess.CompletedProcess(argv, 127, "", f"cannot run {argv[0]!r}: {error}")
+        # A tool that cannot even start measured nothing, so it gets its own result type:
+        # every caller maps it to `unmeasured`, never to clean, "still vulnerable" or "the
+        # suite failed". The rest of the estate is still measured.
+        return ToolMissing(argv, 127, "", f"cannot run {argv[0]!r}: {error}")
 
 
 # Maven indents 3 characters per level ("+- ", "|  "), Gradle 5 ("+--- ", "|    ").
@@ -265,7 +315,8 @@ INDENT_WIDTH = {"maven": 3, "gradle": 5}
 def maven_tree(module: Module) -> tuple[str, list[str], str]:
     with tempfile.NamedTemporaryFile("r+", suffix=".txt") as handle:
         result = run(
-            f"mvn -B -q dependency:tree -DoutputType=text -DoutputFile={handle.name}",
+            f"{module.tool} -B -q dependency:tree -DoutputType=text "
+            f"-DoutputFile={handle.name}",
             module.path,
             module,
         )
@@ -277,7 +328,8 @@ def maven_tree(module: Module) -> tuple[str, list[str], str]:
 
 def gradle_tree(module: Module) -> tuple[str, list[str], str]:
     result = run(
-        "gradle dependencies --configuration runtimeClasspath --no-daemon --console=plain",
+        f"{module.tool} dependencies --configuration runtimeClasspath --no-daemon "
+        "--console=plain",
         module.path,
         module,
     )
@@ -428,6 +480,7 @@ def inventory_payload(advisory: Advisory, trees: list[ModuleTree]) -> dict[str, 
             {
                 "id": tree.module.id,
                 "build": tree.module.build,
+                "tool": tree.module.tool,
                 "status": tree.status,
                 "detail": tree.detail,
                 "declarations": tree.declarations,
@@ -499,21 +552,25 @@ def command_tests(modules: list[Module], only: str | None) -> int:
     results = []
     for module in targets:
         if module.unmeasurable:
-            results.append({"module": module.id, "command": module.test,
+            results.append({"module": module.id, "command": None,
                             "status": UNMEASURED, "exit_code": None, "seconds": 0.0,
                             "summary": "(not run)", "tail": module.unmeasurable})
             continue
         started = datetime.now(UTC)
-        result = run(module.test, module.path, module)
+        result = run(f"{module.tool} {module.test}", module.path, module)
         output = result.stdout + result.stderr
+        # A tool that never started did not fail the suite; it failed to measure it.
+        status = UNMEASURED if isinstance(result, ToolMissing) else (
+            PASS if result.returncode == 0 else FAIL
+        )
         results.append(
             {
                 "module": module.id,
-                "command": module.test,
-                "status": PASS if result.returncode == 0 else FAIL,
+                "command": f"{module.tool} {module.test}",
+                "status": status,
                 "exit_code": result.returncode,
                 "seconds": round((datetime.now(UTC) - started).total_seconds(), 1),
-                "summary": test_summary(module, output),
+                "summary": "(not run)" if status == UNMEASURED else test_summary(module, output),
                 "tail": output[-4000:],
             }
         )
@@ -594,11 +651,14 @@ def emit_transcript(module: Module) -> dict[str, Any]:
     properties = f"-Dow.deps.cases={module.cases} -Dow.deps.observed={observed}"
     if module.build == "maven":
         command = (
-            f"mvn -B test -Dtest={EMITTER_TEST} -DfailIfNoTests=false "
+            f"{module.tool} -B test -Dtest={EMITTER_TEST} -DfailIfNoTests=false "
             f"-Dsurefire.failIfNoSpecifiedTests=false {properties}"
         )
     else:
-        command = f"gradle test --no-daemon --console=plain --tests '*{EMITTER_TEST}' {properties}"
+        command = (
+            f"{module.tool} test --no-daemon --console=plain "
+            f"--tests '*{EMITTER_TEST}' {properties}"
+        )
     result = run(command, module.path, module)
     if not observed.exists():
         raise ConfigError(

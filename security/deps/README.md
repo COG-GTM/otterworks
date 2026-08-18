@@ -84,6 +84,18 @@ make deps-record REASON="<why the old recording was wrong>" ALLOW_RERECORD=1
 A red gate is either a real divergence or a defective fixture. Both are fixed at
 the root; neither is fixed by re-recording the evidence.
 
+## Which toolchain measures a module
+
+Each module names `tool` candidates most-pinned first — its checked-in wrapper
+(`./mvnw`, `./gradlew`), which is what pins the version the module is built with
+elsewhere in CI, then the tool on `PATH`. The first candidate that can actually
+start runs both the suite and the dependency tree, and every report names it, so
+the evidence says which toolchain produced it. A module whose candidates all fail
+is reported `unmeasured` (exit 2), never clean: `services/auth-service` ships a
+wrapper with no `gradle-wrapper.jar`, and `./mvnw` cannot pin anything on a
+machine that cannot reach its distribution, so the fallback keeps the estate
+measured instead of silently skipping a module.
+
 ## Adding a module
 
 Register it in `modules.yaml`. Discovery cross-checks the registry against the
