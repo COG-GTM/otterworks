@@ -316,6 +316,8 @@ def main(argv=None):
         depts = taxonomy.all_departments()
     else:
         depts = [d.strip() for d in args.departments.split(",") if d.strip()]
+    if not depts:
+        ap.error(f"no departments in {args.departments!r}\nvalid: {taxonomy.all_departments()}")
     unknown = [d for d in depts if d not in taxonomy.DEPARTMENTS]
     if unknown:
         ap.error(f"unknown departments: {unknown}\nvalid: {taxonomy.all_departments()}")

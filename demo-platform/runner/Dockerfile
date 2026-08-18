@@ -2,8 +2,8 @@
 # OtterWorks Demo Platform — runner image (otterworks/demo-runner)
 #
 # Launched as a Kubernetes Job by the ops dashboard to run ONE tenant op
-# (deploy / teardown / inject / reset / reap). Carries the repo + a full CLI
-# toolchain so it can drive the EXISTING scripts in scripts/.
+# (deploy / teardown / inject / reset / seed / reap). Carries the repo + a full
+# CLI toolchain so it can drive the EXISTING scripts in scripts/.
 #
 # Build from the REPO ROOT so the whole repo (scripts/ + demo-platform/) is in
 # the build context:
@@ -67,6 +67,7 @@ RUN chmod +x \
       /workspace/demo-platform/runner/entrypoint.sh \
       /workspace/demo-platform/reaper/reaper.sh \
       /workspace/scripts/*.sh \
+      /workspace/testdata/generated/retail-drive/render-seed-job.sh \
   && git config --system --add safe.directory /workspace
 
 # Run as a non-root user. The runner only needs to read/write /workspace and its
