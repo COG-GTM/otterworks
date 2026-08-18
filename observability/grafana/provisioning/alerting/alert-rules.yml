@@ -184,9 +184,9 @@ groups:
           summary: "File upload failures spiking on file-service"
           description: >-
             The file-service is returning more than 10% server errors on upload
-            requests. Errors contain 'NoSuchBucket' in the AWS SDK response —
-            the S3 bucket name may be misconfigured. Check S3_BUCKET env var
-            and recent infrastructure changes.
+            requests. Check the AWS SDK error in the logs: 'NoSuchBucket' points
+            at a misconfigured S3_BUCKET, while AccessDenied/throttling/timeouts
+            point at credentials, quota, or an S3 outage.
 
       # -----------------------------------------------------------------------
       # Notification Service: SQS consumer failing to process messages

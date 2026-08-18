@@ -22,7 +22,7 @@
    `S3_BUCKET`; a `NoSuchBucket` error means that value is wrong for the environment:
    ```
    kubectl get deploy/file-service -n otterworks -o jsonpath='{.spec.template.spec.containers[0].envFrom}'
-   kubectl exec deploy/file-service -n otterworks -- printenv S3_BUCKET
+   S3_BUCKET=$(kubectl exec deploy/file-service -n otterworks -- printenv S3_BUCKET)
    aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
 
