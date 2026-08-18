@@ -27,7 +27,6 @@ interface UploadingFile {
   progress: number;
   status: "uploading" | "done" | "error";
   error?: string;
-  isQuotaError?: boolean;
   abortController?: AbortController;
 }
 
@@ -97,7 +96,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 status: "uploading" as const,
                 progress: 0,
                 error: undefined,
-                isQuotaError: undefined,
                 abortController,
               }
             : f,
@@ -135,7 +133,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                       ...f,
                       status: "error" as const,
                       error: quota ? "Storage full" : "Upload failed",
-                      isQuotaError: !!quota,
                       abortController: undefined,
                     }
                   : f,
@@ -290,15 +287,13 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
               )}
               {item.status === "error" && (
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {!item.isQuotaError && (
-                    <button
-                      onClick={() => retryUpload(item.id)}
-                      className="p-1 text-gray-400 hover:text-otter-600 transition"
-                      title="Retry upload"
-                    >
-                      <RotateCcw size={14} />
-                    </button>
-                  )}
+                  <button
+                    onClick={() => retryUpload(item.id)}
+                    className="p-1 text-gray-400 hover:text-otter-600 transition"
+                    title="Retry upload"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
                   <AlertCircle size={16} className="text-red-500" />
                 </div>
               )}
