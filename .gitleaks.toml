@@ -1,11 +1,13 @@
 # Gitleaks configuration for OtterWorks.
 #
 # The upstream default ruleset is used as-is; nothing is disabled. The single
-# allowlist below covers the share-link placeholders inside the equivalence
-# fixtures: the characterization cases feed a fake token to the service to pin
-# the "unknown token is rejected" behaviour, and the recorded evidence echoes it
-# back. They grant no access - the fixture database is rebuilt from the seed on
-# every run - but they look like hex secrets to an entropy rule.
+# allowlist below covers the two share-link placeholders inside the equivalence
+# fixtures: the fake token the characterization cases feed to the service to pin
+# the "unknown token is rejected" behaviour, and the SHARE_LINK_SECRET the
+# fixture exports so the recorded tokens are deterministic. They grant no access
+# - the fixture is rebuilt from the seed on every run - but they look like
+# secrets to an entropy rule. Keep this list exact: an allowlist that no longer
+# names the fixture values it claims to cover is worse than none.
 [extend]
 useDefault = true
 
@@ -13,4 +15,4 @@ useDefault = true
 description = "Share-link placeholder tokens in the equivalence fixtures"
 matchCondition = "AND"
 paths = ['''security/equivalence/(cases|expected)/OW-SEC-\d+\.json''']
-regexes = ['''^(0123456789abcdef|not-a-real-share-token)$''']
+regexes = ['''^(not-a-real-share-token|fixture-share-secret-2b7f4c)$''']

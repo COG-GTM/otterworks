@@ -289,8 +289,22 @@ def emit(finding: Finding) -> dict[str, Any]:
         return json.loads(out.read_text())
 
 
+#: One suite run per module per invocation. Several findings share a module, and
+#: the suite result is a property of the module, not of the finding being graded.
+_SUITE_RUNS: dict[str, dict[str, Any]] = {}
+
+
 def run_suite(finding: Finding) -> dict[str, Any]:
     """Run the module's own suite and return its per-test outcomes."""
+    cached = _SUITE_RUNS.get(finding.module.name)
+    if cached is not None:
+        return cached
+    suite = _execute_suite(finding)
+    _SUITE_RUNS[finding.module.name] = suite
+    return suite
+
+
+def _execute_suite(finding: Finding) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ow-equivalence-junit-") as tmp:
         junit = Path(tmp) / "junit.xml"
         command = render(finding.module.test_command, junit=junit)
