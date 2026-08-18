@@ -24,6 +24,10 @@ class ShareLinkService:
 
     def mint_token(self, document_id: str) -> str:
         """Return the share token for a document."""
+        # Unkeyed MD5 is the OW-SEC-403 lab fixture (see
+        # security/equivalence/findings.yaml); the refactor replaces it with a
+        # keyed MAC and removes this suppression.
+        # nosemgrep: python.lang.security.insecure-hash-algorithms-md5.insecure-hash-algorithm-md5
         digest = hashlib.md5(f"{document_id}:{self.salt}".encode()).hexdigest()
         return digest[:TOKEN_LENGTH]
 

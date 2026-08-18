@@ -68,6 +68,10 @@ class DocumentQueryRepository:
             "SELECT count(*) FROM documents WHERE "
             + self._where(owner_id, title_contains, content_type, folder_id)
         )
+        # The interpolated statement is the OW-SEC-401 lab fixture (see
+        # security/equivalence/findings.yaml); the refactor removes the
+        # interpolation and this suppression together.
+        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
         result = await self.db.execute(text(sql))
         return int(result.scalar_one())
 
@@ -90,5 +94,9 @@ class DocumentQueryRepository:
             + f" ORDER BY {sort} {direction} LIMIT {limit} OFFSET {offset}"
         )
         logger.debug("document_filter_query", sort=sort, direction=direction)
+        # The interpolated statement is the OW-SEC-401 lab fixture (see
+        # security/equivalence/findings.yaml); the refactor removes the
+        # interpolation and this suppression together.
+        # nosemgrep: python.sqlalchemy.security.audit.avoid-sqlalchemy-text.avoid-sqlalchemy-text
         result = await self.db.execute(text(sql))
         return [dict(row._mapping) for row in result]

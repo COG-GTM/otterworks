@@ -75,22 +75,23 @@
   "app.services.export_archive:ExportArchive.read_export": "read_export(self, name: 'str') -> 'str'"
  },
  "module": "document-service",
- "reason": "Fingerprint coverage widened: the HTTP contract cases traverse app/api/documents.py, so the route module is now part of every finding's subject list; the filtered list path also now reuses DocumentService.paginate and routes caller-chosen ordering through the same query path.",
- "recorded_at": "2026-08-18T00:14:31.604878+00:00",
+ "reason": "Comment-only change to the subject files: the two planted lines carry a rule-scoped nosemgrep suppression pointing at security/equivalence/findings.yaml, matching the repo's existing lab-fixture convention. No executable statement changed.",
+ "recorded_at": "2026-08-18T00:17:39.156971+00:00",
  "rerecorded_from": {
   "fingerprint": {
    "cases_sha256": "e84a2ec74dc214b87339d6dbae79de8e239ef189154819296c676b95e2e97a0f",
    "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
    "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
    "subject_sha256": {
+    "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1",
     "services/document-service/app/services/export_archive.py": "7c0c51c23d5a4f349003d484492cb42578652cd2b503161cd0667be4f8bbdae9"
    }
   },
-  "reason": "Harness hardening only: the emitter now derives the forged token with usedforsecurity=False and resolves interface modules from an allowlist instead of importlib on case data; observable behaviour is unchanged.",
-  "recorded_at": "2026-08-18T00:10:40.294438+00:00"
+  "reason": "Fingerprint coverage widened: the HTTP contract cases traverse app/api/documents.py, so the route module is now part of every finding's subject list; the filtered list path also now reuses DocumentService.paginate and routes caller-chosen ordering through the same query path.",
+  "recorded_at": "2026-08-18T00:14:31.604878+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-lt3vvvbv/junit.xml",
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-v1jbpu7n/junit.xml",
   "exit_code": 1,
   "failed": [
    "tests.test_documents_api::test_delete_document",
