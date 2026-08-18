@@ -124,6 +124,28 @@ export const authApi = {
   },
 };
 
+// ── Quota errors ──────────────────────────────────────────────
+export const DEFAULT_QUOTA_BYTES = 10 * 1024 * 1024 * 1024; // 10 GiB
+
+export interface QuotaExceededInfo {
+  quotaBytes: number;
+  usedBytes: number;
+}
+
+// The file-service rejects over-quota uploads with 413 and
+// { "error": "quota_exceeded", "quota_bytes": ..., "used_bytes": ... }.
+export function getQuotaExceededInfo(err: unknown): QuotaExceededInfo | null {
+  const response = (err as { response?: { status?: number; data?: Record<string, unknown> } })
+    ?.response;
+  if (response?.status !== 413) return null;
+  const data = response.data;
+  if (!data || (data.error !== "quota_exceeded" && data.error !== "quotaExceeded")) return null;
+  return {
+    quotaBytes: Number(data.quota_bytes ?? data.quotaBytes ?? 0),
+    usedBytes: Number(data.used_bytes ?? data.usedBytes ?? 0),
+  };
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 // Extract the user ID from the JWT stored in localStorage.
 function getOwnerIdFromJwt(): string | null {
@@ -458,10 +480,12 @@ export const activityApi = {
 export const storageApi = {
   getUsage: async (): Promise<StorageUsage> => {
     // The /storage/usage endpoint is not routed. Compute stats from
-    // existing file and document list endpoints instead.
-    const [fileRes, docRes] = await Promise.all([
+    // existing file and document list endpoints instead; the quota comes
+    // from the user's profile (auth-service users.quota_bytes).
+    const [fileRes, docRes, profile] = await Promise.all([
       apiClient.get<RawFileListResponse>("/files", { params: { page: 1, page_size: 1 } }),
       apiClient.get<{ total?: number }>("/documents", { params: { page: 1, size: 1 } }),
+      authApi.getProfile().catch(() => null),
     ]);
 
     const fileCount = fileRes.data.total ?? 0;
@@ -494,7 +518,7 @@ export const storageApi = {
 
     return {
       used,
-      total: 10 * 1024 * 1024 * 1024, // 10 GB default quota
+      total: profile?.quotaBytes ?? DEFAULT_QUOTA_BYTES,
       fileCount,
       documentCount,
     };
