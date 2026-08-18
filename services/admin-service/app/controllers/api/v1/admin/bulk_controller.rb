@@ -2,6 +2,7 @@ module Api
   module V1
     module Admin
       class BulkController < ApplicationController
+        before_action :require_admin!, only: %i[users]
         # POST /api/v1/admin/bulk/users
         def users
           operation = params.require(:operation)

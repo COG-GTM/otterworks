@@ -2,6 +2,7 @@ module Api
   module V1
     module Admin
       class UsersController < ApplicationController
+        before_action :require_admin!, only: %i[update destroy suspend activate]
         before_action :set_user, only: %i[show update destroy suspend activate]
 
         # GET /api/v1/admin/users
