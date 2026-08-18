@@ -71,7 +71,8 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Python 3.12
 - **Framework**: FastAPI 0.110
 - **Database**: PostgreSQL (document metadata, content snapshots)
-- **Purpose**: Document CRUD operations, version history, content snapshots, template management. Stores document operational transforms and provides REST API for document metadata.
+- **Purpose**: Document CRUD operations, version history, content snapshots, comment threads (including comment resolution), template management. Stores document operational transforms and provides REST API for document metadata.
+- **Domain events published**: `document_created`, `document_updated`, `document_deleted`, `comment_added`, `comment_resolved` (SNS fan-out; the notifications SNS-to-SQS subscription is the intended consumer — see the known envelope/attribute gap noted in `services/notification-service/README.md`)
 - **Port**: 8083
 - **Key Patterns**: Pydantic models, SQLAlchemy async, Alembic migrations, dependency injection, background tasks, structlog
 
@@ -87,7 +88,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Kotlin 1.9
 - **Framework**: Ktor 2.3
 - **Database**: SQS (event queue), SNS (fan-out), DynamoDB (notification history)
-- **Purpose**: Processes domain events (file shared, comment added, document edited) and delivers notifications via email (SES), in-app (WebSocket push), and webhook. Event-driven consumer pattern.
+- **Purpose**: Processes domain events (file shared, comment added, comment resolved, document edited, user mentioned) and delivers notifications via email (SES), in-app (WebSocket push), and webhook. Event-driven consumer pattern. `comment_resolved` notifies the comment's author, not the document owner.
 - **Port**: 8086
 - **Key Patterns**: Kotlin coroutines, Ktor routing, SQS long polling, SNS topic subscriptions, Exposed ORM, kotlinx.serialization
 
