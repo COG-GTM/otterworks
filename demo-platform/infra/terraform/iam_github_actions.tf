@@ -86,6 +86,9 @@ data "aws_iam_policy_document" "github_actions" {
     effect = "Allow"
     actions = [
       "ecr:BatchCheckLayerAvailability",
+      # The registry is immutable, so CD moves the tenant-<id>/main pointer
+      # tags by untagging and re-tagging (cd-tenant.yml "Move pointer tags").
+      "ecr:BatchDeleteImage",
       "ecr:BatchGetImage",
       "ecr:CompleteLayerUpload",
       "ecr:DescribeImages",

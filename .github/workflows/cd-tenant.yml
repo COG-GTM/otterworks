@@ -161,26 +161,15 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       # Each tag has a job:
-      #   <slug>-<sha>  immutable, exactly what this run built
+      #   <slug>-<sha>  immutable, exactly what this run built (pushed here)
       #   tenant-<id>   the environment's current build, what it deploys
       #   main          the golden image every other tenant falls back to
-      - name: Resolve image tags
-        id: tags
-        env:
-          REPO: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}
-          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
-          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
-          GOLDEN: ${{ needs.plan.outputs.golden }}
-        run: |
-          set -euo pipefail
-          {
-            echo "list<<EOF"
-            echo "${REPO}:${IMAGE_TAG}"
-            echo "${REPO}:${TENANT_TAG}"
-            if [ "${GOLDEN}" = "true" ]; then echo "${REPO}:main"; fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
+      #
+      # The registry keeps tags immutable (platform/terraform/modules/ecr), so
+      # only the <slug>-<sha> tag is pushed with the build; the moving pointer
+      # tags are re-pointed afterwards, once the new manifest exists, so a
+      # failed build never leaves an environment without its pointer and the
+      # tag is only ever absent for the instant between delete and put.
       - name: Build and push
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
@@ -189,7 +178,65 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          tags: ${{ steps.tags.outputs.list }}
+          tags: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}:${{ needs.plan.outputs.image_tag }}
+
+      # Deleting a pointer tag only untags: the manifest stays as long as
+      # another tag (normally its immutable <slug>-<sha> tag) still holds it.
+      - name: Move pointer tags
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
+          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
+          GOLDEN: ${{ needs.plan.outputs.golden }}
+        run: |
+          set -euo pipefail
+          repo="otterworks/${SERVICE}"
+          # Accept single manifests and lists/indexes, so the step survives a
+          # future multi-platform or attestation-enabled build.
+          media_types=(
+            application/vnd.docker.distribution.manifest.v2+json
+            application/vnd.docker.distribution.manifest.list.v2+json
+            application/vnd.oci.image.manifest.v1+json
+            application/vnd.oci.image.index.v1+json
+          )
+          get_manifest() {  # jq -r, not --output text: byte-exact JSON round-trip
+            aws ecr batch-get-image --repository-name "${repo}" \
+              --image-ids imageTag="$1" \
+              --accepted-media-types "${media_types[@]}" --output json |
+              jq -r '.images[0].imageManifest // empty'
+          }
+          manifest="$(get_manifest "${IMAGE_TAG}")"
+          [ -n "${manifest}" ] || {
+            echo "::error::no manifest found for ${repo}:${IMAGE_TAG}"; exit 1; }
+
+          tags=("${TENANT_TAG}")
+          if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
+          for tag in "${tags[@]}"; do
+            current="$(get_manifest "${tag}")"
+            if [ "${current}" = "${manifest}" ]; then
+              echo "${repo}:${tag} already points at ${IMAGE_TAG}"
+              continue
+            fi
+            failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+              --image-ids imageTag="${tag}" \
+              --query 'failures[?failureCode!=`ImageNotFound`]' --output text)"
+            if [ -n "${failures}" ]; then
+              echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+            fi
+            # Retry: a put-image failure here would strand the environment
+            # with no pointer at all until the next successful build.
+            for attempt in 1 2 3 4 5; do
+              if aws ecr put-image --repository-name "${repo}" \
+                   --image-tag "${tag}" --image-manifest "${manifest}" \
+                   --query 'image.imageId.imageDigest' --output text; then
+                break
+              fi
+              if [ "${attempt}" = 5 ]; then
+                echo "::error::could not re-point ${repo}:${tag} at ${IMAGE_TAG}"; exit 1
+              fi
+              sleep $((attempt * 5))
+            done
+          done
 
   deploy:
     needs: [plan, build]
