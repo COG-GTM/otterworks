@@ -19,6 +19,7 @@ RSpec.describe SlackNotifierService do
     allow(ENV).to receive(:fetch).with('SLACK_USER_MAP', nil).and_return(nil)
     allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
     allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return(nil)
   end
 
   def stub_post(response_body: '{"ok":true}')
@@ -61,6 +62,79 @@ RSpec.describe SlackNotifierService do
     expect(read_request.call['Authorization']).to eq('Bearer xoxb-test-token')
     expect(read_posted.call['channel']).to eq('#automated-alerts')
     expect(read_posted.call['blocks']).to be_an(Array)
+  end
+
+  it 'uses the runtime-stored bot token when SLACK_BOT_TOKEN is not set' do
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return('xoxb-stored-token')
+    read_posted, read_request = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(Net::HTTP).to have_received(:new).with('slack.com', 443)
+    expect(read_request.call['Authorization']).to eq('Bearer xoxb-stored-token')
+    expect(read_posted.call['channel']).to eq('#automated-alerts')
+  end
+
+  it 'ignores a malformed stored token and falls back to the webhook' do
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return("garbage\r\nvalue")
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    _, read_request = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(Net::HTTP).to have_received(:new).with('hooks.slack.com', 443)
+    expect(read_request.call['Authorization']).to be_nil
+  end
+
+  it 'falls back to the webhook when chat.postMessage rejects the token' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-revoked')
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    requests = []
+    http = instance_double(Net::HTTP)
+    allow(Net::HTTP).to receive(:new).and_return(http)
+    allow(http).to receive(:use_ssl=)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request) do |req|
+      requests << req
+      body = req.uri.host == 'slack.com' ? '{"ok":false,"error":"invalid_auth"}' : '{"ok":true}'
+      instance_double(Net::HTTPOK).tap do |r|
+        allow(r).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+        allow(r).to receive(:body).and_return(body)
+      end
+    end
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(requests.map { |r| r.uri.host }).to eq(%w[slack.com hooks.slack.com])
+    expect(requests.last['Authorization']).to be_nil
+  end
+
+  it 'falls back to the webhook when the Slack API is unreachable' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    requests = []
+    http = instance_double(Net::HTTP)
+    allow(Net::HTTP).to receive(:new).and_return(http)
+    allow(http).to receive(:use_ssl=)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request) do |req|
+      requests << req
+      raise Net::OpenTimeout, 'execution expired' if req.uri.host == 'slack.com'
+
+      instance_double(Net::HTTPOK).tap do |r|
+        allow(r).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+        allow(r).to receive(:body).and_return('ok')
+      end
+    end
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(requests.map { |r| r.uri.host }).to eq(%w[slack.com hooks.slack.com])
   end
 
   it 'routes unknown alert names to the default channel' do

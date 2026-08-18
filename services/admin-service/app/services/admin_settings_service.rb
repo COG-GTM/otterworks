@@ -4,6 +4,7 @@ class AdminSettingsService
   DEVIN_ORG_ID_KEY = 'admin:devin_org_id'.freeze
   SLACK_NOTIFICATIONS_KEY = 'admin:slack_notifications'.freeze
   SLACK_WEBHOOK_URL_KEY = 'admin:slack_webhook_url'.freeze
+  SLACK_BOT_TOKEN_KEY = 'admin:slack_bot_token'.freeze
 
   class << self
     def auto_investigate_enabled?
@@ -134,14 +135,45 @@ class AdminSettingsService
       redis&.close
     end
 
-    def clear_slack_webhook_url
+    # Slack bot token, stored in the tenant's Redis so it can be set at
+    # runtime without a redeploy. The value is never exposed by any read
+    # path — only presence is reported.
+    def slack_bot_token
       redis = Redis.new(
         url: ServiceEnv.redis_url,
         timeout: 2
       )
-      redis.del(SLACK_WEBHOOK_URL_KEY)
+      blank_to_nil(redis.get(SLACK_BOT_TOKEN_KEY))
     rescue StandardError => e
-      Rails.logger.error("Failed to clear Slack webhook URL: #{e.message}")
+      Rails.logger.error("Failed to read Slack bot token: #{e.message}")
+      nil
+    ensure
+      redis&.close
+    end
+
+    def set_slack_bot_token(token)
+      redis = Redis.new(
+        url: ServiceEnv.redis_url,
+        timeout: 2
+      )
+      redis.set(SLACK_BOT_TOKEN_KEY, token)
+    rescue StandardError => e
+      Rails.logger.error("Failed to set Slack bot token: #{e.message}")
+      raise
+    ensure
+      redis&.close
+    end
+
+    # Clears the webhook URL and bot token in a single DEL so a revocation
+    # cannot partially succeed.
+    def clear_slack_credentials
+      redis = Redis.new(
+        url: ServiceEnv.redis_url,
+        timeout: 2
+      )
+      redis.del(SLACK_WEBHOOK_URL_KEY, SLACK_BOT_TOKEN_KEY)
+    rescue StandardError => e
+      Rails.logger.error("Failed to clear Slack credentials: #{e.message}")
       raise
     ensure
       redis&.close
