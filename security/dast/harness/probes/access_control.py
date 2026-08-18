@@ -471,6 +471,41 @@ def share_token_forgery(ctx: ScanContext) -> Result:
             [Evidence.from_response(control)],
         )
 
+    # Control: a share link the server itself minted must open the document. Without
+    # it, a target whose sharing is broken rejects the forged token too and looks
+    # like a target where the finding was fixed.
+    minted = ctx.request(
+        "POST",
+        f"/api/v1/documents/{victim_doc['id']}/share",
+        identity=ctx.victim,
+    )
+    legitimate_token = None
+    if minted.status_code in (200, 201):
+        try:
+            legitimate_token = minted.json().get("token")
+        except ValueError:
+            legitimate_token = None
+    if not legitimate_token:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the server would not mint a share link for its own document (status "
+            f"{minted.status_code}), so a rejection below would not prove anything",
+            [Evidence.from_response(minted)],
+        )
+    served = ctx.get(
+        "/api/v1/documents/shared",
+        params={"document_id": victim_doc["id"], "token": legitimate_token},
+        identity=ctx.attacker,
+    )
+    if served.status_code != 200 or victim_doc["title"] not in served.text:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"a share link minted by the server did not open the document (status "
+            f"{served.status_code}): sharing is broken on this target, so the forged "
+            "token is not a measurement of the control",
+            [Evidence.from_response(served)],
+        )
+
     for salt in ("otterworks-share",):
         token = _forge_share_token(str(victim_doc["id"]), salt, 16)
         response = ctx.get(

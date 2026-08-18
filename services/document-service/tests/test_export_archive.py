@@ -1,9 +1,8 @@
 """Tests for the export archive reader."""
 
-import os
-
 import pytest
 
+from app.services import export_archive
 from app.services.export_archive import ExportArchive
 
 
@@ -59,22 +58,16 @@ async def test_export_endpoint_404s_for_undecodable_file(client, monkeypatch, tm
     assert resp.status_code == 404
 
 
-@pytest.mark.skipif(
-    hasattr(os, "geteuid") and os.geteuid() == 0,
-    reason="root ignores file permissions",
-)
 @pytest.mark.asyncio
 async def test_export_endpoint_404s_for_unreadable_file(client, monkeypatch, tmp_path):
-    unreadable = tmp_path / "locked.md"
-    unreadable.write_text("# Locked\n", encoding="utf-8")
-    unreadable.chmod(0o000)
+    (tmp_path / "locked.md").write_text("# Locked\n", encoding="utf-8")
     monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
 
-    try:
-        resp = await client.get(
-            "/api/v1/documents/exports", params={"name": "locked.md"}
-        )
-    finally:
-        unreadable.chmod(0o600)
+    def refuse(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(export_archive, "open", refuse, raising=False)
+
+    resp = await client.get("/api/v1/documents/exports", params={"name": "locked.md"})
 
     assert resp.status_code == 404
