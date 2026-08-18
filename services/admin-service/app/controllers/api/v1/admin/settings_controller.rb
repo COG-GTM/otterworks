@@ -63,7 +63,16 @@ module Api
           AdminSettingsService.set_devin_credentials(api_key: api_key, org_id: org_id)
           Rails.logger.info('Devin credentials updated via settings API')
           audit('settings.devin_credentials_updated', org_id: org_id, api_key: '********')
-          render json: DevinSessionService.credentials_status
+          status = DevinSessionService.credentials_status
+          # env and Secrets Manager both win over the stored pair, so on such a
+          # tenant the status describes a pair the operator did not just write
+          # and the new one will never be used. Say so rather than looking like
+          # a successful change.
+          if status[:source] && status[:source] != 'settings'
+            Rails.logger.warn("Stored Devin credentials are shadowed by #{status[:source]}")
+            status = status.merge(stored_pair_shadowed_by: status[:source])
+          end
+          render json: status
         end
 
         # DELETE /api/v1/admin/settings/devin_credentials

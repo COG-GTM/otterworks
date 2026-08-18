@@ -77,6 +77,17 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(body['org_id_configured']).to be(true)
     end
 
+    it 'says so when the stored pair is shadowed by a higher-precedence source' do
+      allow(AdminSettingsService).to receive(:set_devin_credentials)
+      allow(DevinSessionService).to receive(:verify_credentials).and_return({ valid: true })
+      allow(DevinSessionService).to receive(:credentials_status)
+        .and_return({ api_key_configured: true, org_id_configured: true, source: 'env' })
+
+      put :update_devin_credentials, params: { api_key: 'key', org_id: 'org-1' }
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['stored_pair_shadowed_by']).to eq('env')
+    end
+
     it 'rejects a missing parameter' do
       put :update_devin_credentials, params: { api_key: 'key' }
       expect(response).to have_http_status(:bad_request)
