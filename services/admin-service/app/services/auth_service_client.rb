@@ -22,7 +22,10 @@ class AuthServiceClient
     http.open_timeout = 2
     http.read_timeout = 2
     response = http.request(request)
-    response.is_a?(Net::HTTPSuccess)
+    return true if response.is_a?(Net::HTTPSuccess)
+
+    Rails.logger.warn("auth-service quota sync rejected for #{user_id}: #{response.code} #{response.body}")
+    false
   rescue StandardError => e
     Rails.logger.warn("auth-service quota sync failed for #{user_id}: #{e.message}")
     false
