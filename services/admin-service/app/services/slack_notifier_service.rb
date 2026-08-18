@@ -130,12 +130,10 @@ class SlackNotifierService
       # sequences (links, @-mentions, <!channel>) at the message level even
       # inside fences, so &, < and > must still be entity-escaped — Slack
       # renders the escaped entities back as the literal characters.
-      # Truncation happens after escaping, so a trailing partial entity
-      # (e.g. "&am…") is dropped rather than rendered literally.
       description = truncate(
         escape_mrkdwn(incident.description.to_s.delete('`')),
         SECTION_MAX - "*Message:*\n``````".length
-      ).sub(/&[a-z]{0,3}\u2026\z/, "\u2026")
+      )
 
       {
         # The top-level text is Slack's notification/fallback string; without
@@ -210,8 +208,13 @@ class SlackNotifierService
       text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
     end
 
+    # Truncation happens after escaping, so a cut can land mid-entity
+    # (e.g. "&am…"); the trailing partial entity is dropped rather than
+    # rendered literally. Complete entities end in ";" and never match.
     def truncate(text, max)
-      text.length > max ? "#{text[0, max - 1]}\u2026" : text
+      return text unless text.length > max
+
+      "#{text[0, max - 1]}\u2026".sub(/&[a-z]{0,3}\u2026\z/, "\u2026")
     end
   end
 end
