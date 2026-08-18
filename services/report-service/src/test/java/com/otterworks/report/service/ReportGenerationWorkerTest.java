@@ -185,8 +185,8 @@ public class ReportGenerationWorkerTest {
 
             worker.generateReportAsync(REPORT_ID);
 
-            assertEquals(ReportStatus.COMPLETED, report.getStatus());
-            assertEquals(Integer.valueOf(2), report.getRowCount());
+            assertEquals(category.name(), ReportStatus.COMPLETED, report.getStatus());
+            assertEquals(category.name(), Integer.valueOf(2), report.getRowCount());
         }
         verify(dataFetcher, times(2)).fetchAuditData(any(Date.class), any(Date.class), any());
         verify(dataFetcher, never()).fetchAnalyticsData(any(Date.class), any(Date.class), any());
@@ -205,8 +205,8 @@ public class ReportGenerationWorkerTest {
 
             worker.generateReportAsync(REPORT_ID);
 
-            assertEquals(ReportStatus.COMPLETED, report.getStatus());
-            assertEquals(Integer.valueOf(4), report.getRowCount());
+            assertEquals(category.name(), ReportStatus.COMPLETED, report.getStatus());
+            assertEquals(category.name(), Integer.valueOf(4), report.getRowCount());
         }
         verify(dataFetcher, times(2)).fetchUserActivityData(any(Date.class), any(Date.class), any());
     }

@@ -15,7 +15,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
-import java.nio.charset.StandardCharsets;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -49,7 +49,8 @@ public class ReportGeneratorEdgeCasesTest {
     public void csvRendersMissingValuesAsEmptyFields() throws Exception {
         File file = csvGenerator.generateCsv(report("Sparse CSV"), sparseRows(), outputDir());
 
-        List<String> lines = Files.readAllLines(file.toPath(), StandardCharsets.UTF_8);
+        // CsvReportGenerator writes with a plain FileWriter, i.e. the platform default charset.
+        List<String> lines = Files.readAllLines(file.toPath(), Charset.defaultCharset());
         // 4 metadata comments + blank line + header + 2 data rows
         assertEquals(8, lines.size());
         assertEquals("\"event_id\",\"user_id\",\"\"", lines.get(5));
@@ -62,7 +63,7 @@ public class ReportGeneratorEdgeCasesTest {
         File file = csvGenerator.generateCsv(report("Empty CSV"), noRows(), outputDir());
 
         assertTrue(file.exists());
-        assertEquals(Collections.emptyList(), Files.readAllLines(file.toPath(), StandardCharsets.UTF_8));
+        assertEquals(Collections.emptyList(), Files.readAllLines(file.toPath(), Charset.defaultCharset()));
     }
 
     @Test
