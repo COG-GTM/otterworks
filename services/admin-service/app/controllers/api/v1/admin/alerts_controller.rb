@@ -27,6 +27,9 @@ module Api
         UNDEDUPED_WINDOW = 10.minutes
         UNDEDUPED_LIMIT  = 20
 
+        # Matches the Incident model's own title validation.
+        TITLE_LIMIT = 255
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -90,7 +93,10 @@ module Api
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
           incident = Incident.create!(
-            title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
+            # Titles carry a user-supplied filename and the model caps them at
+            # 255; an over-long one would raise and leave the upload with no
+            # incident and no triage session at all.
+            title:            (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(TITLE_LIMIT),
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',

@@ -393,6 +393,9 @@ build_helm_args() {
       # advisory lock, and Rails has one connection URL for both, so the whole
       # service uses the session-mode pooler port.
       EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
+      # The image's built-in default names one tenant's database; the golden
+      # deploy has its own.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_NAME=${DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
       # Settings (auto-investigate, Devin credentials) and chaos flags live in Redis.

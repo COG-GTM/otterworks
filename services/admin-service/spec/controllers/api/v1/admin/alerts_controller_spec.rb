@@ -71,6 +71,14 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(response.parsed_body['incidents'].first['reason']).to eq('rate_limited')
     end
 
+    it 'still opens an incident when the filename makes the summary too long' do
+      post :ingest, params: { alerts: [firing_alert(summary: "File upload failed: #{'a' * 400}.txt")] }
+
+      expect(Incident.count).to eq(1)
+      expect(Incident.last.title.length).to eq(255)
+      expect(DevinSessionService).to have_received(:create_session).once
+    end
+
     it 'rejects payloads without an alerts array' do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)

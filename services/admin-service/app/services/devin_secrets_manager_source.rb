@@ -80,14 +80,18 @@ class DevinSecretsManagerSource
         api_key: payload['api_key'].presence,
         org_id: payload['org_id'].presence
       }
-      unless value[:api_key] && value[:org_id]
+      usable = value[:api_key] && value[:org_id]
+      unless usable
         # Half a pair is unusable and would look like "no Secrets Manager
         # wiring" at the status endpoint, so say so.
         Rails.logger.warn("Devin secret #{id} is missing api_key or org_id; falling back to the stored pair")
       end
       # An unusable payload is memoized too, so a misconfigured secret does not
       # mean an AWS call on every incident and status check.
-      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, good_at: Time.now.to_f }
+      # `good_at` is the last read that produced a usable pair, so a malformed
+      # secret cannot keep pushing the staleness window forward.
+      good_at = usable ? Time.now.to_f : @cache&.dig(:good_at)
+      @cache = { secret_id: id, fetched_at: Time.now.to_f, value: value, good_at: good_at }
       value
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")

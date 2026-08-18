@@ -367,6 +367,10 @@ build_helm_args() {
       # from the image's CMD on every boot and shares one connection URL with
       # the app -- so the whole service uses the session-mode port.
       EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
+      # Without this the image falls back to its built-in default, which is one
+      # specific tenant's database -- every other tenant would then read and
+      # write that tenant's incidents and settings.
+      EXTRA_ARGS+=(--set-string "config.DATABASE_NAME=${T_DB_NAME}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
       # Settings (auto-investigate, Devin credentials) and chaos flags live in

@@ -117,8 +117,11 @@ class AdminSettingsService
 
     def devin_credentials_revoked?
       SystemConfig.exists?(key: DEVIN_REVOKED_CONFIG)
-    rescue StandardError
-      false
+    rescue StandardError => e
+      # Fail closed: an unreadable tombstone during a database blip must not let
+      # a revoked pair be adopted back out of the legacy Redis keys.
+      Rails.logger.error("Failed to read the Devin revocation marker; treating credentials as revoked: #{e.message}")
+      true
     end
 
     def legacy_devin_credentials

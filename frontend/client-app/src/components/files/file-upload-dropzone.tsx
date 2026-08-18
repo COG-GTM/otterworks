@@ -102,14 +102,11 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     pollGenerationRef.current.set(id, (pollGenerationRef.current.get(id) ?? 0) + 1);
   }, []);
 
-  // An upload that will never be polled again drops its bookkeeping entirely.
-  const forgetPolling = useCallback(
-    (id: string) => {
-      stopPolling(id);
-      pollGenerationRef.current.delete(id);
-    },
-    [stopPolling],
-  );
+  // An upload that will never be polled again only cancels: the generation
+  // counter stays so it keeps increasing. Deleting it would restart numbering,
+  // and a lookup still in flight from before could then match the count of a
+  // later chain and write its stale result.
+  const forgetPolling = stopPolling;
 
   const stopAllPolling = useCallback(() => {
     [...pollGenerationRef.current.keys()].forEach(stopPolling);

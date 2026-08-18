@@ -51,6 +51,13 @@ RSpec.describe AdminSettingsService do
       expect(described_class.devin_credentials).to eq({ api_key: 'legacy-key', org_id: 'legacy-org' })
     end
 
+    it 'does not adopt a legacy pair while the revocation marker is unreadable' do
+      allow(redis).to receive(:mget).and_return(%w[legacy-key legacy-org])
+      allow(SystemConfig).to receive(:exists?).and_raise(ActiveRecord::StatementInvalid, 'db down')
+
+      expect(described_class.devin_credentials).to eq({ api_key: nil, org_id: nil })
+    end
+
     it 'ignores a half-populated legacy pair' do
       allow(redis).to receive(:mget).and_return(['legacy-key', nil])
 
