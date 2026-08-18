@@ -22,12 +22,15 @@ When a comment thread is resolved in the document-service, it publishes a
 
 ```json
 {
-  "eventType": "comment_resolved",
-  "documentId": "<uuid>",
-  "commentId": "<uuid>",
-  "resolvedBy": "<uuid of resolving user>",
-  "authorId": "<uuid of the comment's author>",
-  "timestamp": "<ISO-8601>"
+  "event_type": "comment_resolved",
+  "timestamp": "<ISO-8601>",
+  "payload": {
+    "documentId": "<uuid>",
+    "commentId": "<uuid>",
+    "resolvedBy": "<uuid of resolving user>",
+    "authorId": "<uuid of the comment's author>",
+    "timestamp": "<ISO-8601>"
+  }
 }
 ```
 

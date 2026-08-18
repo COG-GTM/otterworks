@@ -41,14 +41,20 @@ Base path: `/api/v1/documents`
 On resolve, the service publishes a `comment_resolved` domain event to SNS via
 the existing `event_publisher` (`app/services/event_publisher.py`):
 
+As with all events from this publisher, the message is an envelope of the
+form `{"event_type": ..., "timestamp": ..., "payload": {...}}`:
+
 ```json
 {
-  "eventType": "comment_resolved",
-  "documentId": "<uuid>",
-  "commentId": "<uuid>",
-  "resolvedBy": "<uuid of resolving user>",
-  "authorId": "<uuid of the comment's author>",
-  "timestamp": "<ISO-8601>"
+  "event_type": "comment_resolved",
+  "timestamp": "<ISO-8601>",
+  "payload": {
+    "documentId": "<uuid>",
+    "commentId": "<uuid>",
+    "resolvedBy": "<uuid of resolving user>",
+    "authorId": "<uuid of the comment's author>",
+    "timestamp": "<ISO-8601>"
+  }
 }
 ```
 
