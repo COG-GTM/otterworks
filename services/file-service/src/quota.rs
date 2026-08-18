@@ -18,7 +18,11 @@ struct UserLookupResponse {
 impl QuotaClient {
     pub fn new(auth_base_url: &str) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(2))
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .expect("failed to build quota HTTP client"),
             auth_base_url: auth_base_url.trim_end_matches('/').to_string(),
         }
     }

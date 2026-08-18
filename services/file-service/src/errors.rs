@@ -73,7 +73,9 @@ impl ResponseError for ServiceError {
             ServiceError::BadRequest(_) => {
                 (actix_web::http::StatusCode::BAD_REQUEST, "bad_request")
             }
-            ServiceError::FileTooLarge { .. } | ServiceError::QuotaExceeded { .. } => (
+            // QuotaExceeded is handled above with its structured body.
+            ServiceError::QuotaExceeded { .. } => unreachable!("handled above"),
+            ServiceError::FileTooLarge { .. } => (
                 actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",
             ),
