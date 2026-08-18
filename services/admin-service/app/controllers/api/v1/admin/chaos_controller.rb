@@ -6,7 +6,6 @@ module Api
 
         VALID_SCENARIOS = {
           'search-service'       => 'suggest_500',
-          'file-service'         => 'upload_s3_error',
           'notification-service' => 'consumer_strict_schema',
           'document-service'     => 'slow_queries',
         }.freeze
@@ -46,8 +45,8 @@ module Api
           keys = redis.keys('chaos:*')
           redis.del(*keys) if keys.any?
 
-          # Resolve any open incidents for chaos-managed services so the next
-          # demo run can create fresh incidents without hitting the dedup guard.
+          # Resolve any open incidents for these services so the next run can
+          # create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
           VALID_SCENARIOS.each_key do |svc|
             Incident.where(affected_service: svc)
