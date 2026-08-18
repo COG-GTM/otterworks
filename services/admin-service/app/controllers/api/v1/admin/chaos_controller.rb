@@ -10,11 +10,6 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
-        # Services whose open incidents a reset clears. Broader than
-        # VALID_SCENARIOS: incidents also arrive from service alert webhooks
-        # (e.g. file-service upload failures) with no chaos scenario behind them.
-        RESOLVABLE_SERVICES = (VALID_SCENARIOS.keys + ['file-service']).freeze
-
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -53,7 +48,7 @@ module Api
           # Resolve any open incidents for chaos-managed services so the next
           # demo run can create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          RESOLVABLE_SERVICES.each do |svc|
+          VALID_SCENARIOS.each_key do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|

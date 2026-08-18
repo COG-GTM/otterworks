@@ -529,7 +529,7 @@
           "legendFormat": "S3 Errors (5xx)"
         }
       ],
-      "description": "S3 NoSuchBucket errors when chaos redirects to nonexistent bucket"
+      "description": "5xx responses from file endpoints, e.g. S3 errors writing to the configured bucket"
     },
     {
       "title": "Notification Service - Consumer Processing Errors",
