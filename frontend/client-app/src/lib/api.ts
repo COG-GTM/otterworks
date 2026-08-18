@@ -14,6 +14,7 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  DocumentComment,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -360,6 +361,40 @@ export const documentsApi = {
       params: { page: 1, size: limit },
     });
     return data.items ?? [];
+  },
+};
+
+// ── Document comments ─────────────────────────────────────────
+export const commentsApi = {
+  list: async (documentId: string, includeResolved = true): Promise<DocumentComment[]> => {
+    const { data } = await apiClient.get<DocumentComment[]>(
+      `/documents/${documentId}/comments`,
+      { params: { include_resolved: includeResolved } }
+    );
+    return data;
+  },
+  create: async (documentId: string, authorId: string, content: string): Promise<DocumentComment> => {
+    const { data } = await apiClient.post<DocumentComment>(`/documents/${documentId}/comments`, {
+      author_id: authorId,
+      content,
+    });
+    return data;
+  },
+  resolve: async (documentId: string, commentId: string, resolvedBy: string): Promise<DocumentComment> => {
+    const { data } = await apiClient.post<DocumentComment>(
+      `/documents/${documentId}/comments/${commentId}/resolve`,
+      { resolved_by: resolvedBy }
+    );
+    return data;
+  },
+  unresolve: async (documentId: string, commentId: string): Promise<DocumentComment> => {
+    const { data } = await apiClient.post<DocumentComment>(
+      `/documents/${documentId}/comments/${commentId}/unresolve`
+    );
+    return data;
+  },
+  delete: async (documentId: string, commentId: string): Promise<void> => {
+    await apiClient.delete(`/documents/${documentId}/comments/${commentId}`);
   },
 };
 

@@ -92,6 +92,17 @@ export interface Collaborator {
   isOnline: boolean;
 }
 
+export interface DocumentComment {
+  id: string;
+  documentId: string;
+  authorId: string;
+  content: string;
+  createdAt: string;
+  isResolved: boolean;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+}
+
 export interface Notification {
   id: string;
   type: "share" | "comment" | "mention" | "edit" | "system";
