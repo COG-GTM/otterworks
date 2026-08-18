@@ -658,16 +658,31 @@ export interface Incident {
   createdAt?: string;
 }
 
+// Browser and admin-service clocks are not synchronised; a margin this side of
+// the failure keeps a just-created incident from being filtered out.
+const INCIDENT_CLOCK_SKEW_MS = 30_000;
+
 export const incidentsApi = {
   list: async (): Promise<Incident[]> => {
     const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents");
     return data.incidents ?? [];
   },
   // The incident admin-service opens for a failed upload is titled
-  // "File upload failed: <name>"; the newest match is this upload's.
-  findForUpload: async (fileName: string): Promise<Incident | null> => {
+  // "File upload failed: <name>"; the newest match is this upload's. Retrying
+  // a file that failed before leaves an older incident with the same title, so
+  // `notBefore` (the moment this attempt failed, less a clock-skew margin)
+  // keeps the poll from linking the previous attempt's session.
+  findForUpload: async (fileName: string, notBefore?: number): Promise<Incident | null> => {
     const incidents = await incidentsApi.list();
-    return incidents.find((i) => i.title?.endsWith(`: ${fileName}`)) ?? null;
+    const floor = notBefore === undefined ? undefined : notBefore - INCIDENT_CLOCK_SKEW_MS;
+    return (
+      incidents.find((i) => {
+        if (!i.title?.endsWith(`: ${fileName}`)) return false;
+        if (floor === undefined) return true;
+        const createdAt = i.createdAt ? Date.parse(i.createdAt) : NaN;
+        return Number.isNaN(createdAt) || createdAt >= floor;
+      }) ?? null
+    );
   },
 };
 

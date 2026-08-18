@@ -129,7 +129,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   // shows the session belonging to an earlier file. One in-flight lookup per
   // upload; retrying, cancelling or dismissing stops it.
   const pollForDevinSession = useCallback(
-    (entry: UploadingFile) => {
+    (entry: UploadingFile, failedAt: number) => {
       stopPolling(entry.id);
       const generation = pollGenerationRef.current.get(entry.id) ?? 0;
       const superseded = () =>
@@ -139,7 +139,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         pollTimersRef.current.delete(entry.id);
         attempt += 1;
         try {
-          const incident = await incidentsApi.findForUpload(entry.file.name);
+          const incident = await incidentsApi.findForUpload(entry.file.name, failedAt);
           if (superseded()) return;
           if (incident?.devinSessionUrl) {
             const url = incident.devinSessionUrl;
@@ -208,6 +208,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const failedAt = Date.now();
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
@@ -215,7 +216,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                       ...f,
                       status: "error" as const,
                       error: "Upload failed",
-                      failedAt: Date.now(),
+                      failedAt,
                       abortController: undefined,
                     }
                   : f,
@@ -223,7 +224,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            pollForDevinSession(entry);
+            pollForDevinSession(entry, failedAt);
           }
         });
     },
