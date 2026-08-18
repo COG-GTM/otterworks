@@ -127,6 +127,21 @@ RSpec.describe SlackNotifierService do
     )
   end
 
+  it 'drops a trailing partial entity when truncation cuts the escaped description' do
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    # SECTION_MAX(3000) - "*Message:*\n``````".length(17) = 2983; truncate
+    # keeps 2982 chars + "…", so "&lt;" starting at index 2980 is cut to "&l".
+    incident.update!(description: "#{'x' * 2980}<oops long tail")
+    read_posted, = stub_post
+
+    described_class.notify_incident(incident: incident, session_url: nil)
+
+    message = read_posted.call['blocks'][3]['text']['text']
+    expect(message).to end_with("x\u2026```")
+    expect(message.length).to be <= 3000
+  end
+
   it 'truncates long titles so Slack does not reject the message' do
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')
