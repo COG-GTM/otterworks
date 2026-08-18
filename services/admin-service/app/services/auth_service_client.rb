@@ -17,6 +17,7 @@ class AuthServiceClient
     request.body = { quotaBytes: quota_bytes }.to_json
 
     http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = uri.scheme == 'https'
     http.open_timeout = 2
     http.read_timeout = 2
     response = http.request(request)

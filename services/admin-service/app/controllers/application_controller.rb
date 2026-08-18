@@ -41,7 +41,7 @@ class ApplicationController < ActionController::API
   end
 
   def current_user_roles
-    Array(request.env['jwt.user_roles'] || request.env['jwt.user_role']).map(&:to_s)
+    Array(request.env['jwt.user_roles'].presence || request.env['jwt.user_role']).map(&:to_s)
   end
 
   def set_request_metadata
