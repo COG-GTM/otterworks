@@ -35,9 +35,11 @@ interface UploadingFile {
 let fileIdCounter = 0;
 
 // A failed upload opens an incident, and the Devin session it launches is
-// attached a moment later, so poll briefly rather than reading once.
-const SESSION_POLL_ATTEMPTS = 6;
-const SESSION_POLL_INTERVAL_MS = 2500;
+// attached a moment later, so poll rather than reading once.
+// Session creation is synchronous inside alert ingest and the Devin call is
+// allowed 30s, so the window has to outlast a slow-but-successful create.
+const SESSION_POLL_ATTEMPTS = 40;
+const SESSION_POLL_INTERVAL_MS = 3000;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
