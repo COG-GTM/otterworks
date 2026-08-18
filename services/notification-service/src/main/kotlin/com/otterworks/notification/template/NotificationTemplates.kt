@@ -51,6 +51,22 @@ object NotificationTemplates {
                 </html>
             """.trimIndent(),
         ),
+        "comment_resolved" to Template(
+            titleTemplate = "Comment Resolved",
+            messageTemplate = "Your comment was resolved by user {{actorId}} on document {{documentId}}.",
+            emailSubjectTemplate = "OtterWorks: Your comment was resolved",
+            emailBodyTemplate = """
+                <html>
+                <body>
+                    <h2>Comment Resolved</h2>
+                    <p>Your comment (ID: {{commentId}}) on document {{documentId}} was resolved by user {{actorId}}.</p>
+                    <p>Log in to OtterWorks to view the document.</p>
+                    <br/>
+                    <p style="color: #888;">— OtterWorks Notification Service</p>
+                </body>
+                </html>
+            """.trimIndent(),
+        ),
         "document_edited" to Template(
             titleTemplate = "Document Edited",
             messageTemplate = "Document {{documentId}} was edited by user {{actorId}}.",
@@ -94,7 +110,7 @@ object NotificationTemplates {
         )
 
         val variables = mapOf(
-            "actorId" to (event.actorId.ifEmpty { event.ownerId }),
+            "actorId" to (event.actorId.ifEmpty { event.resolvedBy }.ifEmpty { event.ownerId }),
             "fileId" to event.fileId,
             "documentId" to event.documentId,
             "commentId" to event.commentId,
