@@ -9,8 +9,8 @@
 ## Symptoms
 
 - Users cannot upload files; the UI shows generic upload error messages.
-- The Chaos Scenarios dashboard shows elevated error rates on the file-service panel.
-- Application logs contain `NoSuchBucket` errors from the AWS S3 SDK.
+- The file-service panel shows an elevated 5xx rate.
+- Application logs contain S3 SDK errors on `PutObject` (e.g. `NoSuchBucket`, `AccessDenied`).
 
 ## Investigation Steps
 
