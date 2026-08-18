@@ -46,6 +46,46 @@ class NotificationTemplatesTest {
     }
 
     @Test
+    fun `render comment_resolved event`() {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            actorId = "resolver-1",
+            documentId = "doc-321",
+            commentId = "c-9",
+            userId = "comment-author",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        val rendered = NotificationTemplates.render(event)
+
+        assertEquals("Comment Resolved", rendered.title)
+        assertTrue(rendered.message.contains("resolver-1"))
+        assertTrue(rendered.message.contains("doc-321"))
+        assertEquals("OtterWorks: Your comment was resolved", rendered.emailSubject)
+        assertTrue(rendered.emailBody.contains("Comment Resolved"))
+        assertTrue(rendered.emailBody.contains("resolver-1"))
+        assertTrue(rendered.emailBody.contains("doc-321"))
+    }
+
+    @Test
+    fun `render uses resolvedBy as fallback for actorId on comment_resolved`() {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            actorId = "",
+            resolvedBy = "fallback-resolver",
+            documentId = "doc-321",
+            commentId = "c-9",
+            userId = "comment-author",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        val rendered = NotificationTemplates.render(event)
+
+        assertTrue(rendered.message.contains("fallback-resolver"))
+        assertTrue(rendered.emailBody.contains("fallback-resolver"))
+    }
+
+    @Test
     fun `render document_edited event`() {
         val event = SqsNotificationMessage(
             eventType = "document_edited",

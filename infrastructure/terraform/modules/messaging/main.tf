@@ -81,7 +81,7 @@ resource "aws_sns_topic_subscription" "notifications" {
   endpoint  = aws_sqs_queue.notifications.arn
 
   filter_policy = jsonencode({
-    eventType = ["file_shared", "comment_added", "document_edited", "user_mentioned"]
+    eventType = ["file_shared", "comment_added", "comment_resolved", "document_edited", "user_mentioned"]
   })
 }
 

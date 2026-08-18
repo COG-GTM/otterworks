@@ -1,6 +1,7 @@
 package com.otterworks.notification.template
 
 import com.otterworks.notification.model.SqsNotificationMessage
+import com.otterworks.notification.service.NotificationService
 
 data class RenderedNotification(
     val title: String,
@@ -51,6 +52,22 @@ object NotificationTemplates {
                 </html>
             """.trimIndent(),
         ),
+        "comment_resolved" to Template(
+            titleTemplate = "Comment Resolved",
+            messageTemplate = "Your comment was resolved by user {{actorId}} on document {{documentId}}.",
+            emailSubjectTemplate = "OtterWorks: Your comment was resolved",
+            emailBodyTemplate = """
+                <html>
+                <body>
+                    <h2>Comment Resolved</h2>
+                    <p>User {{actorId}} resolved your comment on document {{documentId}}.</p>
+                    <p>Log in to OtterWorks to view the document.</p>
+                    <br/>
+                    <p style="color: #888;">— OtterWorks Notification Service</p>
+                </body>
+                </html>
+            """.trimIndent(),
+        ),
         "document_edited" to Template(
             titleTemplate = "Document Edited",
             messageTemplate = "Document {{documentId}} was edited by user {{actorId}}.",
@@ -94,7 +111,7 @@ object NotificationTemplates {
         )
 
         val variables = mapOf(
-            "actorId" to (event.actorId.ifEmpty { event.ownerId }),
+            "actorId" to NotificationService.resolveActorId(event),
             "fileId" to event.fileId,
             "documentId" to event.documentId,
             "commentId" to event.commentId,

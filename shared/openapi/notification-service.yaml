@@ -248,6 +248,7 @@ paths:
                 channels:
                   file_shared: ["EMAIL", "IN_APP", "PUSH"]
                   comment_added: ["IN_APP", "PUSH"]
+                  comment_resolved: ["IN_APP", "PUSH"]
                   document_edited: ["IN_APP"]
                   user_mentioned: ["EMAIL", "IN_APP", "PUSH"]
         "400":
@@ -355,7 +356,7 @@ components:
           type: string
         type:
           type: string
-          enum: [file_shared, comment_added, document_edited, user_mentioned]
+          enum: [file_shared, comment_added, comment_resolved, document_edited, user_mentioned]
         title:
           type: string
         message:

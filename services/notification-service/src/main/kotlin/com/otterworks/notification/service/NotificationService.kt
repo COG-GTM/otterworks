@@ -66,7 +66,7 @@ class NotificationService(
             message = rendered.message,
             resourceId = resolveResourceId(event),
             resourceType = resolveResourceType(event),
-            actorId = event.actorId.ifEmpty { event.ownerId },
+            actorId = resolveActorId(event),
             read = false,
             deliveredVia = deliveredVia,
             createdAt = Instant.now().toString(),
@@ -125,6 +125,7 @@ class NotificationService(
             return when (event.eventType) {
                 "file_shared" -> event.sharedWithUserId
                 "comment_added" -> event.userId.ifEmpty { event.ownerId }
+                "comment_resolved" -> event.userId.ifEmpty { event.ownerId }
                 "document_edited" -> event.userId.ifEmpty { event.ownerId }
                 "user_mentioned" -> event.mentionedUserId.ifEmpty { event.userId }
                 else -> event.userId
@@ -135,6 +136,7 @@ class NotificationService(
             return when (event.eventType) {
                 "file_shared" -> event.fileId
                 "comment_added" -> event.commentId.ifEmpty { event.documentId }
+                "comment_resolved" -> event.commentId.ifEmpty { event.documentId }
                 "document_edited" -> event.documentId
                 "user_mentioned" -> event.documentId
                 else -> ""
@@ -145,9 +147,20 @@ class NotificationService(
             return when (event.eventType) {
                 "file_shared" -> "file"
                 "comment_added" -> "comment"
+                "comment_resolved" -> "comment"
                 "document_edited" -> "document"
                 "user_mentioned" -> "document"
                 else -> "unknown"
+            }
+        }
+
+        fun resolveActorId(event: SqsNotificationMessage): String {
+            return event.actorId.ifEmpty {
+                if (event.eventType == "comment_resolved") {
+                    event.resolvedBy.ifEmpty { event.ownerId }
+                } else {
+                    event.ownerId
+                }
             }
         }
     }
