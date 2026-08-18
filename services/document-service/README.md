@@ -45,7 +45,8 @@ Both endpoints return `404` when the comment does not exist for the supplied
 document. Resolving an already-resolved comment short-circuits; unresolving is
 idempotent in its observable result but still issues a commit (SQLAlchemy emits
 no `UPDATE` when values are unchanged). Unresolving clears `is_resolved`,
-`resolved_by`, and `resolved_at`.
+`resolved_by`, and `resolved_at`. Only the unresolved-to-resolved transition
+publishes an event: repeated resolves and unresolve publish nothing.
 
 `GET /api/v1/documents/{document_id}/comments` accepts the
 `include_resolved` query parameter, which defaults to `true` to preserve the
