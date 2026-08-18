@@ -87,6 +87,31 @@ RSpec.describe SlackNotifierService do
     expect(read_request.call['Authorization']).to be_nil
   end
 
+  it 'falls back to the webhook when chat.postMessage rejects the token' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-revoked')
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    requests = []
+    http = instance_double(Net::HTTP)
+    allow(Net::HTTP).to receive(:new).and_return(http)
+    allow(http).to receive(:use_ssl=)
+    allow(http).to receive(:open_timeout=)
+    allow(http).to receive(:read_timeout=)
+    allow(http).to receive(:request) do |req|
+      requests << req
+      body = req.uri.host == 'slack.com' ? '{"ok":false,"error":"invalid_auth"}' : '{"ok":true}'
+      instance_double(Net::HTTPOK).tap do |r|
+        allow(r).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+        allow(r).to receive(:body).and_return(body)
+      end
+    end
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(requests.map { |r| r.uri.host }).to eq(%w[slack.com hooks.slack.com])
+    expect(requests.last['Authorization']).to be_nil
+  end
+
   it 'routes unknown alert names to the default channel' do
     allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
     read_posted, = stub_post

@@ -13,7 +13,10 @@ class SlackNotifierService
   # header exceeds 150 chars, a section exceeds 3000 chars, or a section
   # field exceeds 2000 chars.
   HEADER_MAX = 150
-  BOT_TOKEN_SHAPE = /\Axoxb-[A-Za-z0-9-]+\z/
+  # Requires the bot-token prefix and rejects whitespace/control characters
+  # (the CRLF-injection concern for the Authorization header) without
+  # constraining the token alphabet, which Slack may extend.
+  BOT_TOKEN_SHAPE = /\Axoxb-\S+\z/
   SECTION_MAX = 3000
   FIELD_MAX = 2000
 
@@ -25,14 +28,13 @@ class SlackNotifierService
       payload = build_payload(incident, session_url, reporter_email)
 
       bot_token = resolve_bot_token
-      if bot_token
-        post_via_api(bot_token, channel, payload)
-        return
-      end
+      return if bot_token && post_via_api(bot_token, channel, payload)
 
       webhook_url = resolve_webhook_url
       unless webhook_url
-        Rails.logger.info('Slack not configured (no bot token or webhook), skipping incident notification')
+        if bot_token.nil?
+          Rails.logger.info('Slack not configured (no bot token or webhook), skipping incident notification')
+        end
         return
       end
       post_via_webhook(webhook_url, payload)
@@ -49,6 +51,9 @@ class SlackNotifierService
 
     # chat.postMessage honors an explicit channel, unlike incoming webhooks,
     # so this is the path that guarantees delivery to the routed channel.
+    # Returns whether Slack accepted the message; a rejection (revoked token,
+    # unknown channel, ...) means nothing was posted, so the caller can retry
+    # via the webhook without double-posting.
     def post_via_api(bot_token, channel, payload)
       uri = URI('https://slack.com/api/chat.postMessage')
       request = Net::HTTP::Post.new(uri)
@@ -59,11 +64,13 @@ class SlackNotifierService
       response = http_for(uri).request(request)
       if response.is_a?(Net::HTTPSuccess)
         body = JSON.parse(response.body) rescue {}
-        Rails.logger.error("Slack chat.postMessage failed: #{body['error']}") unless body['ok']
+        return true if body['ok']
+
+        Rails.logger.error("Slack chat.postMessage failed: #{body['error']}")
       else
         Rails.logger.error("Slack chat.postMessage returned #{response.code}: #{response.body.to_s[0, 200]}")
       end
-      nil
+      false
     end
 
     def post_via_webhook(webhook_url, payload)
