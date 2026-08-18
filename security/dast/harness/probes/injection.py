@@ -309,7 +309,10 @@ def sensitive_data_in_response(ctx: ScanContext) -> Result:
 
 
 #: A file that exists on every container image and belongs to no export archive,
-#: so serving it is unambiguous proof the handler left its own directory.
+#: so serving it is unambiguous proof the handler left its own directory. Each
+#: entry is the ``name`` value exactly as it must appear on the wire, so the
+#: percent-encoded variant reaches the handler still encoded - passing it as a
+#: parameter value would re-encode the ``%`` and test nothing.
 TRAVERSAL_TARGETS = (
     ("../../../../etc/passwd", "root:x:0:0"),
     ("..%2f..%2f..%2f..%2fetc%2fpasswd", "root:x:0:0"),
@@ -348,7 +351,7 @@ def path_traversal_export(ctx: ScanContext) -> Result:
     evidence: list[Evidence] = []
     for name, signature in TRAVERSAL_TARGETS:
         response = ctx.get(
-            "/api/v1/documents/exports", params={"name": name}, identity=ctx.attacker
+            f"/api/v1/documents/exports?name={name}", identity=ctx.attacker
         )
         if unavailable(response):
             return self.result(
