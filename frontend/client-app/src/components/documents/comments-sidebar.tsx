@@ -29,12 +29,12 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ["documents", documentId, "comments"],
+    queryKey: ["document-comments", documentId],
     queryFn: () => documentsApi.listComments(documentId, true),
   });
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["documents", documentId, "comments"] });
+    queryClient.invalidateQueries({ queryKey: ["document-comments", documentId] });
   };
 
   const addMutation = useMutation({
@@ -106,6 +106,12 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
           <p className="text-sm text-red-600">Failed to add comment. Please try again.</p>
         )}
       </div>
+
+      {resolveMutation.isError && (
+        <p className="px-4 py-2 text-sm text-red-600">
+          Failed to update comment. Please try again.
+        </p>
+      )}
 
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (

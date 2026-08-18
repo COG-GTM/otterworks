@@ -369,16 +369,20 @@ export const documentsApi = {
     return data ?? [];
   },
   addComment: async (documentId: string, content: string): Promise<Comment> => {
+    const authorId = getOwnerIdFromJwt();
+    if (!authorId) throw new Error("Unable to determine current user");
     const { data } = await apiClient.post<Comment>(`/documents/${documentId}/comments`, {
-      author_id: getOwnerIdFromJwt(),
+      author_id: authorId,
       content,
     });
     return data;
   },
   resolveComment: async (documentId: string, commentId: string): Promise<Comment> => {
+    const resolvedBy = getOwnerIdFromJwt();
+    if (!resolvedBy) throw new Error("Unable to determine current user");
     const { data } = await apiClient.post<Comment>(
       `/documents/${documentId}/comments/${commentId}/resolve`,
-      { resolved_by: getOwnerIdFromJwt() }
+      { resolved_by: resolvedBy }
     );
     return data;
   },
