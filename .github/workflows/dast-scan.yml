@@ -56,6 +56,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
+      # Before standing anything up: the harness reads the services' source to build
+      # the route inventory, so a parser that silently stops matching would quietly
+      # shrink the surface the coverage gate measures.
+      - name: Unit-test the harness
+        run: make dast-test
+
       - name: Start the application stack
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
@@ -75,7 +81,46 @@ jobs:
       - name: Run the DAST probe suite
         id: scan
         continue-on-error: true # informational until baseline.json is populated — see header
+        env:
+          # This stack was created by the step above and dies with the runner, so
+          # the sweep may send a route's real POST/DELETE here. Only here: an
+          # address is not evidence of what is behind it.
+          DAST_SWEEP_UNSAFE_METHODS: '1'
         run: make dast-scan DAST_TARGET=http://localhost:8080
+
+      # A real gate, unlike the scan above: this fails only when a route the gateway
+      # proxies was never sent a request, which is a gap in the suite rather than one
+      # of the golden app's planted vulnerabilities.
+      - name: Gate on route coverage
+        run: |
+          # Capture stderr too: the gate writes its verdict there, and that is the
+          # line that says which routes went unattacked.
+          # Not `make`: it reports 2 for any failed recipe, which would turn the
+          # gate's exit 1 into the "not graded" branch below and make it inert.
+          status=0
+          ./security/dast/run.sh coverage > /tmp/coverage.txt 2>&1 || status=$?
+          {
+            echo '## DAST route coverage'
+            echo '```'
+            cat /tmp/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/coverage.txt
+          # Exit 2 is "there is no usable report to grade" — the scan above is
+          # continue-on-error, so a scan that never started would otherwise fail the
+          # build here as though a route had gone unattacked. Annotate and pass;
+          # only exit 1, a route the last scan never requested, is the gate.
+          if [ "$status" = 2 ]; then
+            echo "::warning::route coverage was not graded: no usable scan report (see the scan step)"
+            exit 0
+          fi
+          # 4 is the inventory itself failing to read any route: the gate is then
+          # measuring nothing, which is worse than an uncovered route, not a
+          # variant of "nothing to grade".
+          if [ "$status" = 4 ]; then
+            echo "::error::the route inventory read no routes, so coverage is no longer measured"
+          fi
+          exit $status
 
       - name: Publish the report
         if: always()
@@ -108,6 +153,11 @@ jobs:
       # the target's database until the tenant is reaped, so the target must be a
       # disposable (TTL'd) tenant somebody chose deliberately.
       TARGET: ${{ inputs.target || vars.DAST_SWEEP_TARGET }}
+      # The route sweep sends each route's real method, so an unauthenticated
+      # DELETE is carried out and not merely probed. Off unless someone sets the
+      # DAST_SWEEP_UNSAFE_WRITES repository variable, which is the declaration
+      # that the target is theirs to destroy; naming a target is not that.
+      DAST_SWEEP_UNSAFE_METHODS: ${{ vars.DAST_SWEEP_UNSAFE_WRITES }}
     steps:
       - name: Require an explicit target
         if: env.TARGET == ''
