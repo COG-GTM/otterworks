@@ -121,6 +121,51 @@ class SqsConsumerTest {
     }
 
     @Test
+    fun `parseMessage parses comment_resolved event`() {
+        val body = """
+            {
+                "eventType": "comment_resolved",
+                "userId": "comment-author",
+                "resolvedBy": "resolver-1",
+                "documentId": "doc-321",
+                "commentId": "c-9",
+                "timestamp": "2024-06-15T10:30:00Z"
+            }
+        """.trimIndent()
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_resolved", event.eventType)
+        assertEquals("comment-author", event.userId)
+        assertEquals("resolver-1", event.resolvedBy)
+        assertEquals("doc-321", event.documentId)
+        assertEquals("c-9", event.commentId)
+    }
+
+    @Test
+    fun `parseMessage parses SNS-wrapped comment_resolved message`() {
+        val innerMessage = """{"eventType":"comment_resolved","userId":"comment-author","resolvedBy":"resolver-1","documentId":"doc-321","commentId":"c-9","timestamp":"2024-06-15T10:30:00Z"}"""
+        val escapedInner = innerMessage.replace("\"", "\\\"")
+        val body = """
+            {
+                "Type": "Notification",
+                "MessageId": "msg-456",
+                "TopicArn": "arn:aws:sns:us-east-1:000000000000:test-topic",
+                "Message": "$escapedInner"
+            }
+        """.trimIndent()
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_resolved", event.eventType)
+        assertEquals("comment-author", event.userId)
+        assertEquals("resolver-1", event.resolvedBy)
+        assertEquals("c-9", event.commentId)
+    }
+
+    @Test
     fun `parseMessage handles missing optional fields`() {
         val body = """
             {
