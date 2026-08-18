@@ -78,6 +78,17 @@ RSpec.describe DevinSecretsManagerSource do
     expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
   end
 
+  it 'stops serving the cached pair once the pod loses read access' do
+    allow(client).to receive(:get_secret_value)
+      .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))
+    described_class.credentials
+    described_class.instance_variable_get(:@cache)[:fetched_at] = 0
+    allow(client).to receive(:get_secret_value)
+      .and_raise(Aws::SecretsManager::Errors::AccessDeniedException.new(nil, 'denied'))
+
+    expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
+  end
+
   it 'stops serving the cached pair once transient failures outlast the stale window' do
     allow(client).to receive(:get_secret_value)
       .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))

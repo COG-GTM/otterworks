@@ -106,8 +106,10 @@ class DevinSecretsManagerSource
     rescue StandardError => e
       Rails.logger.error("Failed to read Devin credentials from Secrets Manager: #{e.message}")
       # A Secrets Manager blip must not stop incident triage: keep serving the
-      # last pair that worked. A definitive error drops it instead, so a
-      # deleted or locked-down secret revokes the pair on a running pod.
+      # last payload read — a complete pair when the secret was well-formed, an
+      # unusable one when it was not, which stays fail-closed downstream. A
+      # definitive error drops it instead, so a deleted or locked-down secret
+      # revokes the pair on a running pod.
       previous = @cache
       value = if DEFINITIVE_ERRORS.any? { |klass| e.is_a?(klass) } || stale?(previous)
                 { api_key: nil, org_id: nil }

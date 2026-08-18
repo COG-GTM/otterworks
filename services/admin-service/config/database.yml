@@ -21,4 +21,4 @@ production:
   # rather than a per-service one, and now pass it as DATABASE_NAME. The
   # fallback only exists for a deploy that predates that wiring, and names the
   # one tenant this branch ships to.
-  database: <%= ENV.fetch("DATABASE_NAME") { "otterworks_#{ENV.fetch('TENANT_ID', 'coggtm')}" } %>
+  database: <%= ENV.fetch("DATABASE_NAME", "otterworks_coggtm") %>
