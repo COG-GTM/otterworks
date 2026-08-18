@@ -14,15 +14,21 @@ when Devin works in this repository.
 
 ## What the harness is
 
-`security/dast/` attacks the **running** application through the API gateway.
-Two layers, one report, one gate:
+`security/dast/` attacks the **running** application through the API gateway,
+using the repository around it — route definitions, compose ports, Helm values —
+to decide what to attack. One report, one gate:
 
 | Layer | What it covers | Where |
 |---|---|---|
 | Probe suite | authenticated abuse cases — cross-tenant reads, identity spoofing, mass assignment, forged tokens, brute force | `security/dast/harness/probes/` |
+| Route inventory | the edge-reachable surface, parsed from each service's own route definitions | `security/dast/harness/route_inventory.py` |
+| Coverage gate | the inventory vs. the requests the last scan issued — fails when a proxied route was never attacked | `security/dast/harness/dast_coverage.py` |
 | OWASP ZAP baseline | unauthenticated passive sweep — headers, cookies, information leakage | `security/dast/zap/zap-baseline.conf` |
 
-`security/dast/attack-surface.yaml` is the target spec both layers share.
+`security/dast/attack-surface.yaml` is the target spec all layers share, and
+holds `coverage_exemptions` for routes the gate may leave unattacked and
+`sweep_exclusions` for routes the anonymous sweep must not send because doing so
+would carry out a tenant-wide operation.
 `security/dast/README.md` documents adding a probe.
 
 ## Commands
@@ -33,27 +39,45 @@ make dast-scan  DAST_TARGET=<url>                # full suite, gated by baseline
 make dast-verify FINDING=<id> DAST_TARGET=<url>  # one probe, baseline ignored — the remediation proof
 make dast-zap   DAST_TARGET=<url>                # ZAP sweep merged into the same report
 make dast-baseline REASON="..."                  # accept current findings
+make dast-routes                                 # the edge routes read from the services' source
+make dast-coverage                               # fail if the last scan left a route unattacked
+make dast-test                                   # unit-test the harness (parsers, gate, verdicts)
 ```
 
 `DAST_TARGET` defaults to `http://localhost:8080`. Reports land in
-`security/dast/reports/dast-report.{json,md}` (gitignored). Exit codes: `0`
+`security/dast/reports/dast-report.{json,md}` (gitignored). To branch on the
+result — in CI, or in a loop that stops when a finding is proven closed — call
+`./security/dast/run.sh {scan|verify|coverage|routes}` instead: `make` reports
+`2` for any failed recipe and would flatten these apart. Exit codes: `0`
 clean, `1` findings at or above `--fail-on` (default `medium`), `2` target
 unreachable or the scan accounts never registered (the authenticated probes then
 attacked nothing), `3` a probe reached no verdict while verifying one finding
-(`dast-verify`) — the remediation is unproven, not done.
+(`dast-verify`) — the remediation is unproven, not done — and, from `coverage`,
+`4` the route inventory read no routes, so the gate measures nothing.
+
+The anonymous sweep sends each route's real method, so it withholds
+POST/PUT/PATCH/DELETE unless you set `DAST_SWEEP_UNSAFE_METHODS=1` to declare the
+target yours to destroy. Set it for a stack you brought up yourself and will tear
+down; do not set it because the target says `localhost` — the multi-tenant runbook
+reaches a live shared tenant at `localhost:8080` via `kubectl port-forward`.
 
 ## Targets
 
 | Target | URL | Use |
 |---|---|---|
-| Local stack | `http://localhost:8080` | after `make up`; the default |
+| Local stack | `http://localhost:8080` | after `make up`; the default. Add `DAST_SWEEP_UNSAFE_METHODS=1` once you know the stack is yours, not a port-forward |
 | Your tenant | `https://api-t-<id>.demo.otterworks.app` | after `scripts/deploy-tenant.sh <id>` |
 | Perpetual tenant | `https://api-t-main.otterworks.app` | tracks `main`; never scan it — it is never reaped, so the accounts and documents a scan writes stay forever |
 
 Always scan through the gateway on port 8080 — hitting a backend port directly
-bypasses the controls under test. Never scan a tenant someone else is
-presenting from: each scan registers accounts and writes documents into the
-target's database.
+bypasses the controls under test. The exception is
+`DAST-GATEWAY-BYPASS-IDENTITY`, whose question *is* whether such an origin
+exists: it attacks only origins `docker-compose.yml` or a backend chart's
+`ingress.enabled` declares, and grades a published compose port lower than a
+chart that puts the backend on the public ingress.
+
+Never scan a tenant someone else is presenting from: each scan registers
+accounts and writes documents into the target's database.
 
 `DAST-RATE-LIMIT-BYPASS` also puts real load on the cluster — two bursts of
 1500 requests at 64-way concurrency — and every tenant shares one ingress
@@ -100,6 +124,11 @@ the gateway cannot know which rows belong to whom.
 5. Prove nothing regressed: `make dast-scan` plus the service's own tests
    (`cd services/api-gateway && go test ./...`, `cd services/document-service && pytest`,
    `make test-api-flows`).
+6. If the fix added or moved a route, `make dast-coverage` — a new endpoint is
+   swept anonymously the moment it is declared, but nothing attacks it as a
+   logged-in caller until a probe does. Coverage is graded from a full
+   `make dast-scan` (step 5): a `dast-verify` run marks its report `partial`,
+   and the gate refuses to grade one rather than calling the surface unattacked.
 
 A finding is only closed when the probe that reproduced it reports `secure`
 against a target running the new code.
@@ -119,6 +148,12 @@ against a target running the new code.
 the findings this harness demonstrates — fixes land on a branch and its PR.
 Planted bugs (see `AGENTS.md`) stay in place. Adding a probe to
 `security/dast/harness/probes/` is always welcome on `main`.
+
+`DAST-GATEWAY-BYPASS-IDENTITY` reproduces against the local stack because
+`docker-compose.yml` publishes backend ports — that is a development
+convenience, not something to "fix" by unpublishing them, which would break
+local development. It is graded `low` from that origin for exactly that reason;
+the deployment-relevant half is each backend chart's `ingress.enabled`.
 
 ## Revert
 

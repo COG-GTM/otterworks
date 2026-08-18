@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["httpx", "tabulate"]
+# dependencies = ["httpx", "pyyaml", "tabulate"]
 # ///
 """
 OtterWorks DAST harness.
@@ -36,6 +36,7 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from probes import REGISTRY, ScanContext, SeedError, Severity, Verdict
 from probes.base import SEVERITY_ORDER, Result
+from route_inventory import may_sweep_unsafely
 
 DAST_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = DAST_DIR / "baseline.json"
@@ -177,16 +179,94 @@ def is_gating(result: Result, baseline: dict[str, Any], threshold: int) -> bool:
     )
 
 
+def request_recorder(
+    target: str, attribute_to: Callable[[], str] = lambda: ""
+) -> tuple[list[dict[str, str | bool | int]], Callable[[httpx.Response], None]]:
+    """A record of which routes a scan requested, and the hook that fills it in.
+
+    Hooked on the response rather than the request: a route whose request timed
+    out, or that only ever answered 5xx, was not covered by anything, and
+    recording it as reached is the false assurance this gate exists to prevent.
+    The status is kept so the gate decides what "delivered" means.
+
+    A tenant can be served under a base path (`https://<nlb>/t-abc`), so the
+    origin and that prefix are separated once here: requests are matched on the
+    origin, and recorded against the route as the service declares it, which is
+    what the inventory holds.
+
+    Each request carries the probe that made it, because *which* probe reached a
+    route is the whole difference between a route being enumerated and a route
+    being attacked.
+    """
+    exercised: list[dict[str, str | bool | int]] = []
+    seen: set[tuple[str, str, bool, str, int]] = set()
+    # Parsed by httpx rather than urlparse, because the requests this is compared
+    # against are httpx's: it lowercases the host and drops a default port, so a
+    # target written `https://host:443` would otherwise match none of its own
+    # traffic and the coverage gate would report the whole surface unattacked.
+    parsed = httpx.URL(target)
+    origin = (parsed.scheme, parsed.host, parsed.port)
+    base_path = parsed.path.rstrip("/")
+
+    def record(response: httpx.Response) -> None:
+        request = response.request
+        # Probes that deliberately leave the gateway (the direct-backend bypass) are
+        # not edge coverage, so only requests to the target under test are recorded.
+        if (request.url.scheme, request.url.host, request.url.port) != origin:
+            return
+        path = request.url.path
+        if base_path:
+            if not path.startswith(base_path):
+                return
+            path = path[len(base_path) :] or "/"
+        # Reaching a route and attacking it as a logged-in caller are different
+        # depths of coverage, so the report distinguishes them.
+        key = (
+            request.method,
+            path,
+            "authorization" in request.headers,
+            attribute_to(),
+            response.status_code,
+        )
+        if key not in seen:
+            seen.add(key)
+            exercised.append(
+                {
+                    "method": key[0],
+                    "path": key[1],
+                    "authenticated": key[2],
+                    "probe": key[3],
+                    "status": key[4],
+                }
+            )
+
+    return exercised, record
+
+
 def to_report(
     results: list[Result],
     target: str,
     baseline: dict[str, Any],
     threshold: int,
+    exercised: list[dict[str, str | bool | int]] | None = None,
+    partial: bool = False,
 ) -> dict[str, Any]:
     gating = [r for r in results if is_gating(r, baseline, threshold)]
     return {
         "target": target,
         "scanned_at": datetime.now(UTC).isoformat(),
+        # A single-probe run (--only) requests a fraction of the surface, so its
+        # record of what was attacked must not be read as a coverage measurement.
+        "partial": partial,
+        # Which routes were attacked, not just which attacks passed: dast_coverage.py
+        # diffs this against the route inventory read from the services' source, so a
+        # newly added endpoint cannot ride along untested behind a green gate.
+        "exercised": exercised or [],
+        # Whether the sweep was allowed to send write methods, recorded here rather
+        # than re-read from the environment at grading time: the gate excuses a
+        # withheld write route, and reading a different answer than the scan acted
+        # on would excuse one that was swept and genuinely uncovered.
+        "swept_unsafely": may_sweep_unsafely(),
         "summary": {
             "probes_run": len(results),
             "findings": sum(1 for r in results if r.is_finding),
@@ -341,11 +421,14 @@ def main(argv: list[str] | None = None) -> int:
     baseline = {} if args.no_baseline else load_baseline(args.baseline)
     target = args.target.rstrip("/")
     results: list[Result] = []
+    running = [""]
+    exercised, record = request_recorder(target, lambda: running[0])
 
     with httpx.Client(
         base_url=target,
         timeout=httpx.Timeout(args.timeout, connect=5.0),
         follow_redirects=False,
+        event_hooks={"response": [record]},
     ) as client:
         ctx = ScanContext(base_url=target, client=client)
         try:
@@ -376,6 +459,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 )
                 continue
+            running[0] = entry.finding_id
             try:
                 results.append(entry.run(ctx))
             except Exception as exc:  # a broken probe must not mask the rest of the suite
@@ -414,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
     threshold = SEVERITY_ORDER[Severity(args.fail_on)]
 
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    report = to_report(results, target, baseline, threshold)
+    report = to_report(results, target, baseline, threshold, exercised, partial=bool(args.only))
     (args.report_dir / "dast-report.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.report_dir / "dast-report.md").write_text(to_markdown(report, baseline))
 
