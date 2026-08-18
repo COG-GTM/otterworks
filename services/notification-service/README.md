@@ -75,7 +75,9 @@ nested snake_case envelope (`{event_type, timestamp, payload}`), so they fail to
 parse today — a pre-existing cross-service gap, not specific to
 `comment_resolved`. search-service normalizes both shapes in
 `app/services/sqs_consumer.py` and is the natural reference if the two sides are
-aligned.
+aligned. Note that unwrapping the envelope alone is not sufficient: the payload
+field names also differ (`author_id` vs. `userId`, `resolved_by` vs.
+`resolvedBy`), so any alignment has to map field names too.
 
 When the chaos flag `chaos:notification-service:consumer_strict_schema` is set,
 intake switches to a strict JSON parser and messages fail to parse and stay in
