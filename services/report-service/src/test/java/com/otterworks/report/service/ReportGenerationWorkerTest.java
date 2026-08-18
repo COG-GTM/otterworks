@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -99,6 +100,12 @@ public class ReportGenerationWorkerTest {
         when(dataFetcher.fetchAnalyticsData(report.getDateFrom(), report.getDateTo(), null))
                 .thenReturn(rows(3));
         when(csvGenerator.generateCsv(eq(report), anyList(), eq("/tmp/reports"))).thenReturn(generated);
+        // The worker mutates and re-saves the same instance, so the status has to be read at save time.
+        List<ReportStatus> persistedStatuses = new ArrayList<>();
+        when(reportRepository.save(any(Report.class))).thenAnswer(invocation -> {
+            persistedStatuses.add(((Report) invocation.getArgument(0)).getStatus());
+            return invocation.getArgument(0);
+        });
 
         worker.generateReportAsync(REPORT_ID);
 
@@ -109,15 +116,13 @@ public class ReportGenerationWorkerTest {
         assertNotNull(report.getCompletedAt());
         assertNull(report.getErrorMessage());
 
-        // GENERATING is persisted first, then the terminal state.
-        ArgumentCaptor<Report> saved = ArgumentCaptor.forClass(Report.class);
-        verify(reportRepository, times(2)).save(saved.capture());
-        assertEquals(report, saved.getAllValues().get(0));
+        assertEquals(Arrays.asList(ReportStatus.GENERATING, ReportStatus.COMPLETED), persistedStatuses);
+        verify(reportRepository, times(2)).save(any(Report.class));
         verifyNoInteractions(pdfGenerator, excelGenerator);
     }
 
     @Test
-    public void statusIsSetToGeneratingBeforeTheDataIsFetched() {
+    public void statusIsSetToGeneratingBeforeTheDataIsFetched() throws Exception {
         Report report = report(ReportCategory.USAGE_ANALYTICS, ReportType.CSV);
         stubReport(report);
         when(appConfig.getMaxRows()).thenReturn(50_000);
@@ -127,10 +132,13 @@ public class ReportGenerationWorkerTest {
                     assertEquals(ReportStatus.GENERATING, report.getStatus());
                     return rows(1);
                 });
+        when(csvGenerator.generateCsv(eq(report), anyList(), anyString()))
+                .thenReturn(fileContaining("id\n1\n"));
 
         worker.generateReportAsync(REPORT_ID);
 
         verify(dataFetcher).fetchAnalyticsData(any(Date.class), any(Date.class), any());
+        assertEquals(ReportStatus.COMPLETED, report.getStatus());
     }
 
     @Test

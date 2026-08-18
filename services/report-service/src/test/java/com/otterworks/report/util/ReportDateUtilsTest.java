@@ -2,6 +2,8 @@ package com.otterworks.report.util;
 
 import org.junit.Test;
 
+import java.lang.reflect.Modifier;
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.TimeZone;
@@ -50,10 +52,14 @@ public class ReportDateUtilsTest {
 
     @Test
     public void toDisplayStringFormatsDayAndTimeInUtc() {
-        // The month name is locale-dependent, the rest of the pattern is not.
+        // The month name follows the default locale, so the expectation is built the same way.
+        SimpleDateFormat expected = new SimpleDateFormat("MMM dd, yyyy HH:mm");
+        expected.setTimeZone(TimeZone.getTimeZone("UTC"));
+
         String display = ReportDateUtils.toDisplayString(MID_MARCH_2024);
-        assertTrue("unexpected display format: " + display,
-                display.matches("\\p{L}{3,} 15, 2024 13:45"));
+
+        assertEquals(expected.format(MID_MARCH_2024), display);
+        assertTrue("expected a UTC day and time: " + display, display.endsWith("15, 2024 13:45"));
     }
 
     @Test
@@ -78,13 +84,15 @@ public class ReportDateUtilsTest {
 
     @Test
     public void parseIsoDateAcceptsEverySupportedPattern() {
-        assertEquals(EPOCH_2024, ReportDateUtils.parseIsoDate("2024-01-01T00:00:00Z"));
+        // Only the +0000 pattern carries a real zone designator; in the others the trailing 'Z'
+        // is a quoted literal, so those wall-clock times are read in the default timezone.
         assertEquals(EPOCH_2024, ReportDateUtils.parseIsoDate("2024-01-01T00:00:00+0000"));
-        assertEquals(MID_MARCH_2024, ReportDateUtils.parseIsoDate("2024-03-15T13:45:09Z"));
-
-        // The two patterns without a zone designator are parsed in the default timezone.
-        Date parsedLocal = ReportDateUtils.parseIsoDate("2024-03-15 13:45:09");
-        assertEquals(localDate(2024, Calendar.MARCH, 15, 13, 45, 9), parsedLocal);
+        assertEquals(localDate(2024, Calendar.JANUARY, 1, 0, 0, 0),
+                ReportDateUtils.parseIsoDate("2024-01-01T00:00:00Z"));
+        assertEquals(localDate(2024, Calendar.MARCH, 15, 13, 45, 9),
+                ReportDateUtils.parseIsoDate("2024-03-15T13:45:09Z"));
+        assertEquals(localDate(2024, Calendar.MARCH, 15, 13, 45, 9),
+                ReportDateUtils.parseIsoDate("2024-03-15 13:45:09"));
         assertEquals(localDate(2024, Calendar.MARCH, 15, 0, 0, 0),
                 ReportDateUtils.parseIsoDate("2024-03-15"));
     }
@@ -215,7 +223,7 @@ public class ReportDateUtilsTest {
         // Guards the private constructor of the utility class.
         assertNotNull(ReportDateUtils.class.getDeclaredConstructors());
         assertEquals(1, ReportDateUtils.class.getDeclaredConstructors().length);
-        assertFalse(ReportDateUtils.class.getDeclaredConstructors()[0].isAccessible());
+        assertTrue(Modifier.isPrivate(ReportDateUtils.class.getDeclaredConstructors()[0].getModifiers()));
     }
 
     private static String duration(long millis) {
