@@ -104,6 +104,28 @@ public class ReportDataFetcherTest {
     }
 
     @Test
+    public void aBlankMetricStillFormsItsOwnCacheKeyEvenThoughTheUrlIsIdentical() {
+        when(appConfig.getAnalyticsServiceUrl()).thenReturn("http://analytics:8088");
+        stubGetForEntity(bodyWith("events", eventRows("evt-1")));
+
+        Map<String, String> threeSpaces = new HashMap<>();
+        threeSpaces.put("metric", "   ");
+        Map<String, String> twoSpaces = new HashMap<>();
+        twoSpaces.put("metric", "  ");
+
+        fetcher.fetchAnalyticsData(FROM, TO, null);
+        fetcher.fetchAnalyticsData(FROM, TO, threeSpaces);
+        fetcher.fetchAnalyticsData(FROM, TO, twoSpaces);
+
+        // The cache key keeps any non-null metric while the URL drops blank ones, so all three
+        // calls request the very same URL and none of them is served from the cache.
+        verify(restTemplate, times(3)).getForEntity(
+                eq("http://analytics:8088/api/v1/analytics/events"
+                        + "?from=2024-01-01T00:00:00Z&to=2024-02-01T00:00:00Z"),
+                eq(Map.class));
+    }
+
+    @Test
     public void fetchAnalyticsDataCachesPerDateRangeAndMetric() {
         when(appConfig.getAnalyticsServiceUrl()).thenReturn("http://analytics:8088");
         stubGetForEntity(bodyWith("events", eventRows("evt-1")));
