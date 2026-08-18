@@ -59,6 +59,18 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(2)
     end
 
+    it 'stops opening dedup=false incidents once the per-service ceiling is hit' do
+      stub_const("#{described_class}::UNDEDUPED_LIMIT", 2)
+
+      3.times do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+
+      expect(Incident.count).to eq(2)
+      expect(DevinSessionService).to have_received(:create_session).twice
+      expect(response.parsed_body['incidents'].first['reason']).to eq('rate_limited')
+    end
+
     it 'rejects payloads without an alerts array' do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)

@@ -20,6 +20,13 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
+        # A `dedup=false` alert opens one incident (and one paid Devin session)
+        # per occurrence. The chaos probe fires three uploads every five seconds
+        # for the whole chaos window, so without a ceiling one trigger is a few
+        # hundred sessions. The ceiling is well above what a demo does by hand.
+        UNDEDUPED_WINDOW = 10.minutes
+        UNDEDUPED_LIMIT  = 20
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -62,7 +69,15 @@ module Api
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          if labels[:dedup].to_s == 'false'
+            recent = Incident.where(affected_service: affected_service)
+                             .where(created_at: UNDEDUPED_WINDOW.ago..)
+                             .count
+            if recent >= UNDEDUPED_LIMIT
+              Rails.logger.warn("Alert #{alert_name} throttled — #{recent} incidents for #{affected_service} in the last #{UNDEDUPED_WINDOW.inspect}")
+              return { skipped: true, reason: 'rate_limited' }
+            end
+          else
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
