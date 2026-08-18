@@ -128,7 +128,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   // shows the session belonging to an earlier file. One in-flight lookup per
   // upload; retrying, cancelling or dismissing stops it.
   const pollForDevinSession = useCallback(
-    (entry: UploadingFile, known: Promise<Set<string>>) => {
+    (entry: UploadingFile, known: Set<string>) => {
       stopPolling(entry.id);
       const generation = pollGenerationRef.current.get(entry.id) ?? 0;
       const superseded = () =>
@@ -138,7 +138,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         pollTimersRef.current.delete(entry.id);
         attempt += 1;
         try {
-          const incident = await incidentsApi.findForUpload(entry.file.name, await known);
+          const incident = await incidentsApi.findForUpload(entry.file.name, known);
           if (superseded()) return;
           if (incident?.devinSessionUrl) {
             const url = incident.devinSessionUrl;
@@ -166,14 +166,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   const startUpload = useCallback(
     (entry: UploadingFile) => {
       const abortController = new AbortController();
-      // Snapshotted before the upload can fail: admin-service opens the
-      // incident while the request is still in flight, so anything matching
-      // this filename from here on is this attempt's. Ids rather than a
-      // timestamp — a browser clock compared against server timestamps drops
-      // the real incident whenever the two disagree.
-      const knownIncidents = incidentsApi
-        .idsForUpload(entry.file.name)
-        .catch(() => new Set<string>());
 
       stopPolling(entry.id);
       setUploadingFiles((prev) =>
@@ -191,14 +183,27 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         ),
       );
 
-      uploadFile(entry.file, {
-        onProgress: (percent) => {
-          setUploadingFiles((prev) =>
-            prev.map((f) => (f.id === entry.id ? { ...f, progress: percent } : f)),
-          );
-        },
-        signal: abortController.signal,
-      })
+      // Which incidents already carried this filename. Resolved before the
+      // upload is issued, so this attempt's own incident can never land in the
+      // set and be excluded from the poll. Ids rather than a timestamp: a
+      // browser clock compared against server timestamps drops the real
+      // incident whenever the two disagree.
+      let knownIncidents = new Set<string>();
+
+      incidentsApi
+        .idsForUpload(entry.file.name)
+        .catch(() => new Set<string>())
+        .then((known) => {
+          knownIncidents = known;
+          return uploadFile(entry.file, {
+            onProgress: (percent) => {
+              setUploadingFiles((prev) =>
+                prev.map((f) => (f.id === entry.id ? { ...f, progress: percent } : f)),
+              );
+            },
+            signal: abortController.signal,
+          });
+        })
         .then(() => {
           setUploadingFiles((prev) =>
             prev.map((f) =>
