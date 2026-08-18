@@ -74,8 +74,8 @@ The repository CI command for this service is:
 gradle check --no-daemon
 ```
 
-On this machine, a machine-level Gradle init script strips the plugin portal.
-Use the service's repository init script when running locally here:
+If a local Gradle init script strips the plugin portal, add the service's
+repository init script:
 
 ```bash
 gradle check --no-daemon -I gradle-init.gradle

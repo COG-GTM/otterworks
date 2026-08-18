@@ -42,10 +42,10 @@ The resolution endpoints are mounted below the document gateway prefix:
   accepts no body and returns `CommentResponse`.
 
 Both endpoints return `404` when the comment does not exist for the supplied
-document. Both are idempotent. Resolving an already-resolved comment returns its
-existing state; unresolving clears `is_resolved`, `resolved_by`, and
-`resolved_at`. Neither repeated resolves nor unresolve operations publish an
-additional event.
+document. Resolving an already-resolved comment short-circuits; unresolving is
+idempotent in its observable result but still issues a commit (SQLAlchemy emits
+no `UPDATE` when values are unchanged). Unresolving clears `is_resolved`,
+`resolved_by`, and `resolved_at`.
 
 `GET /api/v1/documents/{document_id}/comments` accepts the
 `include_resolved` query parameter, which defaults to `true` to preserve the
