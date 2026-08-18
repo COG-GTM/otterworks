@@ -31,6 +31,11 @@ interface UploadingFile {
 
 let fileIdCounter = 0;
 
+// Frontend counterpart of the file-upload-fails chaos scenario
+// (chaos:file-service:upload_s3_error): every upload attempt fails
+// with a prominent error banner.
+const UPLOADS_ALWAYS_FAIL = true;
+
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
   ref: Ref<FileUploadDropzoneHandle>,
@@ -82,6 +87,19 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const startUpload = useCallback(
     (entry: UploadingFile) => {
+      if (UPLOADS_ALWAYS_FAIL) {
+        setShowUploadErrorBanner(true);
+        setUploadingFiles((prev) =>
+          prev.map((f) =>
+            f.id === entry.id
+              ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
+              : f,
+          ),
+        );
+        void notifyUploadFailed(entry.file.name);
+        return;
+      }
+
       const abortController = new AbortController();
 
       setUploadingFiles((prev) =>
@@ -157,7 +175,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   };
 
   const clearCompleted = () => {
-    setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
+    setUploadingFiles((prev) => prev.filter((f) => f.status === "uploading"));
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -171,7 +189,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         <ChaosErrorBanner
           className="mb-4"
           title="File upload failed"
-          message="One or more files could not be uploaded. Please try again."
+          message="Your files could not be uploaded. The storage service returned an error (S3 write failed). Please try again later."
           onDismiss={() => setShowUploadErrorBanner(false)}
         />
       )}

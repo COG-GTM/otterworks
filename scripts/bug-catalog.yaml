@@ -23,6 +23,11 @@ scenarios:
     description: >
       File uploads fail: file-service writes to a non-existent S3 bucket and
       returns 5xx. Classic "uploads are broken" incident.
+    # Frontend counterpart (additive; the Redis flag above is untouched):
+    # the React client (frontend/client-app) fails every upload attempt and
+    # shows a big red error banner. Controlled by UPLOADS_ALWAYS_FAIL in
+    # frontend/client-app/src/components/files/file-upload-dropzone.tsx.
+    frontend: "UPLOADS_ALWAYS_FAIL in file-upload-dropzone.tsx (always on)"
 
   search-suggest-500:
     mechanism: chaos
