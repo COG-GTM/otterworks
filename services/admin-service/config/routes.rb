@@ -30,6 +30,7 @@ Rails.application.routes.draw do
         # Storage Quotas
         get 'quotas/:user_id', to: 'quotas#show', as: :quota
         put 'quotas/:user_id', to: 'quotas#update'
+        patch 'quotas/:user_id', to: 'quotas#update'
 
         # System Metrics
         get 'metrics/summary', to: 'metrics#summary'

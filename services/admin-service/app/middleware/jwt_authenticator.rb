@@ -20,6 +20,7 @@ class JwtAuthenticator
     env['jwt.user_id'] = payload['sub']
     env['jwt.user_email'] = payload['email']
     env['jwt.user_role'] = payload['role']
+    env['jwt.user_roles'] = Array(payload['roles'].presence || payload['role']).map(&:to_s)
 
     @app.call(env)
   end
