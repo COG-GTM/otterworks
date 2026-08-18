@@ -34,6 +34,12 @@ When a comment thread is resolved in the document-service, it publishes a
 }
 ```
 
+Unlike the other (flat) message shapes, this event arrives wrapped in the
+document-service publisher envelope, so the consumer's `comment_resolved`
+handling unwraps `payload` (mapping `payload.authorId` to the notification
+recipient) rather than deserializing the top-level message directly into
+`SqsNotificationMessage`.
+
 The consumer maps this event to a "Your comment was resolved" template
 (`NotificationTemplates.kt`) and notifies the comment's **author**
 (`authorId`) — the resolver themselves is not notified.
