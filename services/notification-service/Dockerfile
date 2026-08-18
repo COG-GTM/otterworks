@@ -1,11 +1,11 @@
 FROM gradle:8.6-jdk17 AS builder
 
 WORKDIR /app
-COPY build.gradle.kts settings.gradle.kts gradle-init.gradle ./
-RUN gradle dependencies --no-daemon --init-script gradle-init.gradle || true
+COPY build.gradle.kts settings.gradle.kts ./
+RUN gradle dependencies --no-daemon || true
 
 COPY src ./src
-RUN gradle shadowJar --no-daemon --init-script gradle-init.gradle
+RUN gradle shadowJar --no-daemon
 
 FROM eclipse-temurin:17-jre-jammy
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
