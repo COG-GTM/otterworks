@@ -125,3 +125,24 @@ impl S3Client {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::S3Client;
+    use crate::config::AwsConfig;
+
+    #[actix_web::test]
+    async fn client_targets_the_configured_bucket() {
+        let config = AwsConfig {
+            region: "us-east-1".into(),
+            endpoint_url: Some("http://localhost:4566".into()),
+            s3_bucket: "otterworks-files-test".into(),
+            dynamodb_table: String::new(),
+            dynamodb_folders_table: String::new(),
+            dynamodb_versions_table: String::new(),
+            dynamodb_shares_table: String::new(),
+        };
+
+        assert_eq!(S3Client::new(&config).await.bucket, "otterworks-files-test");
+    }
+}

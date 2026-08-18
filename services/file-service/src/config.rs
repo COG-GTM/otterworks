@@ -83,14 +83,3 @@ impl SnsConfig {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn upload_uses_the_configured_bucket() {
-        assert_eq!(
-            super::AwsConfig::from_env().s3_bucket,
-            std::env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into())
-        );
-    }
-}
