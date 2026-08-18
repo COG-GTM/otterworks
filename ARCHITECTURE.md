@@ -72,7 +72,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Framework**: FastAPI 0.110
 - **Database**: PostgreSQL (document metadata, content snapshots)
 - **Purpose**: Document CRUD operations, version history, content snapshots, comment threads (including comment resolution), template management. Stores document operational transforms and provides REST API for document metadata.
-- **Domain events published**: `document_created`, `document_updated`, `comment_added`, `comment_resolved` (SNS fan-out, consumed by the notification service via the notifications SNS-to-SQS subscription)
+- **Domain events published**: `document_created`, `document_updated`, `comment_added`, `comment_resolved` (SNS fan-out; the notifications SNS-to-SQS subscription is the intended consumer — see the known envelope/attribute gap noted in `services/notification-service/README.md`)
 - **Port**: 8083
 - **Key Patterns**: Pydantic models, SQLAlchemy async, Alembic migrations, dependency injection, background tasks, structlog
 

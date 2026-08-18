@@ -66,6 +66,18 @@ it parses an SNS notification envelope and then parses the envelope's
 `Message` field as the event body. Thus both direct SQS messages and
 SNS-enveloped message bodies are accepted.
 
+Both paths require a flat camelCase body with a top-level `eventType`. Events
+published by document-service (`comment_added`, `comment_resolved`) instead use a
+nested snake_case envelope (`{event_type, timestamp, payload}`), so they fail to
+parse today — a pre-existing cross-service gap, not specific to
+`comment_resolved`. search-service normalizes both shapes in
+`app/services/sqs_consumer.py` and is the natural reference if the two sides are
+aligned.
+
+When the chaos flag `chaos:notification-service:consumer_strict_schema` is set,
+intake switches to a strict JSON parser and messages fail to parse and stay in
+the queue. That is an intentional lab mechanism (see `AGENTS.md`).
+
 ## Build and test
 
 The repository CI command for this service is:

@@ -67,9 +67,18 @@ enabled. Its payload contains:
 }
 ```
 
-`author_id` is the comment author and therefore the user the
-notification-service targets. A repeated resolve returns the current state
-without publishing another event.
+`author_id` is the comment author, i.e. the user the notification-service is
+meant to target. A repeated resolve returns the current state without
+publishing another event.
+
+**Known cross-service gap (pre-existing, applies to `comment_added` too):** this
+publisher wraps payloads as `{event_type, timestamp, payload: {...snake_case}}`
+and sets the SNS message attribute `event_type`, while notification-service
+expects a flat camelCase body with a top-level `eventType` and the notifications
+SNS subscription filters on an `eventType` attribute. Until one side is aligned
+(search-service normalizes both shapes in `app/services/sqs_consumer.py` and is
+the natural reference), document-service comment events do not reach the
+notification queue.
 
 ## Local development and tests
 
