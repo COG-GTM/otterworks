@@ -135,19 +135,6 @@ class AdminSettingsService
       redis&.close
     end
 
-    def clear_slack_webhook_url
-      redis = Redis.new(
-        url: ServiceEnv.redis_url,
-        timeout: 2
-      )
-      redis.del(SLACK_WEBHOOK_URL_KEY)
-    rescue StandardError => e
-      Rails.logger.error("Failed to clear Slack webhook URL: #{e.message}")
-      raise
-    ensure
-      redis&.close
-    end
-
     # Slack bot token, stored in the tenant's Redis so it can be set at
     # runtime without a redeploy. The value is never exposed by any read
     # path — only presence is reported.

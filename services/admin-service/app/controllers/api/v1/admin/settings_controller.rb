@@ -121,8 +121,10 @@ module Api
             enabled: AdminSettingsService.slack_notifications_enabled?,
             webhook_configured: ENV.fetch('SLACK_WEBHOOK_URL', nil).present? ||
               AdminSettingsService.slack_webhook_url.present?,
+            # A stored token only counts as configured if the sender would
+            # actually use it (see SlackNotifierService#stored_bot_token).
             bot_token_configured: ENV.fetch('SLACK_BOT_TOKEN', nil).present? ||
-              AdminSettingsService.slack_bot_token.present?
+              SlackNotifierService.valid_bot_token?(AdminSettingsService.slack_bot_token)
           }
         end
       end
