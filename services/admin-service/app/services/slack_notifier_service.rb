@@ -126,7 +126,10 @@ class SlackNotifierService
       on_call_fields << field('On-Call', on_call_human) if on_call_human
 
       # The description lives in its own code-block section; backticks are
-      # stripped so it cannot terminate the fence.
+      # stripped so it cannot terminate the fence. Slack parses <...> control
+      # sequences (links, @-mentions, <!channel>) at the message level even
+      # inside fences, so &, < and > must still be entity-escaped — Slack
+      # renders the escaped entities back as the literal characters.
       description = truncate(
         escape_mrkdwn(incident.description.to_s.delete('`')),
         SECTION_MAX - "*Message:*\n``````".length
@@ -135,7 +138,8 @@ class SlackNotifierService
       {
         # The top-level text is Slack's notification/fallback string; without
         # it, pushes and screen readers for a blocks-only message are blank.
-        text: truncate("OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
+        # It is parsed as mrkdwn, so it must be escaped like any other field.
+        text: truncate("OtterWorks Alert — #{service} — #{title}", HEADER_MAX),
         blocks: [
           {
             type: 'header',
@@ -205,8 +209,13 @@ class SlackNotifierService
       text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
     end
 
+    # Truncation happens after escaping, so a cut can land mid-entity
+    # (e.g. "&am…"); the trailing partial entity is dropped rather than
+    # rendered literally. Complete entities end in ";" and never match.
     def truncate(text, max)
-      text.length > max ? "#{text[0, max - 1]}\u2026" : text
+      return text unless text.length > max
+
+      "#{text[0, max - 1]}\u2026".sub(/&[a-z]{0,3}\u2026\z/, "\u2026")
     end
   end
 end

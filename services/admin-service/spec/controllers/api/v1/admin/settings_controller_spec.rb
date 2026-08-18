@@ -2,6 +2,7 @@ require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::SettingsController do
   before do
+    set_jwt_env(request)
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return(nil)
     allow(ENV).to receive(:fetch).with('DEVIN_ORG_ID', nil).and_return(nil)
@@ -113,6 +114,26 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(AdminSettingsService).to have_received(:clear_slack_webhook_url)
       expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
       expect(response.parsed_body['enabled']).to be(true)
+    end
+  end
+
+  describe 'role enforcement' do
+    it 'forbids settings writes for non-admin roles' do
+      set_jwt_env(request, role: 'viewer')
+      allow(AdminSettingsService).to receive(:set_slack_notifications)
+
+      put :update_slack_notifications, params: { enabled: false }
+      expect(response).to have_http_status(:forbidden)
+      expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
+    end
+
+    it 'allows settings reads for non-admin roles' do
+      set_jwt_env(request, role: 'viewer')
+      allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
+      allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
+
+      get :slack_notifications
+      expect(response).to have_http_status(:ok)
     end
   end
 end

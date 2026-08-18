@@ -1,4 +1,7 @@
 class JwtAuthenticator
+  # Highest privilege first; used to pick one role when a token carries several.
+  ROLE_PRECEDENCE = %w[owner super_admin admin editor viewer user].freeze
+
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
   def initialize(app)
@@ -19,12 +22,23 @@ class JwtAuthenticator
     env['jwt.payload'] = payload
     env['jwt.user_id'] = payload['sub']
     env['jwt.user_email'] = payload['email']
-    env['jwt.user_role'] = payload['role']
+    env['jwt.user_role'] = extract_role(payload)
 
     @app.call(env)
   end
 
   private
+
+  # auth-service issues a `roles` claim: an array of uppercase enum names
+  # (USER, EDITOR, ADMIN, OWNER). Other issuers use a singular lowercase
+  # `role` string. Normalize both shapes to one lowercase role, keeping the
+  # highest-privilege entry when several are present.
+  def extract_role(payload)
+    roles = Array(payload['roles'])
+    roles = [payload['role']] if roles.empty?
+    normalized = roles.compact.map { |r| r.to_s.downcase }.reject(&:empty?)
+    ROLE_PRECEDENCE.find { |r| normalized.include?(r) } || normalized.first
+  end
 
   def skip_authentication?(request)
     EXCLUDED_PATHS.any? { |path| request.path == path }
