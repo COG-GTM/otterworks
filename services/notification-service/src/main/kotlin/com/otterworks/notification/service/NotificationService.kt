@@ -66,7 +66,7 @@ class NotificationService(
             message = rendered.message,
             resourceId = resolveResourceId(event),
             resourceType = resolveResourceType(event),
-            actorId = event.actorId.ifEmpty { event.ownerId },
+            actorId = resolveActorId(event),
             read = false,
             deliveredVia = deliveredVia,
             createdAt = Instant.now().toString(),
@@ -151,6 +151,16 @@ class NotificationService(
                 "document_edited" -> "document"
                 "user_mentioned" -> "document"
                 else -> "unknown"
+            }
+        }
+
+        fun resolveActorId(event: SqsNotificationMessage): String {
+            return event.actorId.ifEmpty {
+                if (event.eventType == "comment_resolved") {
+                    event.resolvedBy.ifEmpty { event.ownerId }
+                } else {
+                    event.ownerId
+                }
             }
         }
     }

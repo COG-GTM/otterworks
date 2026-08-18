@@ -1,6 +1,7 @@
 package com.otterworks.notification.template
 
 import com.otterworks.notification.model.SqsNotificationMessage
+import com.otterworks.notification.service.NotificationService
 
 data class RenderedNotification(
     val title: String,
@@ -109,14 +110,8 @@ object NotificationTemplates {
             emailBody = "<html><body><p>You have a new notification.</p></body></html>",
         )
 
-        val actorFallback = if (event.eventType == "comment_resolved") {
-            event.resolvedBy.ifEmpty { event.ownerId }
-        } else {
-            event.ownerId
-        }
-
         val variables = mapOf(
-            "actorId" to (event.actorId.ifEmpty { actorFallback }),
+            "actorId" to NotificationService.resolveActorId(event),
             "fileId" to event.fileId,
             "documentId" to event.documentId,
             "commentId" to event.commentId,

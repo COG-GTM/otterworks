@@ -291,6 +291,7 @@ class NotificationServiceTest {
         assertEquals("Comment Resolved", lastSaved.title)
         assertEquals("c-9", lastSaved.resourceId)
         assertEquals("comment", lastSaved.resourceType)
+        assertEquals("resolver-1", lastSaved.actorId)
         assertTrue(lastSaved.deliveredVia.contains("in_app"))
         assertTrue(lastSaved.message.contains("resolver-1"))
         coVerify(exactly = 0) { emailSender.sendEmail(any(), any(), any()) }
