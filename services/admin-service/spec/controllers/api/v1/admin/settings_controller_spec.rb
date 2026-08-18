@@ -6,6 +6,7 @@ RSpec.describe Api::V1::Admin::SettingsController do
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return(nil)
     allow(ENV).to receive(:fetch).with('DEVIN_ORG_ID', nil).and_return(nil)
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return(nil)
   end
 
   describe 'GET #devin_credentials' do
@@ -71,6 +72,17 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(body['webhook_configured']).to be(true)
       expect(response.body).not_to include('sekrit')
     end
+
+    it 'reports bot token presence without exposing the token' do
+      allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
+      allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
+      allow(AdminSettingsService).to receive(:slack_bot_token).and_return('xoxb-sekrit-token')
+
+      get :slack_notifications
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['bot_token_configured']).to be(true)
+      expect(response.body).not_to include('xoxb-sekrit-token')
+    end
   end
 
   describe 'PUT #update_slack_notifications' do
@@ -91,7 +103,23 @@ RSpec.describe Api::V1::Admin::SettingsController do
         .with('https://hooks.slack.com/services/T/B/x')
     end
 
-    it 'rejects a request with neither parameter' do
+    it 'stores the bot token' do
+      allow(AdminSettingsService).to receive(:set_slack_bot_token)
+
+      put :update_slack_notifications, params: { bot_token: 'xoxb-1234-abcd' }
+      expect(response).to have_http_status(:ok)
+      expect(AdminSettingsService).to have_received(:set_slack_bot_token).with('xoxb-1234-abcd')
+    end
+
+    it 'rejects a malformed bot token' do
+      allow(AdminSettingsService).to receive(:set_slack_bot_token)
+
+      put :update_slack_notifications, params: { bot_token: 'not-a-token' }
+      expect(response).to have_http_status(:bad_request)
+      expect(AdminSettingsService).not_to have_received(:set_slack_bot_token)
+    end
+
+    it 'rejects a request with no parameters' do
       put :update_slack_notifications
       expect(response).to have_http_status(:bad_request)
     end
@@ -103,8 +131,9 @@ RSpec.describe Api::V1::Admin::SettingsController do
   end
 
   describe 'DELETE #destroy_slack_notifications' do
-    it 'clears the stored webhook URL without touching the toggle' do
+    it 'clears the stored webhook URL and bot token without touching the toggle' do
       allow(AdminSettingsService).to receive(:clear_slack_webhook_url)
+      allow(AdminSettingsService).to receive(:clear_slack_bot_token)
       allow(AdminSettingsService).to receive(:set_slack_notifications)
       allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
       allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
@@ -112,6 +141,7 @@ RSpec.describe Api::V1::Admin::SettingsController do
       delete :destroy_slack_notifications
       expect(response).to have_http_status(:ok)
       expect(AdminSettingsService).to have_received(:clear_slack_webhook_url)
+      expect(AdminSettingsService).to have_received(:clear_slack_bot_token)
       expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
       expect(response.parsed_body['enabled']).to be(true)
     end

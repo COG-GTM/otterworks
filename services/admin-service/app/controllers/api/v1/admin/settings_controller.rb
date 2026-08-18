@@ -65,13 +65,20 @@ module Api
         end
 
         # PUT /api/v1/admin/settings/slack_notifications
-        # Accepts `enabled` and/or `webhook_url` — at least one is required.
+        # Accepts `enabled`, `webhook_url` and/or `bot_token` — at least one is
+        # required.
         def update_slack_notifications
           enabled = params.key?(:enabled) ? ActiveModel::Type::Boolean.new.cast(params[:enabled]) : nil
           webhook_url = params[:webhook_url].to_s.strip
+          bot_token = params[:bot_token].to_s.strip
 
-          if enabled.nil? && webhook_url.empty?
-            return render json: { error: 'Provide at least one of: enabled, webhook_url' }, status: :bad_request
+          if enabled.nil? && webhook_url.empty? && bot_token.empty?
+            return render json: { error: 'Provide at least one of: enabled, webhook_url, bot_token' },
+                          status: :bad_request
+          end
+
+          unless bot_token.empty? || valid_slack_bot_token?(bot_token)
+            return render json: { error: 'bot_token must be a Slack bot token (xoxb-...)' }, status: :bad_request
           end
 
           unless webhook_url.empty? || valid_slack_webhook_url?(webhook_url)
@@ -81,16 +88,19 @@ module Api
 
           AdminSettingsService.set_slack_notifications(enabled) unless enabled.nil?
           AdminSettingsService.set_slack_webhook_url(webhook_url) unless webhook_url.empty?
+          AdminSettingsService.set_slack_bot_token(bot_token) unless bot_token.empty?
           Rails.logger.info('Slack notification settings updated via settings API')
           render json: slack_status
         end
 
         # DELETE /api/v1/admin/settings/slack_notifications
-        # Clears the stored webhook URL. An env-supplied SLACK_WEBHOOK_URL
-        # takes precedence and is not revocable here.
+        # Clears the stored webhook URL and bot token. Env-supplied
+        # SLACK_WEBHOOK_URL / SLACK_BOT_TOKEN take precedence and are not
+        # revocable here.
         def destroy_slack_notifications
           AdminSettingsService.clear_slack_webhook_url
-          Rails.logger.info('Slack webhook URL cleared via settings API')
+          AdminSettingsService.clear_slack_bot_token
+          Rails.logger.info('Slack webhook URL and bot token cleared via settings API')
           render json: slack_status
         end
 
@@ -103,12 +113,17 @@ module Api
           false
         end
 
+        def valid_slack_bot_token?(token)
+          token.match?(/\Axox[a-z]-[A-Za-z0-9-]+\z/)
+        end
+
         def slack_status
           {
             enabled: AdminSettingsService.slack_notifications_enabled?,
             webhook_configured: ENV.fetch('SLACK_WEBHOOK_URL', nil).present? ||
               AdminSettingsService.slack_webhook_url.present?,
-            bot_token_configured: ENV.fetch('SLACK_BOT_TOKEN', nil).present?
+            bot_token_configured: ENV.fetch('SLACK_BOT_TOKEN', nil).present? ||
+              AdminSettingsService.slack_bot_token.present?
           }
         end
       end

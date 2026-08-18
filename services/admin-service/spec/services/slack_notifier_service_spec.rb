@@ -19,6 +19,7 @@ RSpec.describe SlackNotifierService do
     allow(ENV).to receive(:fetch).with('SLACK_USER_MAP', nil).and_return(nil)
     allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
     allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return(nil)
   end
 
   def stub_post(response_body: '{"ok":true}')
@@ -61,6 +62,17 @@ RSpec.describe SlackNotifierService do
     expect(read_request.call['Authorization']).to eq('Bearer xoxb-test-token')
     expect(read_posted.call['channel']).to eq('#automated-alerts')
     expect(read_posted.call['blocks']).to be_an(Array)
+  end
+
+  it 'uses the runtime-stored bot token when SLACK_BOT_TOKEN is not set' do
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return('xoxb-stored-token')
+    read_posted, read_request = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
+
+    expect(Net::HTTP).to have_received(:new).with('slack.com', 443)
+    expect(read_request.call['Authorization']).to eq('Bearer xoxb-stored-token')
+    expect(read_posted.call['channel']).to eq('#automated-alerts')
   end
 
   it 'routes unknown alert names to the default channel' do

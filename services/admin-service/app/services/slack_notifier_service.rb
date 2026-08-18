@@ -22,7 +22,7 @@ class SlackNotifierService
       channel = SlackAlertRoutes.channel_for(alert_name.presence || infer_alert_name(incident))
       payload = build_payload(incident, session_url, reporter_email)
 
-      bot_token = ENV.fetch('SLACK_BOT_TOKEN', nil).presence
+      bot_token = resolve_bot_token
       if bot_token
         post_via_api(bot_token, channel, payload)
         return
@@ -86,6 +86,13 @@ class SlackNotifierService
     # is the closest equivalent.
     def infer_alert_name(incident)
       incident.title.to_s.split(':').first.to_s.strip
+    end
+
+    # Environment wins; the Redis-backed settings store is the fallback so the
+    # token can be supplied at runtime on tenants whose deploy pipeline does
+    # not wire it as an env var.
+    def resolve_bot_token
+      ENV.fetch('SLACK_BOT_TOKEN', nil).presence || AdminSettingsService.slack_bot_token
     end
 
     # Environment wins; the Redis-backed settings store is the fallback so the
