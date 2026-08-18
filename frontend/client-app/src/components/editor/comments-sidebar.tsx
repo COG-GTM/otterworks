@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { commentsApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
+import type { Comment } from "@/types";
 
 interface CommentsSidebarProps {
   documentId: string;
@@ -139,7 +140,7 @@ export function CommentsSidebar({ documentId }: CommentsSidebarProps) {
 }
 
 interface CommentItemProps {
-  comment: Awaited<ReturnType<typeof commentsApi.listComments>>[number];
+  comment: Comment;
   isMutating: boolean;
   onResolve: () => void;
 }
