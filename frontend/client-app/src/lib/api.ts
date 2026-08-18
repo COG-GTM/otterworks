@@ -6,6 +6,7 @@ import type {
   RegisterCredentials,
   FileItem,
   Document,
+  Comment,
   Notification,
   SearchResult,
   SearchFilters,
@@ -360,6 +361,36 @@ export const documentsApi = {
       params: { page: 1, size: limit },
     });
     return data.items ?? [];
+  },
+  listComments: async (documentId: string, includeResolved = true): Promise<Comment[]> => {
+    const { data } = await apiClient.get<Comment[]>(`/documents/${documentId}/comments`, {
+      params: { include_resolved: includeResolved },
+    });
+    return data ?? [];
+  },
+  addComment: async (documentId: string, content: string): Promise<Comment> => {
+    const authorId = getOwnerIdFromJwt();
+    if (!authorId) throw new Error("Unable to determine current user");
+    const { data } = await apiClient.post<Comment>(`/documents/${documentId}/comments`, {
+      author_id: authorId,
+      content,
+    });
+    return data;
+  },
+  resolveComment: async (documentId: string, commentId: string): Promise<Comment> => {
+    const resolvedBy = getOwnerIdFromJwt();
+    if (!resolvedBy) throw new Error("Unable to determine current user");
+    const { data } = await apiClient.post<Comment>(
+      `/documents/${documentId}/comments/${commentId}/resolve`,
+      { resolved_by: resolvedBy }
+    );
+    return data;
+  },
+  unresolveComment: async (documentId: string, commentId: string): Promise<Comment> => {
+    const { data } = await apiClient.post<Comment>(
+      `/documents/${documentId}/comments/${commentId}/unresolve`
+    );
+    return data;
   },
 };
 

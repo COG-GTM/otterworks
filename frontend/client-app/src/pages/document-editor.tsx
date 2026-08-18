@@ -11,11 +11,13 @@ import {
   Copy,
   Check,
   X,
+  MessageSquare,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CollaborativeEditor } from "@/components/editor/collaborative-editor";
 import { UserPresenceAvatars } from "@/components/editor/user-presence-avatars";
+import { CommentsSidebar } from "@/components/documents/comments-sidebar";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { documentsApi } from "@/lib/api";
@@ -39,6 +41,7 @@ function DocumentEditorContent() {
   const [title, setTitle] = useState("");
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
@@ -190,6 +193,14 @@ function DocumentEditorContent() {
               Save
             </button>
             <button
+              onClick={() => setCommentsOpen(!commentsOpen)}
+              aria-pressed={commentsOpen}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            >
+              <MessageSquare size={16} />
+              Comments
+            </button>
+            <button
               onClick={() => setShareOpen(!shareOpen)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
             >
@@ -283,13 +294,20 @@ function DocumentEditorContent() {
         </div>
       )}
 
-      {/* Editor */}
-      <CollaborativeEditor
-        key={documentId}
-        documentId={documentId}
-        initialContent={document.content}
-        onUpdate={debouncedSave}
-      />
+      {/* Editor + comments */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        <div className="flex-1 min-w-0 w-full">
+          <CollaborativeEditor
+            key={documentId}
+            documentId={documentId}
+            initialContent={document.content}
+            onUpdate={debouncedSave}
+          />
+        </div>
+        {commentsOpen && (
+          <CommentsSidebar documentId={documentId} onClose={() => setCommentsOpen(false)} />
+        )}
+      </div>
     </div>
   );
 }
