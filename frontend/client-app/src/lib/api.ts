@@ -667,10 +667,16 @@ const INCIDENT_PAGE_SIZE = 100;
 const titledFor = (incident: Incident, fileName: string) =>
   incident.title?.endsWith(`: ${fileName}`) ?? false;
 
+// The snapshot below runs before the upload is issued, and apiClient has no
+// timeout of its own, so a slow or waking admin-service would otherwise hold
+// the file back indefinitely.
+const SNAPSHOT_TIMEOUT_MS = 2500;
+
 export const incidentsApi = {
-  list: async (): Promise<Incident[]> => {
+  list: async (timeoutMs?: number): Promise<Incident[]> => {
     const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents", {
       params: { per_page: INCIDENT_PAGE_SIZE },
+      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     });
     return data.incidents ?? [];
   },
@@ -680,7 +686,7 @@ export const incidentsApi = {
   // server clock disagree often enough that a skewed client would filter out
   // its own incident and never show the link.
   idsForUpload: async (fileName: string): Promise<Set<string>> => {
-    const incidents = await incidentsApi.list();
+    const incidents = await incidentsApi.list(SNAPSHOT_TIMEOUT_MS);
     return new Set(incidents.filter((i) => titledFor(i, fileName)).map((i) => i.id));
   },
   findForUpload: async (fileName: string, exclude?: Set<string>): Promise<Incident | null> =>

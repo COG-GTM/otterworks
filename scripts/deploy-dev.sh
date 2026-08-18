@@ -403,6 +403,12 @@ build_helm_args() {
       # Same as the tenant path: the chart has no default, so an SDK client
       # would otherwise fall back to its own region.
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
+      # Devin credentials from Secrets Manager, read through the service
+      # account's IRSA role. Unset falls back to the pair stored via the
+      # settings API.
+      if [ -n "${DEVIN_CREDENTIALS_SECRET_ID:-}" ]; then
+        EXTRA_ARGS+=(--set-string "config.DEVIN_CREDENTIALS_SECRET_ID=${DEVIN_CREDENTIALS_SECRET_ID}")
+      fi
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
       add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
     audit-service)
