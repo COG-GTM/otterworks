@@ -2,6 +2,14 @@ module Api
   module V1
     module Admin
       class SettingsController < ApplicationController
+        # Reads only report presence/toggles; writes change the credentials and
+        # webhook the service itself uses, so they are restricted to admins.
+        before_action :require_admin!, only: %i[
+          update_auto_investigate
+          update_devin_credentials destroy_devin_credentials
+          update_slack_notifications destroy_slack_notifications
+        ]
+
         # GET /api/v1/admin/settings/auto_investigate
         def auto_investigate
           render json: { enabled: AdminSettingsService.auto_investigate_enabled? }

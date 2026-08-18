@@ -32,6 +32,14 @@ class ApplicationController < ActionController::API
     request.env['jwt.user_role']
   end
 
+  ADMIN_ROLES = %w[admin super_admin].freeze
+
+  def require_admin!
+    return if ADMIN_ROLES.include?(current_user_role)
+
+    render json: { error: 'Admin role required' }, status: :forbidden
+  end
+
   def set_request_metadata
     @request_metadata = {
       ip_address: request.remote_ip,

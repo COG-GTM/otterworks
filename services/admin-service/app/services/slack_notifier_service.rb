@@ -126,9 +126,10 @@ class SlackNotifierService
       on_call_fields << field('On-Call', on_call_human) if on_call_human
 
       # The description lives in its own code-block section; backticks are
-      # stripped so it cannot terminate the fence.
+      # stripped so it cannot terminate the fence. Slack renders code-block
+      # content verbatim, so no mrkdwn escaping here.
       description = truncate(
-        escape_mrkdwn(incident.description.to_s.delete('`')),
+        incident.description.to_s.delete('`'),
         SECTION_MAX - "*Message:*\n``````".length
       )
 
