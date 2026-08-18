@@ -96,6 +96,16 @@ RSpec.describe DevinSecretsManagerSource do
     expect(described_class.credentials).to eq({ api_key: 'sm-key', org_id: nil })
   end
 
+  it 'treats a secret that is not valid JSON as a misconfiguration, not a blip' do
+    allow(client).to receive(:get_secret_value)
+      .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))
+    described_class.credentials
+    described_class.instance_variable_get(:@cache)[:fetched_at] = 0
+    allow(client).to receive(:get_secret_value).and_return(secret('not json at all'))
+
+    expect(described_class.credentials).to eq({ api_key: nil, org_id: nil })
+  end
+
   it 'treats a secret that is not an object as a misconfiguration, not a blip' do
     allow(client).to receive(:get_secret_value)
       .and_return(secret({ api_key: 'sm-key', org_id: 'sm-org' }.to_json))

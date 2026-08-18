@@ -55,14 +55,12 @@ module Api
         # Titles carry a user-supplied filename and the model caps them at 255;
         # an over-long one would raise and leave the upload with no incident and
         # no triage session at all. The filename sits at the end and is what the
-        # client matches an upload's incident on, so the middle goes rather than
-        # the tail.
+        # client matches an upload's incident on, so the front is dropped and
+        # the whole tail kept.
         def incident_title(title)
           return title if title.length <= TITLE_LIMIT
 
-          keep = TITLE_LIMIT - ELLIPSIS.length
-          head = keep / 2
-          "#{title[0, head]}#{ELLIPSIS}#{title[-(keep - head)..]}"
+          "#{ELLIPSIS}#{title.last(TITLE_LIMIT - ELLIPSIS.length)}"
         end
 
         def process_alert(alert)
