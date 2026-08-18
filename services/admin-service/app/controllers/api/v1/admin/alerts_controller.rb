@@ -29,6 +29,7 @@ module Api
 
         # Matches the Incident model's own title validation.
         TITLE_LIMIT = 255
+        ELLIPSIS = '…'.freeze
 
         SEVERITY_MAP = {
           'critical' => 'critical',
@@ -50,6 +51,19 @@ module Api
         end
 
         private
+
+        # Titles carry a user-supplied filename and the model caps them at 255;
+        # an over-long one would raise and leave the upload with no incident and
+        # no triage session at all. The filename sits at the end and is what the
+        # client matches an upload's incident on, so the middle goes rather than
+        # the tail.
+        def incident_title(title)
+          return title if title.length <= TITLE_LIMIT
+
+          keep = TITLE_LIMIT - ELLIPSIS.length
+          head = keep / 2
+          "#{title[0, head]}#{ELLIPSIS}#{title[-(keep - head)..]}"
+        end
 
         def process_alert(alert)
           status           = alert[:status].to_s
@@ -93,10 +107,7 @@ module Api
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
           incident = Incident.create!(
-            # Titles carry a user-supplied filename and the model caps them at
-            # 255; an over-long one would raise and leave the upload with no
-            # incident and no triage session at all.
-            title:            (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(TITLE_LIMIT),
+            title:            incident_title(summary.presence || "#{alert_name}: #{affected_service} alert firing"),
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',

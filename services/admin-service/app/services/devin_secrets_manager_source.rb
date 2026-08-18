@@ -76,6 +76,10 @@ class DevinSecretsManagerSource
 
     def fetch(id)
       payload = JSON.parse(client.get_secret_value(secret_id: id).secret_string.to_s)
+      # A payload that is not an object is a misconfiguration, not a blip: read
+      # it as an empty pair so it memoizes below rather than raising into the
+      # rescue, where the last good pair would keep being served.
+      payload = {} unless payload.is_a?(Hash)
       value = {
         api_key: payload['api_key'].presence,
         org_id: payload['org_id'].presence

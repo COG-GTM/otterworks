@@ -72,10 +72,14 @@ RSpec.describe Api::V1::Admin::AlertsController do
     end
 
     it 'still opens an incident when the filename makes the summary too long' do
-      post :ingest, params: { alerts: [firing_alert(summary: "File upload failed: #{'a' * 400}.txt")] }
+      file_name = "#{'a' * 400}.txt"
+      post :ingest, params: { alerts: [firing_alert(summary: "File upload failed: #{file_name}")] }
 
       expect(Incident.count).to eq(1)
       expect(Incident.last.title.length).to eq(255)
+      # The client finds an upload's incident by the filename at the end of the
+      # title, so shortening has to keep the tail.
+      expect(Incident.last.title).to end_with(file_name.last(50))
       expect(DevinSessionService).to have_received(:create_session).once
     end
 

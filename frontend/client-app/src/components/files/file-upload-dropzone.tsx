@@ -183,27 +183,34 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         ),
       );
 
-      // Which incidents already carried this filename. Resolved before the
-      // upload is issued, so this attempt's own incident can never land in the
-      // set and be excluded from the poll. Ids rather than a timestamp: a
-      // browser clock compared against server timestamps drops the real
+      // Which incidents already carried this filename, so a retry does not
+      // resolve to the previous attempt's session. Ids rather than a timestamp:
+      // a browser clock compared against server timestamps drops the real
       // incident whenever the two disagree.
-      let knownIncidents = new Set<string>();
-
-      incidentsApi
+      //
+      // Runs alongside the upload rather than ahead of it — admin-service can
+      // be waking from idle-suspend, and no file should wait on it. Only a
+      // snapshot that arrived *before* the failure is used: a later one could
+      // already list this attempt's own incident and exclude it forever. Both
+      // times come from this browser, so no clock comparison is involved.
+      let knownIncidents: Set<string> | null = null;
+      let snapshotAt = Number.POSITIVE_INFINITY;
+      void incidentsApi
         .idsForUpload(entry.file.name)
-        .catch(() => new Set<string>())
         .then((known) => {
           knownIncidents = known;
-          return uploadFile(entry.file, {
-            onProgress: (percent) => {
-              setUploadingFiles((prev) =>
-                prev.map((f) => (f.id === entry.id ? { ...f, progress: percent } : f)),
-              );
-            },
-            signal: abortController.signal,
-          });
+          snapshotAt = Date.now();
         })
+        .catch(() => undefined);
+
+      uploadFile(entry.file, {
+        onProgress: (percent) => {
+          setUploadingFiles((prev) =>
+            prev.map((f) => (f.id === entry.id ? { ...f, progress: percent } : f)),
+          );
+        },
+        signal: abortController.signal,
+      })
         .then(() => {
           setUploadingFiles((prev) =>
             prev.map((f) =>
@@ -236,7 +243,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            pollForDevinSession(entry, knownIncidents);
+            pollForDevinSession(
+              entry,
+              snapshotAt <= failedAt && knownIncidents ? knownIncidents : new Set<string>(),
+            );
           }
         });
     },

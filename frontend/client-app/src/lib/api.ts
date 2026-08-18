@@ -667,10 +667,10 @@ const INCIDENT_PAGE_SIZE = 100;
 const titledFor = (incident: Incident, fileName: string) =>
   incident.title?.endsWith(`: ${fileName}`) ?? false;
 
-// The snapshot below runs before the upload is issued, and apiClient has no
-// timeout of its own, so a slow or waking admin-service would otherwise hold
-// the file back indefinitely.
-const SNAPSHOT_TIMEOUT_MS = 2500;
+// The snapshot below is only useful while the upload is still running, and
+// apiClient has no timeout of its own; past this it is cheaper to give up than
+// to keep a request open against a waking admin-service.
+const SNAPSHOT_TIMEOUT_MS = 10000;
 
 export const incidentsApi = {
   list: async (timeoutMs?: number): Promise<Incident[]> => {
