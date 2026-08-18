@@ -76,8 +76,16 @@ module Api
           Rails.logger.info("Devin credentials cleared via settings API (cache_cleared=#{cache_cleared})")
           audit('settings.devin_credentials_cleared', cache_cleared: cache_cleared)
           # The revoke is already durable; the flag only says whether the
-          # leftover cache copy could be deleted too.
-          render json: DevinSessionService.credentials_status.merge(legacy_cache_cleared: cache_cleared)
+          # leftover cache copy could be deleted too. Re-resolving credentials
+          # for the status touches Secrets Manager and Postgres, and a failure
+          # there must not surface as "the revoke did not happen".
+          status = begin
+            DevinSessionService.credentials_status
+          rescue StandardError => e
+            Rails.logger.error("Devin credentials cleared, but the status read failed: #{e.message}")
+            {}
+          end
+          render json: status.merge(legacy_cache_cleared: cache_cleared)
         end
 
         private
