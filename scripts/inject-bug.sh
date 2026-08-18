@@ -76,8 +76,7 @@ if [ "${SCENARIO}" = "file-bad-bucket" ]; then
   log "Injecting config bug 'file-bad-bucket' (file-service -> nonexistent S3 bucket)..."
   helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
     --set-string config.S3_BUCKET=otterworks-does-not-exist
-  kubectl -n "${NS}" rollout restart deploy/file-service
-  log "Applied (rollout restarting). Revert by re-running deploy-tenant.sh ${ATTENDEE_ID}."
+  log "Applied (checksum annotation rolls the pods). Revert by re-running deploy-tenant.sh ${ATTENDEE_ID}."
   exit 0
 fi
 
@@ -85,12 +84,10 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   log "Injecting config bug 'file-upload-always-fails' (file-service uploads always 5xx)..."
   helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
-  kubectl -n "${NS}" rollout restart deploy/file-service
-  log "Applied (rollout restarting). Revert with:"
+  log "Applied (checksum annotation rolls the pods). Revert with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
-  log "  kubectl -n ${NS} rollout restart deploy/file-service"
-  log "(deploy-tenant.sh ${ATTENDEE_ID} also resets the value, but the deployment has no ConfigMap"
-  log " checksum annotation, so the rollout restart is required either way.)"
+  log "(deploy-tenant.sh ${ATTENDEE_ID} also resets the value; the ConfigMap checksum"
+  log " annotation rolls the pods automatically when the value changes.)"
   exit 0
 fi
 

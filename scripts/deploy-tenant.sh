@@ -20,8 +20,9 @@
 #       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
 #
-# Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Required env: AWS creds (exported), DB_PASSWORD. JWT_SECRET / SECRET_KEY_BASE
+#   are optional: if unset, the tenant's already-deployed value is reused, and a
+#   fresh one is generated only on a genuine first deploy.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -66,8 +67,9 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 [ -n "${AWS_ACCOUNT_ID}" ] || { err "Unable to resolve AWS account (are creds exported?)"; exit 1; }
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
-JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
-SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# JWT_SECRET / SECRET_KEY_BASE are resolved after kubectl is configured (below):
+# an existing tenant's deployed value is reused so redeploys never rotate the
+# signing key out from under pods that don't roll.
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
@@ -111,6 +113,49 @@ log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> exp
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+
+# Per-tenant signing/session secrets. Precedence: caller env (stable fleet-wide
+# value) > the value already deployed in this tenant (so a redeploy keeps every
+# consumer on the same key, even pods that don't restart) > a fresh random one
+# (first deploy). Values only ever travel via env/files, never argv.
+# A genuinely absent secret/namespace (NotFound) yields an empty string; any
+# other kubectl failure (auth, throttling, RBAC) aborts the deploy, because
+# treating it as "absent" would silently rotate a live tenant's signing key.
+existing_tenant_secret() {
+  local b64 errf
+  errf="$(mktemp)"
+  # --ignore-not-found: a genuinely absent secret exits 0 with empty output,
+  # so auth/RBAC/API failures are never mistaken for "no secret yet".
+  if b64="$(kubectl -n "${NS}" get secret "$1" --ignore-not-found -o "jsonpath={.data.$2}" 2>"${errf}")"; then
+    rm -f "${errf}"
+    [ -n "${b64}" ] || return 0
+    # GNU base64 decodes with -d; BSD/macOS builds use -D.
+    printf '%s' "${b64}" | base64 -d 2>/dev/null ||
+      printf '%s' "${b64}" | base64 -D 2>/dev/null || {
+      err "cannot decode existing secret $1/$2 in ${NS}"
+      err "aborting rather than silently rotating this tenant's keys"
+      exit 1
+    }
+  elif grep -q "namespaces \"${NS}\" not found" "${errf}"; then
+    # First deploy: the namespace itself does not exist yet.
+    rm -f "${errf}"
+    return 0
+  else
+    err "cannot read existing secret $1 in ${NS}: $(cat "${errf}")"
+    err "aborting rather than silently rotating this tenant's keys"
+    rm -f "${errf}"
+    exit 1
+  fi
+}
+if [ -z "${JWT_SECRET:-}" ]; then
+  JWT_SECRET="$(existing_tenant_secret api-gateway-secrets JWT_SECRET)"
+fi
+JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+if [ -z "${SECRET_KEY_BASE:-}" ]; then
+  SECRET_KEY_BASE="$(existing_tenant_secret admin-service-secrets SECRET_KEY_BASE)"
+fi
+SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 

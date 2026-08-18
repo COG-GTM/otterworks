@@ -130,9 +130,9 @@ Three layers, from lightest to heaviest — none touch other tenants:
    rollback = re-point to the golden tag.
 
 Immediate redeploy to **fix** a bug mid-demo is the same mechanism: `helm upgrade` the one service
-in the one namespace (a few seconds), or `kubectl rollout restart` to reload config. Because the
-charts don't checksum the ConfigMap, config-only changes need a `rollout restart` (or add a
-`checksum/config` pod annotation to the charts to automate it — recommended follow-up).
+in the one namespace (a few seconds). The charts carry `checksum/config` and `checksum/secret`
+pod annotations, so a `helm upgrade` that changes the ConfigMap or Secret rolls the pods
+automatically — no separate `rollout restart` needed.
 
 ---
 
@@ -180,7 +180,5 @@ charts don't checksum the ConfigMap, config-only changes need a `rollout restart
   could cross tenants. Tier B removes this at the cost of per-tenant provisioning time.
 - **IRSA granularity.** Dev reuses one role per service across tenants; strict isolation needs
   per-tenant roles scoped to per-tenant resource ARNs (more IAM objects).
-- **Chart config-reload.** Add `checksum/config` annotations so `helm upgrade` auto-rolls pods on
-  config change (today a manual `rollout restart` is needed).
 - **DNS/wildcard cert** must exist for host-based routing; otherwise fall back to path routing.
 - **Account limits** (ELB count, IAM roles, DynamoDB tables) inform how far Tier B/C scale.

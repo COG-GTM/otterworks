@@ -58,7 +58,7 @@ config:
   #   helm upgrade file-service infrastructure/helm/file-service \
   #     -n otterworks-<ID> --reuse-values \
   #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
-  #   kubectl -n otterworks-<ID> rollout restart deploy/file-service
+  # (the ConfigMap checksum annotation rolls the pods automatically)
   FILE_UPLOAD_ALWAYS_FAIL: "false"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
