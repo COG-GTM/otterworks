@@ -59,6 +59,9 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
     }
   };
 
+  const actionPending =
+    resolveMutation.isPending || unresolveMutation.isPending || deleteMutation.isPending;
+
   const openComments = comments.filter((c) => !c.isResolved);
   const resolvedComments = comments.filter((c) => c.isResolved);
 
@@ -98,6 +101,8 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
               <CommentCard
                 key={comment.id}
                 comment={comment}
+                resolveDisabled={actionPending || !user}
+                actionsDisabled={actionPending}
                 onResolve={() => resolveMutation.mutate(comment.id)}
                 onUnresolve={() => unresolveMutation.mutate(comment.id)}
                 onDelete={() => deleteMutation.mutate(comment.id)}
@@ -112,6 +117,8 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
               <CommentCard
                 key={comment.id}
                 comment={comment}
+                resolveDisabled={actionPending || !user}
+                actionsDisabled={actionPending}
                 onResolve={() => resolveMutation.mutate(comment.id)}
                 onUnresolve={() => unresolveMutation.mutate(comment.id)}
                 onDelete={() => deleteMutation.mutate(comment.id)}
@@ -149,12 +156,21 @@ export function CommentsSidebar({ documentId, onClose }: CommentsSidebarProps) {
 
 interface CommentCardProps {
   comment: DocumentComment;
+  resolveDisabled: boolean;
+  actionsDisabled: boolean;
   onResolve: () => void;
   onUnresolve: () => void;
   onDelete: () => void;
 }
 
-function CommentCard({ comment, onResolve, onUnresolve, onDelete }: CommentCardProps) {
+function CommentCard({
+  comment,
+  resolveDisabled,
+  actionsDisabled,
+  onResolve,
+  onUnresolve,
+  onDelete,
+}: CommentCardProps) {
   const [expanded, setExpanded] = useState(false);
   const collapsed = comment.isResolved && !expanded;
   const toggleable = comment.isResolved;
@@ -181,24 +197,27 @@ function CommentCard({ comment, onResolve, onUnresolve, onDelete }: CommentCardP
           {comment.isResolved ? (
             <button
               onClick={onUnresolve}
+              disabled={actionsDisabled}
               title="Reopen comment"
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 disabled:opacity-50"
             >
               <RotateCcw size={14} />
             </button>
           ) : (
             <button
               onClick={onResolve}
+              disabled={resolveDisabled}
               title="Resolve comment"
-              className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600"
+              className="p-1 rounded hover:bg-green-50 text-gray-400 hover:text-green-600 disabled:opacity-50"
             >
               <CheckCircle2 size={14} />
             </button>
           )}
           <button
             onClick={onDelete}
+            disabled={actionsDisabled}
             title="Delete comment"
-            className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
+            className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600 disabled:opacity-50"
           >
             <Trash2 size={14} />
           </button>
