@@ -127,6 +127,13 @@ image and a "closed" verdict is meaningless. See
 `.agents/skills/dast-remediation/SKILL.md` for the DAST loop in detail. Never
 point a scan at `t-main.otterworks.app`.
 
+`DAST-PATH-TRAVERSAL-EXPORT` first reads the `dast-control.txt` export the
+document-service image seeds into `EXPORT_ARCHIVE_DIR` and reports
+`inconclusive` when that read fails: without an archive root on disk every
+traversal dies on the missing directory and a vulnerable build is
+indistinguishable from a fixed one. An `inconclusive` verdict there means the
+target's archive is not wired up, not that the finding is closed.
+
 ## Scope and revert
 
 - Work on your own branch (`workshop-<attendee_id>` for participants); the

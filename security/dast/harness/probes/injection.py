@@ -316,8 +316,15 @@ def sensitive_data_in_response(ctx: ScanContext) -> Result:
 TRAVERSAL_TARGETS = (
     ("../../../../etc/passwd", "root:x:0:0"),
     ("..%2f..%2f..%2f..%2fetc%2fpasswd", "root:x:0:0"),
-    ("../../etc/hostname", ""),
+    ("../../../../etc/hostname", ""),
 )
+
+#: An export the image seeds into the archive root. Reading it proves the archive
+#: root exists and the handler can serve from it, which is what makes a refusal
+#: meaningful: on a target with no archive directory every traversal fails at the
+#: missing directory component and a vulnerable build looks identical to a fixed
+#: one, so that target is inconclusive rather than secure.
+CONTROL_EXPORT = "dast-control.txt"
 
 
 @probe(
@@ -345,6 +352,18 @@ def path_traversal_export(ctx: ScanContext) -> Result:
             f"the export route is not present on this target (control returned "
             f"{control.status_code}, expected 422 for a missing name)",
             [Evidence.from_response(control)],
+        )
+
+    legitimate = ctx.get(
+        f"/api/v1/documents/exports?name={CONTROL_EXPORT}", identity=ctx.attacker
+    )
+    if legitimate.status_code != 200:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the export archive served nothing for the seeded control export "
+            f"{CONTROL_EXPORT!r} (status {legitimate.status_code}), so a refused traversal "
+            "cannot be told apart from an archive root that does not exist",
+            [Evidence.from_response(legitimate)],
         )
 
     evidence: list[Evidence] = []
