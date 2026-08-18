@@ -350,9 +350,10 @@ class DocumentService:
         if not comment:
             return None
 
+        resolved_at = datetime.now(UTC)
         comment.is_resolved = True
         comment.resolved_by = resolved_by
-        comment.resolved_at = datetime.now(UTC)
+        comment.resolved_at = resolved_at
         await self.db.commit()
         await self.db.refresh(comment)
 
@@ -363,7 +364,7 @@ class DocumentService:
                 "commentId": comment_id,
                 "resolvedBy": resolved_by,
                 "authorId": comment.author_id,
-                "timestamp": datetime.now(UTC).isoformat(),
+                "timestamp": resolved_at.isoformat(),
             },
         )
         return comment
