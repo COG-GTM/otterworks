@@ -10,10 +10,6 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
-        # Services whose open incidents a reset should clear.  file-service has no
-        # chaos scenario but its upload alerts still create incidents.
-        RESOLVABLE_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).freeze
-
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -52,7 +48,7 @@ module Api
           # Resolve any open incidents for these services so the next run can
           # create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          RESOLVABLE_SERVICES.each do |svc|
+          VALID_SCENARIOS.each_key do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|
