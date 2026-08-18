@@ -4,9 +4,7 @@ require 'net/http'
 # storage quotas (users.quota_bytes).
 class AuthServiceClient
   def self.base_url
-    host = ENV.fetch('AUTH_SERVICE_HOST', 'auth-service')
-    port = ENV.fetch('AUTH_SERVICE_PORT', '8081')
-    "http://#{host}:#{port}"
+    ENV.fetch('AUTH_SERVICE_URL', 'http://auth-service:8081')
   end
 
   # Pushes the new quota to auth-service. Best-effort: returns true on
@@ -24,7 +22,7 @@ class AuthServiceClient
     response = http.request(request)
     return true if response.is_a?(Net::HTTPSuccess)
 
-    Rails.logger.warn("auth-service quota sync rejected for #{user_id}: #{response.code} #{response.body}")
+    Rails.logger.warn("auth-service quota sync rejected for #{user_id}: HTTP #{response.code}")
     false
   rescue StandardError => e
     Rails.logger.warn("auth-service quota sync failed for #{user_id}: #{e.message}")

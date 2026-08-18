@@ -39,9 +39,11 @@ module Api
         end
 
         # auth-service owns users.quota_bytes; push updates so file-service
-        # enforcement sees the new limit.
+        # enforcement sees the new limit. Syncs whenever a quota_bytes value
+        # was submitted (not only when it changed locally) so a re-submitted
+        # value can repair a previously failed push.
         def sync_quota_to_auth_service
-          return unless @quota.saved_change_to_quota_bytes?
+          return if quota_params[:quota_bytes].blank?
 
           AuthServiceClient.update_quota(
             user_id: @quota.user_id,
