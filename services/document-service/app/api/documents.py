@@ -218,6 +218,7 @@ async def _do_list_documents(
 
 async def _do_filter_documents(
     owner_id: UUID | None,
+    folder_id: UUID | None,
     title: str | None,
     content_type: str | None,
     sort: str,
@@ -232,6 +233,7 @@ async def _do_filter_documents(
         "owner_id": str(owner_id) if owner_id else None,
         "title_contains": title,
         "content_type": content_type,
+        "folder_id": str(folder_id) if folder_id else None,
     }
     try:
         total = await repo.count_documents(**filters)
@@ -275,7 +277,15 @@ async def list_documents(
     effective_owner = owner_id or _extract_user_id(request)
     if _is_filtered(title, content_type):
         return await _do_filter_documents(
-            effective_owner, title, content_type, sort, direction, page, size, db
+            effective_owner,
+            folder_id,
+            title,
+            content_type,
+            sort,
+            direction,
+            page,
+            size,
+            db,
         )
     return await _do_list_documents(effective_owner, folder_id, page, size, db)
 
@@ -301,7 +311,15 @@ async def list_documents_no_slash(
     effective_owner = owner_id or _extract_user_id(request)
     if _is_filtered(title, content_type):
         return await _do_filter_documents(
-            effective_owner, title, content_type, sort, direction, page, size, db
+            effective_owner,
+            folder_id,
+            title,
+            content_type,
+            sort,
+            direction,
+            page,
+            size,
+            db,
         )
     return await _do_list_documents(effective_owner, folder_id, page, size, db)
 

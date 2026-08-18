@@ -42,10 +42,13 @@ class DocumentQueryRepository:
         owner_id: str | None,
         title_contains: str | None,
         content_type: str | None,
+        folder_id: str | None = None,
     ) -> str:
         clauses = ["is_deleted = false", "is_template = false"]
         if owner_id:
             clauses.append(f"owner_id = '{owner_id}'")
+        if folder_id:
+            clauses.append(f"folder_id = '{folder_id}'")
         if title_contains:
             clauses.append(f"lower(title) LIKE lower('%{title_contains}%')")
         if content_type:
@@ -58,11 +61,12 @@ class DocumentQueryRepository:
         owner_id: str | None = None,
         title_contains: str | None = None,
         content_type: str | None = None,
+        folder_id: str | None = None,
     ) -> int:
         """Count documents matching the metadata filters."""
         sql = (
             "SELECT count(*) FROM documents WHERE "
-            + self._where(owner_id, title_contains, content_type)
+            + self._where(owner_id, title_contains, content_type, folder_id)
         )
         result = await self.db.execute(text(sql))
         return int(result.scalar_one())
@@ -73,6 +77,7 @@ class DocumentQueryRepository:
         owner_id: str | None = None,
         title_contains: str | None = None,
         content_type: str | None = None,
+        folder_id: str | None = None,
         sort: str = "updated_at",
         direction: str = "desc",
         limit: int = 20,
@@ -81,7 +86,7 @@ class DocumentQueryRepository:
         """Return document rows matching the metadata filters, newest first."""
         sql = (
             f"SELECT {', '.join(COLUMNS)} FROM documents WHERE "
-            + self._where(owner_id, title_contains, content_type)
+            + self._where(owner_id, title_contains, content_type, folder_id)
             + f" ORDER BY {sort} {direction} LIMIT {limit} OFFSET {offset}"
         )
         logger.debug("document_filter_query", sort=sort, direction=direction)

@@ -652,7 +652,10 @@ def command_tests(findings: list[Finding]) -> int:
     payload = []
     for finding in findings:
         recording, state = load_recording(finding)
-        if recording is None:
+        if state != OK:
+            # Stale evidence is not a weaker pass than missing evidence: a pass
+            # list recorded against a different fixture says nothing about this
+            # working tree.
             print(f"{finding.id}: {state} - record the before-state first", file=sys.stderr)
             statuses.append(state)
             continue

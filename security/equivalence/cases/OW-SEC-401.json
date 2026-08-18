@@ -20,7 +20,9 @@
    "kind": "call",
    "target": "document_query_repository",
    "method": "search_documents",
-   "args": {"owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"}
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
+   }
   },
   {
    "id": "contract-title-fragment-is-case-insensitive",
@@ -28,7 +30,10 @@
    "kind": "call",
    "target": "document_query_repository",
    "method": "search_documents",
-   "args": {"owner_id": "aaaaaaaa-0000-4000-8000-00000000000a", "title_contains": "report"}
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report"
+   }
   },
   {
    "id": "contract-count-matches-filter",
@@ -36,7 +41,10 @@
    "kind": "call",
    "target": "document_query_repository",
    "method": "count_documents",
-   "args": {"owner_id": "aaaaaaaa-0000-4000-8000-00000000000a", "title_contains": "report"}
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report"
+   }
   },
   {
    "id": "contract-content-type-filter",
@@ -44,7 +52,10 @@
    "kind": "call",
    "target": "document_query_repository",
    "method": "search_documents",
-   "args": {"owner_id": "aaaaaaaa-0000-4000-8000-00000000000a", "content_type": "text/html"}
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "content_type": "text/html"
+   }
   },
   {
    "id": "contract-sort-title-ascending",
@@ -99,7 +110,9 @@
    "kind": "call",
    "target": "document_query_repository",
    "method": "search_documents",
-   "args": {"title_contains": "report"}
+   "args": {
+    "title_contains": "report"
+   }
   },
   {
    "id": "contract-http-filtered-list",
@@ -136,7 +149,21 @@
    "request": {
     "method": "GET",
     "path": "/api/v1/documents/",
-    "params": {"owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"}
+    "params": {
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
+    }
+   }
+  },
+  {
+   "id": "contract-folder-scoped-title-filter",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report",
+    "folder_id": "f01de001-0000-4000-8000-00000000000f"
    }
   },
   {
@@ -153,7 +180,9 @@
     "kind": "rows_contain_owner",
     "owner_id": "bbbbbbbb-0000-4000-8000-00000000000b"
    },
-   "after": {"outcome": "ok"}
+   "after": {
+    "outcome": "ok"
+   }
   },
   {
    "id": "attack-title-quote-breaks-the-statement",
@@ -169,7 +198,9 @@
     "kind": "text_matches",
     "pattern": "(?i)syntax error|unrecognized token|OperationalError|ProgrammingError"
    },
-   "after": {"outcome": "ok"}
+   "after": {
+    "outcome": "ok"
+   }
   },
   {
    "id": "attack-sort-parameter-is-injectable",
@@ -203,7 +234,9 @@
     "kind": "text_matches",
     "pattern": "(?i)syntax error|unrecognized token|SELECT |FROM documents"
    },
-   "after": {"status": 200}
+   "after": {
+    "status": 200
+   }
   }
  ]
 }

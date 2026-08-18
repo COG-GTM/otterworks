@@ -43,7 +43,7 @@
  "fingerprint": {
   "cases_sha256": "d054cd4c8707e19046959d4f4e4082989273cee681b0972c5f22a9e31590f978",
   "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
-  "seed_sha256": "47fd80157a98466ff445b412bbf5397c1d789f51695387c0c40d97aca45bdca4",
+  "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
   "subject_sha256": {
    "services/document-service/app/services/share_link.py": "71adeb86900759533bf15dcea3c3ca37555cf523faedf6bf1fba8581343083d7"
   }
@@ -54,22 +54,22 @@
   "app.services.share_link:ShareLinkService.verify_token": "verify_token(self, document_id: 'str', token: 'str') -> 'bool'"
  },
  "module": "document-service",
- "reason": "re-record: the unknown-token case literal was changed to a non-secret-looking string so the secret scanner does not flag the fixture",
- "recorded_at": "2026-08-17T23:56:11.568650+00:00",
+ "reason": "Seed gains a folder and OW-SEC-401 gains a folder-scoped contract case so the filtered list path's folder predicate is covered by the equivalence contract.",
+ "recorded_at": "2026-08-18T00:06:48.687496+00:00",
  "rerecorded_from": {
   "fingerprint": {
-   "cases_sha256": "104960933564086e69c28b8fd32c649c63b1eb9c2f102fa47479957489dd65cb",
+   "cases_sha256": "d054cd4c8707e19046959d4f4e4082989273cee681b0972c5f22a9e31590f978",
    "emitter_sha256": "0230bf937aa407d1b377b9b92fa4579f6a794440ca37928e32a0d1f7b40651f2",
    "seed_sha256": "47fd80157a98466ff445b412bbf5397c1d789f51695387c0c40d97aca45bdca4",
    "subject_sha256": {
     "services/document-service/app/services/share_link.py": "71adeb86900759533bf15dcea3c3ca37555cf523faedf6bf1fba8581343083d7"
    }
   },
-  "reason": "re-record: pre-existing JWT_SECRET test pollution fixed in the new share-link test, so the recorded pass list now includes it",
-  "recorded_at": "2026-08-17T23:53:39.154528+00:00"
+  "reason": "re-record: the unknown-token case literal was changed to a non-secret-looking string so the secret scanner does not flag the fixture",
+  "recorded_at": "2026-08-17T23:56:11.568650+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-p3l0vtlh/junit.xml",
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-4km_47ss/junit.xml",
   "exit_code": 1,
   "failed": [
    "tests.test_documents_api::test_delete_document",
