@@ -95,18 +95,22 @@ RSpec.describe SlackNotifierService do
     )
 
     posted = read_posted.call
-    header = posted['blocks'][0]['text']['text']
-    body   = posted['blocks'][1]['text']['text']
-    footer = posted['blocks'][2]['elements'][0]['text']
+    blocks = posted['blocks']
+    header = blocks[0]['text']['text']
+    fields = blocks.select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+    message = blocks[3]['text']['text']
+    footer = blocks.last['elements'][0]['text']
 
-    expect(header).to eq('OtterWorks Alert — file-service — FileUploadFailed: report.pdf')
-    expect(body).to include('*Error:*', 'FileUploadFailed: report.pdf')
-    expect(body).to include('*Severity:*', 'critical')
-    expect(body).to include('*Type:*', 'FileUploadFailed')
-    expect(body).to include('*Message:*', 'S3 PutObject failed with AccessDenied')
-    expect(body).to include('<https://app.devin.ai/sessions/abc|Devin AI (auto-investigating)>')
-    expect(body).to include('preston@example.com')
-    expect(footer).to start_with('Service: file-service | ')
+    expect(header).to eq(':rotating_light: OtterWorks Alert — file-service — FileUploadFailed: report.pdf')
+    expect(fields).to include("*Error:*\nFileUploadFailed: report.pdf")
+    expect(fields).to include("*Severity:*\ncritical")
+    expect(fields).to include("*Location:*\n`file-service`")
+    expect(fields).to include("*Type:*\nFileUploadFailed")
+    expect(message).to eq("*Message:*\n```S3 PutObject failed with AccessDenied```")
+    expect(fields).to include("*Environment:*\ntest")
+    expect(fields).to include("*On-Call:*\n:robot_face: <https://app.devin.ai/sessions/abc|Devin AI (auto-investigating)>")
+    expect(fields).to include("*On-Call:*\npreston@example.com")
+    expect(footer).to start_with('Service: `file-service` | ')
   end
 
   it 'truncates long titles so Slack does not reject the message' do
@@ -119,9 +123,11 @@ RSpec.describe SlackNotifierService do
 
     posted = read_posted.call
     expect(posted['blocks'][0]['text']['text'].length).to be <= 150
-    expect(posted['blocks'][1]['text']['text'].length).to be <= 3000
-    expect(posted['blocks'][1]['text']['text'])
-      .to include('<https://app.devin.ai/sessions/abc|Devin AI (auto-investigating)>')
+    expect(posted['blocks'][3]['text']['text'].length).to be <= 3000
+    fields = posted['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+    expect(fields.map(&:length)).to all(be <= 2000)
+    expect(fields)
+      .to include("*On-Call:*\n:robot_face: <https://app.devin.ai/sessions/abc|Devin AI (auto-investigating)>")
   end
 
   it 'renders a true mention when the reporter is in SLACK_USER_MAP' do
@@ -133,7 +139,8 @@ RSpec.describe SlackNotifierService do
 
     described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
 
-    expect(read_posted.call['blocks'][1]['text']['text']).to include('<@U08S7AVJ478>')
+    fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+    expect(fields).to include("*On-Call:*\n<@U08S7AVJ478>")
   end
 
   it 'falls back to the settings-stored webhook when the env var is absent' do

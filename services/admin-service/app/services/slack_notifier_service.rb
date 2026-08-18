@@ -9,9 +9,11 @@ require 'uri'
 # logged and swallowed — a Slack outage must never block incident creation.
 class SlackNotifierService
   # Slack Block Kit rejects the whole message (400 invalid_blocks) when a
-  # header exceeds 150 chars or a section exceeds 3000 chars.
+  # header exceeds 150 chars, a section exceeds 3000 chars, or a section
+  # field exceeds 2000 chars.
   HEADER_MAX = 150
   SECTION_MAX = 3000
+  FIELD_MAX = 2000
 
   class << self
     def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
@@ -113,37 +115,22 @@ class SlackNotifierService
       raw_service = incident.affected_service.presence || 'unknown-service'
       service = escape_mrkdwn(raw_service)
       title = escape_mrkdwn(incident.title)
+      type = escape_mrkdwn(incident.title.to_s.split(':').first.to_s.strip)
       on_call_devin = if session_url.present?
-                        "<#{session_url}|Devin AI (auto-investigating)>"
+                        ":robot_face: <#{session_url}|Devin AI (auto-investigating)>"
                       else
-                        'No Devin session'
+                        ':robot_face: No Devin session'
                       end
+      on_call_fields = [field('On-Call', on_call_devin)]
       on_call_human = human_mention(reporter_email)
+      on_call_fields << field('On-Call', on_call_human) if on_call_human
 
-      body_lines = [
-        '*Error:*',
-        title,
-        '*Severity:*',
-        incident.severity,
-        '*Location:*',
-        service,
-        '*Type:*',
-        title.split(':').first.to_s.strip,
-        '*Message:*',
-        :description,
-        '*Environment:*',
-        Rails.env,
-        '*On-Call:*',
-        on_call_devin
-      ]
-      body_lines += ['*On-Call:*', on_call_human] if on_call_human
-
-      # The description is the only unbounded field; truncate it to whatever
-      # budget remains so the trailing On-Call lines (the session link) always
-      # survive the section limit.
-      fixed_length = body_lines.sum { |l| l == :description ? 1 : l.to_s.length + 1 }
-      description = truncate(escape_mrkdwn(incident.description.to_s), [SECTION_MAX - fixed_length, 1].max)
-      body = body_lines.map { |l| l == :description ? description : l }.join("\n")
+      # The description lives in its own code-block section; backticks are
+      # stripped so it cannot terminate the fence.
+      description = truncate(
+        escape_mrkdwn(incident.description.to_s.delete('`')),
+        SECTION_MAX - "*Message:*\n``````".length
+      )
 
       {
         # The top-level text is Slack's notification/fallback string; without
@@ -154,25 +141,33 @@ class SlackNotifierService
             type: 'header',
             text: {
               type: 'plain_text',
-              text: truncate("OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
+              text: truncate(":rotating_light: OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
               emoji: true
             }
           },
+          { type: 'section', fields: [field('Error', title), field('Severity', incident.severity)] },
+          { type: 'section', fields: [field('Location', "`#{service}`"), field('Type', type)] },
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: truncate(body, SECTION_MAX) }
+            text: { type: 'mrkdwn', text: "*Message:*\n```#{description}```" }
           },
+          { type: 'section', fields: [field('Environment', Rails.env)] },
+          { type: 'section', fields: on_call_fields },
           {
             type: 'context',
             elements: [
               {
                 type: 'mrkdwn',
-                text: "Service: #{service} | #{Time.current.utc.iso8601(3)}"
+                text: "Service: `#{service}` | #{Time.current.utc.iso8601(3)}"
               }
             ]
           }
         ]
       }
+    end
+
+    def field(label, value)
+      { type: 'mrkdwn', text: truncate("*#{label}:*\n#{value}", FIELD_MAX) }
     end
 
     # The incident's reporter is the second on-call line. A true @-mention
