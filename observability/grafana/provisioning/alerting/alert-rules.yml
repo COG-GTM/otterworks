@@ -100,8 +100,8 @@ groups:
 
       # -----------------------------------------------------------------------
       # File Service: Uploads failing with S3 errors
-      # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window.
-      # Triggered by chaos flag: chaos:file-service:upload_s3_error
+      # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window,
+      # e.g. when S3 rejects uploads (bad bucket, credentials or AWS outage).
       # -----------------------------------------------------------------------
       - uid: file-upload-errors
         title: FileUploadHighErrorRate
@@ -184,9 +184,9 @@ groups:
           summary: "File upload failures spiking on file-service"
           description: >-
             The file-service is returning more than 10% server errors on upload
-            requests. Errors contain 'NoSuchBucket' in the AWS SDK response —
-            the S3 bucket name may be misconfigured. Check S3_BUCKET env var
-            and recent infrastructure changes.
+            requests. Check the AWS SDK error in the logs: 'NoSuchBucket' points
+            at a misconfigured S3_BUCKET, while AccessDenied/throttling/timeouts
+            point at credentials, quota, or an S3 outage.
 
       # -----------------------------------------------------------------------
       # Notification Service: SQS consumer failing to process messages
