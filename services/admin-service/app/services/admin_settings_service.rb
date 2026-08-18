@@ -55,7 +55,7 @@ class AdminSettingsService
       if devin_credentials_revoked?
         # Otherwise a pair left in the old Redis keys is ignored with no trace,
         # which reads as "the store lost my credentials".
-        Rails.logger.debug('Devin credentials are revoked; ignoring any legacy Redis copy')
+        Rails.logger.info('Devin credentials are revoked; ignoring any legacy Redis copy')
         return stored
       end
 
