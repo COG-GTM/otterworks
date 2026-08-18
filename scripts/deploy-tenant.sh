@@ -22,6 +22,8 @@
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Optional env: DEVIN_API_KEY + DEVIN_ORG_ID (both, or neither) to let
+#   file-service open a Devin session on an upload failure.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 

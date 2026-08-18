@@ -115,6 +115,8 @@ services:
       SEARCH_SERVICE_URL: http://search-service:8087
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      DEVIN_API_KEY: ${DEVIN_API_KEY:-}
+      DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
     depends_on:
       localstack:
         condition: service_healthy

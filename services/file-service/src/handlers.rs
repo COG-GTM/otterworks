@@ -161,9 +161,23 @@ pub async fn upload_file(
         client: s3.client.clone(),
         bucket: effective_bucket,
     };
-    chaos_s3
+    if let Err(err) = chaos_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
-        .await?;
+        .await
+    {
+        let incident = crate::devin::UploadFailureIncident {
+            bucket: chaos_s3.bucket.clone(),
+            s3_key: s3_key.clone(),
+            error: err.to_string(),
+            owner_id: Some(owner.to_string()),
+            file_id: Some(file_id.to_string()),
+        };
+        // Fire-and-forget so the client's 500 is unaffected in content and latency.
+        tokio::spawn(async move {
+            crate::devin::create_session(&incident).await;
+        });
+        return Err(err);
+    }
 
     let file_meta = FileMetadata {
         id: file_id,
