@@ -51,9 +51,11 @@ class SlackNotifierService
 
     # chat.postMessage honors an explicit channel, unlike incoming webhooks,
     # so this is the path that guarantees delivery to the routed channel.
-    # Returns whether Slack accepted the message; a rejection (revoked token,
-    # unknown channel, ...) means nothing was posted, so the caller can retry
-    # via the webhook without double-posting.
+    # Returns whether Slack accepted the message. On a rejection or a
+    # transport failure the caller retries via the webhook: a duplicate is
+    # possible only in the narrow case where Slack accepted the message but
+    # the response never arrived intact, and a rare duplicate alert beats a
+    # silently dropped one.
     def post_via_api(bot_token, channel, payload)
       uri = URI('https://slack.com/api/chat.postMessage')
       request = Net::HTTP::Post.new(uri)
@@ -70,6 +72,9 @@ class SlackNotifierService
       else
         Rails.logger.error("Slack chat.postMessage returned #{response.code}: #{response.body.to_s[0, 200]}")
       end
+      false
+    rescue StandardError => e
+      Rails.logger.error("Slack chat.postMessage raised #{e.class}: #{e.message}")
       false
     end
 
