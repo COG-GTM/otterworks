@@ -55,7 +55,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Java 17
 - **Framework**: Spring Boot 3.2, Spring Security 6
 - **Database**: PostgreSQL (users, roles, sessions)
-- **Purpose**: User registration, login, JWT issuance/validation, OAuth2 integration, RBAC, MFA support. Integrates with AWS Cognito for identity federation.
+- **Purpose**: User registration, login, JWT issuance/validation, OAuth2 integration, RBAC, MFA support. Integrates with AWS Cognito for identity federation. Canonical owner of per-user storage quotas (`users.quota_bytes`, default 10 GiB); exposes `quotaBytes` on the profile and user-lookup APIs and an ADMIN-only `PATCH /api/v1/auth/users/{id}/quota`.
 - **Port**: 8081
 - **Key Patterns**: Spring Security filter chain, BCrypt hashing, refresh token rotation, Flyway migrations, JPA/Hibernate, Micrometer metrics
 
@@ -63,7 +63,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Rust 1.77
 - **Framework**: Actix-Web 4
 - **Database**: DynamoDB (file metadata), S3 (file blobs)
-- **Purpose**: File upload (multipart + resumable), download, delete, folder management, file versioning, presigned URL generation. Handles large files efficiently with streaming.
+- **Purpose**: File upload (multipart + resumable), download, delete, folder management, file versioning, presigned URL generation. Handles large files efficiently with streaming. Enforces per-user storage quotas on upload: fetches the owner's `quotaBytes` from the Auth Service, sums the owner's non-trashed file sizes from DynamoDB metadata, and rejects over-quota uploads with `413` and `{ "error": "quota_exceeded", "quota_bytes": ..., "used_bytes": ... }`.
 - **Port**: 8082
 - **Key Patterns**: Async Rust with Tokio, multipart streaming, AWS SDK for Rust, serde serialization, tower middleware, tracing crate
 
@@ -111,7 +111,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Ruby 3.3
 - **Framework**: Rails 7.1
 - **Database**: PostgreSQL (shared with auth DB, read replicas)
-- **Purpose**: Administrative dashboard backend. User management, content moderation, system health overview, feature flags, audit log viewer.
+- **Purpose**: Administrative dashboard backend. User management, content moderation, system health overview, feature flags, audit log viewer. Storage-quota administration via `GET`/`PATCH` (and legacy `PUT`) `/api/v1/admin/quotas/:user_id`, authorized by a Pundit `StorageQuotaPolicy` (admin/super_admin roles); quota changes are synced to the Auth Service, the source of truth.
 - **Port**: 8089
 - **Key Patterns**: ActiveRecord, ActiveAdmin gem, Pundit authorization, Sidekiq background jobs, RSpec testing
 
@@ -136,6 +136,15 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Framework**: Angular 17
 - **Purpose**: Admin-facing dashboard. User management, system metrics, audit log viewer, feature flags.
 - **Key Patterns**: Standalone components, NgRx signals, Angular Material, RxJS, Karma/Jasmine tests
+
+## Storage Quotas
+
+Each user has a storage quota, defaulting to 10 GiB (10,737,418,240 bytes).
+
+- **Source of truth**: `users.quota_bytes` in the Auth Service database (Flyway migration `V5`). Exposed as `quotaBytes` on `GET /api/v1/auth/profile` and the user-lookup endpoints; mutated via the ADMIN-only `PATCH /api/v1/auth/users/{id}/quota`.
+- **Enforcement**: the File Service computes a user's usage by summing the sizes of their non-trashed files in DynamoDB metadata. If `used_bytes + incoming_bytes > quota_bytes`, the upload is rejected with HTTP `413` and body `{ "error": "quota_exceeded", "quota_bytes": ..., "used_bytes": ... }`.
+- **Administration**: the Admin Service offers `GET`/`PATCH /api/v1/admin/quotas/:user_id` (Pundit-authorized, admin/super_admin only) and pushes quota updates to the Auth Service.
+- **Frontend**: the web app's dashboard shows a storage-usage bar (used vs. quota from the user's profile) and the upload dropzone shows a dedicated "Storage full" error state when the API returns `413 quota_exceeded`.
 
 ## Data Infrastructure
 
