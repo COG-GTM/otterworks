@@ -138,7 +138,8 @@ class SlackNotifierService
       {
         # The top-level text is Slack's notification/fallback string; without
         # it, pushes and screen readers for a blocks-only message are blank.
-        text: truncate("OtterWorks Alert — #{raw_service} — #{incident.title}", HEADER_MAX),
+        # It is parsed as mrkdwn, so it must be escaped like any other field.
+        text: truncate("OtterWorks Alert — #{service} — #{title}", HEADER_MAX),
         blocks: [
           {
             type: 'header',
