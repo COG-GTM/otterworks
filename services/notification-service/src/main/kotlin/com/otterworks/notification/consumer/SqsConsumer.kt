@@ -117,9 +117,13 @@ class SqsConsumer(
             } catch (e: Exception) {
                 logger.error(e) { "Error polling SQS" }
                 if (config.sqsAlwaysFail) {
-                    alertPublisher?.notifyConsumerFailure(
-                        "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
-                    )
+                    try {
+                        alertPublisher?.notifyConsumerFailure(
+                            "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
+                        )
+                    } catch (alertError: Exception) {
+                        logger.warn(alertError) { "Failed to publish consumer-failure alert" }
+                    }
                 }
                 delay(config.sqsPollIntervalMs * 2)
             }
