@@ -20,7 +20,9 @@
    ```
 2. Check the bucket file-service is actually configured with, and that it exists:
    ```
-   kubectl get deploy/file-service -n otterworks -o jsonpath='{.spec.template.spec.containers[0].env}'
+   S3_BUCKET=$(kubectl get deploy/file-service -n otterworks \
+     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="S3_BUCKET")].value}')
+   echo "configured bucket: ${S3_BUCKET:-<unset, resolved from ConfigMap/Secret>}"
    aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
 
