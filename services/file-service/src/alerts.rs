@@ -30,6 +30,9 @@ fn http_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // Separate from the overall timeout so a stalled connect surfaces
+            // as a connect error (retryable) rather than a response timeout.
+            .connect_timeout(std::time::Duration::from_secs(3))
             .build()
             .expect("failed to build alert HTTP client")
     })
@@ -97,8 +100,9 @@ fn is_retryable(status: reqwest::StatusCode) -> bool {
 }
 
 /// POST the alert, retrying on the given backoff schedule. Only failures that
-/// prove admin-service never saw the alert are retried: a refused connection,
-/// or a transient rejection. A timeout is not — admin-service creates the
+/// prove admin-service never saw the alert are retried: a refused or timed-out
+/// connection, or a transient rejection. A response timeout is not — it means
+/// the request was sent and may have been handled; admin-service creates the
 /// incident, the Devin session and the Slack notification synchronously before
 /// responding, so a slow response may well have been processed, and re-sending
 /// a `dedup=false` alert would duplicate all three.
@@ -315,5 +319,17 @@ mod tests {
         let payload = build_upload_failure_payload("a.txt", "boom", None);
         let backoff = [Duration::ZERO, Duration::ZERO];
         assert!(!deliver_with_retry(&url, None, &payload, &backoff).await);
+    }
+
+    #[actix_rt::test]
+    async fn a_stalled_connect_is_a_connect_error_not_a_response_timeout() {
+        // Unroutable address: the SYN goes unanswered, so the connect phase
+        // times out. It must classify as retryable, unlike a response timeout.
+        let err = http_client()
+            .post("http://10.255.255.1:8089/ingest")
+            .send()
+            .await
+            .unwrap_err();
+        assert!(err.is_connect(), "expected a connect error, got {err}");
     }
 }
