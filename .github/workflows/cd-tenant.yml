@@ -110,6 +110,19 @@ jobs:
             canonical_main=true
           fi
 
+          # A fork publishes no golden image, so its tenant runs upstream's
+          # golden build for every service the fork has not rebuilt itself --
+          # and paths-filter diffs a variant branch against its own main, which
+          # on a fork carries the demo baseline. A variant that is level with
+          # the fork's main therefore reports no change and ships nothing, no
+          # matter how much of the tree main has moved. Every push to a fork's
+          # variant branch rebuilds and redeploys instead.
+          fork_variant=false
+          if [ "${REPOSITORY}" != "${CANONICAL_REPOSITORY}" ] \
+             && [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            fork_variant=true
+          fi
+
           golden=false
           if [ "${canonical_main}" = "true" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
           echo "golden=${golden}" >> "$GITHUB_OUTPUT"
@@ -122,7 +135,7 @@ jobs:
           # tag instead of the stale pointer.
           full="${REBUILD_ALL}"
           if [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ] \
-             && [ "${DEPLOYABLE}" = "true" ]; then
+             && { [ "${DEPLOYABLE}" = "true" ] || [ "${fork_variant}" = "true" ]; }; then
             full=true
           fi
 
@@ -149,7 +162,8 @@ jobs:
           # back byte-identical, minutes later, for no reason. Neither does a
           # fork's main: the perpetual environment tracks this repository.
           deploy=false
-          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
+          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ] \
+             || [ "${fork_variant}" = "true" ]; then
             deploy=true
           fi
           if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${canonical_main}" != "true" ]; then
