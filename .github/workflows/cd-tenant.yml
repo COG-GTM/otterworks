@@ -57,8 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          # paths-filter compares against the previous commit on push; it needs
-          # that commit present, and a shallow clone does not have it.
+          # paths-filter compares against the previous commit on default-branch
+          # pushes, and against the merge-base with main (its default `base`) on
+          # workshop-*/demo-* pushes -- so a variant branch diffs as its own
+          # patches. Either way it needs history a shallow clone does not have.
           fetch-depth: 0
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3

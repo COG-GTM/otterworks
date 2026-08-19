@@ -20,9 +20,9 @@ This repo (`COG-GTM/otterworks`) is a **fork** of the upstream/canonical
   `workshop-*`/`demo-*` refs. The guarantee is enforced by IAM, not by the workflow, so a
   deployable-path push to `main` leaves a red CD run — expected and harmless. (Setting a
   `TENANT_PREFIX` repo variable per `demo-platform/README.md` would make `main` runs skip
-  the *deploy* step cleanly, but a push touching `services/**`/`frontend/**` still fails in
-  the image-build job's OIDC step — and it changes every fork tenant id — ask before doing
-  that.)
+  the *deploy* step cleanly, but a push touching a service or either frontend app still
+  fails in the image-build job's OIDC step — and it changes every fork tenant id — ask
+  before doing that.)
 - Pushing to this fork's `main` also triggers `.github/workflows/mirror-demo.yml`, which
   rebases `demo-coggtm`'s own commits on top of the new `main` (the branch stays
   main + variant; `main` never overwrites the variant). That push redeploys the fork's own
