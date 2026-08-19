@@ -534,6 +534,7 @@ kind: Ingress
 metadata:
   name: tenant-ingress-web
   annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /\$2
 spec:
