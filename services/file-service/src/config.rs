@@ -91,6 +91,11 @@ mod tests {
     #[test]
     fn server_config_defaults() {
         let cfg = ServerConfig::from_env();
-        assert!(cfg.max_upload_bytes > 0);
+        if std::env::var("MAX_UPLOAD_BYTES").is_err() {
+            assert_eq!(cfg.max_upload_bytes, 104_857_600);
+        }
+        if std::env::var("PORT").is_err() {
+            assert_eq!(cfg.port, 8082);
+        }
     }
 }
