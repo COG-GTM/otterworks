@@ -581,6 +581,7 @@ pub async fn share_file(
             &err.to_string(),
             reporter_email.as_deref(),
         );
+        return Err(err);
     }
 
     tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File shared");

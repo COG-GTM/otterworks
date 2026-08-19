@@ -95,9 +95,12 @@ impl EventPublisher {
                 .message_deduplication_id(&dedup_id);
         }
 
-        req.send()
-            .await
-            .map_err(|e| ServiceError::SnsError(e.to_string()))?;
+        req.send().await.map_err(|e| {
+            ServiceError::SnsError(format!(
+                "publish to {topic_arn} failed: {}",
+                aws_smithy_types::error::display::DisplayErrorContext(&e)
+            ))
+        })?;
 
         tracing::info!(
             event_type = %event.event_type,
