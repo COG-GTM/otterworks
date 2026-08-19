@@ -113,6 +113,14 @@ services:
       DYNAMODB_TABLE: otterworks-file-metadata
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
+      # Failed uploads fire a Grafana-style alert at admin-service's ingest
+      # endpoint so each failure opens its own incident + Devin session.
+      ADMIN_SERVICE_URL: http://admin-service:8089
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Off locally even on this demo variant branch: the permanent failure is
+      # baked into the file-service image (see its Dockerfile) for tenant
+      # coggtm, and this explicit false overrides it so a local stack still
+      # behaves like the golden app. Set it to true to reproduce the tenant.
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
@@ -373,6 +381,10 @@ services:
       SECRET_KEY_BASE: dev-secret-key-base-otterworks-change-in-production
       DEVIN_API_KEY: ${DEVIN_API_KEY:-}
       DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
+      SLACK_USER_MAP: ${SLACK_USER_MAP:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
       CHAOS_SECRET: ${CHAOS_SECRET:-}
     depends_on:

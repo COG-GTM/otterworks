@@ -2,6 +2,7 @@ module Api
   module V1
     module Admin
       class ConfigController < ApplicationController
+        before_action :require_admin!, only: %i[update]
         before_action :set_config, only: %i[show update]
 
         # GET /api/v1/admin/config
