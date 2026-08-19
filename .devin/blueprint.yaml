@@ -94,15 +94,28 @@ initialize: |
   cp /tmp/gradle-wrapper-gen/gradle/wrapper/gradle-wrapper.jar \
      frontend/client-app/mobile/android/gradle/wrapper/gradle-wrapper.jar
 
+  # repo.maven.apache.org rate-limits this box's egress IP with HTTP 429, which fails the
+  # Android build the same way it failed the JVM service images. Reuse the init script those
+  # Dockerfiles already carry, installed globally so snapshot warm-up and later sessions
+  # (`make dev-android`) both prefer Google's Maven Central mirror.
+  mkdir -p $HOME/.gradle/init.d
+  cp services/auth-service/gradle-init.gradle $HOME/.gradle/init.d/maven-central-mirror.gradle
+
   # Warm the Gradle cache so runtime `make dev-android` builds are incremental.
   export ANDROID_HOME=$HOME/Android/Sdk ANDROID_SDK_ROOT=$HOME/Android/Sdk
   export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
   # JAVA_HOME is only written to $ENVRC (for later sessions), so set it for assembleDebug.
   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
   nvm use default
-  (cd frontend/client-app && npm install && npm install --no-save @rolldown/binding-linux-x64-gnu@1.1.5 \
-     && npm run build && npx cap sync android)
-  (cd frontend/client-app/mobile/android && ./gradlew --no-daemon assembleDebug)
+  # Best-effort, like the Maven warm-ups below: a cold Gradle cache only makes the first
+  # runtime `make dev-android` slow, whereas failing here aborts initialize and skips the
+  # RetailCo seeding that every session actually depends on.
+  android_warm_up() {
+    (cd frontend/client-app && npm install && npm install --no-save @rolldown/binding-linux-x64-gnu@1.1.5 \
+       && npm run build && npx cap sync android) || return 1
+    (cd frontend/client-app/mobile/android && ./gradlew --no-daemon assembleDebug) || return 1
+  }
+  android_warm_up || echo "WARN: Android warm-up failed; the first runtime build will be cold."
 
   # Save a "clean" snapshot so runtime launches resume instead of cold-booting. Best-effort:
   # if the emulator can't boot at build time (e.g. no /dev/kvm) runtime just cold-boots.
