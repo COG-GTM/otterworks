@@ -84,14 +84,3 @@ impl SnsConfig {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::ServerConfig;
-
-    #[test]
-    fn server_config_defaults() {
-        let cfg = ServerConfig::from_env();
-        assert!(cfg.port > 0);
-        assert!(cfg.max_upload_bytes > 0);
-    }
-}

@@ -20,8 +20,8 @@
    ```
 2. Check the bucket file-service is actually writing to, and that it exists:
    ```
-   bucket=$(kubectl -n otterworks get deploy/file-service \
-     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="S3_BUCKET")].value}')
+   # config reaches the pod via envFrom, so read it from the running container
+   bucket=$(kubectl -n otterworks exec deploy/file-service -- printenv S3_BUCKET)
    echo "file-service writes to: ${bucket}"
    aws s3api head-bucket --bucket "${bucket}"
    ```
