@@ -13,16 +13,13 @@ This repo (`COG-GTM/otterworks`) is a **fork** of the upstream/canonical
 - **This fork's `main` is a demo baseline, not the golden app.** It may be edited freely,
   including large or sweeping changes. Editing it has **no effect** on upstream or on
   partner workshops: nothing flows fork → upstream automatically, and nothing ships from
-  the fork's `main` — but note *why*. `cd-tenant.yml` runs on `main` pushes too, and since
-  `TENANT_PREFIX` is unset on this fork it plans a golden `:main` publish; the run then
-  fails at "Configure AWS credentials" because the OIDC trust
+  the fork's `main` — but note *why*. `cd-tenant.yml` runs on `main` pushes too, but it
+  keys the golden publish and the deploy off `github.repository`: only
+  `Cognition-Partner-Workshops/otterworks`'s `main` is golden and deployable, so on this
+  fork a `main` push plans `golden=false`/`deploy=false` and skips the build and deploy
+  jobs entirely. That matches the IAM guarantee — the OIDC trust
   (`demo-platform/infra/terraform/variables.tf`) allows this fork only for
-  `workshop-*`/`demo-*` refs. The guarantee is enforced by IAM, not by the workflow, so a
-  deployable-path push to `main` leaves a red CD run — expected and harmless. (Setting a
-  `TENANT_PREFIX` repo variable per `demo-platform/README.md` would make `main` runs skip
-  the *deploy* step cleanly, but a push touching a service or either frontend app still
-  fails in the image-build job's OIDC step — and it changes every fork tenant id — ask
-  before doing that.)
+  `workshop-*`/`demo-*` refs — instead of leaving a red CD run behind it.
 - Pushing to this fork's `main` also triggers `.github/workflows/mirror-demo.yml`, which
   rebases `demo-coggtm`'s own commits on top of the new `main` (the branch stays
   main + variant; `main` never overwrites the variant). That push redeploys the fork's own

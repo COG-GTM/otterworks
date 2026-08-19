@@ -89,6 +89,8 @@ jobs:
           REBUILD_ALL: ${{ inputs.rebuild_all }}
           DEPLOYABLE: ${{ steps.changes.outputs.deployable }}
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
+          REPOSITORY: ${{ github.repository }}
+          CANONICAL_REPOSITORY: Cognition-Partner-Workshops/otterworks
         run: |
           set -euo pipefail
           source scripts/lib/tenant-common.sh
@@ -97,10 +99,18 @@ jobs:
           echo "tenant_tag=$(tenant_image_tag "$(branch_tenant_id "${GITHUB_REF_NAME}")")" >> "$GITHUB_OUTPUT"
           echo "image_tag=${TENANT_PREFIX:+${TENANT_PREFIX}-}${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-          # Only this repository's main is the golden app. A fork publishing to
-          # `:main` would replace the image every other tenant falls back to.
+          # Only the canonical repository's main is the golden app and the
+          # perpetual t-main tenant; a fork publishing to `:main` would replace
+          # the image every other tenant falls back to. A fork's main is a demo
+          # baseline that ships nothing -- its OIDC trust covers only
+          # workshop-*/demo-* refs, so building there just fails the run.
+          canonical_main=false
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${REPOSITORY}" = "${CANONICAL_REPOSITORY}" ]; then
+            canonical_main=true
+          fi
+
           golden=false
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
+          if [ "${canonical_main}" = "true" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
           echo "golden=${golden}" >> "$GITHUB_OUTPUT"
 
           if [ "${REBUILD_ALL}" = "true" ]; then
@@ -120,7 +130,10 @@ jobs:
           if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
             deploy=true
           fi
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${canonical_main}" != "true" ]; then
+            echo "::notice::main is not deployed from ${REPOSITORY}; only ${CANONICAL_REPOSITORY} owns the perpetual tenant"
+            deploy=false
+          elif [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
             echo "::notice::TENANT_PREFIX is set, so main is not deployed from this repository"
             deploy=false
           fi
