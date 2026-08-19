@@ -1,37 +1,75 @@
-# AGENTS.md — OtterWorks
+# AGENTS.md — OtterWorks (COG-GTM fork)
 
 Guidance for AI agents (and humans) working in this repo.
 
-## Golden app policy
+## This repo is a fork — its `main` is editable
 
-- **`main` is the golden app: the canonical, fully-working initial state for every demo.**
-  Unless a demo explicitly needs a variant, all demos start from the golden app as-is.
-- The golden app is intentionally **fully functional except for deliberately planted bugs**
-  used by bug-hunt / remediation labs. Planted bugs are a feature of the golden app, not
-  defects to fix.
-  - Do **not** "fix" a planted bug to make the app pass — that erases the lab. If you're
-    unsure whether something is planted or a genuine infra gap, ask before changing it.
+This repo (`COG-GTM/otterworks`) is a **fork** of the upstream/canonical
+`Cognition-Partner-Workshops/otterworks`. The two must not be confused:
+
+- **Upstream `main` is the golden app** — the canonical baseline behind partner workshops
+  and the perpetual `t-main.otterworks.app` tenant. Never mutate it, inject bugs into it,
+  or plant demo variants on it. Changes reach upstream only via an explicit upstream PR.
+- **This fork's `main` is a demo baseline, not the golden app.** It may be edited freely,
+  including large or sweeping changes. Editing it has **no effect** on upstream or on
+  partner workshops: nothing flows fork → upstream automatically, and the fork's `main` is
+  non-deploying (CD only ships `workshop-*`/`demo-*` branches, and the Terraform OIDC trust
+  only allows those branch patterns for forks).
+- Pushing to this fork's `main` triggers `.github/workflows/mirror-demo.yml`, which replays
+  `main` onto `demo-coggtm` and redeploys the fork's own `t-coggtm` tenant. That is the
+  intended way to keep the COG-GTM demo tenant current — it touches no other tenant.
+
+### When to pause and ask the user
+
+Proceed autonomously with changes to this fork — **except** when a change falls into either
+category below. Then stop, ask the user directly whether to continue, and say explicitly
+whether the change may interfere with other tenants:
+
+1. **The change requires edits to upstream infrastructure to take effect.** Helm charts
+   (`infrastructure/helm/**`), deploy scripts (`scripts/deploy-tenant.sh`,
+   `scripts/lib/tenant-common.sh`), and the control plane (`demo-platform/`) are deployed
+   from **upstream** `main` — the ops-dashboard runner uses the tree baked into its own
+   image, so a fork branch cannot ship them. If the task needs such a change, ask before
+   opening an upstream PR or working around it (e.g. baking config into a service image).
+2. **The change could interfere with other tenants or shared AWS resources.** Both repos
+   deploy into one AWS account: one EKS cluster (`otterworks-dev`), one ECR registry, one
+   shared RDS instance, shared S3 buckets/DynamoDB tables, and one ingress-nginx NLB.
+   Anything touching those shared resources (Terraform, IAM/IRSA, the shared ingress,
+   cluster-scoped objects, tenant ids that may collide — `TENANT_PREFIX` is unset on this
+   fork, so ids share one flat namespace with upstream) needs explicit user sign-off first.
+
+Code, docs, config, and service changes scoped to this repo and its own tenants need no
+such pause.
+
+## Planted bugs
+
+- The upstream golden app is intentionally **fully functional except for deliberately
+  planted bugs** used by bug-hunt / remediation labs. On this fork, planted bugs may be
+  kept, altered, or removed as a demo requires — but if you're unsure whether something is
+  planted or a genuine infra gap, ask before changing it.
   - Retired planted bug (this fork only): `services/admin-service/config/environments/production.rb`
     used `ActiveSupport::TaggedLogging.logger($stdout)`, invalid on Rails 7.1 → admin-service
     crash-looped on boot. It has been fixed on this fork so admin-service runs (it hosts the
     Devin incident-triage path); the bug remains planted on the upstream golden app
     (`Cognition-Partner-Workshops/otterworks`).
 - Genuine infrastructure/wiring gaps (missing tables, unwired config/secrets, unreachable
-  backing services) **should** be fixed so the golden app is otherwise green.
+  backing services) **should** be fixed so the baseline is otherwise green.
 
 ## Variants & multi-tenant demos
 
-- A **variant** = the golden app plus demo-specific changes (extra planted bugs, feature
-  flags, scaled resources). Variants are derived from `main`, never the other way around.
-- For concurrent demos on shared infra, isolate per attendee/demo rather than mutating the
-  golden baseline. See `docs/MULTI-TENANT-DEMO-PLAN.md` for the namespace-per-tenant model,
-  cost controls, and how to inject bugs / do immediate redeploys without stepping on others.
+- A **variant** = the baseline plus demo-specific changes (extra planted bugs, feature
+  flags, scaled resources). On this fork, a variant can live on `main` itself or on a
+  `workshop-*`/`demo-*` branch — branch when several demos need to diverge.
+- For concurrent demos on shared infra, isolate per attendee/demo rather than mutating a
+  baseline others rely on. See `docs/MULTI-TENANT-DEMO-PLAN.md` for the namespace-per-tenant
+  model, cost controls, and how to inject bugs / do immediate redeploys without stepping on
+  others.
 
 ## Tenant isolation (for crafting bespoke demo branches)
 
 Each demo runs as an **ephemeral tenant** on the shared EKS cluster (`otterworks-dev`).
 `scripts/deploy-tenant.sh <ATTENDEE_ID>` stamps the golden app into a dedicated namespace so
-many attendees run "their own OtterWorks" side by side without touching each other or `main`.
+many attendees run "their own OtterWorks" side by side without touching each other.
 Full operator detail lives in `docs/MULTI-TENANT-DEMO-PLAN.md` (design) and
 `docs/MULTI-TENANT-RUNBOOK.md` (step-by-step); this section is the mental model you need
 before building a bespoke variant.
@@ -81,8 +119,9 @@ browser use wants host-based routing.
 
 ### Crafting a bespoke demo branch
 
-The golden app is the base for every variant; **never mutate `main`** to build a demo. Two
-ways to make a tenant behave differently:
+On this fork, `main` itself may carry a demo variant (the mirror workflow replays it onto
+`demo-coggtm`). To make a single tenant behave differently without touching `main`, two
+ways:
 
 1. **No code change (preferred, instant, per-tenant):** inject a scenario from
    `scripts/bug-catalog.yaml` with `scripts/inject-bug.sh <ID> <scenario>` (clear with
@@ -102,7 +141,7 @@ ways to make a tenant behave differently:
 
 **Isolation guarantees to rely on:** a write in one tenant is invisible to another (separate
 DB + Redis + MeiliSearch); injecting a bug in one tenant does not degrade others; and none of
-the above changes `main`. Verify per the "Live verification" section of the runbook.
+the above changes any branch. Verify per the "Live verification" section of the runbook.
 
 ### Lifecycle / cleanup
 
@@ -119,9 +158,10 @@ the above changes `main`. Verify per the "Live verification" section of the runb
   `demo-platform/docs/cost-and-scale.md` for the capacity and cost model.
 - Pushing to `workshop-<id>` or `demo-<id>` ships that branch to its tenant automatically
   (`.github/workflows/cd-tenant.yml`), creating the tenant with a 72h TTL if it does not
-  exist. The one exception is `t-main.otterworks.app`, the perpetual tenant tracking `main`:
-  it is exempt from the reaper and idle-suspend and cannot be checked in or bug-injected.
-  Never inject a scenario there — that is what a `workshop-<id>` tenant is for.
+  exist. The one exception is `t-main.otterworks.app`, the perpetual tenant tracking
+  **upstream** `main`: it is exempt from the reaper and idle-suspend and cannot be checked
+  in or bug-injected. Never inject a scenario there — that is what a `workshop-<id>` tenant
+  is for.
 
 ### Never create AWS resources from Kubernetes
 
