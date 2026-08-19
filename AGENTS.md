@@ -20,13 +20,18 @@ This repo (`COG-GTM/otterworks`) is a **fork** of the upstream/canonical
   `workshop-*`/`demo-*` refs. The guarantee is enforced by IAM, not by the workflow, so a
   deployable-path push to `main` leaves a red CD run — expected and harmless. (Setting a
   `TENANT_PREFIX` repo variable per `demo-platform/README.md` would make `main` runs skip
-  the deploy cleanly instead, but changes every fork tenant id — ask before doing that.)
+  the *deploy* step cleanly, but a push touching `services/**`/`frontend/**` still fails in
+  the image-build job's OIDC step — and it changes every fork tenant id — ask before doing
+  that.)
 - Pushing to this fork's `main` also triggers `.github/workflows/mirror-demo.yml`, which
   rebases `demo-coggtm`'s own commits on top of the new `main` (the branch stays
   main + variant; `main` never overwrites the variant). That push redeploys the fork's own
-  `t-coggtm` tenant — no other tenant — and only when the variant's diff against `main`
-  touches a deployable path (`services/**`, `frontend/**`, `infrastructure/helm/**`,
-  `scripts/**`); a docs-only `main` merge leaves the tenant on the build it already had.
+  `t-coggtm` tenant — no other tenant — and only when the variant's own diff against `main`
+  touches a deployable path (the `deployable` filter in `cd-tenant.yml` is authoritative:
+  `services/**`, `frontend/**`, `infrastructure/helm/**`, `scripts/**`). The redeploy is
+  driven by the variant, not by what the `main` merge touched — a variant carrying a
+  deployable diff redeploys on every mirror push, even a docs-only merge; a variant with no
+  deployable diff leaves the tenant on the build it already had.
 
 ### When to pause and ask the user
 
