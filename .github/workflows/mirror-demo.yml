@@ -1,9 +1,11 @@
 # Keep the perpetual COG-GTM tenant in line with main.
 #
-# The demo platform only deploys from workshop-*/demo-* branches on this fork
-# (main is reserved for the upstream repo's t-main environment). So the tenant
-# that runs COG-GTM's code is deployed from the branch `demo-coggtm`, and this
-# workflow is what keeps that branch — and therefore the tenant — tracking main:
+# Nothing ships from this fork's main: cd-tenant.yml does run on main pushes,
+# but the AWS OIDC trust only allows this fork's workshop-*/demo-* refs, so a
+# main run can never publish or deploy (main is reserved for the upstream
+# repo's t-main environment). So the tenant that runs COG-GTM's code is
+# deployed from the branch `demo-coggtm`, and this workflow is what keeps that
+# branch — and therefore the tenant — tracking main:
 #
 #   merge to main
 #     -> this workflow replays demo-coggtm's own commits on top of main
