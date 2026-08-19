@@ -488,6 +488,7 @@ export class IncidentsComponent implements OnInit, OnDestroy {
       } catch {
         this.chaosState = {};
       }
+      this.saveChaosState();
     }
   }
 
