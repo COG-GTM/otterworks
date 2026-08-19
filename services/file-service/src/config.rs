@@ -14,9 +14,6 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -57,7 +54,6 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
         }
     }
 }
@@ -138,10 +134,8 @@ mod tests {
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
-        }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+    fn upload_uses_the_configured_bucket() {
+        std::env::set_var("S3_BUCKET", "otterworks-files");
+        assert_eq!(super::AwsConfig::from_env().s3_bucket, "otterworks-files");
     }
 }
