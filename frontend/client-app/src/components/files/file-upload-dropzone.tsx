@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef, useEffect, useImperativeHandle, forwardRef } from "react";
 import type { Ref } from "react";
 import { useDropzone } from "react-dropzone";
+import { isAxiosError } from "axios";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
@@ -26,7 +27,18 @@ interface UploadingFile {
   progress: number;
   status: "uploading" | "done" | "error";
   error?: string;
+  /** Rejected for size: retrying can never succeed. */
+  tooLarge?: boolean;
   abortController?: AbortController;
+}
+
+/** Mirrors file-service's MAX_UPLOAD_BYTES and the nginx body limits in front of it. */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+const TOO_LARGE_ERROR = `File is too large — the limit is ${formatFileSize(MAX_UPLOAD_BYTES)}`;
+
+function isTooLargeError(err: unknown): boolean {
+  return isAxiosError(err) && err.response?.status === 413;
 }
 
 let fileIdCounter = 0;
@@ -111,18 +123,25 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const tooLarge = isTooLargeError(err);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
-                  ? { ...f, status: "error" as const, error: "Upload failed", abortController: undefined }
+                  ? {
+                      ...f,
+                      status: "error" as const,
+                      error: tooLarge ? TOO_LARGE_ERROR : "Upload failed",
+                      tooLarge,
+                      abortController: undefined,
+                    }
                   : f,
               ),
             );
-            setShowUploadErrorBanner(true);
+            if (!tooLarge) setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
           }
         });
@@ -132,14 +151,25 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const addFiles = useCallback(
     (files: File[]) => {
-      const newFiles: UploadingFile[] = files.map((file) => ({
-        id: `upload-${++fileIdCounter}`,
-        file,
-        progress: 0,
-        status: "uploading" as const,
-      }));
+      const newFiles: UploadingFile[] = files.map((file) => {
+        const tooLarge = file.size > MAX_UPLOAD_BYTES;
+        return {
+          id: `upload-${++fileIdCounter}`,
+          file,
+          progress: 0,
+          status: tooLarge ? ("error" as const) : ("uploading" as const),
+          error: tooLarge ? TOO_LARGE_ERROR : undefined,
+          tooLarge,
+        };
+      });
       setUploadingFiles((prev) => [...prev, ...newFiles]);
-      newFiles.forEach((entry) => startUpload(entry));
+      newFiles.forEach((entry) => {
+        if (entry.tooLarge) {
+          void notifyUploadFailed(entry.file.name);
+        } else {
+          startUpload(entry);
+        }
+      });
     },
     [startUpload],
   );
@@ -153,7 +183,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const retryUpload = (id: string) => {
     const entry = uploadingFiles.find((f) => f.id === id);
-    if (entry) startUpload(entry);
+    if (entry && !entry.tooLarge) startUpload(entry);
   };
 
   const clearCompleted = () => {
@@ -259,13 +289,15 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
               )}
               {item.status === "error" && (
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => retryUpload(item.id)}
-                    className="p-1 text-gray-400 hover:text-otter-600 transition"
-                    title="Retry upload"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
+                  {!item.tooLarge && (
+                    <button
+                      onClick={() => retryUpload(item.id)}
+                      className="p-1 text-gray-400 hover:text-otter-600 transition"
+                      title="Retry upload"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
                   <AlertCircle size={16} className="text-red-500" />
                 </div>
               )}
