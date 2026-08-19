@@ -115,7 +115,15 @@ initialize: |
        && npm run build && npx cap sync android) || return 1
     (cd frontend/client-app/mobile/android && ./gradlew --no-daemon assembleDebug) || return 1
   }
-  android_warm_up || echo "WARN: Android warm-up failed; the first runtime build will be cold."
+  # tee, not `||`: a swallowed failure still has to be diagnosable from the snapshot log,
+  # and the pipeline's own status is tee's, so read PIPESTATUS.
+  android_warm_up 2>&1 | tee /tmp/android-warm-up.log
+  warm_up_rc=${PIPESTATUS[0]}
+  if [ "$warm_up_rc" -ne 0 ]; then
+    echo "WARN: Android warm-up failed (exit $warm_up_rc); the first runtime build will be cold."
+    echo "----- last 20 lines of /tmp/android-warm-up.log -----"
+    tail -n 20 /tmp/android-warm-up.log
+  fi
 
   # Save a "clean" snapshot so runtime launches resume instead of cold-booting. Best-effort:
   # if the emulator can't boot at build time (e.g. no /dev/kvm) runtime just cold-boots.
