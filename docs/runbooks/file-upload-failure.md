@@ -18,9 +18,10 @@
    ```
    kubectl logs -l app=file-service --tail=100 -n otterworks | grep -i "NoSuchBucket\|S3\|500"
    ```
-2. Check whether the chaos flag `chaos:file-service:upload_s3_error` is set in Redis:
+2. Check the bucket file-service is actually configured with, and that it exists:
    ```
-   redis-cli EXISTS chaos:file-service:upload_s3_error
+   kubectl get deploy/file-service -n otterworks -o jsonpath='{.spec.template.spec.containers[0].env}'
+   aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
 
 <!-- TODO: Complete investigation steps -->
