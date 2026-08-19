@@ -22,7 +22,8 @@
    `S3_BUCKET`, so a `NoSuchBucket` means that value is wrong for the environment:
    ```
    kubectl -n otterworks get deploy/file-service -o jsonpath='{.spec.template.spec.containers[0].envFrom}'
-   kubectl -n otterworks get cm file-service-config -o jsonpath='{.data.S3_BUCKET}'
+   S3_BUCKET=$(kubectl -n otterworks get cm file-service-config -o jsonpath='{.data.S3_BUCKET}')
+   echo "$S3_BUCKET"
    ```
 3. Verify the bucket exists and the pod's IRSA role can write to it:
    ```
