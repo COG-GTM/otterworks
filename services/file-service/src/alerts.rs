@@ -96,8 +96,14 @@ fn is_retryable(status: reqwest::StatusCode) -> bool {
         || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
-/// POST the alert, retrying transport errors and transient responses on the
-/// given backoff schedule. Returns whether it was accepted.
+/// POST the alert, retrying on the given backoff schedule. Only failures that
+/// prove admin-service never saw the alert are retried: a refused connection,
+/// or a transient rejection. A timeout is not — admin-service creates the
+/// incident, the Devin session and the Slack notification synchronously before
+/// responding, so a slow response may well have been processed, and re-sending
+/// a `dedup=false` alert would duplicate all three.
+///
+/// Returns whether the alert was accepted.
 async fn deliver_with_retry(
     url: &str,
     secret: Option<&str>,
@@ -117,8 +123,9 @@ async fn deliver_with_retry(
                 is_retryable(status)
             }
             Err(e) => {
-                tracing::warn!(error = %e, url = %url, attempt = attempt + 1, "Failed to deliver upload-failure alert");
-                true
+                let retryable = e.is_connect();
+                tracing::warn!(error = %e, url = %url, attempt = attempt + 1, retryable, "Failed to deliver upload-failure alert");
+                retryable
             }
         };
         match backoff.get(attempt) {
@@ -287,5 +294,26 @@ mod tests {
 
         assert!(!deliver_with_retry(&url, None, &payload, &backoff).await);
         assert_eq!(served.load(Ordering::SeqCst), 2);
+    }
+
+    #[actix_rt::test]
+    async fn retries_while_admin_service_refuses_connections() {
+        // Bind then drop the listener so the port is closed but routable: the
+        // admin-service-still-booting case.
+        let closed_port = {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let url = format!("http://127.0.0.1:{closed_port}/ingest");
+
+        // A refusal classifies as retryable, so the loop keeps trying instead
+        // of dropping the alert on the first attempt.
+        let err = http_client().post(&url).send().await.unwrap_err();
+        assert!(err.is_connect(), "expected a connect error, got {err}");
+        assert!(!err.is_timeout());
+
+        let payload = build_upload_failure_payload("a.txt", "boom", None);
+        let backoff = [Duration::ZERO, Duration::ZERO];
+        assert!(!deliver_with_retry(&url, None, &payload, &backoff).await);
     }
 }
