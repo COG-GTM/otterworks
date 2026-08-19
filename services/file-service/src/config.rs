@@ -87,9 +87,20 @@ impl SnsConfig {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn server_config_defaults() {
+    fn server_config_defaults_when_env_unset() {
+        if std::env::var("PORT").is_ok() || std::env::var("MAX_UPLOAD_BYTES").is_ok() {
+            return;
+        }
         let cfg = super::ServerConfig::from_env();
-        assert!(cfg.port > 0);
-        assert!(cfg.max_upload_bytes > 0);
+        assert_eq!(cfg.port, 8082);
+        assert_eq!(cfg.max_upload_bytes, 104_857_600);
+    }
+
+    #[test]
+    fn s3_bucket_defaults_to_the_files_bucket() {
+        if std::env::var("S3_BUCKET").is_ok() {
+            return;
+        }
+        assert_eq!(super::AwsConfig::from_env().s3_bucket, "otterworks-files");
     }
 }
