@@ -147,17 +147,10 @@ pub async fn upload_file(
     let now = Utc::now();
     let size = file_bytes.len() as u64;
 
-    // CHAOS: when FILE_UPLOAD_ALWAYS_FAIL is set, or the Redis chaos flag is
-    // active, the S3 client targets a nonexistent bucket, simulating a
-    // misconfigured bucket name after a recent infra change.  The AWS SDK
-    // returns NoSuchBucket which surfaces as a 500.  The env var is a
-    // permanent, per-deployment switch; the Redis flag is transient.
-    let effective_bucket = if config.server.upload_always_fail {
-        tracing::warn!(
-            "FILE_UPLOAD_ALWAYS_FAIL is enabled: redirecting upload to nonexistent bucket"
-        );
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else if chaos_active(
+    // A transient chaos flag in the tenant's Redis can route uploads at a
+    // nonexistent bucket for failure-path drills; absent it, uploads go to the
+    // configured bucket.
+    let effective_bucket = if chaos_active(
         &mut redis_cm.get_ref().clone(),
         "chaos:file-service:upload_s3_error",
     )
@@ -168,11 +161,11 @@ pub async fn upload_file(
     } else {
         s3.bucket.clone()
     };
-    let chaos_s3 = crate::storage::S3Client {
+    let upload_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
         bucket: effective_bucket,
     };
-    if let Err(err) = chaos_s3
+    if let Err(err) = upload_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
         .await
     {
