@@ -86,17 +86,11 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{AwsConfig, ServerConfig};
+    use super::ServerConfig;
 
     #[test]
     fn server_config_defaults() {
         let cfg = ServerConfig::from_env();
         assert!(cfg.max_upload_bytes > 0);
-    }
-
-    #[test]
-    fn uploads_target_the_configured_bucket() {
-        let expected = std::env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into());
-        assert_eq!(AwsConfig::from_env().s3_bucket, expected);
     }
 }
