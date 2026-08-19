@@ -12,12 +12,21 @@ This repo (`COG-GTM/otterworks`) is a **fork** of the upstream/canonical
   or plant demo variants on it. Changes reach upstream only via an explicit upstream PR.
 - **This fork's `main` is a demo baseline, not the golden app.** It may be edited freely,
   including large or sweeping changes. Editing it has **no effect** on upstream or on
-  partner workshops: nothing flows fork → upstream automatically, and the fork's `main` is
-  non-deploying (CD only ships `workshop-*`/`demo-*` branches, and the Terraform OIDC trust
-  only allows those branch patterns for forks).
-- Pushing to this fork's `main` triggers `.github/workflows/mirror-demo.yml`, which replays
-  `main` onto `demo-coggtm` and redeploys the fork's own `t-coggtm` tenant. That is the
-  intended way to keep the COG-GTM demo tenant current — it touches no other tenant.
+  partner workshops: nothing flows fork → upstream automatically, and nothing ships from
+  the fork's `main` — but note *why*. `cd-tenant.yml` runs on `main` pushes too, and since
+  `TENANT_PREFIX` is unset on this fork it plans a golden `:main` publish; the run then
+  fails at "Configure AWS credentials" because the OIDC trust
+  (`demo-platform/infra/terraform/variables.tf`) allows this fork only for
+  `workshop-*`/`demo-*` refs. The guarantee is enforced by IAM, not by the workflow, so a
+  deployable-path push to `main` leaves a red CD run — expected and harmless. (Setting a
+  `TENANT_PREFIX` repo variable per `demo-platform/README.md` would make `main` runs skip
+  the deploy cleanly instead, but changes every fork tenant id — ask before doing that.)
+- Pushing to this fork's `main` also triggers `.github/workflows/mirror-demo.yml`, which
+  rebases `demo-coggtm`'s own commits on top of the new `main` (the branch stays
+  main + variant; `main` never overwrites the variant). That push redeploys the fork's own
+  `t-coggtm` tenant — no other tenant — and only when the variant's diff against `main`
+  touches a deployable path (`services/**`, `frontend/**`, `infrastructure/helm/**`,
+  `scripts/**`); a docs-only `main` merge leaves the tenant on the build it already had.
 
 ### When to pause and ask the user
 
@@ -119,9 +128,9 @@ browser use wants host-based routing.
 
 ### Crafting a bespoke demo branch
 
-On this fork, `main` itself may carry a demo variant (the mirror workflow replays it onto
-`demo-coggtm`). To make a single tenant behave differently without touching `main`, two
-ways:
+On this fork, `main` itself may carry a demo variant (the mirror workflow keeps
+`demo-coggtm` rebased on it). To make a single tenant behave differently without touching
+`main`, two ways:
 
 1. **No code change (preferred, instant, per-tenant):** inject a scenario from
    `scripts/bug-catalog.yaml` with `scripts/inject-bug.sh <ID> <scenario>` (clear with
@@ -141,7 +150,8 @@ ways:
 
 **Isolation guarantees to rely on:** a write in one tenant is invisible to another (separate
 DB + Redis + MeiliSearch); injecting a bug in one tenant does not degrade others; and none of
-the above changes any branch. Verify per the "Live verification" section of the runbook.
+the above changes `main` or another tenant's branch. Verify per the "Live verification"
+section of the runbook.
 
 ### Lifecycle / cleanup
 
