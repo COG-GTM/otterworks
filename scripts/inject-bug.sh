@@ -97,6 +97,20 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   exit 0
 fi
 
+if [ "${SCENARIO}" = "notification-queue-fail" ]; then
+  log "Injecting config bug 'notification-queue-fail' (notification consumer -> nonexistent SQS queue)..."
+  helm upgrade notification-service "${REPO_ROOT}/infrastructure/helm/notification-service" -n "${NS}" --reuse-values \
+    --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=true
+  log "Applied. A value change rolls the pod on its own (ConfigMap checksum annotation);"
+  log "if the env was already true nothing restarts and the tenant is already failing --"
+  log "tenant coggtm is in that state, because the demo-coggtm branch bakes the variable"
+  log "into the notification-service image itself. Turn it off with:"
+  log "  helm upgrade notification-service infrastructure/helm/notification-service -n ${NS} --reuse-values --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=false"
+  log "(a redeploy re-enables the failure: the image default true applies again unless"
+  log "the rendering tree sets the key explicitly.)"
+  exit 0
+fi
+
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }
