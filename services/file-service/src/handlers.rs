@@ -60,6 +60,16 @@ pub async fn upload_file(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.trim().parse::<Uuid>().ok());
 
+    // Uploader's email, injected by api-gateway from the JWT; carried on
+    // upload-failure alerts so admin-service can attribute the incident.
+    let reporter_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
     let mut file_bytes = BytesMut::new();
     let mut file_name = String::from("unnamed");
     let mut content_type = String::from("application/octet-stream");
@@ -166,7 +176,12 @@ pub async fn upload_file(
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
         .await
     {
-        alerts::notify_upload_failure(&config.alerts, &file_name, &err.to_string());
+        alerts::notify_upload_failure(
+            &config.alerts,
+            &file_name,
+            &err.to_string(),
+            reporter_email.as_deref(),
+        );
         return Err(err);
     }
 

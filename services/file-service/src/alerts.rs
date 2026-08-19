@@ -38,18 +38,26 @@ impl AlertConfig {
     }
 }
 
-pub fn build_upload_failure_payload(file_name: &str, error: &str) -> Value {
+pub fn build_upload_failure_payload(
+    file_name: &str,
+    error: &str,
+    reporter_email: Option<&str>,
+) -> Value {
+    let mut labels = json!({
+        "alertname": "FileUploadFailed",
+        "severity": "critical",
+        "affected_service": "file-service",
+        "dedup": "false",
+    });
+    if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
+        labels["reporter_email"] = json!(email);
+    }
     json!({
         "receiver": "otterworks-webhook",
         "status": "firing",
         "alerts": [{
             "status": "firing",
-            "labels": {
-                "alertname": "FileUploadFailed",
-                "severity": "critical",
-                "affected_service": "file-service",
-                "dedup": "false",
-            },
+            "labels": labels,
             "annotations": {
                 "summary": format!("File upload failed: {file_name}"),
                 "description": format!(
@@ -63,7 +71,12 @@ pub fn build_upload_failure_payload(file_name: &str, error: &str) -> Value {
 
 /// Spawn a background task that POSTs the upload-failure alert to
 /// admin-service. Never blocks or alters the caller's response.
-pub fn notify_upload_failure(config: &AlertConfig, file_name: &str, error: &str) {
+pub fn notify_upload_failure(
+    config: &AlertConfig,
+    file_name: &str,
+    error: &str,
+    reporter_email: Option<&str>,
+) {
     let base_url = config
         .admin_service_url
         .trim()
@@ -74,7 +87,7 @@ pub fn notify_upload_failure(config: &AlertConfig, file_name: &str, error: &str)
         return;
     }
     let secret = config.alert_webhook_secret.clone();
-    let payload = build_upload_failure_payload(file_name, error);
+    let payload = build_upload_failure_payload(file_name, error, reporter_email);
     let file_name = file_name.to_string();
 
     tokio::spawn(async move {
@@ -103,7 +116,7 @@ mod tests {
 
     #[test]
     fn payload_has_grafana_shape_with_dedup_disabled() {
-        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket");
+        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket", None);
         assert_eq!(payload["status"], "firing");
         let alert = &payload["alerts"][0];
         assert_eq!(alert["status"], "firing");
@@ -117,6 +130,22 @@ mod tests {
         assert!(description.contains("report.pdf"));
         assert!(description.contains("NoSuchBucket"));
         assert!(alert["startsAt"].is_string());
+        assert!(alert["labels"].get("reporter_email").is_none());
+    }
+
+    #[test]
+    fn payload_carries_reporter_email_when_present() {
+        let payload =
+            build_upload_failure_payload("report.pdf", "NoSuchBucket", Some("user@example.com"));
+        let alert = &payload["alerts"][0];
+        assert_eq!(alert["labels"]["reporter_email"], "user@example.com");
+    }
+
+    #[test]
+    fn payload_omits_blank_reporter_email() {
+        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket", Some("  "));
+        let alert = &payload["alerts"][0];
+        assert!(alert["labels"].get("reporter_email").is_none());
     }
 
     #[test]
@@ -126,7 +155,7 @@ mod tests {
             alert_webhook_secret: None,
         };
         // Must return without needing a tokio runtime (no task spawned).
-        notify_upload_failure(&config, "a.txt", "boom");
+        notify_upload_failure(&config, "a.txt", "boom", None);
     }
 
     #[actix_rt::test]
@@ -135,6 +164,6 @@ mod tests {
             admin_service_url: "http://127.0.0.1:1".into(),
             alert_webhook_secret: Some("secret".into()),
         };
-        notify_upload_failure(&config, "a.txt", "boom");
+        notify_upload_failure(&config, "a.txt", "boom", Some("user@example.com"));
     }
 }
