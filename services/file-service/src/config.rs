@@ -89,9 +89,12 @@ mod tests {
     use super::ServerConfig;
 
     #[test]
-    fn server_config_defaults() {
+    fn server_config_falls_back_to_defaults_when_unset() {
+        if std::env::var("PORT").is_ok() || std::env::var("MAX_UPLOAD_BYTES").is_ok() {
+            return;
+        }
         let cfg = ServerConfig::from_env();
-        assert!(cfg.port > 0);
-        assert!(cfg.max_upload_bytes > 0);
+        assert_eq!(cfg.port, 8082);
+        assert_eq!(cfg.max_upload_bytes, 104_857_600);
     }
 }
