@@ -39,6 +39,10 @@ fn http_client() -> &'static reqwest::Client {
             // Separate from the overall timeout so a stalled connect surfaces
             // as a connect error (retryable) rather than a response timeout.
             .connect_timeout(std::time::Duration::from_secs(3))
+            // Alerts are rare, so a pooled socket is almost always one the
+            // server has since reaped; connecting fresh avoids losing an alert
+            // to a reset on a dead keep-alive connection.
+            .pool_max_idle_per_host(0)
             .build()
             .expect("failed to build alert HTTP client")
     })
