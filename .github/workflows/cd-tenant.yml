@@ -128,7 +128,9 @@ jobs:
 
   build:
     needs: plan
-    if: needs.plan.outputs.services != '[]'
+    # Nothing consumes an image the run will not deploy, and a fork's main has
+    # no OIDC trust to push one -- assuming the role there just fails the run.
+    if: needs.plan.outputs.services != '[]' && needs.plan.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
