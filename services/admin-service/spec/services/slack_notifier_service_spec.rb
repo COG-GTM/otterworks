@@ -20,6 +20,7 @@ RSpec.describe SlackNotifierService do
     allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
     allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
     allow(AdminSettingsService).to receive(:slack_bot_token).and_return(nil)
+    described_class.instance_variable_set(:@lookup_cache, nil)
   end
 
   def stub_post(response_body: '{"ok":true}')
@@ -246,6 +247,19 @@ RSpec.describe SlackNotifierService do
     expect(fields).to include("*On-Call:*\n<@U08S7AVJ478>")
   end
 
+  it 'matches SLACK_USER_MAP entries case-insensitively' do
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    allow(ENV).to receive(:fetch).with('SLACK_USER_MAP', nil)
+      .and_return({ 'Preston@Example.com' => 'U08S7AVJ478' }.to_json)
+    read_posted, = stub_post
+
+    described_class.notify_incident(incident: incident, reporter_email: 'preston@EXAMPLE.com')
+
+    fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+    expect(fields).to include("*On-Call:*\n<@U08S7AVJ478>")
+  end
+
   describe 'dynamic Slack lookup via users.lookupByEmail' do
     def stub_slack_api(lookup_body:)
       requests = []
@@ -289,6 +303,32 @@ RSpec.describe SlackNotifierService do
       expect(lookup['Authorization']).to eq('Bearer xoxb-test-token')
       fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
       expect(fields).to include("*On-Call:*\n<@U0DYNAMIC1>")
+    end
+
+    it 'memoizes a successful lookup so repeated alerts skip the API call' do
+      requests, = stub_slack_api(
+        lookup_body: '{"ok":true,"user":{"id":"U0DYNAMIC1"}}'
+      )
+
+      2.times do
+        described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+      end
+
+      lookups = requests.count { |r| r.uri.path == '/api/users.lookupByEmail' }
+      expect(lookups).to eq(1)
+    end
+
+    it 'does not cache failed lookups' do
+      requests, = stub_slack_api(
+        lookup_body: '{"ok":false,"error":"users_not_found"}'
+      )
+
+      2.times do
+        described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+      end
+
+      lookups = requests.count { |r| r.uri.path == '/api/users.lookupByEmail' }
+      expect(lookups).to eq(2)
     end
 
     it 'falls back to the plain email when the lookup fails (e.g. missing scope)' do

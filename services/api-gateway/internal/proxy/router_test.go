@@ -68,10 +68,12 @@ func TestProxyForwardsUserIdentityHeaders(t *testing.T) {
 	assert.Equal(t, "test@otterworks.dev", gotEmail)
 }
 
-func TestProxyOmitsEmailHeaderWhenClaimAbsent(t *testing.T) {
+func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	var emailPresent bool
+	var gotUserID string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, emailPresent = r.Header["X-User-Email"]
+		gotUserID = r.Header.Get("X-User-ID")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer backend.Close()
@@ -91,9 +93,12 @@ func TestProxyOmitsEmailHeaderWhenClaimAbsent(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.Header.Set("X-User-Email", "victim@example.com")
+	req.Header.Set("X-User-ID", "someone-else")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.False(t, emailPresent)
+	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
+	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }

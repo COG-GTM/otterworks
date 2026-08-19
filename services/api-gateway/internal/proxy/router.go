@@ -67,6 +67,10 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 	defaultDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		defaultDirector(req)
+		// Identity headers are derived from the validated JWT only;
+		// client-supplied values must never reach the backends.
+		req.Header.Del("X-User-ID")
+		req.Header.Del("X-User-Email")
 		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
 			userID := claims.Subject
 			if userID == "" {

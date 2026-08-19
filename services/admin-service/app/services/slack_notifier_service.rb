@@ -19,6 +19,8 @@ class SlackNotifierService
   BOT_TOKEN_SHAPE = /\Axoxb-\S+\z/
   SECTION_MAX = 3000
   FIELD_MAX = 2000
+  LOOKUP_CACHE_LIMIT = 1000
+  LOOKUP_CACHE_MUTEX = Mutex.new
 
   class << self
     def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
@@ -219,13 +221,33 @@ class SlackNotifierService
     # email. SLACK_ONCALL_MEMBER (a Slack member id) is the fallback when the
     # incident has no reporter (e.g. Grafana-ingested alerts).
     def human_mention(reporter_email)
-      if reporter_email.present?
-        slack_id = slack_user_map[reporter_email] || lookup_member_id(reporter_email)
-        return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(reporter_email)
+      email = reporter_email.to_s.strip.downcase
+      if email.present?
+        slack_id = slack_user_map[email] || cached_member_id(email)
+        return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(email)
       end
 
       fallback = ENV.fetch('SLACK_ONCALL_MEMBER', nil).presence
       fallback ? "<@#{fallback}>" : nil
+    end
+
+    # Successful lookups are memoized (per process, bounded) so repeated
+    # alerts from the same reporter do not hit Slack's rate-limited
+    # users.lookupByEmail on every notification. Failures are not cached,
+    # so a reporter who joins Slack later still resolves.
+    def cached_member_id(email)
+      LOOKUP_CACHE_MUTEX.synchronize do
+        @lookup_cache ||= {}
+        return @lookup_cache[email] if @lookup_cache.key?(email)
+      end
+
+      slack_id = lookup_member_id(email)
+      if slack_id
+        LOOKUP_CACHE_MUTEX.synchronize do
+          @lookup_cache[email] = slack_id if @lookup_cache.size < LOOKUP_CACHE_LIMIT
+        end
+      end
+      slack_id
     end
 
     # Resolves an email to a Slack member id via users.lookupByEmail. Needs
@@ -264,7 +286,7 @@ class SlackNotifierService
       return {} unless raw
 
       parsed = JSON.parse(raw)
-      return parsed if parsed.is_a?(Hash)
+      return parsed.transform_keys { |k| k.to_s.strip.downcase } if parsed.is_a?(Hash)
 
       Rails.logger.error('SLACK_USER_MAP must be a JSON object of email -> Slack member id')
       {}
