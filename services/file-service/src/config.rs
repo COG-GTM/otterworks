@@ -45,15 +45,15 @@ impl AppConfig {
 
 impl ServerConfig {
     pub fn from_env() -> Self {
+        Self::from_vars(env::var("PORT").ok(), env::var("MAX_UPLOAD_BYTES").ok())
+    }
+
+    fn from_vars(port: Option<String>, max_upload_bytes: Option<String>) -> Self {
         Self {
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "8082".into())
-                .parse()
-                .unwrap_or(8082),
-            max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
-                .unwrap_or_else(|_| "104857600".into()) // 100 MB
-                .parse()
-                .unwrap_or(104_857_600),
+            port: port.and_then(|v| v.parse().ok()).unwrap_or(8082),
+            max_upload_bytes: max_upload_bytes
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(104_857_600), // 100 MB
         }
     }
 }
@@ -89,12 +89,18 @@ mod tests {
     use super::ServerConfig;
 
     #[test]
-    fn server_config_falls_back_to_defaults_when_unset() {
-        if std::env::var("PORT").is_ok() || std::env::var("MAX_UPLOAD_BYTES").is_ok() {
-            return;
+    fn server_config_falls_back_to_defaults_when_unset_or_unparsable() {
+        for raw in [None, Some("".to_string()), Some("nope".to_string())] {
+            let cfg = ServerConfig::from_vars(raw.clone(), raw);
+            assert_eq!(cfg.port, 8082);
+            assert_eq!(cfg.max_upload_bytes, 104_857_600);
         }
-        let cfg = ServerConfig::from_env();
-        assert_eq!(cfg.port, 8082);
-        assert_eq!(cfg.max_upload_bytes, 104_857_600);
+    }
+
+    #[test]
+    fn server_config_reads_provided_values() {
+        let cfg = ServerConfig::from_vars(Some("9000".into()), Some("2048".into()));
+        assert_eq!(cfg.port, 9000);
+        assert_eq!(cfg.max_upload_bytes, 2048);
     }
 }
