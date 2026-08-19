@@ -14,6 +14,8 @@ name: Deploy tenant environment
 #
 # Only the services a push actually changed are rebuilt; the tenant picks up the
 # golden image for everything else (see resolve_tag in scripts/deploy-tenant.sh).
+# A fork is the exception -- it publishes no golden image, so a push to one of
+# its variant branches rebuilds every service and redeploys unconditionally.
 # Deployment goes through the ops dashboard API, never straight at the cluster:
 # the dashboard runs the work as a runner Job under its own IRSA role, so this
 # workflow needs no EKS access.
@@ -160,7 +162,9 @@ jobs:
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
           # back byte-identical, minutes later, for no reason. Neither does a
-          # fork's main: the perpetual environment tracks this repository.
+          # fork's main: the perpetual environment tracks this repository. A
+          # fork's variant branch always redeploys, docs-only pushes included:
+          # its path filter cannot tell a stale tenant from an unchanged one.
           deploy=false
           if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ] \
              || [ "${fork_variant}" = "true" ]; then
