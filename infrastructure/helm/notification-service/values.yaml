@@ -53,22 +53,15 @@ serviceAccount:
 # Non-sensitive service configuration rendered into {{ .Release.Name }}-config
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
 config:
-  # Permanently break the SQS consumer (it polls a nonexistent queue and every
-  # ReceiveMessage fails with a real AWS SQS error, firing the
-  # NotificationConsumerProcessingErrors alert at admin-service). OFF on the
-  # golden app (`main` upstream); ON here because this is the demo variant,
-  # whose broken consumer must survive Redis restarts and TTL expiry. What
-  # actually reaches the tenant is the branch's notification-service *image*,
-  # which sets the variable in its Dockerfile -- the deploy runner renders
-  # charts from its own bundled tree, so this value only applies when someone
-  # deploys from this checkout. Kept in agreement with the image so the two
-  # can never contradict each other. To turn the failure off for this tenant
-  # without reverting the branch, set it explicitly (an explicit value beats
-  # the image's, until the next redeploy re-renders the chart):
+  # Failure switch: when true the SQS consumer polls a nonexistent queue and
+  # every ReceiveMessage fails with a real AWS SQS error, firing the
+  # NotificationConsumerProcessingErrors alert at admin-service. OFF by
+  # default everywhere (matches the image's Dockerfile default); enable per
+  # tenant with scripts/inject-bug.sh <id> notification-queue-fail, or:
   #   helm upgrade notification-service infrastructure/helm/notification-service \
-  #     -n otterworks-coggtm --reuse-values \
-  #     --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=false
-  NOTIFICATION_SQS_ALWAYS_FAIL: "true"
+  #     -n otterworks-<id> --reuse-values \
+  #     --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=true
+  NOTIFICATION_SQS_ALWAYS_FAIL: "false"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.

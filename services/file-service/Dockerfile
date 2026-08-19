@@ -27,6 +27,15 @@ USER appuser
 # passes false, so local stacks behave like the golden app.
 ENV FILE_UPLOAD_ALWAYS_FAIL=true
 
+# Click-triggered notification failure (same bake rationale as above): sharing
+# a file publishes the file_shared event to a nonexistent SNS topic, so every
+# share click fails with a real AWS SNS error and fires the
+# NotificationEventPublishFailure alert at admin-service (incident + Devin
+# session + Slack, attributed to the sharing user via reporter_email). The
+# share itself still succeeds. docker-compose.yml passes false, so local
+# stacks behave like the golden app.
+ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
+
 EXPOSE 8082
 HEALTHCHECK --interval=10s --timeout=3s CMD curl -f http://localhost:8082/health || exit 1
 ENTRYPOINT ["/app/file-service"]

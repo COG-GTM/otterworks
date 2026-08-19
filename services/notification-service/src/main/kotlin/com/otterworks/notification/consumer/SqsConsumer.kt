@@ -114,6 +114,8 @@ class SqsConsumer(
                 if (messages.isEmpty()) {
                     delay(config.sqsPollIntervalMs)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.error(e) { "Error polling SQS" }
                 if (config.sqsAlwaysFail) {

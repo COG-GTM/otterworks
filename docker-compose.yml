@@ -122,6 +122,7 @@ services:
       # coggtm, and this explicit false overrides it so a local stack still
       # behaves like the golden app. Set it to true to reproduce the tenant.
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
+      FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:

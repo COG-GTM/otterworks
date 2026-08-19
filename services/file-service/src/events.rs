@@ -10,6 +10,10 @@ use crate::errors::ServiceError;
 pub struct EventPublisher {
     client: aws_sdk_sns::Client,
     topic_arn: Option<String>,
+    /// Topic the `file_shared` event is published to when the share-event
+    /// failure switch is on: a topic that does not exist in any account, so
+    /// SNS rejects the publish with a real AWS error.
+    share_fail_topic_arn: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -42,14 +46,35 @@ impl EventPublisher {
         let aws_cfg = aws_cfg_builder.load().await;
         let client = aws_sdk_sns::Client::new(&aws_cfg);
 
+        let share_fail_topic_arn = if sns_config.share_event_always_fail {
+            Some(match &sns_config.topic_arn {
+                Some(arn) => format!("{arn}-chaos-nonexistent"),
+                None => format!(
+                    "arn:aws:sns:{}:000000000000:otterworks-file-events-chaos-nonexistent",
+                    aws_config.region
+                ),
+            })
+        } else {
+            None
+        };
+
         Self {
             client,
             topic_arn: sns_config.topic_arn.clone(),
+            share_fail_topic_arn,
         }
     }
 
     async fn publish(&self, event: &FileEvent) -> Result<(), ServiceError> {
-        let topic_arn = match &self.topic_arn {
+        self.publish_to(event, self.topic_arn.as_deref()).await
+    }
+
+    async fn publish_to(
+        &self,
+        event: &FileEvent,
+        topic_arn: Option<&str>,
+    ) -> Result<(), ServiceError> {
+        let topic_arn = match topic_arn {
             Some(arn) => arn,
             None => {
                 tracing::debug!("SNS topic not configured, skipping event publish");
@@ -137,7 +162,13 @@ impl EventPublisher {
             mime_type: None,
             size_bytes: None,
         };
-        self.publish(&event).await
+        self.publish_to(
+            &event,
+            self.share_fail_topic_arn
+                .as_deref()
+                .or(self.topic_arn.as_deref()),
+        )
+        .await
     }
 
     pub async fn file_trashed(&self, file_id: &Uuid, owner_id: &Uuid) -> Result<(), ServiceError> {

@@ -80,11 +80,27 @@ scenarios:
       (QueueDoesNotExist). The consumer fires the
       NotificationConsumerProcessingErrors alert at admin-service's ingest
       endpoint (rate-limited; dedup keeps one open incident per service), so
-      a Devin session is created even on tenants without Grafana. Already ON
-      for the coggtm tenant: the demo branch bakes the variable into the
-      notification-service image's Dockerfile. NOTIFICATION_STRICT_SCHEMA is
-      the durable env equivalent of the notification-schema chaos flag
-      (deserialization failures; needs live message traffic).
+      a Devin session is created even on tenants without Grafana. OFF by
+      default (image Dockerfile sets false); the click-triggered
+      share-notify-fail scenario below is the demo's primary notification
+      failure. NOTIFICATION_STRICT_SCHEMA is the durable env equivalent of
+      the notification-schema chaos flag (deserialization failures; needs
+      live message traffic).
+
+  share-notify-fail:
+    mechanism: config
+    service: file-service
+    set: "config.FILE_SHARE_EVENT_ALWAYS_FAIL=true"
+    description: >
+      Click-triggered notification failure: with FILE_SHARE_EVENT_ALWAYS_FAIL
+      set, a user clicking "Share" makes file-service publish the file_shared
+      notification event to a nonexistent SNS topic, so the publish fails
+      with a real AWS SNS error. The share itself succeeds, but file-service
+      fires the NotificationEventPublishFailure alert at admin-service's
+      ingest endpoint (dedup=false: one incident + Devin session + Slack
+      message per share, attributed to the sharing user via reporter_email).
+      Already ON for the coggtm tenant: the demo branch bakes the variable
+      into the file-service image's Dockerfile.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =

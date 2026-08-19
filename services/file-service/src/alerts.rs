@@ -69,6 +69,80 @@ pub fn build_upload_failure_payload(
     })
 }
 
+pub fn build_share_notification_failure_payload(
+    file_name: &str,
+    error: &str,
+    reporter_email: Option<&str>,
+) -> Value {
+    let mut labels = json!({
+        "alertname": "NotificationEventPublishFailure",
+        "severity": "critical",
+        "affected_service": "file-service",
+        "dedup": "false",
+    });
+    if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
+        labels["reporter_email"] = json!(email);
+    }
+    json!({
+        "receiver": "otterworks-webhook",
+        "status": "firing",
+        "alerts": [{
+            "status": "firing",
+            "labels": labels,
+            "annotations": {
+                "summary": format!("Share notification failed: {file_name}"),
+                "description": format!(
+                    "Publishing the file_shared notification event for \"{file_name}\" \
+                     failed in file-service: {error}. The share itself was recorded, \
+                     but the recipient will never receive a notification."
+                ),
+            },
+            "startsAt": chrono::Utc::now().to_rfc3339(),
+        }],
+    })
+}
+
+/// Spawn a background task that POSTs the share-notification-failure alert
+/// to admin-service. Never blocks or alters the caller's response.
+pub fn notify_share_notification_failure(
+    config: &AlertConfig,
+    file_name: &str,
+    error: &str,
+    reporter_email: Option<&str>,
+) {
+    let base_url = config
+        .admin_service_url
+        .trim()
+        .trim_end_matches('/')
+        .to_string();
+    if base_url.is_empty() {
+        tracing::warn!("ADMIN_SERVICE_URL is empty; skipping share-notification alert");
+        return;
+    }
+    let secret = config.alert_webhook_secret.clone();
+    let payload = build_share_notification_failure_payload(file_name, error, reporter_email);
+    let file_name = file_name.to_string();
+
+    tokio::spawn(async move {
+        let url = format!("{base_url}/api/v1/admin/alerts/ingest");
+        let mut req = http_client().post(&url).json(&payload);
+        if let Some(secret) = secret {
+            req = req.header("X-Alert-Secret", secret);
+        }
+        match req.send().await {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!(file_name = %file_name, "Share-notification-failure alert delivered to admin-service");
+            }
+            Ok(resp) => {
+                tracing::warn!(status = %resp.status(), url = %url, "Share-notification-failure alert rejected by admin-service");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, url = %url, "Failed to deliver share-notification-failure alert");
+            }
+        }
+    });
+}
+
 /// Spawn a background task that POSTs the upload-failure alert to
 /// admin-service. Never blocks or alters the caller's response.
 pub fn notify_upload_failure(
@@ -156,6 +230,37 @@ mod tests {
         };
         // Must return without needing a tokio runtime (no task spawned).
         notify_upload_failure(&config, "a.txt", "boom", None);
+    }
+
+    #[test]
+    fn share_notification_payload_has_grafana_shape() {
+        let payload = build_share_notification_failure_payload(
+            "report.pdf",
+            "NotFound: topic does not exist",
+            Some("user@example.com"),
+        );
+        let alert = &payload["alerts"][0];
+        assert_eq!(
+            alert["labels"]["alertname"],
+            "NotificationEventPublishFailure"
+        );
+        assert_eq!(alert["labels"]["severity"], "critical");
+        assert_eq!(alert["labels"]["affected_service"], "file-service");
+        assert_eq!(alert["labels"]["dedup"], "false");
+        assert_eq!(alert["labels"]["reporter_email"], "user@example.com");
+        let summary = alert["annotations"]["summary"].as_str().unwrap();
+        assert!(summary.contains("report.pdf"));
+        let description = alert["annotations"]["description"].as_str().unwrap();
+        assert!(description.contains("file_shared"));
+        assert!(description.contains("NotFound"));
+        assert!(alert["startsAt"].is_string());
+    }
+
+    #[test]
+    fn share_notification_payload_omits_blank_reporter_email() {
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None);
+        let alert = &payload["alerts"][0];
+        assert!(alert["labels"].get("reporter_email").is_none());
     }
 
     #[actix_rt::test]

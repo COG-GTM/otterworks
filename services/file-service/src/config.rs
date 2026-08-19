@@ -33,6 +33,10 @@ pub struct AwsConfig {
 #[derive(Clone, Debug)]
 pub struct SnsConfig {
     pub topic_arn: Option<String>,
+    /// When true, the `file_shared` event is published to a nonexistent SNS
+    /// topic, so every share click fails with a real AWS SNS error. Off
+    /// unless explicitly enabled per tenant.
+    pub share_event_always_fail: bool,
 }
 
 impl AppConfig {
@@ -97,7 +101,10 @@ impl AwsConfig {
 impl SnsConfig {
     pub fn from_env() -> Self {
         Self {
-            topic_arn: env::var("SNS_TOPIC_ARN").ok(),
+            topic_arn: env::var("SNS_TOPIC_ARN")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            share_event_always_fail: parse_bool_env("FILE_SHARE_EVENT_ALWAYS_FAIL", false),
         }
     }
 }

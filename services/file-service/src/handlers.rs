@@ -511,11 +511,23 @@ pub async fn restore_file(
 }
 
 pub async fn share_file(
+    req: HttpRequest,
+    config: web::Data<AppConfig>,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
     body: web::Json<ShareFileRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    // Sharer's email, injected by api-gateway from the JWT; carried on
+    // share-notification alerts so admin-service can attribute the incident.
+    let reporter_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
     let file_id: Uuid = path
         .into_inner()
         .parse()
@@ -558,9 +570,18 @@ pub async fn share_file(
 
     meta.put_share(&share).await?;
 
-    let _ = events
+    if let Err(err) = events
         .file_shared(&file_id, &file.owner_id, &body.shared_with)
-        .await;
+        .await
+    {
+        tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
+        alerts::notify_share_notification_failure(
+            &config.alerts,
+            &file.name,
+            &err.to_string(),
+            reporter_email.as_deref(),
+        );
+    }
 
     tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File shared");
     Ok(HttpResponse::Created().json(ShareFileResponse { share }))
