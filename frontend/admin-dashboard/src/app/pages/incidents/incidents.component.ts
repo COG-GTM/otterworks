@@ -95,25 +95,6 @@ const CHAOS_STATE_KEY = 'ow_admin_chaos_state';
               </button>
             </div>
 
-            <div class="chaos-scenario" [class.chaos-active]="chaosState['file-service']">
-              <div class="chaos-scenario-header">
-                <mat-icon class="chaos-svc-icon">cloud_upload</mat-icon>
-                <div>
-                  <div class="chaos-svc-name">File Service <span class="chaos-lang">Rust/Actix-Web</span></div>
-                  <div class="chaos-svc-desc">Uploads routed to nonexistent S3 bucket → AWS NoSuchBucket errors → 500s</div>
-                </div>
-              </div>
-              <div class="chaos-status" *ngIf="chaosState['file-service']">
-                <mat-icon class="chaos-active-icon">bolt</mat-icon>
-                Chaos active — Grafana alert fires in ~30s
-              </div>
-              <button mat-raised-button color="warn" (click)="triggerChaos('file-service', 'upload_s3_error')"
-                [disabled]="!!chaosState['file-service'] || chaosLoading">
-                <mat-icon>{{ chaosState['file-service'] ? 'check' : 'bug_report' }}</mat-icon>
-                {{ chaosState['file-service'] ? 'Breaking...' : 'Break File Uploads' }}
-              </button>
-            </div>
-
             <div class="chaos-scenario" [class.chaos-active]="chaosState['notification-service']">
               <div class="chaos-scenario-header">
                 <mat-icon class="chaos-svc-icon">notifications</mat-icon>
