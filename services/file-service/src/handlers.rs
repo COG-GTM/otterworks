@@ -537,11 +537,11 @@ pub async fn share_file(
     let file = meta.get_file(&file_id).await?;
 
     // Check if share already exists for this file + user
-    if let Some(existing) = meta
+    let (share, created) = if let Some(existing) = meta
         .find_existing_share(&file_id, &body.shared_with)
         .await?
     {
-        // Update permission if different, otherwise return existing
+        // Update permission if different, otherwise keep the existing record
         if existing.permission != body.permission {
             let updated = FileShare {
                 id: existing.id,
@@ -553,23 +553,27 @@ pub async fn share_file(
             };
             meta.put_share(&updated).await?;
             tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File share updated");
-            return Ok(HttpResponse::Ok().json(ShareFileResponse { share: updated }));
+            (updated, false)
+        } else {
+            tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File already shared");
+            (existing, false)
         }
-        tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File already shared");
-        return Ok(HttpResponse::Ok().json(ShareFileResponse { share: existing }));
-    }
-
-    let share = FileShare {
-        id: Uuid::new_v4(),
-        file_id,
-        shared_with: body.shared_with,
-        permission: body.permission.clone(),
-        shared_by: body.shared_by,
-        created_at: Utc::now(),
+    } else {
+        let share = FileShare {
+            id: Uuid::new_v4(),
+            file_id,
+            shared_with: body.shared_with,
+            permission: body.permission.clone(),
+            shared_by: body.shared_by,
+            created_at: Utc::now(),
+        };
+        meta.put_share(&share).await?;
+        (share, true)
     };
 
-    meta.put_share(&share).await?;
-
+    // Every share request attempts the notification event, including re-shares
+    // of an existing record, so a failed publish can be retried by sharing
+    // again rather than silently succeeding against the persisted share.
     if let Err(err) = events
         .file_shared(&file_id, &file.owner_id, &body.shared_with)
         .await
@@ -585,7 +589,11 @@ pub async fn share_file(
     }
 
     tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File shared");
-    Ok(HttpResponse::Created().json(ShareFileResponse { share }))
+    if created {
+        Ok(HttpResponse::Created().json(ShareFileResponse { share }))
+    } else {
+        Ok(HttpResponse::Ok().json(ShareFileResponse { share }))
+    }
 }
 
 pub async fn remove_share(

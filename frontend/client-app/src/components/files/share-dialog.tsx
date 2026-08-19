@@ -55,12 +55,18 @@ export function ShareDialog({
       toast.success(`Shared with ${email.trim()}`);
     } catch (err) {
       let detail = "";
+      let isAwsError = false;
       if (isAxiosError(err)) {
-        const data = err.response?.data as { message?: string } | undefined;
+        const data = err.response?.data as
+          | { error?: string; message?: string }
+          | undefined;
         detail = data?.message ?? "";
+        isAwsError = data?.error === "event_error" || data?.error === "storage_error";
       }
       const message = detail
-        ? `Sharing failed. AWS ${detail}`
+        ? isAwsError
+          ? `Sharing failed. AWS ${detail}`
+          : `Sharing failed: ${detail}`
         : "Sharing failed.";
       setShareError(message);
       toast.error(message);
