@@ -10,6 +10,12 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        # Services whose open incidents a reset closes. Broader than
+        # VALID_SCENARIOS: incidents also arrive from Grafana rules and from
+        # services' own alert paths, and a lingering open incident suppresses
+        # later alerts for the same service via the dedup guard.
+        INCIDENT_CLEANUP_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).freeze
+
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -48,7 +54,7 @@ module Api
           # Resolve any open incidents for chaos-managed services so the next
           # demo run can create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          VALID_SCENARIOS.each_key do |svc|
+          INCIDENT_CLEANUP_SERVICES.each do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|

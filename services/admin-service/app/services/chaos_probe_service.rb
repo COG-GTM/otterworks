@@ -72,8 +72,6 @@ class ChaosProbeService
     http.read_timeout = config.fetch(:read_timeout, 3)
 
     request = case config[:method]
-              when :multipart
-                build_multipart_request(uri)
               when :sqs
                 build_sqs_request(uri)
               when :post
@@ -88,22 +86,6 @@ class ChaosProbeService
     http.request(request)
   rescue StandardError
     nil
-  end
-
-  # Builds a multipart/form-data POST with a small dummy file.
-  def self.build_multipart_request(uri)
-    boundary = "chaos-probe-#{SecureRandom.hex(8)}"
-    body = "--#{boundary}\r\n" \
-           "Content-Disposition: form-data; name=\"file\"; filename=\"probe.txt\"\r\n" \
-           "Content-Type: text/plain\r\n" \
-           "\r\n" \
-           "chaos probe\r\n" \
-           "--#{boundary}--\r\n"
-
-    req = Net::HTTP::Post.new(uri.request_uri)
-    req['Content-Type'] = "multipart/form-data; boundary=#{boundary}"
-    req.body = body
-    req
   end
 
   # Sends an SQS SendMessage request with a malformed timestamp (integer
