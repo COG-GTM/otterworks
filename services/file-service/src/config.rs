@@ -17,6 +17,9 @@ pub struct ServerConfig {
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
+    /// When true, owners with no files get a few demo documents seeded on
+    /// first listing, so share flows are demoable even when uploads fail.
+    pub seed_demo_docs: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -62,6 +65,7 @@ impl ServerConfig {
                 .parse()
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
+            seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
     }
 }

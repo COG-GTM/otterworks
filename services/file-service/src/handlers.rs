@@ -262,10 +262,17 @@ fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<U
 pub async fn list_files(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    s3: web::Data<S3Client>,
+    config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
+    if config.server.seed_demo_docs {
+        if let Some(owner) = owner_id {
+            crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await;
+        }
+    }
     let files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
@@ -587,7 +594,12 @@ pub async fn share_file(
                 &err.to_string(),
                 reporter_email.as_deref(),
             );
-            return Err(err);
+            // Only surface the failure to the caller when the demo switch is
+            // on; otherwise event publishing stays fire-and-forget like the
+            // other handlers, since the share is already persisted.
+            if events.share_publish_forced() {
+                return Err(err);
+            }
         }
     }
 
