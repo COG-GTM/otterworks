@@ -246,6 +246,115 @@ RSpec.describe SlackNotifierService do
     expect(fields).to include("*On-Call:*\n<@U08S7AVJ478>")
   end
 
+  describe 'dynamic Slack lookup via users.lookupByEmail' do
+    def stub_slack_api(lookup_body:)
+      requests = []
+      posted = nil
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      allow(http).to receive(:open_timeout=)
+      allow(http).to receive(:read_timeout=)
+      allow(http).to receive(:request) do |req|
+        requests << req
+        body =
+          if req.uri.path == '/api/users.lookupByEmail'
+            lookup_body
+          else
+            posted = JSON.parse(req.body)
+            '{"ok":true}'
+          end
+        instance_double(Net::HTTPOK).tap do |r|
+          allow(r).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+          allow(r).to receive(:body).and_return(body)
+        end
+      end
+      [requests, -> { posted }]
+    end
+
+    before do
+      allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
+    end
+
+    it 'resolves the reporter to a true mention via users.lookupByEmail' do
+      requests, read_posted = stub_slack_api(
+        lookup_body: '{"ok":true,"user":{"id":"U0DYNAMIC1"}}'
+      )
+
+      described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+
+      lookup = requests.find { |r| r.uri.path == '/api/users.lookupByEmail' }
+      expect(lookup).not_to be_nil
+      expect(lookup.uri.query).to include('email=preston%40example.com')
+      expect(lookup['Authorization']).to eq('Bearer xoxb-test-token')
+      fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+      expect(fields).to include("*On-Call:*\n<@U0DYNAMIC1>")
+    end
+
+    it 'falls back to the plain email when the lookup fails (e.g. missing scope)' do
+      _, read_posted = stub_slack_api(
+        lookup_body: '{"ok":false,"error":"missing_scope"}'
+      )
+
+      described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+
+      fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+      expect(fields).to include("*On-Call:*\npreston@example.com")
+    end
+
+    it 'prefers SLACK_USER_MAP over the API lookup' do
+      allow(ENV).to receive(:fetch).with('SLACK_USER_MAP', nil)
+        .and_return({ 'preston@example.com' => 'U0STATIC99' }.to_json)
+      requests, read_posted = stub_slack_api(
+        lookup_body: '{"ok":true,"user":{"id":"U0DYNAMIC1"}}'
+      )
+
+      described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+
+      expect(requests.map { |r| r.uri.path }).not_to include('/api/users.lookupByEmail')
+      fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+      expect(fields).to include("*On-Call:*\n<@U0STATIC99>")
+    end
+
+    it 'still delivers the alert when the lookup raises' do
+      requests = []
+      posted = nil
+      http = instance_double(Net::HTTP)
+      allow(Net::HTTP).to receive(:new).and_return(http)
+      allow(http).to receive(:use_ssl=)
+      allow(http).to receive(:open_timeout=)
+      allow(http).to receive(:read_timeout=)
+      allow(http).to receive(:request) do |req|
+        requests << req
+        raise Net::OpenTimeout, 'execution expired' if req.uri.path == '/api/users.lookupByEmail'
+
+        posted = JSON.parse(req.body)
+        instance_double(Net::HTTPOK).tap do |r|
+          allow(r).to receive(:is_a?).with(Net::HTTPSuccess).and_return(true)
+          allow(r).to receive(:body).and_return('{"ok":true}')
+        end
+      end
+
+      described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+
+      fields = posted['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+      expect(fields).to include("*On-Call:*\npreston@example.com")
+    end
+
+    it 'skips the lookup entirely when no bot token is configured' do
+      allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return(nil)
+      allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+        .and_return('https://hooks.slack.com/services/T/B/x')
+      read_posted, read_request = stub_post
+
+      described_class.notify_incident(incident: incident, reporter_email: 'preston@example.com')
+
+      expect(read_request.call.uri.host).to eq('hooks.slack.com')
+      fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+      expect(fields).to include("*On-Call:*\npreston@example.com")
+    end
+  end
+
   it 'falls back to the settings-stored webhook when the env var is absent' do
     allow(AdminSettingsService).to receive(:slack_webhook_url)
       .and_return('https://hooks.slack.com/services/T/B/stored')

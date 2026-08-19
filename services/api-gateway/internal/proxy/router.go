@@ -75,6 +75,9 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			if userID != "" {
 				req.Header.Set("X-User-ID", userID)
 			}
+			if claims.Email != "" {
+				req.Header.Set("X-User-Email", claims.Email)
+			}
 		}
 	}
 

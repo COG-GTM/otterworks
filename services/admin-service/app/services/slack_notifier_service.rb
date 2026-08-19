@@ -212,19 +212,51 @@ class SlackNotifierService
     end
 
     # The incident's reporter is the second on-call line. A true @-mention
-    # needs a Slack member id, which an incoming webhook cannot look up from
-    # an email, so SLACK_USER_MAP (a JSON object of email -> Slack member id)
-    # provides the mapping; unmapped reporters appear as their plain email.
-    # SLACK_ONCALL_MEMBER (a Slack member id) is the fallback when the
+    # needs a Slack member id, resolved from the reporter's email via
+    # SLACK_USER_MAP (a JSON object of email -> Slack member id) or, when a
+    # bot token with users:read.email is configured, Slack's
+    # users.lookupByEmail API; unresolvable reporters appear as their plain
+    # email. SLACK_ONCALL_MEMBER (a Slack member id) is the fallback when the
     # incident has no reporter (e.g. Grafana-ingested alerts).
     def human_mention(reporter_email)
       if reporter_email.present?
-        slack_id = slack_user_map[reporter_email]
+        slack_id = slack_user_map[reporter_email] || lookup_member_id(reporter_email)
         return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(reporter_email)
       end
 
       fallback = ENV.fetch('SLACK_ONCALL_MEMBER', nil).presence
       fallback ? "<@#{fallback}>" : nil
+    end
+
+    # Resolves an email to a Slack member id via users.lookupByEmail. Needs
+    # the users:read.email scope on the bot token; any failure (missing
+    # scope, unknown email, transport error) resolves to nil so the caller
+    # falls back to rendering the plain email.
+    def lookup_member_id(email)
+      bot_token = resolve_bot_token
+      return nil unless bot_token
+
+      uri = URI('https://slack.com/api/users.lookupByEmail')
+      uri.query = URI.encode_www_form(email: email)
+      request = Net::HTTP::Get.new(uri)
+      request['Authorization'] = "Bearer #{bot_token}"
+
+      response = http_for(uri).request(request)
+      unless response.is_a?(Net::HTTPSuccess)
+        Rails.logger.warn("Slack users.lookupByEmail returned #{response.code}")
+        return nil
+      end
+
+      body = JSON.parse(response.body) rescue {}
+      unless body['ok']
+        Rails.logger.info("Slack users.lookupByEmail failed: #{body['error']}")
+        return nil
+      end
+
+      body.dig('user', 'id').presence
+    rescue StandardError => e
+      Rails.logger.warn("Slack users.lookupByEmail raised #{e.class}: #{e.message}")
+      nil
     end
 
     def slack_user_map
