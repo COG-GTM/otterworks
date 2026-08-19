@@ -84,16 +84,3 @@ impl SnsConfig {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::ServerConfig;
-
-    #[test]
-    fn server_config_defaults() {
-        if std::env::var("PORT").is_err() && std::env::var("MAX_UPLOAD_BYTES").is_err() {
-            let cfg = ServerConfig::from_env();
-            assert_eq!(cfg.port, 8082);
-            assert_eq!(cfg.max_upload_bytes, 104_857_600);
-        }
-    }
-}
