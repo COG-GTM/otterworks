@@ -1,3 +1,4 @@
+use aws_sdk_sns::error::ProvideErrorMetadata;
 use chrono::Utc;
 use serde::Serialize;
 use uuid::Uuid;
@@ -96,10 +97,11 @@ impl EventPublisher {
         }
 
         req.send().await.map_err(|e| {
-            ServiceError::SnsError(format!(
-                "publish to {topic_arn} failed: {}",
-                aws_smithy_types::error::display::DisplayErrorContext(&e)
-            ))
+            let detail = match (e.code(), e.message()) {
+                (Some(code), Some(msg)) => format!("{code}: {msg}"),
+                _ => e.to_string(),
+            };
+            ServiceError::SnsError(format!("publish to {topic_arn} failed: {detail}"))
         })?;
 
         tracing::info!(
