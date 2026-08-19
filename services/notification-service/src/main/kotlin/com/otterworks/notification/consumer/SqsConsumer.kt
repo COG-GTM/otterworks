@@ -117,6 +117,7 @@ class SqsConsumer(
             } catch (e: Exception) {
                 logger.error(e) { "Error polling SQS" }
                 if (config.sqsAlwaysFail) {
+                    processingErrorsCounter?.increment()
                     try {
                         alertPublisher?.notifyConsumerFailure(
                             "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
