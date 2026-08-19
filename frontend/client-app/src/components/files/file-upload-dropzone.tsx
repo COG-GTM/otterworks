@@ -37,6 +37,9 @@ export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 const TOO_LARGE_ERROR = `File is too large — the limit is ${formatFileSize(MAX_UPLOAD_BYTES)}`;
 
+/** A 413 for a file under the limit means a proxy hop has a smaller body limit. */
+const SERVER_TOO_LARGE_ERROR = "Server rejected this file as too large";
+
 function isTooLargeError(err: unknown): boolean {
   return isAxiosError(err) && err.response?.status === 413;
 }
@@ -127,14 +130,20 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
-            const tooLarge = isTooLargeError(err);
+            const rejectedTooLarge = isTooLargeError(err);
+            const exceedsLimit = entry.file.size > MAX_UPLOAD_BYTES;
+            const tooLarge = rejectedTooLarge && exceedsLimit;
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
                   ? {
                       ...f,
                       status: "error" as const,
-                      error: tooLarge ? TOO_LARGE_ERROR : "Upload failed",
+                      error: rejectedTooLarge
+                        ? exceedsLimit
+                          ? TOO_LARGE_ERROR
+                          : SERVER_TOO_LARGE_ERROR
+                        : "Upload failed",
                       tooLarge,
                       abortController: undefined,
                     }
