@@ -2,6 +2,7 @@ module Api
   module V1
     module Admin
       class IncidentsController < ApplicationController
+        before_action :require_admin!, only: %i[create update destroy trigger_session]
         before_action :set_incident, only: %i[show update destroy trigger_session]
 
         # GET /api/v1/admin/incidents
@@ -55,6 +56,12 @@ module Api
                 devin_session_status: 'running'
               )
             end
+
+            SlackNotifierService.notify_incident(
+              incident: incident,
+              session_url: session_result&.dig(:url),
+              reporter_email: current_user_email
+            )
 
             AuditLogger.log(
               action: 'incident.created',
@@ -144,6 +151,11 @@ module Api
               devin_session_id: session_result[:session_id],
               devin_session_url: session_result[:url],
               devin_session_status: 'running'
+            )
+            SlackNotifierService.notify_incident(
+              incident: @incident,
+              session_url: session_result[:url],
+              reporter_email: current_user_email
             )
             render json: @incident, serializer: IncidentSerializer
           else

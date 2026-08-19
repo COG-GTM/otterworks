@@ -14,6 +14,11 @@ COPY . .
 RUN useradd -r -u 1001 appuser && mkdir -p /app/tmp/pids /app/tmp/cache /app/log && chown -R appuser:appuser /app/tmp /app/log
 USER appuser
 
+# Tenant deploys don't wire Redis config for admin-service; the per-tenant
+# Redis Service is named `redis`, so bake the in-cluster default into the
+# image (same approach as file-service). Any explicit env still overrides.
+ENV REDIS_HOST=redis
+
 EXPOSE 8089
 HEALTHCHECK --interval=15s --timeout=5s CMD curl -f http://localhost:8089/health || exit 1
 CMD ["sh", "-c", "bundle exec rails db:migrate; bundle exec rails server -b 0.0.0.0 -p 8089"]
