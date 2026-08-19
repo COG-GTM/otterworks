@@ -22,8 +22,11 @@
    ```
    S3_BUCKET=$(kubectl get deploy/file-service -n otterworks \
      -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="S3_BUCKET")].value}')
-   echo "configured bucket: ${S3_BUCKET:-<unset, resolved from ConfigMap/Secret>}"
-   aws s3api head-bucket --bucket "$S3_BUCKET"
+   # Tenant deploys usually set it via envFrom, so fall back to the ConfigMap.
+   : "${S3_BUCKET:=$(kubectl get cm -n otterworks -l app=file-service \
+     -o jsonpath='{.items[*].data.S3_BUCKET}')}"
+   echo "configured bucket: ${S3_BUCKET:-<not found>}"
+   [ -n "$S3_BUCKET" ] && aws s3api head-bucket --bucket "$S3_BUCKET"
    ```
 
 <!-- TODO: Complete investigation steps -->
