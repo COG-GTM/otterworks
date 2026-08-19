@@ -66,6 +66,12 @@ impl EventPublisher {
         }
     }
 
+    /// Whether the share-event failure switch is on, in which case every
+    /// share request (including re-shares) attempts the publish.
+    pub fn share_publish_forced(&self) -> bool {
+        self.share_fail_topic_arn.is_some()
+    }
+
     async fn publish(&self, event: &FileEvent) -> Result<(), ServiceError> {
         self.publish_to(event, self.topic_arn.as_deref()).await
     }

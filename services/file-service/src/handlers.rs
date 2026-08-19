@@ -571,21 +571,24 @@ pub async fn share_file(
         (share, true)
     };
 
-    // Every share request attempts the notification event, including re-shares
-    // of an existing record, so a failed publish can be retried by sharing
-    // again rather than silently succeeding against the persisted share.
-    if let Err(err) = events
-        .file_shared(&file_id, &file.owner_id, &body.shared_with)
-        .await
-    {
-        tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
-        alerts::notify_share_notification_failure(
-            &config.alerts,
-            &file.name,
-            &err.to_string(),
-            reporter_email.as_deref(),
-        );
-        return Err(err);
+    // The notification event is published for new shares only, so re-shares
+    // and permission updates don't send duplicate notifications. When the
+    // share-event failure switch is on, every share request attempts the
+    // publish so a failed attempt can be retried by sharing again.
+    if created || events.share_publish_forced() {
+        if let Err(err) = events
+            .file_shared(&file_id, &file.owner_id, &body.shared_with)
+            .await
+        {
+            tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
+            alerts::notify_share_notification_failure(
+                &config.alerts,
+                &file.name,
+                &err.to_string(),
+                reporter_email.as_deref(),
+            );
+            return Err(err);
+        }
     }
 
     tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File shared");
