@@ -18,6 +18,9 @@ description: How to test OtterWorks' failed-upload → admin-service → Slack a
   (DEL to clear). file-service then targets a nonexistent S3 bucket → 500 storage_error.
 - Same flag is what the admin dashboard's "Break File Uploads" demo control sets (with a 10-min TTL).
 - Alternative: `FILE_UPLOAD_ALWAYS_FAIL=true` compose env.
+- Upload-failure alerts carry `dedup=false`, so every failed upload opens a new incident and a
+  new Slack message (unlike Grafana-ingested alerts, which dedupe against an open incident for
+  the same service) — safe to repeat for multiple test runs.
 
 ## Users / logins
 - Web app registration is open at http://localhost:3000/register (min 8-char password).
@@ -27,16 +30,18 @@ description: How to test OtterWorks' failed-upload → admin-service → Slack a
   (seeded by auth-service migration V1). Incidents page: /incidents.
 
 ## Verifying the Slack side
-- Alerts go to #automated-alerts (channel id C0ALNRR4PSQ, team "Cog GTM [DEMO]"). The Devin Slack
+- Alerts go to #automated-alerts (as of 2026-08: channel id C0ALNRR4PSQ, team "Cog GTM [DEMO]";
+  re-resolve via the Slack tool if the workspace changes). The Devin Slack
   tool can read this channel's history directly — easier than conversations.history with the bot
   token (bot scopes are only chat:write, users:read, users:read.email).
 - A resolved reporter renders as `<@MEMBERID>` in the second *On-Call* field; unresolvable emails
   render as the plain email and admin-service logs
   `Slack users.lookupByEmail failed: users_not_found` (visible via `docker logs otterworks-admin-service`).
-- preston.pressoir@cognition.ai resolves to Slack member U0B6ZD08Q3W.
+- Example (as of 2026-08): preston.pressoir@cognition.ai resolves to Slack member U0B6ZD08Q3W.
 
 ## Devin session link in alerts
-- Only appears if `DEVIN_API_KEY`/`DEVIN_ORG_ID` are bound into admin-service's env; otherwise the
+- Requires both `DEVIN_API_KEY`/`DEVIN_ORG_ID` bound into admin-service's env AND auto-investigate
+  enabled in admin settings (`AdminSettingsService.auto_investigate_enabled?`, default on); otherwise the
   alert shows ":robot_face: No Devin session" and the incident shows a "Launch Devin" button —
   that is normal, not a failure. Binding the real key spawns real Devin sessions per alert, so
   avoid it unless the test requires it.
