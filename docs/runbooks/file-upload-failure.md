@@ -20,8 +20,10 @@
    ```
 2. Check the bucket file-service is actually writing to, and that it exists:
    ```
-   kubectl -n otterworks get deploy/file-service -o jsonpath='{.spec.template.spec.containers[0].env}'
-   aws s3api head-bucket --bucket "$S3_BUCKET"
+   bucket=$(kubectl -n otterworks get deploy/file-service \
+     -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="S3_BUCKET")].value}')
+   echo "file-service writes to: ${bucket}"
+   aws s3api head-bucket --bucket "${bucket}"
    ```
 
 <!-- TODO: Complete investigation steps -->
