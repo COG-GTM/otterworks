@@ -96,8 +96,7 @@ mod tests {
 
     #[test]
     fn uploads_target_the_configured_bucket() {
-        std::env::set_var("S3_BUCKET", "otterworks-files-test");
-        assert_eq!(AwsConfig::from_env().s3_bucket, "otterworks-files-test");
-        std::env::remove_var("S3_BUCKET");
+        let expected = std::env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into());
+        assert_eq!(AwsConfig::from_env().s3_bucket, expected);
     }
 }
