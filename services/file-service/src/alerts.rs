@@ -29,7 +29,13 @@ fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
+            // Generous, because ingest handles the incident, the Devin session
+            // and the Slack notification synchronously, and a Puma that has
+            // bound its socket but not yet booted its workers queues the
+            // request instead of refusing it. Waiting it out delivers the
+            // alert; timing out would drop it, since a timed-out request may
+            // already have been processed and is therefore not retried.
+            .timeout(std::time::Duration::from_secs(60))
             // Separate from the overall timeout so a stalled connect surfaces
             // as a connect error (retryable) rather than a response timeout.
             .connect_timeout(std::time::Duration::from_secs(3))
@@ -323,10 +329,10 @@ mod tests {
 
     #[actix_rt::test]
     async fn a_stalled_connect_is_a_connect_error_not_a_response_timeout() {
-        // Unroutable address: the SYN goes unanswered, so the connect phase
-        // times out. It must classify as retryable, unlike a response timeout.
+        // TEST-NET-1 (RFC 5737): no host answers, so the connect phase times
+        // out. It must classify as retryable, unlike a response timeout.
         let err = http_client()
-            .post("http://10.255.255.1:8089/ingest")
+            .post("http://192.0.2.1:8089/ingest")
             .send()
             .await
             .unwrap_err();
