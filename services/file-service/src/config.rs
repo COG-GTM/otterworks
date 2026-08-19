@@ -43,17 +43,22 @@ impl AppConfig {
     }
 }
 
+const DEFAULT_PORT: u16 = 8082;
+const DEFAULT_MAX_UPLOAD_BYTES: u64 = 104_857_600; // 100 MB
+
+/// Parses `raw`, falling back to `default` when unset or unparseable.
+fn parse_or_default<T: std::str::FromStr>(raw: Option<&str>, default: T) -> T {
+    raw.and_then(|v| v.trim().parse().ok()).unwrap_or(default)
+}
+
 impl ServerConfig {
     pub fn from_env() -> Self {
         Self {
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "8082".into())
-                .parse()
-                .unwrap_or(8082),
-            max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
-                .unwrap_or_else(|_| "104857600".into()) // 100 MB
-                .parse()
-                .unwrap_or(104_857_600),
+            port: parse_or_default(env::var("PORT").ok().as_deref(), DEFAULT_PORT),
+            max_upload_bytes: parse_or_default(
+                env::var("MAX_UPLOAD_BYTES").ok().as_deref(),
+                DEFAULT_MAX_UPLOAD_BYTES,
+            ),
         }
     }
 }
@@ -86,16 +91,25 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerConfig;
+    use super::{parse_or_default, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_PORT};
 
     #[test]
-    fn server_config_defaults() {
-        let cfg = ServerConfig::from_env();
-        if std::env::var("MAX_UPLOAD_BYTES").is_err() {
-            assert_eq!(cfg.max_upload_bytes, 104_857_600);
+    fn parse_or_default_falls_back_when_unset_or_invalid() {
+        for raw in [None, Some(""), Some("  "), Some("not-a-number")] {
+            assert_eq!(parse_or_default(raw, DEFAULT_PORT), DEFAULT_PORT);
         }
-        if std::env::var("PORT").is_err() {
-            assert_eq!(cfg.port, 8082);
-        }
+        assert_eq!(
+            parse_or_default(None, DEFAULT_MAX_UPLOAD_BYTES),
+            DEFAULT_MAX_UPLOAD_BYTES
+        );
+    }
+
+    #[test]
+    fn parse_or_default_uses_the_provided_value() {
+        assert_eq!(parse_or_default(Some(" 9090 "), DEFAULT_PORT), 9090u16);
+        assert_eq!(
+            parse_or_default(Some("1024"), DEFAULT_MAX_UPLOAD_BYTES),
+            1024u64
+        );
     }
 }
