@@ -1,8 +1,8 @@
 package com.otterworks.report.util;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -48,7 +48,7 @@ public final class ReportDateUtils {
         if (date == null) {
             return null;
         }
-        // LEGACY: Commons Lang 2 DateFormatUtils
+        // LEGACY: Commons Lang DateFormatUtils instead of java.time formatters
         return DateFormatUtils.formatUTC(date, "yyyy-MM-dd'T'HH:mm:ss'Z'");
     }
 
@@ -85,7 +85,7 @@ public final class ReportDateUtils {
             return null;
         }
         try {
-            // LEGACY: Commons Lang 2 DateUtils.parseDate
+            // LEGACY: Commons Lang DateUtils.parseDate instead of java.time parsing
             return DateUtils.parseDate(dateString, new String[]{
                     "yyyy-MM-dd'T'HH:mm:ss'Z'",
                     "yyyy-MM-dd'T'HH:mm:ssZ",
@@ -126,7 +126,7 @@ public final class ReportDateUtils {
 
     /**
      * Subtract days from a date.
-     * LEGACY: Commons Lang 2 DateUtils.addDays with negative value.
+     * LEGACY: Commons Lang DateUtils.addDays with a negative value instead of java.time.
      */
     public static Date daysAgo(int days) {
         return DateUtils.addDays(new Date(), -days);
