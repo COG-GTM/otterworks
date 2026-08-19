@@ -88,7 +88,13 @@ impl SnsConfig {
 mod tests {
     #[test]
     fn s3_bucket_comes_from_the_environment() {
-        std::env::set_var("S3_BUCKET", "otterworks-files");
-        assert_eq!(super::AwsConfig::from_env().s3_bucket, "otterworks-files");
+        let previous = std::env::var("S3_BUCKET").ok();
+        std::env::set_var("S3_BUCKET", "otterworks-files-test");
+        let bucket = super::AwsConfig::from_env().s3_bucket;
+        match previous {
+            Some(value) => std::env::set_var("S3_BUCKET", value),
+            None => std::env::remove_var("S3_BUCKET"),
+        }
+        assert_eq!(bucket, "otterworks-files-test");
     }
 }
