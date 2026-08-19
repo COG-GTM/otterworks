@@ -3,6 +3,7 @@ package com.otterworks.notification.consumer
 import aws.sdk.kotlin.services.sqs.SqsClient
 import aws.sdk.kotlin.services.sqs.model.DeleteMessageRequest
 import aws.sdk.kotlin.services.sqs.model.ReceiveMessageRequest
+import com.otterworks.notification.alerts.AlertPublisher
 import com.otterworks.notification.config.AppConfig
 import com.otterworks.notification.model.SqsNotificationMessage
 import com.otterworks.notification.service.NotificationService
@@ -39,6 +40,7 @@ class SqsConsumer(
     private val notificationService: NotificationService,
     private val config: AppConfig,
     meterRegistry: MeterRegistry? = null,
+    private val alertPublisher: AlertPublisher? = null,
 ) {
     private val processingErrorsCounter: Counter? =
         meterRegistry?.counter("notifications.processing.errors")
@@ -61,12 +63,15 @@ class SqsConsumer(
     }
 
     suspend fun startPolling() = coroutineScope {
-        logger.info { "Starting SQS consumer polling: ${config.sqsQueueUrl}" }
+        logger.info { "Starting SQS consumer polling: ${config.effectiveSqsQueueUrl}" }
+        if (config.sqsAlwaysFail) {
+            logger.warn { "NOTIFICATION_SQS_ALWAYS_FAIL is enabled: polling a nonexistent SQS queue" }
+        }
 
         while (isActive) {
             try {
                 val request = ReceiveMessageRequest {
-                    queueUrl = config.sqsQueueUrl
+                    queueUrl = config.effectiveSqsQueueUrl
                     maxNumberOfMessages = config.sqsMaxMessages
                     waitTimeSeconds = config.sqsWaitTimeSeconds
                 }
@@ -88,7 +93,7 @@ class SqsConsumer(
                                 notificationService.processEvent(event)
 
                                 val deleteRequest = DeleteMessageRequest {
-                                    queueUrl = config.sqsQueueUrl
+                                    queueUrl = config.effectiveSqsQueueUrl
                                     receiptHandle = msg.receiptHandle
                                 }
                                 sqsClient.deleteMessage(deleteRequest)
@@ -96,6 +101,9 @@ class SqsConsumer(
                             } else {
                                 processingErrorsCounter?.increment()
                                 logger.warn { "Failed to parse SQS message: ${msg.messageId}" }
+                                alertPublisher?.notifyConsumerFailure(
+                                    "Message ${msg.messageId} failed deserialization and was left in the queue"
+                                )
                             }
                         } catch (e: Exception) {
                             logger.error(e) { "Error processing SQS message: ${msg.messageId}" }
@@ -108,13 +116,18 @@ class SqsConsumer(
                 }
             } catch (e: Exception) {
                 logger.error(e) { "Error polling SQS" }
+                if (config.sqsAlwaysFail) {
+                    alertPublisher?.notifyConsumerFailure(
+                        "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
+                    )
+                }
                 delay(config.sqsPollIntervalMs * 2)
             }
         }
     }
 
     internal fun parseMessage(body: String): SqsNotificationMessage? {
-        val parser = if (chaosActive("chaos:notification-service:consumer_strict_schema")) strictJson else json
+        val parser = if (config.strictSchema || chaosActive("chaos:notification-service:consumer_strict_schema")) strictJson else json
         return try {
             // Try parsing as direct message first
             parser.decodeFromString<SqsNotificationMessage>(body)

@@ -69,6 +69,23 @@ scenarios:
       may never reach the pod). Turning it off therefore means setting the value
       to false explicitly -- the pod template's ConfigMap checksum rolls the pod.
 
+  notification-queue-fail:
+    mechanism: config
+    service: notification-service
+    set: "config.NOTIFICATION_SQS_ALWAYS_FAIL=true"
+    description: >
+      Permanent SQS failure point: the NOTIFICATION_SQS_ALWAYS_FAIL env var
+      points the notification consumer at a nonexistent SQS queue, so every
+      ReceiveMessage poll fails with a real AWS SQS error
+      (QueueDoesNotExist). The consumer fires the
+      NotificationConsumerProcessingErrors alert at admin-service's ingest
+      endpoint (rate-limited; dedup keeps one open incident per service), so
+      a Devin session is created even on tenants without Grafana. Already ON
+      for the coggtm tenant: the demo branch bakes the variable into the
+      notification-service image's Dockerfile. NOTIFICATION_STRICT_SCHEMA is
+      the durable env equivalent of the notification-schema chaos flag
+      (deserialization failures; needs live message traffic).
+
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
   # re-deploy the tenant with the golden tag.
