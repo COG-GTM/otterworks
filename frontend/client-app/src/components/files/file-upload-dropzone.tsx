@@ -186,6 +186,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     if (entry && !entry.tooLarge) startUpload(entry);
   };
 
+  const removeUpload = (id: string) => {
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+  };
+
   const clearCompleted = () => {
     setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
   };
@@ -289,7 +293,15 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
               )}
               {item.status === "error" && (
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  {!item.tooLarge && (
+                  {item.tooLarge ? (
+                    <button
+                      onClick={() => removeUpload(item.id)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition"
+                      title="Remove file"
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : (
                     <button
                       onClick={() => retryUpload(item.id)}
                       className="p-1 text-gray-400 hover:text-otter-600 transition"
