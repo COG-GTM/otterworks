@@ -20,6 +20,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
 import { Subscription, interval } from 'rxjs';
 
 const CHAOS_STATE_KEY = 'ow_admin_chaos_state';
+const CHAOS_SERVICES = ['search-service', 'notification-service', 'document-service'];
 
 @Component({
   selector: 'app-incidents',
@@ -480,7 +481,10 @@ export class IncidentsComponent implements OnInit, OnDestroy {
     const stored = localStorage.getItem(CHAOS_STATE_KEY);
     if (stored) {
       try {
-        this.chaosState = JSON.parse(stored);
+        const parsed = JSON.parse(stored) as Record<string, boolean>;
+        this.chaosState = Object.fromEntries(
+          Object.entries(parsed).filter(([service]) => CHAOS_SERVICES.includes(service))
+        );
       } catch {
         this.chaosState = {};
       }
