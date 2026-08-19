@@ -63,7 +63,7 @@ impl AwsConfig {
         Self {
             region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into()),
             endpoint_url: env::var("AWS_ENDPOINT_URL").ok(),
-            s3_bucket: env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into()),
+            s3_bucket: resolve_s3_bucket(env::var("S3_BUCKET").ok()),
             dynamodb_table: env::var("DYNAMODB_TABLE")
                 .unwrap_or_else(|_| "otterworks-file-metadata".into()),
             dynamodb_folders_table: env::var("DYNAMODB_FOLDERS_TABLE")
@@ -76,6 +76,12 @@ impl AwsConfig {
     }
 }
 
+fn resolve_s3_bucket(configured: Option<String>) -> String {
+    configured
+        .filter(|b| !b.trim().is_empty())
+        .unwrap_or_else(|| "otterworks-files".into())
+}
+
 impl SnsConfig {
     pub fn from_env() -> Self {
         Self {
@@ -86,15 +92,19 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::AwsConfig;
+    use super::resolve_s3_bucket;
 
     #[test]
-    fn s3_bucket_comes_from_env_with_a_real_default() {
-        std::env::remove_var("S3_BUCKET");
-        assert_eq!(AwsConfig::from_env().s3_bucket, "otterworks-files");
+    fn s3_bucket_uses_the_configured_value() {
+        assert_eq!(
+            resolve_s3_bucket(Some("otterworks-files-tenant".into())),
+            "otterworks-files-tenant"
+        );
+    }
 
-        std::env::set_var("S3_BUCKET", "otterworks-files-tenant");
-        assert_eq!(AwsConfig::from_env().s3_bucket, "otterworks-files-tenant");
-        std::env::remove_var("S3_BUCKET");
+    #[test]
+    fn s3_bucket_falls_back_to_the_real_default() {
+        assert_eq!(resolve_s3_bucket(None), "otterworks-files");
+        assert_eq!(resolve_s3_bucket(Some("  ".into())), "otterworks-files");
     }
 }
