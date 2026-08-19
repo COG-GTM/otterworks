@@ -28,20 +28,31 @@ initialize: |
 
   export ANDROID_HOME=$HOME/Android/Sdk
   mkdir -p $ANDROID_HOME/cmdline-tools
-  if [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
-    curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-    unzip -q -o /tmp/cmdtools.zip -d $ANDROID_HOME/cmdline-tools
-    mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-  fi
+  # sdkmanager >=19 is required: API 37 ships only as minor-versioned packages
+  # (platforms;android-37.0), declared in SDK repository XML v4. sdkmanager 12 understands v3
+  # only; it installs the platform without complaining but records it under the old schema,
+  # which AGP 8.13's SDK loader will not match to compileSdk 37 -- assembleDebug then dies with
+  # "Failed to find target with hash string 'android-37'". Same package list installed with
+  # sdkmanager 19 builds fine. Re-installed whenever the on-disk tools predate 19.
   SDKM=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+  SDKM_MAJOR=$("$SDKM" --version 2>/dev/null | grep -Eo '^[0-9]+' | head -n1)
+  if [ "${SDKM_MAJOR:-0}" -lt 19 ]; then
+    # Download and unpack fully before dropping the old tools, so a failed fetch leaves a
+    # working cmdline-tools/latest behind instead of an empty SDK.
+    curl -fsSL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip \
+      && rm -rf /tmp/cmdtools && unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools \
+      && rm -rf $ANDROID_HOME/cmdline-tools/latest \
+      && mv /tmp/cmdtools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest \
+      || { echo "failed to install Android cmdline-tools 19"; exit 1; }
+  fi
   yes | $SDKM --licenses >/dev/null
   # Build against API 37, but emulate API 36: the android-37.0 image crash-loops SurfaceFlinger
   # here ("Assertion failed: !rcEnc->featureInfo()->hasReadColorBufferDma") on every software
   # renderer, since the microVM has no GPU. minSdk is 24, so the API 37 APK runs on API 36.
-  # Retry + verify: a partially-failed sdkmanager run doesn't stop the script here, but
+  # Retry + verify: a partially-failed sdkmanager run doesn't stop the script here, and
   # surfaces later at assembleDebug as a misleading "Failed to find target with hash string
-  # 'android-37'" (AGP's auto-installer then races in and can't satisfy it, since only the
-  # minor-versioned "platforms;android-37.0" package exists upstream).
+  # 'android-37'" -- the same symptom the cmdline-tools version guard above addresses, so
+  # both causes (stale tools, incomplete download) have to be ruled out here.
   sdk_complete() {
     # package.xml is written on install finalization; the payload artifact catches a
     # package whose metadata survived but whose payload is missing or zero-byte.
