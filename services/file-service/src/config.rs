@@ -77,9 +77,7 @@ impl AwsConfig {
 }
 
 fn resolve_s3_bucket(configured: Option<String>) -> String {
-    configured
-        .filter(|b| !b.trim().is_empty())
-        .unwrap_or_else(|| "otterworks-files".into())
+    configured.unwrap_or_else(|| "otterworks-files".into())
 }
 
 impl SnsConfig {
@@ -103,8 +101,12 @@ mod tests {
     }
 
     #[test]
-    fn s3_bucket_falls_back_to_the_real_default() {
+    fn s3_bucket_falls_back_to_the_real_default_when_unset() {
         assert_eq!(resolve_s3_bucket(None), "otterworks-files");
-        assert_eq!(resolve_s3_bucket(Some("  ".into())), "otterworks-files");
+    }
+
+    #[test]
+    fn s3_bucket_keeps_an_explicitly_empty_value() {
+        assert_eq!(resolve_s3_bucket(Some(String::new())), "");
     }
 }
