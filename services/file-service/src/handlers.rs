@@ -150,17 +150,15 @@ pub async fn upload_file(
     // A transient chaos flag in the tenant's Redis can route uploads at a
     // nonexistent bucket for failure-path drills; absent it, uploads go to the
     // configured bucket.
-    let effective_bucket = if chaos_active(
+    let chaos = chaos_active(
         &mut redis_cm.get_ref().clone(),
         "chaos:file-service:upload_s3_error",
     )
-    .await
-    {
+    .await;
+    if chaos {
         tracing::warn!("Chaos flag active: redirecting upload to nonexistent bucket");
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else {
-        s3.bucket.clone()
-    };
+    }
+    let effective_bucket = resolve_upload_bucket(chaos, &s3.bucket);
     let upload_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
         bucket: effective_bucket,
@@ -234,6 +232,16 @@ pub async fn get_file_metadata(
         file,
         shared_with: shares,
     }))
+}
+
+/// Bucket an upload is written to: the configured bucket, unless a transient
+/// chaos flag is redirecting uploads at a nonexistent one for a failure drill.
+fn resolve_upload_bucket(chaos_active: bool, configured_bucket: &str) -> String {
+    if chaos_active {
+        "otterworks-files-chaos-nonexistent".to_string()
+    } else {
+        configured_bucket.to_string()
+    }
 }
 
 /// Resolve the effective owner_id for list operations.
@@ -784,6 +792,22 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_bucket_is_the_configured_one_without_chaos() {
+        assert_eq!(
+            resolve_upload_bucket(false, "otterworks-files"),
+            "otterworks-files"
+        );
+    }
+
+    #[test]
+    fn upload_bucket_is_redirected_while_chaos_is_active() {
+        assert_eq!(
+            resolve_upload_bucket(true, "otterworks-files"),
+            "otterworks-files-chaos-nonexistent"
+        );
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
