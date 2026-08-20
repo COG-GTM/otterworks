@@ -54,7 +54,8 @@ serviceAccount:
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
 config:
   # When true, file-service writes uploads to a nonexistent S3 bucket and every
-  # upload returns 5xx. This must stay false; any other value breaks uploads.
+  # upload returns 5xx. The chart default must stay false; only a deliberate
+  # per-tenant override may set it true.
   FILE_UPLOAD_ALWAYS_FAIL: "false"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
