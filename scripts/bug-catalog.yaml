@@ -94,8 +94,10 @@ scenarios:
     description: >
       Click-triggered notification failure: with FILE_SHARE_EVENT_ALWAYS_FAIL
       set, a user clicking "Share" makes file-service publish the file_shared
-      notification event to a nonexistent SNS topic, so the publish fails
-      with a real AWS SNS error. The share itself succeeds, but file-service
+      notification event to a nonexistent SNS topic (the real topic name with
+      a plausible "-v2" suffix), so the publish fails with a real AWS SNS
+      NotFound error. The share record is persisted, but the request returns
+      the error so the UI shows a red failure banner, and file-service
       fires the NotificationEventPublishFailure alert at admin-service's
       ingest endpoint (dedup=false: one incident + Devin session + Slack
       message per share, attributed to the sharing user via reporter_email).
