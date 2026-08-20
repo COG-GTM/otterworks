@@ -56,6 +56,13 @@ config:
   # When true, file-service writes every upload to a nonexistent S3 bucket and
   # returns 5xx. Must stay off outside a deliberate failure-injection exercise.
   FILE_UPLOAD_ALWAYS_FAIL: "false"
+  # Demo-variant switches, kept in agreement with the image ENVs: every Share
+  # click publishes file_shared to a nonexistent SNS topic (real AWS NotFound ->
+  # red banner + incident + Slack alert), and users with no files get a few demo
+  # documents seeded so the share flow stays demoable. Both OFF on the golden
+  # app; disable per tenant with an explicit value, with the redeploy caveat.
+  FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
+  FILE_SEED_DEMO_DOCS: "true"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
