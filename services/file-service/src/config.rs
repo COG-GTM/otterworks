@@ -138,6 +138,15 @@ mod tests {
     }
 
     #[test]
+    fn image_does_not_bake_upload_always_fail() {
+        assert!(
+            !include_str!("../Dockerfile").contains("FILE_UPLOAD_ALWAYS_FAIL"),
+            "the file-service image must not pin FILE_UPLOAD_ALWAYS_FAIL: baking it in \
+             forces every upload to a nonexistent S3 bucket in the deployed environment"
+        );
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
