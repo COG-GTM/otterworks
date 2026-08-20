@@ -19,6 +19,8 @@ class SlackNotifierService
   BOT_TOKEN_SHAPE = /\Axoxb-\S+\z/
   SECTION_MAX = 3000
   FIELD_MAX = 2000
+  LOOKUP_CACHE_LIMIT = 1000
+  LOOKUP_CACHE_MUTEX = Mutex.new
 
   class << self
     def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
@@ -212,19 +214,71 @@ class SlackNotifierService
     end
 
     # The incident's reporter is the second on-call line. A true @-mention
-    # needs a Slack member id, which an incoming webhook cannot look up from
-    # an email, so SLACK_USER_MAP (a JSON object of email -> Slack member id)
-    # provides the mapping; unmapped reporters appear as their plain email.
-    # SLACK_ONCALL_MEMBER (a Slack member id) is the fallback when the
+    # needs a Slack member id, resolved from the reporter's email via
+    # SLACK_USER_MAP (a JSON object of email -> Slack member id) or, when a
+    # bot token with users:read.email is configured, Slack's
+    # users.lookupByEmail API; unresolvable reporters appear as their plain
+    # email. SLACK_ONCALL_MEMBER (a Slack member id) is the fallback when the
     # incident has no reporter (e.g. Grafana-ingested alerts).
     def human_mention(reporter_email)
-      if reporter_email.present?
-        slack_id = slack_user_map[reporter_email]
-        return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(reporter_email)
+      email = reporter_email.to_s.strip.downcase
+      if email.present?
+        slack_id = slack_user_map[email] || cached_member_id(email)
+        return slack_id ? "<@#{slack_id}>" : escape_mrkdwn(email)
       end
 
       fallback = ENV.fetch('SLACK_ONCALL_MEMBER', nil).presence
       fallback ? "<@#{fallback}>" : nil
+    end
+
+    # Successful lookups are memoized (per process, bounded) so repeated
+    # alerts from the same reporter do not hit Slack's rate-limited
+    # users.lookupByEmail on every notification. Failures are not cached,
+    # so a reporter who joins Slack later still resolves.
+    def cached_member_id(email)
+      LOOKUP_CACHE_MUTEX.synchronize do
+        @lookup_cache ||= {}
+        return @lookup_cache[email] if @lookup_cache.key?(email)
+      end
+
+      slack_id = lookup_member_id(email)
+      if slack_id
+        LOOKUP_CACHE_MUTEX.synchronize do
+          @lookup_cache[email] = slack_id if @lookup_cache.size < LOOKUP_CACHE_LIMIT
+        end
+      end
+      slack_id
+    end
+
+    # Resolves an email to a Slack member id via users.lookupByEmail. Needs
+    # the users:read.email scope on the bot token; any failure (missing
+    # scope, unknown email, transport error) resolves to nil so the caller
+    # falls back to rendering the plain email.
+    def lookup_member_id(email)
+      bot_token = resolve_bot_token
+      return nil unless bot_token
+
+      uri = URI('https://slack.com/api/users.lookupByEmail')
+      uri.query = URI.encode_www_form(email: email)
+      request = Net::HTTP::Get.new(uri)
+      request['Authorization'] = "Bearer #{bot_token}"
+
+      response = http_for(uri).request(request)
+      unless response.is_a?(Net::HTTPSuccess)
+        Rails.logger.warn("Slack users.lookupByEmail returned #{response.code}")
+        return nil
+      end
+
+      body = JSON.parse(response.body) rescue {}
+      unless body['ok']
+        Rails.logger.info("Slack users.lookupByEmail failed: #{body['error']}")
+        return nil
+      end
+
+      body.dig('user', 'id').presence
+    rescue StandardError => e
+      Rails.logger.warn("Slack users.lookupByEmail raised #{e.class}: #{e.message}")
+      nil
     end
 
     def slack_user_map
@@ -232,7 +286,7 @@ class SlackNotifierService
       return {} unless raw
 
       parsed = JSON.parse(raw)
-      return parsed if parsed.is_a?(Hash)
+      return parsed.transform_keys { |k| k.to_s.strip.downcase } if parsed.is_a?(Hash)
 
       Rails.logger.error('SLACK_USER_MAP must be a JSON object of email -> Slack member id')
       {}
