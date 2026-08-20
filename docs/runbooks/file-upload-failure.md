@@ -22,11 +22,14 @@
    ```
    # config reaches the pod via envFrom, so read it from the running container
    bucket=$(kubectl -n otterworks exec deploy/file-service -- printenv S3_BUCKET)
-   # unset means the tenant's ConfigMap carries no override and the service
-   # falls back to its built-in default, otterworks-files
-   echo "file-service writes to: ${bucket:-otterworks-files (default)}"
+   # deploy-tenant.sh always sets S3_BUCKET (the shared dev bucket, e.g.
+   # otterworks-files-dev), so an unset value means the tenant was deployed
+   # without that wiring and the service falls back to its built-in default
+   echo "file-service writes to: ${bucket:-otterworks-files (code default)}"
    aws s3api head-bucket --bucket "${bucket:-otterworks-files}"
    ```
+   If the variable is unset, treat that as the finding: re-run
+   `scripts/deploy-tenant.sh <ID>` so the release carries `config.S3_BUCKET`.
 
 <!-- TODO: Complete investigation steps -->
 
