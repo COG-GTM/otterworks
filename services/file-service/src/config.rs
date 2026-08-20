@@ -116,7 +116,9 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env, parse_or_default, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_PORT};
+    use super::{
+        parse_bool, parse_bool_env, parse_or_default, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_PORT,
+    };
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
