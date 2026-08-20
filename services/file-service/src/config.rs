@@ -151,7 +151,7 @@ mod tests {
         for line in dockerfile.lines() {
             let stmt = line.trim();
             assert!(
-                !(stmt.starts_with("ENV") && stmt.contains("FILE_UPLOAD_ALWAYS_FAIL")),
+                stmt.starts_with('#') || !stmt.contains("FILE_UPLOAD_ALWAYS_FAIL="),
                 "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {stmt}"
             );
         }
