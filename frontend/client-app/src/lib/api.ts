@@ -647,30 +647,6 @@ export const marginsApi = {
   },
 };
 
-// ── Incidents ─────────────────────────────────────────────────
-export interface Incident {
-  id: string;
-  title: string;
-  status: string;
-  affectedService?: string | null;
-  devinSessionId?: string | null;
-  devinSessionUrl?: string | null;
-  createdAt?: string;
-}
-
-export const incidentsApi = {
-  list: async (): Promise<Incident[]> => {
-    const { data } = await apiClient.get<{ incidents: Incident[] }>("/admin/incidents");
-    return data.incidents ?? [];
-  },
-  // The incident admin-service opens for a failed upload is titled
-  // "File upload failed: <name>"; the newest match is this upload's.
-  findForUpload: async (fileName: string): Promise<Incident | null> => {
-    const incidents = await incidentsApi.list();
-    return incidents.find((i) => i.title?.endsWith(`: ${fileName}`)) ?? null;
-  },
-};
-
 // ── Settings ──────────────────────────────────────────────────
 export const settingsApi = {
   get: async (): Promise<UserSettings> => {

@@ -52,7 +52,16 @@ serviceAccount:
 
 # Non-sensitive service configuration rendered into {{ .Release.Name }}-config
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
-config: {}
+config:
+  # Failure switch: when true the SQS consumer polls a nonexistent queue and
+  # every ReceiveMessage fails with a real AWS SQS error, firing the
+  # NotificationConsumerProcessingErrors alert at admin-service. OFF by
+  # default everywhere (matches the image's Dockerfile default); enable per
+  # tenant with scripts/inject-bug.sh <id> notification-queue-fail, or:
+  #   helm upgrade notification-service infrastructure/helm/notification-service \
+  #     -n otterworks-<id> --reuse-values \
+  #     --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=true
+  NOTIFICATION_SQS_ALWAYS_FAIL: "false"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
