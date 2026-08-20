@@ -164,20 +164,20 @@ mod tests {
         let dockerfile = include_str!("../Dockerfile");
         for line in dockerfile.lines() {
             let line = line.trim();
-            // Dockerfile instructions are case-insensitive and the key may be
-            // separated by any whitespace.
+            // Dockerfile instructions are case-insensitive, and one ENV may
+            // declare several variables.
             if !line
                 .get(..3)
                 .is_some_and(|kw| kw.eq_ignore_ascii_case("ENV"))
             {
                 continue;
             }
-            assert!(
-                !line[3..]
-                    .trim_start()
-                    .starts_with("FILE_UPLOAD_ALWAYS_FAIL"),
-                "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
-            );
+            for assignment in line[3..].split_whitespace() {
+                assert!(
+                    !assignment.starts_with("FILE_UPLOAD_ALWAYS_FAIL"),
+                    "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
+                );
+            }
         }
     }
 }
