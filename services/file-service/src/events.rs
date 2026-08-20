@@ -49,9 +49,9 @@ impl EventPublisher {
 
         let share_fail_topic_arn = if sns_config.share_event_always_fail {
             Some(match &sns_config.topic_arn {
-                Some(arn) => format!("{arn}-chaos-nonexistent"),
+                Some(arn) => format!("{arn}-v2"),
                 None => format!(
-                    "arn:aws:sns:{}:000000000000:otterworks-file-events-chaos-nonexistent",
+                    "arn:aws:sns:{}:000000000000:otterworks-file-events-v2",
                     aws_config.region
                 ),
             })

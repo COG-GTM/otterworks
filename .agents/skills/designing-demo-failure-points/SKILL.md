@@ -17,9 +17,12 @@ switch reaches a live tenant and how incidents spawn Devin sessions — read bot
   SQS consumer = background processing). Check `scripts/bug-catalog.yaml` for
   what already exists.
 - Make the AWS error **real, not simulated**: redirect the operation to a
-  real-looking but nonexistent resource (bucket/topic/queue named
-  `<real-name>-chaos-nonexistent`) so AWS/LocalStack itself returns the error
-  (`NoSuchBucket`, `NotFound: Topic does not exist`, `QueueDoesNotExist`).
+  real-looking but nonexistent resource so AWS/LocalStack itself returns the
+  error (`NoSuchBucket`, `NotFound: Topic does not exist`,
+  `QueueDoesNotExist`). If the resource name can reach the end user (an error
+  banner), pick a plausible name (e.g. `<real-name>-v2`) — an obvious
+  `-chaos-nonexistent` suffix gives away that the failure is injected, which
+  breaks the "treat it as a real bug" demo posture.
   Never delete or mutate real shared AWS resources, and never create new ones.
 - Prefer a **click-triggered** failure (upload, share, etc.): the audience sees
   cause → red banner → Slack alert in seconds. Background failures (consumer
