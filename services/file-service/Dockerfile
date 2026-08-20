@@ -16,14 +16,13 @@ COPY --from=builder /app/target/release/file-service /app/file-service
 RUN useradd -r -u 1001 appuser
 USER appuser
 
-# Click-triggered notification failure: sharing
-# a file publishes the file_shared event to a nonexistent SNS topic, so every
-# share click fails with a real AWS SNS error and fires the
-# NotificationEventPublishFailure alert at admin-service (incident + Devin
-# session + Slack, attributed to the sharing user via reporter_email). The
-# share record is still saved, but the request returns the AWS error so the
-# UI shows a red failure banner. docker-compose.yml passes false, so local
-# stacks behave like the golden app.
+# Click-triggered notification failure: sharing a file publishes the file_shared
+# event to a nonexistent SNS topic, so every share click fails with a real AWS
+# SNS error and fires the NotificationEventPublishFailure alert at admin-service
+# (incident + Devin session + Slack, attributed to the sharing user via
+# reporter_email). The share record is still saved, but the request returns the
+# AWS error so the UI shows a red failure banner. docker-compose.yml passes
+# false, so local stacks behave like the golden app.
 ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
 
 # Seeding gives every user a few demo documents on their first file listing,
