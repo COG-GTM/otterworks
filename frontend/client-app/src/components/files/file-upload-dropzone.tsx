@@ -76,8 +76,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     const allDone = uploadingFiles.every((f) => f.status === "done");
     const hasUploading = uploadingFiles.some((f) => f.status === "uploading");
 
-    if (!uploadingFiles.some((f) => f.status === "error")) {
+    if (!uploadingFiles.some((f) => f.status === "error" && f.errorKind === "failure")) {
       setShowUploadErrorBanner(false);
+    }
+    if (!uploadingFiles.some((f) => f.status === "error" && f.errorKind === "size")) {
       setShowTooLargeBanner(false);
     }
 
