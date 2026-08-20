@@ -27,13 +27,15 @@ Don't rely on the transient Redis chaos flags (`chaos:<service>:<scenario>`, set
 with SETEX + TTL — they expire and Redis has no persistence). Instead drive the
 failure from existing service configuration:
 
-- For file-service uploads, the durable knob is the bucket itself: `S3_BUCKET`
-  pointed at a nonexistent bucket makes `handlers.rs::upload_file` get
-  `NoSuchBucket` from S3 and 500 (the `file-bad-bucket` scenario in
-  `scripts/bug-catalog.yaml`). The Redis chaos check stays intact for transient
-  scenarios.
-- A dedicated always-fail env switch (`FILE_UPLOAD_ALWAYS_FAIL`) used to exist and
-  was removed after it caused a tenant upload outage — don't reintroduce one.
+- Scope the switch to the single operation being demoed, the way
+  `FILE_SHARE_EVENT_ALWAYS_FAIL` only redirects the `file_shared` publish. Do
+  **not** repoint a service-wide setting such as `S3_BUCKET`: it is used by
+  every storage operation (download, presigned URLs, version restore, the demo
+  seeder), so the whole app breaks instead of one flow.
+- Nothing on the upload path: an always-fail upload switch
+  (`FILE_UPLOAD_ALWAYS_FAIL`) used to exist and was removed after it caused a
+  tenant upload outage — don't reintroduce one. The Redis chaos check stays
+  intact for transient upload drills.
 - Whatever the mechanism, it must default off everywhere (code, docker-compose,
   chart values) so `main` and other tenants are unaffected.
 
@@ -49,7 +51,7 @@ image and only take the **service images** from your branch. So:
 - The reliable fork-side mechanism: **bake it into the service image**:
   ```dockerfile
   # services/file-service/Dockerfile on the demo branch ONLY
-  ENV S3_BUCKET=otterworks-does-not-exist
+  ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
   services whose files the push touched).
