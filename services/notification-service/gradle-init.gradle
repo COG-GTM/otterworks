@@ -4,6 +4,8 @@
 // NOTE: services/auth-service and services/notification-service each carry a
 // byte-identical copy of this file (the Docker build context is the service
 // directory, so a shared root-level file cannot be COPY'd) -- keep them in sync.
+// .devin/blueprint.yaml also installs a copy as ~/.gradle/init.d/maven-central-mirror.gradle,
+// which is baked into the snapshot: edits here reach sessions only after initialize re-runs.
 def MIRROR = 'https://maven-central.storage-download.googleapis.com/maven2'
 
 def preferMirror = { repos ->
