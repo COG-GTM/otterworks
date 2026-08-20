@@ -99,7 +99,7 @@
       "description": "Search service chaos active when error rate >5%"
     },
     {
-      "title": "File Service Chaos Active",
+      "title": "File Service Upload Errors High",
       "type": "stat",
       "gridPos": {
         "h": 4,
@@ -150,10 +150,10 @@
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{path=~\"/api/v1/files.*\",status=~\"5..\"}[1m])) / sum(rate(http_requests_total{path=~\"/api/v1/files.*\"}[1m])) > 0.10",
-          "legendFormat": "Chaos Active"
+          "legendFormat": "Errors High"
         }
       ],
-      "description": "File service chaos active when error rate >10%"
+      "description": "File service degraded when error rate >10%"
     },
     {
       "title": "Notification Service Chaos Active",
@@ -529,7 +529,7 @@
           "legendFormat": "S3 Errors (5xx)"
         }
       ],
-      "description": "S3 NoSuchBucket errors when chaos redirects to nonexistent bucket"
+      "description": "5xx responses from the file API, e.g. S3 NoSuchBucket on a misconfigured bucket"
     },
     {
       "title": "Notification Service - Consumer Processing Errors",
@@ -888,7 +888,7 @@
           "legendFormat": "Alert State"
         }
       ],
-      "description": "FileUploadHighErrorRate alert (fires ~30s after chaos trigger)"
+      "description": "FileUploadHighErrorRate alert (fires ~30s after uploads start failing)"
     },
     {
       "title": "Notification Service Alert State",
@@ -1035,7 +1035,7 @@
           "legendFormat": "Active Scenarios"
         }
       ],
-      "description": "Number of chaos scenarios currently active (max 4)"
+      "description": "Number of chaos scenarios currently active (max 3)"
     }
   ]
 }
