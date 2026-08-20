@@ -147,27 +147,12 @@ pub async fn upload_file(
     let now = Utc::now();
     let size = file_bytes.len() as u64;
 
-    // CHAOS: when FILE_UPLOAD_ALWAYS_FAIL is set, or the Redis chaos flag is
-    // active, the S3 client targets a nonexistent bucket, simulating a
-    // misconfigured bucket name after a recent infra change.  The AWS SDK
-    // returns NoSuchBucket which surfaces as a 500.  The env var is a
-    // permanent, per-deployment switch; the Redis flag is transient.
-    let effective_bucket = if config.server.upload_always_fail {
-        tracing::warn!(
-            "FILE_UPLOAD_ALWAYS_FAIL is enabled: redirecting upload to nonexistent bucket"
-        );
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else if chaos_active(
+    let chaos = chaos_active(
         &mut redis_cm.get_ref().clone(),
         "chaos:file-service:upload_s3_error",
     )
-    .await
-    {
-        tracing::warn!("Chaos flag active: redirecting upload to nonexistent bucket");
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else {
-        s3.bucket.clone()
-    };
+    .await;
+    let effective_bucket = upload_bucket(chaos, &s3.bucket);
     let chaos_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
         bucket: effective_bucket,
@@ -734,9 +719,28 @@ pub async fn list_activity(
     Ok(HttpResponse::Ok().json(ActivityResponse { items }))
 }
 
+/// Bucket an upload is written to. While the transient Redis chaos flag is
+/// active the client targets a nonexistent bucket, simulating a misconfigured
+/// bucket name; the AWS SDK then returns NoSuchBucket, surfacing as a 500.
+fn upload_bucket(chaos: bool, configured: &str) -> String {
+    if chaos {
+        tracing::warn!("Chaos flag active: redirecting upload to nonexistent bucket");
+        return CHAOS_BUCKET.to_string();
+    }
+    configured.to_string()
+}
+
+const CHAOS_BUCKET: &str = "otterworks-files-chaos-nonexistent";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_targets_the_configured_bucket_unless_chaos_is_active() {
+        assert_eq!(upload_bucket(false, "otterworks-files"), "otterworks-files");
+        assert_eq!(upload_bucket(true, "otterworks-files"), CHAOS_BUCKET);
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
