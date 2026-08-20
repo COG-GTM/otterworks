@@ -52,7 +52,13 @@ serviceAccount:
 
 # Non-sensitive service configuration rendered into {{ .Release.Name }}-config
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
-config: {}
+config:
+  # Demo-variant convention (values kept in agreement with the image ENVs):
+  # every Share click publishes file_shared to a nonexistent SNS topic (real AWS
+  # NotFound -> red banner + incident + Slack alert), and users with no files get
+  # a few demo documents seeded. Both OFF on the golden app.
+  FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
+  FILE_SEED_DEMO_DOCS: "true"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
