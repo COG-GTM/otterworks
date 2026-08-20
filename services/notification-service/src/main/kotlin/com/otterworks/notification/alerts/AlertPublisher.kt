@@ -39,15 +39,15 @@ class AlertPublisher(
     }
 
     fun notifyConsumerFailure(error: String) {
-        val now = System.currentTimeMillis()
-        val last = lastSentAtMs.get()
-        if (now - last < minIntervalMs || !lastSentAtMs.compareAndSet(last, now)) {
-            return
-        }
-
         val baseUrl = adminServiceUrl.trim().trimEnd('/')
         if (baseUrl.isEmpty()) {
             logger.warn { "ADMIN_SERVICE_URL is empty; skipping consumer-failure alert" }
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val last = lastSentAtMs.get()
+        if (now - last < minIntervalMs || !lastSentAtMs.compareAndSet(last, now)) {
             return
         }
 

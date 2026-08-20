@@ -32,8 +32,12 @@ switch reaches a live tenant and how incidents spawn Devin sessions — read bot
 ## 2. Build the switch
 
 - One env var per failure, `<SERVICE>_<THING>_ALWAYS_FAIL`, parsed in the
-  service's config (`parse_bool_env(..., false)`), **default off everywhere**:
-  code default, `docker-compose.yml` (`${VAR:-false}`), and chart values.
+  service's config (`parse_bool_env(..., false)`), **default off** in the code
+  default and `docker-compose.yml` (`${VAR:-false}`). Chart values follow the
+  branch: off on the golden app, but on a demo-variant branch keep them in
+  agreement with the image ENVs (see the `FILE_UPLOAD_ALWAYS_FAIL` comment in
+  `infrastructure/helm/file-service/values.yaml`) so the two never contradict —
+  meaning any tenant deployed *from that checkout* inherits the failure.
 - Don't use the Redis chaos flags for demos that must survive restarts — they
   expire. Bake `ENV VAR=true` into the service Dockerfile **on the demo branch
   only** (this is also what forces CD to rebuild that service's image).
