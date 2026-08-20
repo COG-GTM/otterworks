@@ -54,7 +54,7 @@ serviceAccount:
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
 config:
   # When true, file-service writes every upload to a nonexistent S3 bucket and
-  # returns 5xx. Must stay off outside a deliberate failure-injection exercise.
+  # returns 5xx. Must stay off; uploads break in every environment otherwise.
   FILE_UPLOAD_ALWAYS_FAIL: "false"
   # Demo-variant switches, kept in agreement with the image ENVs: every Share
   # click publishes file_shared to a nonexistent SNS topic (real AWS NotFound ->
