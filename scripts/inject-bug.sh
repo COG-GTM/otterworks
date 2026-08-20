@@ -88,7 +88,9 @@ if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
   log "Applied. A value change rolls the pod on its own (ConfigMap checksum annotation)."
   log "Turn it off with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
-  log "(a redeploy also clears it: the image and the chart both default to false.)"
+  log "(a redeploy clears it once the rendering tree defaults to false: this checkout's"
+  log "image and chart do, but the ops-dashboard runner renders from its own bundled"
+  log "chart, so check that tree before assuming a redeploy is enough.)"
   exit 0
 fi
 
