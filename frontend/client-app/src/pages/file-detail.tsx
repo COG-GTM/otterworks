@@ -95,8 +95,13 @@ function FileDetailContent() {
   });
 
   const handleShare = async (email: string, permission: "view" | "edit") => {
-    await filesApi.share(fileId, email, permission);
-    queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+    try {
+      await filesApi.share(fileId, email, permission);
+    } finally {
+      // The share record can be persisted even when the request fails
+      // (e.g. notification publish errors), so refresh regardless.
+      queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+    }
   };
 
   if (isLoading) return <PageLoader />;
