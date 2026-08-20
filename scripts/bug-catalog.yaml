@@ -62,12 +62,10 @@ scenarios:
       var makes file-service route every upload to a nonexistent S3 bucket, so
       uploads keep returning 5xx across Redis restarts and TTL expiry (the chaos
       flag is transient). Downloads, listing, folders and sharing are unaffected,
-      and no metadata row is written for the failed upload. Already ON for this
-      tenant: the demo-coggtm branch bakes the variable into the file-service
-      image's Dockerfile, which is what the tenant actually runs (the runner
-      renders charts from its own bundled tree, so a chart value on the branch
-      may never reach the pod). Turning it off therefore means setting the value
-      to false explicitly -- the pod template's ConfigMap checksum rolls the pod.
+      and no metadata row is written for the failed upload. OFF everywhere by
+      default (image and chart), so injecting it is an explicit per-tenant
+      action; turn it back off with config.FILE_UPLOAD_ALWAYS_FAIL=false -- the
+      pod template's ConfigMap checksum rolls the pod on either change.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
