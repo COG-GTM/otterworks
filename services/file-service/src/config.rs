@@ -17,6 +17,9 @@ pub struct ServerConfig {
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
+    /// When true, owners with no files get a few demo documents seeded on
+    /// first listing, so share flows are demoable even when uploads fail.
+    pub seed_demo_docs: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -33,6 +36,10 @@ pub struct AwsConfig {
 #[derive(Clone, Debug)]
 pub struct SnsConfig {
     pub topic_arn: Option<String>,
+    /// When true, the `file_shared` event is published to a nonexistent SNS
+    /// topic, so every share click fails with a real AWS SNS error. Off
+    /// unless explicitly enabled per tenant.
+    pub share_event_always_fail: bool,
 }
 
 impl AppConfig {
@@ -58,6 +65,7 @@ impl ServerConfig {
                 .parse()
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
+            seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
     }
 }
@@ -97,7 +105,10 @@ impl AwsConfig {
 impl SnsConfig {
     pub fn from_env() -> Self {
         Self {
-            topic_arn: env::var("SNS_TOPIC_ARN").ok(),
+            topic_arn: env::var("SNS_TOPIC_ARN")
+                .ok()
+                .filter(|s| !s.trim().is_empty()),
+            share_event_always_fail: parse_bool_env("FILE_SHARE_EVENT_ALWAYS_FAIL", false),
         }
     }
 }
