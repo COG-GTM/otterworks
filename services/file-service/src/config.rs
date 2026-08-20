@@ -155,4 +155,19 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    /// The shipped image must not enable the upload-failure switch: a baked-in
+    /// `ENV FILE_UPLOAD_ALWAYS_FAIL=true` breaks uploads for every deployment
+    /// that does not explicitly override it.
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            assert!(
+                !line.starts_with("ENV FILE_UPLOAD_ALWAYS_FAIL"),
+                "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
+            );
+        }
+    }
 }
