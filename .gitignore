@@ -23,6 +23,8 @@ services/api-gateway/vendor/
 services/auth-service/build/
 services/auth-service/.gradle/
 services/auth-service/out/
+services/report-service/target/
+services/legacy-portal/target/
 *.class
 *.jar
 
@@ -83,6 +85,21 @@ infrastructure/terraform/plan.out
 
 # --- Docker ---
 *.log
+
+# --- Security ---
+# scan output, plus the automation plan zap-baseline.py writes into its mount
+security/dast/reports/
+security/equivalence/reports/
+procs/reports/
+# dependency remediation harness output (inventory, gate, transcript grading)
+security/deps/reports/
+
+# Python generated environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
 
 # --- Misc ---
 *.bak

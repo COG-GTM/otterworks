@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Legacy Billing</title>
+  </head>
+  <body>
+    <h1>Legacy Billing</h1>
+    <p>Plans</p>
+    <ul>
+      {% for plan in plans %}
+      <li>{{ plan.code }} — {{ plan.monthly_fee }} / {{ plan.included_units }} units</li>
+      {% endfor %}
+    </ul>
+  </body>
+</html>
