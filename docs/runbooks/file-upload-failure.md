@@ -22,8 +22,10 @@
    ```
    # config reaches the pod via envFrom, so read it from the running container
    bucket=$(kubectl -n otterworks exec deploy/file-service -- printenv S3_BUCKET)
-   echo "file-service writes to: ${bucket}"
-   aws s3api head-bucket --bucket "${bucket}"
+   # unset means the tenant's ConfigMap carries no override and the service
+   # falls back to its built-in default, otterworks-files
+   echo "file-service writes to: ${bucket:-otterworks-files (default)}"
+   aws s3api head-bucket --bucket "${bucket:-otterworks-files}"
    ```
 
 <!-- TODO: Complete investigation steps -->
