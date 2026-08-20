@@ -16,6 +16,25 @@ COPY --from=builder /app/target/release/file-service /app/file-service
 RUN useradd -r -u 1001 appuser
 USER appuser
 
+# demo-coggtm tenant variant -- NEVER merge this to `main`. The tenant runs the
+# image this branch builds (tag `tenant-coggtm`), so baking the switch in here
+# is the only way for it to survive pod restarts, Redis restarts, TTL expiry and
+# idle-suspend/wake without a chart override: the deploy runner renders charts
+# from its own bundled tree, whose file-service values are `config: {}`.
+# Click-triggered notification failure: sharing a file publishes the file_shared
+# event to a nonexistent SNS topic, so every share click fails with an AWS SNS
+# error and fires the NotificationEventPublishFailure alert at admin-service
+# (incident + Devin session + Slack, attributed to the sharing user via
+# reporter_email). The share record is still saved, but the request returns the
+# AWS error so the UI shows a red failure banner. docker-compose.yml passes
+# false, so local stacks behave like the golden app.
+ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
+
+# Seeding gives every user a few demo documents on their first file listing, so
+# the share-notification failure is demoable on a fresh account.
+# docker-compose.yml passes false, so local stacks behave like the golden app.
+ENV FILE_SEED_DEMO_DOCS=true
+
 EXPOSE 8082
 HEALTHCHECK --interval=10s --timeout=3s CMD curl -f http://localhost:8082/health || exit 1
 ENTRYPOINT ["/app/file-service"]
