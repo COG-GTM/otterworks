@@ -155,4 +155,29 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    /// The shipped image must not enable the upload-failure switch: a baked-in
+    /// `ENV FILE_UPLOAD_ALWAYS_FAIL=true` breaks uploads for every deployment
+    /// that does not explicitly override it.
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            // Dockerfile instructions are case-insensitive, and one ENV may
+            // declare several variables.
+            if !line
+                .get(..3)
+                .is_some_and(|kw| kw.eq_ignore_ascii_case("ENV"))
+            {
+                continue;
+            }
+            for assignment in line[3..].split_whitespace() {
+                assert!(
+                    !assignment.starts_with("FILE_UPLOAD_ALWAYS_FAIL"),
+                    "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
+                );
+            }
+        }
+    }
 }
