@@ -27,10 +27,13 @@ Don't rely on the transient Redis chaos flags (`chaos:<service>:<scenario>`, set
 with SETEX + TTL — they expire and Redis has no persistence). Drive the failure
 from the service's own configuration instead:
 
-- file-service itself carries no failure switch: `handlers.rs::upload_file` always
-  uploads to the configured bucket (`S3_BUCKET`). Drive the failure from config
+- The upload path has no failure switch: `handlers.rs::upload_file` always uploads
+  to the configured bucket (`S3_BUCKET`). Drive an upload failure from config
   instead — e.g. `S3_BUCKET=otterworks-does-not-exist`, which makes S3 return
   `NoSuchBucket` so the upload 500s and the alert path fires.
+- Other file-service flows do carry env switches (`FILE_SHARE_EVENT_ALWAYS_FAIL`
+  for the `file_shared` SNS publish, `FILE_SEED_DEMO_DOCS` for seeding); both are
+  parsed in `src/config.rs` and default off.
 - Any such override must be scoped to one tenant so `main` and other tenants are
   unaffected.
 
