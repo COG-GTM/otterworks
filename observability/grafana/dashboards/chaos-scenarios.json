@@ -1010,7 +1010,7 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "max": 4,
+          "max": 3,
           "thresholds": {
             "steps": [
               {
