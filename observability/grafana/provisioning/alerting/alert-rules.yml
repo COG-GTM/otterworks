@@ -100,7 +100,9 @@ groups:
 
       # -----------------------------------------------------------------------
       # File Service: Uploads failing with S3 errors
-      # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window.
+      # Fires when the upload-path 5xx rate exceeds 10% over a 1-minute window.
+      # Scoped to the upload path so a single user's failed uploads trigger it
+      # even while other file-service traffic (listing, downloads) succeeds.
       # Triggered by chaos flag: chaos:file-service:upload_s3_error
       # -----------------------------------------------------------------------
       - uid: file-upload-errors
@@ -114,9 +116,9 @@ groups:
             datasourceUid: Prometheus
             model:
               expr: >-
-                sum(rate(http_requests_total{job="file-service",status=~"5.."}[1m]))
+                sum(rate(http_requests_total{job="file-service",path=~".*upload.*",status=~"5.."}[1m]))
                 /
-                sum(rate(http_requests_total{job="file-service"}[1m]))
+                sum(rate(http_requests_total{job="file-service",path=~".*upload.*"}[1m]))
               instant: false
               intervalMs: 15000
               maxDataPoints: 43200
@@ -175,7 +177,9 @@ groups:
               type: threshold
         noDataState: OK
         execErrState: Error
-        for: 1m
+        # 30s at a 30s evaluation interval: fires within ~1-2 minutes of the
+        # first failed upload (including the notification policy's group_wait).
+        for: 30s
         labels:
           severity: high
           team: otterworks
