@@ -29,6 +29,8 @@ interface UploadingFile {
   error?: string;
   /** Rejected for size: retrying can never succeed. */
   tooLarge?: boolean;
+  /** Distinguishes a size rejection from a genuine upload failure. */
+  errorKind?: "size" | "failure";
   abortController?: AbortController;
 }
 
@@ -55,6 +57,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
+  const [showTooLargeBanner, setShowTooLargeBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -67,6 +70,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     if (uploadingFiles.length === 0) {
       setDismissing(false);
       setShowUploadErrorBanner(false);
+      setShowTooLargeBanner(false);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
@@ -74,6 +78,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
     if (!uploadingFiles.some((f) => f.status === "error")) {
       setShowUploadErrorBanner(false);
+      setShowTooLargeBanner(false);
     }
 
     if (allDone && !hasUploading) {
@@ -110,6 +115,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 status: "uploading" as const,
                 progress: 0,
                 error: undefined,
+                errorKind: undefined,
                 abortController,
               }
             : f,
@@ -147,12 +153,17 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                       ...f,
                       status: "error" as const,
                       error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
+                      errorKind: rejectedTooLarge ? ("size" as const) : ("failure" as const),
                       abortController: undefined,
                     }
                   : f,
               ),
             );
-            setShowUploadErrorBanner(true);
+            if (rejectedTooLarge) {
+              setShowTooLargeBanner(true);
+            } else {
+              setShowUploadErrorBanner(true);
+            }
             void notifyUploadFailed(entry.file.name);
           }
         });
@@ -170,10 +181,14 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           progress: 0,
           status: tooLarge ? ("error" as const) : ("uploading" as const),
           error: tooLarge ? TOO_LARGE_ERROR : undefined,
+          errorKind: tooLarge ? ("size" as const) : undefined,
           tooLarge,
         };
       });
       setUploadingFiles((prev) => [...prev, ...newFiles]);
+      if (newFiles.some((entry) => entry.tooLarge)) {
+        setShowTooLargeBanner(true);
+      }
       newFiles.forEach((entry) => {
         if (entry.tooLarge) {
           void notifyUploadFailed(entry.file.name);
@@ -209,6 +224,14 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     setShowUploadErrorBanner(false);
   };
 
+  const dismissTooLargeBanner = () => {
+    setShowTooLargeBanner(false);
+  };
+
+  const oversizedNames = uploadingFiles
+    .filter((f) => f.status === "error" && f.errorKind === "size")
+    .map((f) => f.file.name);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: addFiles,
     multiple: true,
@@ -216,6 +239,19 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
+      {showTooLargeBanner && oversizedNames.length > 0 && (
+        <ChaosErrorBanner
+          className="mb-4"
+          variant="warning"
+          title={`File too large — limit is ${formatFileSize(MAX_UPLOAD_BYTES)}`}
+          message={`${
+            oversizedNames.length === 1
+              ? `"${oversizedNames[0]}" exceeds`
+              : `${oversizedNames.length} files exceed`
+          } the ${formatFileSize(MAX_UPLOAD_BYTES)} per-file limit. Nothing is wrong with the upload service — please pick a smaller file and try again.`}
+          onDismiss={dismissTooLargeBanner}
+        />
+      )}
       {showUploadErrorBanner && (
         <ChaosErrorBanner
           className="mb-4"
