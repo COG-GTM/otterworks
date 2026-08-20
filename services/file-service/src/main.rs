@@ -11,6 +11,7 @@ mod handlers;
 mod metadata;
 mod middleware;
 mod models;
+mod seed;
 mod storage;
 
 #[actix_web::main]
