@@ -15,7 +15,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
     /// When true, owners with no files get a few demo documents seeded on
-    /// first listing, so share flows are demoable even when uploads fail.
+    /// first listing, so share flows are demoable on an empty account.
     pub seed_demo_docs: bool,
 }
 
