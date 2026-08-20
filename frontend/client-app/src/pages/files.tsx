@@ -515,8 +515,14 @@ function FileBrowserContent() {
             ownerId={shareFile.ownerId}
             sharedWith={shareFile.sharedWith}
             onShare={async (email, permission) => {
-              await filesApi.share(shareFile.id, email, permission);
-              queryClient.invalidateQueries({ queryKey: ["files"] });
+              try {
+                await filesApi.share(shareFile.id, email, permission);
+              } finally {
+                // The share record can be persisted even when the request
+                // fails (e.g. notification publish errors), so refresh
+                // regardless of outcome.
+                queryClient.invalidateQueries({ queryKey: ["files"] });
+              }
             }}
             onPermissionChange={async (userId, permission) => {
               await filesApi.updateSharePermission(shareFile.id, userId, permission);

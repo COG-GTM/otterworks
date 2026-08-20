@@ -80,6 +80,29 @@ if [ "${SCENARIO}" = "file-bad-bucket" ]; then
   exit 0
 fi
 
+if [ "${SCENARIO}" = "share-notify-fail" ]; then
+  log "Injecting config bug 'share-notify-fail' (share click -> file_shared publish to nonexistent SNS topic)..."
+  helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
+    --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=true
+  log "Applied (the file-service ConfigMap checksum annotation rolls the pod)."
+  log "Tenant coggtm is already failing anyway: the demo branch bakes the variable"
+  log "into the file-service image itself. Turn it off with:"
+  log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=false"
+  exit 0
+fi
+
+if [ "${SCENARIO}" = "notification-queue-fail" ]; then
+  log "Injecting config bug 'notification-queue-fail' (notification consumer -> nonexistent SQS queue)..."
+  helm upgrade notification-service "${REPO_ROOT}/infrastructure/helm/notification-service" -n "${NS}" --reuse-values \
+    --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=true
+  # The notification-service chart has no ConfigMap checksum annotation, so a
+  # value change alone does not roll the pod -- restart it explicitly.
+  kubectl -n "${NS}" rollout restart deploy/notification-service
+  log "Applied (rollout restarting). Turn it off with:"
+  log "  helm upgrade notification-service infrastructure/helm/notification-service -n ${NS} --reuse-values --set-string config.NOTIFICATION_SQS_ALWAYS_FAIL=false && kubectl -n ${NS} rollout restart deploy/notification-service"
+  exit 0
+fi
+
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }
