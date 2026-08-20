@@ -119,7 +119,29 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::ServerConfig;
+    use super::{parse_bool, ServerConfig};
+
+    #[test]
+    fn parse_bool_accepts_true_and_one() {
+        for raw in ["true", "TRUE", " True ", "1"] {
+            assert!(parse_bool(raw, false), "raw={raw}");
+        }
+    }
+
+    #[test]
+    fn parse_bool_accepts_false_and_zero() {
+        for raw in ["false", "FALSE", " False ", "0"] {
+            assert!(!parse_bool(raw, true), "raw={raw}");
+        }
+    }
+
+    #[test]
+    fn parse_bool_falls_back_to_default_on_empty_or_garbage() {
+        for raw in ["", "  ", "yes"] {
+            assert!(!parse_bool(raw, false), "raw={raw}");
+            assert!(parse_bool(raw, true), "raw={raw}");
+        }
+    }
 
     #[test]
     fn server_config_falls_back_to_defaults_when_unset_or_unparsable() {
