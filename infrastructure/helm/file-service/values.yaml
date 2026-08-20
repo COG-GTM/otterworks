@@ -52,7 +52,21 @@ serviceAccount:
 
 # Non-sensitive service configuration rendered into {{ .Release.Name }}-config
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
-config: {}
+config:
+  # Demo-variant values, kept in agreement with the image ENVs: every Share
+  # click publishes file_shared to a nonexistent SNS topic (real AWS NotFound
+  # -> red banner + incident + Slack alert), and users with no files get a few
+  # demo documents seeded so the share flow stays demoable. Both OFF on the
+  # golden app. What actually reaches the tenant is the branch's file-service
+  # *image*, which sets these in its Dockerfile -- the deploy runner renders
+  # charts from its own bundled tree, so these values only apply when someone
+  # deploys from this checkout. To disable for a tenant without reverting the
+  # branch, set them explicitly (until the next redeploy re-renders the chart):
+  #   helm upgrade file-service infrastructure/helm/file-service \
+  #     -n otterworks-coggtm --reuse-values \
+  #     --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=false
+  FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
+  FILE_SEED_DEMO_DOCS: "true"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
