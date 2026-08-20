@@ -153,11 +153,11 @@ pub async fn upload_file(
     )
     .await;
     let effective_bucket = upload_bucket(chaos, &s3.bucket);
-    let chaos_s3 = crate::storage::S3Client {
+    let upload_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
         bucket: effective_bucket,
     };
-    if let Err(err) = chaos_s3
+    if let Err(err) = upload_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
         .await
     {
