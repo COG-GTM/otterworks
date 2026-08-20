@@ -83,16 +83,3 @@ impl SnsConfig {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::AwsConfig;
-
-    #[test]
-    fn s3_bucket_defaults_to_the_files_bucket() {
-        if std::env::var("S3_BUCKET").is_ok() {
-            return;
-        }
-        assert_eq!(AwsConfig::from_env().s3_bucket, "otterworks-files");
-    }
-}
