@@ -117,6 +117,12 @@ services:
       # endpoint so each failure opens its own incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Off locally even on this demo variant branch: the permanent failure is
+      # baked into the file-service image (see its Dockerfile) for tenant
+      # coggtm, and this explicit false overrides it so a local stack still
+      # behaves like the golden app. Set it to true to reproduce the tenant.
+      FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
+      FILE_SEED_DEMO_DOCS: ${FILE_SEED_DEMO_DOCS:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
@@ -243,6 +249,16 @@ services:
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DYNAMODB_TABLE_NOTIFICATIONS: otterworks-notifications
       DYNAMODB_TABLE_PREFERENCES: otterworks-notification-preferences
+      # Consumer failures fire a Grafana-style alert at admin-service's ingest
+      # endpoint so a sustained failure opens an incident + Devin session.
+      ADMIN_SERVICE_URL: http://admin-service:8089
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Off by default (matches the image's Dockerfile default). Set it to true
+      # to point the consumer at a nonexistent queue; NOTIFICATION_STRICT_SCHEMA
+      # instead reproduces the strict-parser deserialization failure (needs
+      # message traffic, e.g. sharing a file).
+      NOTIFICATION_SQS_ALWAYS_FAIL: ${NOTIFICATION_SQS_ALWAYS_FAIL:-false}
+      NOTIFICATION_STRICT_SCHEMA: ${NOTIFICATION_STRICT_SCHEMA:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
