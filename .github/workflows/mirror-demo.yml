@@ -1,9 +1,11 @@
 # Keep the perpetual COG-GTM tenant in line with main.
 #
-# The demo platform only deploys from workshop-*/demo-* branches on this fork
-# (main is reserved for the upstream repo's t-main environment). So the tenant
-# that runs COG-GTM's code is deployed from the branch `demo-coggtm`, and this
-# workflow is what keeps that branch — and therefore the tenant — tracking main:
+# Nothing ships from this fork's main: cd-tenant.yml does run on main pushes,
+# but the AWS OIDC trust only allows this fork's workshop-*/demo-* refs, so a
+# main run can never publish or deploy (main is reserved for the upstream
+# repo's t-main environment). So the tenant that runs COG-GTM's code is
+# deployed from the branch `demo-coggtm`, and this workflow is what keeps that
+# branch — and therefore the tenant — tracking main:
 #
 #   merge to main
 #     -> this workflow replays demo-coggtm's own commits on top of main
@@ -11,14 +13,11 @@
 #         -> the pipeline rebuilds the variant's services and redeploys the
 #            tenant, so t-coggtm runs the current main plus the variant
 #
-# That last step is driven by the variant, not by main: cd-tenant.yml diffs a
-# demo-* push against its merge-base with main, which after the replay is the
-# variant's own patches. So keep the variant touching a deployable path
-# (services/, frontend/, infrastructure/helm/, scripts/) -- one that only
-# touched docs or workflows would leave every mirror push with an empty change
-# set, and the tenant would sit on the build it already had. A branch equal to
-# main is that same empty case, harmless because the tenant would come back
-# byte-identical, and what the old copy-main mirror did on every merge.
+# That last step needs no deployable diff on this fork: because a fork
+# publishes no golden image, cd-tenant.yml rebuilds every service and redeploys
+# on any push to a variant branch here, including a branch equal to main. The
+# merge-base-with-main path filter it uses on the canonical repository would
+# read the replay as an empty change set and ship nothing.
 #
 # Dropping a variant does not undo its deployment: CI tagged its services
 # `tenant-coggtm`, and deploy-tenant.sh prefers that tag over `main` for as long

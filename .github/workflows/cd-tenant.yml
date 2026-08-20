@@ -14,6 +14,8 @@ name: Deploy tenant environment
 #
 # Only the services a push actually changed are rebuilt; the tenant picks up the
 # golden image for everything else (see resolve_tag in scripts/deploy-tenant.sh).
+# A fork is the exception -- it publishes no golden image, so a push to one of
+# its variant branches rebuilds every service and redeploys unconditionally.
 # Deployment goes through the ops dashboard API, never straight at the cluster:
 # the dashboard runs the work as a runner Job under its own IRSA role, so this
 # workflow needs no EKS access.
@@ -58,8 +60,10 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          # paths-filter compares against the previous commit on push; it needs
-          # that commit present, and a shallow clone does not have it.
+          # paths-filter compares against the previous commit on default-branch
+          # pushes, and against the merge-base with main (its default `base`) on
+          # workshop-*/demo-* pushes -- so a variant branch diffs as its own
+          # patches. Either way it needs history a shallow clone does not have.
           fetch-depth: 0
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
@@ -88,6 +92,8 @@ jobs:
           REBUILD_ALL: ${{ inputs.rebuild_all }}
           DEPLOYABLE: ${{ steps.changes.outputs.deployable }}
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
+          REPOSITORY: ${{ github.repository }}
+          CANONICAL_REPOSITORY: Cognition-Partner-Workshops/otterworks
         run: |
           set -euo pipefail
           source scripts/lib/tenant-common.sh
@@ -96,10 +102,31 @@ jobs:
           echo "tenant_tag=$(tenant_image_tag "$(branch_tenant_id "${GITHUB_REF_NAME}")")" >> "$GITHUB_OUTPUT"
           echo "image_tag=${TENANT_PREFIX:+${TENANT_PREFIX}-}${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-          # Only this repository's main is the golden app. A fork publishing to
-          # `:main` would replace the image every other tenant falls back to.
+          # Only the canonical repository's main is the golden app and the
+          # perpetual t-main tenant; a fork publishing to `:main` would replace
+          # the image every other tenant falls back to. A fork's main is a demo
+          # baseline that ships nothing -- its OIDC trust covers only
+          # workshop-*/demo-* refs, so building there just fails the run.
+          canonical_main=false
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${REPOSITORY}" = "${CANONICAL_REPOSITORY}" ]; then
+            canonical_main=true
+          fi
+
+          # A fork publishes no golden image, so its tenant runs upstream's
+          # golden build for every service the fork has not rebuilt itself --
+          # and paths-filter diffs a variant branch against its own main, which
+          # on a fork carries the demo baseline. A variant that is level with
+          # the fork's main therefore reports no change and ships nothing, no
+          # matter how much of the tree main has moved. Every push to a fork's
+          # variant branch rebuilds and redeploys instead.
+          fork_variant=false
+          if [ "${REPOSITORY}" != "${CANONICAL_REPOSITORY}" ] \
+             && [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            fork_variant=true
+          fi
+
           golden=false
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
+          if [ "${canonical_main}" = "true" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
           echo "golden=${golden}" >> "$GITHUB_OUTPUT"
 
           # The CI role cannot move the tenant-<id> pointer tag (no
@@ -110,7 +137,7 @@ jobs:
           # tag instead of the stale pointer.
           full="${REBUILD_ALL}"
           if [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ] \
-             && [ "${DEPLOYABLE}" = "true" ]; then
+             && { [ "${DEPLOYABLE}" = "true" ] || [ "${fork_variant}" = "true" ]; }; then
             full=true
           fi
 
@@ -135,12 +162,18 @@ jobs:
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
           # back byte-identical, minutes later, for no reason. Neither does a
-          # fork's main: the perpetual environment tracks this repository.
+          # fork's main: the perpetual environment tracks this repository. A
+          # fork's variant branch always redeploys, docs-only pushes included:
+          # its path filter cannot tell a stale tenant from an unchanged one.
           deploy=false
-          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
+          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ] \
+             || [ "${fork_variant}" = "true" ]; then
             deploy=true
           fi
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${canonical_main}" != "true" ]; then
+            echo "::notice::main is not deployed from ${REPOSITORY}; only ${CANONICAL_REPOSITORY} owns the perpetual tenant"
+            deploy=false
+          elif [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
             echo "::notice::TENANT_PREFIX is set, so main is not deployed from this repository"
             deploy=false
           fi
@@ -148,7 +181,9 @@ jobs:
 
   build:
     needs: plan
-    if: needs.plan.outputs.services != '[]'
+    # Nothing consumes an image the run will not deploy, and a fork's main has
+    # no OIDC trust to push one -- assuming the role there just fails the run.
+    if: needs.plan.outputs.services != '[]' && needs.plan.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
