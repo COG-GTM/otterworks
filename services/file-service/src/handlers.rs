@@ -268,14 +268,20 @@ pub async fn list_files(
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
-    if config.server.seed_demo_docs {
-        if let Some(owner) = owner_id {
-            crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await;
-        }
-    }
-    let files = meta
+    let mut files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
+    // Seeding is only considered when the listing comes back empty, so the
+    // common non-empty case costs no extra metadata reads.
+    if files.is_empty() && config.server.seed_demo_docs {
+        if let Some(owner) = owner_id {
+            if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
+                files = meta
+                    .list_files(query.folder_id, owner_id, include_trashed)
+                    .await?;
+            }
+        }
+    }
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);

@@ -32,19 +32,23 @@ const DEMO_DOCS: &[(&str, &str, &str)] = &[
 /// Seed a few demo documents for an owner who has no files yet. Used on demo
 /// deployments where uploads are made to fail: sharing (and its notification
 /// path) can still be exercised on these pre-seeded documents. Idempotent per
-/// owner via deterministic ids. Never fails the caller.
-pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id: Uuid) {
+/// owner via deterministic ids. Never fails the caller. Returns whether any
+/// documents were seeded. Callers only invoke this when the owner's listing
+/// came back empty; the unfiltered check here guards against filtered
+/// listings (folder/trash views) looking empty while files still exist.
+pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id: Uuid) -> bool {
     let existing = match meta.list_files(None, Some(owner_id), true).await {
         Ok(files) => files,
         Err(e) => {
             tracing::warn!(error = %e, "Demo-doc seeding: listing files failed; skipping");
-            return;
+            return false;
         }
     };
     if !existing.is_empty() {
-        return;
+        return false;
     }
 
+    let mut seeded = false;
     for (name, mime_type, content) in DEMO_DOCS {
         let file_id = Uuid::new_v5(&SEED_NAMESPACE, format!("{owner_id}/{name}").as_bytes());
         let s3_key = format!("files/{owner_id}/{file_id}");
@@ -73,6 +77,8 @@ pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id
             tracing::warn!(error = %e, name = %name, "Demo-doc seeding: metadata write failed");
         } else {
             tracing::info!(owner_id = %owner_id, name = %name, "Seeded demo document");
+            seeded = true;
         }
     }
+    seeded
 }
