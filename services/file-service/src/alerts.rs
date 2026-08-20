@@ -119,6 +119,7 @@ fn is_retryable(status: reqwest::StatusCode) -> bool {
 ///
 /// Returns whether the alert was accepted.
 async fn deliver_with_retry(
+    kind: &str,
     url: &str,
     secret: Option<&str>,
     payload: &Value,
@@ -133,12 +134,12 @@ async fn deliver_with_retry(
             Ok(resp) if resp.status().is_success() => return true,
             Ok(resp) => {
                 let status = resp.status();
-                tracing::warn!(%status, url = %url, attempt = attempt + 1, "Upload-failure alert rejected by admin-service");
+                tracing::warn!(kind, %status, url = %url, attempt = attempt + 1, "Alert rejected by admin-service");
                 is_retryable(status)
             }
             Err(e) => {
                 let retryable = e.is_connect();
-                tracing::warn!(error = %e, url = %url, attempt = attempt + 1, retryable, "Failed to deliver upload-failure alert");
+                tracing::warn!(kind, error = %e, url = %url, attempt = attempt + 1, retryable, "Failed to deliver alert");
                 retryable
             }
         };
@@ -211,20 +212,18 @@ pub fn notify_share_notification_failure(
 
     tokio::spawn(async move {
         let url = format!("{base_url}/api/v1/admin/alerts/ingest");
-        let mut req = http_client().post(&url).json(&payload);
-        if let Some(secret) = secret {
-            req = req.header("X-Alert-Secret", secret);
-        }
-        match req.send().await {
-            Ok(resp) if resp.status().is_success() => {
-                tracing::info!(file_name = %file_name, "Share-notification-failure alert delivered to admin-service");
-            }
-            Ok(resp) => {
-                tracing::warn!(status = %resp.status(), url = %url, "Share-notification-failure alert rejected by admin-service");
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, url = %url, "Failed to deliver share-notification-failure alert");
-            }
+        let delivered = deliver_with_retry(
+            "share-notification-failure",
+            &url,
+            secret.as_deref(),
+            &payload,
+            RETRY_BACKOFF,
+        )
+        .await;
+        if delivered {
+            tracing::info!(file_name = %file_name, "Share-notification-failure alert delivered to admin-service");
+        } else {
+            tracing::error!(file_name = %file_name, url = %url, "Giving up on share-notification-failure alert; no incident will be created");
         }
     });
 }
@@ -252,7 +251,15 @@ pub fn notify_upload_failure(
 
     tokio::spawn(async move {
         let url = format!("{base_url}/api/v1/admin/alerts/ingest");
-        if deliver_with_retry(&url, secret.as_deref(), &payload, RETRY_BACKOFF).await {
+        if deliver_with_retry(
+            "upload-failure",
+            &url,
+            secret.as_deref(),
+            &payload,
+            RETRY_BACKOFF,
+        )
+        .await
+        {
             tracing::info!(file_name = %file_name, "Upload-failure alert delivered to admin-service");
         } else {
             tracing::error!(file_name = %file_name, url = %url, "Giving up on upload-failure alert; no incident will be created");
@@ -403,7 +410,7 @@ mod tests {
         let payload = build_upload_failure_payload("a.txt", "boom", None);
         let backoff = [Duration::ZERO, Duration::ZERO, Duration::ZERO];
 
-        assert!(deliver_with_retry(&url, None, &payload, &backoff).await);
+        assert!(deliver_with_retry("upload-failure", &url, None, &payload, &backoff).await);
         assert_eq!(served.load(Ordering::SeqCst), 3);
     }
 
@@ -413,7 +420,9 @@ mod tests {
         let payload = build_upload_failure_payload("a.txt", "boom", None);
         let backoff = [Duration::ZERO, Duration::ZERO];
 
-        assert!(!deliver_with_retry(&url, Some("wrong"), &payload, &backoff).await);
+        assert!(
+            !deliver_with_retry("upload-failure", &url, Some("wrong"), &payload, &backoff).await
+        );
         assert_eq!(served.load(Ordering::SeqCst), 1);
     }
 
@@ -423,7 +432,7 @@ mod tests {
         let payload = build_upload_failure_payload("a.txt", "boom", None);
         let backoff = [Duration::ZERO];
 
-        assert!(!deliver_with_retry(&url, None, &payload, &backoff).await);
+        assert!(!deliver_with_retry("upload-failure", &url, None, &payload, &backoff).await);
         assert_eq!(served.load(Ordering::SeqCst), 2);
     }
 
@@ -445,7 +454,7 @@ mod tests {
 
         let payload = build_upload_failure_payload("a.txt", "boom", None);
         let backoff = [Duration::ZERO, Duration::ZERO];
-        assert!(!deliver_with_retry(&url, None, &payload, &backoff).await);
+        assert!(!deliver_with_retry("upload-failure", &url, None, &payload, &backoff).await);
     }
 
     #[actix_rt::test]
