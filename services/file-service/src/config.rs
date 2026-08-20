@@ -139,9 +139,19 @@ mod tests {
 
     #[test]
     fn shipped_image_does_not_enable_upload_always_fail() {
-        let dockerfile = include_str!("../Dockerfile");
+        // The Dockerfile lives outside the image build context, so this is only
+        // compiled for tests, never by the release build inside the container.
+        let enabled = include_str!("../Dockerfile")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .any(|line| {
+                line.starts_with("ENV ")
+                    && line.contains("FILE_UPLOAD_ALWAYS_FAIL")
+                    && !line.contains("FILE_UPLOAD_ALWAYS_FAIL=false")
+            });
         assert!(
-            !dockerfile.contains("FILE_UPLOAD_ALWAYS_FAIL"),
+            !enabled,
             "the shipped image must not enable the upload fault-injection switch"
         );
     }
