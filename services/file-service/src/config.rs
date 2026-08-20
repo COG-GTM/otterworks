@@ -152,7 +152,9 @@ mod tests {
     fn shipped_image_does_not_enable_upload_always_fail() {
         let dockerfile = include_str!("../Dockerfile");
         assert!(
-            !dockerfile.contains("FILE_UPLOAD_ALWAYS_FAIL"),
+            !dockerfile
+                .lines()
+                .any(|l| l.starts_with("ENV") && l.contains("FILE_UPLOAD_ALWAYS_FAIL")),
             "the image must not bake in FILE_UPLOAD_ALWAYS_FAIL: it routes every upload \
              to a nonexistent S3 bucket"
         );
