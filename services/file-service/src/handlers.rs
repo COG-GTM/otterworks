@@ -550,7 +550,7 @@ pub async fn share_file(
     let file = meta.get_file(&file_id).await?;
 
     // Check if share already exists for this file + user
-    let (share, created) = if let Some(existing) = meta
+    let (share, created, permission_update) = if let Some(existing) = meta
         .find_existing_share(&file_id, &body.shared_with)
         .await?
     {
@@ -566,10 +566,10 @@ pub async fn share_file(
             };
             meta.put_share(&updated).await?;
             tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File share updated");
-            (updated, false)
+            (updated, false, true)
         } else {
             tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File already shared");
-            (existing, false)
+            (existing, false, false)
         }
     } else {
         let share = FileShare {
@@ -581,14 +581,16 @@ pub async fn share_file(
             created_at: Utc::now(),
         };
         meta.put_share(&share).await?;
-        (share, true)
+        (share, true, false)
     };
 
     // The notification event is published for new shares only, so re-shares
     // and permission updates don't send duplicate notifications. When the
-    // share-event failure switch is on, every share request attempts the
-    // publish so a failed attempt can be retried by sharing again.
-    if created || events.share_publish_forced() {
+    // share-event failure switch is on, every share click (new share or
+    // re-share of the same recipient) attempts the publish so a failed
+    // attempt can be retried by sharing again; permission updates are not
+    // share clicks and are left alone.
+    if created || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
             .file_shared(&file_id, &file.owner_id, &body.shared_with)
             .await
