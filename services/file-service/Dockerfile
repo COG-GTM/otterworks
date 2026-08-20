@@ -17,24 +17,22 @@ RUN useradd -r -u 1001 appuser
 USER appuser
 
 # demo-coggtm tenant variant -- NEVER merge this to `main`. The tenant runs the
-# image this branch builds (tag `tenant-coggtm`), so baking the switch in here
-# is the only way for it to survive pod restarts and redeploys; the deploy
-# runner renders charts from its own bundled tree, so nothing overrides the
-# image unless it sets the variable explicitly.
-#
-# Click-triggered notification failure: sharing
-# a file publishes the file_shared event to a nonexistent SNS topic, so every
-# share click fails with a real AWS SNS error and fires the
+# image this branch builds (tag `tenant-coggtm`), and the deploy runner renders
+# charts from its own bundled tree, so baking these settings into the image is
+# the only way they reach the tenant; anything that sets them explicitly still
+# wins, and docker-compose.yml passes false so local stacks behave like the
+# golden app.
+
+# Sharing a file publishes the file_shared event to a nonexistent SNS topic, so
+# every share click fails with a real AWS SNS error and fires the
 # NotificationEventPublishFailure alert at admin-service (incident + Devin
 # session + Slack, attributed to the sharing user via reporter_email). The
-# share record is still saved, but the request returns the AWS error so the
-# UI shows a red failure banner. docker-compose.yml passes false, so local
-# stacks behave like the golden app.
+# share record is still saved, but the request returns the AWS error so the UI
+# shows a red failure banner.
 ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
 
-# Seeding gives every user a few demo documents on their first file listing, so
-# accounts with no files still have something to share.
-# docker-compose.yml passes false, so local stacks behave like the golden app.
+# Owners with no files get a few demo documents on their first file listing, so
+# empty accounts still have something to share.
 ENV FILE_SEED_DEMO_DOCS=true
 
 EXPOSE 8082
