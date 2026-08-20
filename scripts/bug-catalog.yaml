@@ -53,7 +53,6 @@ scenarios:
       Misconfiguration bug: point file-service at a bucket that does not exist
       via a config override (requires a rollout restart to take effect).
 
-
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
   # re-deploy the tenant with the golden tag.
