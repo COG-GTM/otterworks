@@ -164,8 +164,18 @@ mod tests {
         let dockerfile = include_str!("../Dockerfile");
         for line in dockerfile.lines() {
             let line = line.trim();
+            // Dockerfile instructions are case-insensitive and the key may be
+            // separated by any whitespace.
+            if !line
+                .get(..3)
+                .is_some_and(|kw| kw.eq_ignore_ascii_case("ENV"))
+            {
+                continue;
+            }
             assert!(
-                !line.starts_with("ENV FILE_UPLOAD_ALWAYS_FAIL"),
+                !line[3..]
+                    .trim_start()
+                    .starts_with("FILE_UPLOAD_ALWAYS_FAIL"),
                 "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
             );
         }
