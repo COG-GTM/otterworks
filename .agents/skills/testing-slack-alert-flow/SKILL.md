@@ -17,8 +17,9 @@ description: How to test OtterWorks' failed-upload → admin-service → Slack a
 - Redis chaos flag (no rebuild, instant): `docker exec otterworks-redis redis-cli SET chaos:file-service:upload_s3_error 1`
   (DEL to clear). file-service then targets a nonexistent S3 bucket → 500 storage_error.
 - Same flag is what the admin dashboard's "Break File Uploads" demo control sets (with a 10-min TTL).
-- Alternative (config override, needs a rollout restart): point file-service at a nonexistent
-  bucket with `S3_BUCKET=otterworks-does-not-exist` (`scripts/inject-bug.sh <id> file-bad-bucket`).
+- Alternative (blunter — breaks downloads/previews too, so prefer the chaos flag): set
+  `S3_BUCKET=otterworks-does-not-exist` for file-service in docker-compose.yml and restart it
+  locally, or on a k8s tenant `scripts/inject-bug.sh <id> file-bad-bucket`.
 - Upload-failure alerts carry `dedup=false`, so every failed upload opens a new incident and a
   new Slack message (unlike Grafana-ingested alerts, which dedupe against an open incident for
   the same service) — safe to repeat for multiple test runs.
