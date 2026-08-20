@@ -751,9 +751,7 @@ mod tests {
 
     #[test]
     fn upload_uses_configured_bucket_when_no_chaos_flag() {
-        std::env::set_var("FILE_UPLOAD_ALWAYS_FAIL", "true");
         assert_eq!(upload_bucket("otterworks-files", false), "otterworks-files");
-        std::env::remove_var("FILE_UPLOAD_ALWAYS_FAIL");
     }
 
     #[test]
