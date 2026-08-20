@@ -81,22 +81,6 @@ if [ "${SCENARIO}" = "file-bad-bucket" ]; then
   exit 0
 fi
 
-if [ "${SCENARIO}" = "file-upload-always-fails" ]; then
-  log "Injecting config bug 'file-upload-always-fails' (file-service uploads always 5xx)..."
-  helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
-    --set-string config.FILE_UPLOAD_ALWAYS_FAIL=true
-  log "Applied. A value change rolls the pod on its own (ConfigMap checksum annotation);"
-  log "if the env was already true nothing restarts and the tenant is already failing"
-  log "uploads -- tenant coggtm is in that state, because the demo-coggtm branch bakes"
-  log "the variable into the file-service image itself. Turn it off with:"
-  log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false"
-  log "(whether that false survives a redeploy depends on which tree renders the chart:"
-  log "deploy-tenant.sh from this branch drops it and re-applies the chart's true, while"
-  log "the ops-dashboard runner's bundled tree sets no such key, so the image default"
-  log "true applies again. Either way a redeploy re-enables the failure.)"
-  exit 0
-fi
-
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }
