@@ -117,10 +117,8 @@ services:
       # endpoint so each failure opens its own incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
-      # Off locally even on this demo variant branch: the permanent failure is
-      # baked into the file-service image (see its Dockerfile) for tenant
-      # coggtm, and this explicit false overrides it so a local stack still
-      # behaves like the golden app. Set it to true to reproduce the tenant.
+      # Routes every upload to a nonexistent S3 bucket; only ever set to true to
+      # reproduce an upload-failure scenario locally.
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
