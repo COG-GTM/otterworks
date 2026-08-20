@@ -16,7 +16,13 @@ COPY --from=builder /app/target/release/file-service /app/file-service
 RUN useradd -r -u 1001 appuser
 USER appuser
 
-# Click-triggered notification failure (same bake rationale as above): sharing
+# demo-coggtm tenant variant -- NEVER merge this to `main`. The tenant runs the
+# image this branch builds (tag `tenant-coggtm`), so baking the switch in here
+# is the only way for it to survive pod restarts and redeploys; the deploy
+# runner renders charts from its own bundled tree, so nothing overrides the
+# image unless it sets the variable explicitly.
+#
+# Click-triggered notification failure: sharing
 # a file publishes the file_shared event to a nonexistent SNS topic, so every
 # share click fails with a real AWS SNS error and fires the
 # NotificationEventPublishFailure alert at admin-service (incident + Devin
@@ -26,9 +32,8 @@ USER appuser
 # stacks behave like the golden app.
 ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
 
-# With uploads failing permanently (above), users would have no files to share.
-# Seeding gives every user a few demo documents on their first file listing,
-# so the share-notification failure is demoable alongside the upload failure.
+# Seeding gives every user a few demo documents on their first file listing, so
+# accounts with no files still have something to share.
 # docker-compose.yml passes false, so local stacks behave like the golden app.
 ENV FILE_SEED_DEMO_DOCS=true
 
