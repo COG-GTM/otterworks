@@ -50,6 +50,7 @@ module Api
           severity         = SEVERITY_MAP.fetch(labels[:severity].to_s, 'medium')
           summary          = annotations[:summary].to_s
           description      = annotations[:description].to_s.presence || summary
+          reporter_email   = labels[:reporter_email].to_s.presence
 
           if status == 'resolved'
             resolve_incident(affected_service, alert_name)
@@ -101,6 +102,7 @@ module Api
           SlackNotifierService.notify_incident(
             incident: incident,
             session_url: session_result&.dig(:url),
+            reporter_email: reporter_email,
             alert_name: alert_name
           )
 

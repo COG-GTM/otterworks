@@ -1,11 +1,11 @@
 import { useCallback, useState, useRef, useEffect, useImperativeHandle, forwardRef } from "react";
 import type { Ref } from "react";
 import { useDropzone } from "react-dropzone";
+import { isAxiosError } from "axios";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
 import { notifyUploadComplete, notifyUploadFailed } from "@/lib/native-notifications";
 import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
-import { incidentsApi } from "@/lib/api";
 
 interface FileUploadDropzoneProps {
   uploadFile: (
@@ -27,17 +27,27 @@ interface UploadingFile {
   progress: number;
   status: "uploading" | "done" | "error";
   error?: string;
+  /** Rejected for size: retrying can never succeed. */
+  tooLarge?: boolean;
   abortController?: AbortController;
-  devinSessionUrl?: string;
-  failedAt?: number;
+}
+
+/** Mirrors file-service's MAX_UPLOAD_BYTES and the nginx body limits in front of it. */
+export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+const TOO_LARGE_ERROR = `File is too large — the limit is ${formatFileSize(MAX_UPLOAD_BYTES)}`;
+
+/**
+ * Only reachable for files under the client limit — a proxy hop with a smaller
+ * body limit than file-service. Retry stays available.
+ */
+const SERVER_TOO_LARGE_ERROR = "Server rejected this file as too large";
+
+function isTooLargeError(err: unknown): boolean {
+  return isAxiosError(err) && err.response?.status === 413;
 }
 
 let fileIdCounter = 0;
-
-// A failed upload opens an incident, and the Devin session it launches is
-// attached a moment later, so poll briefly rather than reading once.
-const SESSION_POLL_ATTEMPTS = 6;
-const SESSION_POLL_INTERVAL_MS = 2500;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
@@ -46,11 +56,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
   const [dismissing, setDismissing] = useState(false);
-  const pollTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  // Bumped whenever an upload's lookups are stopped, so a chain awaiting a
-  // request can tell it has been superseded and drop its result.
-  const pollGenerationRef = useRef(new Map<string, number>());
-  const mountedRef = useRef(true);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
 
@@ -93,82 +98,10 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     };
   }, [uploadingFiles]);
 
-  const stopPolling = useCallback((id: string) => {
-    const timer = pollTimersRef.current.get(id);
-    if (timer) clearTimeout(timer);
-    pollTimersRef.current.delete(id);
-    pollGenerationRef.current.set(id, (pollGenerationRef.current.get(id) ?? 0) + 1);
-  }, []);
-
-  // An upload that will never be polled again drops its bookkeeping entirely.
-  const forgetPolling = useCallback(
-    (id: string) => {
-      stopPolling(id);
-      pollGenerationRef.current.delete(id);
-    },
-    [stopPolling],
-  );
-
-  const stopAllPolling = useCallback(() => {
-    [...pollGenerationRef.current.keys()].forEach(stopPolling);
-  }, [stopPolling]);
-
-  const timers = pollTimersRef.current;
-  useEffect(() => {
-    // Re-set on mount so StrictMode's simulated remount does not leave the
-    // component permanently marked as unmounted.
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      timers.forEach(clearTimeout);
-      timers.clear();
-    };
-  }, [timers]);
-
-  // Each failed upload polls for its own incident, so a later failure never
-  // shows the session belonging to an earlier file. One in-flight lookup per
-  // upload; retrying, cancelling or dismissing stops it.
-  const pollForDevinSession = useCallback(
-    (entry: UploadingFile) => {
-      stopPolling(entry.id);
-      const generation = pollGenerationRef.current.get(entry.id) ?? 0;
-      const superseded = () =>
-        !mountedRef.current || pollGenerationRef.current.get(entry.id) !== generation;
-      let attempt = 0;
-      const check = async () => {
-        pollTimersRef.current.delete(entry.id);
-        attempt += 1;
-        try {
-          const incident = await incidentsApi.findForUpload(entry.file.name);
-          if (superseded()) return;
-          if (incident?.devinSessionUrl) {
-            const url = incident.devinSessionUrl;
-            setUploadingFiles((prev) =>
-              prev.map((f) => (f.id === entry.id ? { ...f, devinSessionUrl: url } : f)),
-            );
-            return;
-          }
-        } catch {
-          // Incident lookup is best-effort: the banner still shows the failure.
-          if (superseded()) return;
-        }
-        if (attempt < SESSION_POLL_ATTEMPTS) {
-          pollTimersRef.current.set(
-            entry.id,
-            setTimeout(() => void check(), SESSION_POLL_INTERVAL_MS),
-          );
-        }
-      };
-      void check();
-    },
-    [stopPolling],
-  );
-
   const startUpload = useCallback(
     (entry: UploadingFile) => {
       const abortController = new AbortController();
 
-      stopPolling(entry.id);
       setUploadingFiles((prev) =>
         prev.map((f) =>
           f.id === entry.id
@@ -177,7 +110,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 status: "uploading" as const,
                 progress: 0,
                 error: undefined,
-                devinSessionUrl: undefined,
                 abortController,
               }
             : f,
@@ -200,22 +132,21 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                 : f,
             ),
           );
-          forgetPolling(entry.id);
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const rejectedTooLarge = isTooLargeError(err);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
                   ? {
                       ...f,
                       status: "error" as const,
-                      error: "Upload failed",
-                      failedAt: Date.now(),
+                      error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
                       abortController: undefined,
                     }
                   : f,
@@ -223,23 +154,33 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             );
             setShowUploadErrorBanner(true);
             void notifyUploadFailed(entry.file.name);
-            pollForDevinSession(entry);
           }
         });
     },
-    [uploadFile, onUploadComplete, pollForDevinSession, stopPolling, forgetPolling],
+    [uploadFile, onUploadComplete],
   );
 
   const addFiles = useCallback(
     (files: File[]) => {
-      const newFiles: UploadingFile[] = files.map((file) => ({
-        id: `upload-${++fileIdCounter}`,
-        file,
-        progress: 0,
-        status: "uploading" as const,
-      }));
+      const newFiles: UploadingFile[] = files.map((file) => {
+        const tooLarge = file.size > MAX_UPLOAD_BYTES;
+        return {
+          id: `upload-${++fileIdCounter}`,
+          file,
+          progress: 0,
+          status: tooLarge ? ("error" as const) : ("uploading" as const),
+          error: tooLarge ? TOO_LARGE_ERROR : undefined,
+          tooLarge,
+        };
+      });
       setUploadingFiles((prev) => [...prev, ...newFiles]);
-      newFiles.forEach((entry) => startUpload(entry));
+      newFiles.forEach((entry) => {
+        if (entry.tooLarge) {
+          void notifyUploadFailed(entry.file.name);
+        } else {
+          startUpload(entry);
+        }
+      });
     },
     [startUpload],
   );
@@ -248,13 +189,16 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   const cancelUpload = (id: string) => {
     const entry = uploadingFiles.find((f) => f.id === id);
-    forgetPolling(id);
     entry?.abortController?.abort();
   };
 
   const retryUpload = (id: string) => {
     const entry = uploadingFiles.find((f) => f.id === id);
-    if (entry) startUpload(entry);
+    if (entry && !entry.tooLarge) startUpload(entry);
+  };
+
+  const removeUpload = (id: string) => {
+    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
   const clearCompleted = () => {
@@ -262,16 +206,8 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   };
 
   const dismissErrorBanner = () => {
-    stopAllPolling();
     setShowUploadErrorBanner(false);
   };
-
-  const lastFailed = uploadingFiles
-    .filter((f) => f.status === "error")
-    .reduce<UploadingFile | undefined>(
-      (latest, f) => (!latest || (f.failedAt ?? 0) >= (latest.failedAt ?? 0) ? f : latest),
-      undefined,
-    );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop: addFiles,
@@ -285,8 +221,6 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           className="mb-4"
           title="File upload failed"
           message="One or more files could not be uploaded. Please try again."
-          actionHref={lastFailed?.devinSessionUrl}
-          actionLabel={`View Devin session for ${lastFailed?.file.name ?? "this upload"}`}
           onDismiss={dismissErrorBanner}
         />
       )}
@@ -374,13 +308,23 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
               )}
               {item.status === "error" && (
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => retryUpload(item.id)}
-                    className="p-1 text-gray-400 hover:text-otter-600 transition"
-                    title="Retry upload"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
+                  {item.tooLarge ? (
+                    <button
+                      onClick={() => removeUpload(item.id)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition"
+                      title="Remove file"
+                    >
+                      <X size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => retryUpload(item.id)}
+                      className="p-1 text-gray-400 hover:text-otter-600 transition"
+                      title="Retry upload"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
                   <AlertCircle size={16} className="text-red-500" />
                 </div>
               )}

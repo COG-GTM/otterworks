@@ -50,5 +50,23 @@ RSpec.describe Api::V1::Admin::AlertsController do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)
     end
+
+    it 'passes the reporter_email label through to the Slack notification' do
+      allow(SlackNotifierService).to receive(:notify_incident)
+
+      post :ingest, params: { alerts: [firing_alert(labels: { reporter_email: 'preston@example.com' })] }
+
+      expect(SlackNotifierService).to have_received(:notify_incident)
+        .with(hash_including(reporter_email: 'preston@example.com'))
+    end
+
+    it 'passes a nil reporter_email when the alert has no reporter label' do
+      allow(SlackNotifierService).to receive(:notify_incident)
+
+      post :ingest, params: { alerts: [firing_alert] }
+
+      expect(SlackNotifierService).to have_received(:notify_incident)
+        .with(hash_including(reporter_email: nil))
+    end
   end
 end
