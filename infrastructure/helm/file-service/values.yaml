@@ -69,6 +69,14 @@ config:
   #     -n otterworks-coggtm --reuse-values \
   #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false
   FILE_UPLOAD_ALWAYS_FAIL: "true"
+  # Same demo-variant convention as above (values kept in agreement with the
+  # image ENVs): every Share click publishes file_shared to a nonexistent SNS
+  # topic (real AWS NotFound -> red banner + incident + Slack alert), and users
+  # with no files get a few demo documents seeded so the share flow stays
+  # demoable while uploads fail. Both OFF on the golden app. Disable per tenant
+  # the same way as FILE_UPLOAD_ALWAYS_FAIL, with the same redeploy caveat.
+  FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
+  FILE_SEED_DEMO_DOCS: "true"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.

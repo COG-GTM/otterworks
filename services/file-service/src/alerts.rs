@@ -73,12 +73,16 @@ pub fn build_share_notification_failure_payload(
     file_name: &str,
     error: &str,
     reporter_email: Option<&str>,
+    dedup: bool,
 ) -> Value {
+    // `dedup=false` opens a fresh incident per alert; it is reserved for the
+    // forced-failure demo so a genuine SNS outage collapses onto one open
+    // incident like any other alert.
     let mut labels = json!({
         "alertname": "NotificationEventPublishFailure",
         "severity": "critical",
         "affected_service": "file-service",
-        "dedup": "false",
+        "dedup": if dedup { "true" } else { "false" },
     });
     if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
         labels["reporter_email"] = json!(email);
@@ -109,6 +113,7 @@ pub fn notify_share_notification_failure(
     file_name: &str,
     error: &str,
     reporter_email: Option<&str>,
+    dedup: bool,
 ) {
     let base_url = config
         .admin_service_url
@@ -120,7 +125,7 @@ pub fn notify_share_notification_failure(
         return;
     }
     let secret = config.alert_webhook_secret.clone();
-    let payload = build_share_notification_failure_payload(file_name, error, reporter_email);
+    let payload = build_share_notification_failure_payload(file_name, error, reporter_email, dedup);
     let file_name = file_name.to_string();
 
     tokio::spawn(async move {
@@ -238,6 +243,7 @@ mod tests {
             "report.pdf",
             "NotFound: topic does not exist",
             Some("user@example.com"),
+            false,
         );
         let alert = &payload["alerts"][0];
         assert_eq!(
@@ -258,9 +264,15 @@ mod tests {
 
     #[test]
     fn share_notification_payload_omits_blank_reporter_email() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None);
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false);
         let alert = &payload["alerts"][0];
         assert!(alert["labels"].get("reporter_email").is_none());
+    }
+
+    #[test]
+    fn share_notification_payload_dedups_when_not_forced() {
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true);
+        assert_eq!(payload["alerts"][0]["labels"]["dedup"], "true");
     }
 
     #[actix_rt::test]
