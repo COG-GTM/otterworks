@@ -16,7 +16,9 @@ COPY --from=builder /app/target/release/file-service /app/file-service
 RUN useradd -r -u 1001 appuser
 USER appuser
 
-# Click-triggered notification failure (same bake rationale as above): sharing
+# Click-triggered notification failure, baked into the image because the deploy
+# runner renders charts from its own bundled tree (whose file-service values set
+# no such key), so only an image ENV reliably reaches the tenant: sharing
 # a file publishes the file_shared event to a nonexistent SNS topic, so every
 # share click fails with a real AWS SNS error and fires the
 # NotificationEventPublishFailure alert at admin-service (incident + Devin
@@ -26,9 +28,8 @@ USER appuser
 # stacks behave like the golden app.
 ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
 
-# With uploads failing permanently (above), users would have no files to share.
 # Seeding gives every user a few demo documents on their first file listing,
-# so the share-notification failure is demoable alongside the upload failure.
+# so the share-notification path is demoable without uploading anything first.
 # docker-compose.yml passes false, so local stacks behave like the golden app.
 ENV FILE_SEED_DEMO_DOCS=true
 
