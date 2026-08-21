@@ -149,6 +149,26 @@ mod tests {
     }
 
     #[test]
+    fn share_event_always_fail_is_off_by_default() {
+        if std::env::var("FILE_SHARE_EVENT_ALWAYS_FAIL").is_ok() {
+            return;
+        }
+        assert!(!super::SnsConfig::from_env().share_event_always_fail);
+    }
+
+    /// The shipped image must not enable the share-event failure path: with it
+    /// on, every share publishes `file_shared` to a topic that does not exist
+    /// and the notification is lost.
+    #[test]
+    fn image_does_not_enable_share_event_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        assert!(
+            !dockerfile.contains("ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true"),
+            "Dockerfile must not bake FILE_SHARE_EVENT_ALWAYS_FAIL=true"
+        );
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
