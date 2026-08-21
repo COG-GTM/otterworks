@@ -18,10 +18,18 @@
    ```
    kubectl logs -l app=file-service --tail=100 -n otterworks | grep -i "NoSuchBucket\|S3\|500"
    ```
-2. Check whether the chaos flag `chaos:file-service:upload_s3_error` is set in Redis:
+2. Check the bucket file-service is actually writing to, and that it exists:
    ```
-   redis-cli EXISTS chaos:file-service:upload_s3_error
+   # config reaches the pod via envFrom, so read it from the running container
+   bucket=$(kubectl -n otterworks exec deploy/file-service -- printenv S3_BUCKET)
+   # deploy-tenant.sh always sets S3_BUCKET (the shared dev bucket, e.g.
+   # otterworks-files-dev), so an unset value means the tenant was deployed
+   # without that wiring and the service falls back to its built-in default
+   echo "file-service writes to: ${bucket:-otterworks-files (code default)}"
+   aws s3api head-bucket --bucket "${bucket:-otterworks-files}"
    ```
+   If the variable is unset, treat that as the finding: re-run
+   `scripts/deploy-tenant.sh <ID>` so the release carries `config.S3_BUCKET`.
 
 <!-- TODO: Complete investigation steps -->
 
