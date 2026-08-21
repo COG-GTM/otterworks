@@ -2,6 +2,7 @@
 
 import html as html_mod
 import math
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -323,13 +324,68 @@ class DocumentService:
         )
         return comment
 
-    async def list_comments(self, document_id: UUID) -> list[Comment]:
+    async def list_comments(
+        self, document_id: UUID, include_resolved: bool = True
+    ) -> list[Comment]:
+        conditions = [Comment.document_id == document_id]
+        if not include_resolved:
+            conditions.append(Comment.is_resolved.is_(False))
         result = await self.db.execute(
             select(Comment)
-            .where(Comment.document_id == document_id)
+            .where(*conditions)
             .order_by(Comment.created_at.asc())
         )
         return list(result.scalars().all())
+
+    async def resolve_comment(
+        self, document_id: UUID, comment_id: UUID, resolved_by: UUID
+    ) -> Comment | None:
+        result = await self.db.execute(
+            select(Comment).where(
+                Comment.id == comment_id, Comment.document_id == document_id
+            )
+        )
+        comment = result.scalar_one_or_none()
+        if not comment or comment.is_resolved:
+            return comment
+
+        comment.is_resolved = True
+        comment.resolved_by = resolved_by
+        comment.resolved_at = datetime.now(UTC)
+        await self.db.commit()
+        await self.db.refresh(comment)
+
+        if resolved_by != comment.author_id:
+            await event_publisher.publish(
+                "comment_resolved",
+                {
+                    "comment_id": comment.id,
+                    "document_id": comment.document_id,
+                    "author_id": comment.author_id,
+                    "resolved_by": comment.resolved_by,
+                    "resolved_at": comment.resolved_at,
+                },
+            )
+        return comment
+
+    async def unresolve_comment(
+        self, document_id: UUID, comment_id: UUID
+    ) -> Comment | None:
+        result = await self.db.execute(
+            select(Comment).where(
+                Comment.id == comment_id, Comment.document_id == document_id
+            )
+        )
+        comment = result.scalar_one_or_none()
+        if not comment or not comment.is_resolved:
+            return comment
+
+        comment.is_resolved = False
+        comment.resolved_by = None
+        comment.resolved_at = None
+        await self.db.commit()
+        await self.db.refresh(comment)
+        return comment
 
     async def delete_comment(self, document_id: UUID, comment_id: UUID) -> bool:
         result = await self.db.execute(
