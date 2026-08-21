@@ -21,6 +21,7 @@ public class UserDTO {
   private Instant createdAt;
   private Instant updatedAt;
   private Instant lastLoginAt;
+  private long quotaBytes;
 
   public static UserDTO fromEntity(User user) {
     UserDTO dto = new UserDTO();
@@ -33,6 +34,7 @@ public class UserDTO {
     dto.setCreatedAt(user.getCreatedAt());
     dto.setUpdatedAt(user.getUpdatedAt());
     dto.setLastLoginAt(user.getLastLoginAt());
+    dto.setQuotaBytes(user.getQuotaBytes());
     return dto;
   }
 }

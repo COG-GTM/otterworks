@@ -79,6 +79,14 @@ public class AuthController {
     return ResponseEntity.ok(UserLookupResponse.fromUserDTO(user));
   }
 
+  @PatchMapping("/users/{id}/quota")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<UserDTO> updateQuota(
+      @PathVariable UUID id, @Valid @RequestBody UpdateQuotaRequest request) {
+    UserDTO user = userService.updateQuota(id, request.getQuotaBytes());
+    return ResponseEntity.ok(user);
+  }
+
   @GetMapping("/users")
   @PreAuthorize("hasRole('ADMIN')")
   public ResponseEntity<Page<UserDTO>> listUsers(Pageable pageable) {
