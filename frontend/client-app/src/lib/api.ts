@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { apiClient } from "./api-client";
 import type {
   User,
@@ -251,11 +252,27 @@ export const filesApi = {
     await apiClient.delete(`/folders/${id}`);
   },
   share: async (id: string, email: string, permission: "view" | "edit"): Promise<void> => {
-    const user = await authApi.lookupUser(email);
+    // An email that doesn't resolve to an OtterWorks user is still sent to
+    // file-service (as shared_with_email), which decides whether to reject it.
+    let userId: string | null = null;
+    try {
+      userId = (await authApi.lookupUser(email)).id;
+    } catch (err) {
+      // auth-service reports an unknown email as 400 "User not found with
+      // email: ..."; other lookup failures are rethrown.
+      const isUserNotFound =
+        isAxiosError(err) &&
+        (err.response?.status === 404 ||
+          (err.response?.status === 400 &&
+            typeof err.response.data?.message === "string" &&
+            err.response.data.message.includes("User not found")));
+      if (!isUserNotFound) throw err;
+    }
     const sharedBy = getOwnerIdFromJwt();
     if (!sharedBy) throw new Error("Unable to determine current user");
     await apiClient.post(`/files/${id}/share`, {
-      shared_with: user.id,
+      shared_with: userId,
+      shared_with_email: userId ? undefined : email,
       permission: permission === "view" ? "viewer" : "editor",
       shared_by: sharedBy,
     });
