@@ -550,7 +550,7 @@ pub async fn share_file(
     let file = meta.get_file(&file_id).await?;
 
     // Check if share already exists for this file + user
-    let (share, created, permission_update) = if let Some(existing) = meta
+    let (share, created) = if let Some(existing) = meta
         .find_existing_share(&file_id, &body.shared_with)
         .await?
     {
@@ -566,10 +566,10 @@ pub async fn share_file(
             };
             meta.put_share(&updated).await?;
             tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File share updated");
-            (updated, false, true)
+            (updated, false)
         } else {
             tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File already shared");
-            (existing, false, false)
+            (existing, false)
         }
     } else {
         let share = FileShare {
@@ -581,16 +581,12 @@ pub async fn share_file(
             created_at: Utc::now(),
         };
         meta.put_share(&share).await?;
-        (share, true, false)
+        (share, true)
     };
 
     // The notification event is published for new shares only, so re-shares
-    // and permission updates don't send duplicate notifications. When the
-    // share-event failure switch is on, every share click (new share or
-    // re-share of the same recipient) attempts the publish so a failed
-    // attempt can be retried by sharing again; permission updates are not
-    // share clicks and are left alone.
-    if created || (events.share_publish_forced() && !permission_update) {
+    // and permission updates don't send duplicate notifications.
+    if created {
         if let Err(err) = events
             .file_shared(&file_id, &file.owner_id, &body.shared_with)
             .await
@@ -601,14 +597,9 @@ pub async fn share_file(
                 &file.name,
                 &err.to_string(),
                 reporter_email.as_deref(),
-                !events.share_publish_forced(),
             );
-            // Only surface the failure to the caller when the demo switch is
-            // on; otherwise event publishing stays fire-and-forget like the
-            // other handlers, since the share is already persisted.
-            if events.share_publish_forced() {
-                return Err(err);
-            }
+            // Event publishing stays fire-and-forget like the other handlers,
+            // since the share itself is already persisted.
         }
     }
 

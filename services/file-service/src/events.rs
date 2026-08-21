@@ -11,10 +11,6 @@ use crate::errors::ServiceError;
 pub struct EventPublisher {
     client: aws_sdk_sns::Client,
     topic_arn: Option<String>,
-    /// Topic the `file_shared` event is published to when the share-event
-    /// failure switch is on: a topic that does not exist in any account, so
-    /// SNS rejects the publish with a real AWS error.
-    share_fail_topic_arn: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,29 +43,15 @@ impl EventPublisher {
         let aws_cfg = aws_cfg_builder.load().await;
         let client = aws_sdk_sns::Client::new(&aws_cfg);
 
-        let share_fail_topic_arn = if sns_config.share_event_always_fail {
-            Some(match &sns_config.topic_arn {
-                Some(arn) => format!("{arn}-v2"),
-                None => format!(
-                    "arn:aws:sns:{}:000000000000:otterworks-file-events-v2",
-                    aws_config.region
-                ),
-            })
-        } else {
-            None
-        };
-
         Self {
             client,
             topic_arn: sns_config.topic_arn.clone(),
-            share_fail_topic_arn,
         }
     }
 
-    /// Whether the share-event failure switch is on, in which case every
-    /// share request (including re-shares) attempts the publish.
-    pub fn share_publish_forced(&self) -> bool {
-        self.share_fail_topic_arn.is_some()
+    /// Topic every event, including `file_shared`, is published to.
+    pub fn topic_arn(&self) -> Option<&str> {
+        self.topic_arn.as_deref()
     }
 
     async fn publish(&self, event: &FileEvent) -> Result<(), ServiceError> {
@@ -173,13 +155,7 @@ impl EventPublisher {
             mime_type: None,
             size_bytes: None,
         };
-        self.publish_to(
-            &event,
-            self.share_fail_topic_arn
-                .as_deref()
-                .or(self.topic_arn.as_deref()),
-        )
-        .await
+        self.publish(&event).await
     }
 
     pub async fn file_trashed(&self, file_id: &Uuid, owner_id: &Uuid) -> Result<(), ServiceError> {
@@ -267,6 +243,28 @@ impl EventPublisher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AwsConfig;
+
+    #[actix_rt::test]
+    async fn events_are_published_to_the_configured_topic() {
+        let topic = "arn:aws:sns:us-east-1:000000000000:otterworks-events";
+        let publisher = EventPublisher::new(
+            &SnsConfig {
+                topic_arn: Some(topic.into()),
+            },
+            &AwsConfig {
+                region: "us-east-1".into(),
+                endpoint_url: Some("http://localhost:4566".into()),
+                s3_bucket: "otterworks-files".into(),
+                dynamodb_table: "otterworks-file-metadata".into(),
+                dynamodb_folders_table: "otterworks-folders".into(),
+                dynamodb_versions_table: "otterworks-file-versions".into(),
+                dynamodb_shares_table: "otterworks-file-shares".into(),
+            },
+        )
+        .await;
+        assert_eq!(publisher.topic_arn(), Some(topic));
+    }
 
     #[test]
     fn test_file_event_serialization() {
