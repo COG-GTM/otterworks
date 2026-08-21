@@ -45,7 +45,8 @@ image and only take the **service images** from your branch. So:
 - `helm --set` by hand gets wiped on the next redeploy (every push, idle-wake, reaper).
 - The reliable fork-side mechanism: **bake it into the service image**:
   ```dockerfile
-  # services/file-service/Dockerfile on the demo branch ONLY
+  # services/file-service/Dockerfile on a demo branch ONLY -- never on `main`,
+  # where it breaks uploads for every deployment built from that image.
   ENV FILE_UPLOAD_ALWAYS_FAIL=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
