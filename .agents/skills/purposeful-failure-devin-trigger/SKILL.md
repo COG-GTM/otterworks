@@ -49,7 +49,10 @@ image and only take the **service images** from your branch. So:
   ENV FILE_UPLOAD_ALWAYS_FAIL=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
-  services whose files the push touched).
+  services whose files the push touched). Note file-service guards this switch
+  with `config::tests::shipped_image_does_not_enable_upload_always_fail`, so a
+  branch that bakes it in has to relax that test too — deliberately, so the
+  setting never reaches `main` unnoticed.
 
 Add a visible frontend surface too if the demo needs it (e.g. the reusable
 `frontend/client-app/src/components/chaos/chaos-error-banner.tsx` shown from the
