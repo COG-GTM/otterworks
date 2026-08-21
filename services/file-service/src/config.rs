@@ -149,15 +149,18 @@ mod tests {
     }
 
     /// The shipped image must never enable the upload failure switch: a baked
-    /// `ENV FILE_UPLOAD_ALWAYS_FAIL=true` sends every upload to a nonexistent
-    /// S3 bucket and 500s the request.
+    /// `FILE_UPLOAD_ALWAYS_FAIL=true` sends every upload to a nonexistent S3
+    /// bucket and 500s the request.
     #[test]
     fn image_does_not_enable_upload_always_fail() {
         let dockerfile = include_str!("../Dockerfile");
         for line in dockerfile.lines() {
             let line = line.trim();
+            if line.starts_with('#') {
+                continue;
+            }
             assert!(
-                !line.starts_with("ENV FILE_UPLOAD_ALWAYS_FAIL"),
+                !line.contains("FILE_UPLOAD_ALWAYS_FAIL"),
                 "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {line}"
             );
         }
