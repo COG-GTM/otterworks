@@ -62,7 +62,7 @@ function Row({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
       } else if (kind === "redeploy") {
         await apiSend(`/api/tenants/${tenant.id}/redeploy`, "POST");
       } else {
-        const scenario = window.prompt("Scenario to inject (e.g. upload_s3_error):");
+        const scenario = window.prompt("Scenario to inject (e.g. search-suggest-500):");
         if (!scenario) {
           setBusy(null);
           return;
