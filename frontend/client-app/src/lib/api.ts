@@ -258,7 +258,15 @@ export const filesApi = {
     try {
       userId = (await authApi.lookupUser(email)).id;
     } catch (err) {
-      if (!(isAxiosError(err) && err.response?.status === 404)) throw err;
+      // auth-service reports an unknown email as 400 "User not found with
+      // email: ..."; other lookup failures are rethrown.
+      const isUserNotFound =
+        isAxiosError(err) &&
+        (err.response?.status === 404 ||
+          (err.response?.status === 400 &&
+            typeof err.response.data?.message === "string" &&
+            err.response.data.message.includes("User not found")));
+      if (!isUserNotFound) throw err;
     }
     const sharedBy = getOwnerIdFromJwt();
     if (!sharedBy) throw new Error("Unable to determine current user");
