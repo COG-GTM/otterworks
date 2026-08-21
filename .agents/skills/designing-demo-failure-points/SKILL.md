@@ -5,9 +5,11 @@ description: Design pattern for adding a new intentional AWS/service failure poi
 
 # Designing a new intentional failure point for demos
 
-Reference implementations: the S3 upload failure (`FILE_UPLOAD_ALWAYS_FAIL`, PRs
-#78–#92) and the SNS share-notification failure (`FILE_SHARE_EVENT_ALWAYS_FAIL`,
-PR #209). Companion skill `purposeful-failure-devin-trigger` covers how the
+Reference implementation: the SNS share-notification failure
+(`FILE_SHARE_EVENT_ALWAYS_FAIL`, PR #209). Note the retired upload variant
+(`FILE_UPLOAD_ALWAYS_FAIL`, PRs #78–#92, removed in #222): an always-fail switch
+on the upload path caused a tenant-wide outage — don't reintroduce one.
+Companion skill `purposeful-failure-devin-trigger` covers how the
 switch reaches a live tenant and how incidents spawn Devin sessions — read both.
 
 ## 1. Pick the failure point
@@ -38,7 +40,7 @@ switch reaches a live tenant and how incidents spawn Devin sessions — read bot
   service's config (`parse_bool_env(..., false)`), **default off** in the code
   default and `docker-compose.yml` (`${VAR:-false}`). Chart values follow the
   branch: off on the golden app, but on a demo-variant branch keep them in
-  agreement with the image ENVs (see the `FILE_UPLOAD_ALWAYS_FAIL` comment in
+  agreement with the image ENVs (see the `FILE_SHARE_EVENT_ALWAYS_FAIL` comment in
   `infrastructure/helm/file-service/values.yaml`) so the two never contradict —
   meaning any tenant deployed *from that checkout* inherits the failure.
 - Don't use the Redis chaos flags for demos that must survive restarts — they
