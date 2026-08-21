@@ -637,6 +637,7 @@ pub async fn share_file(
                 &err.to_string(),
                 reporter_email.as_deref(),
                 !events.share_publish_forced(),
+                recipient_known,
             );
             // Only surface the failure to the caller when the demo switch is
             // on; otherwise event publishing stays fire-and-forget like the
