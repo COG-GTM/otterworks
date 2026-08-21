@@ -161,10 +161,20 @@ mod tests {
     /// and the notification is lost.
     #[test]
     fn image_does_not_enable_share_event_always_fail() {
-        let dockerfile = include_str!("../Dockerfile");
+        let baked = include_str!("../Dockerfile")
+            .lines()
+            .map(str::trim)
+            .filter_map(|line| line.strip_prefix("ENV "))
+            .filter_map(|env| {
+                let rest = env
+                    .trim_start()
+                    .strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")?;
+                Some(rest.trim_start().trim_start_matches('=').trim())
+            })
+            .any(|value| parse_bool(value.trim_matches(['"', '\'']), false));
         assert!(
-            !dockerfile.contains("ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true"),
-            "Dockerfile must not bake FILE_SHARE_EVENT_ALWAYS_FAIL=true"
+            !baked,
+            "Dockerfile must not bake FILE_SHARE_EVENT_ALWAYS_FAIL on"
         );
     }
 
