@@ -14,6 +14,15 @@ COPY . .
 ENV PATH="/app/.venv/bin:$PATH"
 
 RUN useradd -r -u 1001 appuser
+
+# The export archive the service reads rendered exports back out of. It has to
+# exist in the image: a missing directory turns every export read into a 404,
+# including the runtime probe's control read.
+ENV EXPORT_ARCHIVE_DIR=/var/lib/otterworks/exports
+RUN mkdir -p "$EXPORT_ARCHIVE_DIR" \
+    && printf 'export archive reachable\n' > "$EXPORT_ARCHIVE_DIR/dast-control.txt" \
+    && chown -R appuser "$EXPORT_ARCHIVE_DIR"
+
 USER appuser
 
 EXPOSE 8083

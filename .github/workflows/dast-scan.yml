@@ -1,0 +1,195 @@
+name: DAST Scan
+
+# Dynamic application security testing: stand the app up, attack it through the
+# API gateway, and gate on findings that this change introduced.
+#
+#   pull_request  -> informational. The golden app deliberately keeps planted vulnerabilities
+#                    (see AGENTS.md) and security/dast/baseline.json is empty, so the suite
+#                    reports into the job summary rather than failing every PR. Populate the
+#                    baseline (make dast-baseline REASON="...") to turn this into a real gate
+#                    on newly introduced findings, and drop continue-on-error below.
+#   schedule      -> informational. Full sweep (probes + ZAP) against the disposable tenant
+#                    named by the DAST_SWEEP_TARGET repository variable, reported in the job
+#                    summary without failing the run. The job no-ops when it is unset: a scan
+#                    registers accounts and writes documents, so it must never default to a
+#                    tenant someone presents from (t-main is never reaped — see AGENTS.md).
+#   dispatch      -> with a target, the deployed sweep against it; with none, the local stack.
+#                    A deployed target is never inferred, for the reason above.
+#
+# The static counterpart lives in security-scan.yml; the two are complementary —
+# SAST reads the code, DAST attacks the running system.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'infrastructure/helm/**'
+      - 'security/dast/**'
+      - '.github/workflows/dast-scan.yml'
+  schedule:
+    - cron: '0 7 * * *' # Daily 7AM UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Base URL to scan (leave blank to stand up and scan the local stack)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  dast-local:
+    name: Attack the local stack
+    # A manual run with no target scans the local stack rather than no-opping: the
+    # deployed sweep needs a target nobody else is using, which is not something to
+    # fall back to silently.
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target == '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      # Before standing anything up: the harness reads the services' source to build
+      # the route inventory, so a parser that silently stops matching would quietly
+      # shrink the surface the coverage gate measures.
+      - name: Unit-test the harness
+        run: make dast-test
+
+      - name: Start the application stack
+        run: |
+          docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
+            postgres redis localstack meilisearch \
+            auth-service api-gateway document-service search-service file-service
+
+      - name: Wait for the API gateway
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/health >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          echo "API gateway never became healthy"
+          docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50
+          exit 1
+
+      - name: Run the DAST probe suite
+        id: scan
+        continue-on-error: true # informational until baseline.json is populated — see header
+        env:
+          # This stack was created by the step above and dies with the runner, so
+          # the sweep may send a route's real POST/DELETE here. Only here: an
+          # address is not evidence of what is behind it.
+          DAST_SWEEP_UNSAFE_METHODS: '1'
+        run: make dast-scan DAST_TARGET=http://localhost:8080
+
+      # A real gate, unlike the scan above: this fails only when a route the gateway
+      # proxies was never sent a request, which is a gap in the suite rather than one
+      # of the golden app's planted vulnerabilities.
+      - name: Gate on route coverage
+        run: |
+          # Capture stderr too: the gate writes its verdict there, and that is the
+          # line that says which routes went unattacked.
+          # Not `make`: it reports 2 for any failed recipe, which would turn the
+          # gate's exit 1 into the "not graded" branch below and make it inert.
+          status=0
+          ./security/dast/run.sh coverage > /tmp/coverage.txt 2>&1 || status=$?
+          {
+            echo '## DAST route coverage'
+            echo '```'
+            cat /tmp/coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/coverage.txt
+          # Exit 2 is "there is no usable report to grade" — the scan above is
+          # continue-on-error, so a scan that never started would otherwise fail the
+          # build here as though a route had gone unattacked. Annotate and pass;
+          # only exit 1, a route the last scan never requested, is the gate.
+          if [ "$status" = 2 ]; then
+            echo "::warning::route coverage was not graded: no usable scan report (see the scan step)"
+            exit 0
+          fi
+          # 4 is the inventory itself failing to read any route: the gate is then
+          # measuring nothing, which is worse than an uncovered route, not a
+          # variant of "nothing to grade".
+          if [ "$status" = 4 ]; then
+            echo "::error::the route inventory read no routes, so coverage is no longer measured"
+          fi
+          exit $status
+
+      - name: Publish the report
+        if: always()
+        run: |
+          if [[ -f security/dast/reports/dast-report.md ]]; then
+            cat security/dast/reports/dast-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: dast-report
+          path: security/dast/reports/
+
+      - name: Collect service logs on failure
+        # continue-on-error keeps the job green, so failure() never fires for the scan
+        # itself — which is the one failure whose backend logs are worth having.
+        if: always() && (failure() || steps.scan.outcome == 'failure')
+        run: docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=200
+
+  dast-deployed:
+    name: Sweep the deployed tenant
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.target != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # No default: every scan registers accounts and writes documents that live in
+      # the target's database until the tenant is reaped, so the target must be a
+      # disposable (TTL'd) tenant somebody chose deliberately.
+      TARGET: ${{ inputs.target || vars.DAST_SWEEP_TARGET }}
+      # The route sweep sends each route's real method, so an unauthenticated
+      # DELETE is carried out and not merely probed. Off unless someone sets the
+      # DAST_SWEEP_UNSAFE_WRITES repository variable, which is the declaration
+      # that the target is theirs to destroy; naming a target is not that.
+      DAST_SWEEP_UNSAFE_METHODS: ${{ vars.DAST_SWEEP_UNSAFE_WRITES }}
+    steps:
+      - name: Require an explicit target
+        if: env.TARGET == ''
+        run: |
+          echo "::warning::No scan target for the scheduled sweep. Set the DAST_SWEEP_TARGET"\
+               "repository variable to a disposable tenant. Never the perpetual tenant."
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        if: env.TARGET != ''
+
+      - name: Install uv
+        if: env.TARGET != ''
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Run the DAST probe suite and the ZAP sweep
+        id: scan
+        if: env.TARGET != ''
+        continue-on-error: true
+        run: make dast-zap DAST_TARGET="$TARGET"
+
+      - name: Publish the report
+        if: always() && env.TARGET != ''
+        run: |
+          if [[ -f security/dast/reports/dast-report.md ]]; then
+            cat security/dast/reports/dast-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ "${{ steps.scan.outcome }}" == "failure" ]]; then
+            echo "::warning::DAST findings on ${TARGET} — see the report artifact"
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && env.TARGET != ''
+        with:
+          name: dast-report-deployed
+          path: security/dast/reports/

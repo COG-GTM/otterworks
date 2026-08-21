@@ -1,0 +1,242 @@
+{
+ "finding": "OW-SEC-401",
+ "module": "document-service",
+ "notes": [
+  "policy=contract: the observation must be byte-identical before and after the",
+  "refactor - this is the functional-equivalence claim.",
+  "policy=attack: the observation must change, and only in the security direction:",
+  "the detector must fire before the refactor and must not fire after it.",
+  "Ordering is a business rule here (newest first, caller-chosen sort), so the",
+  "row lists are compared in order and never canonicalised."
+ ],
+ "interface": [
+  "app.services.document_query_repository:DocumentQueryRepository.count_documents",
+  "app.services.document_query_repository:DocumentQueryRepository.search_documents"
+ ],
+ "cases": [
+  {
+   "id": "contract-owner-scoped-default-order",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
+   }
+  },
+  {
+   "id": "contract-title-fragment-is-case-insensitive",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report"
+   }
+  },
+  {
+   "id": "contract-count-matches-filter",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "count_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report"
+   }
+  },
+  {
+   "id": "contract-content-type-filter",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "content_type": "text/html"
+   }
+  },
+  {
+   "id": "contract-sort-title-ascending",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "sort": "title",
+    "direction": "asc"
+   }
+  },
+  {
+   "id": "contract-sort-word-count-descending",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "sort": "word_count",
+    "direction": "desc"
+   }
+  },
+  {
+   "id": "contract-limit-and-offset",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "limit": 2,
+    "offset": 1
+   }
+  },
+  {
+   "id": "contract-no-match-is-empty",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "nothing matches this"
+   }
+  },
+  {
+   "id": "contract-unowned-filter-spans-owners",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "title_contains": "report"
+   }
+  },
+  {
+   "id": "contract-http-filtered-list",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/",
+    "params": {
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "report"
+    }
+   }
+  },
+  {
+   "id": "contract-http-filtered-list-second-page",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/",
+    "params": {
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "report",
+     "size": 1,
+     "page": 2
+    }
+   }
+  },
+  {
+   "id": "contract-http-unfiltered-list-untouched",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/",
+    "params": {
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
+    }
+   }
+  },
+  {
+   "id": "contract-folder-scoped-title-filter",
+   "policy": "contract",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report",
+    "folder_id": "f01de001-0000-4000-8000-00000000000f"
+   }
+  },
+  {
+   "id": "attack-content-type-tautology-crosses-owners",
+   "policy": "attack",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "content_type": "text/markdown' OR '1'='1"
+   },
+   "detect": {
+    "kind": "rows_contain_owner",
+    "owner_id": "bbbbbbbb-0000-4000-8000-00000000000b"
+   },
+   "after": {
+    "outcome": "ok"
+   }
+  },
+  {
+   "id": "attack-title-quote-breaks-the-statement",
+   "policy": "attack",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "title_contains": "report'"
+   },
+   "detect": {
+    "kind": "text_matches",
+    "pattern": "(?i)syntax error|unrecognized token|OperationalError|ProgrammingError"
+   },
+   "after": {
+    "outcome": "ok"
+   }
+  },
+  {
+   "id": "attack-sort-parameter-is-injectable",
+   "policy": "attack",
+   "kind": "call",
+   "target": "document_query_repository",
+   "method": "search_documents",
+   "args": {
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+    "sort": "title; DROP TABLE documents",
+    "direction": "desc"
+   },
+   "detect": {
+    "kind": "text_matches",
+    "pattern": "(?i)syntax error|unrecognized token|OperationalError|ProgrammingError"
+   }
+  },
+  {
+   "id": "attack-http-error-based-probe",
+   "policy": "attack",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/",
+    "params": {
+     "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
+     "title": "report'"
+    }
+   },
+   "detect": {
+    "kind": "text_matches",
+    "pattern": "(?i)syntax error|unrecognized token|SELECT |FROM documents"
+   },
+   "after": {
+    "status": 200
+   }
+  }
+ ]
+}

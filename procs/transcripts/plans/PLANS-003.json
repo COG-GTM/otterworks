@@ -1,0 +1,22 @@
+{
+  "business_fields": {
+    "included_units": 500,
+    "plan_code": "GROWTH",
+    "subscription_status": "suspended",
+    "tier": "growth"
+  },
+  "entrypoint": "billing.fn_entitlement",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "as_of": "2026-02-28",
+    "tenant_id": "00000000-0000-0000-0000-000000000002"
+  },
+  "module": "plans",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [
+    "PLANS-002"
+  ],
+  "scenario": "PLANS-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

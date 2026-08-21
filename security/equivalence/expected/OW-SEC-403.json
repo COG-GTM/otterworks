@@ -1,0 +1,145 @@
+{
+ "cases": [
+  {
+   "id": "contract-share-token-behaviour",
+   "outcome": "ok",
+   "value": {
+    "garbage_token_rejected": true,
+    "minted_token_verifies": true,
+    "other_documents_token_rejected": true,
+    "token_stable_across_calls": true
+   }
+  },
+  {
+   "id": "contract-http-share-link-round-trip",
+   "outcome": "ok",
+   "value": {
+    "mint_status": 200,
+    "shared_document_id": "d0c00001-0000-4000-8000-000000000001",
+    "shared_status": 200,
+    "tampered_status": 403
+   }
+  },
+  {
+   "id": "contract-http-share-link-rejects-unknown-token",
+   "outcome": "ok",
+   "value": {
+    "body": {
+     "detail": "Invalid share token"
+    },
+    "content_type": "application/json",
+    "status": 403
+   }
+  },
+  {
+   "id": "attack-offline-token-forgery",
+   "outcome": "ok",
+   "value": {
+    "forged_token_accepted": true
+   }
+  }
+ ],
+ "finding": "OW-SEC-403",
+ "fingerprint": {
+  "cases_sha256": "d054cd4c8707e19046959d4f4e4082989273cee681b0972c5f22a9e31590f978",
+  "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
+  "observed_sha256": {
+   "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
+  },
+  "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
+  "subject_sha256": {
+   "services/document-service/app/services/share_link.py": "03fadb072249d123ad1b737259dcb6fe1801ee179374a8a810c6894919e65a06"
+  }
+ },
+ "harness_version": 2,
+ "interface": {
+  "app.services.share_link:ShareLinkService.mint_token": "mint_token(self, document_id: 'str') -> 'str'",
+  "app.services.share_link:ShareLinkService.verify_token": "verify_token(self, document_id: 'str', token: 'str') -> 'bool'"
+ },
+ "module": "document-service",
+ "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
+ "recorded_at": "2026-08-18T01:19:30.898093+00:00",
+ "rerecorded_from": {
+  "fingerprint": {
+   "cases_sha256": "d054cd4c8707e19046959d4f4e4082989273cee681b0972c5f22a9e31590f978",
+   "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
+   "observed_sha256": {
+    "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1"
+   },
+   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
+   "subject_sha256": {
+    "services/document-service/app/services/share_link.py": "03fadb072249d123ad1b737259dcb6fe1801ee179374a8a810c6894919e65a06"
+   }
+  },
+  "reason": "harness v2: subject vs observes split so one finding's refactor no longer regrades its neighbours",
+  "recorded_at": "2026-08-18T00:47:18.654597+00:00"
+ },
+ "suite": {
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-y77h6q2j/junit.xml",
+  "exit_code": 1,
+  "failed": [
+   "tests.test_documents_api::test_delete_document",
+   "tests.test_documents_api::test_document_versions",
+   "tests.test_documents_api::test_export_document_html",
+   "tests.test_documents_api::test_export_document_markdown",
+   "tests.test_documents_api::test_get_document",
+   "tests.test_documents_api::test_get_document_not_found",
+   "tests.test_documents_api::test_patch_document",
+   "tests.test_documents_api::test_restore_version",
+   "tests.test_documents_api::test_update_document"
+  ],
+  "passed": [
+   "tests.test_comments_api::test_add_comment",
+   "tests.test_comments_api::test_add_comment_document_not_found",
+   "tests.test_comments_api::test_delete_comment",
+   "tests.test_comments_api::test_delete_comment_not_found",
+   "tests.test_comments_api::test_list_comments",
+   "tests.test_document_filters::test_filter_by_content_type",
+   "tests.test_document_filters::test_filter_by_title_fragment",
+   "tests.test_document_filters::test_filter_no_match_returns_empty",
+   "tests.test_document_filters::test_filter_orders_by_title_ascending",
+   "tests.test_document_filters::test_filter_paginates",
+   "tests.test_document_filters::test_unfiltered_list_is_unchanged",
+   "tests.test_document_service::test_add_comment_to_nonexistent_document",
+   "tests.test_document_service::test_comments_crud",
+   "tests.test_document_service::test_create_and_get",
+   "tests.test_document_service::test_create_from_nonexistent_template",
+   "tests.test_document_service::test_delete_nonexistent",
+   "tests.test_document_service::test_export_formats",
+   "tests.test_document_service::test_list_documents_with_filters",
+   "tests.test_document_service::test_paginate_helper",
+   "tests.test_document_service::test_patch_partial_update",
+   "tests.test_document_service::test_restore_version",
+   "tests.test_document_service::test_search",
+   "tests.test_document_service::test_soft_delete",
+   "tests.test_document_service::test_template_crud_and_create_from",
+   "tests.test_document_service::test_update_creates_version",
+   "tests.test_documents_api::test_create_document",
+   "tests.test_documents_api::test_create_document_no_auth_returns_401",
+   "tests.test_documents_api::test_create_document_via_jwt",
+   "tests.test_documents_api::test_create_document_via_jwt_hs384",
+   "tests.test_documents_api::test_create_document_x_user_id_header_ignored",
+   "tests.test_documents_api::test_list_documents",
+   "tests.test_documents_api::test_list_documents_pagination",
+   "tests.test_documents_api::test_search_documents",
+   "tests.test_export_archive::test_export_endpoint_404s_for_undecodable_file",
+   "tests.test_export_archive::test_export_endpoint_404s_for_unknown_name",
+   "tests.test_export_archive::test_export_endpoint_404s_for_unreadable_file",
+   "tests.test_export_archive::test_export_endpoint_serves_archived_file",
+   "tests.test_export_archive::test_missing_export_raises",
+   "tests.test_export_archive::test_reads_export",
+   "tests.test_export_archive::test_reads_export_in_subdirectory",
+   "tests.test_health::test_health_check",
+   "tests.test_health::test_metrics",
+   "tests.test_share_link::test_garbage_token_is_rejected",
+   "tests.test_share_link::test_minted_token_verifies",
+   "tests.test_share_link::test_share_endpoint_round_trip",
+   "tests.test_share_link::test_token_is_stable_across_calls",
+   "tests.test_share_link::test_token_of_another_document_is_rejected",
+   "tests.test_templates_api::test_create_document_from_template",
+   "tests.test_templates_api::test_create_from_template_not_found",
+   "tests.test_templates_api::test_create_template",
+   "tests.test_templates_api::test_list_templates"
+  ]
+ }
+}
