@@ -148,19 +148,61 @@ mod tests {
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 
-    #[test]
-    fn image_does_not_enable_share_event_failure() {
-        let enabled = include_str!("../Dockerfile")
+    fn dockerfile_enables_share_event_failure(dockerfile: &str) -> bool {
+        dockerfile
             .lines()
             .map(str::trim)
-            .filter_map(|line| line.strip_prefix("ENV "))
-            .filter_map(|env| {
-                let value = env.strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")?;
-                Some(value.trim_start().trim_start_matches('=').trim())
+            .filter_map(|line| {
+                let (instruction, rest) = line.split_once(char::is_whitespace)?;
+                instruction.eq_ignore_ascii_case("ENV").then_some(rest)
             })
-            .any(|value| parse_bool(value.trim_matches(['\"', '\'']), false));
+            .filter_map(|env| {
+                let rest = env
+                    .trim_start()
+                    .strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")?;
+                let value = match rest.chars().next() {
+                    None => rest,
+                    Some('=') => &rest[1..],
+                    Some(c) if c.is_whitespace() => rest,
+                    Some(_) => return None,
+                };
+                Some(value.trim())
+            })
+            .any(|value| parse_bool(value.trim_matches(['\"', '\'']), false))
+    }
 
-        assert!(!enabled);
+    #[test]
+    fn image_does_not_enable_share_event_failure() {
+        assert!(!dockerfile_enables_share_event_failure(include_str!(
+            "../Dockerfile"
+        )));
+    }
+
+    #[test]
+    fn share_event_failure_detection_handles_env_syntax_variants() {
+        for line in [
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "env FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "Env FILE_SHARE_EVENT_ALWAYS_FAIL=1",
+            "ENV  FILE_SHARE_EVENT_ALWAYS_FAIL  true",
+            "ENV\tFILE_SHARE_EVENT_ALWAYS_FAIL\ttrue",
+            "  ENV FILE_SHARE_EVENT_ALWAYS_FAIL=TRUE",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=\"true\"",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL='1'",
+        ] {
+            assert!(dockerfile_enables_share_event_failure(line), "line={line}");
+        }
+
+        for line in [
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=false",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL false",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL_OTHER=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "# ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+        ] {
+            assert!(!dockerfile_enables_share_event_failure(line), "line={line}");
+        }
     }
 
     #[test]
