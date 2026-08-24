@@ -178,6 +178,28 @@ mod tests {
         )));
     }
 
+    fn chart_enables_share_event_failure(values_yaml: &str) -> bool {
+        values_yaml
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                (key.trim() == "FILE_SHARE_EVENT_ALWAYS_FAIL").then_some(value)
+            })
+            .any(|value| {
+                let value = value.split('#').next().unwrap_or("").trim();
+                parse_bool(value.trim_matches(['\"', '\'']), false)
+            })
+    }
+
+    #[test]
+    fn chart_does_not_enable_share_event_failure() {
+        assert!(!chart_enables_share_event_failure(include_str!(
+            "../../../infrastructure/helm/file-service/values.yaml"
+        )));
+    }
+
     #[test]
     fn share_event_failure_detection_handles_env_syntax_variants() {
         for line in [
