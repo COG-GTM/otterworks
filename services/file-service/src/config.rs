@@ -154,21 +154,27 @@ mod tests {
             .map(str::trim)
             .filter_map(|line| {
                 let (instruction, rest) = line.split_once(char::is_whitespace)?;
-                instruction.eq_ignore_ascii_case("ENV").then_some(rest)
+                instruction
+                    .eq_ignore_ascii_case("ENV")
+                    .then_some(rest.trim_start())
             })
-            .filter_map(|env| {
-                let rest = env
-                    .trim_start()
-                    .strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")?;
-                let value = match rest.chars().next() {
-                    None => rest,
-                    Some('=') => &rest[1..],
-                    Some(c) if c.is_whitespace() => rest,
-                    Some(_) => return None,
-                };
-                Some(value.trim())
+            .any(|env| {
+                if env.contains('=') {
+                    env.split_whitespace().any(|assignment| {
+                        assignment
+                            .strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL=")
+                            .is_some_and(|value| {
+                                parse_bool(value.trim_matches(['\"', '\'']), false)
+                            })
+                    })
+                } else {
+                    env.strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")
+                        .is_some_and(|value| {
+                            value.starts_with(char::is_whitespace)
+                                && parse_bool(value.trim().trim_matches(['\"', '\'']), false)
+                        })
+                }
             })
-            .any(|value| parse_bool(value.trim_matches(['\"', '\'']), false))
     }
 
     #[test]
@@ -211,6 +217,8 @@ mod tests {
             "  ENV FILE_SHARE_EVENT_ALWAYS_FAIL=TRUE",
             "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=\"true\"",
             "ENV FILE_SHARE_EVENT_ALWAYS_FAIL='1'",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true FILE_SEED_DEMO_DOCS=true",
         ] {
             assert!(dockerfile_enables_share_event_failure(line), "line={line}");
         }
@@ -222,6 +230,8 @@ mod tests {
             "ENV FILE_SHARE_EVENT_ALWAYS_FAIL_OTHER=true",
             "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
             "# ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL=false",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL_OTHER=true",
         ] {
             assert!(!dockerfile_enables_share_event_failure(line), "line={line}");
         }
