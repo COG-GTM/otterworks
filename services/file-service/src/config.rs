@@ -155,4 +155,13 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        assert!(!dockerfile.lines().any(|line| {
+            let line = line.trim_start().to_ascii_uppercase();
+            line.starts_with("ENV ") && line.contains("FILE_UPLOAD_ALWAYS_FAIL")
+        }));
+    }
 }
