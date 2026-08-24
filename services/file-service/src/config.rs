@@ -149,6 +149,21 @@ mod tests {
     }
 
     #[test]
+    fn image_does_not_enable_share_event_failure() {
+        let enabled = include_str!("../Dockerfile")
+            .lines()
+            .map(str::trim)
+            .filter_map(|line| line.strip_prefix("ENV "))
+            .filter_map(|env| {
+                let value = env.strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")?;
+                Some(value.trim_start().trim_start_matches('=').trim())
+            })
+            .any(|value| parse_bool(value.trim_matches(['\"', '\'']), false));
+
+        assert!(!enabled);
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
