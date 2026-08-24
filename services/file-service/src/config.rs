@@ -118,7 +118,25 @@ mod tests {
     use super::{parse_bool, parse_bool_env};
 
     fn image_enables_upload_always_fail(dockerfile: &str) -> bool {
-        dockerfile.lines().any(|line| {
+        let mut logical_dockerfile = String::with_capacity(dockerfile.len());
+        let mut continued = false;
+        for line in dockerfile.lines() {
+            let line = line.trim_end();
+            if continued {
+                logical_dockerfile.push_str(line.trim_start());
+            } else {
+                logical_dockerfile.push_str(line);
+            }
+
+            continued = line.ends_with('\\');
+            if continued {
+                logical_dockerfile.pop();
+            } else {
+                logical_dockerfile.push('\n');
+            }
+        }
+
+        logical_dockerfile.lines().any(|line| {
             let mut tokens = line.split_ascii_whitespace();
             if !tokens
                 .next()
@@ -196,6 +214,8 @@ mod tests {
             "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
             "ENV FILE_UPLOAD_ALWAYS_FAIL 1",
             "ENV OTHER=false FILE_UPLOAD_ALWAYS_FAIL=\"TRUE\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\\\n    1",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL \\\n    true",
         ] {
             assert!(image_enables_upload_always_fail(dockerfile));
         }
