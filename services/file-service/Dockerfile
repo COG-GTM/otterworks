@@ -27,9 +27,9 @@ USER appuser
 # passes false, so local stacks behave like the golden app.
 ENV FILE_UPLOAD_ALWAYS_FAIL=true
 
-# With uploads failing permanently (above), users would have no files to share.
-# Seeding gives every user a few demo documents on their first file listing,
-# so the share-notification failure is demoable alongside the upload failure.
+# With uploads failing permanently (above), users would have no files to work
+# with. Seeding gives every user a few demo documents on their first file
+# listing, so the upload failure is demoable with existing content in place.
 # docker-compose.yml passes false, so local stacks behave like the golden app.
 ENV FILE_SEED_DEMO_DOCS=true
 
