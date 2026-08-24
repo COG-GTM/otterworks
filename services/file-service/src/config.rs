@@ -148,6 +148,95 @@ mod tests {
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 
+    fn dockerfile_enables_share_event_failure(dockerfile: &str) -> bool {
+        dockerfile
+            .lines()
+            .map(str::trim)
+            .filter_map(|line| {
+                let (instruction, rest) = line.split_once(char::is_whitespace)?;
+                instruction
+                    .eq_ignore_ascii_case("ENV")
+                    .then_some(rest.trim_start())
+            })
+            .any(|env| {
+                if env.contains('=') {
+                    env.split_whitespace().any(|assignment| {
+                        assignment
+                            .strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL=")
+                            .is_some_and(|value| {
+                                parse_bool(value.trim_matches(['\"', '\'']), false)
+                            })
+                    })
+                } else {
+                    env.strip_prefix("FILE_SHARE_EVENT_ALWAYS_FAIL")
+                        .is_some_and(|value| {
+                            value.starts_with(char::is_whitespace)
+                                && parse_bool(value.trim().trim_matches(['\"', '\'']), false)
+                        })
+                }
+            })
+    }
+
+    #[test]
+    fn image_does_not_enable_share_event_failure() {
+        assert!(!dockerfile_enables_share_event_failure(include_str!(
+            "../Dockerfile"
+        )));
+    }
+
+    fn chart_enables_share_event_failure(values_yaml: &str) -> bool {
+        values_yaml
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let (key, value) = line.split_once(':')?;
+                (key.trim() == "FILE_SHARE_EVENT_ALWAYS_FAIL").then_some(value)
+            })
+            .any(|value| {
+                let value = value.split('#').next().unwrap_or("").trim();
+                parse_bool(value.trim_matches(['\"', '\'']), false)
+            })
+    }
+
+    #[test]
+    fn chart_does_not_enable_share_event_failure() {
+        assert!(!chart_enables_share_event_failure(include_str!(
+            "../../../infrastructure/helm/file-service/values.yaml"
+        )));
+    }
+
+    #[test]
+    fn share_event_failure_detection_handles_env_syntax_variants() {
+        for line in [
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "env FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "Env FILE_SHARE_EVENT_ALWAYS_FAIL=1",
+            "ENV  FILE_SHARE_EVENT_ALWAYS_FAIL  true",
+            "ENV\tFILE_SHARE_EVENT_ALWAYS_FAIL\ttrue",
+            "  ENV FILE_SHARE_EVENT_ALWAYS_FAIL=TRUE",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=\"true\"",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL='1'",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true FILE_SEED_DEMO_DOCS=true",
+        ] {
+            assert!(dockerfile_enables_share_event_failure(line), "line={line}");
+        }
+
+        for line in [
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=false",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL false",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=",
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL_OTHER=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "# ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL=false",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL_OTHER=true",
+        ] {
+            assert!(!dockerfile_enables_share_event_failure(line), "line={line}");
+        }
+    }
+
     #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
