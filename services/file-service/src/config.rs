@@ -162,8 +162,9 @@ mod tests {
             std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Dockerfile")).unwrap();
         for line in dockerfile.lines() {
             let line = line.trim();
+            let lower = line.to_ascii_lowercase();
             assert!(
-                !line.starts_with("ENV FILE_UPLOAD_ALWAYS_FAIL"),
+                !(lower.starts_with("env ") && lower.contains("file_upload_always_fail")),
                 "Dockerfile sets the upload failure switch: {line}"
             );
         }
