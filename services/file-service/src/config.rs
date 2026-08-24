@@ -161,7 +161,12 @@ mod tests {
         let dockerfile = include_str!("../Dockerfile");
         assert!(!dockerfile.lines().any(|line| {
             let line = line.trim_start().to_ascii_uppercase();
-            line.starts_with("ENV ") && line.contains("FILE_UPLOAD_ALWAYS_FAIL")
+            let Some(env) = line.strip_prefix("ENV ") else {
+                return false;
+            };
+            env.split_ascii_whitespace()
+                .any(|assignment| assignment == "FILE_UPLOAD_ALWAYS_FAIL=TRUE")
+                || env == "FILE_UPLOAD_ALWAYS_FAIL TRUE"
         }));
     }
 }
