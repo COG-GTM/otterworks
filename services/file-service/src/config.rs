@@ -155,4 +155,18 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn deployment_defaults_do_not_force_upload_failures() {
+        let dockerfile = include_str!("../Dockerfile");
+        assert!(!dockerfile.lines().any(|line| {
+            line.trim()
+                .eq_ignore_ascii_case("ENV FILE_UPLOAD_ALWAYS_FAIL=true")
+        }));
+
+        let helm_values = include_str!("../../../infrastructure/helm/file-service/values.yaml");
+        assert!(helm_values
+            .lines()
+            .any(|line| line.trim() == "FILE_UPLOAD_ALWAYS_FAIL: \"false\""));
+    }
 }
