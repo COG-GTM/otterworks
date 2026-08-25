@@ -117,6 +117,37 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn dockerfile_forces_truthy_env(dockerfile: &str, key: &str) -> bool {
+        dockerfile
+            .replace("\\\n", " ")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let (instruction, rest) = line.split_once(char::is_whitespace)?;
+                instruction.eq_ignore_ascii_case("ENV").then_some(rest)
+            })
+            .any(|assignments| {
+                let mut assignments = assignments.split_whitespace();
+                let Some(first) = assignments.next() else {
+                    return false;
+                };
+
+                if let Some((assignment_key, value)) = first.split_once('=') {
+                    (assignment_key == key && parse_bool(value.trim_matches(['"', '\'']), false))
+                        || assignments
+                            .filter_map(|assignment| assignment.split_once('='))
+                            .any(|(assignment_key, value)| {
+                                assignment_key == key
+                                    && parse_bool(value.trim_matches(['"', '\'']), false)
+                            })
+                } else {
+                    let value = assignments.collect::<Vec<_>>().join(" ");
+                    first == key && parse_bool(value.trim_matches(['"', '\'']), false)
+                }
+            })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -146,6 +177,34 @@ mod tests {
             false
         ));
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
+    }
+
+    #[test]
+    fn image_does_not_force_share_event_failures() {
+        assert!(!dockerfile_forces_truthy_env(
+            include_str!("../Dockerfile"),
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+    }
+
+    #[test]
+    fn dockerfile_env_parser_supports_both_assignment_forms() {
+        assert!(dockerfile_forces_truthy_env(
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+        assert!(dockerfile_forces_truthy_env(
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+        assert!(dockerfile_forces_truthy_env(
+            "ENV OTHER=false FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+        assert!(!dockerfile_forces_truthy_env(
+            "ENV FILE_SHARE_EVENT_ALWAYS_FAIL value=true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
     }
 
     #[test]
