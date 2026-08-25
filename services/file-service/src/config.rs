@@ -125,7 +125,8 @@ mod tests {
             )
         }
 
-        dockerfile.lines().any(|line| {
+        let logical_dockerfile = dockerfile.replace("\\\r\n", " ").replace("\\\n", " ");
+        logical_dockerfile.lines().any(|line| {
             let instruction = line.split('#').next().unwrap_or_default().trim();
             let mut fields = instruction.split_whitespace();
             if !fields
@@ -204,6 +205,7 @@ mod tests {
             "ENV FILE_UPLOAD_ALWAYS_FAIL='1'",
             "ENV OTHER=value FILE_UPLOAD_ALWAYS_FAIL=1",
             "ENV FILE_UPLOAD_ALWAYS_FAIL true",
+            "ENV OTHER=value \\\n FILE_UPLOAD_ALWAYS_FAIL=true",
         ] {
             assert!(
                 dockerfile_enables_upload_failure(dockerfile),
