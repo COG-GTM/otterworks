@@ -136,7 +136,7 @@ mod tests {
             let direct_value = instruction.strip_prefix(key).and_then(|remainder| {
                 let first = remainder.chars().next()?;
                 if first == '=' {
-                    Some(&remainder[1..])
+                    remainder[1..].split_ascii_whitespace().next()
                 } else if first.is_whitespace() {
                     Some(remainder.trim_start())
                 } else {
@@ -210,6 +210,7 @@ mod tests {
             "ENV FILE_UPLOAD_ALWAYS_FAIL true",
             "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true\"",
             "ENV FILE_UPLOAD_ALWAYS_FAIL='true'",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true FOO=bar",
             "ENV FOO=bar FILE_UPLOAD_ALWAYS_FAIL=true",
             "ENV FILE_UPLOAD_ALWAYS_FAIL_EXTRA=x FILE_UPLOAD_ALWAYS_FAIL=true",
         ] {
