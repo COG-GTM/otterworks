@@ -155,4 +155,18 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn image_does_not_enable_upload_failure_by_default() {
+        let dockerfile = include_str!("../Dockerfile");
+        let configured_default = dockerfile.lines().map(str::trim).find_map(|line| {
+            line.strip_prefix("ENV FILE_UPLOAD_ALWAYS_FAIL=")
+                .map(str::trim)
+        });
+
+        assert!(
+            !configured_default.is_some_and(|value| parse_bool(value, false)),
+            "file-service image must not force uploads to fail"
+        );
+    }
 }
