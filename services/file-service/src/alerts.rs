@@ -74,6 +74,7 @@ pub fn build_share_notification_failure_payload(
     error: &str,
     reporter_email: Option<&str>,
     dedup: bool,
+    share_recorded: bool,
 ) -> Value {
     // `dedup=false` opens a fresh incident per alert; it is reserved for the
     // forced-failure demo so a genuine SNS outage collapses onto one open
@@ -97,8 +98,14 @@ pub fn build_share_notification_failure_payload(
                 "summary": format!("Share notification failed: {file_name}"),
                 "description": format!(
                     "Publishing the file_shared notification event for \"{file_name}\" \
-                     failed in file-service: {error}. The share itself was recorded, \
-                     but the recipient will never receive a notification."
+                     failed in file-service: {error}. {}",
+                    if share_recorded {
+                        "The share itself was recorded, but the recipient will never \
+                         receive a notification."
+                    } else {
+                        "The share was not recorded and the recipient will never \
+                         receive a notification."
+                    }
                 ),
             },
             "startsAt": chrono::Utc::now().to_rfc3339(),
@@ -114,6 +121,7 @@ pub fn notify_share_notification_failure(
     error: &str,
     reporter_email: Option<&str>,
     dedup: bool,
+    share_recorded: bool,
 ) {
     let base_url = config
         .admin_service_url
@@ -125,7 +133,13 @@ pub fn notify_share_notification_failure(
         return;
     }
     let secret = config.alert_webhook_secret.clone();
-    let payload = build_share_notification_failure_payload(file_name, error, reporter_email, dedup);
+    let payload = build_share_notification_failure_payload(
+        file_name,
+        error,
+        reporter_email,
+        dedup,
+        share_recorded,
+    );
     let file_name = file_name.to_string();
 
     tokio::spawn(async move {
@@ -244,6 +258,7 @@ mod tests {
             "NotFound: topic does not exist",
             Some("user@example.com"),
             false,
+            true,
         );
         let alert = &payload["alerts"][0];
         assert_eq!(
@@ -264,14 +279,14 @@ mod tests {
 
     #[test]
     fn share_notification_payload_omits_blank_reporter_email() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false);
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false, true);
         let alert = &payload["alerts"][0];
         assert!(alert["labels"].get("reporter_email").is_none());
     }
 
     #[test]
     fn share_notification_payload_dedups_when_not_forced() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true);
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true, true);
         assert_eq!(payload["alerts"][0]["labels"]["dedup"], "true");
     }
 
