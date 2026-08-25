@@ -14,11 +14,8 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
     /// When true, owners with no files get a few demo documents seeded on
-    /// first listing, so share flows are demoable even when uploads fail.
+    /// first listing, so share flows are demoable without uploading anything.
     pub seed_demo_docs: bool,
 }
 
@@ -64,7 +61,6 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
     }
@@ -149,10 +145,9 @@ mod tests {
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
-        }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+    fn server_config_reads_port_and_max_upload_bytes() {
+        let cfg = super::ServerConfig::from_env();
+        assert!(cfg.port > 0);
+        assert!(cfg.max_upload_bytes > 0);
     }
 }
