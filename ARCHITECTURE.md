@@ -71,7 +71,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Python 3.12
 - **Framework**: FastAPI 0.110
 - **Database**: PostgreSQL (document metadata, content snapshots)
-- **Purpose**: Document CRUD operations, version history, content snapshots, template management. Stores document operational transforms and provides REST API for document metadata.
+- **Purpose**: Document CRUD operations, version history, content snapshots, template management, and document comments with thread resolution (resolve/unresolve endpoints, `include_resolved` list filtering, and `comment_resolved` SNS events). Stores document operational transforms and provides REST API for document metadata.
 - **Port**: 8083
 - **Key Patterns**: Pydantic models, SQLAlchemy async, Alembic migrations, dependency injection, background tasks, structlog
 
@@ -87,7 +87,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Language**: Kotlin 1.9
 - **Framework**: Ktor 2.3
 - **Database**: SQS (event queue), SNS (fan-out), DynamoDB (notification history)
-- **Purpose**: Processes domain events (file shared, comment added, document edited) and delivers notifications via email (SES), in-app (WebSocket push), and webhook. Event-driven consumer pattern.
+- **Purpose**: Processes domain events (file shared, comment added, comment resolved, document edited) and delivers notifications via email (SES), in-app (WebSocket push), and webhook. Event-driven consumer pattern.
 - **Port**: 8086
 - **Key Patterns**: Kotlin coroutines, Ktor routing, SQS long polling, SNS topic subscriptions, Exposed ORM, kotlinx.serialization
 
@@ -128,7 +128,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 ### 11. Web Frontend (`frontend/web-app/`)
 - **Language**: TypeScript 5.4
 - **Framework**: React 18 + Next.js 14
-- **Purpose**: Main user-facing SPA. File browser, document editor (TipTap/ProseMirror), sharing dialogs, search, notifications panel.
+- **Purpose**: Main user-facing SPA. File browser, document editor (TipTap/ProseMirror) with a comments sidebar (list, add, resolve/unresolve; resolved comments collapsed and dimmed), sharing dialogs, search, notifications panel.
 - **Key Patterns**: App Router, Server Components, TanStack Query, Zustand state management, Tailwind CSS, Playwright E2E tests
 
 ### 12. Admin Dashboard (`frontend/admin-dashboard/`)
