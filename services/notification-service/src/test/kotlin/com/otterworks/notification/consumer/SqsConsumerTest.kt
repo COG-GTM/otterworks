@@ -74,6 +74,29 @@ class SqsConsumerTest {
     }
 
     @Test
+    fun `parseMessage parses SNS-wrapped comment_resolved message`() {
+        val innerMessage = """{"eventType":"comment_resolved","documentId":"doc-1","commentId":"c-2","resolvedBy":"resolver-1","authorId":"author-1","timestamp":"2024-01-01T00:00:00Z"}"""
+        val escapedInner = innerMessage.replace("\"", "\\\"")
+        val body = """
+            {
+                "Type": "Notification",
+                "MessageId": "msg-456",
+                "TopicArn": "arn:aws:sns:us-east-1:000000000000:test-topic",
+                "Message": "$escapedInner"
+            }
+        """.trimIndent()
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_resolved", event.eventType)
+        assertEquals("doc-1", event.documentId)
+        assertEquals("c-2", event.commentId)
+        assertEquals("resolver-1", event.resolvedBy)
+        assertEquals("author-1", event.authorId)
+    }
+
+    @Test
     fun `parseMessage returns null for invalid JSON`() {
         val event = consumer.parseMessage("not json at all")
         assertNull(event)
