@@ -158,8 +158,7 @@ mod tests {
 
     #[test]
     fn image_does_not_force_share_event_failures() {
-        fn env_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-            let declaration = line.strip_prefix("ENV ")?.trim();
+        fn env_value<'a>(declaration: &'a str, key: &str) -> Option<&'a str> {
             let mut parts = declaration.split_whitespace();
             while let Some(part) = parts.next() {
                 if let Some((name, value)) = part.split_once('=') {
@@ -173,21 +172,53 @@ mod tests {
             None
         }
 
+        fn enabled_env_value(dockerfile: &str, key: &str) -> bool {
+            let mut declaration = String::new();
+            let mut continuing = false;
+
+            for line in dockerfile.lines().map(str::trim) {
+                let fragment = if continuing {
+                    line
+                } else if let Some(fragment) = line.strip_prefix("ENV ") {
+                    declaration.clear();
+                    fragment
+                } else {
+                    continue;
+                };
+
+                let has_continuation = fragment.ends_with('\\');
+                declaration.push_str(fragment.trim_end_matches('\\').trim_end());
+                declaration.push(' ');
+                continuing = has_continuation;
+
+                if !continuing
+                    && env_value(&declaration, key)
+                        .is_some_and(|value| parse_bool(value.trim_matches(['"', '\'']), false))
+                {
+                    return true;
+                }
+            }
+
+            false
+        }
+
         assert_eq!(
             env_value(
-                "ENV FOO=bar FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+                "FOO=bar FILE_SHARE_EVENT_ALWAYS_FAIL=true",
                 "FILE_SHARE_EVENT_ALWAYS_FAIL"
             ),
             Some("true")
         );
-
-        let enabled = include_str!("../Dockerfile")
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.starts_with('#'))
-            .filter_map(|line| env_value(line, "FILE_SHARE_EVENT_ALWAYS_FAIL"))
-            .any(|value| parse_bool(value.trim_matches(['"', '\'']), false));
-
-        assert!(!enabled, "file-service image forces share event failures");
+        assert!(enabled_env_value(
+            "ENV FOO=bar \\\n    FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+        assert!(
+            !enabled_env_value(
+                include_str!("../Dockerfile"),
+                "FILE_SHARE_EVENT_ALWAYS_FAIL"
+            ),
+            "file-service image forces share event failures"
+        );
     }
 }
