@@ -117,6 +117,32 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn upload_failure_image_default(dockerfile: &str) -> Option<&str> {
+        dockerfile.lines().map(str::trim).find_map(|line| {
+            let instruction = line.strip_prefix("ENV ")?.trim_start();
+            let remainder = instruction.strip_prefix("FILE_UPLOAD_ALWAYS_FAIL")?;
+            let first = remainder.chars().next()?;
+            let value = if first == '=' {
+                &remainder[1..]
+            } else if first.is_whitespace() {
+                remainder.trim_start()
+            } else {
+                return None;
+            };
+            let value = value.trim();
+
+            value
+                .strip_prefix('"')
+                .and_then(|value| value.strip_suffix('"'))
+                .or_else(|| {
+                    value
+                        .strip_prefix('\'')
+                        .and_then(|value| value.strip_suffix('\''))
+                })
+                .or(Some(value))
+        })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -159,14 +185,22 @@ mod tests {
     #[test]
     fn image_does_not_enable_upload_failure_by_default() {
         let dockerfile = include_str!("../Dockerfile");
-        let configured_default = dockerfile.lines().map(str::trim).find_map(|line| {
-            line.strip_prefix("ENV FILE_UPLOAD_ALWAYS_FAIL=")
-                .map(str::trim)
-        });
 
         assert!(
-            !configured_default.is_some_and(|value| parse_bool(value, false)),
+            !upload_failure_image_default(dockerfile).is_some_and(|value| parse_bool(value, false)),
             "file-service image must not force uploads to fail"
         );
+    }
+
+    #[test]
+    fn upload_failure_image_default_accepts_docker_env_syntaxes() {
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL='true'",
+        ] {
+            assert_eq!(upload_failure_image_default(dockerfile), Some("true"));
+        }
     }
 }
