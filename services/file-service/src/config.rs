@@ -160,13 +160,26 @@ mod tests {
     fn image_does_not_force_share_event_failures() {
         fn env_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
             let declaration = line.strip_prefix("ENV ")?.trim();
-            if let Some((name, value)) = declaration.split_once('=') {
-                return (name == key).then_some(value);
-            }
-
             let mut parts = declaration.split_whitespace();
-            (parts.next() == Some(key)).then(|| parts.next()).flatten()
+            while let Some(part) = parts.next() {
+                if let Some((name, value)) = part.split_once('=') {
+                    if name == key {
+                        return Some(value);
+                    }
+                } else if part == key {
+                    return parts.next();
+                }
+            }
+            None
         }
+
+        assert_eq!(
+            env_value(
+                "ENV FOO=bar FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+                "FILE_SHARE_EVENT_ALWAYS_FAIL"
+            ),
+            Some("true")
+        );
 
         let enabled = include_str!("../Dockerfile")
             .lines()
