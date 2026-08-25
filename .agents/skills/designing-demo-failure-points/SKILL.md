@@ -5,9 +5,8 @@ description: Design pattern for adding a new intentional AWS/service failure poi
 
 # Designing a new intentional failure point for demos
 
-Reference implementations: the S3 upload failure (`FILE_UPLOAD_ALWAYS_FAIL`, PRs
-#78–#92) and the SNS share-notification failure (`FILE_SHARE_EVENT_ALWAYS_FAIL`,
-PR #209). Companion skill `purposeful-failure-devin-trigger` covers how the
+Reference implementation: the SNS share-notification failure
+(`FILE_SHARE_EVENT_ALWAYS_FAIL`, PR #209). Companion skill `purposeful-failure-devin-trigger` covers how the
 switch reaches a live tenant and how incidents spawn Devin sessions — read both.
 
 ## 1. Pick the failure point

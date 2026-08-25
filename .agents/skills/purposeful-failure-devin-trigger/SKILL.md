@@ -27,12 +27,13 @@ Don't rely on the transient Redis chaos flags (`chaos:<service>:<scenario>`, set
 with SETEX + TTL — they expire and Redis has no persistence). Instead add a
 config-level env switch that reuses the same failure mechanism:
 
-- In file-service, `FILE_UPLOAD_ALWAYS_FAIL` (parsed in `src/config.rs`, default
-  off) forces `effective_bucket` in `handlers.rs::upload_file` to the nonexistent
+- In file-service, `handlers.rs::upload_file` resolves the target bucket through
+  `upload_bucket(configured, chaos)`; a switch makes it return the nonexistent
   bucket `otterworks-files-chaos-nonexistent`, so S3 returns `NoSuchBucket` and the
   upload 500s. The existing Redis chaos check stays intact for other scenarios.
 - The switch must default off everywhere (code, docker-compose, chart values) so
-  `main` and other tenants are unaffected.
+  `main` and other tenants are unaffected. Note file-service ships no such env
+  switch today: add one on the demo branch only.
 
 ## Step 2 — Get the switch ON for the tenant (the part everyone gets wrong)
 
@@ -46,7 +47,7 @@ image and only take the **service images** from your branch. So:
 - The reliable fork-side mechanism: **bake it into the service image**:
   ```dockerfile
   # services/file-service/Dockerfile on the demo branch ONLY
-  ENV FILE_UPLOAD_ALWAYS_FAIL=true
+  ENV <YOUR_SWITCH>=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
   services whose files the push touched).
