@@ -6,10 +6,14 @@ module Api
 
         VALID_SCENARIOS = {
           'search-service'       => 'suggest_500',
-          'file-service'         => 'upload_s3_error',
           'notification-service' => 'consumer_strict_schema',
           'document-service'     => 'slow_queries',
         }.freeze
+
+        # Services whose open incidents a reset clears so the dedup guard does
+        # not block the next run. Broader than VALID_SCENARIOS: alerts also
+        # arrive from services with no chaos scenario of their own.
+        RESETTABLE_SERVICES = (VALID_SCENARIOS.keys + %w[file-service]).uniq.freeze
 
         before_action :verify_chaos_secret
 
@@ -49,7 +53,7 @@ module Api
           # Resolve any open incidents for chaos-managed services so the next
           # demo run can create fresh incidents without hitting the dedup guard.
           resolved_incidents = []
-          VALID_SCENARIOS.each_key do |svc|
+          RESETTABLE_SERVICES.each do |svc|
             Incident.where(affected_service: svc)
                     .where(status: %w[open investigating])
                     .each do |incident|
