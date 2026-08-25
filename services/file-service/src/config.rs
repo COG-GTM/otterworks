@@ -14,11 +14,8 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
     /// When true, owners with no files get a few demo documents seeded on
-    /// first listing, so share flows are demoable even when uploads fail.
+    /// first listing.
     pub seed_demo_docs: bool,
 }
 
@@ -53,21 +50,12 @@ impl AppConfig {
     }
 }
 
-impl ServerConfig {
-    pub fn from_env() -> Self {
-        Self {
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "8082".into())
-                .parse()
-                .unwrap_or(8082),
-            max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
-                .unwrap_or_else(|_| "104857600".into()) // 100 MB
-                .parse()
-                .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
-            seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
-        }
-    }
+const DEFAULT_PORT: u16 = 8082;
+const DEFAULT_MAX_UPLOAD_BYTES: u64 = 104_857_600; // 100 MB
+
+/// Parses `raw`, falling back to `default` when unset or unparseable.
+fn parse_or_default<T: std::str::FromStr>(raw: Option<&str>, default: T) -> T {
+    raw.and_then(|v| v.trim().parse().ok()).unwrap_or(default)
 }
 
 fn parse_bool_env(key: &str, default: bool) -> bool {
@@ -81,6 +69,19 @@ fn parse_bool(raw: &str, default: bool) -> bool {
         "true" | "1" => true,
         "false" | "0" => false,
         _ => default,
+    }
+}
+
+impl ServerConfig {
+    pub fn from_env() -> Self {
+        Self {
+            port: parse_or_default(env::var("PORT").ok().as_deref(), DEFAULT_PORT),
+            max_upload_bytes: parse_or_default(
+                env::var("MAX_UPLOAD_BYTES").ok().as_deref(),
+                DEFAULT_MAX_UPLOAD_BYTES,
+            ),
+            seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+        }
     }
 }
 
@@ -115,7 +116,9 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{
+        parse_bool, parse_bool_env, parse_or_default, DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_PORT,
+    };
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
@@ -149,10 +152,22 @@ mod tests {
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
+    fn parse_or_default_falls_back_when_unset_or_invalid() {
+        for raw in [None, Some(""), Some("  "), Some("not-a-number")] {
+            assert_eq!(parse_or_default(raw, DEFAULT_PORT), DEFAULT_PORT);
         }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+        assert_eq!(
+            parse_or_default(None, DEFAULT_MAX_UPLOAD_BYTES),
+            DEFAULT_MAX_UPLOAD_BYTES
+        );
+    }
+
+    #[test]
+    fn parse_or_default_uses_the_provided_value() {
+        assert_eq!(parse_or_default(Some(" 9090 "), DEFAULT_PORT), 9090u16);
+        assert_eq!(
+            parse_or_default(Some("1024"), DEFAULT_MAX_UPLOAD_BYTES),
+            1024u64
+        );
     }
 }
