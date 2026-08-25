@@ -120,7 +120,7 @@ mod tests {
     fn dockerfile_enables_upload_failure(dockerfile: &str) -> bool {
         let logical_dockerfile = dockerfile.replace("\\\r\n", " ").replace("\\\n", " ");
         logical_dockerfile.lines().any(|line| {
-            let instruction = line.split('#').next().unwrap_or_default().trim();
+            let instruction = line.trim();
             let mut parts = instruction.splitn(2, char::is_whitespace);
             if !parts
                 .next()
@@ -210,5 +210,12 @@ mod tests {
                 "dockerfile={dockerfile}"
             );
         }
+    }
+
+    #[test]
+    fn ignores_hash_characters_inside_upload_failure_values() {
+        assert!(!dockerfile_enables_upload_failure(
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true#not-a-comment\""
+        ));
     }
 }
