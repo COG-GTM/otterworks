@@ -155,4 +155,70 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn image_does_not_force_share_event_failures() {
+        fn env_value<'a>(declaration: &'a str, key: &str) -> Option<&'a str> {
+            let mut parts = declaration.split_whitespace();
+            while let Some(part) = parts.next() {
+                if let Some((name, value)) = part.split_once('=') {
+                    if name == key {
+                        return Some(value);
+                    }
+                } else if part == key {
+                    return parts.next();
+                }
+            }
+            None
+        }
+
+        fn enabled_env_value(dockerfile: &str, key: &str) -> bool {
+            let mut declaration = String::new();
+            let mut continuing = false;
+
+            for line in dockerfile.lines().map(str::trim) {
+                let fragment = if continuing {
+                    line
+                } else if let Some(fragment) = line.strip_prefix("ENV ") {
+                    declaration.clear();
+                    fragment
+                } else {
+                    continue;
+                };
+
+                let has_continuation = fragment.ends_with('\\');
+                declaration.push_str(fragment.trim_end_matches('\\').trim_end());
+                declaration.push(' ');
+                continuing = has_continuation;
+
+                if !continuing
+                    && env_value(&declaration, key)
+                        .is_some_and(|value| parse_bool(value.trim_matches(['"', '\'']), false))
+                {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        assert_eq!(
+            env_value(
+                "FOO=bar FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+                "FILE_SHARE_EVENT_ALWAYS_FAIL"
+            ),
+            Some("true")
+        );
+        assert!(enabled_env_value(
+            "ENV FOO=bar \\\n    FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "FILE_SHARE_EVENT_ALWAYS_FAIL"
+        ));
+        assert!(
+            !enabled_env_value(
+                include_str!("../Dockerfile"),
+                "FILE_SHARE_EVENT_ALWAYS_FAIL"
+            ),
+            "file-service image forces share event failures"
+        );
+    }
 }
