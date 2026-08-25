@@ -117,6 +117,39 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn dockerfile_forces_upload_failure(dockerfile: &str) -> bool {
+        fn is_truthy(value: &str) -> bool {
+            parse_bool(
+                value.trim_matches(|character| character == '"' || character == '\''),
+                false,
+            )
+        }
+
+        dockerfile.lines().any(|line| {
+            let instruction = line.split('#').next().unwrap_or_default().trim();
+            let mut fields = instruction.split_whitespace();
+            if !fields
+                .next()
+                .is_some_and(|field| field.eq_ignore_ascii_case("ENV"))
+            {
+                return false;
+            }
+
+            let Some(first_value) = fields.next() else {
+                return false;
+            };
+            if first_value.contains('=') {
+                return std::iter::once(first_value).chain(fields).any(|field| {
+                    field.split_once('=').is_some_and(|(name, value)| {
+                        name == "FILE_UPLOAD_ALWAYS_FAIL" && is_truthy(value)
+                    })
+                });
+            }
+
+            first_value == "FILE_UPLOAD_ALWAYS_FAIL" && fields.next().is_some_and(is_truthy)
+        })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -159,33 +192,24 @@ mod tests {
     #[test]
     fn production_image_does_not_force_upload_failures() {
         let dockerfile = include_str!("../Dockerfile");
-        let forces_upload_failure = dockerfile.lines().any(|line| {
-            let instruction = line.split('#').next().unwrap_or_default().trim();
-            let mut fields = instruction.split_whitespace();
-            if !fields
-                .next()
-                .is_some_and(|field| field.eq_ignore_ascii_case("ENV"))
-            {
-                return false;
-            }
+        assert!(!dockerfile_forces_upload_failure(dockerfile));
+    }
 
-            let Some(first_value) = fields.next() else {
-                return false;
-            };
-            if first_value.contains('=') {
-                return std::iter::once(first_value).chain(fields).any(|field| {
-                    field.split_once('=').is_some_and(|(name, value)| {
-                        name == "FILE_UPLOAD_ALWAYS_FAIL" && value.eq_ignore_ascii_case("true")
-                    })
-                });
-            }
-
-            first_value == "FILE_UPLOAD_ALWAYS_FAIL"
-                && fields
-                    .next()
-                    .is_some_and(|value| value.eq_ignore_ascii_case("true"))
-        });
-
-        assert!(!forces_upload_failure);
+    #[test]
+    fn detects_truthy_upload_failure_env_values() {
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL='TRUE'",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=1",
+            "ENV OTHER=value FILE_UPLOAD_ALWAYS_FAIL=\"1\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL '1'",
+        ] {
+            assert!(
+                dockerfile_forces_upload_failure(dockerfile),
+                "dockerfile={dockerfile}"
+            );
+        }
     }
 }
