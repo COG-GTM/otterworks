@@ -117,6 +117,39 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn dockerfile_enables_upload_failure(dockerfile: &str) -> bool {
+        let logical_dockerfile = dockerfile.replace("\\\r\n", " ").replace("\\\n", " ");
+        logical_dockerfile.lines().any(|line| {
+            let instruction = line.trim();
+            let mut parts = instruction.splitn(2, char::is_whitespace);
+            if !parts
+                .next()
+                .is_some_and(|part| part.eq_ignore_ascii_case("ENV"))
+            {
+                return false;
+            }
+
+            let fields: Vec<_> = parts
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect();
+            if fields.first().is_some_and(|field| field.contains('=')) {
+                return fields.iter().any(|field| {
+                    field.split_once('=').is_some_and(|(name, value)| {
+                        name == "FILE_UPLOAD_ALWAYS_FAIL"
+                            && parse_bool(value.trim_matches(['"', '\'']), false)
+                    })
+                });
+            }
+
+            fields.first() == Some(&"FILE_UPLOAD_ALWAYS_FAIL")
+                && fields
+                    .get(1)
+                    .is_some_and(|value| parse_bool(value.trim_matches(['"', '\'']), false))
+        })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -154,5 +187,35 @@ mod tests {
             return;
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
+    }
+
+    #[test]
+    fn production_image_does_not_enable_upload_failures() {
+        assert!(!dockerfile_enables_upload_failure(include_str!(
+            "../Dockerfile"
+        )));
+    }
+
+    #[test]
+    fn detects_truthy_upload_failure_image_defaults() {
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "env FILE_UPLOAD_ALWAYS_FAIL=\"TRUE\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL '1'",
+            "ENV OTHER=value FILE_UPLOAD_ALWAYS_FAIL=1",
+            "ENV OTHER=value \\\n FILE_UPLOAD_ALWAYS_FAIL=true",
+        ] {
+            assert!(
+                dockerfile_enables_upload_failure(dockerfile),
+                "dockerfile={dockerfile}"
+            );
+        }
+    }
+
+    #[test]
+    fn ignores_hash_characters_inside_upload_failure_values() {
+        assert!(!dockerfile_enables_upload_failure(
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true#not-a-comment\""
+        ));
     }
 }
