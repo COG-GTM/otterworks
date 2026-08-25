@@ -148,14 +148,27 @@ mod tests {
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 
-    #[test]
-    fn image_does_not_force_share_event_failures() {
-        let dockerfile = include_str!("../Dockerfile");
-
-        assert!(!dockerfile
+    fn source_forces_bool(source: &str, key: &str, separator: char) -> bool {
+        source
             .lines()
             .map(str::trim)
-            .any(|line| line.eq_ignore_ascii_case("ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true")));
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_once(separator))
+            .any(|(name, value)| {
+                name.trim().strip_prefix("ENV ").unwrap_or(name.trim()) == key
+                    && parse_bool(value.trim().trim_matches(['"', '\'']), false)
+            })
+    }
+
+    #[test]
+    fn deployment_sources_do_not_force_share_event_failures() {
+        let key = "FILE_SHARE_EVENT_ALWAYS_FAIL";
+        assert!(!source_forces_bool(include_str!("../Dockerfile"), key, '='));
+        assert!(!source_forces_bool(
+            include_str!("../../../infrastructure/helm/file-service/values.yaml"),
+            key,
+            ':'
+        ));
     }
 
     #[test]
