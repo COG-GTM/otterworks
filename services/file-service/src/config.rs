@@ -149,6 +149,18 @@ mod tests {
     }
 
     #[test]
+    fn shipped_image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            assert!(
+                !(line.starts_with("ENV") && line.contains("FILE_UPLOAD_ALWAYS_FAIL")),
+                "Dockerfile must not bake FILE_UPLOAD_ALWAYS_FAIL into the image: {line}"
+            );
+        }
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
