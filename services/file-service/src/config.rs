@@ -117,29 +117,39 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn unquote(value: &str) -> &str {
+        value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .or_else(|| {
+                value
+                    .strip_prefix('\'')
+                    .and_then(|value| value.strip_suffix('\''))
+            })
+            .unwrap_or(value)
+    }
+
     fn upload_failure_image_default(dockerfile: &str) -> Option<&str> {
         dockerfile.lines().map(str::trim).find_map(|line| {
             let instruction = line.strip_prefix("ENV ")?.trim_start();
-            let remainder = instruction.strip_prefix("FILE_UPLOAD_ALWAYS_FAIL")?;
-            let first = remainder.chars().next()?;
-            let value = if first == '=' {
-                &remainder[1..]
-            } else if first.is_whitespace() {
-                remainder.trim_start()
+            let key = "FILE_UPLOAD_ALWAYS_FAIL";
+            let value = if let Some(remainder) = instruction.strip_prefix(key) {
+                let first = remainder.chars().next()?;
+                if first == '=' {
+                    Some(&remainder[1..])
+                } else if first.is_whitespace() {
+                    Some(remainder.trim_start())
+                } else {
+                    None
+                }
             } else {
-                return None;
-            };
-            let value = value.trim();
-
-            value
-                .strip_prefix('"')
-                .and_then(|value| value.strip_suffix('"'))
-                .or_else(|| {
-                    value
-                        .strip_prefix('\'')
-                        .and_then(|value| value.strip_suffix('\''))
+                instruction.split_ascii_whitespace().find_map(|assignment| {
+                    let (name, value) = assignment.split_once('=')?;
+                    (name == key).then_some(value)
                 })
-                .or(Some(value))
+            }?;
+
+            Some(unquote(value.trim()))
         })
     }
 
@@ -199,6 +209,7 @@ mod tests {
             "ENV FILE_UPLOAD_ALWAYS_FAIL true",
             "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true\"",
             "ENV FILE_UPLOAD_ALWAYS_FAIL='true'",
+            "ENV FOO=bar FILE_UPLOAD_ALWAYS_FAIL=true",
         ] {
             assert_eq!(upload_failure_image_default(dockerfile), Some("true"));
         }
