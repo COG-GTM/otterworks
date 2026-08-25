@@ -155,4 +155,26 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn image_does_not_force_share_event_failures() {
+        fn env_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+            let declaration = line.strip_prefix("ENV ")?.trim();
+            if let Some((name, value)) = declaration.split_once('=') {
+                return (name == key).then_some(value);
+            }
+
+            let mut parts = declaration.split_whitespace();
+            (parts.next() == Some(key)).then(|| parts.next()).flatten()
+        }
+
+        let enabled = include_str!("../Dockerfile")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| env_value(line, "FILE_SHARE_EVENT_ALWAYS_FAIL"))
+            .any(|value| parse_bool(value.trim_matches(['"', '\'']), false));
+
+        assert!(!enabled, "file-service image forces share event failures");
+    }
 }
