@@ -8,6 +8,7 @@ import {
   Save,
   Clock,
   Users,
+  MessageSquare,
   Copy,
   Check,
   X,
@@ -16,9 +17,10 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CollaborativeEditor } from "@/components/editor/collaborative-editor";
 import { UserPresenceAvatars } from "@/components/editor/user-presence-avatars";
+import { CommentsSidebar } from "@/components/editor/comments-sidebar";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { documentsApi } from "@/lib/api";
+import { commentsApi, documentsApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 
 export default function DocumentEditorPage() {
@@ -42,6 +44,7 @@ function DocumentEditorContent() {
   const [shareEmail, setShareEmail] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const [hasContent, setHasContent] = useState(false);
   const latestContentRef = useRef<string | null>(null);
   const documentIdRef = useRef(documentId);
@@ -52,6 +55,11 @@ function DocumentEditorContent() {
   const { data: document, isLoading } = useQuery({
     queryKey: ["documents", documentId],
     queryFn: () => documentsApi.get(documentId),
+  });
+
+  const { data: comments = [] } = useQuery({
+    queryKey: ["comments", documentId],
+    queryFn: () => commentsApi.listComments(documentId),
   });
 
   const updateMutation = useMutation({
@@ -197,6 +205,20 @@ function DocumentEditorContent() {
               Share
             </button>
             <button
+              onClick={() => setCommentsOpen(!commentsOpen)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-sm border rounded-lg transition ${
+                commentsOpen
+                  ? "text-otter-700 bg-otter-50 border-otter-200"
+                  : "text-gray-700 bg-white border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              <MessageSquare size={16} />
+              <span className="hidden sm:inline">Comments</span>
+              <span className="rounded-full bg-otter-100 px-1.5 text-xs text-otter-700">
+                {comments.filter((comment) => !comment.isResolved).length}
+              </span>
+            </button>
+            <button
               onClick={() => deleteMutation.mutate()}
               className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
             >
@@ -283,13 +305,17 @@ function DocumentEditorContent() {
         </div>
       )}
 
-      {/* Editor */}
-      <CollaborativeEditor
-        key={documentId}
-        documentId={documentId}
-        initialContent={document.content}
-        onUpdate={debouncedSave}
-      />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          <CollaborativeEditor
+            key={documentId}
+            documentId={documentId}
+            initialContent={document.content}
+            onUpdate={debouncedSave}
+          />
+        </div>
+        {commentsOpen && <CommentsSidebar documentId={documentId} />}
+      </div>
     </div>
   );
 }

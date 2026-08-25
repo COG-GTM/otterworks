@@ -7,6 +7,7 @@ import type {
   RegisterCredentials,
   FileItem,
   Document,
+  Comment,
   Notification,
   SearchResult,
   SearchFilters,
@@ -377,6 +378,40 @@ export const documentsApi = {
       params: { page: 1, size: limit },
     });
     return data.items ?? [];
+  },
+};
+
+// ── Document comments ─────────────────────────────────────────
+export const commentsApi = {
+  listComments: async (documentId: string, includeResolved = true): Promise<Comment[]> => {
+    const { data } = await apiClient.get<Comment[]>(`/documents/${documentId}/comments`, {
+      params: { include_resolved: includeResolved },
+    });
+    return data;
+  },
+  addComment: async (documentId: string, content: string): Promise<Comment> => {
+    const authorId = getOwnerIdFromJwt();
+    if (!authorId) throw new Error("Authentication required");
+    const { data } = await apiClient.post<Comment>(`/documents/${documentId}/comments`, {
+      author_id: authorId,
+      content,
+    });
+    return data;
+  },
+  resolveComment: async (documentId: string, commentId: string): Promise<Comment> => {
+    const { data } = await apiClient.post<Comment>(
+      `/documents/${documentId}/comments/${commentId}/resolve`,
+    );
+    return data;
+  },
+  unresolveComment: async (documentId: string, commentId: string): Promise<Comment> => {
+    const { data } = await apiClient.post<Comment>(
+      `/documents/${documentId}/comments/${commentId}/unresolve`,
+    );
+    return data;
+  },
+  deleteComment: async (documentId: string, commentId: string): Promise<void> => {
+    await apiClient.delete(`/documents/${documentId}/comments/${commentId}`);
   },
 };
 
