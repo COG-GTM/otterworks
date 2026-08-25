@@ -24,15 +24,20 @@ switch + banner), #82 (Dockerfile bake), #90 (alert route, dedup bypass),
 ## Step 1 — Build the failure switch (default OFF)
 
 Don't rely on the transient Redis chaos flags (`chaos:<service>:<scenario>`, set
-with SETEX + TTL — they expire and Redis has no persistence). Instead add a
-config-level env switch that reuses the same failure mechanism:
+with SETEX + TTL — they expire and Redis has no persistence). Instead drive the
+failure from existing service configuration:
 
-- In file-service, `FILE_UPLOAD_ALWAYS_FAIL` (parsed in `src/config.rs`, default
-  off) forces `effective_bucket` in `handlers.rs::upload_file` to the nonexistent
-  bucket `otterworks-files-chaos-nonexistent`, so S3 returns `NoSuchBucket` and the
-  upload 500s. The existing Redis chaos check stays intact for other scenarios.
-- The switch must default off everywhere (code, docker-compose, chart values) so
-  `main` and other tenants are unaffected.
+- Scope the switch to the single operation being demoed, the way
+  `FILE_SHARE_EVENT_ALWAYS_FAIL` only redirects the `file_shared` publish. Do
+  **not** repoint a service-wide setting such as `S3_BUCKET`: it is used by
+  every storage operation (download, presigned URLs, version restore, the demo
+  seeder), so the whole app breaks instead of one flow.
+- Nothing on the upload path: an always-fail upload switch
+  (`FILE_UPLOAD_ALWAYS_FAIL`) used to exist and was removed after it caused a
+  tenant upload outage — don't reintroduce one. The Redis chaos check stays
+  intact for transient upload drills.
+- Whatever the mechanism, it must default off everywhere (code, docker-compose,
+  chart values) so `main` and other tenants are unaffected.
 
 ## Step 2 — Get the switch ON for the tenant (the part everyone gets wrong)
 
@@ -46,7 +51,7 @@ image and only take the **service images** from your branch. So:
 - The reliable fork-side mechanism: **bake it into the service image**:
   ```dockerfile
   # services/file-service/Dockerfile on the demo branch ONLY
-  ENV FILE_UPLOAD_ALWAYS_FAIL=true
+  ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
   services whose files the push touched).

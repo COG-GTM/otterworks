@@ -14,11 +14,8 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
     /// When true, owners with no files get a few demo documents seeded on
-    /// first listing, so share flows are demoable even when uploads fail.
+    /// first listing, so share flows are demoable out of the box.
     pub seed_demo_docs: bool,
 }
 
@@ -64,7 +61,6 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
     }
@@ -89,7 +85,7 @@ impl AwsConfig {
         Self {
             region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into()),
             endpoint_url: env::var("AWS_ENDPOINT_URL").ok(),
-            s3_bucket: env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into()),
+            s3_bucket: resolve_s3_bucket(env::var("S3_BUCKET").ok()),
             dynamodb_table: env::var("DYNAMODB_TABLE")
                 .unwrap_or_else(|_| "otterworks-file-metadata".into()),
             dynamodb_folders_table: env::var("DYNAMODB_FOLDERS_TABLE")
@@ -100,6 +96,10 @@ impl AwsConfig {
                 .unwrap_or_else(|_| "otterworks-file-shares".into()),
         }
     }
+}
+
+fn resolve_s3_bucket(configured: Option<String>) -> String {
+    configured.unwrap_or_else(|| "otterworks-files".into())
 }
 
 impl SnsConfig {
@@ -115,7 +115,7 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{parse_bool, parse_bool_env, resolve_s3_bucket};
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
@@ -149,10 +149,20 @@ mod tests {
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
-        }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+    fn s3_bucket_uses_the_configured_value() {
+        assert_eq!(
+            resolve_s3_bucket(Some("otterworks-files-tenant".into())),
+            "otterworks-files-tenant"
+        );
+    }
+
+    #[test]
+    fn s3_bucket_falls_back_to_the_real_default_when_unset() {
+        assert_eq!(resolve_s3_bucket(None), "otterworks-files");
+    }
+
+    #[test]
+    fn s3_bucket_keeps_an_explicitly_empty_value() {
+        assert_eq!(resolve_s3_bucket(Some(String::new())), "");
     }
 }
