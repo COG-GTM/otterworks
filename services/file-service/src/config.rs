@@ -14,11 +14,8 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
     /// When true, owners with no files get a few demo documents seeded on
-    /// first listing, so share flows are demoable even when uploads fail.
+    /// first listing, so share flows are demoable.
     pub seed_demo_docs: bool,
 }
 
@@ -64,23 +61,8 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
-    }
-}
-
-fn parse_bool_env(key: &str, default: bool) -> bool {
-    env::var(key)
-        .ok()
-        .map_or(default, |raw| parse_bool(&raw, default))
-}
-
-fn parse_bool(raw: &str, default: bool) -> bool {
-    match raw.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" => true,
-        "false" | "0" => false,
-        _ => default,
     }
 }
 
@@ -113,9 +95,23 @@ impl SnsConfig {
     }
 }
 
+fn parse_bool_env(key: &str, default: bool) -> bool {
+    env::var(key)
+        .ok()
+        .map_or(default, |raw| parse_bool(&raw, default))
+}
+
+fn parse_bool(raw: &str, default: bool) -> bool {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => true,
+        "false" | "0" => false,
+        _ => default,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{parse_bool, parse_bool_env, AwsConfig};
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
@@ -149,10 +145,14 @@ mod tests {
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
+    fn s3_bucket_comes_from_the_environment() {
+        let previous = std::env::var("S3_BUCKET").ok();
+        std::env::set_var("S3_BUCKET", "otterworks-config-test");
+        let bucket = AwsConfig::from_env().s3_bucket;
+        match previous {
+            Some(value) => std::env::set_var("S3_BUCKET", value),
+            None => std::env::remove_var("S3_BUCKET"),
         }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+        assert_eq!(bucket, "otterworks-config-test");
     }
 }
