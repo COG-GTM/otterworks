@@ -149,6 +149,8 @@ mod tests {
     }
 
     fn dockerfile_enables_share_event_failure(dockerfile: &str) -> bool {
+        let dockerfile = dockerfile.replace("\\\r\n", " ").replace("\\\n", " ");
+
         dockerfile
             .lines()
             .map(str::trim)
@@ -190,6 +192,7 @@ mod tests {
             "ENV FILE_SHARE_EVENT_ALWAYS_FAIL true",
             "ENV FILE_SHARE_EVENT_ALWAYS_FAIL=\"true\"",
             "ENV FILE_UPLOAD_ALWAYS_FAIL=true FILE_SHARE_EVENT_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true \\\n+                FILE_SHARE_EVENT_ALWAYS_FAIL=true",
         ] {
             assert!(dockerfile_enables_share_event_failure(line), "line={line}");
         }
