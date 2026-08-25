@@ -16,9 +16,9 @@ COPY --from=builder /app/target/release/file-service /app/file-service
 RUN useradd -r -u 1001 appuser
 USER appuser
 
-# Click-triggered notification failure (same bake rationale as above): sharing
-# a file publishes the file_shared event to a nonexistent SNS topic, so every
-# share click fails with a real AWS SNS error and fires the
+# Click-triggered notification failure: sharing a file publishes the
+# file_shared event to a nonexistent SNS topic, so every share click fails
+# with a real AWS SNS error and fires the
 # NotificationEventPublishFailure alert at admin-service (incident + Devin
 # session + Slack, attributed to the sharing user via reporter_email). The
 # share record is still saved, but the request returns the AWS error so the
