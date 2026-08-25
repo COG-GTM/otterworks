@@ -133,7 +133,7 @@ mod tests {
         dockerfile.lines().map(str::trim).find_map(|line| {
             let instruction = line.strip_prefix("ENV ")?.trim_start();
             let key = "FILE_UPLOAD_ALWAYS_FAIL";
-            let value = if let Some(remainder) = instruction.strip_prefix(key) {
+            let direct_value = instruction.strip_prefix(key).and_then(|remainder| {
                 let first = remainder.chars().next()?;
                 if first == '=' {
                     Some(&remainder[1..])
@@ -142,12 +142,13 @@ mod tests {
                 } else {
                     None
                 }
-            } else {
+            });
+            let value = direct_value.or_else(|| {
                 instruction.split_ascii_whitespace().find_map(|assignment| {
                     let (name, value) = assignment.split_once('=')?;
                     (name == key).then_some(value)
                 })
-            }?;
+            })?;
 
             Some(unquote(value.trim()))
         })
@@ -210,6 +211,7 @@ mod tests {
             "ENV FILE_UPLOAD_ALWAYS_FAIL=\"true\"",
             "ENV FILE_UPLOAD_ALWAYS_FAIL='true'",
             "ENV FOO=bar FILE_UPLOAD_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL_EXTRA=x FILE_UPLOAD_ALWAYS_FAIL=true",
         ] {
             assert_eq!(upload_failure_image_default(dockerfile), Some("true"));
         }
