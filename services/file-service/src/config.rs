@@ -149,13 +149,10 @@ mod tests {
     }
 
     #[test]
-    fn image_does_not_force_share_event_failures() {
+    fn image_does_not_configure_share_event_failures() {
         let dockerfile = include_str!("../Dockerfile");
 
-        assert!(!dockerfile
-            .lines()
-            .map(str::trim)
-            .any(|line| line.eq_ignore_ascii_case("ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true")));
+        assert!(!dockerfile.contains("FILE_SHARE_EVENT_ALWAYS_FAIL"));
     }
 
     #[test]
