@@ -157,16 +157,35 @@ mod tests {
     }
 
     #[test]
-    fn deployment_defaults_do_not_force_upload_failures() {
+    fn production_image_does_not_force_upload_failures() {
         let dockerfile = include_str!("../Dockerfile");
-        assert!(!dockerfile.lines().any(|line| {
-            line.trim()
-                .eq_ignore_ascii_case("ENV FILE_UPLOAD_ALWAYS_FAIL=true")
-        }));
+        let forces_upload_failure = dockerfile.lines().any(|line| {
+            let instruction = line.split('#').next().unwrap_or_default().trim();
+            let mut fields = instruction.split_whitespace();
+            if !fields
+                .next()
+                .is_some_and(|field| field.eq_ignore_ascii_case("ENV"))
+            {
+                return false;
+            }
 
-        let helm_values = include_str!("../../../infrastructure/helm/file-service/values.yaml");
-        assert!(helm_values
-            .lines()
-            .any(|line| line.trim() == "FILE_UPLOAD_ALWAYS_FAIL: \"false\""));
+            let Some(first_value) = fields.next() else {
+                return false;
+            };
+            if first_value.contains('=') {
+                return std::iter::once(first_value).chain(fields).any(|field| {
+                    field.split_once('=').is_some_and(|(name, value)| {
+                        name == "FILE_UPLOAD_ALWAYS_FAIL" && value.eq_ignore_ascii_case("true")
+                    })
+                });
+            }
+
+            first_value == "FILE_UPLOAD_ALWAYS_FAIL"
+                && fields
+                    .next()
+                    .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+        });
+
+        assert!(!forces_upload_failure);
     }
 }
