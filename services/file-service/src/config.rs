@@ -157,11 +157,18 @@ mod tests {
     }
 
     #[test]
-    fn production_image_does_not_force_upload_failures() {
-        let upload_failure_enabled = include_str!("../Dockerfile").lines().any(|line| {
-            line.trim()
-                .strip_prefix("ENV FILE_UPLOAD_ALWAYS_FAIL=")
-                .is_some_and(|value| parse_bool(value, false))
+    fn production_deployments_do_not_force_upload_failures() {
+        let upload_failure_enabled = [
+            include_str!("../Dockerfile"),
+            include_str!("../../../infrastructure/helm/file-service/values.yaml"),
+        ]
+        .iter()
+        .flat_map(|contents| contents.lines())
+        .any(|line| {
+            let line = line.trim();
+            line.strip_prefix("ENV FILE_UPLOAD_ALWAYS_FAIL=")
+                .or_else(|| line.strip_prefix("FILE_UPLOAD_ALWAYS_FAIL:"))
+                .is_some_and(|value| parse_bool(value.trim().trim_matches('"'), false))
         });
 
         assert!(!upload_failure_enabled);
