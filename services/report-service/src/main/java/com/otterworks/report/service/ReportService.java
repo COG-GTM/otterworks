@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
@@ -25,7 +25,6 @@ import java.util.Optional;
  * Core report orchestration service.
  *
  * LEGACY PATTERNS:
- * - javax.transaction.Transactional (target: jakarta.transaction.Transactional
  *   or org.springframework.transaction.annotation.Transactional)
  * - java.util.Date throughout
  * - @Async delegated to ReportGenerationWorker (fire-and-forget, no error propagation)
@@ -124,7 +123,7 @@ public class ReportService {
     @Transactional
     public boolean deleteReport(Long id) {
         Optional<Report> optReport = reportRepository.findById(id);
-        if (!optReport.isPresent()) {
+        if (optReport.isEmpty()) {
             return false;
         }
 
