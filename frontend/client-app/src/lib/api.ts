@@ -1,5 +1,6 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "./api-client";
+import { CHAOS_SCENARIOS, chaosError, injectChaosLatency, isChaosActive } from "./chaos";
 import type {
   User,
   AuthTokens,
@@ -190,6 +191,22 @@ export const filesApi = {
     const ownerId = getOwnerIdFromJwt();
     if (ownerId) formData.append("owner_id", ownerId);
 
+    // CHAOS: dupe of file-service's upload_s3_error — the upload is rejected the
+    // way a NoSuchBucket from S3 surfaces. Downloads and browsing stay healthy.
+    if (isChaosActive(CHAOS_SCENARIOS.fileUploadS3Error)) {
+      throw chaosError(CHAOS_SCENARIOS.fileUploadS3Error, {
+        method: "post",
+        url: "/files/upload",
+        status: 500,
+        statusText: "Internal Server Error",
+        data: {
+          error: "storage_error",
+          message:
+            "S3 error: NoSuchBucket: The specified bucket does not exist (otterworks-files-chaos-nonexistent)",
+        },
+      });
+    }
+
     const { data } = await apiClient.post<{ file: RawFileItem }>("/files/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
       signal: options?.signal,
@@ -346,12 +363,15 @@ export const filesApi = {
 // ── Documents ─────────────────────────────────────────────────
 export const documentsApi = {
   list: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    // CHAOS: dupe of document-service's slow_queries — reads degrade, not fail.
+    await injectChaosLatency(CHAOS_SCENARIOS.documentSlowQueries);
     const { data } = await apiClient.get<PaginatedResponse<Document>>("/documents", {
       params: { page, pageSize },
     });
     return data;
   },
   get: async (id: string): Promise<Document> => {
+    await injectChaosLatency(CHAOS_SCENARIOS.documentSlowQueries);
     const { data } = await apiClient.get<Document>(`/documents/${id}`);
     return data;
   },
@@ -373,6 +393,7 @@ export const documentsApi = {
     await apiClient.post(`/documents/${id}/restore`);
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
+    await injectChaosLatency(CHAOS_SCENARIOS.documentSlowQueries);
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
       params: { page: 1, size: limit },
     });
@@ -413,6 +434,18 @@ export const searchApi = {
     };
   },
   suggest: async (query: string): Promise<string[]> => {
+    // CHAOS: dupe of search-service's suggest_500 — autocomplete 500s while
+    // searchApi.search keeps working.
+    if (isChaosActive(CHAOS_SCENARIOS.searchSuggest500)) {
+      throw chaosError(CHAOS_SCENARIOS.searchSuggest500, {
+        method: "get",
+        url: "/search/suggest",
+        status: 500,
+        statusText: "Internal Server Error",
+        data: { error: "Internal Server Error", message: "KeyError: '_rankingScore'" },
+      });
+    }
+
     const { data } = await apiClient.get<{ suggestions: string[] }>("/search/suggest", {
       params: { q: query },
     });
@@ -435,6 +468,23 @@ export const notificationsApi = {
     await apiClient.post("/notifications/read-all");
   },
   getUnreadCount: async (): Promise<number> => {
+    // CHAOS: dupe of notification-service's consumer_strict_schema — the consumer
+    // rejects inbound messages, so arrival of new notifications stalls. Reading
+    // the existing ones (list / markRead) is unaffected.
+    if (isChaosActive(CHAOS_SCENARIOS.notificationStrictSchema)) {
+      throw chaosError(CHAOS_SCENARIOS.notificationStrictSchema, {
+        method: "get",
+        url: "/notifications/unread-count",
+        status: 503,
+        statusText: "Service Unavailable",
+        data: {
+          error: "ingestion_stalled",
+          message:
+            "Notification consumer rejected message: strict schema expects an ISO-8601 timestamp",
+        },
+      });
+    }
+
     const { data } = await apiClient.get<{ count: number }>("/notifications/unread-count");
     return data.count;
   },
