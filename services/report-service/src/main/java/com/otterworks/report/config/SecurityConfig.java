@@ -24,7 +24,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/health", "/metrics", "/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/v1/reports/**").permitAll())
+                        .requestMatchers("/api/v1/reports/**").permitAll()
+                        .anyRequest().permitAll())
                 .headers(headers -> headers
                         .frameOptions(options -> options.deny()
                                 .contentTypeOptions())
