@@ -155,4 +155,15 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn production_image_does_not_force_upload_failures() {
+        let upload_failure_enabled = include_str!("../Dockerfile").lines().any(|line| {
+            line.trim()
+                .strip_prefix("ENV FILE_UPLOAD_ALWAYS_FAIL=")
+                .is_some_and(|value| parse_bool(value, false))
+        });
+
+        assert!(!upload_failure_enabled);
+    }
 }
