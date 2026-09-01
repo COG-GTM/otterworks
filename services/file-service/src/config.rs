@@ -144,6 +144,18 @@ mod tests {
         })
     }
 
+    fn chart_enables_upload_failure(values: &str) -> bool {
+        values
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_once(':'))
+            .any(|(name, value)| {
+                name.trim() == "FILE_UPLOAD_ALWAYS_FAIL"
+                    && parse_bool(value.trim().trim_matches(['"', '\'']), false)
+            })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -189,6 +201,13 @@ mod tests {
     }
 
     #[test]
+    fn production_chart_does_not_enable_upload_failures() {
+        assert!(!chart_enables_upload_failure(include_str!(
+            "../../../infrastructure/helm/file-service/values.yaml"
+        )));
+    }
+
+    #[test]
     fn detects_upload_failure_image_defaults() {
         for dockerfile in [
             "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
@@ -200,6 +219,16 @@ mod tests {
                 image_enables_upload_failure(dockerfile),
                 "dockerfile={dockerfile}"
             );
+        }
+    }
+
+    #[test]
+    fn detects_upload_failure_chart_defaults() {
+        for values in [
+            "config:\n  FILE_UPLOAD_ALWAYS_FAIL: \"true\"",
+            "FILE_UPLOAD_ALWAYS_FAIL: 1",
+        ] {
+            assert!(chart_enables_upload_failure(values), "values={values}");
         }
     }
 }
