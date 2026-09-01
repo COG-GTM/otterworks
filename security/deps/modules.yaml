@@ -15,9 +15,10 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # report-service builds on JDK 17 (Spring Boot 3.2) and so no longer ships
-  # Nashorn: its ${script:javascript:...} case cannot resolve on any JDK the module
-  # compiles on, which is why that case's baseline records the literal template.
+  # report-service builds on JDK 17 (Spring Boot 3.2), whose JVM no longer ships
+  # Nashorn: its ${script:javascript:...} case cannot evaluate on any JDK the module
+  # compiles on, which is why that case's baseline records the IllegalArgumentException
+  # the script engine lookup now raises instead of an evaluated value.
   - id: report-service
     path: services/report-service
     build: maven
