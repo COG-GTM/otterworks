@@ -19,7 +19,7 @@ This runs four scan types in sequence:
 | pip-audit | search-service | Python dependency advisories |
 | bundle-audit | admin-service | Ruby gem advisories |
 
-**Note:** report-service is intentionally excluded from scans. It is a legacy Java 8 service earmarked for a separate framework upgrade exercise and is not in scope for this sprint.
+**Note:** report-service is intentionally excluded from scans and is not in scope for this sprint.
 
 ## Understanding Trivy Output
 
