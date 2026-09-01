@@ -53,7 +53,7 @@ documented in `README.md` (branch from `main`, open PR, CI must pass).
 `dorny/paths-filter` that fans out to **one job per service/language**, each running the idiomatic
 toolchain:
 - Go `go vet` + `go test -race` + build (`api-gateway`)
-- Java 17 `gradle check` (`auth-service`, `notification-service`), Java 8 `mvn` (`report-service`, legacy)
+- Java 17 `gradle check` (`auth-service`, `notification-service`), Java 17 `mvn` (`report-service`)
 - Rust `cargo fmt/clippy/test/build` (`file-service`)
 - Python `ruff` + `pytest --cov` (`document-service`, `search-service`)
 - Node `npm ci/lint/test/build` (`collab-service`, `web-app`)
@@ -350,7 +350,7 @@ shared-services EKS + Airflow/Spark; actual is standalone `platform/terraform` +
 | **CVE remediation / closed-loop security** | §7 | Trivy/Semgrep/SonarCloud + event-driven Devin auto-fix with escalation is a complete, differentiated loop |
 | **Cloud-native IaC provisioning** | §4, §3 | Real two-layer Terraform + EKS + IRSA; live apply, including finding & fixing a managed-policy bug |
 | **Observability / incident-response with Devin** | §8–§11 | admin-service incident→Devin auto-investigation is a unique narrative (needs runtime wired) |
-| **Legacy modernization** | §13, §2 (report-service Java 8) | Cron ETL and the intentionally-legacy `report-service` are ready-made "before" states |
+| **Legacy modernization** | §13, §2 (report-service) | Cron ETL is a ready-made "before" state; `report-service` has since been migrated to Java 17 / Spring Boot 3.2 |
 | **Analytics lakehouse re-architecture** | §13 | Durable PostgreSQL analytics store is the "before" for an S3 + Apache Iceberg (Glue/Athena) migration, with old-vs-new reconciliation as continuous validation |
 
 ## Top gaps to fix before OtterWorks is a clean all-around reference
