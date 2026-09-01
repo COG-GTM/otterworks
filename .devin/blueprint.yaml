@@ -217,6 +217,33 @@ knowledge:
         /tmp/seed/bin/python testdata/generated/retail-drive/generate_drive.py \
           --gateway http://localhost:8080 --email "$DRIVE_EMAIL" \
           --password "$DRIVE_PASSWORD" --departments all --scale 1.0 --register
+  - name: run the client-app dev server (HMR / module access)
+    contents: |
+      `make up` already serves the built web app on :3000, so pass another port - and read the
+      actual port off the Vite banner, it silently bumps to the next free one (3001 -> 3002):
+        export NVM_DIR="$HOME/.nvm"; . "$NVM_DIR/nvm.sh"; nvm use default
+        (cd frontend/client-app && npm run dev -- --port 3001)
+      It proxies /api/v1 to the gateway on :8080, so it runs alongside the containers. Only on
+      the dev server can you reach API functions that have no UI caller:
+        const m = await import('/src/lib/api.ts'); await m.searchApi.suggest('inv');
+  - name: chaos scenarios (server + browser)
+    contents: |
+      Canonical scenario ids: scripts/bug-catalog.yaml. Services do a plain EXISTS check, so
+      any value works:
+        docker exec otterworks-redis redis-cli set chaos:document-service:slow_queries 1 EX 180
+        docker exec otterworks-redis redis-cli keys 'chaos:*'
+      Once PR #68 lands (not on main yet) the client app also dupes the four scenarios in the
+      browser (frontend/client-app/src/lib/chaos.ts), toggled with
+      `otterChaos.enable('file-service')` / `.reset()` or `?chaos=file-service`; that state is
+      localStorage only, so `keys 'chaos:*'` staying empty proves nothing leaked to the backend.
+  - name: seeding notifications
+    contents: |
+      There is no public API for creating notifications - the seed script does not create any.
+      Write items straight into the LocalStack DynamoDB notifications table for the signed-in
+      user id (`docker exec otterworks-localstack awslocal dynamodb put-item ...`).
+      Known golden-app quirks: the unread badge never renders (the client reads `data.count`
+      while notification-service returns `unreadCount`) and mark-as-read returns 403 locally.
+      Both are pre-existing - per AGENTS.md, do not "fix" them.
   - name: run admin dashboard
     contents: |
       `make up` serves the Angular dashboard at http://localhost:4200 from the prebuilt nginx
