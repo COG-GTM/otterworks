@@ -22,7 +22,7 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 | analytics-service | Scala/Java 17 (sbt) | `sbt compile`, `sbt test` | Passing |
 | admin-service | Ruby 3.3 (Rails) | `db:schema:load`, `rspec` (with Postgres service container) | **Fixed** (was failing due to missing `table_name`) |
 | audit-service | C# / .NET 8 | `dotnet restore`, `dotnet build`, `dotnet test` | Passing |
-| report-service | Java 8 (Maven) — **LEGACY** | `mvn compile`, `mvn test`, `mvn package` | Passing |
+| report-service | Java 17 (Maven) | `mvn verify` | Passing |
 | web-app | Node.js 20 (Next.js) | `npm ci`, `npm run lint`, `npm test`, `npm run build` | Passing |
 | admin-dashboard | Node.js 20 (Angular) | `npm ci`, `npm run lint \|\| true`, `npm test \|\| true`, `npm run build` | Passing |
 | infrastructure | Terraform 1.7 | `terraform fmt -check`, `terraform init`, `terraform validate` | Passing |
@@ -56,7 +56,7 @@ After PR #31 (this PR):
 ### Immediate (No Changes Required)
 1. **Change detection is working well** — Only affected services are built on PRs, keeping CI fast (~2-5 min per service vs 30+ min for full monorepo build).
 2. **Security scanning is comprehensive** — Trivy + Gitleaks + Semgrep covers dependencies, secrets, and static analysis.
-3. **Legacy service isolation** — Report service (Java 8) is correctly skipped by Trivy since it's intentionally outdated for upgrade exercises.
+3. **Legacy service isolation** — Report service is currently skipped by Trivy; now that it runs on Java 17 / Spring Boot 3.2 the exclusion can be revisited.
 
 ### Short-Term Improvements
 1. **Add `concurrency` groups** to cancel stale CI runs when new commits are pushed:
