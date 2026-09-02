@@ -15,20 +15,23 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules pin JDK 11: their recorded transcripts include the
-  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
-  # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
-  # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
+  # report-service builds on 17, matching its pom and its ci.yml job. Its transcript
+  # is recorded there too: without Nashorn the ${script:javascript:...} lookup fails
+  # to evaluate rather than returning a value, which the recording states.
   - id: report-service
     path: services/report-service
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
     # No wrapper in this module; the `mvn` on PATH is what ci.yml uses for it too.
     test: -B test
     cases: cases/report-service.json
 
+  # legacy-portal pins JDK 11: its recorded transcript includes the
+  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
+  # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
+  # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
   - id: legacy-portal
     path: services/legacy-portal
     build: maven
