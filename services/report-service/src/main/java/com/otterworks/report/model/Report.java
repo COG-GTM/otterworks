@@ -20,10 +20,7 @@ import java.util.Date;
  * JPA entity representing a generated report.
  *
  * LEGACY PATTERNS:
- * - javax.persistence.* (target: jakarta.persistence.*)
- * - javax.validation.* (target: jakarta.validation.*)
  * - java.util.Date fields (target: java.time.Instant / LocalDateTime)
- * - SpringFox @ApiModel / @ApiModelProperty (target: @Schema from springdoc)
  * - No Lombok — uses manual getters/setters (verbose but explicit)
  */
 @Entity

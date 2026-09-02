@@ -26,11 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Integration tests for the Report Service.
  *
  * LEGACY PATTERNS:
- * - JUnit 4 with @RunWith(SpringRunner.class) instead of JUnit 5 @ExtendWith(SpringExtension.class)
- * - @Test from org.junit.Test instead of org.junit.jupiter.api.Test
- * - No @DisplayName or @Nested (JUnit 5 features)
  * - java.util.Date in test data
- * - Static imports from hamcrest (still valid but JUnit 5 prefers assertj)
+ * - Static imports from hamcrest (assertj is preferred for new tests)
  *
  * UPGRADE TARGET:
  * - Replace @RunWith(SpringRunner.class) with @ExtendWith(SpringExtension.class) or just @SpringBootTest

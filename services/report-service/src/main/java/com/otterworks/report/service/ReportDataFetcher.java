@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
  * - Guava LoadingCache (old version 28, CVEs) instead of Caffeine or Spring Cache
  * - Manual JSON response handling with Map<String, Object>
  * - java.util.Date parameters
- * - Commons Lang 2 StringUtils
+ * - Commons Lang 3 StringUtils
  * - Checked exceptions wrapped in RuntimeException
  */
 @Service
