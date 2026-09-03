@@ -25,8 +25,7 @@ import java.util.Optional;
  * Core report orchestration service.
  *
  * LEGACY PATTERNS:
- * - javax.transaction.Transactional (target: jakarta.transaction.Transactional
- *   or org.springframework.transaction.annotation.Transactional)
+ * - jakarta.transaction.Transactional (target: org.springframework.transaction.annotation.Transactional)
  * - java.util.Date throughout
  * - @Async delegated to ReportGenerationWorker (fire-and-forget, no error propagation)
  * - Manual JSON serialization for parameters

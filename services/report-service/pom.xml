@@ -7,9 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- LEGACY: Spring Boot 2.5.14 — last 2.5.x release. Upgrade target: 3.2+ -->
-        <!-- Pinned via 2.5.15 patch release pending security review; see internal ticket OW-4471 -->
-        <version>3.2.12</version>
+        <version>3.2.5</version>
         <relativePath/>
     </parent>
 
@@ -21,19 +19,14 @@
     <description>Legacy report generation service — PDF, CSV, Excel exports from analytics and audit data</description>
 
     <properties>
-        <httpclient5.version>5.4.4</httpclient5.version>
-        <!-- LEGACY: Java 8 source/target. Upgrade target: Java 17+ -->
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
-        <springfox.version>3.0.0</springfox.version>
+        <springdoc.version>2.5.0</springdoc.version>
         <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
         <poi.version>4.1.2</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
-        <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
-        <commons-lang.version>2.6</commons-lang.version>
         <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
         <commons-io.version>2.6</commons-io.version>
         <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
@@ -65,22 +58,18 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- LEGACY: javax.servlet — removed in Jakarta EE 9+. Upgrade: jakarta.servlet -->
-        <dependency>
-            <groupId>jakarta.servlet</groupId>
-            <artifactId>jakarta.servlet-api</artifactId>
-            <scope>test</scope>
-        </dependency>
-
         <!-- Database -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
+
+        <!-- OpenAPI 3 docs + Swagger UI (springdoc) -->
         <dependency>
-            <groupId>jakarta.validation</groupId>
-            <artifactId>jakarta.validation-api</artifactId>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <!-- LEGACY: Apache POI 4.x for Excel generation -->
@@ -94,11 +83,6 @@
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-            <version>2.5.0</version>
-        </dependency>
 
         <!-- LEGACY: iText 5 for PDF generation (AGPL license concerns) -->
         <dependency>
@@ -107,7 +91,7 @@
             <version>${itext.version}</version>
         </dependency>
 
-        <!-- LEGACY: Commons Lang 2 (EOL since 2012) -->
+        <!-- Commons Lang 3 (version managed by the Boot BOM) -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
@@ -133,6 +117,8 @@
             <artifactId>guava</artifactId>
             <version>${guava.version}</version>
         </dependency>
+
+        <!-- RestTemplate HTTP client (Spring 6 requires HttpClient 5; version managed by the Boot BOM) -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
             <artifactId>httpclient5</artifactId>
@@ -150,17 +136,12 @@
             <artifactId>opencsv</artifactId>
             <version>4.6</version>
         </dependency>
+
+        <!-- Testing (JUnit 5 / Mockito versions managed by the Boot BOM) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-            <!-- Exclude JUnit 5 to force JUnit 4 usage -->
-            <exclusions>
-                <exclusion>
-                    <groupId>org.junit.jupiter</groupId>
-                    <artifactId>junit-jupiter</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
@@ -184,14 +165,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <release>${java.version}</release>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.1.2</version>
             </plugin>
         </plugins>
     </build>

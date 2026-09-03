@@ -11,12 +11,12 @@ import java.util.Date;
 import java.util.TimeZone;
 
 /**
- * Date utility class using legacy java.util.Date and Commons Lang 2.
+ * Date utility class using legacy java.util.Date and Commons Lang 3.
  *
  * LEGACY PATTERNS (multiple upgrade targets):
  * 1. java.util.Date everywhere → java.time.Instant / LocalDateTime / ZonedDateTime
  * 2. SimpleDateFormat (not thread-safe) → DateTimeFormatter (thread-safe)
- * 3. Commons Lang 2 DateUtils/DateFormatUtils → java.time API (no external dep needed)
+ * 3. Commons Lang DateUtils/DateFormatUtils → java.time API (no external dep needed)
  * 4. Calendar manipulation → java.time.temporal.ChronoUnit / Period
  * 5. Manual timezone handling → ZoneId / ZoneOffset
  *
@@ -48,7 +48,7 @@ public final class ReportDateUtils {
         if (date == null) {
             return null;
         }
-        // LEGACY: Commons Lang 2 DateFormatUtils
+        // LEGACY: Commons Lang DateFormatUtils
         return DateFormatUtils.formatUTC(date, "yyyy-MM-dd'T'HH:mm:ss'Z'");
     }
 
@@ -85,7 +85,7 @@ public final class ReportDateUtils {
             return null;
         }
         try {
-            // LEGACY: Commons Lang 2 DateUtils.parseDate
+            // LEGACY: Commons Lang DateUtils.parseDate
             return DateUtils.parseDate(dateString, new String[]{
                     "yyyy-MM-dd'T'HH:mm:ss'Z'",
                     "yyyy-MM-dd'T'HH:mm:ssZ",
@@ -126,7 +126,7 @@ public final class ReportDateUtils {
 
     /**
      * Subtract days from a date.
-     * LEGACY: Commons Lang 2 DateUtils.addDays with negative value.
+     * LEGACY: Commons Lang DateUtils.addDays with negative value.
      */
     public static Date daysAgo(int days) {
         return DateUtils.addDays(new Date(), -days);

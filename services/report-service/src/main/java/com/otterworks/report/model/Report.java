@@ -14,16 +14,16 @@ import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
 import java.util.Date;
 
 /**
  * JPA entity representing a generated report.
  *
  * LEGACY PATTERNS:
- * - javax.persistence.* (target: jakarta.persistence.*)
- * - javax.validation.* (target: jakarta.validation.*)
  * - java.util.Date fields (target: java.time.Instant / LocalDateTime)
- * - SpringFox @ApiModel / @ApiModelProperty (target: @Schema from springdoc)
  * - No Lombok — uses manual getters/setters (verbose but explicit)
  */
 @Entity
@@ -100,6 +100,7 @@ public class Report {
     private Integer rowCount;
 
     @Lob
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "error_message")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
