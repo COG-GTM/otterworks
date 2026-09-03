@@ -316,7 +316,7 @@ jobs:
       - run: npm test || true
       - run: npm run build
 
-  # Java 8 / Maven - Report Service (LEGACY)
+  # Java 17 / Maven - Report Service
   report-service:
     needs: detect-changes
     if: needs.detect-changes.outputs.report-service == 'true'
