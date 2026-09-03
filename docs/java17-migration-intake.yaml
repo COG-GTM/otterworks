@@ -1,0 +1,54 @@
+repo: https://github.com/COG-GTM/otterworks
+default_branch: main
+services:
+  - name: report-service
+    path: services/report-service
+    build: maven
+    java: 8
+    framework: spring-boot 2.5.15
+    dockerfile: maven:3.8.7-eclipse-temurin-8 / eclipse-temurin:8-jre
+    ci: ci.yml report-service (java-version '8'), docker-build.yml report-service-tests (java-version '8')
+    class: migrate
+    notes: SpringFox 3.0, JUnit 4, WebSecurityConfigurerAdapter, @Lob String on Report
+  - name: legacy-portal
+    path: services/legacy-portal
+    build: maven (./mvnw 3.9.9)
+    java: 11
+    framework: spring-boot 2.7.18
+    dockerfile: maven:3.9-eclipse-temurin-11 / eclipse-temurin:11-jre-jammy
+    ci: ci.yml legacy-portal (java-version '11'), docker-build.yml legacy-portal-tests (java-version '11')
+    class: migrate
+  - name: auth-service
+    path: services/auth-service
+    build: gradle
+    java: 17            # sourceCompatibility = JavaVersion.VERSION_17
+    framework: spring-boot 3.2.4
+    dockerfile: gradle:8.6-jdk17 / eclipse-temurin:17-jre-jammy
+    ci: ci.yml + docker-build.yml (java-version '17')
+    class: verify
+  - name: notification-service
+    path: services/notification-service
+    build: gradle-kts
+    java: 17            # jvmToolchain(17)
+    framework: ktor 2.3.9 (kotlin 1.9.23)
+    dockerfile: gradle:8.6-jdk17 / eclipse-temurin:17-jre-jammy
+    ci: ci.yml (java-version '17')
+    class: jdk-only
+  - name: analytics-service
+    path: services/analytics-service
+    build: sbt
+    java: 17            # sbtscala/scala-sbt:eclipse-temurin-jammy-17.0.10 builder
+    framework: akka-http 10.5.3 (scala 3.4.0)
+    dockerfile: sbtscala/scala-sbt:eclipse-temurin-jammy-17.0.10_7_1.9.9_3.4.1 / eclipse-temurin:17-jre-jammy
+    ci: ci.yml (java-version '17')
+    class: jdk-only
+shared:
+  - .github/workflows/ci.yml            # report-service / legacy-portal job blocks pin 8 / 11
+  - .github/workflows/docker-build.yml  # report-service-tests / legacy-portal-tests pin 8 / 11
+  - .github/workflows/deps-remediation.yml  # installs 17 + 11 (11 as ambient JDK for the Maven modules)
+excluded:
+  - frontend/client-app/mobile/android   # Android Gradle project, not a JVM service (already JDK 17 per PR #14)
+targets:
+  java: 17
+  spring_boot: 3.2.5
+demo_mode: true
