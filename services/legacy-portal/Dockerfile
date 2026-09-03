@@ -13,7 +13,7 @@ COPY src/ src/
 RUN mvn -B package -DskipTests
 
 # LEGACY: JRE 11 runtime (target: eclipse-temurin:17-jre or 21-jre).
-FROM eclipse-temurin:11-jre-jammy
+FROM eclipse-temurin:17-jre-jammy
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 

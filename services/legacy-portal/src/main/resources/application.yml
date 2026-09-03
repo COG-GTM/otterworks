@@ -28,23 +28,3 @@ management:
     health:
       probes:
         enabled: true
-
----
-# On-prem / VM profile: talks to a real PostgreSQL running alongside the app on the VM
-# (see docker-compose.onprem.yml and scripts/run-onprem.sh). The three schemas are created
-# by scripts/initdb.sql at database init time.
-spring:
-  config:
-    activate:
-      on-profile: postgres
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/legacyportal}
-    username: ${SPRING_DATASOURCE_USERNAME:legacyportal}
-    password: ${SPRING_DATASOURCE_PASSWORD:legacyportal}
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
