@@ -15,16 +15,17 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules pin JDK 11: their recorded transcripts include the
-  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
-  # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
-  # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
+  # Both Maven modules build on JDK 17 (Spring Boot 3.2 / Java 17 source level) and
+  # their transcripts are recorded on it. The ${script:javascript:...} lookup only
+  # resolves while the JVM ships Nashorn (JDK <= 14), so on 17 the vulnerable baseline
+  # records that case as an error rather than a value; measuring it on an older JDK
+  # would report a behavior change that never happened.
   - id: report-service
     path: services/report-service
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
     # No wrapper in this module; the `mvn` on PATH is what ci.yml uses for it too.
     test: -B test
     cases: cases/report-service.json
@@ -33,11 +34,11 @@ modules:
     path: services/legacy-portal
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
-    # Spring Boot 2.x, and it pins its own Maven (3.9.9) via the wrapper — the same
-    # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
-    # reach the wrapper's distribution.
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # Pins its own Maven (3.9.9) via the wrapper — the same tool ci.yml builds it
+    # with. `mvn` is the fallback for a machine that cannot reach the wrapper's
+    # distribution.
     tool:
       - ./mvnw
       - mvn
