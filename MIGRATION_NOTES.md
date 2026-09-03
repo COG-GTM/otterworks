@@ -95,11 +95,19 @@ Behaviour differences vs `main` worth knowing:
   (Security 6 denies unmatched requests). Not reachable through the gateway.
 - Swagger moved from `/v2/api-docs` + `/swagger-ui/` to `/v3/api-docs` + `/swagger-ui.html`.
 
+## Dependency-remediation harness
+
+`security/deps/expected/{report-service,legacy-portal}.json` were re-recorded on JDK 17
+(`make deps-record MODULE=<id> ALLOW_RERECORD=1 REASON=...`). The previous recordings came from
+JDK 11, where `${script:javascript:3+4}` resolved to `7` via Nashorn; on 17 there is no script
+engine, so the vulnerable-baseline outcome for `attack-script-lookup` is now an
+`IllegalArgumentException`. The remediated contract is unaffected: with a fixed commons-text the
+case must read back `ok` with the literal template, which is still a different outcome from the
+baseline, so the `attack` policy grades exactly as before. Legacy-portal's cases contain no
+script lookup; only its recording metadata changed. `make deps-transcript-baseline` passes on 17.
+
 ## Follow-ups
 
-- `security/deps/` expected transcripts were recorded on JDK 11, where the `script:` case resolved via
-  Nashorn; on JDK 17 that case is `unresolved` — regenerate the expected transcripts on 17
-  (`make deps-transcript` per the dependency-cve-remediation skill).
 - `services/report-service/UPGRADE_GUIDE.md` and `docs/{CI_STRATEGY,EVENT_DRIVEN_SECURITY,SDLC-COVERAGE}.md`,
   `docs/labs/security-sprint-guide.md`, `.devin/wiki.json` still describe report-service as Java 8;
   the Trivy exclusion for report-service in `security-scan.yml` can be reconsidered now that it is on 17.

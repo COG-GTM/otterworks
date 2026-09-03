@@ -15,11 +15,11 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules build on JDK 17 (Spring Boot 3.2 / Java 17 source level).
-  # Their recorded transcripts still carry the ${script:javascript:...} lookup, which
-  # only resolves while the JVM ships Nashorn (JDK <= 14); on 17 that case reads as
-  # unresolved, so the recordings must be re-recorded on this toolchain before the
-  # transcript baseline is meaningful again.
+  # Both Maven modules build on JDK 17 (Spring Boot 3.2 / Java 17 source level) and
+  # their transcripts are recorded on it. The ${script:javascript:...} lookup only
+  # resolves while the JVM ships Nashorn (JDK <= 14), so on 17 the vulnerable baseline
+  # records that case as an error rather than a value; measuring it on an older JDK
+  # would report a behavior change that never happened.
   - id: report-service
     path: services/report-service
     build: maven

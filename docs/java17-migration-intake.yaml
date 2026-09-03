@@ -1,5 +1,10 @@
+# Intake inventory for the Java 17 / Spring Boot 3.2 migration. The per-service
+# java / framework / dockerfile / ci fields record the state FOUND at intake (pre-migration),
+# which is what `class` was decided from; `targets` is the end state. The post-migration
+# state of every service is in MIGRATION_NOTES.md.
 repo: https://github.com/COG-GTM/otterworks
 default_branch: main
+recorded_from: main@e66f76ca
 services:
   - name: report-service
     path: services/report-service
