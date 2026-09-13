@@ -31,6 +31,7 @@ export function UserMenu({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const openAtEndRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -44,9 +45,11 @@ export function UserMenu({
   }, [open]);
 
   useEffect(() => {
-    if (open) {
-      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    }
+    if (!open) return;
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    if (!items?.length) return;
+    items[openAtEndRef.current ? items.length - 1 : 0].focus();
+    openAtEndRef.current = false;
   }, [open]);
 
   const menuItems = () =>
@@ -66,6 +69,7 @@ export function UserMenu({
   const onTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      openAtEndRef.current = e.key === "ArrowUp";
       setOpen(true);
     } else if (e.key === "Escape" && open) {
       e.preventDefault();
