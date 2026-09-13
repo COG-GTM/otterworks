@@ -14,14 +14,13 @@ import {
   Menu,
   X,
   Plus,
-  LogOut,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getInitials } from "@/lib/utils";
 import { Logo } from "@/components/ui/logo";
+import { UserMenu } from "@/components/ui/user-menu";
 
 interface NavItem {
   href: string;
@@ -66,7 +65,7 @@ const navGroups: NavGroup[] = [
 export function Sidebar() {
   const { pathname } = useLocation();
   const { sidebarOpen, toggleSidebar } = useUIStore();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
 
   return (
     <>
@@ -152,25 +151,17 @@ export function Sidebar() {
 
         {/* User profile */}
         <div className="border-t border-otter-600 px-3 py-2">
-          {user && sidebarOpen && (
-            <div className="flex items-center gap-3 px-1 py-2">
-              <div className="w-8 h-8 rounded-full bg-otter-500 text-white flex items-center justify-center text-xs font-semibold">
-                {getInitials(user.displayName)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {user.displayName}
-                </p>
-                <p className="text-xs text-otter-200 truncate">{user.email}</p>
-              </div>
-              <button
-                onClick={logout}
-                className="p-1.5 rounded hover:bg-otter-600 text-otter-200 hover:text-white"
-                aria-label="Sign out"
-              >
-                <LogOut size={16} />
-              </button>
-            </div>
+          {user && (
+            <UserMenu variant="dark" align="left" placement="top" className="px-1 py-2">
+              {sidebarOpen && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">
+                    {user.displayName}
+                  </p>
+                  <p className="text-xs text-otter-200 truncate">{user.email}</p>
+                </div>
+              )}
+            </UserMenu>
           )}
         </div>
       </aside>

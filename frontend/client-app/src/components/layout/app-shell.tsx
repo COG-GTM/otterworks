@@ -3,6 +3,7 @@ import { Sidebar } from "./sidebar";
 import { Footer } from "./footer";
 import { SearchBar } from "@/components/ui/search-bar";
 import { NotificationBell } from "@/components/ui/notification-bell";
+import { UserMenu } from "@/components/ui/user-menu";
 import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/lib/utils";
@@ -55,9 +56,11 @@ export function AppShell({ children }: AppShellProps) {
               </a>
               <NotificationBell />
               {user && (
-                <span className="hidden lg:block px-2 text-xs text-gray-600 truncate max-w-[160px]">
-                  {user.displayName}
-                </span>
+                <UserMenu className="ml-1">
+                  <span className="hidden lg:block pr-2 text-xs text-gray-600 truncate max-w-[160px]">
+                    {user.displayName}
+                  </span>
+                </UserMenu>
               )}
             </div>
           </div>
