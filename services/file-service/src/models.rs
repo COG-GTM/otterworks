@@ -38,6 +38,17 @@ pub struct Folder {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderShareLink {
+    pub id: Uuid,
+    pub folder_id: Uuid,
+    pub owner_id: Uuid,
+    pub token: String,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub revoked: bool,
+}
+
 // ── File Version ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

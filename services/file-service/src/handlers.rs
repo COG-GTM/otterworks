@@ -1,7 +1,7 @@
 use actix_multipart::Multipart;
 use actix_web::{web, HttpRequest, HttpResponse};
 use bytes::BytesMut;
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use futures_util::StreamExt;
 use uuid::Uuid;
 
@@ -18,12 +18,35 @@ use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
-    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, FolderShareLink,
+    HealthResponse, ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateFolderShareLinkRequest {
+    pub expires_in_hours: u32,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct FolderShareLinkResponse {
+    #[serde(flatten)]
+    pub link: FolderShareLink,
+    pub url: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SharedFolderResponse {
+    pub folder: Folder,
+    pub files: Vec<FileMetadata>,
+    pub expires_at: DateTime<Utc>,
+}
+
+pub fn is_expired(link: &FolderShareLink, now: DateTime<Utc>) -> bool {
+    link.expires_at <= now
+}
 
 // -- Health & Metrics --
 
@@ -257,6 +280,14 @@ fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<U
         .and_then(|s| s.trim().parse::<Uuid>().ok());
 
     header_owner_id.or(query_owner_id)
+}
+
+fn required_owner_id(req: &HttpRequest) -> Result<Uuid, ServiceError> {
+    req.headers()
+        .get("X-User-ID")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::BadRequest("missing owner context".into()))
 }
 
 pub async fn list_files(
@@ -757,6 +788,140 @@ pub async fn delete_folder(
     Ok(HttpResponse::NoContent().finish())
 }
 
+fn folder_share_link_response(
+    link: FolderShareLink,
+    public_web_url: &str,
+) -> FolderShareLinkResponse {
+    FolderShareLinkResponse {
+        url: format!(
+            "{}/shared/folder/{}",
+            public_web_url.trim_end_matches('/'),
+            link.token
+        ),
+        link,
+    }
+}
+
+pub async fn create_folder_share_link(
+    req: HttpRequest,
+    config: web::Data<AppConfig>,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+    body: web::Json<CreateFolderShareLinkRequest>,
+) -> Result<HttpResponse, ServiceError> {
+    if !(1..=720).contains(&body.expires_in_hours) {
+        return Err(ServiceError::BadRequest(
+            "expires_in_hours must be between 1 and 720".into(),
+        ));
+    }
+
+    let owner_id = required_owner_id(&req)?;
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let folder = meta.get_folder(&folder_id).await?;
+    if folder.owner_id != owner_id {
+        return Err(ServiceError::Forbidden(
+            "folder owner access required".into(),
+        ));
+    }
+
+    let created_at = Utc::now();
+    let link = FolderShareLink {
+        id: Uuid::new_v4(),
+        folder_id,
+        owner_id,
+        token: Uuid::new_v4().simple().to_string(),
+        expires_at: created_at + Duration::hours(body.expires_in_hours as i64),
+        created_at,
+        revoked: false,
+    };
+    meta.put_folder_share_link(&link).await?;
+    tracing::info!(folder_id = %folder_id, link_id = %link.id, "Folder share link created");
+
+    Ok(HttpResponse::Created().json(folder_share_link_response(
+        link,
+        &config.server.public_web_url,
+    )))
+}
+
+pub async fn list_folder_share_links(
+    req: HttpRequest,
+    config: web::Data<AppConfig>,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let owner_id = required_owner_id(&req)?;
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let folder = meta.get_folder(&folder_id).await?;
+    if folder.owner_id != owner_id {
+        return Err(ServiceError::Forbidden(
+            "folder owner access required".into(),
+        ));
+    }
+
+    let links = meta.list_folder_share_links(&folder_id).await?;
+    let links = links
+        .into_iter()
+        .filter(|link| !link.revoked && !is_expired(link, Utc::now()))
+        .map(|link| folder_share_link_response(link, &config.server.public_web_url))
+        .collect::<Vec<_>>();
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "links": links })))
+}
+
+pub async fn revoke_folder_share_link(
+    req: HttpRequest,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse, ServiceError> {
+    let owner_id = required_owner_id(&req)?;
+    let (folder_id_str, link_id_str) = path.into_inner();
+    let folder_id: Uuid = folder_id_str
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let link_id: Uuid = link_id_str
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid share link id: {e}")))?;
+    let folder = meta.get_folder(&folder_id).await?;
+    if folder.owner_id != owner_id {
+        return Err(ServiceError::Forbidden(
+            "folder owner access required".into(),
+        ));
+    }
+
+    meta.revoke_folder_share_link(&folder_id, &link_id).await?;
+    tracing::info!(folder_id = %folder_id, link_id = %link_id, "Folder share link revoked");
+    Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn get_shared_folder(
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let token = path.into_inner();
+    let link = meta.get_folder_share_link_by_token(&token).await?;
+    if link.revoked {
+        return Err(ServiceError::ShareLinkNotFound(token));
+    }
+    if is_expired(&link, Utc::now()) {
+        return Err(ServiceError::ShareLinkExpired);
+    }
+
+    let folder = meta.get_folder(&link.folder_id).await?;
+    let files = meta
+        .list_files(Some(link.folder_id), Some(folder.owner_id), false)
+        .await?;
+    Ok(HttpResponse::Ok().json(SharedFolderResponse {
+        folder,
+        files,
+        expires_at: link.expires_at,
+    }))
+}
+
 // -- Activity Handler --
 
 pub async fn list_activity(
@@ -838,5 +1003,22 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[test]
+    fn test_share_link_expiry_detection() {
+        let now = Utc::now();
+        let link = FolderShareLink {
+            id: Uuid::new_v4(),
+            folder_id: Uuid::new_v4(),
+            owner_id: Uuid::new_v4(),
+            token: "token".into(),
+            expires_at: now,
+            created_at: now - Duration::hours(1),
+            revoked: false,
+        };
+
+        assert!(is_expired(&link, now));
+        assert!(!is_expired(&link, now - Duration::seconds(1)));
     }
 }

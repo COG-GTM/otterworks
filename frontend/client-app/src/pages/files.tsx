@@ -23,6 +23,7 @@ import { FolderCard } from "@/components/files/folder-card";
 import { FileUploadDropzone } from "@/components/files/file-upload-dropzone";
 import type { FileUploadDropzoneHandle } from "@/components/files/file-upload-dropzone";
 import { ShareDialog } from "@/components/files/share-dialog";
+import { FolderShareDialog } from "@/components/files/folder-share-dialog";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { FileGridSkeleton, FileListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -61,6 +62,7 @@ function FileBrowserContent() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [shareFileId, setShareFileId] = useState<string | null>(null);
+  const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
 
@@ -465,6 +467,7 @@ function FileBrowserContent() {
                     folder={folder}
                     view={viewMode}
                     onDelete={(id) => deleteFolderMutation.mutate(id)}
+                    onShare={(id) => setShareFolderId(id)}
                     onRename={(id, name) => renameFolderMutation.mutate({ id, name })}
                     selected={selectedIds.has(folder.id)}
                     onSelect={toggleSelect}
@@ -533,6 +536,17 @@ function FileBrowserContent() {
               queryClient.invalidateQueries({ queryKey: ["files"] });
             }}
             onClose={() => setShareFileId(null)}
+          />
+        );
+      })()}
+      {shareFolderId && (() => {
+        const shareFolder = folders.find((folder) => folder.id === shareFolderId);
+        if (!shareFolder) return null;
+        return (
+          <FolderShareDialog
+            folderId={shareFolder.id}
+            folderName={shareFolder.name}
+            onClose={() => setShareFolderId(null)}
           />
         );
       })()}

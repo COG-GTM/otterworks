@@ -50,6 +50,21 @@ export interface FileItem {
   versions: FileVersion[];
 }
 
+export interface FolderShareLink {
+  id: string;
+  folderId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+  url: string;
+}
+
+export interface SharedFolderView {
+  folder: FileItem;
+  files: FileItem[];
+  expiresAt: string;
+}
+
 export interface FileVersion {
   id: string;
   fileId: string;

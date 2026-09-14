@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
-use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission};
+use crate::models::{
+    FileMetadata, FileShare, FileVersion, Folder, FolderShareLink, SharePermission,
+};
 
 /// Check if an AWS SDK error is a ConditionalCheckFailedException.
 fn is_conditional_check_failed<E: std::fmt::Debug>(
@@ -22,6 +24,7 @@ pub struct MetadataClient {
     pub folders_table: String,
     pub versions_table: String,
     pub shares_table: String,
+    pub folder_share_links_table: String,
 }
 
 impl MetadataClient {
@@ -42,6 +45,7 @@ impl MetadataClient {
             folders_table: config.dynamodb_folders_table.clone(),
             versions_table: config.dynamodb_versions_table.clone(),
             shares_table: config.dynamodb_shares_table.clone(),
+            folder_share_links_table: config.dynamodb_folder_share_links_table.clone(),
         }
     }
 
@@ -442,6 +446,127 @@ impl MetadataClient {
         Ok(folders)
     }
 
+    // -- Folder Share Links --
+
+    pub async fn put_folder_share_link(&self, link: &FolderShareLink) -> Result<(), ServiceError> {
+        let mut item = std::collections::HashMap::new();
+        item.insert("id".into(), AttributeValue::S(link.id.to_string()));
+        item.insert(
+            "folder_id".into(),
+            AttributeValue::S(link.folder_id.to_string()),
+        );
+        item.insert(
+            "owner_id".into(),
+            AttributeValue::S(link.owner_id.to_string()),
+        );
+        item.insert("token".into(), AttributeValue::S(link.token.clone()));
+        item.insert(
+            "expires_at".into(),
+            AttributeValue::S(link.expires_at.to_rfc3339()),
+        );
+        item.insert(
+            "created_at".into(),
+            AttributeValue::S(link.created_at.to_rfc3339()),
+        );
+        item.insert("revoked".into(), AttributeValue::Bool(link.revoked));
+        item.insert(
+            "ttl_epoch".into(),
+            AttributeValue::N(link.expires_at.timestamp().to_string()),
+        );
+
+        self.client
+            .put_item()
+            .table_name(&self.folder_share_links_table)
+            .set_item(Some(item))
+            .send()
+            .await
+            .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    pub async fn get_folder_share_link_by_token(
+        &self,
+        token: &str,
+    ) -> Result<FolderShareLink, ServiceError> {
+        let result = self
+            .client
+            .get_item()
+            .table_name(&self.folder_share_links_table)
+            .key("token", AttributeValue::S(token.to_string()))
+            .send()
+            .await
+            .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+
+        let item = result
+            .item()
+            .ok_or_else(|| ServiceError::ShareLinkNotFound(token.to_string()))?;
+
+        parse_folder_share_link(item)
+    }
+
+    pub async fn list_folder_share_links(
+        &self,
+        folder_id: &Uuid,
+    ) -> Result<Vec<FolderShareLink>, ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.folder_share_links_table)
+            .filter_expression("folder_id = :folder_id")
+            .expression_attribute_values(":folder_id", AttributeValue::S(folder_id.to_string()))
+            .into_paginator()
+            .send();
+
+        let mut links = Vec::new();
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            for item in page.items() {
+                links.push(parse_folder_share_link(item)?);
+            }
+        }
+        links.sort_by_key(|link| std::cmp::Reverse(link.created_at));
+        Ok(links)
+    }
+
+    pub async fn revoke_folder_share_link(
+        &self,
+        folder_id: &Uuid,
+        link_id: &Uuid,
+    ) -> Result<(), ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.folder_share_links_table)
+            .filter_expression("folder_id = :folder_id AND id = :id")
+            .expression_attribute_values(":folder_id", AttributeValue::S(folder_id.to_string()))
+            .expression_attribute_values(":id", AttributeValue::S(link_id.to_string()))
+            .into_paginator()
+            .send();
+
+        let mut token = None;
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            if let Some(item) = page.items().first() {
+                token = Some(get_s(item, "token")?);
+                break;
+            }
+        }
+
+        let token = token.ok_or_else(|| ServiceError::ShareLinkNotFound(link_id.to_string()))?;
+        self.client
+            .update_item()
+            .table_name(&self.folder_share_links_table)
+            .key("token", AttributeValue::S(token))
+            .update_expression("SET revoked = :revoked")
+            .expression_attribute_values(":revoked", AttributeValue::Bool(true))
+            .send()
+            .await
+            .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+
+        Ok(())
+    }
+
     // -- File Versions --
 
     pub async fn put_version(&self, version: &FileVersion) -> Result<(), ServiceError> {
@@ -733,6 +858,20 @@ fn parse_folder(
         owner_id: parse_uuid(&get_s(item, "owner_id")?)?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,
         updated_at: parse_datetime(&get_s(item, "updated_at")?)?,
+    })
+}
+
+fn parse_folder_share_link(
+    item: &std::collections::HashMap<String, AttributeValue>,
+) -> Result<FolderShareLink, ServiceError> {
+    Ok(FolderShareLink {
+        id: parse_uuid(&get_s(item, "id")?)?,
+        folder_id: parse_uuid(&get_s(item, "folder_id")?)?,
+        owner_id: parse_uuid(&get_s(item, "owner_id")?)?,
+        token: get_s(item, "token")?,
+        expires_at: parse_datetime(&get_s(item, "expires_at")?)?,
+        created_at: parse_datetime(&get_s(item, "created_at")?)?,
+        revoked: get_bool(item, "revoked")?,
     })
 }
 

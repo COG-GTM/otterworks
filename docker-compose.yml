@@ -111,6 +111,8 @@ services:
       OTEL_SERVICE_NAME: file-service
       S3_BUCKET: otterworks-files
       DYNAMODB_TABLE: otterworks-file-metadata
+      DYNAMODB_FOLDER_SHARE_LINKS_TABLE: otterworks-folder-share-links
+      PUBLIC_WEB_URL: http://localhost:3000
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
       # Failed uploads fire a Grafana-style alert at admin-service's ingest
@@ -556,4 +558,3 @@ networks:
 volumes:
   postgres_data: null
   localstack_data: null
-
