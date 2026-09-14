@@ -43,6 +43,7 @@ func DefaultPrefixPaths() []string {
 		"/health",
 		"/metrics",
 		"/socket.io",
+		"/api/v1/folders/shared",
 	}
 }
 

@@ -91,6 +91,22 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/api/v1/folders")
+                    .route(
+                        "/shared/{token}",
+                        web::get().to(handlers::get_shared_folder),
+                    )
+                    .route(
+                        "/{folder_id}/share-links",
+                        web::post().to(handlers::create_folder_share_link),
+                    )
+                    .route(
+                        "/{folder_id}/share-links",
+                        web::get().to(handlers::list_folder_share_links),
+                    )
+                    .route(
+                        "/{folder_id}/share-links/{link_id}",
+                        web::delete().to(handlers::revoke_folder_share_link),
+                    )
                     .route("", web::get().to(handlers::list_folders))
                     .route("", web::post().to(handlers::create_folder))
                     .route("/{folder_id}", web::get().to(handlers::get_folder))

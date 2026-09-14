@@ -103,4 +103,10 @@ table_exists otterworks-file-shares || awslocal dynamodb create-table \
   --key-schema AttributeName=id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST
 
+table_exists otterworks-folder-share-links || awslocal dynamodb create-table \
+  --table-name otterworks-folder-share-links \
+  --attribute-definitions AttributeName=token,AttributeType=S \
+  --key-schema AttributeName=token,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST
+
 echo "LocalStack initialization complete!"

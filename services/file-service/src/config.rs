@@ -14,6 +14,7 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
+    pub public_web_url: String,
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
@@ -31,6 +32,7 @@ pub struct AwsConfig {
     pub dynamodb_folders_table: String,
     pub dynamodb_versions_table: String,
     pub dynamodb_shares_table: String,
+    pub dynamodb_folder_share_links_table: String,
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +66,8 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
+            public_web_url: env::var("PUBLIC_WEB_URL")
+                .unwrap_or_else(|_| "http://localhost:3000".into()),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
@@ -98,6 +102,8 @@ impl AwsConfig {
                 .unwrap_or_else(|_| "otterworks-file-versions".into()),
             dynamodb_shares_table: env::var("DYNAMODB_SHARES_TABLE")
                 .unwrap_or_else(|_| "otterworks-file-shares".into()),
+            dynamodb_folder_share_links_table: env::var("DYNAMODB_FOLDER_SHARE_LINKS_TABLE")
+                .unwrap_or_else(|_| "otterworks-folder-share-links".into()),
         }
     }
 }

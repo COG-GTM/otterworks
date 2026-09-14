@@ -52,6 +52,11 @@ output "dynamodb_file_shares_table" {
   value       = module.database.file_shares_table_name
 }
 
+output "dynamodb_folder_share_links_table" {
+  description = "DynamoDB table name for folder share links"
+  value       = module.database.folder_share_links_table_name
+}
+
 # --- Messaging ---
 
 output "sqs_notification_queue_url" {

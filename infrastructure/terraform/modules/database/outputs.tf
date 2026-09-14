@@ -67,3 +67,13 @@ output "file_shares_table_arn" {
   description = "DynamoDB table ARN for file shares"
   value       = aws_dynamodb_table.file_shares.arn
 }
+
+output "folder_share_links_table_name" {
+  description = "DynamoDB table name for folder share links"
+  value       = aws_dynamodb_table.folder_share_links.name
+}
+
+output "folder_share_links_table_arn" {
+  description = "DynamoDB table ARN for folder share links"
+  value       = aws_dynamodb_table.folder_share_links.arn
+}

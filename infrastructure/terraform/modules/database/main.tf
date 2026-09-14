@@ -302,3 +302,38 @@ resource "aws_dynamodb_table" "file_shares" { # nosemgrep: terraform.aws.securit
     Service = "file-service"
   })
 }
+
+# --- DynamoDB: Folder Share Links (file-service) ---
+
+resource "aws_dynamodb_table" "folder_share_links" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+  name         = "${var.project}-folder-share-links-${var.environment}"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "token"
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  attribute {
+    name = "token"
+    type = "S"
+  }
+
+  attribute {
+    name = "ttl_epoch"
+    type = "N"
+  }
+
+  ttl {
+    attribute_name = "ttl_epoch"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = var.environment != "dev"
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "file-service"
+  })
+}
