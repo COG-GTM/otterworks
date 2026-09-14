@@ -867,7 +867,7 @@ pub async fn list_folder_share_links(
     let links = meta.list_folder_share_links(&folder_id).await?;
     let links = links
         .into_iter()
-        .filter(|link| !link.revoked)
+        .filter(|link| !link.revoked && !is_expired(link, Utc::now()))
         .map(|link| folder_share_link_response(link, &config.server.public_web_url))
         .collect::<Vec<_>>();
     Ok(HttpResponse::Ok().json(serde_json::json!({ "links": links })))
@@ -912,7 +912,9 @@ pub async fn get_shared_folder(
     }
 
     let folder = meta.get_folder(&link.folder_id).await?;
-    let files = meta.list_files(Some(link.folder_id), None, false).await?;
+    let files = meta
+        .list_files(Some(link.folder_id), Some(folder.owner_id), false)
+        .await?;
     Ok(HttpResponse::Ok().json(SharedFolderResponse {
         folder,
         files,

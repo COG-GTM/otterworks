@@ -319,11 +319,6 @@ resource "aws_dynamodb_table" "folder_share_links" { # nosemgrep: terraform.aws.
     type = "S"
   }
 
-  attribute {
-    name = "ttl_epoch"
-    type = "N"
-  }
-
   ttl {
     attribute_name = "ttl_epoch"
     enabled        = true
