@@ -16,8 +16,6 @@ import static org.junit.jupiter.api.Assertions.fail;
  * Covers the per-report variable path (the banner lines). The operator footer
  * string is exercised by the dependency transcript in security/deps, which pins
  * the interpolation behavior of the Commons Text release we build against.
- *
- * JUnit 4 style to match the current stack.
  */
 public class ReportHeaderRendererTest {
 

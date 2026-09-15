@@ -11,8 +11,6 @@ import java.util.Map;
  * Request DTO for creating a new report.
  *
  * LEGACY PATTERNS:
- * - javax.validation.* annotations (target: jakarta.validation.*)
- * - SpringFox annotations (target: springdoc @Schema)
  * - java.util.Date (target: java.time.Instant)
  * - Mutable POJO with setters (target: Java 16+ record)
  */
