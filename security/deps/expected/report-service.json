@@ -3,8 +3,8 @@
   "advisory": "CVE-2022-42889",
   "artifact": "org.apache.commons:commons-text",
   "cases_sha256": "ea3ac7b9e1fc1dc7049222d7b4157e34b435927389036138b00feaabb28f225c",
-  "recorded_at": "2026-08-17T22:51:46.629685+00:00",
-  "reason": "baseline: commons-text 1.9 behavior before CVE-2022-42889 remediation",
+  "recorded_at": "2026-09-15T20:34:47.454906+00:00",
+  "reason": "baseline: commons-text 1.9 on JDK 17 after the report-service Java 8->17 migration; the script: lookup no longer resolves because Nashorn was removed in JDK 15",
   "cases": [
     {
       "id": "banner-title",
@@ -49,8 +49,9 @@
     },
     {
       "id": "attack-script-lookup",
-      "outcome": "ok",
-      "value": "7"
+      "outcome": "error",
+      "error_type": "java.lang.IllegalArgumentException",
+      "error_message": "Error in script engine [javascript] evaluating script [3+4]."
     },
     {
       "id": "attack-dns-lookup",
