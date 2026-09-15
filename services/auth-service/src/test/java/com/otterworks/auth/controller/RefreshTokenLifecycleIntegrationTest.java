@@ -51,7 +51,8 @@ class RefreshTokenLifecycleIntegrationTest {
 
     Claims access = jwtTokenProvider.validateAndGetClaims(tokens.get("accessToken").asText());
     assertThat(access.getSubject())
-        .isEqualTo(userRepository.findByEmail("claims@otterworks.dev").orElseThrow().getId().toString());
+        .isEqualTo(
+            userRepository.findByEmail("claims@otterworks.dev").orElseThrow().getId().toString());
     assertThat(access.get("email", String.class)).isEqualTo("claims@otterworks.dev");
     assertThat(access.get("type", String.class)).isEqualTo("access");
     assertThat(access.get("roles", List.class)).containsExactly("USER");
@@ -86,7 +87,10 @@ class RefreshTokenLifecycleIntegrationTest {
             .andExpect(status().isOk())
             .andReturn();
     String secondRefresh =
-        objectMapper.readTree(refreshed.getResponse().getContentAsString()).get("refreshToken").asText();
+        objectMapper
+            .readTree(refreshed.getResponse().getContentAsString())
+            .get("refreshToken")
+            .asText();
 
     assertThat(secondRefresh).isNotEqualTo(firstRefresh);
     assertThat(storedToken(jwtTokenProvider.extractJti(firstRefresh)).isRevoked()).isTrue();
@@ -191,8 +195,7 @@ class RefreshTokenLifecycleIntegrationTest {
                 post("/api/v1/auth/login")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
-                        String.format(
-                            "{\"email\": \"%s\", \"password\": \"password123\"}", email)))
+                        String.format("{\"email\": \"%s\", \"password\": \"password123\"}", email)))
             .andExpect(status().isOk())
             .andReturn();
     return objectMapper.readTree(result.getResponse().getContentAsString());

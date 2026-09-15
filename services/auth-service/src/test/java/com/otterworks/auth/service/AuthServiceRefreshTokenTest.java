@@ -66,7 +66,8 @@ class AuthServiceRefreshTokenTest {
     when(jwtTokenProvider.extractJti("new-refresh-token")).thenReturn("new-jti");
     when(jwtTokenProvider.getAccessTokenExpiry()).thenReturn(3600L);
     when(jwtTokenProvider.getRefreshTokenExpiry()).thenReturn(2592000L);
-    when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(refreshTokenRepository.save(any(RefreshToken.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
 
     AuthResponse response = authService.refreshToken("old-refresh-token");
 
@@ -113,7 +114,8 @@ class AuthServiceRefreshTokenTest {
   @Test
   void refreshToken_shouldRejectTokenWhoseUserNoLongerExists() {
     stubRefreshLookup();
-    when(refreshTokenRepository.save(any(RefreshToken.class))).thenAnswer(inv -> inv.getArgument(0));
+    when(refreshTokenRepository.save(any(RefreshToken.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
     when(userRepository.findById(testUser.getId())).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> authService.refreshToken("old-refresh-token"))
