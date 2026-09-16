@@ -1,20 +1,28 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
-  docker compose -f docker-compose.infra.yml pull
   # Serialized with retries: parallel builds overwhelm Docker's embedded DNS (127.0.0.11)
   # and dependency fetches (e.g. cargo's static.crates.io) intermittently fail to resolve.
   # Exponential backoff capped at 480s (30/60/120/240/480/480/480s, ~31.5 min total):
-  # registries like Maven Central also rate-limit with HTTP 429, and a 429 window can
-  # take tens of minutes -- not seconds -- to clear.
-  COMPOSE="docker compose -f docker-compose.infra.yml -f docker-compose.yml"
-  for svc in $($COMPOSE config --services); do
+  # registries like Docker Hub and Maven Central also rate-limit with HTTP 429, and a 429
+  # window can take tens of minutes -- not seconds -- to clear.
+  retry() {
     n=0
-    until $COMPOSE build "$svc"; do
-      n=$((n+1)); [ "$n" -ge 8 ] && { echo "build failed for $svc after $n attempts"; exit 1; }
+    until "$@"; do
+      n=$((n+1)); [ "$n" -ge 8 ] && { echo "failed after $n attempts: $*"; return 1; }
       backoff=$((15 * (2 ** n))); [ "$backoff" -gt 480 ] && backoff=480
-      echo "retrying build for $svc ($n) in ${backoff}s"; sleep "$backoff"
+      echo "retrying ($n) in ${backoff}s: $*"; sleep "$backoff"
     done
+  }
+  INFRA="docker compose -f docker-compose.infra.yml"
+  # One image at a time: a parallel pull of all infra images trips Docker Hub's anonymous
+  # pull rate limit (429) and aborts the whole pull.
+  for img in $($INFRA config --images); do
+    retry docker pull "$img" || exit 1
+  done
+  COMPOSE="$INFRA -f docker-compose.yml"
+  for svc in $($COMPOSE config --services); do
+    retry $COMPOSE build "$svc" || exit 1
   done
 
   # One JDK for everything: Capacitor 6 compiles at 17, as do report-service and
