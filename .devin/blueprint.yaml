@@ -1,12 +1,22 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
-  docker compose -f docker-compose.infra.yml pull
-  # Serialized with retries: parallel builds overwhelm Docker's embedded DNS (127.0.0.11)
-  # and dependency fetches (e.g. cargo's static.crates.io) intermittently fail to resolve.
-  # Exponential backoff capped at 480s (30/60/120/240/480/480/480s, ~31.5 min total):
-  # registries like Maven Central also rate-limit with HTTP 429, and a 429 window can
-  # take tens of minutes -- not seconds -- to clear.
+  # Serialized with retries: parallel pulls/builds overwhelm Docker's embedded DNS
+  # (127.0.0.11) and dependency fetches (e.g. cargo's static.crates.io) intermittently fail
+  # to resolve. Exponential backoff capped at 480s (30/60/120/240/480/480/480s, ~31.5 min
+  # total): Docker Hub and Maven Central rate-limit this box's egress IP with HTTP 429, and
+  # a 429 window can take tens of minutes -- not seconds -- to clear.
+  with_retries() {
+    n=0
+    until "$@"; do
+      n=$((n+1)); [ "$n" -ge 8 ] && { echo "failed after $n attempts: $*"; return 1; }
+      backoff=$((15 * (2 ** n))); [ "$backoff" -gt 480 ] && backoff=480
+      echo "retrying ($n) in ${backoff}s: $*"; sleep "$backoff"
+    done
+  }
+  for img in $(docker compose -f docker-compose.infra.yml config --images); do
+    with_retries docker pull "$img" || exit 1
+  done
   COMPOSE="docker compose -f docker-compose.infra.yml -f docker-compose.yml"
   for svc in $($COMPOSE config --services); do
     n=0
