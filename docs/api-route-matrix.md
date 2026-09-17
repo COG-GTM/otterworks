@@ -21,6 +21,7 @@ This matrix captures the primary API endpoints used to design and expand the bla
 | Flow | Routes | Current API test coverage |
 | --- | --- | --- |
 | Account/session lifecycle | `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/profile`, `PUT /api/v1/auth/profile`, `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/users` | `tests/api/test_auth_flow.py` |
+| Storage quota administration | `PATCH /api/v1/auth/users/{id}/quota` (ADMIN only) | _none yet_ |
 | Document authoring | `POST /api/v1/documents/`, `GET /api/v1/documents/`, `GET /api/v1/documents/{id}`, `PUT /api/v1/documents/{id}`, `PATCH /api/v1/documents/{id}`, `DELETE /api/v1/documents/{id}` | `tests/api/test_document_flow.py` |
 | Document history/export | `GET /api/v1/documents/{id}/versions`, `POST /api/v1/documents/{id}/versions/{version_id}/restore`, `GET /api/v1/documents/{id}/export` | `tests/api/test_document_flow.py` |
 | Comments | `POST /api/v1/documents/{id}/comments`, `GET /api/v1/documents/{id}/comments`, `DELETE /api/v1/documents/{id}/comments/{comment_id}` | `tests/api/test_document_flow.py` |
