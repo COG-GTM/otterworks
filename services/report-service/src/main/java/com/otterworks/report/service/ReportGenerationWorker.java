@@ -34,6 +34,10 @@ public class ReportGenerationWorker {
 
     private static final Logger logger = LoggerFactory.getLogger(ReportGenerationWorker.class);
 
+    /** Message stored on a failed report and returned by the reports API. */
+    static final String FAILURE_MESSAGE =
+            "Report generation failed. Contact support with the report id.";
+
     private final ReportRepository reportRepository;
     private final ReportDataFetcher dataFetcher;
     private final PdfReportGenerator pdfGenerator;
@@ -113,7 +117,7 @@ public class ReportGenerationWorker {
             logger.error("Report generation failed for {}: {}", reportId, e.getMessage(), e);
             report.setStatus(ReportStatus.FAILED);
             report.setCompletedAt(new Date());
-            report.setErrorMessage(e.getMessage());
+            report.setErrorMessage(FAILURE_MESSAGE);
             reportRepository.save(report);
         }
     }
