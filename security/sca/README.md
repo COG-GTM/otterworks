@@ -23,6 +23,20 @@ security/sca/
 | JVM | report, legacy-portal, auth, notification, analytics | the module's own build tool resolves the tree, OSV grades it | none |
 | npm | collab, client-app (+ desktop), admin-dashboard, demo dashboard | `npm audit` | none |
 
+## What is not scanned
+
+Coverage is every ecosystem *registered* here, not every ecosystem in the tree. Two
+are still unmeasured, recorded under `exempt:` in `projects.yaml` with the scanner
+that would close them:
+
+| Ecosystem | Components | Candidate scanner |
+|---|---|---|
+| Ruby (Bundler) | `services/admin-service` | `bundler-audit` |
+| .NET (NuGet) | `services/audit-service`, `clients/windows-desktop` | `dotnet list package --vulnerable` |
+
+They are exemptions rather than gaps in discovery: dropping a Gemfile or a `.csproj`
+anywhere else in the tree still fails `make sca-list`.
+
 Nothing here consumes a Snyk private test: Snyk's monthly quota is a shared budget,
 and a composition scan that stops working when someone else exhausts it is not
 continuous coverage. Snyk Code (SAST) still runs in the same workflow and degrades

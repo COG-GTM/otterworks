@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml==6.0.2", "tabulate==0.10.0"]
+# dependencies = ["pyyaml==6.0.2", "tabulate==0.10.0", "cvss==3.4"]
 # ///
 """Software-composition gate for the ecosystems the Snyk-backed scan never reached.
 
@@ -35,11 +35,14 @@ import tomllib
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
+from cvss import CVSS2, CVSS3, CVSS4
+from cvss.exceptions import CVSSError
 from tabulate import tabulate
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -210,9 +213,15 @@ def scan_go(project: dict[str, Any], cwd: Path) -> list[Finding]:
 def scan_rust(project: dict[str, Any], cwd: Path) -> list[Finding]:
     if not shutil.which("cargo-audit") and not shutil.which("cargo"):
         raise Unmeasured("cargo-audit is not installed")
-    proc = run(["cargo", "audit", "--json"], cwd)
+    # CARGO_AUDIT_DB points at a checkout of the RustSec advisory database. CI
+    # sets it so the scan reads a database fetched by a retrying checkout step
+    # instead of cargo-audit's own clone, which the runners get rate-limited out
+    # of; `-n` then keeps it from fetching again.
+    database = os.environ.get("CARGO_AUDIT_DB")
+    extra = ["-d", database, "-n"] if database else []
+    proc = run(["cargo", "audit", *extra, "--json"], cwd)
     if not proc.stdout.strip():
-        raise Unmeasured(f"cargo-audit produced no output: {proc.stderr.strip()[:200]}")
+        raise Unmeasured(f"cargo-audit produced no output: {proc.stderr.strip()[-400:]}")
     report = json.loads(proc.stdout)
     findings = []
     for entry in report.get("vulnerabilities", {}).get("list", []) or []:
@@ -366,6 +375,11 @@ def scan_npm(project: dict[str, Any], cwd: Path) -> list[Finding]:
     if not proc.stdout.strip():
         raise Unmeasured(f"npm audit produced no output: {proc.stderr.strip()[:200]}")
     report = json.loads(proc.stdout)
+    # npm exits nonzero both for advisories and for operational failures, and in
+    # JSON mode the latter arrive as a top-level `error`. Without this, a lock
+    # file npm cannot read reads as a project with no advisories.
+    if report.get("error"):
+        raise Unmeasured(f"npm audit failed: {str(report['error'])[:200]}")
     findings = {}
     for name, entry in (report.get("vulnerabilities") or {}).items():
         for via in entry.get("via", []):
@@ -534,13 +548,20 @@ def osv_severity(osv: dict[str, Any]) -> str:
 
 
 def cvss_severity(vector_or_score: str) -> str:
-    """Map a CVSS vector or score to a coarse band; the exact number is in the advisory."""
+    """Map a CVSS vector or score to a coarse band; the exact number is in the advisory.
+
+    OSV and RustSec publish a vector far more often than a number, so a vector is
+    scored here rather than reported as `unknown`.
+    """
     if not vector_or_score:
         return "unknown"
     try:
         score = float(vector_or_score)
     except ValueError:
-        return "unknown"
+        scored = cvss_base_score(vector_or_score)
+        if scored is None:
+            return "unknown"
+        score = scored
     if score >= 9.0:
         return "critical"
     if score >= 7.0:
@@ -548,6 +569,20 @@ def cvss_severity(vector_or_score: str) -> str:
     if score >= 4.0:
         return "moderate"
     return "low"
+
+
+def cvss_base_score(vector: str) -> float | None:
+    """Base score of a CVSS v2 / v3.x / v4.0 vector, or None if it cannot be scored."""
+    try:
+        if vector.startswith("CVSS:4"):
+            return float(CVSS4(vector).base_score)
+        if vector.startswith("CVSS:3"):
+            return float(CVSS3(vector).base_score)
+        if vector.startswith("AV:"):  # a v2 vector carries no prefix
+            return float(CVSS2(vector).base_score)
+    except (CVSSError, ValueError):
+        return None
+    return None
 
 
 SCANNERS = {
@@ -582,17 +617,36 @@ def discover_manifests() -> list[Path]:
 
 
 def unregistered_manifests(registry: dict[str, Any]) -> list[str]:
-    covered = [
-        project["path"]
-        for ecosystem in registry["ecosystems"].values()
-        for project in ecosystem["projects"]
-    ] + [entry["path"] for entry in registry.get("exempt", [])]
+    """Manifests on disk that no scanner owns.
+
+    A registered project covers the manifests of its *own* ecosystem only: a
+    Cargo.toml dropped inside an npm project is scanned by nobody, so it has to
+    surface here instead of inheriting that project's registration. Exemptions
+    stay prefix-wide, because an exemption is a deliberate claim about a subtree.
+    """
+    owned: list[tuple[str, set[str]]] = []
+    for ecosystem in registry["ecosystems"].values():
+        names = set(ecosystem["manifest"].split("|"))
+        for project in ecosystem["projects"]:
+            owned.append((project["path"], names))
+    exempt = [entry["path"] for entry in registry.get("exempt", [])]
+
     orphans = []
     for manifest in discover_manifests():
         relative = manifest.relative_to(REPO_ROOT).as_posix()
-        if not any(relative == path or relative.startswith(f"{path}/") for path in covered):
-            orphans.append(relative)
+        if any(under(relative, path) for path in exempt):
+            continue
+        if any(
+            under(relative, path) and any(fnmatch(manifest.name, p) for p in names)
+            for path, names in owned
+        ):
+            continue
+        orphans.append(relative)
     return orphans
+
+
+def under(relative: str, path: str) -> bool:
+    return relative == path or relative.startswith(f"{path}/")
 
 
 # --------------------------------------------------------------------------

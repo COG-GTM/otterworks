@@ -51,6 +51,15 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.target == '')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      COMPOSE: docker compose -f docker-compose.infra.yml -f docker-compose.yml
+      # Every service the suite expects to grade, named once so the readiness
+      # gate below cannot drift from what was started.
+      STACK_SERVICES: >-
+        postgres redis localstack meilisearch
+        api-gateway auth-service file-service document-service collab-service
+        notification-service search-service analytics-service admin-service
+        report-service audit-service web-app admin-dashboard
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
@@ -68,12 +77,7 @@ jobs:
       # than a verdict (that is how the search tenant-leak probe went ungraded —
       # the gateway answered 502 because no search backend was behind it).
       - name: Start the application stack
-        run: |
-          docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
-            postgres redis localstack meilisearch \
-            api-gateway auth-service file-service document-service collab-service \
-            notification-service search-service analytics-service admin-service \
-            report-service audit-service web-app admin-dashboard
+        run: $COMPOSE up -d --build $STACK_SERVICES
 
       - name: Wait for the API gateway
         run: |
@@ -82,22 +86,37 @@ jobs:
             sleep 5
           done
           echo "API gateway never became healthy"
-          docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50
+          $COMPOSE logs --tail=50
           exit 1
 
       # A backend that never came up would silently turn its probes into "the
       # gateway returned 5xx", which is not a verdict about the service. Fail
       # here instead, where the cause is still legible.
-      - name: Require every service to be running
+      #
+      # Asked per expected service and with --all, so a container that exited or
+      # was never created is caught too: plain `docker compose ps` lists what is
+      # up, which is exactly the set that cannot report a missing service. A
+      # service that declares a health check has to pass it as well — `running`
+      # only says the process started.
+      - name: Require every service to be ready
         run: |
-          compose="docker compose -f docker-compose.infra.yml -f docker-compose.yml"
-          down=$($compose ps --format '{{.Service}} {{.State}}' | awk '$2 != "running" {print $1}')
-          $compose ps
-          if [ -n "$down" ]; then
-            echo "::error::these services are not running, so the suite cannot grade them: $down"
-            $compose logs --tail=50 $down
-            exit 1
-          fi
+          for _ in $(seq 1 30); do
+            bad=""
+            for service in $STACK_SERVICES; do
+              read -r state health <<<"$($COMPOSE ps --all --format json "$service" \
+                | jq -rs 'flatten | "\(.[0].State // "missing") \(.[0].Health // "none")"')"
+              case "$state $health" in
+                "running none" | "running healthy") ;;
+                *) bad="$bad $service:$state/$health" ;;
+              esac
+            done
+            if [ -z "$bad" ]; then exit 0; fi
+            sleep 10
+          done
+          $COMPOSE ps --all
+          echo "::error::these services are not ready, so the suite cannot grade them:$bad"
+          $COMPOSE logs --tail=50 $(echo "$bad" | tr ' ' '\n' | cut -d: -f1 | tr '\n' ' ')
+          exit 1
 
       - name: Run the DAST probe suite
         id: scan

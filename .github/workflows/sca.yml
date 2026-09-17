@@ -53,7 +53,11 @@ jobs:
           version: latest
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          # Pinned to a patch release, not '1.22': govulncheck reports the
+          # standard library of the toolchain it runs on, so a floating minor
+          # would move the finding set out from under the baseline whenever Go
+          # ships a security release. Bump this together with the baseline.
+          go-version: '1.22.12'
           cache-dependency-path: services/api-gateway/go.sum
       - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
       - run: make sca-scan ECOSYSTEM=go
@@ -72,7 +76,16 @@ jobs:
         with:
           version: latest
       - run: cargo install cargo-audit --locked --version 0.21.0
+      # cargo-audit's own clone of the advisory database is unauthenticated and
+      # gets rate-limited on the runners, which reads as an unmeasured project.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: rustsec/advisory-db
+          ref: main
+          path: .rustsec-advisory-db
       - run: make sca-scan ECOSYSTEM=rust
+        env:
+          CARGO_AUDIT_DB: ${{ github.workspace }}/.rustsec-advisory-db
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -188,10 +201,6 @@ jobs:
       - name: Snyk Code scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        # WARN-MODE: source-level findings are open today (see
-        # security/equivalence/findings.yaml). Delete the `continue-on-error`
-        # line to make this blocking once those refactors land.
-        continue-on-error: true
         run: |
           if [ -z "${SNYK_TOKEN}" ]; then
             echo "::warning::SNYK_TOKEN is not set, so Snyk Code did not run"
@@ -205,9 +214,18 @@ jobs:
           # supported project. Only 1 is a finding; the rest say the scan did not
           # happen, and the quota case is the one this org actually hits (200
           # private tests a month, shared with every other scan).
+          # WARN-MODE: source-level findings are open today (see
+          # security/equivalence/findings.yaml), so exit 1 only warns. Delete the
+          # `status=0` line under case 1 to make findings blocking once those
+          # refactors land. A CLI failure is never warn-mode: the quota case is
+          # recognised from the log and everything else keeps its exit code, so a
+          # broken token or a network failure still fails the job.
           case "$status" in
             0) ;;
-            1) echo "::error::Snyk Code found high-severity issues" ;;
+            1)
+              echo "::warning::Snyk Code found high-severity issues (warn-mode — see this step)"
+              status=0
+              ;;
             *)
               if grep -qiE 'test limit|quota|too many requests|429|payment required' snyk-code.log; then
                 echo "::warning::Snyk Code skipped: the org's test quota is exhausted"

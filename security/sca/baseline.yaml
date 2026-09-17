@@ -1,4 +1,4 @@
-recorded_at: '2026-09-17T17:20:38+00:00'
+recorded_at: '2026-09-17T17:34:21+00:00'
 reason: advisories open at the commit that wired continuous SCA coverage; parallel remediation PRs close
   them
 unmeasured_when_recorded: []
@@ -187,6 +187,296 @@ findings:
   advisory: GO-2024-2611
   severity: unknown
   summary: Infinite loop in JSON unmarshaling in google.golang.org/protobuf
+- key: go|api-gateway|stdlib|GO-2025-3503
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3503
+  severity: unknown
+  summary: HTTP Proxy bypass using IPv6 Zone IDs in golang.org/x/net
+- key: go|api-gateway|stdlib|GO-2025-3563
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3563
+  severity: unknown
+  summary: Request smuggling due to acceptance of invalid chunked data in net/http
+- key: go|api-gateway|stdlib|GO-2025-3750
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3750
+  severity: unknown
+  summary: Inconsistent handling of O_CREATE|O_EXCL on Unix and Windows in os in syscall
+- key: go|api-gateway|stdlib|GO-2025-3751
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3751
+  severity: unknown
+  summary: Sensitive headers not cleared on cross-origin redirect in net/http
+- key: go|api-gateway|stdlib|GO-2025-3849
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3849
+  severity: unknown
+  summary: Incorrect results returned from Rows.Scan in database/sql
+- key: go|api-gateway|stdlib|GO-2025-3956
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-3956
+  severity: unknown
+  summary: Unexpected paths returned from LookPath in os/exec
+- key: go|api-gateway|stdlib|GO-2025-4006
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4006
+  severity: unknown
+  summary: Excessive CPU consumption in ParseAddress in net/mail
+- key: go|api-gateway|stdlib|GO-2025-4007
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4007
+  severity: unknown
+  summary: Quadratic complexity when checking name constraints in crypto/x509
+- key: go|api-gateway|stdlib|GO-2025-4008
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4008
+  severity: unknown
+  summary: ALPN negotiation error contains attacker controlled information in crypto/tls
+- key: go|api-gateway|stdlib|GO-2025-4009
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4009
+  severity: unknown
+  summary: Quadratic complexity when parsing some invalid inputs in encoding/pem
+- key: go|api-gateway|stdlib|GO-2025-4010
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4010
+  severity: unknown
+  summary: Insufficient validation of bracketed IPv6 hostnames in net/url
+- key: go|api-gateway|stdlib|GO-2025-4011
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4011
+  severity: unknown
+  summary: Parsing DER payload can cause memory exhaustion in encoding/asn1
+- key: go|api-gateway|stdlib|GO-2025-4012
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4012
+  severity: unknown
+  summary: Lack of limit when parsing cookies can cause memory exhaustion in net/http
+- key: go|api-gateway|stdlib|GO-2025-4013
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4013
+  severity: unknown
+  summary: Panic when validating certificates with DSA public keys in crypto/x509
+- key: go|api-gateway|stdlib|GO-2025-4014
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4014
+  severity: unknown
+  summary: Unbounded allocation when parsing GNU sparse map in archive/tar
+- key: go|api-gateway|stdlib|GO-2025-4015
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4015
+  severity: unknown
+  summary: Excessive CPU consumption in Reader.ReadResponse in net/textproto
+- key: go|api-gateway|stdlib|GO-2025-4155
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4155
+  severity: unknown
+  summary: Excessive resource consumption when printing error string for host certificate validation in
+    crypto/x509
+- key: go|api-gateway|stdlib|GO-2025-4175
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2025-4175
+  severity: unknown
+  summary: Improper application of excluded DNS name constraints when verifying wildcard names in crypto/x509
+- key: go|api-gateway|stdlib|GO-2026-4337
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4337
+  severity: unknown
+  summary: Unexpected session resumption in crypto/tls
+- key: go|api-gateway|stdlib|GO-2026-4340
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4340
+  severity: unknown
+  summary: Handshake messages may be processed at the incorrect encryption level in crypto/tls
+- key: go|api-gateway|stdlib|GO-2026-4341
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4341
+  severity: unknown
+  summary: Memory exhaustion in query parameter parsing in net/url
+- key: go|api-gateway|stdlib|GO-2026-4342
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4342
+  severity: unknown
+  summary: Excessive CPU consumption when building archive index in archive/zip
+- key: go|api-gateway|stdlib|GO-2026-4403
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4403
+  severity: unknown
+  summary: Improper access to parent directory of root in os
+- key: go|api-gateway|stdlib|GO-2026-4601
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4601
+  severity: unknown
+  summary: Incorrect parsing of IPv6 host literals in net/url
+- key: go|api-gateway|stdlib|GO-2026-4602
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4602
+  severity: unknown
+  summary: FileInfo can escape from a Root in os
+- key: go|api-gateway|stdlib|GO-2026-4603
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4603
+  severity: unknown
+  summary: URLs in meta content attribute actions are not escaped in html/template
+- key: go|api-gateway|stdlib|GO-2026-4864
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4864
+  severity: unknown
+  summary: TOCTOU permits root escape on Linux via Root.Chmod in os in internal/syscall/unix
+- key: go|api-gateway|stdlib|GO-2026-4865
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4865
+  severity: unknown
+  summary: JsBraceDepth Context Tracking Bugs (XSS) in html/template
+- key: go|api-gateway|stdlib|GO-2026-4869
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4869
+  severity: unknown
+  summary: Unbounded allocation for old GNU sparse in archive/tar
+- key: go|api-gateway|stdlib|GO-2026-4870
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4870
+  severity: unknown
+  summary: Unauthenticated TLS 1.3 KeyUpdate record can cause persistent connection retention and DoS
+    in crypto/tls
+- key: go|api-gateway|stdlib|GO-2026-4918
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4918
+  severity: unknown
+  summary: Infinite loop in HTTP/2 transport when given bad SETTINGS_MAX_FRAME_SIZE in net/http/internal/http2
+    in golang.org/x/net
+- key: go|api-gateway|stdlib|GO-2026-4946
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4946
+  severity: unknown
+  summary: Inefficient policy validation in crypto/x509
+- key: go|api-gateway|stdlib|GO-2026-4947
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4947
+  severity: unknown
+  summary: Unexpected work during chain building in crypto/x509
+- key: go|api-gateway|stdlib|GO-2026-4970
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4970
+  severity: unknown
+  summary: Root escape via symlink plus trailing slash in os
+- key: go|api-gateway|stdlib|GO-2026-4971
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4971
+  severity: unknown
+  summary: Panic in Dial and LookupPort when handling NUL byte on Windows in net
+- key: go|api-gateway|stdlib|GO-2026-4976
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4976
+  severity: unknown
+  summary: ReverseProxy forwards queries with more than urlmaxqueryparams parameters in net/http/httputil
+- key: go|api-gateway|stdlib|GO-2026-4977
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4977
+  severity: unknown
+  summary: Quadratic string concatenation in consumePhrase in net/mail
+- key: go|api-gateway|stdlib|GO-2026-4980
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4980
+  severity: unknown
+  summary: Escaper bypass leads to XSS in html/template
+- key: go|api-gateway|stdlib|GO-2026-4981
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4981
+  severity: unknown
+  summary: Crash when handling long CNAME response in net
+- key: go|api-gateway|stdlib|GO-2026-4982
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4982
+  severity: unknown
+  summary: Bypass of meta content URL escaping causes XSS in html/template
+- key: go|api-gateway|stdlib|GO-2026-4986
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-4986
+  severity: unknown
+  summary: Quadratic string concatentation in consumeComment in net/mail
 - key: go|api-gateway|stdlib|GO-2026-5026
   ecosystem: go
   project: api-gateway
@@ -194,13 +484,34 @@ findings:
   advisory: GO-2026-5026
   severity: unknown
   summary: Invoking failure to reject ASCII-only Punycode-encoded labels in golang.org/x/net/idna
-- key: go|api-gateway|stdlib|GO-2026-5942
+- key: go|api-gateway|stdlib|GO-2026-5037
   ecosystem: go
   project: api-gateway
   package: stdlib
-  advisory: GO-2026-5942
+  advisory: GO-2026-5037
   severity: unknown
-  summary: Parsing an invalid SVCB or HTTPS RR can panic in golang.org/x/net/dns/dnsmessage
+  summary: Inefficient candidate hostname parsing in crypto/x509
+- key: go|api-gateway|stdlib|GO-2026-5038
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-5038
+  severity: unknown
+  summary: Quadratic complexity in WordDecoder.DecodeHeader in mime
+- key: go|api-gateway|stdlib|GO-2026-5039
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-5039
+  severity: unknown
+  summary: Arbitrary inputs are included in errors without any escaping in net/textproto
+- key: go|api-gateway|stdlib|GO-2026-5856
+  ecosystem: go
+  project: api-gateway
+  package: stdlib
+  advisory: GO-2026-5856
+  severity: unknown
+  summary: Invoking Encrypted Client Hello privacy leak in crypto/tls
 - key: go|api-gateway|stdlib|GO-2026-5972
   ecosystem: go
   project: api-gateway
@@ -5017,11 +5328,11 @@ findings:
   severity: unknown
   summary: A denial-of-service (DoS) vulnerability exists in google.protobuf.json_format.ParseDict() in
     Python, where the max_recursion_depth limit can be bypassed when pa
-- key: python|document-service|pydantic-settings|CVE-2026-58203
+- key: python|document-service|pydantic-settings|GHSA-4xgf-cpjx-pc3j
   ecosystem: python
   project: document-service
   package: pydantic-settings
-  advisory: CVE-2026-58203
+  advisory: GHSA-4xgf-cpjx-pc3j
   severity: unknown
   summary: '### Summary  `NestedSecretsSettingsSource` reads secret values from files in a configured
     `secrets_dir`. When `secrets_nested_subdir=True`, a directory entry in'
@@ -5039,16 +5350,16 @@ findings:
   package: setuptools
   advisory: PYSEC-2026-3447
   severity: unknown
-  summary: '## Summary  When building a source distribution (`python -m build --sdist` / `setup.py sdist`),
-    setuptools'' `FileList` applies `MANIFEST.in` directives (`exclud'
+  summary: setuptools is a package that allows users to download, build, install, upgrade, and uninstall
+    Python packages. Prior to 83.0.0, FileList applied MANIFEST.in exc
 - key: python|document-service|starlette|PYSEC-2026-161
   ecosystem: python
   project: document-service
   package: starlette
   advisory: PYSEC-2026-161
   severity: unknown
-  summary: '### Summary In affected versions, the HTTP `Host` request header was not validated before
-    being used to reconstruct `request.url`. Because the routing algorithm'
+  summary: Starlette reconstructs the requested URL based on the HTTP Host request header and requested
+    path, but does not perform any validation of the Host header value.
 - key: python|document-service|starlette|PYSEC-2026-1941
   ecosystem: python
   project: document-service
@@ -5137,21 +5448,21 @@ findings:
   project: etl
   package: requests
   advisory: PYSEC-2026-1872
-  severity: unknown
+  severity: moderate
   summary: Requests vulnerable to .netrc credentials leak via malicious URLs
 - key: python|etl|requests|PYSEC-2026-1873
   ecosystem: python
   project: etl
   package: requests
   advisory: PYSEC-2026-1873
-  severity: unknown
+  severity: moderate
   summary: Requests `Session` object does not verify requests after making first request with verify=False
 - key: python|etl|requests|PYSEC-2026-2275
   ecosystem: python
   project: etl
   package: requests
   advisory: PYSEC-2026-2275
-  severity: unknown
+  severity: moderate
   summary: ''
 - key: python|search-service|flask-cors|PYSEC-2026-1383
   ecosystem: python
@@ -5287,5 +5598,5 @@ findings:
   project: file-service
   package: rustls
   advisory: RUSTSEC-2026-0285
-  severity: unknown
+  severity: moderate
   summary: TLS 1.3 handshake messages incorrectly accepted across encryption level boundaries
