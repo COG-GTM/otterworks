@@ -13,6 +13,9 @@ service:
   type: ClusterIP
   port: 8080
   targetPort: 8080
+  # Telemetry listener, reachable in-cluster only: the ingress routes to the
+  # http port alone, so /metrics is never published at the public edge.
+  metricsPort: 9090
 
 ingress:
   enabled: true
@@ -45,8 +48,9 @@ healthCheck:
 monitoring:
   enabled: true
   path: /metrics
-  port: 8080
+  port: 9090
 
+# METRICS_PORT is rendered from service.metricsPort by the Deployment.
 env:
   AUTH_SERVICE_URL: "http://auth-service:8081"
   FILE_SERVICE_URL: "http://file-service:8082"

@@ -29,6 +29,9 @@ spec:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: {{ .Values.healthCheck.path }}
@@ -48,6 +51,8 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:
+            - name: METRICS_PORT
+              value: {{ .Values.service.metricsPort | quote }}
             {{- range $key, $value := .Values.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
