@@ -41,6 +41,11 @@ func main() {
 
 	middleware.SetLogLevel(cfg.LogLevel)
 
+	trustedProxies, err := middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("invalid TRUSTED_PROXY_CIDRS")
+	}
+
 	// OpenTelemetry tracing
 	shutdownTracer := initTracer()
 
@@ -66,7 +71,7 @@ func main() {
 
 	// Global middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(middleware.RealIP(trustedProxies))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)

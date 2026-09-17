@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -33,6 +34,18 @@ public class GlobalExceptionHandler {
     return buildErrorResponse(HttpStatus.BAD_REQUEST, errors);
   }
 
+  @ExceptionHandler(AccountLockedException.class)
+  public ResponseEntity<Map<String, Object>> handleAccountLocked(AccountLockedException ex) {
+    return buildErrorResponse(HttpStatus.LOCKED, ex.getMessage(), ex.getRetryAfterSeconds());
+  }
+
+  @ExceptionHandler(TooManyLoginAttemptsException.class)
+  public ResponseEntity<Map<String, Object>> handleTooManyLoginAttempts(
+      TooManyLoginAttemptsException ex) {
+    return buildErrorResponse(
+        HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), ex.getRetryAfterSeconds());
+  }
+
   @ExceptionHandler(JwtException.class)
   public ResponseEntity<Map<String, Object>> handleJwtException(JwtException ex) {
     return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid or expired token");
@@ -51,11 +64,20 @@ public class GlobalExceptionHandler {
 
   private ResponseEntity<Map<String, Object>> buildErrorResponse(
       HttpStatus status, String message) {
+    return buildErrorResponse(status, message, null);
+  }
+
+  private ResponseEntity<Map<String, Object>> buildErrorResponse(
+      HttpStatus status, String message, Long retryAfterSeconds) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("timestamp", Instant.now().toString());
     body.put("status", status.value());
     body.put("error", status.getReasonPhrase());
     body.put("message", message);
-    return ResponseEntity.status(status).body(body);
+    ResponseEntity.BodyBuilder response = ResponseEntity.status(status);
+    if (retryAfterSeconds != null) {
+      response.header(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+    }
+    return response.body(body);
   }
 }
