@@ -40,9 +40,9 @@ variable "redis_node_type" {
 }
 
 variable "redis_transit_encryption_enabled" {
-  description = "Enable in-transit (TLS) encryption. The services connect with plain redis://, so this defaults to false to match the application; enable it only alongside rediss:// client support."
+  description = "Enable in-transit (TLS) encryption. Session tokens and collaboration state travel over this connection, so it defaults to on; clients must connect with rediss:// (TLS) when it is enabled."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "redis_apply_immediately" {
@@ -60,4 +60,11 @@ variable "redis_num_cache_clusters" {
     condition     = var.redis_num_cache_clusters >= 1 && var.redis_num_cache_clusters <= 6
     error_message = "Number of cache clusters must be between 1 and 6."
   }
+}
+
+variable "redis_auth_token" {
+  description = "AUTH token for Redis. Only usable with transit encryption enabled; empty leaves AUTH off. Supply it from the secret store, never in tfvars."
+  type        = string
+  default     = ""
+  sensitive   = true
 }

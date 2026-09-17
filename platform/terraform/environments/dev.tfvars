@@ -45,3 +45,10 @@ node_min_size       = 1
 node_max_size       = 3
 
 ecr_prefix = "otterworks/"
+
+# Public Kubernetes API endpoint. Empty means the API server is reachable only
+# from inside the VPC; kubectl and the CD workflow then need a bastion, a VPN or
+# a self-hosted runner in the VPC. List the operator and CI egress ranges here
+# (e.g. ["203.0.113.4/32"]) to re-open it to those addresses only -- never
+# 0.0.0.0/0, which the module rejects.
+cluster_endpoint_public_access_cidrs = []

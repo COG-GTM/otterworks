@@ -32,3 +32,8 @@ output "events_topic_arn" {
   description = "SNS topic ARN for system events"
   value       = aws_sns_topic.events.arn
 }
+
+output "events_kms_key_arn" {
+  description = "ARN of the customer managed key encrypting the events topic"
+  value       = aws_kms_key.events.arn
+}

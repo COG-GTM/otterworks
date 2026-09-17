@@ -19,6 +19,27 @@ variable "cluster_version" {
   default     = "1.32"
 }
 
+variable "cluster_endpoint_public_access_cidrs" {
+  description = <<-EOT
+    CIDR blocks allowed to reach the public Kubernetes API endpoint (operator
+    workstations, CI egress IPs). Leave empty to keep the endpoint private to
+    the VPC, which requires a bastion or VPN for kubectl. 0.0.0.0/0 is rejected.
+  EOT
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = !contains(var.cluster_endpoint_public_access_cidrs, "0.0.0.0/0")
+    error_message = "The Kubernetes API endpoint must not be open to 0.0.0.0/0; list the operator and CI CIDRs instead."
+  }
+}
+
+variable "kms_key_deletion_window" {
+  description = "Waiting period in days before a scheduled KMS key deletion takes effect"
+  type        = number
+  default     = 30
+}
+
 variable "public_subnet_ids" {
   description = "Public subnet IDs for the EKS cluster"
   type        = list(string)

@@ -11,7 +11,10 @@ service:
   targetPort: 8086
 
 ingress:
-  enabled: true
+  # Backend services trust the X-User-ID header the gateway injects, so they
+  # must not be reachable from outside the cluster. External traffic enters
+  # through the api-gateway Ingress only.
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

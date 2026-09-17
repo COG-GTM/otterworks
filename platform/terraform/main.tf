@@ -61,6 +61,8 @@ module "eks" {
   cluster_name    = var.cluster_name
   cluster_version = var.cluster_version
 
+  cluster_endpoint_public_access_cidrs = var.cluster_endpoint_public_access_cidrs
+
   public_subnet_ids  = module.vpc.public_subnet_ids
   private_subnet_ids = module.vpc.private_subnet_ids
   # Use public subnets for nodes in dev (no NAT gateway needed, cost-optimized)

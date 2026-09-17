@@ -10,6 +10,23 @@ locals {
   }
 }
 
+# --- DynamoDB Encryption Key ---
+
+resource "aws_kms_key" "dynamodb" {
+  description             = "${var.project} DynamoDB table encryption (${var.environment})"
+  enable_key_rotation     = true
+  deletion_window_in_days = var.kms_key_deletion_window
+
+  tags = merge(local.common_tags, {
+    Service = "shared-database"
+  })
+}
+
+resource "aws_kms_alias" "dynamodb" {
+  name          = "alias/${var.project}-dynamodb-${var.environment}"
+  target_key_id = aws_kms_key.dynamodb.key_id
+}
+
 # --- RDS Subnet Group ---
 
 resource "aws_db_subnet_group" "main" {
@@ -37,10 +54,11 @@ resource "aws_security_group" "rds" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "Replication and health traffic within the VPC"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
   }
 
   tags = merge(local.common_tags, {
@@ -67,6 +85,8 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
+  iam_database_authentication_enabled = true
+
   skip_final_snapshot = var.environment == "dev"
   deletion_protection = var.environment != "dev"
 
@@ -81,13 +101,14 @@ resource "aws_db_instance" "postgres" {
 
 # --- DynamoDB: File Metadata ---
 
-resource "aws_dynamodb_table" "file_metadata" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "file_metadata" {
   name         = "${var.project}-file-metadata-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -118,7 +139,7 @@ resource "aws_dynamodb_table" "file_metadata" { # nosemgrep: terraform.aws.secur
   }
 
   point_in_time_recovery {
-    enabled = var.environment != "dev"
+    enabled = true
   }
 
   tags = merge(local.common_tags, {
@@ -128,13 +149,14 @@ resource "aws_dynamodb_table" "file_metadata" { # nosemgrep: terraform.aws.secur
 
 # --- DynamoDB: Audit Events ---
 
-resource "aws_dynamodb_table" "audit_events" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "audit_events" {
   name         = "${var.project}-audit-events-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -182,13 +204,14 @@ resource "aws_dynamodb_table" "audit_events" { # nosemgrep: terraform.aws.securi
 
 # --- DynamoDB: Notifications ---
 
-resource "aws_dynamodb_table" "notifications" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "notifications" {
   name         = "${var.project}-notifications-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -214,7 +237,7 @@ resource "aws_dynamodb_table" "notifications" { # nosemgrep: terraform.aws.secur
   }
 
   point_in_time_recovery {
-    enabled = var.environment != "dev"
+    enabled = true
   }
 
   tags = merge(local.common_tags, {
@@ -224,13 +247,14 @@ resource "aws_dynamodb_table" "notifications" { # nosemgrep: terraform.aws.secur
 
 # --- DynamoDB: Folders (file-service) ---
 
-resource "aws_dynamodb_table" "folders" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "folders" {
   name         = "${var.project}-folders-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -239,7 +263,7 @@ resource "aws_dynamodb_table" "folders" { # nosemgrep: terraform.aws.security.aw
   }
 
   point_in_time_recovery {
-    enabled = var.environment != "dev"
+    enabled = true
   }
 
   tags = merge(local.common_tags, {
@@ -249,14 +273,15 @@ resource "aws_dynamodb_table" "folders" { # nosemgrep: terraform.aws.security.aw
 
 # --- DynamoDB: File Versions (file-service) ---
 
-resource "aws_dynamodb_table" "file_versions" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "file_versions" {
   name         = "${var.project}-file-versions-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "file_id"
   range_key    = "version"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -270,7 +295,7 @@ resource "aws_dynamodb_table" "file_versions" { # nosemgrep: terraform.aws.secur
   }
 
   point_in_time_recovery {
-    enabled = var.environment != "dev"
+    enabled = true
   }
 
   tags = merge(local.common_tags, {
@@ -280,13 +305,14 @@ resource "aws_dynamodb_table" "file_versions" { # nosemgrep: terraform.aws.secur
 
 # --- DynamoDB: File Shares (file-service) ---
 
-resource "aws_dynamodb_table" "file_shares" { # nosemgrep: terraform.aws.security.aws-dynamodb-table-unencrypted.aws-dynamodb-table-unencrypted
+resource "aws_dynamodb_table" "file_shares" {
   name         = "${var.project}-file-shares-${var.environment}"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "id"
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.dynamodb.arn
   }
 
   attribute {
@@ -295,7 +321,7 @@ resource "aws_dynamodb_table" "file_shares" { # nosemgrep: terraform.aws.securit
   }
 
   point_in_time_recovery {
-    enabled = var.environment != "dev"
+    enabled = true
   }
 
   tags = merge(local.common_tags, {

@@ -27,6 +27,16 @@ variable "cluster_version" {
   default     = "1.32"
 }
 
+variable "cluster_endpoint_public_access_cidrs" {
+  description = <<-EOT
+    CIDR blocks allowed to reach the public Kubernetes API endpoint. Empty (the
+    default) leaves the endpoint private to the VPC; set it in the environment
+    tfvars to the operator and CI egress ranges that need kubectl.
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for the VPC"
   type        = string
