@@ -68,6 +68,79 @@ func TestRateLimiter_Handler(t *testing.T) {
 	assert.Equal(t, "1", rec.Header().Get("Retry-After"))
 }
 
+// loginHandler builds a throttled login handler whose backend always answers status.
+func loginHandler(rl *RateLimiter, status int) http.Handler {
+	return CredentialThrottle(rl, "/api/v1/auth/login")(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+		}))
+}
+
+func postLogin(handler http.Handler) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+// auth-service answers wrong credentials with 400, not 401.
+func TestCredentialThrottle_LimitsRejectedLogins(t *testing.T) {
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized} {
+		rl := NewBurstRateLimiter(10.0/60, 3)
+		now := time.Now()
+		rl.now = func() time.Time { return now }
+		handler := loginHandler(rl, status)
+
+		for i := 0; i < 3; i++ {
+			assert.Equal(t, status, postLogin(handler).Code, "attempt %d should reach the backend", i+1)
+		}
+
+		rec := postLogin(handler)
+		assert.Equal(t, http.StatusTooManyRequests, rec.Code, "backend status %d should be throttled", status)
+		assert.Equal(t, "6", rec.Header().Get("Retry-After"))
+	}
+}
+
+func TestCredentialThrottle_BackendFailuresDoNotSpendBudget(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+	handler := loginHandler(rl, http.StatusBadGateway)
+
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, http.StatusBadGateway, postLogin(handler).Code, "attempt %d should reach the backend", i+1)
+	}
+}
+
+func TestCredentialThrottle_SuccessfulLoginsAreNotThrottled(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	handler := loginHandler(rl, http.StatusOK)
+
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, http.StatusOK, postLogin(handler).Code, "successful login %d should not be throttled", i+1)
+	}
+}
+
+func TestCredentialThrottle_OtherPathsUnaffected(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 1)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	handler := loginHandler(rl, http.StatusBadRequest)
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadRequest, rec.Code, "request %d should pass through", i+1)
+	}
+}
+
 func TestExtractIP(t *testing.T) {
 	tests := []struct {
 		name       string

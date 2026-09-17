@@ -76,6 +76,14 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS)
 	r.Use(rateLimiter.Handler)
 
+	// Credential guessing throttle: the global limit is far too generous to stop
+	// password guessing against the login endpoint.
+	loginLimiter := middleware.NewBurstRateLimiter(
+		float64(cfg.LoginFailuresPerMinute)/60,
+		float64(cfg.LoginFailureBurst),
+	)
+	r.Use(middleware.CredentialThrottle(loginLimiter, middleware.DefaultCredentialPaths()...))
+
 	// CORS
 	r.Use(middleware.CORS(middleware.CORSConfig{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
