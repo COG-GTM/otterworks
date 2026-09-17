@@ -54,7 +54,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
+          cache: maven
       - run: mvn test -B
 
   legacy-portal-tests:
@@ -67,7 +68,8 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '11'
+          java-version: '17'
+          cache: maven
       - run: ./mvnw test -B
 
   build-and-push:
