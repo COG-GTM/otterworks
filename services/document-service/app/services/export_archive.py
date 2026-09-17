@@ -16,6 +16,15 @@ logger = structlog.get_logger()
 DEFAULT_ARCHIVE_DIR = "/var/lib/otterworks/exports"
 
 
+def _no_symlink_opener(path: str, flags: int) -> int:
+    """Open ``path`` refusing to follow a symlink at the final component.
+
+    The path is already fully resolved, so a symlink there can only be one
+    swapped in after the containment check.
+    """
+    return os.open(path, flags | os.O_NOFOLLOW)
+
+
 class ExportArchive:
     """Serves rendered export files from the archive directory."""
 
@@ -24,10 +33,13 @@ class ExportArchive:
             "EXPORT_ARCHIVE_DIR", DEFAULT_ARCHIVE_DIR
         )
 
-    def _contains(self, path: str) -> bool:
+    def _resolve(self, name: str) -> str | None:
+        """Resolve ``name`` under the archive root, or ``None`` if it escapes."""
         root = os.path.realpath(self.base_dir)
-        resolved = os.path.realpath(path)
-        return resolved == root or resolved.startswith(root + os.sep)
+        resolved = os.path.realpath(os.path.join(root, name))
+        if os.path.commonpath((root, resolved)) != root:
+            return None
+        return resolved
 
     def read_export(self, name: str) -> str:
         """Return the contents of the named export.
@@ -36,12 +48,12 @@ class ExportArchive:
         ``FileNotFoundError`` when the export does not exist or resolves
         outside the archive directory.
         """
-        path = os.path.join(self.base_dir, name)
         logger.debug("export_read", name=name)
-        if not self._contains(path):
+        resolved = self._resolve(name)
+        if resolved is None:
             logger.warning("export_read_outside_archive", name=name)
             raise FileNotFoundError(
                 errno.ENOENT, os.strerror(errno.ENOENT), os.path.join(self.base_dir, "")
             )
-        with open(path, encoding="utf-8") as handle:
+        with open(resolved, encoding="utf-8", opener=_no_symlink_opener) as handle:
             return handle.read()
