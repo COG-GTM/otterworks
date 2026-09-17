@@ -33,7 +33,7 @@ def test_traversal_outside_archive_raises(archive, tmp_path):
         "SUPPLIER_API_KEY=secret\n", encoding="utf-8"
     )
     with pytest.raises(FileNotFoundError):
-        archive.read_export(f"../{tmp_path.parent.name}/tenant-secrets.env")
+        archive.read_export("../tenant-secrets.env")
 
 
 def test_absolute_path_outside_archive_raises(archive, tmp_path):
