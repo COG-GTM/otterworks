@@ -70,13 +70,16 @@ class DocumentQueryRepository:
 
         Unknown columns or directions fall back to the default ordering.
         """
+        rejected = False
         if sort not in SORTABLE_COLUMNS:
             logger.warning("document_filter_sort_rejected", sort=sort)
-            sort = DEFAULT_SORT
+            rejected = True
         resolved = SORT_DIRECTIONS.get(direction.lower() if direction else "")
         if resolved is None:
             logger.warning("document_filter_direction_rejected", direction=direction)
-            resolved = SORT_DIRECTIONS[DEFAULT_DIRECTION]
+            rejected = True
+        if rejected:
+            return f"{DEFAULT_SORT} {SORT_DIRECTIONS[DEFAULT_DIRECTION]}"
         return f"{sort} {resolved}"
 
     async def count_documents(
