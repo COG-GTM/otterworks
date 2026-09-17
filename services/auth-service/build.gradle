@@ -72,10 +72,23 @@ jacocoTestReport {
     }
 }
 
+// Coverage ratchet: raise these floors as coverage improves, never lower them.
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit { counter = 'LINE';   value = 'COVEREDRATIO'; minimum = 0.99 }
+            limit { counter = 'BRANCH'; value = 'COVEREDRATIO'; minimum = 0.97 }
+        }
+    }
+}
+
 test {
     useJUnitPlatform()
     finalizedBy jacocoTestReport
 }
+
+jacocoTestCoverageVerification.dependsOn jacocoTestReport
+check.dependsOn jacocoTestCoverageVerification
 
 tasks.named('bootJar') {
     archiveFileName = 'auth-service.jar'

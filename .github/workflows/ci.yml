@@ -112,6 +112,14 @@ jobs:
         with:
           gradle-version: '8.6'
       - run: gradle check --no-daemon
+      - name: Upload JaCoCo & test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-service-coverage
+          path: |
+            services/auth-service/build/reports/jacoco/**
+            services/auth-service/build/reports/tests/test/**
 
   # Rust - File Service
   file-service:
