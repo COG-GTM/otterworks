@@ -29,18 +29,28 @@
 
         <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
         <springfox.version>3.0.0</springfox.version>
-        <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
-        <poi.version>4.1.2</poi.version>
+        <poi.version>5.4.1</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
         <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
         <commons-lang.version>2.6</commons-lang.version>
-        <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
-        <commons-io.version>2.6</commons-io.version>
-        <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
-        <guava.version>28.0-jre</guava.version>
-        <!-- Commons Text 1.9 — report banner/footer interpolation -->
-        <commons-text.version>1.9</commons-text.version>
+        <!-- Commons IO -->
+        <commons-io.version>2.18.0</commons-io.version>
+        <guava.version>33.1.0-jre</guava.version>
+        <!-- Commons Text — report banner/footer interpolation -->
+        <commons-text.version>1.10.0</commons-text.version>
+        <!-- OpenCSV — CSV report writing -->
+        <opencsv.version>5.11.1</opencsv.version>
+
+        <!-- Overrides of versions managed by spring-boot-starter-parent 2.5.15.
+             The parent's pins carry published advisories; these are the newest
+             releases of each line that still run on Java 8. -->
+        <spring-framework.version>5.3.39</spring-framework.version>
+        <tomcat.version>9.0.117</tomcat.version>
+        <spring-security.version>5.8.16</spring-security.version>
+        <jackson-bom.version>2.17.3</jackson-bom.version>
+        <postgresql.version>42.7.7</postgresql.version>
+        <snakeyaml.version>1.33</snakeyaml.version>
     </properties>
 
     <dependencies>
@@ -121,14 +131,12 @@
             <version>${commons-text.version}</version>
         </dependency>
 
-        <!-- LEGACY: Commons IO 2.6 (outdated) -->
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
             <version>${commons-io.version}</version>
         </dependency>
 
-        <!-- LEGACY: Guava 28 (2019, multiple CVEs including DoS) -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
@@ -148,11 +156,10 @@
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- LEGACY: OpenCSV 4.6 (2018). Upgrade target: 5.9+ -->
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
-            <version>4.6</version>
+            <version>${opencsv.version}</version>
         </dependency>
 
         <!-- Testing -->
