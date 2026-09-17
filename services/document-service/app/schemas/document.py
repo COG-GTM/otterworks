@@ -9,6 +9,13 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class DocumentCreate(BaseModel):
+    """Create payload.
+
+    ``owner_id`` is not a caller-assignable property: an authenticated request
+    always owns what it creates, and a body naming another user is refused by
+    the route.
+    """
+
     title: str = Field(..., min_length=1, max_length=500)
     content: str = Field(default="")
     content_type: str = Field(default="text/markdown")

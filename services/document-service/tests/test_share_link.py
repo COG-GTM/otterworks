@@ -1,5 +1,6 @@
 """Tests for read-only share-link tokens."""
 
+import hashlib
 import uuid
 
 import pytest
@@ -58,3 +59,18 @@ async def test_share_endpoint_round_trip(client, owner_id: uuid.UUID, monkeypatc
         "/api/v1/documents/shared", params={"document_id": doc_id, "token": "wrong"}
     )
     assert denied.status_code == 403
+
+
+def test_token_is_not_derivable_from_public_information():
+    """The token is keyed: the source-visible salt alone does not produce it."""
+    service = ShareLinkService(salt="otterworks-share", secret="server-held-secret")
+    unkeyed = hashlib.md5(f"{DOC_ID}:otterworks-share".encode()).hexdigest()[:16]  # noqa: S324
+
+    assert service.mint_token(DOC_ID) != unkeyed
+
+
+def test_token_depends_on_the_secret():
+    minted = ShareLinkService(salt="test-salt", secret="secret-a").mint_token(DOC_ID)
+    other = ShareLinkService(salt="test-salt", secret="secret-b")
+
+    assert other.verify_token(DOC_ID, minted) is False

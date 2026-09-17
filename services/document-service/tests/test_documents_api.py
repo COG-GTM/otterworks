@@ -281,3 +281,25 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_document_rejects_foreign_owner_id(client: AsyncClient):
+    """A body naming another user as owner is refused, not honoured."""
+    victim_id = uuid.uuid4()
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Planted Doc", "owner_id": str(victim_id)},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_document_owner_id_comes_from_the_token(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    """An authenticated create without owner_id is owned by the caller."""
+    resp = await client.post("/api/v1/documents/", json={"title": "Own Doc"})
+
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(owner_id)
