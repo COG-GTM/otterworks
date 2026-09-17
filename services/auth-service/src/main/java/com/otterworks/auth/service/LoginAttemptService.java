@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,11 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoginAttemptService {
 
   private static final Logger log = LoggerFactory.getLogger(LoginAttemptService.class);
-  private static final int MAX_TRACKED_CREDENTIALS = 50_000;
 
   private final UserRepository userRepository;
   private final LoginSecurityConfig config;
   private final Map<String, CredentialWindow> credentialWindows = new ConcurrentHashMap<>();
+  private final AtomicReference<Instant> nextPrune = new AtomicReference<>(Instant.EPOCH);
 
   public LoginAttemptService(UserRepository userRepository, LoginSecurityConfig config) {
     this.userRepository = userRepository;
@@ -44,9 +45,7 @@ public class LoginAttemptService {
    */
   public void checkCredentialThrottle(String email) {
     Instant now = Instant.now();
-    if (credentialWindows.size() > MAX_TRACKED_CREDENTIALS) {
-      credentialWindows.values().removeIf(window -> window.isExpired(now));
-    }
+    pruneExpiredWindows(now);
 
     CredentialWindow window =
         credentialWindows.compute(
@@ -75,20 +74,26 @@ public class LoginAttemptService {
   @Transactional(propagation = Propagation.REQUIRES_NEW)
   public void recordFailure(User user) {
     Instant now = Instant.now();
-    int attempts = currentAttempts(user, now) + 1;
+    // Row lock, so guesses answered in parallel each advance the counter once.
+    User locked = userRepository.findByIdForUpdate(user.getId()).orElse(user);
+    int attempts = currentAttempts(locked, now) + 1;
 
     Instant lockoutUntil = null;
     if (attempts >= config.getMaxFailedAttempts()) {
       lockoutUntil = now.plusSeconds(lockoutSeconds(attempts));
       log.warn(
           "audit event=account_locked userId={} email={} failedAttempts={} lockedUntil={}",
-          user.getId(),
-          user.getEmail(),
+          locked.getId(),
+          locked.getEmail(),
           attempts,
           lockoutUntil);
     }
 
-    userRepository.recordFailedLogin(user.getId(), attempts, now, lockoutUntil);
+    locked.setFailedLoginAttempts(attempts);
+    locked.setLastFailedLoginAt(now);
+    locked.setLockoutUntil(lockoutUntil);
+    userRepository.save(locked);
+
     user.setFailedLoginAttempts(attempts);
     user.setLastFailedLoginAt(now);
     user.setLockoutUntil(lockoutUntil);
@@ -100,6 +105,19 @@ public class LoginAttemptService {
     user.setLastFailedLoginAt(null);
     user.setLockoutUntil(null);
     credentialWindows.remove(key(user.getEmail()));
+  }
+
+  /**
+   * Drops windows that have run out, at most once per window so a flood of distinct credentials
+   * cannot make every login walk the map.
+   */
+  private void pruneExpiredWindows(Instant now) {
+    Instant due = nextPrune.get();
+    if (now.isBefore(due)
+        || !nextPrune.compareAndSet(due, now.plusSeconds(config.getCredentialWindowSeconds()))) {
+      return;
+    }
+    credentialWindows.values().removeIf(window -> window.isExpired(now));
   }
 
   /** Failures older than the window, with no lockout in force, no longer count. */

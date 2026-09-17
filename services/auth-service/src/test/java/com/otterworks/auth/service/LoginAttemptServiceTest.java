@@ -1,8 +1,6 @@
 package com.otterworks.auth.service;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 import com.otterworks.auth.config.LoginSecurityConfig;
@@ -11,6 +9,7 @@ import com.otterworks.auth.exception.AccountLockedException;
 import com.otterworks.auth.exception.TooManyLoginAttemptsException;
 import com.otterworks.auth.repository.UserRepository;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +41,7 @@ class LoginAttemptServiceTest {
     user = new User();
     user.setId(UUID.randomUUID());
     user.setEmail("victim@otterworks.dev");
+    lenient().when(userRepository.findByIdForUpdate(user.getId())).thenReturn(Optional.of(user));
   }
 
   @Test
@@ -50,7 +50,8 @@ class LoginAttemptServiceTest {
 
     assertThat(user.getFailedLoginAttempts()).isEqualTo(1);
     assertThat(user.getLockoutUntil()).isNull();
-    verify(userRepository).recordFailedLogin(eq(user.getId()), eq(1), any(), isNull());
+    verify(userRepository).findByIdForUpdate(user.getId());
+    verify(userRepository).save(user);
   }
 
   @Test
@@ -172,8 +173,9 @@ class LoginAttemptServiceTest {
 
     loginAttemptService.recordFailure(user);
 
-    ArgumentCaptor<Instant> lockout = ArgumentCaptor.forClass(Instant.class);
-    verify(userRepository).recordFailedLogin(eq(user.getId()), eq(3), any(), lockout.capture());
-    assertThat(lockout.getValue()).isAfter(Instant.now());
+    ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+    verify(userRepository).save(saved.capture());
+    assertThat(saved.getValue().getFailedLoginAttempts()).isEqualTo(3);
+    assertThat(saved.getValue().getLockoutUntil()).isAfter(Instant.now());
   }
 }

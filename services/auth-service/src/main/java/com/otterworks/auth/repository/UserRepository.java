@@ -1,11 +1,11 @@
 package com.otterworks.auth.repository;
 
 import com.otterworks.auth.entity.User;
-import java.time.Instant;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -16,13 +16,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 
   boolean existsByEmail(String email);
 
-  @Modifying(clearAutomatically = true, flushAutomatically = true)
-  @Query(
-      "UPDATE User u SET u.failedLoginAttempts = :attempts, u.lastFailedLoginAt = :failedAt, "
-          + "u.lockoutUntil = :lockoutUntil, u.updatedAt = :failedAt WHERE u.id = :id")
-  void recordFailedLogin(
-      @Param("id") UUID id,
-      @Param("attempts") int attempts,
-      @Param("failedAt") Instant failedAt,
-      @Param("lockoutUntil") Instant lockoutUntil);
+  /** Locks the row so concurrent failed logins cannot both read the same attempt count. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT u FROM User u WHERE u.id = :id")
+  Optional<User> findByIdForUpdate(@Param("id") UUID id);
 }
