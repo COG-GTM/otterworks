@@ -738,7 +738,8 @@ def render(results: list[ProjectResult], new: list[Finding], orphans: list[str])
             result.scanner,
             result.status,
             len(result.findings) if result.status == "measured" else "-",
-            result.detail[:60],
+            # the table is a summary; sca-report.json carries the full detail
+            result.detail.replace("\n", " ")[:60],
         ]
         for result in results
     ]

@@ -75,7 +75,9 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           version: latest
-      - run: cargo install cargo-audit --locked --version 0.21.0
+      # 0.22 reads the advisory database from a plain shallow checkout; 0.21's
+      # loader rejects one, which reads as an unmeasured project.
+      - run: cargo install cargo-audit --locked --version 0.22.2
       # cargo-audit's own clone of the advisory database is unauthenticated and
       # gets rate-limited on the runners, which reads as an unmeasured project.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
