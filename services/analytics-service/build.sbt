@@ -58,6 +58,12 @@ lazy val root = project
       "com.dimafeng" %% "testcontainers-scala-scalatest" % "0.41.4" % Test,
       "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.41.4" % Test,
     ),
+    // Coverage ratchet: `sbt clean coverage test coverageReport` fails below
+    // this line. Raise it (never lower it) as coverage improves. Main.scala is
+    // the only substantially uncovered file — it blocks on the server binding,
+    // so it is exercised by deployment smoke checks rather than unit tests.
+    coverageMinimumStmtTotal := 93,
+    coverageFailOnMinimum := true,
     assembly / assemblyMergeStrategy := {
       // Preserve ServiceLoader registrations (Flyway discovers its database
       // and plugin support via META-INF/services).
