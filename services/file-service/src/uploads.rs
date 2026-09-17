@@ -77,27 +77,28 @@ pub fn default_allowed_extensions() -> Vec<String> {
 }
 
 /// Parse a comma-separated extension allowlist (`"pdf, .PNG"` → `["pdf", "png"]`).
+///
+/// Entries outside `EXTENSION_MIME_TYPES` are dropped, so configuration can only
+/// narrow the default allowlist, never widen it to a type with no known-safe
+/// content type.
 pub fn parse_allowed_extensions(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(|part| part.trim().trim_start_matches('.').to_ascii_lowercase())
-        .filter(|part| !part.is_empty())
+        .filter(|part| EXTENSION_MIME_TYPES.iter().any(|(ext, _)| *ext == part))
         .collect()
 }
 
 /// Reduce a client-supplied filename to a basename with no path segments,
 /// control characters, or trailing dots/spaces.
 fn sanitize_file_name(raw: &str) -> Result<String, ServiceError> {
-    let basename = raw
-        .rsplit(|c| c == '/' || c == '\\')
-        .next()
-        .unwrap_or_default();
+    let basename = raw.rsplit(['/', '\\']).next().unwrap_or_default();
 
     let cleaned: String = basename
         .chars()
         .filter(|c| !c.is_control())
         .collect::<String>()
         .trim()
-        .trim_end_matches(|c| c == '.' || c == ' ')
+        .trim_end_matches(['.', ' '])
         .to_string();
 
     if cleaned.is_empty() {
@@ -136,17 +137,14 @@ pub fn validate_upload(
             ServiceError::BadRequest("file name must include a supported extension".into())
         })?;
 
-    if !allowed.iter().any(|a| *a == extension) {
-        return Err(ServiceError::BadRequest(format!(
-            "file type .{extension} is not allowed"
-        )));
-    }
-
     let content_type = EXTENSION_MIME_TYPES
         .iter()
         .find(|(ext, _)| *ext == extension)
         .map(|(_, mime)| (*mime).to_string())
-        .unwrap_or_else(|| "application/octet-stream".to_string());
+        .filter(|_| allowed.contains(&extension))
+        .ok_or_else(|| {
+            ServiceError::BadRequest(format!("file type .{extension} is not allowed"))
+        })?;
 
     Ok(ValidatedUpload {
         file_name,
@@ -238,8 +236,9 @@ mod tests {
 
     #[test]
     fn honors_a_narrowed_allowlist() {
-        let narrow = parse_allowed_extensions(" .PDF , png ");
+        let narrow = parse_allowed_extensions(" .PDF , png , exe ");
         assert_eq!(narrow, vec!["pdf".to_string(), "png".to_string()]);
+        assert!(validate_upload(Some("a.exe"), &narrow).is_err());
         assert!(validate_upload(Some("a.pdf"), &narrow).is_ok());
         assert!(validate_upload(Some("a.txt"), &narrow).is_err());
     }
