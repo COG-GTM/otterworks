@@ -13,6 +13,10 @@ type Config struct {
 	Port     string
 	LogLevel string
 
+	// MetricsPort is the internal listener serving /metrics. It is deliberately
+	// separate from Port so telemetry is never published at the public edge.
+	MetricsPort string
+
 	// Backend service URLs
 	AuthServiceURL         string
 	FileServiceURL         string
@@ -37,6 +41,13 @@ type Config struct {
 	CORSAllowedHeaders []string
 	CORSMaxAge         int
 
+	// Security headers
+	ContentSecurityPolicy string
+	ReferrerPolicy        string
+	FrameOptions          string
+	ContentTypeOptions    string
+	HSTSMaxAge            int
+
 	// Graceful shutdown
 	ShutdownTimeout time.Duration
 
@@ -58,8 +69,9 @@ func (c *Config) Validate() error {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	return &Config{
-		Port:     getEnv("PORT", "8080"),
-		LogLevel: getEnv("LOG_LEVEL", "info"),
+		Port:        getEnv("PORT", "8080"),
+		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		MetricsPort: getEnv("METRICS_PORT", "9090"),
 
 		AuthServiceURL:         getEnv("AUTH_SERVICE_URL", "http://auth-service:8081"),
 		FileServiceURL:         getEnv("FILE_SERVICE_URL", "http://file-service:8082"),
@@ -80,6 +92,12 @@ func Load() *Config {
 		CORSAllowedMethods: getEnvSlice("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),
 		CORSAllowedHeaders: getEnvSlice("CORS_ALLOWED_HEADERS", []string{"Accept", "Authorization", "Content-Type", "X-Request-ID"}),
 		CORSMaxAge:         getEnvInt("CORS_MAX_AGE", 300),
+
+		ContentSecurityPolicy: getEnv("SECURITY_CONTENT_SECURITY_POLICY", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"),
+		ReferrerPolicy:        getEnv("SECURITY_REFERRER_POLICY", "no-referrer"),
+		FrameOptions:          getEnv("SECURITY_FRAME_OPTIONS", "DENY"),
+		ContentTypeOptions:    getEnv("SECURITY_CONTENT_TYPE_OPTIONS", "nosniff"),
+		HSTSMaxAge:            getEnvInt("SECURITY_HSTS_MAX_AGE_SECONDS", 31536000),
 
 		ShutdownTimeout: time.Duration(getEnvInt("SHUTDOWN_TIMEOUT_SECONDS", 30)) * time.Second,
 

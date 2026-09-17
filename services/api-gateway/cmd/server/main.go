@@ -70,6 +70,16 @@ func main() {
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
+
+	// Browser security headers, ahead of the middleware that can short-circuit
+	// the chain so they are set on rejections too.
+	r.Use(middleware.SecurityHeaders(middleware.SecurityHeadersConfig{
+		ContentSecurityPolicy: cfg.ContentSecurityPolicy,
+		ReferrerPolicy:        cfg.ReferrerPolicy,
+		FrameOptions:          cfg.FrameOptions,
+		ContentTypeOptions:    cfg.ContentTypeOptions,
+		HSTSMaxAge:            cfg.HSTSMaxAge,
+	}))
 	r.Use(chimw.Compress(5))
 
 	// Rate limiting
@@ -97,9 +107,6 @@ func main() {
 	// Health check
 	r.Get("/health", health.Handler())
 
-	// Prometheus metrics
-	r.Handle("/metrics", promhttp.Handler())
-
 	// Mount reverse proxy routes
 	proxyRouter := proxy.NewRouter(proxy.RouterConfig{
 		Routes:        routes,
@@ -118,11 +125,30 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Telemetry listener, kept off the public router so /metrics is only
+	// reachable from inside the cluster (scraped over the pod's metrics port).
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsSrv := &http.Server{
+		Addr:         ":" + cfg.MetricsPort,
+		Handler:      metricsMux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
 	// Start server in background
 	go func() {
 		logger.Info().Str("port", cfg.Port).Msg("API Gateway starting")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal().Err(err).Msg("server failed")
+		}
+	}()
+
+	go func() {
+		logger.Info().Str("port", cfg.MetricsPort).Msg("metrics listener starting")
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error().Err(err).Msg("metrics listener failed")
 		}
 	}()
 
@@ -134,6 +160,10 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
+
+	if err := metricsSrv.Shutdown(ctx); err != nil {
+		logger.Error().Err(err).Msg("metrics listener forced to shutdown")
+	}
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("server forced to shutdown")
