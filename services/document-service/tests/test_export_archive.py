@@ -71,3 +71,33 @@ async def test_export_endpoint_404s_for_unreadable_file(client, monkeypatch, tmp
     resp = await client.get("/api/v1/documents/exports", params={"name": "locked.md"})
 
     assert resp.status_code == 404
+
+
+def test_traversal_outside_the_archive_is_refused(archive, tmp_path):
+    (tmp_path.parent / "outside.env").write_text("SUPPLIER_API_KEY=1\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        archive.read_export("../outside.env")
+
+
+def test_absolute_path_outside_the_archive_is_refused(archive, tmp_path):
+    outside = tmp_path.parent / "absolute.env"
+    outside.write_text("SUPPLIER_API_KEY=1\n", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        archive.read_export(str(outside))
+
+
+@pytest.mark.asyncio
+async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path):
+    archive_dir = tmp_path / "exports"
+    archive_dir.mkdir()
+    (tmp_path / "tenant-secrets.env").write_text("SUPPLIER_API_KEY=1\n", encoding="utf-8")
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(archive_dir))
+
+    resp = await client.get(
+        "/api/v1/documents/exports", params={"name": "../tenant-secrets.env"}
+    )
+
+    assert resp.status_code == 404
+    assert "SUPPLIER_API_KEY" not in resp.text

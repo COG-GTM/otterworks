@@ -23,13 +23,23 @@ class ExportArchive:
             "EXPORT_ARCHIVE_DIR", DEFAULT_ARCHIVE_DIR
         )
 
+    def _is_contained(self, path: str) -> bool:
+        """Whether ``path`` resolves to a location inside the archive root."""
+        root = os.path.realpath(self.base_dir)
+        resolved = os.path.realpath(path)
+        return resolved == root or resolved.startswith(root + os.sep)
+
     def read_export(self, name: str) -> str:
         """Return the contents of the named export.
 
-        ``name`` may include a subdirectory (``"reports/q3.md"``). Raises
-        ``FileNotFoundError`` when the export does not exist.
+        ``name`` may include a subdirectory (``"reports/q3.md"``), but must
+        resolve to a file inside the archive root. Raises ``FileNotFoundError``
+        when the export does not exist or escapes the archive.
         """
         path = os.path.join(self.base_dir, name)
         logger.debug("export_read", name=name)
+        if not self._is_contained(path):
+            logger.warning("export_read_outside_archive", name=name)
+            raise FileNotFoundError(2, "No such file or directory", name)
         with open(path, encoding="utf-8") as handle:
             return handle.read()

@@ -96,3 +96,50 @@ async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_quote_in_title_filter_is_a_literal(client: AsyncClient, owner_id: uuid.UUID):
+    """A quote is bound as a value, so it matches nothing instead of breaking the query."""
+    await _create(client, owner_id, "Quarterly Report")
+
+    resp = await client.get("/api/v1/documents/", params={"title": "report'"}, auth=None)
+
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_tautology_in_content_type_does_not_widen_the_filter(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Page", content_type="text/html")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"content_type": "text/html' OR '1'='1"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_sort_column_falls_back_to_the_default_order(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Alpha plan")
+    await _create(client, owner_id, "Beta plan")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"title": "plan", "sort": "title; DROP TABLE documents", "direction": "asc"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert sorted(item["title"] for item in resp.json()["items"]) == [
+        "Alpha plan",
+        "Beta plan",
+    ]
