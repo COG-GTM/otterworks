@@ -42,11 +42,10 @@ def _order_by(sort: str, direction: str) -> str:
     An unknown column or direction falls back to the default ordering rather
     than reaching the statement.
     """
-    column = sort if sort in SORTABLE_COLUMNS else DEFAULT_SORT
-    keyword = DIRECTIONS.get(
-        (direction or "").lower(), DIRECTIONS[DEFAULT_DIRECTION]
-    )
-    return f"{column} {keyword}"
+    keyword = DIRECTIONS.get((direction or "").lower())
+    if sort not in SORTABLE_COLUMNS or keyword is None:
+        return f"{DEFAULT_SORT} {DIRECTIONS[DEFAULT_DIRECTION]}"
+    return f"{sort} {keyword}"
 
 
 class DocumentQueryRepository:
