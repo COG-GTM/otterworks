@@ -72,10 +72,24 @@ jacocoTestReport {
     }
 }
 
+// Coverage ratchet: pinned to the measured numbers (line 99.5%, branch 91.8%).
+// Raise these floors when coverage improves; never lower them.
+jacocoTestCoverageVerification {
+    dependsOn test
+    violationRules {
+        rule {
+            limit { counter = 'LINE'; value = 'COVEREDRATIO'; minimum = 0.99 }
+            limit { counter = 'BRANCH'; value = 'COVEREDRATIO'; minimum = 0.91 }
+        }
+    }
+}
+
 test {
     useJUnitPlatform()
     finalizedBy jacocoTestReport
 }
+
+check.dependsOn jacocoTestCoverageVerification
 
 tasks.named('bootJar') {
     archiveFileName = 'auth-service.jar'
