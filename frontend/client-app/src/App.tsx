@@ -20,6 +20,7 @@ import StarredPage from "@/pages/starred";
 import TrashPage from "@/pages/trash";
 import TermsPage from "@/pages/terms";
 import PrivacyPage from "@/pages/privacy";
+import SharedFolderPage from "@/pages/shared-folder";
 import BillingPlansPage from "@/features/billing/plans-page";
 import BillingEntitlementPage from "@/features/billing/entitlement-page";
 import BillingChangePlanPage from "@/features/billing/change-plan-page";
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/shared/folder/:token" element={<SharedFolderPage />} />
           {BILLING_FIXTURE_ENABLED && (
             <>
               <Route path="/billing/plans" element={<BillingPlansPage />} />

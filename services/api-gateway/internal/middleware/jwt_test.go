@@ -79,6 +79,7 @@ func TestJWTAuth_SubPathsOfExactMatchRequireAuth(t *testing.T) {
 	prefixSubPaths := []string{
 		"/health/ready",
 		"/metrics/prometheus",
+		"/api/v1/folders/shared/abc",
 	}
 
 	for _, path := range prefixSubPaths {
@@ -89,6 +90,13 @@ func TestJWTAuth_SubPathsOfExactMatchRequireAuth(t *testing.T) {
 			assert.Equal(t, http.StatusOK, rec.Code, "prefix path %s should not require auth", path)
 		})
 	}
+
+	t.Run("folder routes remain protected", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/folders/abc", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
 }
 
 func TestJWTAuth_MissingToken(t *testing.T) {

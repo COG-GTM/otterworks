@@ -1,5 +1,5 @@
-import { isAxiosError } from "axios";
-import { apiClient } from "./api-client";
+import axios, { isAxiosError } from "axios";
+import { apiClient, API_BASE_URL } from "./api-client";
 import type {
   User,
   AuthTokens,
@@ -15,6 +15,8 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  FolderShareLink,
+  SharedFolderView,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -47,6 +49,63 @@ interface RawFileListResponse {
   total: number;
   page: number;
   pageSize: number;
+}
+
+interface RawFolderShareLink {
+  id: string;
+  folderId: string;
+  ownerId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+  revoked: boolean;
+  url: string;
+}
+
+function mapFolderShareLink(raw: RawFolderShareLink): FolderShareLink {
+  return {
+    id: raw.id,
+    folderId: raw.folderId,
+    token: raw.token,
+    expiresAt: raw.expiresAt,
+    createdAt: raw.createdAt,
+    url: raw.url,
+  };
+}
+
+function mapSharedFolderView(raw: {
+  folder: Record<string, unknown>;
+  files: Array<Record<string, unknown>>;
+  expires_at: string;
+}): SharedFolderView {
+  const folder = raw.folder;
+  return {
+    folder: normalizeFileItem({
+      id: folder.id,
+      name: folder.name,
+      parentId: folder.parent_id ?? null,
+      ownerId: folder.owner_id,
+      createdAt: folder.created_at,
+      updatedAt: folder.updated_at,
+      isFolder: true,
+    }),
+    files: (raw.files ?? []).map((file) =>
+      mapRawFile({
+        id: file.id as string,
+        name: file.name as string,
+        mimeType: file.mime_type as string,
+        sizeBytes: file.size_bytes as number,
+        s3Key: file.s3_key as string,
+        folderId: (file.folder_id ?? null) as string | null,
+        ownerId: file.owner_id as string,
+        version: file.version as number,
+        isTrashed: file.is_trashed as boolean,
+        createdAt: file.created_at as string,
+        updatedAt: file.updated_at as string,
+      })
+    ),
+    expiresAt: raw.expires_at,
+  };
 }
 
 // Normalize a single file from the file-service format to the frontend FileItem shape
@@ -250,6 +309,33 @@ export const filesApi = {
   },
   deleteFolder: async (id: string): Promise<void> => {
     await apiClient.delete(`/folders/${id}`);
+  },
+  createFolderShareLink: async (
+    folderId: string,
+    expiresInHours: number
+  ): Promise<FolderShareLink> => {
+    const { data } = await apiClient.post<RawFolderShareLink>(
+      `/folders/${folderId}/share-links`,
+      { expires_in_hours: expiresInHours }
+    );
+    return mapFolderShareLink(data);
+  },
+  listFolderShareLinks: async (folderId: string): Promise<FolderShareLink[]> => {
+    const { data } = await apiClient.get<{ links: RawFolderShareLink[] }>(
+      `/folders/${folderId}/share-links`
+    );
+    return (data.links ?? []).map(mapFolderShareLink);
+  },
+  revokeFolderShareLink: async (folderId: string, linkId: string): Promise<void> => {
+    await apiClient.delete(`/folders/${folderId}/share-links/${linkId}`);
+  },
+  getSharedFolder: async (token: string): Promise<SharedFolderView> => {
+    const { data } = await axios.get<{
+      folder: Record<string, unknown>;
+      files: Array<Record<string, unknown>>;
+      expires_at: string;
+    }>(`${API_BASE_URL}/folders/shared/${encodeURIComponent(token)}`);
+    return mapSharedFolderView(data);
   },
   share: async (id: string, email: string, permission: "view" | "edit"): Promise<void> => {
     // An email that doesn't resolve to an OtterWorks user is still sent to

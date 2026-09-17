@@ -188,6 +188,8 @@ module "irsa" {
             "${module.database.file_versions_table_arn}/index/*",
             module.database.file_shares_table_arn,
             "${module.database.file_shares_table_arn}/index/*",
+            module.database.folder_share_links_table_arn,
+            "${module.database.folder_share_links_table_arn}/index/*",
           ]
         },
       ]

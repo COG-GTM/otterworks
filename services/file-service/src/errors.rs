@@ -15,6 +15,12 @@ pub enum ServiceError {
     #[error("Share not found: {0}")]
     ShareNotFound(String),
 
+    #[error("Share link not found: {0}")]
+    ShareLinkNotFound(String),
+
+    #[error("Share link expired")]
+    ShareLinkExpired,
+
     #[error("Bad request: {0}")]
     BadRequest(String),
 
@@ -54,6 +60,13 @@ impl ResponseError for ServiceError {
             }
             ServiceError::ShareNotFound(_) => {
                 (actix_web::http::StatusCode::NOT_FOUND, "share_not_found")
+            }
+            ServiceError::ShareLinkNotFound(_) => (
+                actix_web::http::StatusCode::NOT_FOUND,
+                "share_link_not_found",
+            ),
+            ServiceError::ShareLinkExpired => {
+                (actix_web::http::StatusCode::GONE, "share_link_expired")
             }
             ServiceError::BadRequest(_) => {
                 (actix_web::http::StatusCode::BAD_REQUEST, "bad_request")
