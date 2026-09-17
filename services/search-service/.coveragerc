@@ -1,7 +1,11 @@
 [run]
 source = app
 omit = app/tests/*
+branch = True
 
 [report]
 show_missing = true
-fail_under = 0
+fail_under = 99
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
