@@ -101,6 +101,21 @@ class JwtTokenProviderTest {
   }
 
   @Test
+  void constructor_shouldRejectMissingSecret() {
+    assertThatThrownBy(() -> new JwtTokenProvider(null, 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+
+    assertThatThrownBy(() -> new JwtTokenProvider("", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+
+    assertThatThrownBy(() -> new JwtTokenProvider("   ", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+  }
+
+  @Test
   void getAccessTokenExpiry_shouldReturnConfiguredValue() {
     assertThat(jwtTokenProvider.getAccessTokenExpiry()).isEqualTo(3600);
   }
