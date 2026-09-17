@@ -24,6 +24,7 @@ use crate::models::{
     UploadResponse,
 };
 use crate::storage::S3Client;
+use crate::uploads;
 
 // -- Health & Metrics --
 
@@ -71,8 +72,7 @@ pub async fn upload_file(
         .map(String::from);
 
     let mut file_bytes = BytesMut::new();
-    let mut file_name = String::from("unnamed");
-    let mut content_type = String::from("application/octet-stream");
+    let mut raw_file_name: Option<String> = None;
     let mut owner_id: Option<Uuid> = None;
     let mut folder_id: Option<Uuid> = None;
 
@@ -87,10 +87,7 @@ pub async fn upload_file(
         match field_name.as_str() {
             "file" => {
                 if let Some(fname) = disposition.as_ref().and_then(|d| d.get_filename()) {
-                    file_name = fname.to_string();
-                }
-                if let Some(ct) = field.content_type() {
-                    content_type = ct.to_string();
+                    raw_file_name = Some(fname.to_string());
                 }
                 while let Some(chunk) = field.next().await {
                     let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
@@ -141,6 +138,17 @@ pub async fn upload_file(
     if file_bytes.is_empty() {
         return Err(ServiceError::BadRequest("file field is required".into()));
     }
+
+    // The client controls both the filename and the declared content type, so
+    // the extension is checked against the allowlist and the content type is
+    // derived from it rather than taken from the request.
+    let uploads::ValidatedUpload {
+        file_name,
+        content_type,
+    } = uploads::validate_upload(
+        raw_file_name.as_deref(),
+        &config.server.allowed_upload_extensions,
+    )?;
 
     let file_id = Uuid::new_v4();
     let s3_key = format!("files/{}/{}", owner, file_id);

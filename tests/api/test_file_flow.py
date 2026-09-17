@@ -118,6 +118,30 @@ def test_file_validation_and_route_gaps(api_client):
     )
     assert missing_owner_upload.status_code in {400, 401, 403}
 
+    for file_name, declared_type in [
+        ("payload.exe", "application/octet-stream"),
+        ("stored-xss.html", "text/html"),
+        ("shell.php.", "application/x-php"),
+        ("README", "text/plain"),
+    ]:
+        rejected_upload = api_client.client.post(
+            "/api/v1/files/upload",
+            headers=owner.auth_headers,
+            files={"file": (file_name, b"body", declared_type)},
+        )
+        assert rejected_upload.status_code == 400, (file_name, rejected_upload.text)
+
+    html_typed_image = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("../../etc/avatar.png", b"not-really-a-png", "text/html")},
+    )
+    assert html_typed_image.status_code == 201, html_typed_image.text
+    stored = html_typed_image.json()["file"]
+    api_client.created_files.append(stored["id"])
+    assert stored["name"] == "avatar.png"
+    assert stored["mime_type"] == "image/png"
+
     invalid_file_id = api_client.client.get("/api/v1/files/not-a-uuid", headers=owner.auth_headers)
     assert invalid_file_id.status_code in {400, 422}
 

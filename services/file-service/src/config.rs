@@ -1,6 +1,7 @@
 use std::env;
 
 use crate::alerts::AlertConfig;
+use crate::uploads::{default_allowed_extensions, parse_allowed_extensions};
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -20,6 +21,8 @@ pub struct ServerConfig {
     /// When true, owners with no files get a few demo documents seeded on
     /// first listing, so share flows are demoable even when uploads fail.
     pub seed_demo_docs: bool,
+    /// Lowercased file extensions accepted by the upload endpoint.
+    pub allowed_upload_extensions: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +69,11 @@ impl ServerConfig {
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+            allowed_upload_extensions: env::var("UPLOAD_ALLOWED_EXTENSIONS")
+                .ok()
+                .map(|raw| parse_allowed_extensions(&raw))
+                .filter(|exts| !exts.is_empty())
+                .unwrap_or_else(default_allowed_extensions),
         }
     }
 }

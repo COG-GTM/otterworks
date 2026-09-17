@@ -13,6 +13,7 @@ mod middleware;
 mod models;
 mod seed;
 mod storage;
+mod uploads;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
