@@ -89,6 +89,10 @@ class CommentCreate(BaseModel):
     content: str = Field(..., min_length=1)
 
 
+class CommentResolve(BaseModel):
+    resolved_by: UUID
+
+
 class CommentResponse(BaseModel):
     id: UUID
     document_id: UUID
