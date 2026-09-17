@@ -43,6 +43,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 // Liveness/readiness and the scrape endpoint only; the rest of the
                 // actuator surface exposes internals and requires authentication.
                 .antMatchers("/health", "/metrics").permitAll()
+                .antMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                 .antMatchers("/swagger-ui/**", "/swagger-resources/**", "/v2/api-docs/**").permitAll()
                 .antMatchers("/api/v1/reports/**").permitAll()  // TODO: Add JWT validation
                 .anyRequest().authenticated()

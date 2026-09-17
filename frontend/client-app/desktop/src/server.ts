@@ -269,7 +269,7 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
   const boundPort = await listen(server, port, host);
   return {
     server,
-    url: `http://${host}:${boundPort}`,
+    url: `http://${host.includes(":") ? `[${host}]` : host}:${boundPort}`,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
