@@ -200,7 +200,19 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
-      - run: python -m pytest --cov=app
+      # branch coverage and the fail_under gate live in
+      # services/search-service/.coveragerc, so CI and local runs enforce
+      # exactly the same number.
+      - name: Tests with coverage gate
+        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-service-coverage
+          path: |
+            services/search-service/coverage.xml
+            services/search-service/htmlcov/**
 
   # Scala - Analytics Service
   analytics-service:
