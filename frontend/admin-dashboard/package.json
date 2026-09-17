@@ -9,6 +9,9 @@
     "test": "ng test --watch=false --browsers=ChromeHeadless",
     "lint": "ng lint"
   },
+  "overrides": {
+    "uuid": "^11.1.1"
+  },
   "dependencies": {
     "@angular/animations": "^20.3.31",
     "@angular/cdk": "^20.2.14",
