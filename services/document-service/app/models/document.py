@@ -93,6 +93,13 @@ class Comment(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+    is_resolved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolved_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     document: Mapped["Document"] = relationship(back_populates="comments")
 

@@ -96,6 +96,9 @@ class CommentResponse(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+    is_resolved: bool
+    resolved_by: UUID | None
+    resolved_at: datetime | None
 
     model_config = {"from_attributes": True}
 
