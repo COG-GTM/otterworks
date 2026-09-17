@@ -13,10 +13,11 @@ module.exports = {
   coverageReporters: ['text', 'lcov', 'clover'],
   coverageThreshold: {
     global: {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
+      // Ratchet only: raise to the measured numbers, never lower them.
+      branches: 95,
+      functions: 100,
+      lines: 100,
+      statements: 98,
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
