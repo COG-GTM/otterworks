@@ -54,13 +54,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 
 	now := rl.now()
 	bucket := rl.bucketFor(ip, now)
-
-	elapsed := now.Sub(bucket.lastRefill).Seconds()
-	bucket.tokens += elapsed * bucket.refillRate
-	if bucket.tokens > bucket.maxTokens {
-		bucket.tokens = bucket.maxTokens
-	}
-	bucket.lastRefill = now
+	refill(bucket, now)
 
 	if bucket.tokens >= 1 {
 		bucket.tokens--
@@ -69,13 +63,27 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	return false
 }
 
-// Refund returns a token taken by Allow to the bucket for the given IP.
-func (rl *RateLimiter) Refund(ip string) {
+// Available reports whether the bucket for the given IP holds a token, without taking
+// it. Callers that only spend on some outcomes check with Available and spend with Allow.
+func (rl *RateLimiter) Available(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	bucket := rl.bucketFor(ip, rl.now())
-	bucket.tokens = math.Min(bucket.tokens+1, bucket.maxTokens)
+	now := rl.now()
+	bucket := rl.bucketFor(ip, now)
+	refill(bucket, now)
+
+	return bucket.tokens >= 1
+}
+
+// refill accrues the tokens earned since the bucket was last touched.
+func refill(bucket *TokenBucket, now time.Time) {
+	elapsed := now.Sub(bucket.lastRefill).Seconds()
+	bucket.tokens += elapsed * bucket.refillRate
+	if bucket.tokens > bucket.maxTokens {
+		bucket.tokens = bucket.maxTokens
+	}
+	bucket.lastRefill = now
 }
 
 // bucketFor returns the bucket for an IP, creating a full one if it has none.
@@ -115,9 +123,10 @@ func DefaultCredentialPaths() []string {
 }
 
 // CredentialThrottle returns an HTTP middleware that limits *rejected* credential
-// submissions per client IP on the given paths. A request whose response is not an
-// authentication failure has its token refunded, so ordinary sign-ins stay unthrottled
-// while password guessing is capped well below the global rate limit.
+// submissions per client IP on the given paths. Only a rejected submission spends
+// budget, so ordinary sign-ins stay unthrottled while password guessing is capped well
+// below the global rate limit. Backend faults (5xx) do not spend budget either: an
+// outage must not lock users out.
 func CredentialThrottle(rl *RateLimiter, paths ...string) func(http.Handler) http.Handler {
 	throttled := make(map[string]bool, len(paths))
 	for _, p := range paths {
@@ -132,7 +141,7 @@ func CredentialThrottle(rl *RateLimiter, paths ...string) func(http.Handler) htt
 			}
 
 			ip := extractIP(r)
-			if !rl.Allow(ip) {
+			if !rl.Available(ip) {
 				rl.reject(w)
 				return
 			}
@@ -140,10 +149,22 @@ func CredentialThrottle(rl *RateLimiter, paths ...string) func(http.Handler) htt
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			next.ServeHTTP(ww, r)
 
-			if status := ww.Status(); status != http.StatusUnauthorized && status != http.StatusForbidden {
-				rl.Refund(ip)
+			if rejectedCredentials(ww.Status()) {
+				rl.Allow(ip)
 			}
 		})
+	}
+}
+
+// rejectedCredentials reports whether a login response is a refusal of the submitted
+// credentials. auth-service answers an unknown email or a wrong password with a 400
+// (IllegalArgumentException), and a malformed body with the same, so 400 counts too.
+func rejectedCredentials(status int) bool {
+	switch status {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -184,11 +205,25 @@ func (rl *RateLimiter) cleanup() {
 	for range ticker.C {
 		rl.mu.Lock()
 		now := rl.now()
+		idleTTL := rl.idleTTL()
 		for ip, bucket := range rl.buckets {
-			if now.Sub(bucket.lastRefill) > 10*time.Minute {
+			if now.Sub(bucket.lastRefill) > idleTTL {
 				delete(rl.buckets, ip)
 			}
 		}
 		rl.mu.Unlock()
 	}
+}
+
+// idleTTL is how long a bucket must go untouched before dropping it is equivalent to
+// keeping it: long enough for an empty bucket to have refilled to capacity.
+func (rl *RateLimiter) idleTTL() time.Duration {
+	ttl := 10 * time.Minute
+	if rl.refillRate <= 0 {
+		return ttl
+	}
+	if full := time.Duration(rl.burst / rl.refillRate * float64(time.Second)); full > ttl {
+		return full
+	}
+	return ttl
 }

@@ -56,6 +56,12 @@ func (c *Config) Validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
 	}
+	if c.LoginFailuresPerMinute <= 0 {
+		return fmt.Errorf("LOGIN_FAILURES_PER_MINUTE must be positive, got %d", c.LoginFailuresPerMinute)
+	}
+	if c.LoginFailureBurst <= 0 {
+		return fmt.Errorf("LOGIN_FAILURE_BURST must be positive, got %d", c.LoginFailureBurst)
+	}
 	return nil
 }
 
