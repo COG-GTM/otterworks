@@ -5,11 +5,21 @@ require 'uri'
 class DevinSessionService
   API_HOST = 'https://api.devin.ai'.freeze
 
+  # Session and organization ids are interpolated into the API path, so they are
+  # constrained to an opaque-id shape: no separators, no traversal segments, and
+  # nothing that could re-point the request at another path on the API host.
+  ID_FORMAT = /\A[A-Za-z0-9_-]{1,128}\z/.freeze
+
   class << self
     def create_session(incident:)
       api_key, org_id = credentials
       unless api_key && org_id
         Rails.logger.warn('Devin credentials not configured (env or settings), skipping Devin session creation')
+        return nil
+      end
+
+      unless valid_id?(org_id)
+        Rails.logger.warn('Devin org id is not a valid identifier, skipping Devin session creation')
         return nil
       end
 
@@ -37,6 +47,7 @@ class DevinSessionService
     def get_session(session_id:)
       api_key, org_id = credentials
       return nil unless api_key && org_id && session_id
+      return nil unless valid_id?(org_id) && valid_id?(session_id)
 
       uri = URI("#{API_HOST}/v3/organizations/#{org_id}/sessions/#{session_id}")
       request = Net::HTTP::Get.new(uri)
@@ -63,6 +74,10 @@ class DevinSessionService
     end
 
     private
+
+    def valid_id?(value)
+      ID_FORMAT.match?(value.to_s)
+    end
 
     # A key and an org id must come from the same source: pairing an env key
     # with a stored org id (or vice versa) yields credentials that never

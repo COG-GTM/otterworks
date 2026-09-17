@@ -7,6 +7,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 // Upgrade target: SecurityFilterChain @Bean method
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 
 /**
  * Security configuration using the deprecated WebSecurityConfigurerAdapter pattern.
@@ -25,15 +26,26 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     protected void configure(HttpSecurity http) throws Exception {
         // LEGACY: Uses deprecated antMatchers() and authorizeRequests()
         // Upgrade: requestMatchers() and authorizeHttpRequests()
-        http // nosemgrep: java.spring.security.audit.spring-csrf-disabled.spring-csrf-disabled
-            .csrf().disable()
+        http
+            // CSRF protection is on. The report API itself is exempt because it is
+            // stateless and bearer-token authenticated at the gateway: it holds no
+            // session and sets no cookie for a cross-site request to ride on. Any
+            // endpoint that does use ambient credentials is covered by the
+            // double-submit cookie token.
+            .csrf()
+                .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                .ignoringAntMatchers("/api/v1/reports/**")
+            .and()
             .sessionManagement()
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             .and()
             .authorizeRequests()
-                .antMatchers("/health", "/metrics", "/actuator/**").permitAll()
+                // Liveness/readiness and the scrape endpoint only; the rest of the
+                // actuator surface exposes internals and requires authentication.
+                .antMatchers("/health", "/metrics").permitAll()
                 .antMatchers("/swagger-ui/**", "/swagger-resources/**", "/v2/api-docs/**").permitAll()
                 .antMatchers("/api/v1/reports/**").permitAll()  // TODO: Add JWT validation
+                .anyRequest().authenticated()
             .and()
             .headers()
                 .frameOptions().deny()

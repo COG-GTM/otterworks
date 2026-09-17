@@ -152,11 +152,12 @@ public class ReportController {
             return ResponseEntity.notFound().build();
         }
 
-        File file = new File(report.getFilePath());
-        if (!file.exists()) {
-            logger.warn("Report file missing: {}", report.getFilePath());
+        Optional<File> optFile = reportService.resolveReportFile(report);
+        if (!optFile.isPresent() || !optFile.get().exists()) {
+            logger.warn("Report file missing or outside the report directory: {}", report.getFilePath());
             return ResponseEntity.notFound().build();
         }
+        File file = optFile.get();
 
         try {
             // LEGACY: Commons IO FileUtils.readFileToByteArray loads entire file into memory

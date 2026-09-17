@@ -17,6 +17,19 @@ interface LoginResponse {
   token: string;
 }
 
+// Runtime configuration injected by the server/entrypoint into index.html.
+// Credentials must reach the app this way rather than being compiled into the
+// shipped bundle, where anyone with the JS can read them.
+interface RuntimeConfig {
+  adminToken?: string;
+}
+
+declare global {
+  interface Window {
+    __OTTERWORKS_CONFIG__?: RuntimeConfig;
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly TOKEN_KEY = 'ow_admin_token';
@@ -78,8 +91,15 @@ export class AuthService {
       email,
       displayName: 'Admin User',
       role: 'admin',
-      token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ1c2VyX2lkIjoiYTAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwiZW1haWwiOiJhZG1pbkBvdHRlcndvcmtzLmRldiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxOTI0OTA1NjAwfQ.hD5dwgrPNRTzbXa6lbA83Aru7BvQVIQc0rGVySkF1fA',
+      token: this.issueToken(),
     };
     return of(user).pipe(delay(800));
+  }
+
+  // A deployment that needs a usable token injects one at runtime; otherwise the
+  // mock login hands out a random placeholder that carries no authority.
+  private issueToken(): string {
+    const injected = window.__OTTERWORKS_CONFIG__?.adminToken;
+    return injected || `mock-jwt-token-${crypto.randomUUID()}`;
   }
 }

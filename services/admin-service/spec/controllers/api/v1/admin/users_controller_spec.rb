@@ -73,6 +73,20 @@ RSpec.describe Api::V1::Admin::UsersController do
       put :update, params: { id: user.id, user: { role: 'invalid_role' } }
       expect(response).to have_http_status(:unprocessable_entity)
     end
+
+    it 'lets a super_admin change a role' do
+      put :update, params: { id: user.id, user: { role: 'admin' } }
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.role).to eq('admin')
+    end
+
+    it 'ignores a role change from an admin' do
+      set_jwt_env(request, role: 'admin')
+      put :update, params: { id: user.id, user: { role: 'super_admin', display_name: 'New Name' } }
+      expect(response).to have_http_status(:ok)
+      expect(user.reload.role).not_to eq('super_admin')
+      expect(user.display_name).to eq('New Name')
+    end
   end
 
   describe 'DELETE #destroy' do

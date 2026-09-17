@@ -24,7 +24,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
 import { filesApi, authApi } from "@/lib/api";
-import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
+import { formatFileSize, formatRelativeTime, getInitials, generateColor, safeHttpUrl } from "@/lib/utils";
 
 export default function FileDetailPage() {
   return (
@@ -162,7 +162,11 @@ function FileDetailContent() {
             onClick={async () => {
               setIsDownloading(true);
               try {
-                const downloadUrl = await filesApi.getDownloadUrl(file.id);
+                const downloadUrl = safeHttpUrl(await filesApi.getDownloadUrl(file.id));
+                if (!downloadUrl) {
+                  toast.error("Download failed. Please try again.");
+                  return;
+                }
                 const a = document.createElement("a");
                 a.href = downloadUrl;
                 a.download = file.name;
@@ -232,29 +236,35 @@ function FileDetailContent() {
                 </h2>
               </div>
               <div className="divide-y divide-gray-100">
-                {file.versions.map((version) => (
-                  <div
-                    key={version.id}
-                    className="flex items-center justify-between px-5 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        Version {version.versionNumber}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(version.size)} &middot;{" "}
-                        {formatRelativeTime(version.createdAt)} &middot;{" "}
-                        {version.uploadedBy}
-                      </p>
-                    </div>
-                    <a
-                      href={version.downloadUrl}
-                      className="text-sm text-otter-600 hover:underline"
+                {file.versions.map((version) => {
+                  const versionUrl = safeHttpUrl(version.downloadUrl);
+                  return (
+                    <div
+                      key={version.id}
+                      className="flex items-center justify-between px-5 py-3"
                     >
-                      Download
-                    </a>
-                  </div>
-                ))}
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          Version {version.versionNumber}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatFileSize(version.size)} &middot;{" "}
+                          {formatRelativeTime(version.createdAt)} &middot;{" "}
+                          {version.uploadedBy}
+                        </p>
+                      </div>
+                      {versionUrl && (
+                        <a
+                          href={versionUrl}
+                          rel="noopener"
+                          className="text-sm text-otter-600 hover:underline"
+                        >
+                          Download
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

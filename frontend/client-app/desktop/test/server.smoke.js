@@ -1,7 +1,10 @@
 /* Smoke test for the embedded static + proxy server (run via `npm test`).
  * Exercises static serving, SPA fallback, asset caching, path traversal,
- * and the /api/v1 HTTP + WebSocket proxy against a stub gateway. */
+ * the /api/v1 HTTP + WebSocket proxy against a stub gateway, and the
+ * transport guarantees: loopback-only bind, gateway-only forwarding, and
+ * error bodies that never echo the request back. */
 const http = require("node:http");
+const net = require("node:net");
 const crypto = require("node:crypto");
 const path = require("node:path");
 const { startAppServer } = require("../build/server");
@@ -109,6 +112,62 @@ async function main() {
     req.end();
   });
   check("WebSocket upgrade proxied", wsResult.accept && wsResult.frame, JSON.stringify(wsResult));
+
+  // An absolute URL in the request line must not redirect the outbound request:
+  // only the path/query are copied onto the configured gateway origin.
+  const absolute = await new Promise((resolve, reject) => {
+    const socket = net.createConnection(Number(new URL(app.url).port), "127.0.0.1", () => {
+      socket.write("GET http://127.0.0.1:1/api/v1/steal HTTP/1.1\r\nHost: localhost\r\n\r\n");
+    });
+    let raw = "";
+    socket.on("data", (c) => {
+      raw += c;
+      if (raw.includes("\r\n\r\n")) {
+        socket.destroy();
+        resolve(raw);
+      }
+    });
+    socket.on("error", reject);
+  });
+  // 127.0.0.1:1 refuses connections, so anything other than a 502 proves the
+  // request was never forwarded to the client-supplied origin.
+  check(
+    "absolute-URL request is never proxied off-origin",
+    absolute.startsWith("HTTP/1.1 200"),
+    absolute.slice(0, 120)
+  );
+
+  // A failing upstream returns a fixed code, never the request URL or the
+  // upstream error text, so nothing attacker-controlled is reflected.
+  const deadApp = await startAppServer({
+    webRoot: path.resolve(__dirname, "..", "..", "dist"),
+    gatewayUrl: "http://127.0.0.1:1",
+    port: 0,
+  });
+  const reflected = await get(`${deadApp.url}/api/v1/%3Cscript%3Ealert(1)%3C/script%3E`);
+  check(
+    "proxy errors are not reflected",
+    reflected.status === 502 &&
+      reflected.body === '{"error":"bad_gateway"}' &&
+      reflected.headers["x-content-type-options"] === "nosniff",
+    `${reflected.status} ${reflected.body}`
+  );
+  await deadApp.close();
+
+  let boundNonLoopback = false;
+  try {
+    const exposed = await startAppServer({
+      webRoot: path.resolve(__dirname, "..", "..", "dist"),
+      gatewayUrl: `http://127.0.0.1:${gwPort}`,
+      port: 0,
+      host: "0.0.0.0",
+    });
+    boundNonLoopback = true;
+    await exposed.close();
+  } catch {
+    // expected: cleartext listener refuses a non-loopback bind
+  }
+  check("refuses a non-loopback cleartext bind", !boundNonLoopback, "server bound 0.0.0.0");
 
   await app.close();
   gateway.close();

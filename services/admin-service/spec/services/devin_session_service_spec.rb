@@ -41,6 +41,29 @@ RSpec.describe DevinSessionService do
     expect(result).to eq({ session_id: 's-1', url: 'https://app.devin.ai/s-1' })
   end
 
+  it 'refuses session ids that are not opaque identifiers' do
+    allow(AdminSettingsService).to receive(:devin_credentials)
+      .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+    expect(described_class).not_to receive(:make_request)
+
+    expect(described_class.get_session(session_id: '../../../v3/other')).to be_nil
+  end
+
+  it 'fetches a session for a well-formed id' do
+    allow(AdminSettingsService).to receive(:devin_credentials)
+      .and_return({ api_key: 'stored-key', org_id: 'org-123' })
+
+    response = instance_double(Net::HTTPOK, body: { status: 'running', url: 'https://app.devin.ai/s-1' }.to_json)
+    captured_uri = nil
+    allow(described_class).to receive(:make_request) do |uri, _request|
+      captured_uri = uri
+      response
+    end
+
+    described_class.get_session(session_id: 's-1')
+    expect(captured_uri.to_s).to eq('https://api.devin.ai/v3/organizations/org-123/sessions/s-1')
+  end
+
   it 'does not pair an env api key with a stored org id' do
     allow(ENV).to receive(:fetch).with('DEVIN_API_KEY', nil).and_return('env-key')
     allow(AdminSettingsService).to receive(:devin_credentials)

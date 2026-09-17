@@ -2,6 +2,10 @@ module Api
   module V1
     module Admin
       class UsersController < ApplicationController
+        # Granting roles is the one operation that can widen someone's
+        # privileges, so it stays with the top roles rather than every admin.
+        ROLE_GRANTING_ROLES = %w[super_admin owner].freeze
+
         # User listings expose emails/roles/quotas, so reads are guarded too
         # (the api-gateway flow test expects non-admins to get 403 here).
         before_action :require_admin!
@@ -99,8 +103,17 @@ module Api
           @user = AdminUser.includes(:storage_quota).find(params[:id]) # nosemgrep: ruby.rails.security.brakeman.check-unscoped-find.check-unscoped-find
         end
 
+        # `role` is the privilege boundary itself, so it is never mass-assignable:
+        # it is added to the permitted set only after an explicit check that the
+        # caller holds a role allowed to grant roles.
         def user_params
-          params.require(:user).permit(:email, :display_name, :role, :avatar_url) # nosemgrep: ruby.lang.security.model-attr-accessible.model-attr-accessible
+          permitted = %i[email display_name avatar_url]
+          permitted << :role if role_assignable?
+          params.require(:user).permit(*permitted) # nosemgrep: ruby.lang.security.model-attr-accessible.model-attr-accessible
+        end
+
+        def role_assignable?
+          ROLE_GRANTING_ROLES.include?(current_user_role)
         end
       end
     end

@@ -1,5 +1,12 @@
 export interface Config {
   httpPort: number;
+  /** Set to terminate TLS on the service's own listener. */
+  tls:
+    | {
+        certFile: string;
+        keyFile: string;
+      }
+    | undefined;
   redis: {
     host: string;
     port: number;
@@ -32,6 +39,10 @@ export interface Config {
 export function loadConfig(): Config {
   return {
     httpPort: parseInt(process.env.HTTP_PORT || '8084', 10),
+    tls:
+      process.env.TLS_CERT_FILE && process.env.TLS_KEY_FILE
+        ? { certFile: process.env.TLS_CERT_FILE, keyFile: process.env.TLS_KEY_FILE }
+        : undefined,
     redis: {
       host: process.env.REDIS_HOST || 'localhost',
       port: parseInt(process.env.REDIS_PORT || '6379', 10),

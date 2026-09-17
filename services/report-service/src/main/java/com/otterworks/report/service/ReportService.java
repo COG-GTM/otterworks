@@ -17,6 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 
 import javax.transaction.Transactional;
 import java.io.File;
+import java.io.IOException;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -104,6 +105,34 @@ public class ReportService {
     }
 
     /**
+     * Resolve a report's generated file, refusing any stored path that does not
+     * canonically live under the configured report output directory. The path
+     * comes from the database, so containment is enforced at the point of use
+     * rather than trusted from the record.
+     */
+    public Optional<File> resolveReportFile(Report report) {
+        return containedFile(report.getFilePath());
+    }
+
+    private Optional<File> containedFile(String filePath) {
+        if (filePath == null) {
+            return Optional.empty();
+        }
+        try {
+            File root = new File(appConfig.getReportOutputDir()).getCanonicalFile();
+            File candidate = new File(filePath).getCanonicalFile();
+            if (!candidate.toPath().startsWith(root.toPath()) || candidate.equals(root)) {
+                logger.warn("Refusing report file outside the report output directory: {}", filePath);
+                return Optional.empty();
+            }
+            return Optional.of(candidate);
+        } catch (IOException e) {
+            logger.warn("Failed to resolve report file {}: {}", filePath, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
      * List all reports for a user.
      */
     public List<Report> getReportsByUser(String userId) {
@@ -137,11 +166,12 @@ public class ReportService {
 
         // Defer file deletion until after transaction commits so a rollback
         // doesn't leave the DB record pointing to a missing file.
-        if (filePath != null) {
+        final Optional<File> optFile = containedFile(filePath);
+        if (optFile.isPresent()) {
+            final File file = optFile.get();
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    File file = new File(filePath);
                     if (file.exists()) {
                         boolean deleted = file.delete();
                         if (!deleted) {

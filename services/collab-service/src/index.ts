@@ -1,5 +1,7 @@
 import express from 'express';
+import { readFileSync } from 'fs';
 import { createServer } from 'http';
+import { createServer as createSecureServer } from 'https';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
@@ -30,7 +32,18 @@ const logger = pino({
 });
 
 const app = express();
-const httpServer = createServer(app);
+// Transport security: the listener is plaintext only when something in front of
+// it terminates TLS - in every deployed topology collab-service is a ClusterIP
+// behind the shared ingress, which is the TLS endpoint, and the service is not
+// routable from outside the cluster. Where that is not true (a directly
+// reachable listener), point TLS_CERT_FILE/TLS_KEY_FILE at a certificate and
+// the socket speaks TLS itself.
+const httpServer = config.tls
+  ? createSecureServer(
+      { cert: readFileSync(config.tls.certFile), key: readFileSync(config.tls.keyFile) },
+      app,
+    )
+  : createServer(app);
 const metrics = new MetricsCollector();
 
 // Middleware
@@ -190,7 +203,10 @@ async function start(): Promise<void> {
   }
 
   httpServer.listen(config.httpPort, '0.0.0.0', () => {
-    logger.info({ port: config.httpPort }, 'collaboration_service_started');
+    logger.info(
+      { port: config.httpPort, tls: config.tls !== undefined },
+      'collaboration_service_started',
+    );
   });
 }
 

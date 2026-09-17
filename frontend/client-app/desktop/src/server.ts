@@ -47,6 +47,9 @@ function isApiPath(url: string): boolean {
   return url === "/api/v1" || url.startsWith("/api/v1/") || url.startsWith("/api/v1?");
 }
 
+// The cleartext server may only ever be bound to the loopback interface.
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
 // Header keys that could pollute Object.prototype if copied onto a plain object.
 const UNSAFE_HEADER_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
@@ -84,6 +87,17 @@ function sanitizeHeaders(headers: http.IncomingHttpHeaders): http.OutgoingHttpHe
   return clean;
 }
 
+// Error responses never echo the request or an upstream error string back to
+// the caller: the body is a fixed code, sent as JSON with nosniff so it can
+// never be rendered as HTML in the renderer's origin.
+function sendError(res: http.ServerResponse, status: number, code: string): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.end(JSON.stringify({ error: code }));
+}
+
 async function serveStatic(
   webRoot: string,
   reqUrl: string,
@@ -93,7 +107,7 @@ async function serveStatic(
   const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   let filePath = path.join(webRoot, safePath);
   if (!filePath.startsWith(path.resolve(webRoot))) {
-    res.writeHead(403).end("Forbidden");
+    sendError(res, 403, "forbidden");
     return;
   }
 
@@ -111,6 +125,7 @@ async function serveStatic(
   const headers: http.OutgoingHttpHeaders = {
     "Content-Type": MIME_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
     "Content-Length": body.length,
+    "X-Content-Type-Options": "nosniff",
   };
   // Hashed bundle assets are immutable, mirroring the nginx config
   if (pathname.startsWith("/assets/")) {
@@ -125,8 +140,7 @@ function proxyRequest(gateway: URL, req: http.IncomingMessage, res: http.ServerR
   try {
     target = forwardTarget(gateway, req.url);
   } catch {
-    res.writeHead(400, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "bad_request" }));
+    sendError(res, 400, "bad_request");
     return;
   }
   const proxyReq = transport.request(
@@ -146,8 +160,8 @@ function proxyRequest(gateway: URL, req: http.IncomingMessage, res: http.ServerR
     }
   );
   proxyReq.on("error", (err) => {
-    res.writeHead(502, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "bad_gateway", message: err.message }));
+    console.warn(`[desktop] proxy request failed: ${err.message}`);
+    sendError(res, 502, "bad_gateway");
   });
   req.pipe(proxyReq);
 }
@@ -218,12 +232,25 @@ export async function startAppServer(options: AppServerOptions): Promise<AppServ
   const host = options.host ?? "127.0.0.1";
   const gateway = new URL(gatewayUrl);
 
+  // This listener is plain HTTP on purpose: it exists only so the renderer can
+  // talk to a same-origin server inside the desktop shell, and it is bound to
+  // the loopback interface, so traffic never leaves the machine. Refusing any
+  // other bind address keeps it that way - a non-loopback bind would expose
+  // unencrypted traffic (and the gateway proxy) to the local network, and would
+  // need TLS or a TLS-terminating proxy in front of it instead.
+  if (!LOOPBACK_HOSTS.has(host)) {
+    throw new Error(
+      `refusing to bind the cleartext desktop server to non-loopback host: ${host}`
+    );
+  }
+
   const server = http.createServer((req, res) => {
     if (req.url && isApiPath(req.url)) {
       proxyRequest(gateway, req, res);
     } else {
-      serveStatic(webRoot, req.url ?? "/", res).catch((err) => {
-        res.writeHead(500).end(`Internal error: ${err.message}`);
+      serveStatic(webRoot, req.url ?? "/", res).catch((err: Error) => {
+        console.error(`[desktop] static request failed: ${err.message}`);
+        sendError(res, 500, "internal_error");
       });
     }
   });

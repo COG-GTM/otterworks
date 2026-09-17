@@ -61,6 +61,20 @@ export function generateColor(seed: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// Restrict a URL that ends up in an anchor's href to the http(s) schemes.
+// Anything else - `javascript:`, `data:`, `vbscript:` - executes in the app's
+// origin when the link is clicked, so it is rejected rather than rendered.
+export function safeHttpUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 export function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength - 3) + "...";
