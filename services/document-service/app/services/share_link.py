@@ -7,6 +7,7 @@ replica can validate a link without a shared lookup table.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import os
 
 import structlog
@@ -14,6 +15,7 @@ import structlog
 logger = structlog.get_logger()
 
 TOKEN_LENGTH = 16
+DEFAULT_SECRET = "otterworks-share-secret"
 
 
 class ShareLinkService:
@@ -21,20 +23,21 @@ class ShareLinkService:
 
     def __init__(self, salt: str | None = None):
         self.salt = salt or os.environ.get("SHARE_LINK_SALT", "otterworks-share")
+        self.secret = os.environ.get("SHARE_LINK_SECRET", DEFAULT_SECRET)
 
     def mint_token(self, document_id: str) -> str:
         """Return the share token for a document."""
-        # Unkeyed MD5 is the OW-SEC-403 lab fixture (see
-        # security/equivalence/findings.yaml); the refactor replaces it with a
-        # keyed MAC and removes this suppression.
-        # nosemgrep: python.lang.security.insecure-hash-algorithms-md5.insecure-hash-algorithm-md5
-        digest = hashlib.md5(f"{document_id}:{self.salt}".encode()).hexdigest()
+        digest = hmac.new(
+            self.secret.encode(),
+            f"{document_id}:{self.salt}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
         return digest[:TOKEN_LENGTH]
 
     def verify_token(self, document_id: str, token: str) -> bool:
         """Return True when the token is a valid share token for the document."""
         expected = self.mint_token(document_id)
-        ok = expected == token
+        ok = hmac.compare_digest(expected, token or "")
         if not ok:
             logger.info("share_token_rejected", document_id=document_id)
         return ok
