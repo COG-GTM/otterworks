@@ -10,10 +10,59 @@ locals {
   }
 }
 
+# --- Event Encryption Key ---
+
+resource "aws_kms_key" "events" {
+  description             = "${var.project} SNS event topic encryption (${var.environment})"
+  enable_key_rotation     = true
+  deletion_window_in_days = var.kms_key_deletion_window
+  policy                  = data.aws_iam_policy_document.events_key.json
+
+  tags = merge(local.common_tags, {
+    Service = "shared-events"
+  })
+}
+
+resource "aws_kms_alias" "events" {
+  name          = "alias/${var.project}-events-${var.environment}"
+  target_key_id = aws_kms_key.events.key_id
+}
+
+data "aws_caller_identity" "current" {}
+
+# SNS encrypts the message itself, but the SQS subscribers are delivered to by
+# the SNS service principal, which therefore needs the key as well.
+data "aws_iam_policy_document" "events_key" {
+  statement {
+    sid       = "AccountAdmin"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid       = "AllowSNS"
+    effect    = "Allow"
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["sns.amazonaws.com"]
+    }
+  }
+}
+
 # --- SNS Topic: System Events ---
 
 resource "aws_sns_topic" "events" {
-  name = "${var.project}-events-${var.environment}"
+  name              = "${var.project}-events-${var.environment}"
+  kms_master_key_id = aws_kms_key.events.id
 
   tags = merge(local.common_tags, {
     Service = "shared-events"

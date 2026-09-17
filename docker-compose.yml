@@ -51,8 +51,8 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     container_name: otterworks-auth-service
-    ports:
-    - 8081:8081
+    expose:
+    - "8081"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -93,8 +93,8 @@ services:
       context: ./services/file-service
       dockerfile: Dockerfile
     container_name: otterworks-file-service
-    ports:
-    - 8082:8082
+    expose:
+    - "8082"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -147,8 +147,8 @@ services:
       context: ./services/document-service
       dockerfile: Dockerfile
     container_name: otterworks-document-service
-    ports:
-    - 8083:8083
+    expose:
+    - "8083"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -230,8 +230,8 @@ services:
       context: ./services/notification-service
       dockerfile: Dockerfile
     container_name: otterworks-notification-service
-    ports:
-    - 8086:8086
+    expose:
+    - "8086"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -283,8 +283,8 @@ services:
       context: ./services/search-service
       dockerfile: Dockerfile
     container_name: otterworks-search-service
-    ports:
-    - 8087:8087
+    expose:
+    - "8087"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -325,8 +325,8 @@ services:
       context: ./services/analytics-service
       dockerfile: Dockerfile
     container_name: otterworks-analytics-service
-    ports:
-    - 8088:8088
+    expose:
+    - "8088"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -367,8 +367,8 @@ services:
       context: ./services/admin-service
       dockerfile: Dockerfile
     container_name: otterworks-admin-service
-    ports:
-    - 8089:8089
+    expose:
+    - "8089"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -422,8 +422,8 @@ services:
       context: ./services/report-service
       dockerfile: Dockerfile
     container_name: otterworks-report-service
-    ports:
-    - 8091:8091
+    expose:
+    - "8091"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
@@ -470,8 +470,8 @@ services:
       context: ./services/audit-service
       dockerfile: Dockerfile
     container_name: otterworks-audit-service
-    ports:
-    - 8090:8090
+    expose:
+    - "8090"
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test

@@ -34,10 +34,11 @@ resource "aws_security_group" "redis" {
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "Replication and health traffic within the VPC"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_cidr_blocks
   }
 
   tags = merge(local.common_tags, {
@@ -58,6 +59,7 @@ resource "aws_elasticache_replication_group" "main" {
 
   at_rest_encryption_enabled = true
   transit_encryption_enabled = var.redis_transit_encryption_enabled
+  auth_token                 = var.redis_auth_token != "" ? var.redis_auth_token : null
   automatic_failover_enabled = var.redis_num_cache_clusters > 1
   apply_immediately          = var.redis_apply_immediately
 

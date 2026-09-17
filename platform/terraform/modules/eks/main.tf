@@ -43,19 +43,46 @@ resource "aws_iam_role_policy_attachment" "cluster_vpc_controller" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
 }
 
+# --- Secrets Envelope Encryption Key ---
+
+resource "aws_kms_key" "secrets" {
+  description             = "${var.cluster_name} EKS secrets envelope encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = var.kms_key_deletion_window
+
+  tags = merge(local.common_tags, {
+    Component = "eks-secrets"
+  })
+}
+
+resource "aws_kms_alias" "secrets" {
+  name          = "alias/${var.cluster_name}-secrets"
+  target_key_id = aws_kms_key.secrets.key_id
+}
+
 # --- EKS Cluster ---
 
-resource "aws_eks_cluster" "main" { # nosemgrep: terraform.lang.security.eks-public-endpoint-enabled.eks-public-endpoint-enabled
+resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   version  = var.cluster_version
   role_arn = aws_iam_role.cluster.arn
 
-  enabled_cluster_log_types = ["api", "audit", "authenticator"]
+  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.secrets.arn
+    }
+    resources = ["secrets"]
+  }
+
+  # The public endpoint is only reachable from the CIDRs the operator lists.
+  # An empty list keeps the API server private to the VPC entirely.
   vpc_config {
     subnet_ids              = concat(var.public_subnet_ids, var.private_subnet_ids)
     endpoint_private_access = true
-    endpoint_public_access  = true
+    endpoint_public_access  = length(var.cluster_endpoint_public_access_cidrs) > 0
+    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
   }
 
   tags = merge(local.common_tags, {

@@ -25,10 +25,13 @@ resource "aws_security_group" "meilisearch" {
     cidr_blocks = [var.vpc_cidr]
   }
 
+  # Fargate pulls the image and ships logs and secret lookups over TLS; nothing
+  # else leaves the task.
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "HTTPS to AWS APIs and the image registry"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -73,6 +76,11 @@ resource "aws_iam_role_policy" "ecs_secrets_access" {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = [aws_secretsmanager_secret.meilisearch_master_key[0].arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = [aws_kms_key.search[0].arn]
       }
     ]
   })
@@ -80,10 +88,28 @@ resource "aws_iam_role_policy" "ecs_secrets_access" {
 
 # --- Secrets Manager ---
 
+resource "aws_kms_key" "search" {
+  count                   = var.meilisearch_master_key != "" ? 1 : 0
+  description             = "${var.project} MeiliSearch secret encryption (${var.environment})"
+  enable_key_rotation     = true
+  deletion_window_in_days = var.kms_key_deletion_window
+
+  tags = merge(local.common_tags, {
+    Service = "search-service"
+  })
+}
+
+resource "aws_kms_alias" "search" {
+  count         = var.meilisearch_master_key != "" ? 1 : 0
+  name          = "alias/${var.project}-search-${var.environment}"
+  target_key_id = aws_kms_key.search[0].key_id
+}
+
 resource "aws_secretsmanager_secret" "meilisearch_master_key" {
   count       = var.meilisearch_master_key != "" ? 1 : 0
   name        = "${var.project}/${var.environment}/meilisearch-master-key"
   description = "MeiliSearch master key for ${var.environment}"
+  kms_key_id  = aws_kms_key.search[0].arn
 
   tags = merge(local.common_tags, {
     Service = "search-service"
@@ -101,6 +127,11 @@ resource "aws_secretsmanager_secret_version" "meilisearch_master_key" {
 resource "aws_ecs_cluster" "meilisearch" {
   name = "${var.project}-meilisearch-${var.environment}"
 
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
+
   tags = merge(local.common_tags, {
     Service = "search-service"
   })
@@ -108,9 +139,60 @@ resource "aws_ecs_cluster" "meilisearch" {
 
 # --- CloudWatch Log Group ---
 
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "logs_key" {
+  statement {
+    sid       = "AccountAdmin"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid    = "AllowCloudWatchLogs"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt*",
+      "kms:Decrypt*",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:Describe*",
+    ]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_kms_key" "logs" {
+  description             = "${var.project} MeiliSearch log encryption (${var.environment})"
+  enable_key_rotation     = true
+  deletion_window_in_days = var.kms_key_deletion_window
+  policy                  = data.aws_iam_policy_document.logs_key.json
+
+  tags = merge(local.common_tags, {
+    Service = "search-service"
+  })
+}
+
+resource "aws_kms_alias" "logs" {
+  name          = "alias/${var.project}-search-logs-${var.environment}"
+  target_key_id = aws_kms_key.logs.key_id
+}
+
 resource "aws_cloudwatch_log_group" "meilisearch" {
   name              = "/ecs/${var.project}-meilisearch-${var.environment}"
   retention_in_days = 30
+  kms_key_id        = aws_kms_key.logs.arn
 
   tags = local.common_tags
 }

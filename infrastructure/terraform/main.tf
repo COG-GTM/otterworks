@@ -190,6 +190,11 @@ module "irsa" {
             "${module.database.file_shares_table_arn}/index/*",
           ]
         },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
+        },
       ]
     })
 
@@ -211,6 +216,11 @@ module "irsa" {
           Effect   = "Allow"
           Action   = ["sns:Publish"]
           Resource = [module.messaging.events_topic_arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.messaging.events_kms_key_arn]
         },
       ]
     })
@@ -238,6 +248,11 @@ module "irsa" {
             module.database.notifications_table_arn,
             "${module.database.notifications_table_arn}/index/*",
           ]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
         },
         {
           Effect   = "Allow"
@@ -318,6 +333,11 @@ module "irsa" {
           ]
         },
         {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
+        },
+        {
           Effect = "Allow"
           Action = [
             "s3:PutObject",
@@ -377,6 +397,11 @@ module "irsa" {
           Action   = ["sns:Publish"]
           Resource = [module.messaging.events_topic_arn]
         },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.messaging.events_kms_key_arn]
+        },
       ]
     })
 
@@ -387,6 +412,11 @@ module "irsa" {
           Effect   = "Allow"
           Action   = ["sns:Publish"]
           Resource = [module.messaging.events_topic_arn]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.messaging.events_kms_key_arn]
         },
       ]
     })

@@ -17,3 +17,9 @@ variable "project" {
     error_message = "Project name must be lowercase alphanumeric with hyphens, 2-21 characters."
   }
 }
+
+variable "access_log_retention_days" {
+  description = "Days to keep S3 server access logs before expiring them"
+  type        = number
+  default     = 90
+}

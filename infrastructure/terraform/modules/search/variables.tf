@@ -51,3 +51,9 @@ variable "vpc_cidr" {
   description = "VPC CIDR block for security group ingress rules"
   type        = string
 }
+
+variable "kms_key_deletion_window" {
+  description = "Waiting period in days before a scheduled KMS key deletion takes effect"
+  type        = number
+  default     = 30
+}

@@ -67,3 +67,8 @@ output "file_shares_table_arn" {
   description = "DynamoDB table ARN for file shares"
   value       = aws_dynamodb_table.file_shares.arn
 }
+
+output "dynamodb_kms_key_arn" {
+  description = "ARN of the customer managed key encrypting the DynamoDB tables"
+  value       = aws_kms_key.dynamodb.arn
+}
