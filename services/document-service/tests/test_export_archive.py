@@ -28,6 +28,38 @@ def test_missing_export_raises(archive):
         archive.read_export("absent.md")
 
 
+def test_traversal_outside_archive_raises(archive, tmp_path):
+    (tmp_path.parent / "tenant-secrets.env").write_text(
+        "SUPPLIER_API_KEY=secret\n", encoding="utf-8"
+    )
+    with pytest.raises(FileNotFoundError):
+        archive.read_export(f"../{tmp_path.parent.name}/tenant-secrets.env")
+
+
+def test_absolute_path_outside_archive_raises(archive, tmp_path):
+    outside = tmp_path.parent / "absolute-secrets.env"
+    outside.write_text("SUPPLIER_API_KEY=secret\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        archive.read_export(str(outside))
+
+
+@pytest.mark.asyncio
+async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path):
+    root = tmp_path / "archive"
+    root.mkdir()
+    (tmp_path / "tenant-secrets.env").write_text(
+        "SUPPLIER_API_KEY=secret\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(root))
+
+    resp = await client.get(
+        "/api/v1/documents/exports", params={"name": "../tenant-secrets.env"}
+    )
+
+    assert resp.status_code == 404
+    assert "SUPPLIER_API_KEY" not in resp.text
+
+
 @pytest.mark.asyncio
 async def test_export_endpoint_serves_archived_file(client, monkeypatch, tmp_path):
     (tmp_path / "report.md").write_text("# Report\n", encoding="utf-8")
