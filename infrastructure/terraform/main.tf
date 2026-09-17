@@ -190,6 +190,11 @@ module "irsa" {
             "${module.database.file_shares_table_arn}/index/*",
           ]
         },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
+        },
       ]
     })
 
@@ -243,6 +248,11 @@ module "irsa" {
             module.database.notifications_table_arn,
             "${module.database.notifications_table_arn}/index/*",
           ]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
         },
         {
           Effect   = "Allow"
@@ -321,6 +331,11 @@ module "irsa" {
             module.database.audit_events_table_arn,
             "${module.database.audit_events_table_arn}/index/*",
           ]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+          Resource = [module.database.dynamodb_kms_key_arn]
         },
         {
           Effect = "Allow"
