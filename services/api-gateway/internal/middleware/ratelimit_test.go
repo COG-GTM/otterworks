@@ -68,6 +68,71 @@ func TestRateLimiter_Handler(t *testing.T) {
 	assert.Equal(t, "1", rec.Header().Get("Retry-After"))
 }
 
+func TestCredentialThrottle_LimitsFailedLogins(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	handler := CredentialThrottle(rl, "/api/v1/auth/login")(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+
+	login := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for i := 0; i < 3; i++ {
+		assert.Equal(t, http.StatusUnauthorized, login().Code, "attempt %d should reach the backend", i+1)
+	}
+
+	rec := login()
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.Equal(t, "6", rec.Header().Get("Retry-After"))
+}
+
+func TestCredentialThrottle_SuccessfulLoginsAreNotThrottled(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	handler := CredentialThrottle(rl, "/api/v1/auth/login")(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code, "successful login %d should not be throttled", i+1)
+	}
+}
+
+func TestCredentialThrottle_OtherPathsUnaffected(t *testing.T) {
+	rl := NewBurstRateLimiter(10.0/60, 1)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	handler := CredentialThrottle(rl, "/api/v1/auth/login")(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+
+	for i := 0; i < 5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		req.RemoteAddr = "192.168.1.1:12345"
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, "request %d should pass through", i+1)
+	}
+}
+
 func TestExtractIP(t *testing.T) {
 	tests := []struct {
 		name       string

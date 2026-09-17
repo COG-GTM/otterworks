@@ -28,6 +28,10 @@ type Config struct {
 	// Rate limiting
 	RateLimitRPS int
 
+	// Credential guessing throttle (applies to failed logins only)
+	LoginFailuresPerMinute int
+	LoginFailureBurst      int
+
 	// JWT
 	JWTSecret string
 
@@ -41,10 +45,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -73,6 +77,9 @@ func Load() *Config {
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
 		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+
+		LoginFailuresPerMinute: getEnvInt("LOGIN_FAILURES_PER_MINUTE", 10),
+		LoginFailureBurst:      getEnvInt("LOGIN_FAILURE_BURST", 5),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
