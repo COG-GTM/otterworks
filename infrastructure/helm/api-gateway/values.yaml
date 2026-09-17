@@ -50,8 +50,8 @@ monitoring:
   path: /metrics
   port: 9090
 
+# METRICS_PORT is rendered from service.metricsPort by the Deployment.
 env:
-  METRICS_PORT: "9090"
   AUTH_SERVICE_URL: "http://auth-service:8081"
   FILE_SERVICE_URL: "http://file-service:8082"
   DOCUMENT_SERVICE_URL: "http://document-service:8083"

@@ -148,7 +148,7 @@ func main() {
 	go func() {
 		logger.Info().Str("port", cfg.MetricsPort).Msg("metrics listener starting")
 		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("metrics listener failed")
+			logger.Fatal().Err(err).Msg("metrics listener failed")
 		}
 	}()
 
@@ -161,12 +161,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
-	if err := metricsSrv.Shutdown(ctx); err != nil {
-		logger.Error().Err(err).Msg("metrics listener forced to shutdown")
-	}
-
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("server forced to shutdown")
+	}
+
+	if err := metricsSrv.Shutdown(ctx); err != nil {
+		logger.Error().Err(err).Msg("metrics listener forced to shutdown")
 	}
 
 	if shutdownTracer != nil {
