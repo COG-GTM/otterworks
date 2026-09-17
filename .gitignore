@@ -93,6 +93,8 @@ security/equivalence/reports/
 procs/reports/
 # dependency remediation harness output (inventory, gate, transcript grading)
 security/deps/reports/
+# software-composition scan output (per-ecosystem findings vs the baseline)
+security/sca/reports/
 
 # Python generated environments and caches
 .venv/

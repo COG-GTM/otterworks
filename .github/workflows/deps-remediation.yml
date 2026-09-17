@@ -1,22 +1,16 @@
 name: Dependency remediation gate
 
+# Unfiltered on purpose: the advisory gate is continuous coverage, so it has to
+# reach a verdict on every change rather than only on the modules that happen to
+# be in the diff. A dependency estate is reachable from build files the path
+# filter never listed.
 on:
   push:
-    paths:
-      - "security/deps/**"
-      - "services/report-service/**"
-      - "services/legacy-portal/**"
-      - "services/notification-service/**"
-      - "services/auth-service/**"
-      - "Makefile"
+    branches: [main]
   pull_request:
-    paths:
-      - "security/deps/**"
-      - "services/report-service/**"
-      - "services/legacy-portal/**"
-      - "services/notification-service/**"
-      - "services/auth-service/**"
-      - "Makefile"
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
   deps:
@@ -71,6 +65,16 @@ jobs:
             echo "::error::the advisory gate was inconclusive (exit $gate); refusing to grade"
             exit "$gate"
           fi
+      # The gate as a gate, separate from the branch above: `make deps-gate` is red
+      # exactly while the vulnerable version is reachable, which is the state this
+      # step exists to keep visible after the transcript grading has passed.
+      #
+      # WARN-MODE: the advisory is still open on the modules in
+      # security/deps/modules.yaml. Delete the `continue-on-error` line to make it
+      # blocking once the upgrade lands.
+      - name: Gate on the advisory
+        continue-on-error: true
+        run: make deps-gate
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

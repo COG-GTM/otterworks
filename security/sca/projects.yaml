@@ -1,0 +1,160 @@
+# Every dependency manifest in the repository, the ecosystem it belongs to, and
+# the scanner that measures it.
+#
+# Discovery cross-checks this registry against the manifests on disk: a manifest
+# that is neither registered here nor listed under `exempt` makes the gate
+# inconclusive (exit 2), so a service added tomorrow cannot be silently left
+# unscanned.
+#
+# `java_home` and `tool` are candidate lists, most-pinned first, with the same
+# semantics as security/deps/modules.yaml: the first that exists (or can start)
+# wins and is named in the report; a project whose candidates are all absent is
+# reported `unmeasured`, never `clean`.
+
+ecosystems:
+  # Reachability-aware: govulncheck reports which advisories the code actually
+  # calls, so the report distinguishes a called vulnerability from a merely
+  # present one. Consumes no Snyk quota.
+  go:
+    scanner: govulncheck
+    manifest: go.mod
+    projects:
+      - id: api-gateway
+        path: services/api-gateway
+
+  # cargo-audit reads Cargo.lock against the RustSec database — no build, no quota.
+  rust:
+    scanner: cargo-audit
+    manifest: Cargo.toml
+    projects:
+      - id: file-service
+        path: services/file-service
+
+  # pip-audit reads a requirements file against PyPI/OSV. A project that pins
+  # through a lock file is resolved from it first: `lockfile` is read directly
+  # (poetry.lock), `export` shells out to the package manager and captures stdout.
+  # `args` passes scanner flags for a project whose tree cannot be resolved in CI.
+  python:
+    scanner: pip-audit
+    manifest: pyproject.toml|requirements*.txt
+    projects:
+      - id: document-service
+        path: services/document-service
+        lockfile: poetry.lock
+        args: --no-deps
+      - id: billing-service
+        path: services/billing-service
+        export: uv export --frozen --no-hashes --no-emit-project --format requirements-txt
+      - id: search-service
+        path: services/search-service
+        requirements:
+          - requirements.txt
+          - requirements-dev.txt
+      - id: etl
+        path: etl
+        # pip-audit resolves a requirements file by dry-run installing it, and
+        # pandas 1.3.5 has no wheel for the CI interpreter, so resolution dies in
+        # a source build. The pins go straight to OSV instead: same database,
+        # direct dependencies only.
+        resolver: osv
+        requirements:
+          - requirements.txt
+      - id: api-tests
+        path: tests/api
+        requirements:
+          - requirements.txt
+      - id: testdata-harness
+        path: testdata/harness
+        requirements:
+          - requirements.txt
+
+  # No JVM build system publishes a lock file here, so the coordinates come from
+  # the module's own build tool and are queried against OSV in one batch. Same
+  # reason as the deps harness: a resolved tree is the only honest blast radius.
+  jvm:
+    scanner: osv
+    manifest: pom.xml|build.gradle|build.gradle.kts|build.sbt
+    projects:
+      - id: report-service
+        path: services/report-service
+        build: maven
+        java_home:
+          - $JAVA_HOME_11_X64
+          - /usr/lib/jvm/java-11-openjdk-amd64
+      - id: legacy-portal
+        path: services/legacy-portal
+        build: maven
+        tool:
+          - ./mvnw
+          - mvn
+        java_home:
+          - $JAVA_HOME_11_X64
+          - /usr/lib/jvm/java-11-openjdk-amd64
+      - id: auth-service
+        path: services/auth-service
+        build: gradle
+        # `gradle` first: the checked-in wrapper has no gradle-wrapper.jar, so
+        # ./gradlew cannot bootstrap itself.
+        tool:
+          - gradle
+          - ./gradlew
+        java_home:
+          - $JAVA_HOME_17_X64
+          - /usr/lib/jvm/java-17-openjdk-amd64
+      - id: notification-service
+        path: services/notification-service
+        build: gradle
+        java_home:
+          - $JAVA_HOME_17_X64
+          - /usr/lib/jvm/java-17-openjdk-amd64
+      - id: analytics-service
+        path: services/analytics-service
+        build: sbt
+        java_home:
+          - $JAVA_HOME_17_X64
+          - /usr/lib/jvm/java-17-openjdk-amd64
+
+  # `npm audit` against the checked-in lock file. The CI gate additionally runs
+  # `npm audit --audit-level=high` verbatim; this registry is what puts the same
+  # advisories under the baseline diff.
+  npm:
+    scanner: npm-audit
+    manifest: package-lock.json
+    projects:
+      - id: collab-service
+        path: services/collab-service
+      - id: client-app
+        path: frontend/client-app
+      - id: client-app-desktop
+        path: frontend/client-app/desktop
+      - id: admin-dashboard
+        path: frontend/admin-dashboard
+      - id: demo-platform-dashboard
+        path: demo-platform/dashboard
+
+exempt:
+  - path: frontend/client-app/mobile/android
+    reason: >
+      Capacitor Android shell: ships no server-side JVM dependencies and needs the
+      Android SDK to resolve, which no CI image here carries. Same exemption the
+      dependency harness records in security/deps/modules.yaml.
+  - path: testdata/generated/retail-drive
+    reason: >
+      Generated fixture data, not a deployed component; its requirements file is
+      regenerated by the test-data harness.
+  - path: services/admin-service
+    reason: >
+      Ruby (Bundler). No scanner wired yet — bundler-audit is the candidate; until
+      it is, this is a declared gap rather than a silent one.
+  - path: services/audit-service
+    reason: >
+      .NET (NuGet). No scanner wired yet — `dotnet list package --vulnerable` is
+      the candidate; until it is, this is a declared gap rather than a silent one.
+  - path: services/legacy-billing/app
+    reason: >
+      Runs only inside the stored-procedure demo compose stack, which is never
+      deployed to a tenant; its requirements file pins the fixture's own client.
+  - path: clients/windows-desktop
+    reason: >
+      .NET desktop client, built outside this repository's CI. Same NuGet gap as
+      audit-service.

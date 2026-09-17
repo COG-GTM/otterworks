@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test sca-list sca-scan sca-baseline sca-command eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record eq-command
 
 SHELL := /bin/bash
 
@@ -380,6 +380,30 @@ deps-record: ## Record the transcripts as the reference evidence (REASON="..." r
 	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make deps-record REASON="baseline on commons-text 1.9"' >&2; exit 2)
 	$(DEPS) transcript --record --reason "$(REASON)" $(if $(MODULE),--module $(MODULE),) $(if $(ALLOW_RERECORD),--allow-rerecord,)
 
+# --- Software composition analysis (every ecosystem) ---
+#
+# security/sca/projects.yaml registers every dependency manifest in the repo and
+# the scanner that measures it; a manifest that is neither registered nor exempt
+# makes the gate inconclusive, so a new service cannot land unscanned. Every
+# scanner reads a local manifest or resolved tree against a public advisory
+# database, so a full run consumes no Snyk private tests. Reports land in
+# security/sca/reports/ (git-ignored: collect them as CI artifacts).
+
+SCA := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 security/sca/harness/sca_scan.py
+
+sca-list: ## List the registered dependency manifests and which scanners this machine has
+	$(SCA) list
+
+sca-scan: ## Fail if a dependency advisory outside the baseline is reachable (ECOSYSTEM=<go|rust|python|jvm|npm>)
+	$(SCA) scan --ecosystem $(or $(ECOSYSTEM),all) $(if $(PROJECT),--project $(PROJECT),) $(if $(ALLOW_UNMEASURED),--allow-unmeasured,)
+
+sca-command: ## Print the harness invocation, for callers that need its exact exit code
+	@echo '$(SCA)'
+
+sca-baseline: ## Record the last full scan as the accepted finding set (REASON="..." required)
+	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make sca-baseline REASON="findings open at the coverage-wiring commit"' >&2; exit 2)
+	$(SCA) baseline --reason "$(REASON)" $(if $(ALLOW_UNMEASURED),--allow-unmeasured,)
+
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test
 
@@ -425,6 +449,9 @@ eq-exploit-refactored: ## Require a closed exploit verdict from every finding wh
 
 eq-tests: ## Run the affected module's own suite against the recorded pass list
 	$(EQ) tests $(if $(FINDING),--finding $(FINDING),)
+
+eq-command: ## Print the harness invocation, for callers that need its exact exit code
+	@echo '$(EQ)'
 
 eq-record: ## Record the before-state as the reference evidence (REASON="..." required)
 	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make eq-record REASON="baseline before OW-SEC-401 refactor"' >&2; exit 2)

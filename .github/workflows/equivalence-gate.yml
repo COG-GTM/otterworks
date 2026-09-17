@@ -1,16 +1,14 @@
 name: Functional-equivalence gate
 
+# Unfiltered on purpose: continuous coverage means every change is graded against
+# the registered findings, not only the ones that touch the subject module.
 on:
   push:
-    paths:
-      - "security/equivalence/**"
-      - "services/document-service/**"
-      - "Makefile"
+    branches: [main]
   pull_request:
-    paths:
-      - "security/equivalence/**"
-      - "services/document-service/**"
-      - "Makefile"
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
   equivalence:
@@ -44,6 +42,28 @@ jobs:
       # The module suite is a regression gate against the pass list recorded with
       # the evidence, so a test that used to pass cannot be deleted to go green.
       - run: make eq-tests
+      # The remediation verdict itself: a refactored subject must keep every
+      # contract case byte-identical and stop its attack cases firing.
+      - name: Verify the remediated state
+        run: |
+          # Through the harness, not `make eq-verify`: make reports its own exit 2
+          # for any failed recipe, which would make a real divergence (1) or a
+          # missing exploit verdict (3) indistinguishable from "nothing measured".
+          eq=$(make -s eq-command)
+          set +e
+          $eq grade --stage remediated
+          verify=$?
+          set -e
+          # 2 is "no verdict": every registered subject is still in its recorded
+          # before-state, so there is no refactor to verify. eq-gate above has
+          # already required that before-state to reproduce exactly, so this is
+          # the one code that is not a failure here.
+          if [ "$verify" -eq 2 ]; then
+            echo "::notice::no registered subject has been refactored yet, so there is" \
+                 "no remediated state to verify"
+            exit 0
+          fi
+          exit "$verify"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

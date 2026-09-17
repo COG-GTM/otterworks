@@ -3,11 +3,12 @@ name: DAST Scan
 # Dynamic application security testing: stand the app up, attack it through the
 # API gateway, and gate on findings that this change introduced.
 #
-#   pull_request  -> informational. The golden app deliberately keeps planted vulnerabilities
-#                    (see AGENTS.md) and security/dast/baseline.json is empty, so the suite
-#                    reports into the job summary rather than failing every PR. Populate the
-#                    baseline (make dast-baseline REASON="...") to turn this into a real gate
-#                    on newly introduced findings, and drop continue-on-error below.
+#   pull_request  -> the whole 13-service stack is stood up and attacked through the gateway.
+#                    Route coverage is a hard gate: a route the suite never requested fails
+#                    the job. The findings gate reads the empty security/dast/baseline.json,
+#                    so every finding counts — it is warn-mode only while the planted
+#                    vulnerabilities are being remediated (see WARN-MODE below), never
+#                    because findings are acceptable.
 #   schedule      -> informational. Full sweep (probes + ZAP) against the disposable tenant
 #                    named by the DAST_SWEEP_TARGET repository variable, reported in the job
 #                    summary without failing the run. The job no-ops when it is unset: a scan
@@ -50,6 +51,15 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.target == '')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      COMPOSE: docker compose -f docker-compose.infra.yml -f docker-compose.yml
+      # Every service the suite expects to grade, named once so the readiness
+      # gate below cannot drift from what was started.
+      STACK_SERVICES: >-
+        postgres redis localstack meilisearch
+        api-gateway auth-service file-service document-service collab-service
+        notification-service search-service analytics-service admin-service
+        report-service audit-service web-app admin-dashboard
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
@@ -62,11 +72,12 @@ jobs:
       - name: Unit-test the harness
         run: make dast-test
 
+      # The whole stack, not the 5-service core profile: the suite attacks what is
+      # running, so a backend that is not up reads as an inconclusive probe rather
+      # than a verdict (that is how the search tenant-leak probe went ungraded —
+      # the gateway answered 502 because no search backend was behind it).
       - name: Start the application stack
-        run: |
-          docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
-            postgres redis localstack meilisearch \
-            auth-service api-gateway document-service search-service file-service
+        run: $COMPOSE up -d --build $STACK_SERVICES
 
       - name: Wait for the API gateway
         run: |
@@ -75,12 +86,44 @@ jobs:
             sleep 5
           done
           echo "API gateway never became healthy"
-          docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50
+          $COMPOSE logs --tail=50
+          exit 1
+
+      # A backend that never came up would silently turn its probes into "the
+      # gateway returned 5xx", which is not a verdict about the service. Fail
+      # here instead, where the cause is still legible.
+      #
+      # Asked per expected service and with --all, so a container that exited or
+      # was never created is caught too: plain `docker compose ps` lists what is
+      # up, which is exactly the set that cannot report a missing service. A
+      # service that declares a health check has to pass it as well — `running`
+      # only says the process started.
+      - name: Require every service to be ready
+        run: |
+          for _ in $(seq 1 30); do
+            bad=""
+            for service in $STACK_SERVICES; do
+              read -r state health <<<"$($COMPOSE ps --all --format json "$service" \
+                | jq -rs 'flatten | "\(.[0].State // "missing") \(.[0].Health // "none")"')"
+              case "$state $health" in
+                "running none" | "running healthy") ;;
+                *) bad="$bad $service:$state/$health" ;;
+              esac
+            done
+            if [ -z "$bad" ]; then exit 0; fi
+            sleep 10
+          done
+          $COMPOSE ps --all
+          echo "::error::these services are not ready, so the suite cannot grade them:$bad"
+          $COMPOSE logs --tail=50 $(echo "$bad" | tr ' ' '\n' | cut -d: -f1 | tr '\n' ' ')
           exit 1
 
       - name: Run the DAST probe suite
         id: scan
-        continue-on-error: true # informational until baseline.json is populated — see header
+        # WARN-MODE: the baseline is empty on purpose, so every planted finding
+        # that is still open fails this step. Delete the `continue-on-error` line
+        # to make the findings gate blocking once the runtime-exploit fixes land.
+        continue-on-error: true
         env:
           # This stack was created by the step above and dies with the runner, so
           # the sweep may send a route's real POST/DELETE here. Only here: an
@@ -106,13 +149,12 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/coverage.txt
-          # Exit 2 is "there is no usable report to grade" — the scan above is
-          # continue-on-error, so a scan that never started would otherwise fail the
-          # build here as though a route had gone unattacked. Annotate and pass;
-          # only exit 1, a route the last scan never requested, is the gate.
+          # Exit 2 is "there is no usable report to grade". The scan above is
+          # warn-mode on findings but still writes a report, so 2 here means the
+          # suite did not run at all — ungraded coverage, which is exactly the
+          # state this gate exists to prevent, so it fails like any other gap.
           if [ "$status" = 2 ]; then
-            echo "::warning::route coverage was not graded: no usable scan report (see the scan step)"
-            exit 0
+            echo "::error::route coverage was not graded: the scan produced no usable report"
           fi
           # 4 is the inventory itself failing to read any route: the gate is then
           # measuring nothing, which is worse than an uncovered route, not a
