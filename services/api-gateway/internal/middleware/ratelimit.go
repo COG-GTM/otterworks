@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -84,12 +83,9 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func extractIP(r *http.Request) string {
-	// chimw.RealIP has already set r.RemoteAddr to the client IP
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	// RealIP has already resolved r.RemoteAddr to a client address the caller
+	// cannot spoof; forwarding headers must not be consulted again here.
+	return hostOnly(r.RemoteAddr)
 }
 
 // cleanup periodically removes stale buckets to prevent memory leaks.

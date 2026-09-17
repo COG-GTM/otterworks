@@ -28,6 +28,15 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 
+auth:
+  login:
+    max-failed-attempts: ${LOGIN_MAX_FAILED_ATTEMPTS:5}
+    lockout-seconds: ${LOGIN_LOCKOUT_SECONDS:60}
+    max-lockout-seconds: ${LOGIN_MAX_LOCKOUT_SECONDS:3600}
+    failure-window-seconds: ${LOGIN_FAILURE_WINDOW_SECONDS:900}
+    max-attempts-per-credential: ${LOGIN_MAX_ATTEMPTS_PER_CREDENTIAL:20}
+    credential-window-seconds: ${LOGIN_CREDENTIAL_WINDOW_SECONDS:60}
+
 jwt:
   secret: ${JWT_SECRET:dev-jwt-secret-otterworks-2024-change-in-production}
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}

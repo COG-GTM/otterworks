@@ -28,16 +28,19 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final RefreshTokenRepository refreshTokenRepository;
+  private final LoginAttemptService loginAttemptService;
 
   public AuthService(
       UserRepository userRepository,
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
-      RefreshTokenRepository refreshTokenRepository) {
+      RefreshTokenRepository refreshTokenRepository,
+      LoginAttemptService loginAttemptService) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtTokenProvider = jwtTokenProvider;
     this.refreshTokenRepository = refreshTokenRepository;
+    this.loginAttemptService = loginAttemptService;
   }
 
   @Transactional
@@ -59,15 +62,21 @@ public class AuthService {
 
   @Transactional
   public AuthResponse login(LoginRequest request) {
+    loginAttemptService.checkCredentialThrottle(request.getEmail());
+
     User user =
         userRepository
             .findByEmail(request.getEmail())
             .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
+    loginAttemptService.checkAccountLock(user);
+
     if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+      loginAttemptService.recordFailure(user);
       throw new IllegalArgumentException("Invalid credentials");
     }
 
+    loginAttemptService.recordSuccess(user);
     user.setLastLoginAt(Instant.now());
     userRepository.save(user);
 

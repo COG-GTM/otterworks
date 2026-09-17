@@ -85,7 +85,7 @@ func TestExtractIP(t *testing.T) {
 			expected:   "10.0.0.1",
 		},
 		{
-			name:       "Uses RemoteAddr set by chimw.RealIP",
+			name:       "Uses RemoteAddr resolved by RealIP",
 			remoteAddr: "203.0.113.50:1234",
 			expected:   "203.0.113.50",
 		},
