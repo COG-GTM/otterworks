@@ -1,8 +1,8 @@
 package com.otterworks.report.util;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -11,21 +11,10 @@ import java.util.Date;
 import java.util.TimeZone;
 
 /**
- * Date utility class using legacy java.util.Date and Commons Lang 2.
- *
- * LEGACY PATTERNS (multiple upgrade targets):
- * 1. java.util.Date everywhere → java.time.Instant / LocalDateTime / ZonedDateTime
- * 2. SimpleDateFormat (not thread-safe) → DateTimeFormatter (thread-safe)
- * 3. Commons Lang 2 DateUtils/DateFormatUtils → java.time API (no external dep needed)
- * 4. Calendar manipulation → java.time.temporal.ChronoUnit / Period
- * 5. Manual timezone handling → ZoneId / ZoneOffset
- *
- * This class is a prime candidate for complete rewrite during Java 8→17 migration.
+ * Date formatting and range utility methods used by report generation.
  */
 public final class ReportDateUtils {
 
-    // LEGACY: SimpleDateFormat is NOT thread-safe — shared instance is a bug
-    // in multithreaded environments. java.time.DateTimeFormatter is immutable and thread-safe.
     private static final SimpleDateFormat ISO_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
     private static final SimpleDateFormat DISPLAY_FORMAT = new SimpleDateFormat("MMM dd, yyyy HH:mm");
     private static final SimpleDateFormat FILE_NAME_FORMAT = new SimpleDateFormat("yyyyMMdd_HHmmss");
@@ -42,13 +31,11 @@ public final class ReportDateUtils {
 
     /**
      * Format a Date to ISO 8601 string.
-     * LEGACY: Uses SimpleDateFormat (not thread-safe).
      */
     public static String toIsoString(Date date) {
         if (date == null) {
             return null;
         }
-        // LEGACY: Commons Lang 2 DateFormatUtils
         return DateFormatUtils.formatUTC(date, "yyyy-MM-dd'T'HH:mm:ss'Z'");
     }
 
@@ -78,14 +65,12 @@ public final class ReportDateUtils {
 
     /**
      * Parse an ISO 8601 date string.
-     * LEGACY: Uses SimpleDateFormat parsing (brittle, not thread-safe).
      */
     public static Date parseIsoDate(String dateString) {
         if (StringUtils.isBlank(dateString)) {
             return null;
         }
         try {
-            // LEGACY: Commons Lang 2 DateUtils.parseDate
             return DateUtils.parseDate(dateString, new String[]{
                     "yyyy-MM-dd'T'HH:mm:ss'Z'",
                     "yyyy-MM-dd'T'HH:mm:ssZ",
@@ -99,7 +84,6 @@ public final class ReportDateUtils {
 
     /**
      * Get the start of today (midnight UTC).
-     * LEGACY: Calendar manipulation instead of LocalDate.atStartOfDay().
      */
     public static Date startOfToday() {
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -112,7 +96,6 @@ public final class ReportDateUtils {
 
     /**
      * Get the start of this month.
-     * LEGACY: Calendar manipulation instead of YearMonth.
      */
     public static Date startOfMonth() {
         Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
@@ -126,7 +109,6 @@ public final class ReportDateUtils {
 
     /**
      * Subtract days from a date.
-     * LEGACY: Commons Lang 2 DateUtils.addDays with negative value.
      */
     public static Date daysAgo(int days) {
         return DateUtils.addDays(new Date(), -days);
@@ -144,7 +126,6 @@ public final class ReportDateUtils {
 
     /**
      * Calculate duration between two dates in a human-readable format.
-     * LEGACY: Manual millisecond arithmetic instead of Duration.between().
      */
     public static String humanReadableDuration(Date start, Date end) {
         if (start == null || end == null) {

@@ -13,11 +13,6 @@ import java.util.List;
 
 /**
  * JPA repository for Report entities.
- *
- * LEGACY PATTERNS:
- * - Uses java.util.Date in query parameters (target: java.time.Instant)
- * - JPQL queries with positional-style named params
- * - No use of Specifications or QueryDSL for dynamic filtering
  */
 @Repository
 public interface ReportRepository extends JpaRepository<Report, Long> {
@@ -28,7 +23,6 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
 
     List<Report> findByCategoryAndStatusOrderByCreatedAtDesc(ReportCategory category, ReportStatus status);
 
-    // LEGACY: java.util.Date parameter types
     @Query("SELECT r FROM Report r WHERE r.createdAt BETWEEN :startDate AND :endDate ORDER BY r.createdAt DESC")
     List<Report> findByDateRange(@Param("startDate") Date startDate, @Param("endDate") Date endDate);
 

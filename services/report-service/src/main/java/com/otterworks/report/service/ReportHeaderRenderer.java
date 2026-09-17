@@ -15,11 +15,9 @@ import java.util.Properties;
  * Renders the operator-configurable metadata banner and footer that wrap every
  * exported report.
  *
- * LEGACY PATTERNS:
- * - Commons Text 1.9 (2020) string interpolation instead of a template engine
- * - Templates live in report-banner.properties, editable by operations without a
- *   redeploy, and are read with java.util.Properties so that the ${...} tokens are
- *   not eaten by Spring's own property placeholder resolution.
+ * Templates live in report-banner.properties, editable by operations without a
+ * redeploy, and are read with java.util.Properties so that the ${...} tokens are
+ * not eaten by Spring's own property placeholder resolution.
  *
  * The banner lines are rendered against per-report variables. The footer is an
  * operator string with no report variables, resolved against the default

@@ -14,7 +14,6 @@ public class HealthController {
 
     @GetMapping("/health")
     public Map<String, String> health() {
-        // LEGACY: Returns raw Map instead of a typed response object
         Map<String, String> response = new HashMap<>();
         response.put("status", "healthy");
         response.put("service", "report-service");

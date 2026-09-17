@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
@@ -23,14 +23,6 @@ import java.util.Optional;
 
 /**
  * Core report orchestration service.
- *
- * LEGACY PATTERNS:
- * - javax.transaction.Transactional (target: jakarta.transaction.Transactional
- *   or org.springframework.transaction.annotation.Transactional)
- * - java.util.Date throughout
- * - @Async delegated to ReportGenerationWorker (fire-and-forget, no error propagation)
- * - Manual JSON serialization for parameters
- * - Checked exceptions caught and rethrown as generic RuntimeException
  */
 @Service
 public class ReportService {
@@ -63,7 +55,7 @@ public class ReportService {
         report.setReportType(request.getReportType());
         report.setRequestedBy(request.getRequestedBy());
         report.setStatus(ReportStatus.PENDING);
-        report.setCreatedAt(new Date()); // LEGACY: new Date() instead of Instant.now()
+        report.setCreatedAt(new Date());
 
         // Default date range: last 30 days
         report.setDateFrom(request.getDateFrom() != null ? request.getDateFrom() : ReportDateUtils.daysAgo(30));
@@ -84,7 +76,6 @@ public class ReportService {
 
         // Defer async generation until after @Transactional commit so the worker thread
         // can see the persisted report (avoids race where findById returns empty).
-        // LEGACY: TransactionSynchronization callback — modern approach uses @TransactionalEventListener.
         final Long reportId = saved.getId();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override

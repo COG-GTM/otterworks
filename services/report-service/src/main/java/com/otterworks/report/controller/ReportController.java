@@ -5,11 +5,11 @@ import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportResponse;
 import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.service.ReportService;
-import io.swagger.annotations.Api;
-import io.swagger.annotations.ApiOperation;
-import io.swagger.annotations.ApiParam;
-import io.swagger.annotations.ApiResponse;
-import io.swagger.annotations.ApiResponses;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -39,19 +39,10 @@ import java.util.stream.Collectors;
 
 /**
  * REST controller for report management.
- *
- * LEGACY PATTERNS:
- * - SpringFox @Api / @ApiOperation / @ApiResponse annotations
- *   (target: springdoc @Tag / @Operation / @ApiResponse from io.swagger.v3)
- * - javax.validation.Valid (target: jakarta.validation.Valid)
- * - Commons IO FileUtils for file reading (target: Files.readAllBytes or streaming)
- * - ByteArrayResource loads entire file into memory (target: InputStreamResource for streaming)
- * - No pagination on list endpoint
- * - Manual response mapping without MapStruct or similar
  */
 @RestController
 @RequestMapping("/api/v1/reports")
-@Api(tags = "Reports", description = "Report generation and management")
+@Tag(name = "Reports", description = "Report generation and management")
 public class ReportController {
 
     private static final Logger logger = LoggerFactory.getLogger(ReportController.class);
@@ -63,10 +54,10 @@ public class ReportController {
     }
 
     @PostMapping
-    @ApiOperation(value = "Create a new report", notes = "Submits a report generation request. The report is generated asynchronously.")
+    @Operation(summary = "Create a new report", description = "Submits a report generation request. The report is generated asynchronously.")
     @ApiResponses({
-            @ApiResponse(code = 202, message = "Report request accepted"),
-            @ApiResponse(code = 400, message = "Invalid request")
+            @ApiResponse(responseCode = "202", description = "Report request accepted"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
     })
     public ResponseEntity<ReportResponse> createReport(
             @Valid @RequestBody ReportRequest request) {
@@ -81,28 +72,28 @@ public class ReportController {
     }
 
     @GetMapping("/{id}")
-    @ApiOperation(value = "Get report by ID", notes = "Returns the report metadata and status")
+    @Operation(summary = "Get report by ID", description = "Returns the report metadata and status")
     @ApiResponses({
-            @ApiResponse(code = 200, message = "Report found"),
-            @ApiResponse(code = 404, message = "Report not found")
+            @ApiResponse(responseCode = "200", description = "Report found"),
+            @ApiResponse(responseCode = "404", description = "Report not found")
     })
     public ResponseEntity<ReportResponse> getReport(
-            @ApiParam(value = "Report ID", required = true)
+            @Parameter(description = "Report ID", required = true)
             @PathVariable Long id) {
 
         Optional<Report> report = reportService.getReport(id);
-        if (!report.isPresent()) { // LEGACY: !isPresent() instead of isEmpty()
+        if (!report.isPresent()) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(ReportResponse.fromEntity(report.get()));
     }
 
     @GetMapping
-    @ApiOperation(value = "List reports", notes = "List reports filtered by user ID or status")
+    @Operation(summary = "List reports", description = "List reports filtered by user ID or status")
     public ResponseEntity<Map<String, Object>> listReports(
-            @ApiParam(value = "Filter by user ID")
+            @Parameter(description = "Filter by user ID")
             @RequestParam(required = false) String userId,
-            @ApiParam(value = "Filter by status")
+            @Parameter(description = "Filter by status")
             @RequestParam(required = false) ReportStatus status) {
 
         List<Report> reports;
@@ -116,9 +107,8 @@ public class ReportController {
 
         List<ReportResponse> responses = reports.stream()
                 .map(ReportResponse::fromEntity)
-                .collect(Collectors.toList()); // LEGACY: .toList() available in Java 16+
+                .collect(Collectors.toList());
 
-        // LEGACY: Manual response wrapper instead of a proper Page/Slice object
         Map<String, Object> response = new HashMap<>();
         response.put("reports", responses);
         response.put("total", responses.size());
@@ -127,14 +117,14 @@ public class ReportController {
     }
 
     @GetMapping("/{id}/download")
-    @ApiOperation(value = "Download a generated report", notes = "Returns the report file for download")
+    @Operation(summary = "Download a generated report", description = "Returns the report file for download")
     @ApiResponses({
-            @ApiResponse(code = 200, message = "Report file"),
-            @ApiResponse(code = 404, message = "Report not found or not yet completed"),
-            @ApiResponse(code = 409, message = "Report is still generating")
+            @ApiResponse(responseCode = "200", description = "Report file"),
+            @ApiResponse(responseCode = "404", description = "Report not found or not yet completed"),
+            @ApiResponse(responseCode = "409", description = "Report is still generating")
     })
     public ResponseEntity<Resource> downloadReport(
-            @ApiParam(value = "Report ID", required = true)
+            @Parameter(description = "Report ID", required = true)
             @PathVariable Long id) {
 
         Optional<Report> optReport = reportService.getReport(id);
@@ -159,8 +149,6 @@ public class ReportController {
         }
 
         try {
-            // LEGACY: Commons IO FileUtils.readFileToByteArray loads entire file into memory
-            // Modern approach: InputStreamResource with streaming, or S3 presigned URL
             byte[] fileContent = FileUtils.readFileToByteArray(file);
             ByteArrayResource resource = new ByteArrayResource(fileContent);
 
@@ -180,13 +168,13 @@ public class ReportController {
     }
 
     @DeleteMapping("/{id}")
-    @ApiOperation(value = "Delete a report", notes = "Deletes the report record and its generated file")
+    @Operation(summary = "Delete a report", description = "Deletes the report record and its generated file")
     @ApiResponses({
-            @ApiResponse(code = 204, message = "Report deleted"),
-            @ApiResponse(code = 404, message = "Report not found")
+            @ApiResponse(responseCode = "204", description = "Report deleted"),
+            @ApiResponse(responseCode = "404", description = "Report not found")
     })
     public ResponseEntity<Void> deleteReport(
-            @ApiParam(value = "Report ID", required = true)
+            @Parameter(description = "Report ID", required = true)
             @PathVariable Long id) {
 
         boolean deleted = reportService.deleteReport(id);
@@ -199,7 +187,6 @@ public class ReportController {
     // ----- Private helpers -----
 
     private String getContentType(com.otterworks.report.model.ReportType reportType) {
-        // LEGACY: switch without enhanced syntax
         switch (reportType) {
             case PDF:
                 return "application/pdf";

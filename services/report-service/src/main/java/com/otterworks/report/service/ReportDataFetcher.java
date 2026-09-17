@@ -5,7 +5,7 @@ import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.otterworks.report.config.AppConfig;
 import com.otterworks.report.util.ReportDateUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -25,13 +25,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * Fetches report data from analytics and audit services via REST.
  *
- * LEGACY PATTERNS:
- * - RestTemplate instead of WebClient (reactive) or RestClient (Spring 6.1+)
- * - Guava LoadingCache (old version 28, CVEs) instead of Caffeine or Spring Cache
- * - Manual JSON response handling with Map<String, Object>
- * - java.util.Date parameters
- * - Commons Lang 2 StringUtils
- * - Checked exceptions wrapped in RuntimeException
+ * Fetches report data from analytics and audit services via REST.
  */
 @Service
 public class ReportDataFetcher {
@@ -41,7 +35,6 @@ public class ReportDataFetcher {
     private final RestTemplate restTemplate;
     private final AppConfig appConfig;
 
-    // LEGACY: Guava 28 LoadingCache. Upgrade target: Caffeine (Spring Boot default) or Spring @Cacheable
     private final LoadingCache<String, List<Map<String, Object>>> dataCache;
 
     public ReportDataFetcher(RestTemplate restTemplate, AppConfig appConfig) {
@@ -63,8 +56,7 @@ public class ReportDataFetcher {
     /**
      * Fetch analytics data for a date range.
      *
-     * LEGACY: Uses RestTemplate.getForEntity with manual URL construction.
-     * Modern approach: WebClient with URI builder and reactive types.
+     * Fetches data with RestTemplate and caches successful responses.
      */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> fetchAnalyticsData(Date dateFrom, Date dateTo, Map<String, String> parameters) {
