@@ -28,7 +28,7 @@ class ExportArchive:
         """Whether ``path`` resolves to something inside the archive root."""
         root = os.path.realpath(self.base_dir)
         resolved = os.path.realpath(path)
-        return resolved == root or resolved.startswith(root + os.sep)
+        return os.path.commonpath((root, resolved)) == root
 
     def read_export(self, name: str) -> str:
         """Return the contents of the named export.
