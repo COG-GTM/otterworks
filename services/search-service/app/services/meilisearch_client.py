@@ -28,11 +28,18 @@ _search_analytics: dict[str, Any] = {
 MAX_ANALYTICS_ENTRIES = 10000
 
 
-def record_search_analytics(query: str, result_count: int) -> None:
+def record_search_analytics(
+    query: str, result_count: int, owner_id: str | None = None
+) -> None:
     """Record a search query for analytics purposes."""
     with _analytics_lock:
         _search_analytics["queries"].append(
-            {"query": query, "result_count": result_count, "timestamp": time.time()}
+            {
+                "query": query,
+                "result_count": result_count,
+                "timestamp": time.time(),
+                "owner_id": owner_id,
+            }
         )
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
@@ -40,12 +47,17 @@ def record_search_analytics(query: str, result_count: int) -> None:
             _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
 
-def get_search_analytics() -> AnalyticsData:
-    """Compute search analytics from recorded queries."""
+def get_search_analytics(owner_id: str | None = None) -> AnalyticsData:
+    """Compute search analytics, restricted to *owner_id* when one is given."""
     with _analytics_lock:
         queries = list(_search_analytics["queries"])
         total_searches = _search_analytics["total_searches"]
         total_results = _search_analytics["total_results"]
+
+    if owner_id is not None:
+        queries = [entry for entry in queries if entry.get("owner_id") == owner_id]
+        total_searches = len(queries)
+        total_results = sum(entry["result_count"] for entry in queries)
 
     query_counts: dict[str, int] = {}
     zero_result_counts: dict[str, int] = {}
@@ -175,13 +187,15 @@ class MeiliSearchService:
             try:
                 result = index.search(query, search_params)
             except meilisearch.errors.MeilisearchApiError as exc:
+                # The engine's own message quotes the filter expression back; it is
+                # logged here and never returned to the caller.
                 logger.warning("search_filter_error", index=index_name, error=str(exc))
-                raise ValueError(f"Invalid search filter: {exc}") from exc
+                raise ValueError("invalid search request") from exc
             total += result["estimatedTotalHits"]
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))
 
-        record_search_analytics(query, total)
+        record_search_analytics(query, total, owner_id=owner_id)
 
         start = (page - 1) * page_size if multi_index else 0
         page_hits = all_hits[start : start + page_size]
@@ -229,12 +243,16 @@ class MeiliSearchService:
 
         for index_name in indices_to_search:
             index = self.client.index(index_name)
-            result = index.search(search_term, search_params)
+            try:
+                result = index.search(search_term, search_params)
+            except meilisearch.errors.MeilisearchApiError as exc:
+                logger.warning("advanced_search_filter_error", index=index_name, error=str(exc))
+                raise ValueError("invalid search request") from exc
             total += result["estimatedTotalHits"]
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))
 
-        record_search_analytics(search_term or "*", total)
+        record_search_analytics(search_term or "*", total, owner_id=owner_id)
 
         start = (page - 1) * page_size if multi_index else 0
         page_hits = all_hits[start : start + page_size]
@@ -247,17 +265,23 @@ class MeiliSearchService:
             query=search_term or "*",
         )
 
-    def suggest(self, prefix: str, size: int = 10) -> list[str]:
+    def suggest(
+        self, prefix: str, size: int = 10, owner_id: str | None = None
+    ) -> list[str]:
         """Autocomplete suggestions using MeiliSearch prefix matching."""
         suggestions: list[str] = []
         seen: set[str] = set()
 
+        params: dict[str, Any] = {
+            "limit": size,
+            "attributesToRetrieve": ["title", "name"],
+        }
+        if owner_id:
+            params["filter"] = f'owner_id = "{self._escape(owner_id)}"'
+
         for index_name in [self.documents_index_name, self.files_index_name]:
             index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-            })
+            result = index.search(prefix, params)
             for hit in result["hits"]:
                 text = hit.get("title") or hit.get("name", "")
                 if text and text not in seen:

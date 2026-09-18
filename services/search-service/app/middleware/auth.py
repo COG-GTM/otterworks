@@ -14,16 +14,31 @@ If a service token is configured the middleware will accept it on any
 endpoint; if it is not configured (e.g. local dev), only the gateway
 identity path is available and internal endpoints become reachable only
 via the gateway.
+
+The user-facing search routes narrow this further: they read indexed
+records and so need a caller to scope the read to, which a service token
+alone does not supply. A token-only caller is accepted here and then
+refused by those routes; the indexing routes remain reachable with it.
 """
 
 from __future__ import annotations
 
 import structlog
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
 logger = structlog.get_logger()
 
 PUBLIC_PREFIXES = ("/health", "/metrics")
+
+
+def caller_owner_id() -> str | None:
+    """The owner id the gateway derived from the caller's validated JWT."""
+    return request.headers.get("X-User-ID", "").strip() or None
+
+
+def scoping_enforced() -> bool:
+    """Whether a request must carry a caller identity to read indexed records."""
+    return bool(current_app.config["APP_CONFIG"].auth.require_auth)
 
 
 def require_auth(app):
