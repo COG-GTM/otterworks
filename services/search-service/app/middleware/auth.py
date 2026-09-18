@@ -14,6 +14,11 @@ If a service token is configured the middleware will accept it on any
 endpoint; if it is not configured (e.g. local dev), only the gateway
 identity path is available and internal endpoints become reachable only
 via the gateway.
+
+The user-facing search routes narrow this further: they read indexed
+records and so need a caller to scope the read to, which a service token
+alone does not supply. A token-only caller is accepted here and then
+refused by those routes; the indexing routes remain reachable with it.
 """
 
 from __future__ import annotations

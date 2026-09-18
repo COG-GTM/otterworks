@@ -245,6 +245,22 @@ class TestInputHandling:
         )
         assert response.status_code == 400
 
+    def test_impossible_calendar_date_rejected(self, client):
+        response = client.post(
+            "/api/v1/search/advanced", json={"q": "x", "date_from": "2024-99-99"}
+        )
+        assert response.status_code == 400
+
+    def test_valid_date_filter_accepted(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        response = client.post(
+            "/api/v1/search/advanced",
+            json={"q": "x", "date_from": "2024-01-01", "date_to": "2024-06-30T12:00:00Z"},
+        )
+        assert response.status_code == 200
+
     def test_engine_error_is_not_returned_to_the_caller(self, client, mock_meilisearch_client):
         mock_index = mock_meilisearch_client.index.return_value
         fake_response = MagicMock()

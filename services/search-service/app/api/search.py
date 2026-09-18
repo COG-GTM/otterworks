@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import re
+from datetime import datetime
 
 import redis as redis_lib
 import structlog
@@ -18,7 +18,6 @@ logger = structlog.get_logger()
 search_bp = Blueprint("search", __name__)
 
 DOC_TYPES = ("document", "file")
-ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ][0-9:.+Z-]{1,20})?$")
 
 _redis_client: redis_lib.Redis | None = None
 
@@ -39,6 +38,17 @@ def _chaos_active(key: str) -> bool:
         return bool(_get_redis().exists(key))
     except Exception:
         return False
+
+
+def _is_iso_date(value: object) -> bool:
+    """Whether *value* is a real ISO-8601 date or datetime."""
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
 
 
 def _get_service() -> MeiliSearchService:
@@ -169,7 +179,7 @@ def advanced_search() -> tuple:
     ):
         return jsonify({"error": "Invalid tags parameter"}), 400
     for value in (date_from, date_to):
-        if value is not None and not (isinstance(value, str) and ISO_DATE.match(value)):
+        if value is not None and not _is_iso_date(value):
             return jsonify({"error": "Invalid date filter"}), 400
     if query is not None and not isinstance(query, str):
         return jsonify({"error": "Invalid query parameter"}), 400
