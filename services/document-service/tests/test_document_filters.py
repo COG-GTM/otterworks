@@ -1,8 +1,8 @@
 """Tests for the document list endpoint's metadata filters.
 
-Requests are sent unauthenticated (``auth=None``): the filter path scopes by
-the JWT-derived owner, and these tests exercise the unscoped upstream
-semantics.
+Documents are created as the authenticated fixture owner; the list requests
+are sent unauthenticated (``auth=None``) to exercise the unscoped semantics of
+the filter path itself.
 """
 
 import uuid
@@ -12,9 +12,9 @@ from httpx import AsyncClient
 
 
 async def _create(client: AsyncClient, owner_id: uuid.UUID, title: str, **kwargs):
-    payload = {"title": title, "content": "body", "owner_id": str(owner_id)}
+    payload = {"title": title, "content": "body"}
     payload.update(kwargs)
-    resp = await client.post("/api/v1/documents/", json=payload, auth=None)
+    resp = await client.post("/api/v1/documents/", json=payload)
     assert resp.status_code == 201
     return resp.json()
 
