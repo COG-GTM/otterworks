@@ -33,6 +33,11 @@ public class GlobalExceptionHandler {
     return buildErrorResponse(HttpStatus.BAD_REQUEST, errors);
   }
 
+  @ExceptionHandler(AccountLockedException.class)
+  public ResponseEntity<Map<String, Object>> handleAccountLocked(AccountLockedException ex) {
+    return buildErrorResponse(HttpStatus.LOCKED, ex.getMessage());
+  }
+
   @ExceptionHandler(JwtException.class)
   public ResponseEntity<Map<String, Object>> handleJwtException(JwtException ex) {
     return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid or expired token");
