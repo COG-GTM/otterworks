@@ -19,11 +19,21 @@ via the gateway.
 from __future__ import annotations
 
 import structlog
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
 logger = structlog.get_logger()
 
 PUBLIC_PREFIXES = ("/health", "/metrics")
+
+
+def caller_owner_id() -> str | None:
+    """The owner id the gateway derived from the caller's validated JWT."""
+    return request.headers.get("X-User-ID", "").strip() or None
+
+
+def scoping_enforced() -> bool:
+    """Whether a request must carry a caller identity to read indexed records."""
+    return bool(current_app.config["APP_CONFIG"].auth.require_auth)
 
 
 def require_auth(app):

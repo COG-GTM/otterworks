@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -71,6 +72,23 @@ def app(app_config: AppConfig, mock_meilisearch_client: MagicMock):
 def client(app):
     """Create a Flask test client."""
     return app.test_client()
+
+
+@pytest.fixture()
+def authed_app(app_config: AppConfig, mock_meilisearch_client: MagicMock):
+    """Create a Flask test app with authentication enforced."""
+    config = replace(app_config, auth=AuthConfig(service_token="", require_auth=True))
+    with patch("app.services.meilisearch_client.meilisearch.Client") as mock_cls:
+        mock_cls.return_value = mock_meilisearch_client
+        flask_app = create_app(config)
+        flask_app.config["TESTING"] = True
+        yield flask_app
+
+
+@pytest.fixture()
+def authed_client(authed_app):
+    """Create a Flask test client for the app with authentication enforced."""
+    return authed_app.test_client()
 
 
 @pytest.fixture()

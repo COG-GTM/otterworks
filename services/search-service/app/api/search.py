@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import os
+import re
 
 import redis as redis_lib
 import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import caller_owner_id, scoping_enforced
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
 
 search_bp = Blueprint("search", __name__)
+
+DOC_TYPES = ("document", "file")
+ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ][0-9:.+Z-]{1,20})?$")
 
 _redis_client: redis_lib.Redis | None = None
 
@@ -41,6 +46,22 @@ def _get_service() -> MeiliSearchService:
     return current_app.config["SEARCH_SERVICE"]
 
 
+def _owner_scope() -> tuple[str | None, tuple | None]:
+    """Resolve the owner id every read is restricted to.
+
+    Returns ``(owner_id, error_response)``. Where authentication is enforced, a
+    request without a gateway-derived identity has no scope to read within and
+    is refused instead of falling back to an index-wide search.
+    """
+    owner_id = caller_owner_id()
+    if owner_id:
+        return owner_id, None
+    if scoping_enforced():
+        logger.warning("search_rejected_without_identity", path=request.path)
+        return None, (jsonify({"error": "unauthorized"}), 401)
+    return None, None
+
+
 @search_bp.route("/", methods=["GET"], strict_slashes=False)
 def search_documents() -> tuple:
     """Full-text search across documents and files.
@@ -56,7 +77,11 @@ def search_documents() -> tuple:
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
+    if doc_type is not None and doc_type not in DOC_TYPES:
+        return jsonify({"error": "Invalid type parameter"}), 400
+    owner_id, scope_error = _owner_scope()
+    if scope_error is not None:
+        return scope_error
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
@@ -73,8 +98,9 @@ def search_documents() -> tuple:
         SEARCH_COUNT.inc()
         logger.info("search_executed", query=query, result_count=results.total)
         return jsonify(results.to_dict()), 200
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    except ValueError:
+        logger.warning("search_rejected", query=query)
+        return jsonify({"error": "Invalid search request"}), 400
     except Exception:
         logger.exception("search_failed", query=query)
         return jsonify({"error": "Search failed"}), 500
@@ -87,6 +113,9 @@ def suggest() -> tuple:
     Query params: q (required, min 2 chars)
     """
     prefix = request.args.get("q", "")
+    owner_id, scope_error = _owner_scope()
+    if scope_error is not None:
+        return scope_error
     if not prefix or len(prefix) < 2:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
@@ -97,7 +126,7 @@ def suggest() -> tuple:
     # KeyError and crashes the handler with a 500.
     if _chaos_active("chaos:search-service:suggest_500"):
         service = _get_service()
-        raw_suggestions = service.suggest(prefix)
+        raw_suggestions = service.suggest(prefix, owner_id=owner_id)
         if not raw_suggestions:
             # Simulate the same KeyError that fires when results exist but
             # _rankingScore is missing — ensures chaos fires even with an
@@ -109,7 +138,7 @@ def suggest() -> tuple:
 
     try:
         service = _get_service()
-        suggestions = service.suggest(prefix)
+        suggestions = service.suggest(prefix, owner_id=owner_id)
         return jsonify({"suggestions": suggestions, "query": prefix}), 200
     except Exception:
         logger.exception("suggest_failed", prefix=prefix)
@@ -127,10 +156,23 @@ def advanced_search() -> tuple:
 
     query = data.get("q")
     doc_type = data.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
+    owner_id, scope_error = _owner_scope()
+    if scope_error is not None:
+        return scope_error
     tags = data.get("tags")
     date_from = data.get("date_from")
     date_to = data.get("date_to")
+    if doc_type is not None and doc_type not in DOC_TYPES:
+        return jsonify({"error": "Invalid type parameter"}), 400
+    if tags is not None and (
+        not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags)
+    ):
+        return jsonify({"error": "Invalid tags parameter"}), 400
+    for value in (date_from, date_to):
+        if value is not None and not (isinstance(value, str) and ISO_DATE.match(value)):
+            return jsonify({"error": "Invalid date filter"}), 400
+    if query is not None and not isinstance(query, str):
+        return jsonify({"error": "Invalid query parameter"}), 400
     try:
         page = max(int(data.get("page", 1)), 1)
         page_size = min(max(int(data.get("size", 20)), 1), 100)
@@ -152,6 +194,9 @@ def advanced_search() -> tuple:
         SEARCH_COUNT.inc()
         logger.info("advanced_search_executed", query=query, result_count=results.total)
         return jsonify(results.to_dict()), 200
+    except ValueError:
+        logger.warning("advanced_search_rejected")
+        return jsonify({"error": "Invalid search request"}), 400
     except Exception:
         logger.exception("advanced_search_failed")
         return jsonify({"error": "Advanced search failed"}), 500
@@ -159,9 +204,12 @@ def advanced_search() -> tuple:
 
 @search_bp.route("/analytics", methods=["GET"])
 def search_analytics() -> tuple:
-    """Search analytics: popular queries, zero-result queries."""
+    """Search analytics for the caller's own queries."""
+    owner_id, scope_error = _owner_scope()
+    if scope_error is not None:
+        return scope_error
     try:
-        analytics = get_search_analytics()
+        analytics = get_search_analytics(owner_id=owner_id)
         return jsonify(analytics.to_dict()), 200
     except Exception:
         logger.exception("analytics_failed")

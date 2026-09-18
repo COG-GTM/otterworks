@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
+import meilisearch.errors
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -159,3 +163,97 @@ class TestAnalyticsEndpoint:
         assert "zero_result_queries" in data
         assert "total_searches" in data
         assert "avg_results_per_query" in data
+
+
+class TestTenantScoping:
+    """Every read is restricted to the caller's own owner id."""
+
+    def test_search_requires_caller_identity(self, authed_client):
+        """A search without gateway-injected identity is refused, not answered."""
+        response = authed_client.get("/api/v1/search/?q=test")
+        assert response.status_code == 401
+
+    def test_search_filters_on_caller_owner_id(self, authed_client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        response = authed_client.get(
+            "/api/v1/search/?q=test", headers={"X-User-ID": "user-1"}
+        )
+        assert response.status_code == 200
+        params = mock_index.search.call_args[0][1]
+        assert 'owner_id = "user-1"' in params["filter"]
+
+    def test_suggest_filters_on_caller_owner_id(self, authed_client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        response = authed_client.get(
+            "/api/v1/search/suggest?q=te", headers={"X-User-ID": "user-1"}
+        )
+        assert response.status_code == 200
+        params = mock_index.search.call_args[0][1]
+        assert params["filter"] == 'owner_id = "user-1"'
+
+    def test_advanced_search_filters_on_caller_owner_id(
+        self, authed_client, mock_meilisearch_client
+    ):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        response = authed_client.post(
+            "/api/v1/search/advanced",
+            json={"q": "report", "owner_id": "someone-else"},
+            headers={"X-User-ID": "user-1"},
+        )
+        assert response.status_code == 200
+        params = mock_index.search.call_args[0][1]
+        assert 'owner_id = "user-1"' in params["filter"]
+        assert "someone-else" not in params["filter"]
+
+    def test_analytics_requires_caller_identity(self, authed_client):
+        response = authed_client.get("/api/v1/search/analytics")
+        assert response.status_code == 401
+
+    def test_analytics_only_counts_the_callers_queries(
+        self, authed_client, mock_meilisearch_client
+    ):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        authed_client.get(
+            "/api/v1/search/?q=other-tenant-secret", headers={"X-User-ID": "user-2"}
+        )
+        response = authed_client.get(
+            "/api/v1/search/analytics", headers={"X-User-ID": "user-1"}
+        )
+        assert response.status_code == 200
+        queries = [entry["query"] for entry in response.get_json()["popular_queries"]]
+        assert "other-tenant-secret" not in queries
+
+
+class TestInputHandling:
+    """Malformed filter input is rejected without echoing engine errors."""
+
+    def test_invalid_type_rejected(self, client):
+        response = client.get("/api/v1/search/?q=test&type=' OR 1=1 --")
+        assert response.status_code == 400
+
+    def test_invalid_date_filter_rejected(self, client):
+        response = client.post(
+            "/api/v1/search/advanced", json={"q": "x", "date_from": "' OR '1'='1"}
+        )
+        assert response.status_code == 400
+
+    def test_engine_error_is_not_returned_to_the_caller(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        fake_response = MagicMock()
+        fake_response.status_code = 400
+        fake_response.text = ""
+        mock_index.search.side_effect = meilisearch.errors.MeilisearchApiError(
+            'Invalid syntax for the filter parameter: owner_id = "x"', fake_response
+        )
+
+        response = client.get("/api/v1/search/?q=test")
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "Invalid search request"}
