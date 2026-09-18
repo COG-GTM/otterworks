@@ -239,4 +239,5 @@ def test_the_repository_gateway_serves_only_login_and_register_anonymously() -> 
     exact, prefixes = gateway_public_paths()
     assert exact == {"/api/v1/auth/login", "/api/v1/auth/register"}
     assert "/api/v1/auth/refresh" not in exact
-    assert "/metrics" in prefixes
+    assert "/metrics" not in prefixes
+    assert "/health" in prefixes
