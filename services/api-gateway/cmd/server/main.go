@@ -64,9 +64,19 @@ func main() {
 	// Create main router
 	r := chi.NewRouter()
 
-	// Global middleware stack
+	trustedProxies, invalidProxies := middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if len(invalidProxies) > 0 {
+		logger.Warn().Strs("entries", invalidProxies).Msg("ignoring unparseable TRUSTED_PROXY_CIDRS entries")
+	}
+	if len(trustedProxies) == 0 {
+		logger.Warn().Msg("no trusted proxies configured; forwarding headers are dropped and callers are identified by their TCP peer")
+	}
+
+	// Global middleware stack. RealIP runs first so everything after it, security
+	// headers included, only sees forwarding headers from a trusted proxy.
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(middleware.RealIP(trustedProxies))
+	r.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
@@ -97,9 +107,6 @@ func main() {
 	// Health check
 	r.Get("/health", health.Handler())
 
-	// Prometheus metrics
-	r.Handle("/metrics", promhttp.Handler())
-
 	// Mount reverse proxy routes
 	proxyRouter := proxy.NewRouter(proxy.RouterConfig{
 		Routes:        routes,
@@ -108,6 +115,21 @@ func main() {
 		EnableTracing: true,
 	})
 	r.Mount("/", proxyRouter)
+
+	// Metrics listener, separate from the public edge
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsSrv := &http.Server{
+		Addr:              ":" + cfg.MetricsPort,
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		logger.Info().Str("port", cfg.MetricsPort).Msg("metrics listener starting")
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal().Err(err).Msg("metrics listener failed")
+		}
+	}()
 
 	// HTTP server
 	srv := &http.Server{
@@ -137,6 +159,10 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("server forced to shutdown")
+	}
+
+	if err := metricsSrv.Shutdown(ctx); err != nil {
+		logger.Error().Err(err).Msg("metrics listener forced to shutdown")
 	}
 
 	if shutdownTracer != nil {
