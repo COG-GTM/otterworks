@@ -119,6 +119,112 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
+  void login_shouldLockAccountAfterRepeatedFailures() throws Exception {
+    createTestUser("lockout@otterworks.dev", "password123", "Lockout User");
+
+    String wrongBody =
+        """
+        {"email": "lockout@otterworks.dev", "password": "wrongpassword"}
+        """;
+    for (int i = 0; i < 4; i++) {
+      mockMvc
+          .perform(
+              post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(wrongBody))
+          .andExpect(status().isBadRequest());
+    }
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(wrongBody))
+        .andExpect(status().isLocked());
+
+    String correctBody =
+        """
+        {"email": "lockout@otterworks.dev", "password": "password123"}
+        """;
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(correctBody))
+        .andExpect(status().isLocked());
+  }
+
+  @Test
+  void login_shouldResetFailureCountAfterSuccess() throws Exception {
+    createTestUser("reset@otterworks.dev", "password123", "Reset User");
+
+    String wrongBody =
+        """
+        {"email": "reset@otterworks.dev", "password": "wrongpassword"}
+        """;
+    String correctBody =
+        """
+        {"email": "reset@otterworks.dev", "password": "password123"}
+        """;
+
+    for (int round = 0; round < 3; round++) {
+      for (int i = 0; i < 4; i++) {
+        mockMvc
+            .perform(
+                post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(wrongBody))
+            .andExpect(status().isBadRequest());
+      }
+      mockMvc
+          .perform(
+              post("/api/v1/auth/login")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(correctBody))
+          .andExpect(status().isOk());
+    }
+  }
+
+  @Test
+  void responses_shouldNeverContainCredentialMaterial() throws Exception {
+    createTestUser("secrets@otterworks.dev", "password123", "Secrets User");
+    User user = userRepository.findByEmail("secrets@otterworks.dev").orElseThrow();
+    user.setMfaSecret("totp-seed");
+    userRepository.save(user);
+
+    String loginBody =
+        """
+        {"email": "secrets@otterworks.dev", "password": "password123"}
+        """;
+    MvcResult loginResult =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(loginBody))
+            .andExpect(status().isOk())
+            .andReturn();
+    assertNoCredentialMaterial(loginResult.getResponse().getContentAsString());
+
+    String accessToken =
+        objectMapper
+            .readTree(loginResult.getResponse().getContentAsString())
+            .get("accessToken")
+            .asText();
+
+    MvcResult profileResult =
+        mockMvc
+            .perform(get("/api/v1/auth/profile").header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andReturn();
+    assertNoCredentialMaterial(profileResult.getResponse().getContentAsString());
+
+    MvcResult lookupResult =
+        mockMvc
+            .perform(
+                get("/api/v1/auth/users/lookup")
+                    .param("email", "secrets@otterworks.dev")
+                    .header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andReturn();
+    assertNoCredentialMaterial(lookupResult.getResponse().getContentAsString());
+  }
+
+  @Test
   void profile_shouldReturnUserProfile() throws Exception {
     String accessToken =
         registerAndGetAccessToken("profile@otterworks.dev", "password123", "Profile User");
@@ -262,6 +368,16 @@ class AuthControllerIntegrationTest {
                 .param("size", "10"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.content").isArray());
+  }
+
+  private void assertNoCredentialMaterial(String body) {
+    assertThat(body)
+        .doesNotContain("passwordHash")
+        .doesNotContain("password_hash")
+        .doesNotContain("\"password\"")
+        .doesNotContain("salt")
+        .doesNotContain("mfaSecret")
+        .doesNotContain("totp-seed");
   }
 
   private void createTestUser(String email, String password, String displayName) {

@@ -1,5 +1,6 @@
 package com.otterworks.auth.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.HashSet;
@@ -23,6 +24,7 @@ public class User {
   @Column(nullable = false, unique = true, length = 255)
   private String email;
 
+  @JsonIgnore
   @Column(nullable = false, length = 255)
   private String passwordHash;
 
@@ -38,6 +40,7 @@ public class User {
   @Column(nullable = false)
   private boolean mfaEnabled = false;
 
+  @JsonIgnore
   @Column(length = 255)
   private String mfaSecret;
 
@@ -54,6 +57,11 @@ public class User {
   private Instant updatedAt;
 
   @Column private Instant lastLoginAt;
+
+  @Column(nullable = false)
+  private int failedLoginAttempts = 0;
+
+  @Column private Instant lockedUntil;
 
   @PrePersist
   protected void onCreate() {
