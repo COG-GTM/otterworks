@@ -66,7 +66,8 @@ func main() {
 
 	// Global middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
+	r.Use(middleware.RealIP(middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
@@ -97,9 +98,6 @@ func main() {
 	// Health check
 	r.Get("/health", health.Handler())
 
-	// Prometheus metrics
-	r.Handle("/metrics", promhttp.Handler())
-
 	// Mount reverse proxy routes
 	proxyRouter := proxy.NewRouter(proxy.RouterConfig{
 		Routes:        routes,
@@ -108,6 +106,21 @@ func main() {
 		EnableTracing: true,
 	})
 	r.Mount("/", proxyRouter)
+
+	// Metrics listener, separate from the public edge
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsSrv := &http.Server{
+		Addr:              ":" + cfg.MetricsPort,
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		logger.Info().Str("port", cfg.MetricsPort).Msg("metrics listener starting")
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error().Err(err).Msg("metrics listener failed")
+		}
+	}()
 
 	// HTTP server
 	srv := &http.Server{
@@ -137,6 +150,10 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("server forced to shutdown")
+	}
+
+	if err := metricsSrv.Shutdown(ctx); err != nil {
+		logger.Error().Err(err).Msg("metrics listener forced to shutdown")
 	}
 
 	if shutdownTracer != nil {

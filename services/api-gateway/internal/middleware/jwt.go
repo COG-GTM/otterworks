@@ -41,7 +41,6 @@ func DefaultPublicPaths() []string {
 func DefaultPrefixPaths() []string {
 	return []string{
 		"/health",
-		"/metrics",
 		"/socket.io",
 	}
 }

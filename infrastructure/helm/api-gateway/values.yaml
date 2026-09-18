@@ -13,6 +13,9 @@ service:
   type: ClusterIP
   port: 8080
   targetPort: 8080
+  # Prometheus metrics listener, in-cluster only: it is not published through the
+  # shared ingress, which only routes to the http port.
+  metricsPort: 9091
 
 ingress:
   enabled: true
@@ -45,9 +48,10 @@ healthCheck:
 monitoring:
   enabled: true
   path: /metrics
-  port: 8080
+  port: 9091
 
 env:
+  METRICS_PORT: "9091"
   AUTH_SERVICE_URL: "http://auth-service:8081"
   FILE_SERVICE_URL: "http://file-service:8082"
   DOCUMENT_SERVICE_URL: "http://document-service:8083"
