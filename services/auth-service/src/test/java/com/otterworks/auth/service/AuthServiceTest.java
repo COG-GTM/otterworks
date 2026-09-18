@@ -105,7 +105,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("password123", testUser.getPasswordHash())).thenReturn(true);
     when(userRepository.save(any(User.class))).thenReturn(testUser);
     when(jwtTokenProvider.generateAccessToken(testUser)).thenReturn("access-token");
@@ -128,7 +129,8 @@ class AuthServiceTest {
     request.setEmail("nonexistent@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("nonexistent@otterworks.dev")).thenReturn(Optional.empty());
+    when(userRepository.findByEmailForUpdate("nonexistent@otterworks.dev"))
+        .thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -141,7 +143,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("wrongpassword");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
 
     assertThatThrownBy(() -> authService.login(request))
@@ -155,7 +158,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("wrongpassword");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
 
     for (int i = 1; i < lockoutProperties.getMaxFailedAttempts(); i++) {
@@ -176,7 +180,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
 
     assertThatThrownBy(() -> authService.login(request)).isInstanceOf(AccountLockedException.class);
     verify(passwordEncoder, never()).matches(any(), any());
@@ -189,7 +194,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("password123", testUser.getPasswordHash())).thenReturn(true);
     when(userRepository.save(any(User.class))).thenReturn(testUser);
     when(jwtTokenProvider.generateAccessToken(testUser)).thenReturn("access-token");

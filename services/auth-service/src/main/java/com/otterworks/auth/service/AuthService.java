@@ -66,7 +66,7 @@ public class AuthService {
   public AuthResponse login(LoginRequest request) {
     User user =
         userRepository
-            .findByEmail(request.getEmail())
+            .findByEmailForUpdate(request.getEmail())
             .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
     Instant now = Instant.now();
