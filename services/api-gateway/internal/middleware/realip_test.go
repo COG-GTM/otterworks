@@ -19,7 +19,8 @@ func clientIPFrom(t *testing.T, trusted []string, remoteAddr string, headers map
 
 	var seen string
 	var forwarded *http.Request
-	handler := RealIP(ParseTrustedProxies(trusted))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	networks, _ := ParseTrustedProxies(trusted)
+	handler := RealIP(networks)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = ClientIP(r)
 		forwarded = r
 	}))
@@ -44,6 +45,31 @@ func TestRealIP_TrustedProxyIsBelieved(t *testing.T) {
 	})
 
 	assert.Equal(t, "198.51.100.7", ip)
+}
+
+func TestRealIP_CallerPrependedHopsAreIgnored(t *testing.T) {
+	// A proxy appends the peer to whatever X-Forwarded-For the caller sent, so
+	// only the right-most entry outside the trusted set is attributable.
+	ip, _ := clientIPFrom(t, []string{"192.168.0.0/16"}, "192.168.5.5:4321", map[string]string{
+		"X-Forwarded-For": "10.9.0.1, 198.51.100.7, 192.168.5.5",
+	})
+
+	assert.Equal(t, "198.51.100.7", ip)
+}
+
+func TestRealIP_UntrustedPeerCannotClaimHTTPS(t *testing.T) {
+	_, forwarded := clientIPFrom(t, nil, "203.0.113.9:4321", map[string]string{
+		"X-Forwarded-Proto": "https",
+	})
+
+	assert.Empty(t, forwarded.Header.Get("X-Forwarded-Proto"))
+}
+
+func TestParseTrustedProxies_ReportsUnparseableEntries(t *testing.T) {
+	networks, invalid := ParseTrustedProxies([]string{"10.0.0.0/8", " ", "10.0.0.0/33", "nonsense"})
+
+	assert.Len(t, networks, 1)
+	assert.Equal(t, []string{"10.0.0.0/33", "nonsense"}, invalid)
 }
 
 func TestRealIP_TrustedProxyWithGarbageHeaderFallsBackToPeer(t *testing.T) {

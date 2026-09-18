@@ -64,10 +64,19 @@ func main() {
 	// Create main router
 	r := chi.NewRouter()
 
-	// Global middleware stack
+	trustedProxies, invalidProxies := middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if len(invalidProxies) > 0 {
+		logger.Warn().Strs("entries", invalidProxies).Msg("ignoring unparseable TRUSTED_PROXY_CIDRS entries")
+	}
+	if len(trustedProxies) == 0 {
+		logger.Warn().Msg("no trusted proxies configured; forwarding headers are dropped and callers are identified by their TCP peer")
+	}
+
+	// Global middleware stack. RealIP runs first so everything after it, security
+	// headers included, only sees forwarding headers from a trusted proxy.
 	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP(trustedProxies))
 	r.Use(middleware.SecurityHeaders(middleware.DefaultSecurityHeadersConfig()))
-	r.Use(middleware.RealIP(middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
@@ -118,7 +127,7 @@ func main() {
 	go func() {
 		logger.Info().Str("port", cfg.MetricsPort).Msg("metrics listener starting")
 		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error().Err(err).Msg("metrics listener failed")
+			logger.Fatal().Err(err).Msg("metrics listener failed")
 		}
 	}()
 
