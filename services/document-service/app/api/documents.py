@@ -8,7 +8,7 @@ from uuid import UUID
 import jwt
 import redis as redis_lib
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentCreate,
+    DocumentCreateRequest,
     DocumentFromTemplate,
+    DocumentFromTemplateRequest,
     DocumentListResponse,
     DocumentPatch,
     DocumentResponse,
@@ -106,34 +108,48 @@ def _ensure_owner(document: object, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Access denied")
 
 
+def _no_sniff(response: Response) -> None:
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+
+def _scoped_owner(request: Request, owner_id: UUID | None) -> UUID | None:
+    """Resolve the owner a collection request reads, which is only the caller."""
+    caller_id = _extract_user_id(request)
+    if caller_id is not None and owner_id is not None and owner_id != caller_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return caller_id or owner_id
+
+
 async def _do_create_document(
-    body: DocumentCreate,
+    body: DocumentCreateRequest,
     request: Request,
     db: AsyncSession,
 ) -> DocumentResponse:
-    if not body.owner_id:
-        extracted_id = _extract_user_id(request)
-        if not extracted_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="owner_id is required: provide it in the body or authenticate via JWT",
-            )
-        body.owner_id = extracted_id
+    owner_id = _extract_user_id(request)
+    if not owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
 
     service = DocumentService(db)
-    document = await service.create(body)
+    document = await service.create(
+        DocumentCreate(**body.model_dump(), owner_id=owner_id)
+    )
     logger.info("document_created", document_id=str(document.id))
     return document
 
 
 @router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def create_document(
-    body: DocumentCreate,
+    body: DocumentCreateRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new document."""
     await _maybe_inject_latency()
+    _no_sniff(response)
     return await _do_create_document(body, request, db)
 
 
@@ -144,12 +160,14 @@ async def create_document(
     include_in_schema=False,
 )
 async def create_document_no_slash(
-    body: DocumentCreate,
+    body: DocumentCreateRequest,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new document (no trailing slash)."""
     await _maybe_inject_latency()
+    _no_sniff(response)
     return await _do_create_document(body, request, db)
 
 
@@ -277,6 +295,7 @@ def _is_filtered(
 @router.get("/", response_model=DocumentListResponse)
 async def list_documents(
     request: Request,
+    response: Response,
     owner_id: UUID | None = None,
     folder_id: UUID | None = None,
     title: str | None = None,
@@ -288,7 +307,8 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    _no_sniff(response)
+    effective_owner = _scoped_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -311,6 +331,7 @@ async def list_documents(
 )
 async def list_documents_no_slash(
     request: Request,
+    response: Response,
     owner_id: UUID | None = None,
     folder_id: UUID | None = None,
     title: str | None = None,
@@ -322,7 +343,8 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    _no_sniff(response)
+    effective_owner = _scoped_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -342,10 +364,12 @@ async def list_documents_no_slash(
 async def get_document(
     document_id: UUID,
     request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """Get a document by ID."""
     await _maybe_inject_latency()
+    _no_sniff(response)
     user_id = _require_user_id(request)
     service = DocumentService(db)
     document = await service.get(document_id)
@@ -494,7 +518,14 @@ async def export_document(
     _ensure_owner(document, user_id)
 
     body, content_type = service.export_document(document, format)
-    return PlainTextResponse(content=body, media_type=content_type)
+    return PlainTextResponse(
+        content=body,
+        media_type=content_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": f'attachment; filename="{document_id}.{format}"',
+        },
+    )
 
 
 @router.post(
@@ -504,12 +535,18 @@ async def export_document(
 )
 async def create_from_template(
     template_id: UUID,
-    body: DocumentFromTemplate,
+    body: DocumentFromTemplateRequest,
+    request: Request,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a document from a template."""
+    _no_sniff(response)
+    owner_id = _require_user_id(request)
     service = DocumentService(db)
-    document = await service.create_from_template(template_id, body)
+    document = await service.create_from_template(
+        template_id, DocumentFromTemplate(**body.model_dump(), owner_id=owner_id)
+    )
     if not document:
         raise HTTPException(status_code=404, detail="Template not found")
     logger.info(
