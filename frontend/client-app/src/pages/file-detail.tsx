@@ -61,6 +61,7 @@ function FileDetailContent() {
   useEffect(() => {
     if (!file?.sharedWith?.length) return;
     const userIds = file.sharedWith
+      .filter((s) => s.status !== "pending")
       .map((s) => s.userId)
       .filter((id) => id && !resolvedUsers[id]);
     if (userIds.length === 0) return;
@@ -314,8 +315,14 @@ function FileDetailContent() {
                 <div className="space-y-3">
                   {file.sharedWith.map((shared) => {
                     const resolved = resolvedUsers[shared.userId];
-                    const displayName = resolved?.name || shared.name || shared.userId.slice(0, 8);
+                    const isPending = shared.status === "pending";
+                    const displayName =
+                      resolved?.name ||
+                      shared.name ||
+                      (isPending ? shared.email : "") ||
+                      shared.userId.slice(0, 8);
                     const displayEmail = resolved?.email || shared.email;
+                    const access = isPending ? `${shared.permission} · pending` : shared.permission;
                     return (
                       <div key={shared.userId} className="flex items-center gap-3">
                         <div
@@ -329,7 +336,7 @@ function FileDetailContent() {
                             {displayName}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {displayEmail ? `${displayEmail} · ${shared.permission}` : shared.permission}
+                            {displayEmail ? `${displayEmail} · ${access}` : access}
                           </p>
                         </div>
                       </div>

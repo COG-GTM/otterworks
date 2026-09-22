@@ -47,7 +47,7 @@ class NotificationService(
         // Attempt email delivery
         if (DeliveryChannel.EMAIL in enabledChannels) {
             val emailSent = emailSender.sendEmail(
-                toAddress = "$targetUserId@otterworks.io",
+                toAddress = resolveTargetEmail(event, targetUserId),
                 subject = rendered.emailSubject,
                 htmlBody = rendered.emailBody,
             )
@@ -129,6 +129,15 @@ class NotificationService(
                 "user_mentioned" -> event.mentionedUserId.ifEmpty { event.userId }
                 else -> event.userId
             }
+        }
+
+        /**
+         * Recipients without an OtterWorks account carry their address on the
+         * event; internal recipients keep the address derived from their id.
+         */
+        fun resolveTargetEmail(event: SqsNotificationMessage, targetUserId: String): String {
+            val invitee = event.sharedWithEmail.trim()
+            return if (invitee.isNotEmpty()) invitee else "$targetUserId@otterworks.io"
         }
 
         fun resolveResourceId(event: SqsNotificationMessage): String {

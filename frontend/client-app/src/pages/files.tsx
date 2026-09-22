@@ -61,6 +61,7 @@ function FileBrowserContent() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [shareFileId, setShareFileId] = useState<string | null>(null);
+  const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
 
@@ -83,6 +84,14 @@ function FileBrowserContent() {
     queryKey: ["folders", "detail", folderId],
     queryFn: () => filesApi.getFolder(folderId!),
     enabled: !!folderId,
+  });
+
+  // Folder listings carry no share records, so the dialog reads them from the
+  // folder detail endpoint.
+  const { data: shareFolder } = useQuery({
+    queryKey: ["folders", "detail", shareFolderId],
+    queryFn: () => filesApi.getFolder(shareFolderId!),
+    enabled: !!shareFolderId,
   });
 
   const isLoading = filesLoading || foldersLoading;
@@ -466,6 +475,7 @@ function FileBrowserContent() {
                     view={viewMode}
                     onDelete={(id) => deleteFolderMutation.mutate(id)}
                     onRename={(id, name) => renameFolderMutation.mutate({ id, name })}
+                    onShare={(id) => setShareFolderId(id)}
                     selected={selectedIds.has(folder.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
@@ -533,6 +543,34 @@ function FileBrowserContent() {
               queryClient.invalidateQueries({ queryKey: ["files"] });
             }}
             onClose={() => setShareFileId(null)}
+          />
+        );
+      })()}
+      {shareFolderId && (() => {
+        const folder = shareFolder ?? folders.find((f) => f.id === shareFolderId);
+        if (!folder) return null;
+        return (
+          <ShareDialog
+            fileId={folder.id}
+            fileName={folder.name}
+            ownerId={folder.ownerId}
+            sharedWith={folder.sharedWith}
+            onShare={async (email, permission) => {
+              try {
+                await filesApi.shareFolder(folder.id, email, permission);
+              } finally {
+                queryClient.invalidateQueries({ queryKey: ["folders"] });
+              }
+            }}
+            onPermissionChange={async (userId, permission) => {
+              await filesApi.updateFolderSharePermission(folder.id, userId, permission);
+              queryClient.invalidateQueries({ queryKey: ["folders"] });
+            }}
+            onRemoveAccess={async (userId) => {
+              await filesApi.removeFolderShare(folder.id, userId);
+              queryClient.invalidateQueries({ queryKey: ["folders"] });
+            }}
+            onClose={() => setShareFolderId(null)}
           />
         );
       })()}

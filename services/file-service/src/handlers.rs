@@ -18,10 +18,10 @@ use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
-    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, FolderDetailResponse,
+    HealthResponse, ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    ShareStatus, UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
 
@@ -531,6 +531,41 @@ pub async fn share_file(
     path: web::Path<String>,
     body: web::Json<ShareFileRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let file_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
+
+    // Ensure file exists
+    let file = meta.get_file(&file_id).await?;
+
+    share_resource(
+        &req,
+        &config,
+        &meta,
+        &events,
+        file_id,
+        file.owner_id,
+        &file.name,
+        &body,
+    )
+    .await
+}
+
+/// Share a file or a folder. Both live in the same shares table, keyed by the
+/// resource id, so the invite, permission-update and notification behaviour is
+/// identical for either resource type.
+#[allow(clippy::too_many_arguments)]
+async fn share_resource(
+    req: &HttpRequest,
+    config: &AppConfig,
+    meta: &MetadataClient,
+    events: &EventPublisher,
+    resource_id: Uuid,
+    owner_id: Uuid,
+    resource_name: &str,
+    body: &ShareFileRequest,
+) -> Result<HttpResponse, ServiceError> {
     // Sharer's email, injected by api-gateway from the JWT; carried on
     // share-notification alerts so admin-service can attribute the incident.
     let reporter_email = req
@@ -541,21 +576,12 @@ pub async fn share_file(
         .filter(|s| !s.is_empty())
         .map(String::from);
 
-    let file_id: Uuid = path
-        .into_inner()
-        .parse()
-        .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
-
-    // Ensure file exists
-    let file = meta.get_file(&file_id).await?;
-
-    // Recipient is either a resolved user id, or an email the client could
-    // not resolve to an OtterWorks account. Unresolved emails are rejected
-    // unless the share-event failure switch is on, in which case the
-    // notification publish is still attempted (and fails) without persisting
-    // a share to a nonexistent user — so the failure fires for any email.
-    let (shared_with, recipient_known) = match body.shared_with {
-        Some(id) => (id, true),
+    // Recipient is either a resolved user id, or an email the client could not
+    // resolve to an OtterWorks account. An unresolved email becomes a pending
+    // invite keyed by an id derived from the address, so the invite survives
+    // until the invitee registers and claims it.
+    let (shared_with, invitee_email) = match body.shared_with {
+        Some(id) => (id, None),
         None => {
             let email = body
                 .shared_with_email
@@ -564,53 +590,50 @@ pub async fn share_file(
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| {
                     ServiceError::BadRequest("shared_with or shared_with_email is required".into())
-                })?;
-            if !events.share_publish_forced() {
-                return Err(ServiceError::BadRequest(format!(
-                    "no OtterWorks user found for {email}"
-                )));
-            }
+                })?
+                .to_lowercase();
             (
-                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.to_lowercase().as_bytes()),
-                false,
+                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes()),
+                Some(email),
             )
         }
     };
+    let status = if invitee_email.is_some() {
+        ShareStatus::Pending
+    } else {
+        ShareStatus::Active
+    };
 
-    // Check if share already exists for this file + user
-    let (share, created, permission_update) = if !recipient_known {
-        let share = FileShare {
-            id: Uuid::new_v4(),
-            file_id,
-            shared_with,
-            permission: body.permission.clone(),
-            shared_by: body.shared_by,
-            created_at: Utc::now(),
-        };
-        (share, false, false)
-    } else if let Some(existing) = meta.find_existing_share(&file_id, &shared_with).await? {
+    // Check if share already exists for this resource + user
+    let (share, created, permission_update) = if let Some(existing) =
+        meta.find_existing_share(&resource_id, &shared_with).await?
+    {
         // Update permission if different, otherwise keep the existing record
         if existing.permission != body.permission {
             let updated = FileShare {
                 id: existing.id,
-                file_id,
+                file_id: resource_id,
                 shared_with,
+                invitee_email: invitee_email.clone().or(existing.invitee_email.clone()),
+                status: existing.status,
                 permission: body.permission.clone(),
                 shared_by: body.shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
-            tracing::info!(file_id = %file_id, shared_with = %shared_with, "File share updated");
+            tracing::info!(file_id = %resource_id, shared_with = %shared_with, "File share updated");
             (updated, false, true)
         } else {
-            tracing::info!(file_id = %file_id, shared_with = %shared_with, "File already shared");
+            tracing::info!(file_id = %resource_id, shared_with = %shared_with, "File already shared");
             (existing, false, false)
         }
     } else {
         let share = FileShare {
             id: Uuid::new_v4(),
-            file_id,
+            file_id: resource_id,
             shared_with,
+            invitee_email: invitee_email.clone(),
+            status,
             permission: body.permission.clone(),
             shared_by: body.shared_by,
             created_at: Utc::now(),
@@ -627,17 +650,21 @@ pub async fn share_file(
     // share clicks and are left alone.
     if created || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
-            .file_shared(&file_id, &file.owner_id, &shared_with)
+            .file_shared(
+                &resource_id,
+                &owner_id,
+                &shared_with,
+                invitee_email.as_deref(),
+            )
             .await
         {
-            tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
+            tracing::error!(file_id = %resource_id, error = %err, "Failed to publish file_shared event");
             alerts::notify_share_notification_failure(
                 &config.alerts,
-                &file.name,
+                resource_name,
                 &err.to_string(),
                 reporter_email.as_deref(),
                 !events.share_publish_forced(),
-                recipient_known,
             );
             // Only surface the failure to the caller when the demo switch is
             // on; otherwise event publishing stays fire-and-forget like the
@@ -648,7 +675,7 @@ pub async fn share_file(
         }
     }
 
-    tracing::info!(file_id = %file_id, shared_with = %shared_with, "File shared");
+    tracing::info!(file_id = %resource_id, shared_with = %shared_with, "File shared");
     if created {
         Ok(HttpResponse::Created().json(ShareFileResponse { share }))
     } else {
@@ -671,15 +698,23 @@ pub async fn remove_share(
     // Ensure file exists
     let _file = meta.get_file(&file_id).await?;
 
+    remove_resource_share(&meta, file_id, user_id).await
+}
+
+async fn remove_resource_share(
+    meta: &MetadataClient,
+    resource_id: Uuid,
+    user_id: Uuid,
+) -> Result<HttpResponse, ServiceError> {
     // Find the existing share
     let share = meta
-        .find_existing_share(&file_id, &user_id)
+        .find_existing_share(&resource_id, &user_id)
         .await?
         .ok_or_else(|| ServiceError::ShareNotFound("Share not found".into()))?;
 
     meta.delete_share(&share.id).await?;
 
-    tracing::info!(file_id = %file_id, user_id = %user_id, "File share removed");
+    tracing::info!(file_id = %resource_id, user_id = %user_id, "Share removed");
     Ok(HttpResponse::NoContent().finish())
 }
 
@@ -724,7 +759,56 @@ pub async fn get_folder(
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
     let folder = meta.get_folder(&folder_id).await?;
-    Ok(HttpResponse::Ok().json(folder))
+    let shares = meta.list_shares(&folder_id).await.unwrap_or_default();
+    Ok(HttpResponse::Ok().json(FolderDetailResponse {
+        folder,
+        shared_with: shares,
+    }))
+}
+
+pub async fn share_folder(
+    req: HttpRequest,
+    config: web::Data<AppConfig>,
+    meta: web::Data<MetadataClient>,
+    events: web::Data<EventPublisher>,
+    path: web::Path<String>,
+    body: web::Json<ShareFileRequest>,
+) -> Result<HttpResponse, ServiceError> {
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+
+    let folder = meta.get_folder(&folder_id).await?;
+
+    share_resource(
+        &req,
+        &config,
+        &meta,
+        &events,
+        folder_id,
+        folder.owner_id,
+        &folder.name,
+        &body,
+    )
+    .await
+}
+
+pub async fn remove_folder_share(
+    meta: web::Data<MetadataClient>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse, ServiceError> {
+    let (folder_id_str, user_id_str) = path.into_inner();
+    let folder_id: Uuid = folder_id_str
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let user_id: Uuid = user_id_str
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid user id: {e}")))?;
+
+    let _folder = meta.get_folder(&folder_id).await?;
+
+    remove_resource_share(&meta, folder_id, user_id).await
 }
 
 pub async fn update_folder(

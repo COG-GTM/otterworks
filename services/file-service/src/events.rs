@@ -26,6 +26,11 @@ pub struct FileEvent {
     pub folder_id: Option<String>,
     #[serde(rename = "sharedWithUserId")]
     pub shared_with: Option<String>,
+    /// Address of a recipient without an OtterWorks account, so the
+    /// notification-service can email the invite instead of deriving an
+    /// internal address from the user id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_with_email: Option<String>,
     pub timestamp: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -133,6 +138,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
@@ -148,6 +154,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: None,
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: None,
             mime_type: None,
@@ -161,6 +168,7 @@ impl EventPublisher {
         file_id: &Uuid,
         owner_id: &Uuid,
         shared_with: &Uuid,
+        shared_with_email: Option<&str>,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
             event_type: "file_shared".into(),
@@ -168,6 +176,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: None,
             shared_with: Some(shared_with.to_string()),
+            shared_with_email: shared_with_email.map(str::to_string),
             timestamp: Utc::now().to_rfc3339(),
             name: None,
             mime_type: None,
@@ -189,6 +198,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: None,
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: None,
             mime_type: None,
@@ -212,6 +222,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
@@ -235,6 +246,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
@@ -255,6 +267,7 @@ impl EventPublisher {
             owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: None,
             mime_type: None,
@@ -276,6 +289,7 @@ mod tests {
             owner_id: Uuid::new_v4().to_string(),
             folder_id: None,
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: Some("test.txt".to_string()),
             mime_type: Some("text/plain".to_string()),
@@ -297,6 +311,7 @@ mod tests {
             owner_id: Uuid::new_v4().to_string(),
             folder_id: Some(folder.to_string()),
             shared_with: None,
+            shared_with_email: None,
             timestamp: Utc::now().to_rfc3339(),
             name: None,
             mime_type: None,
@@ -305,5 +320,31 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains(&folder.to_string()));
         assert!(json.contains("folderId"));
+    }
+
+    #[test]
+    fn test_share_event_carries_invitee_email() {
+        let shared_with = Uuid::new_v4();
+        let event = FileEvent {
+            event_type: "file_shared".into(),
+            file_id: Uuid::new_v4().to_string(),
+            owner_id: Uuid::new_v4().to_string(),
+            folder_id: None,
+            shared_with: Some(shared_with.to_string()),
+            shared_with_email: Some("outside@example.com".into()),
+            timestamp: Utc::now().to_rfc3339(),
+            name: None,
+            mime_type: None,
+            size_bytes: None,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"sharedWithEmail\":\"outside@example.com\""));
+
+        let internal = FileEvent {
+            shared_with_email: None,
+            ..event
+        };
+        let json = serde_json::to_string(&internal).unwrap();
+        assert!(!json.contains("sharedWithEmail"));
     }
 }

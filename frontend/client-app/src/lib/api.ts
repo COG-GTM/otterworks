@@ -22,6 +22,8 @@ interface RawShareItem {
   id: string;
   fileId: string;
   sharedWith: string;
+  inviteeEmail?: string | null;
+  status?: string;
   permission: string;
   sharedBy: string;
   createdAt: string;
@@ -49,6 +51,26 @@ interface RawFileListResponse {
   pageSize: number;
 }
 
+// Share records are returned per recipient; a pending record carries the invited
+// email instead of a registered account.
+function mapRawShares(shares: RawShareItem[] | undefined): SharedUser[] {
+  const seen = new Set<string>();
+  return (shares ?? [])
+    .map((s) => ({
+      userId: s.sharedWith,
+      name: "",
+      email: s.inviteeEmail ?? "",
+      status: s.status === "pending" ? ("pending" as const) : ("active" as const),
+      permission:
+        s.permission === "editor" ? ("edit" as const) : ("view" as const),
+    }))
+    .filter((s) => {
+      if (seen.has(s.userId)) return false;
+      seen.add(s.userId);
+      return true;
+    });
+}
+
 // Normalize a single file from the file-service format to the frontend FileItem shape
 function mapRawFile(raw: RawFileItem): FileItem {
   return {
@@ -63,20 +85,7 @@ function mapRawFile(raw: RawFileItem): FileItem {
     isTrashed: raw.isTrashed ?? false,
     path: `/${raw.name}`,
     downloadUrl: undefined,
-    sharedWith: (() => {
-      const mapped = (raw.sharedWith ?? []).map((s) => ({
-        userId: s.sharedWith,
-        name: "",
-        email: "",
-        permission: s.permission === "viewer" ? "view" as const : s.permission === "editor" ? "edit" as const : "view" as const,
-      }));
-      const seen = new Set<string>();
-      return mapped.filter((s) => {
-        if (seen.has(s.userId)) return false;
-        seen.add(s.userId);
-        return true;
-      });
-    })(),
+    sharedWith: mapRawShares(raw.sharedWith),
     tags: [],
     createdAt: raw.createdAt ?? "",
     updatedAt: raw.updatedAt ?? "",
@@ -139,6 +148,55 @@ function getOwnerIdFromJwt(): string | null {
   }
 }
 
+type ShareableResource = "files" | "folders";
+
+// An email that doesn't resolve to an OtterWorks user is sent on as
+// shared_with_email, which file-service records as a pending invite.
+async function shareResource(
+  resource: ShareableResource,
+  id: string,
+  email: string,
+  permission: "view" | "edit"
+): Promise<void> {
+  let userId: string | null = null;
+  try {
+    userId = (await authApi.lookupUser(email)).id;
+  } catch (err) {
+    // auth-service reports an unknown email as 400 "User not found with
+    // email: ..."; other lookup failures are rethrown.
+    const isUserNotFound =
+      isAxiosError(err) &&
+      (err.response?.status === 404 ||
+        (err.response?.status === 400 &&
+          typeof err.response.data?.message === "string" &&
+          err.response.data.message.includes("User not found")));
+    if (!isUserNotFound) throw err;
+  }
+  const sharedBy = getOwnerIdFromJwt();
+  if (!sharedBy) throw new Error("Unable to determine current user");
+  await apiClient.post(`/${resource}/${id}/share`, {
+    shared_with: userId,
+    shared_with_email: userId ? undefined : email,
+    permission: permission === "view" ? "viewer" : "editor",
+    shared_by: sharedBy,
+  });
+}
+
+async function updateResourceSharePermission(
+  resource: ShareableResource,
+  id: string,
+  userId: string,
+  permission: "view" | "edit"
+): Promise<void> {
+  const sharedBy = getOwnerIdFromJwt();
+  if (!sharedBy) throw new Error("Unable to determine current user");
+  await apiClient.post(`/${resource}/${id}/share`, {
+    shared_with: userId,
+    permission: permission === "view" ? "viewer" : "editor",
+    shared_by: sharedBy,
+  });
+}
+
 // Backend file objects use different field names — normalise to frontend FileItem shape.
 function normalizeFileItem(raw: Record<string, unknown>): FileItem {
   return {
@@ -149,7 +207,7 @@ function normalizeFileItem(raw: Record<string, unknown>): FileItem {
     isFolder: (raw.isFolder ?? false) as boolean,
     ownerName: (raw.ownerName ?? "") as string,
     path: (raw.path ?? "") as string,
-    sharedWith: (raw.sharedWith ?? []) as SharedUser[],
+    sharedWith: mapRawShares(raw.sharedWith as RawShareItem[] | undefined),
     tags: (raw.tags ?? []) as string[],
     versions: (raw.versions ?? []) as FileItem["versions"],
   } as FileItem;
@@ -251,31 +309,21 @@ export const filesApi = {
   deleteFolder: async (id: string): Promise<void> => {
     await apiClient.delete(`/folders/${id}`);
   },
+  shareFolder: async (id: string, email: string, permission: "view" | "edit"): Promise<void> => {
+    await shareResource("folders", id, email, permission);
+  },
+  removeFolderShare: async (folderId: string, userId: string): Promise<void> => {
+    await apiClient.delete(`/folders/${folderId}/share/${userId}`);
+  },
+  updateFolderSharePermission: async (
+    folderId: string,
+    userId: string,
+    permission: "view" | "edit"
+  ): Promise<void> => {
+    await updateResourceSharePermission("folders", folderId, userId, permission);
+  },
   share: async (id: string, email: string, permission: "view" | "edit"): Promise<void> => {
-    // An email that doesn't resolve to an OtterWorks user is still sent to
-    // file-service (as shared_with_email), which decides whether to reject it.
-    let userId: string | null = null;
-    try {
-      userId = (await authApi.lookupUser(email)).id;
-    } catch (err) {
-      // auth-service reports an unknown email as 400 "User not found with
-      // email: ..."; other lookup failures are rethrown.
-      const isUserNotFound =
-        isAxiosError(err) &&
-        (err.response?.status === 404 ||
-          (err.response?.status === 400 &&
-            typeof err.response.data?.message === "string" &&
-            err.response.data.message.includes("User not found")));
-      if (!isUserNotFound) throw err;
-    }
-    const sharedBy = getOwnerIdFromJwt();
-    if (!sharedBy) throw new Error("Unable to determine current user");
-    await apiClient.post(`/files/${id}/share`, {
-      shared_with: userId,
-      shared_with_email: userId ? undefined : email,
-      permission: permission === "view" ? "viewer" : "editor",
-      shared_by: sharedBy,
-    });
+    await shareResource("files", id, email, permission);
   },
   removeShare: async (fileId: string, userId: string): Promise<void> => {
     await apiClient.delete(`/files/${fileId}/share/${userId}`);
@@ -285,13 +333,7 @@ export const filesApi = {
     userId: string,
     permission: "view" | "edit"
   ): Promise<void> => {
-    const sharedBy = getOwnerIdFromJwt();
-    if (!sharedBy) throw new Error("Unable to determine current user");
-    await apiClient.post(`/files/${fileId}/share`, {
-      shared_with: userId,
-      permission: permission === "view" ? "viewer" : "editor",
-      shared_by: sharedBy,
-    });
+    await updateResourceSharePermission("files", fileId, userId, permission);
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/files/${id}/restore`);

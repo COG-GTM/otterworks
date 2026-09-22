@@ -95,7 +95,12 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::post().to(handlers::create_folder))
                     .route("/{folder_id}", web::get().to(handlers::get_folder))
                     .route("/{folder_id}", web::put().to(handlers::update_folder))
-                    .route("/{folder_id}", web::delete().to(handlers::delete_folder)),
+                    .route("/{folder_id}", web::delete().to(handlers::delete_folder))
+                    .route("/{folder_id}/share", web::post().to(handlers::share_folder))
+                    .route(
+                        "/{folder_id}/share/{user_id}",
+                        web::delete().to(handlers::remove_folder_share),
+                    ),
             )
     })
     .bind(format!("0.0.0.0:{port}"))?
