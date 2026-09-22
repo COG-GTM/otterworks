@@ -1,7 +1,11 @@
 # Report Service Dependency Upgrade Guide
 
+> Status: all 11 axes below have been applied. The service now builds and tests on
+> Java 17 with Spring Boot 3.2. The document is kept as a record of what each axis
+> changed and how it was verified.
+
 This document describes 11 upgrade axes for migrating the report-service from its
-current legacy stack to a modern, supported baseline. Each axis lists the exact
+legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
 
 ---
