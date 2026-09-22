@@ -13,6 +13,7 @@ mod middleware;
 mod models;
 mod seed;
 mod storage;
+mod trash;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -41,6 +42,12 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("failed to connect to Redis");
 
+    actix_web::rt::spawn(trash::run_purge_loop(
+        meta_client.clone(),
+        s3_client.clone(),
+        event_publisher.clone(),
+    ));
+
     let port = app_config.server.port;
     tracing::info!(port = %port, "File Service starting");
 
@@ -67,6 +74,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/upload", web::post().to(handlers::upload_file))
                     .route("/shared", web::get().to(handlers::list_shared_files))
                     .route("/trash", web::get().to(handlers::list_trashed))
+                    .route(
+                        "/trash/purge",
+                        web::post().to(handlers::purge_expired_trash),
+                    )
                     .route("/activity", web::get().to(handlers::list_activity))
                     .route("", web::get().to(handlers::list_files))
                     .route("/{file_id}", web::get().to(handlers::get_file_metadata))

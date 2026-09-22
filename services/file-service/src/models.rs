@@ -15,6 +15,14 @@ pub struct FileMetadata {
     pub owner_id: Uuid,
     pub version: u32,
     pub is_trashed: bool,
+    #[serde(default)]
+    pub trashed_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub trashed_by: Option<Uuid>,
+    #[serde(default)]
+    pub trashed_by_email: Option<String>,
+    #[serde(default)]
+    pub trashed_from_folder_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -123,6 +131,28 @@ pub struct ListFilesResponse {
     pub total: usize,
     pub page: u32,
     pub page_size: u32,
+}
+
+/// A trashed file plus the human-readable location it was deleted from.
+#[derive(Debug, Serialize)]
+pub struct TrashedFileItem {
+    #[serde(flatten)]
+    pub file: FileMetadata,
+    pub original_location: String,
+    pub original_folder_missing: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListTrashedResponse {
+    pub files: Vec<TrashedFileItem>,
+    pub total: usize,
+    pub page: u32,
+    pub page_size: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PurgeTrashResponse {
+    pub purged: usize,
 }
 
 #[derive(Debug, Serialize)]

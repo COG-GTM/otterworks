@@ -57,7 +57,7 @@ const navGroups: NavGroup[] = [
   {
     label: "System",
     items: [
-      { href: "/trash", label: "Trash", icon: Trash2 },
+      { href: "/trash", label: "Recently deleted", icon: Trash2 },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
