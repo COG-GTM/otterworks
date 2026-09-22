@@ -74,10 +74,6 @@ async fn main() -> std::io::Result<()> {
                     .route("/upload", web::post().to(handlers::upload_file))
                     .route("/shared", web::get().to(handlers::list_shared_files))
                     .route("/trash", web::get().to(handlers::list_trashed))
-                    .route(
-                        "/trash/purge",
-                        web::post().to(handlers::purge_expired_trash),
-                    )
                     .route("/activity", web::get().to(handlers::list_activity))
                     .route("", web::get().to(handlers::list_files))
                     .route("/{file_id}", web::get().to(handlers::get_file_metadata))

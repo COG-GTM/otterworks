@@ -20,11 +20,10 @@ use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
     ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListTrashedResponse,
-    ListVersionsResponse, MoveFileRequest, PurgeTrashResponse, RenameFileRequest, ShareFileRequest,
-    ShareFileResponse, TrashedFileItem, UpdateFolderRequest, UploadResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    TrashedFileItem, UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
-use crate::trash;
 
 // -- Health & Metrics --
 
@@ -372,7 +371,11 @@ pub async fn list_trashed(
     let mut items = Vec::with_capacity(paged.len());
     for file in paged {
         let folder_name = match file.trashed_from_folder_id {
-            Some(fid) => meta.get_folder(&fid).await.ok().map(|f| f.name),
+            Some(fid) => match meta.get_folder(&fid).await {
+                Ok(folder) => Some(folder.name),
+                Err(ServiceError::FolderNotFound(_)) => None,
+                Err(e) => return Err(e),
+            },
             None => None,
         };
         let (original_location, original_folder_missing) = crate::metadata::original_location_label(
@@ -392,16 +395,6 @@ pub async fn list_trashed(
         page,
         page_size,
     }))
-}
-
-/// Permanently remove trashed items whose 30 day retention window has elapsed.
-pub async fn purge_expired_trash(
-    s3: web::Data<S3Client>,
-    meta: web::Data<MetadataClient>,
-    events: web::Data<EventPublisher>,
-) -> Result<HttpResponse, ServiceError> {
-    let purged = trash::purge_expired_trash(&meta, &s3, &events, Utc::now()).await?;
-    Ok(HttpResponse::Ok().json(PurgeTrashResponse { purged }))
 }
 
 pub async fn delete_file(

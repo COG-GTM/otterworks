@@ -209,6 +209,36 @@ impl MetadataClient {
         parse_file_metadata(item)
     }
 
+    /// Delete a file's metadata only while it is still trashed and still past
+    /// the retention window, so a purge sweep cannot remove a record that was
+    /// restored after the sweep selected it. Returns whether the row was
+    /// deleted.
+    pub async fn delete_expired_trashed_file(
+        &self,
+        file_id: &Uuid,
+        now: DateTime<Utc>,
+    ) -> Result<bool, ServiceError> {
+        let cutoff = trash_retention_cutoff(now);
+        let result = self
+            .client
+            .delete_item()
+            .table_name(&self.files_table)
+            .key("id", AttributeValue::S(file_id.to_string()))
+            .condition_expression(
+                "attribute_exists(id) AND is_trashed = :t AND trashed_at <= :cutoff",
+            )
+            .expression_attribute_values(":t", AttributeValue::Bool(true))
+            .expression_attribute_values(":cutoff", AttributeValue::S(cutoff.to_rfc3339()))
+            .send()
+            .await;
+
+        match result {
+            Ok(_) => Ok(true),
+            Err(e) if is_conditional_check_failed(&e) => Ok(false),
+            Err(e) => Err(ServiceError::DynamoError(e.to_string())),
+        }
+    }
+
     pub async fn delete_file(&self, file_id: &Uuid) -> Result<(), ServiceError> {
         self.client
             .delete_item()
@@ -287,8 +317,15 @@ impl MetadataClient {
     pub async fn restore_file(&self, file_id: &Uuid) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
         let file = self.get_file(file_id).await?;
+        if !file.is_trashed {
+            return Ok(file);
+        }
         let original_folder_exists = match file.trashed_from_folder_id {
-            Some(fid) => self.get_folder(&fid).await.is_ok(),
+            Some(fid) => match self.get_folder(&fid).await {
+                Ok(_) => true,
+                Err(ServiceError::FolderNotFound(_)) => false,
+                Err(e) => return Err(e),
+            },
             None => false,
         };
         let target_folder =
@@ -306,8 +343,9 @@ impl MetadataClient {
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
-            .condition_expression("attribute_exists(id)")
+            .condition_expression("attribute_exists(id) AND is_trashed = :was")
             .expression_attribute_values(":t", AttributeValue::Bool(false))
+            .expression_attribute_values(":was", AttributeValue::Bool(true))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()));
 
         match target_folder {

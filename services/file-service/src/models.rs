@@ -151,11 +151,6 @@ pub struct ListTrashedResponse {
 }
 
 #[derive(Debug, Serialize)]
-pub struct PurgeTrashResponse {
-    pub purged: usize,
-}
-
-#[derive(Debug, Serialize)]
 pub struct ListVersionsResponse {
     pub versions: Vec<FileVersion>,
 }
