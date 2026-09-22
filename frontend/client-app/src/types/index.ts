@@ -47,6 +47,11 @@ export interface FileItem {
   createdAt: string;
   updatedAt: string;
   trashedAt?: string;
+  trashedBy?: string;
+  trashedByEmail?: string;
+  trashedFromFolderId?: string;
+  originalLocation?: string;
+  originalFolderMissing?: boolean;
   versions: FileVersion[];
 }
 

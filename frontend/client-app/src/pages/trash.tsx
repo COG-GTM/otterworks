@@ -17,21 +17,32 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { filesApi } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { FileItem } from "@/types";
+
+/// Who deleted an item, from the signed-in user's point of view.
+export function deletedByLabel(
+  item: Pick<FileItem, "trashedBy" | "trashedByEmail">,
+  currentUserId?: string
+): string {
+  if (currentUserId && item.trashedBy === currentUserId) return "you";
+  return item.trashedByEmail ?? "unknown";
+}
 
 export default function TrashPage() {
   return (
     <AppShell>
       <ErrorBoundary>
-        <TrashContent />
+        <RecentlyDeletedContent />
       </ErrorBoundary>
     </AppShell>
   );
 }
 
-function TrashContent() {
+export function RecentlyDeletedContent() {
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
@@ -89,9 +100,9 @@ function TrashContent() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Trash</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Recently deleted</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Items in trash will be permanently deleted after 30 days
+            Items deleted in the last 30 days. After 30 days they are removed permanently.
           </p>
         </div>
         {items.length > 0 && (
@@ -111,7 +122,7 @@ function TrashContent() {
         <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
           <AlertTriangle size={18} className="text-amber-600 flex-shrink-0" />
           <p className="text-sm text-amber-800">
-            Items in trash are automatically deleted after 30 days. Restore items to keep them.
+            Items are removed permanently after 30 days. Restore items to keep them.
           </p>
         </div>
       )}
@@ -122,8 +133,8 @@ function TrashContent() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={Trash2}
-          title="Trash is empty"
-          description="Deleted files and documents will appear here"
+          title="Nothing deleted in the last 30 days"
+          description="Files you delete appear here for 30 days, then they are removed permanently"
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
@@ -131,6 +142,7 @@ function TrashContent() {
             <TrashRow
               key={item.id}
               item={item}
+              deletedBy={deletedByLabel(item, currentUserId)}
               onRestore={() => restoreMutation.mutate(item.id)}
               onDelete={() => setDeleteTarget(item)}
               isRestoring={restoreMutation.isPending}
@@ -181,11 +193,13 @@ function getTrashIcon(item: FileItem) {
 
 function TrashRow({
   item,
+  deletedBy,
   onRestore,
   onDelete,
   isRestoring,
 }: Readonly<{
   item: FileItem;
+  deletedBy: string;
   onRestore: () => void;
   onDelete: () => void;
   isRestoring: boolean;
@@ -201,8 +215,15 @@ function TrashRow({
         <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
         <p className="text-xs text-gray-500">
           {item.isFolder ? "Folder" : formatFileSize(item.size)}
-          {item.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(item.trashedAt)}`}
+          {item.originalLocation && ` \u00B7 In ${item.originalLocation}`}
+          {` \u00B7 Deleted by ${deletedBy}`}
+          {item.trashedAt && ` \u00B7 ${formatRelativeTime(item.trashedAt)}`}
         </p>
+        {item.originalFolderMissing && (
+          <p className="text-xs text-amber-700 mt-0.5">
+            {"Original folder was deleted \u2014 restores to My Files"}
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <button
