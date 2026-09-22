@@ -1,15 +1,16 @@
 package com.otterworks.report.config;
 
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
-
-import java.time.Duration;
 
 /**
  * Application configuration — wires up RestTemplate and external service URLs.
@@ -46,16 +47,20 @@ public class AppConfig {
         PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
         connectionManager.setMaxTotal(50);
         connectionManager.setDefaultMaxPerRoute(20);
+        connectionManager.setDefaultConnectionConfig(ConnectionConfig.custom()
+                .setConnectTimeout(Timeout.ofMilliseconds(connectionTimeout))
+                .setSocketTimeout(Timeout.ofMilliseconds(readTimeout))
+                .build());
 
         CloseableHttpClient httpClient = HttpClients.custom()
                 .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectionTimeout))
+                        .setResponseTimeout(Timeout.ofMilliseconds(readTimeout))
+                        .build())
                 .build();
 
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setConnectTimeout(Duration.ofMillis(connectionTimeout));
-        factory.setConnectionRequestTimeout(Duration.ofMillis(readTimeout));
-
-        return new RestTemplate(factory);
+        return new RestTemplate(new HttpComponentsClientHttpRequestFactory(httpClient));
     }
 
     public String getAnalyticsServiceUrl() {
