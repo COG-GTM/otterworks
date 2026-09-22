@@ -301,6 +301,55 @@ pub async fn list_files(
     }))
 }
 
+/// Minimal server-side check that an invite address is deliverable-shaped:
+/// `local@domain.tld`, no whitespace, single `@`.
+fn is_valid_email(email: &str) -> bool {
+    if email.chars().any(char::is_whitespace) || email.len() > 254 {
+        return false;
+    }
+    let mut parts = email.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && domain.len() >= 3
+}
+
+/// Bind pending invites addressed to this user's email to their account, so a
+/// share created before they signed up becomes a normal active share keyed by
+/// their real user id.
+async fn claim_pending_invites(
+    meta: &MetadataClient,
+    user_id: &Uuid,
+    email: &str,
+) -> Result<(), ServiceError> {
+    for pending in meta
+        .list_pending_shares_for_email(&email.to_lowercase())
+        .await?
+    {
+        if meta
+            .find_existing_share(&pending.file_id, user_id)
+            .await?
+            .is_some()
+        {
+            meta.delete_share(&pending.id).await?;
+            continue;
+        }
+        meta.put_share(&FileShare {
+            shared_with: *user_id,
+            invited_email: None,
+            status: ShareStatus::Active,
+            ..pending.clone()
+        })
+        .await?;
+        tracing::info!(file_id = %pending.file_id, user_id = %user_id, "Pending invite claimed");
+    }
+    Ok(())
+}
+
 pub async fn list_shared_files(
     meta: web::Data<MetadataClient>,
     req: HttpRequest,
@@ -312,6 +361,16 @@ pub async fn list_shared_files(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| ServiceError::BadRequest("missing X-User-ID header".into()))?;
+
+    let user_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(email) = user_email {
+        claim_pending_invites(&meta, &user_id, email).await?;
+    }
 
     let shares = meta.list_shares_for_user(&user_id).await?;
 
@@ -565,6 +624,11 @@ pub async fn share_file(
                     ServiceError::BadRequest("shared_with or shared_with_email is required".into())
                 })?
                 .to_lowercase();
+            if !is_valid_email(&email) {
+                return Err(ServiceError::BadRequest(format!(
+                    "invalid email address: {email}"
+                )));
+            }
             (
                 Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes()),
                 Some(email),
@@ -616,12 +680,15 @@ pub async fn share_file(
     };
 
     // The notification event is published for new shares only, so re-shares
-    // and permission updates don't send duplicate notifications. When the
-    // share-event failure switch is on, every share click (new share or
-    // re-share of the same recipient) attempts the publish so a failed
-    // attempt can be retried by sharing again; permission updates are not
-    // share clicks and are left alone.
-    if created || (events.share_publish_forced() && !permission_update) {
+    // and permission updates don't send duplicate notifications. Sharing again
+    // with an invitee who has not signed up yet resends the invite, which is
+    // also how a failed publish gets retried. When the share-event failure
+    // switch is on, every share click (new share or re-share of the same
+    // recipient) attempts the publish so a failed attempt can be retried by
+    // sharing again; permission updates are not share clicks and are left
+    // alone.
+    let resend_invite = share.status == ShareStatus::Pending && !permission_update;
+    if created || resend_invite || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
             .file_shared(
                 &file_id,
@@ -828,6 +895,18 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invite_addresses_are_validated() {
+        assert!(is_valid_email("outside@example.com"));
+        assert!(is_valid_email("first.last+tag@sub.example.co.uk"));
+        assert!(!is_valid_email("outside"));
+        assert!(!is_valid_email("outside@example"));
+        assert!(!is_valid_email("outside@@example.com"));
+        assert!(!is_valid_email("out side@example.com"));
+        assert!(!is_valid_email("@example.com"));
+        assert!(!is_valid_email("outside@example."));
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {

@@ -588,6 +588,28 @@ impl MetadataClient {
         Ok(shares)
     }
 
+    pub async fn list_pending_shares_for_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<FileShare>, ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.shares_table)
+            .filter_expression("invited_email = :email")
+            .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
+            .into_paginator()
+            .items()
+            .send();
+
+        let mut shares = Vec::new();
+        while let Some(item) = paginator.next().await {
+            let item = item.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            shares.push(parse_file_share(&item)?);
+        }
+        Ok(shares)
+    }
+
     pub async fn list_shares_by_owner(
         &self,
         owner_id: &Uuid,
