@@ -592,6 +592,11 @@ async fn share_resource(
                     ServiceError::BadRequest("shared_with or shared_with_email is required".into())
                 })?
                 .to_lowercase();
+            if !is_valid_email(&email) {
+                return Err(ServiceError::BadRequest(format!(
+                    "invalid email address: {email}"
+                )));
+            }
             (
                 Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes()),
                 Some(email),
@@ -908,9 +913,39 @@ pub async fn list_activity(
     Ok(HttpResponse::Ok().json(ActivityResponse { items }))
 }
 
+/// Minimal shape check for an invite address: a single `@` separating a
+/// non-empty local part from a dotted domain, no whitespace.
+fn is_valid_email(email: &str) -> bool {
+    if email.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((local, domain)) = email.split_once('@') else {
+        return false;
+    };
+    if local.is_empty() || domain.contains('@') {
+        return false;
+    }
+    match domain.rsplit_once('.') {
+        Some((name, tld)) => !name.is_empty() && tld.len() >= 2,
+        None => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_valid_email() {
+        assert!(is_valid_email("outside@example.com"));
+        assert!(is_valid_email("first.last+tag@sub.example.co.uk"));
+        assert!(!is_valid_email("not-an-email"));
+        assert!(!is_valid_email("@example.com"));
+        assert!(!is_valid_email("outside@example"));
+        assert!(!is_valid_email("outside@.com"));
+        assert!(!is_valid_email("outside@@example.com"));
+        assert!(!is_valid_email("out side@example.com"));
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
