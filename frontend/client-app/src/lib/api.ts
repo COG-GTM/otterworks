@@ -6,6 +6,7 @@ import type {
   LoginCredentials,
   RegisterCredentials,
   FileItem,
+  DeletedItem,
   Document,
   Notification,
   SearchResult,
@@ -47,6 +48,46 @@ interface RawFileListResponse {
   total: number;
   page: number;
   pageSize: number;
+}
+
+interface RawTrashedItem {
+  id: string;
+  name: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  isFolder: boolean;
+  originalPath: string;
+  originalLocationExists: boolean;
+  deletedBy: string | null;
+  deletedAt: string | null;
+  purgeAt: string | null;
+}
+
+interface RawTrashedListResponse {
+  items: RawTrashedItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  retentionDays: number;
+}
+
+export interface RecentlyDeletedPage extends PaginatedResponse<DeletedItem> {
+  retentionDays: number;
+}
+
+function mapTrashedItem(raw: RawTrashedItem): DeletedItem {
+  return {
+    id: raw.id,
+    name: raw.name,
+    mimeType: raw.mimeType ?? "",
+    size: raw.sizeBytes ?? 0,
+    isFolder: raw.isFolder ?? false,
+    originalPath: raw.originalPath || "/",
+    originalLocationExists: raw.originalLocationExists ?? true,
+    deletedBy: raw.deletedBy ?? null,
+    deletedAt: raw.deletedAt ?? null,
+    purgeAt: raw.purgeAt ?? null,
+  };
 }
 
 // Normalize a single file from the file-service format to the frontend FileItem shape
@@ -309,24 +350,31 @@ export const filesApi = {
       hasMore: (data.page ?? page) * (data.pageSize ?? pageSize) < (data.total ?? items.length),
     };
   },
-  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<FileItem>> => {
+  getRecentlyDeleted: async (page = 1, pageSize = 50): Promise<RecentlyDeletedPage> => {
     const params: Record<string, string | number> = { page, page_size: pageSize };
     const ownerId = getOwnerIdFromJwt();
     if (ownerId) params.owner_id = ownerId;
-    const { data } = await apiClient.get<RawFileListResponse>("/files/trash", {
+    const { data } = await apiClient.get<RawTrashedListResponse>("/files/trash", {
       params,
     });
-    const items = (data.files ?? []).map(mapRawFile);
+    const items = (data.items ?? []).map(mapTrashedItem);
     return {
       data: items,
       total: data.total ?? items.length,
       page: data.page ?? page,
       pageSize: data.pageSize ?? pageSize,
       hasMore: (data.page ?? page) * (data.pageSize ?? pageSize) < (data.total ?? items.length),
+      retentionDays: data.retentionDays ?? 30,
     };
   },
   permanentDelete: async (id: string): Promise<void> => {
     await apiClient.delete(`/files/${id}`);
+  },
+  restoreFolder: async (id: string): Promise<void> => {
+    await apiClient.post(`/folders/${id}/restore`);
+  },
+  permanentDeleteFolder: async (id: string): Promise<void> => {
+    await apiClient.delete(`/folders/${id}/permanent`);
   },
   renameFile: async (id: string, name: string): Promise<FileItem> => {
     const { data } = await apiClient.patch<RawFileItem>(`/files/${id}/rename`, { name });

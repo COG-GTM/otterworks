@@ -19,11 +19,12 @@ use crate::middleware;
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListTrashedResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    TrashedItem, UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
+use crate::trash;
 
 // -- Health & Metrics --
 
@@ -195,6 +196,8 @@ pub async fn upload_file(
         owner_id: owner,
         version: 1,
         is_trashed: false,
+        trashed_at: None,
+        trashed_by: None,
         created_at: now,
         updated_at: now,
     };
@@ -349,28 +352,88 @@ pub async fn list_shared_files(
 pub async fn list_trashed(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta.list_trashed(owner_id).await?;
+    let retention_days = config.server.trash_retention_days;
+    let cutoff = trash::purge_cutoff(retention_days, Utc::now());
+
+    let (files, folders, all_folders) = futures_util::future::join3(
+        meta.list_trashed(owner_id),
+        meta.list_trashed_folders(owner_id),
+        meta.list_all_folders(owner_id),
+    )
+    .await;
+
+    let folder_index: std::collections::HashMap<Uuid, Folder> = all_folders?
+        .into_iter()
+        .map(|folder| (folder.id, folder))
+        .collect();
+
+    let mut items: Vec<TrashedItem> = Vec::new();
+
+    for file in files? {
+        let deleted_at = file.deleted_at();
+        if deleted_at < cutoff {
+            continue;
+        }
+        let location = trash::resolve_location(file.folder_id, &folder_index);
+        items.push(TrashedItem {
+            id: file.id,
+            name: file.name,
+            mime_type: Some(file.mime_type),
+            size_bytes: file.size_bytes,
+            is_folder: false,
+            original_path: location.path,
+            original_location_exists: location.exists,
+            deleted_by: file.trashed_by,
+            deleted_at: Some(deleted_at),
+            purge_at: Some(trash::purge_at(deleted_at, retention_days)),
+        });
+    }
+
+    for folder in folders? {
+        let deleted_at = folder.deleted_at();
+        if deleted_at < cutoff {
+            continue;
+        }
+        let location = trash::resolve_location(folder.parent_id, &folder_index);
+        items.push(TrashedItem {
+            id: folder.id,
+            name: folder.name,
+            mime_type: None,
+            size_bytes: 0,
+            is_folder: true,
+            original_path: location.path,
+            original_location_exists: location.exists,
+            deleted_by: folder.trashed_by,
+            deleted_at: Some(deleted_at),
+            purge_at: Some(trash::purge_at(deleted_at, retention_days)),
+        });
+    }
+
+    items.sort_by_key(|item| std::cmp::Reverse(item.deleted_at));
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
-    let total = files.len();
+    let total = items.len();
     let start = (page - 1).saturating_mul(page_size) as usize;
-    let paged: Vec<FileMetadata> = files
+    let paged: Vec<TrashedItem> = items
         .into_iter()
         .skip(start)
         .take(page_size as usize)
         .collect();
 
-    Ok(HttpResponse::Ok().json(ListFilesResponse {
-        files: paged,
+    Ok(HttpResponse::Ok().json(ListTrashedResponse {
+        items: paged,
         total,
         page,
         page_size,
+        retention_days,
     }))
 }
+
 pub async fn delete_file(
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
@@ -479,6 +542,7 @@ pub async fn list_versions(
 }
 
 pub async fn trash_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -488,7 +552,9 @@ pub async fn trash_file(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.trash_file(&file_id).await?;
+    let file = meta
+        .trash_file(&file_id, resolve_owner_id(&req, None))
+        .await?;
 
     let _ = events.file_trashed(&file_id, &file.owner_id).await;
 
@@ -506,7 +572,11 @@ pub async fn restore_file(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.restore_file(&file_id).await?;
+    // Items go back where they came from, or to the root when that folder is
+    // itself gone.
+    let trashed = meta.get_file(&file_id).await?;
+    let to_root = !folder_is_available(&meta, trashed.folder_id).await;
+    let file = meta.restore_file(&file_id, to_root).await?;
 
     let _ = events
         .file_restored(
@@ -705,6 +775,9 @@ pub async fn create_folder(
         name: body.name.clone(),
         parent_id: body.parent_id,
         owner_id: body.owner_id,
+        is_trashed: false,
+        trashed_at: None,
+        trashed_by: None,
         created_at: now,
         updated_at: now,
     };
@@ -743,7 +816,42 @@ pub async fn update_folder(
     Ok(HttpResponse::Ok().json(folder))
 }
 
+/// Move a folder to the trash, where it stays recoverable for the retention
+/// window. Permanent removal is `DELETE /folders/{id}/permanent`.
 pub async fn delete_folder(
+    req: HttpRequest,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+
+    meta.trash_folder(&folder_id, resolve_owner_id(&req, None))
+        .await?;
+    tracing::info!(folder_id = %folder_id, "Folder trashed");
+    Ok(HttpResponse::NoContent().finish())
+}
+
+pub async fn restore_folder(
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+
+    let trashed = meta.get_folder(&folder_id).await?;
+    let to_root = !folder_is_available(&meta, trashed.parent_id).await;
+    let folder = meta.restore_folder(&folder_id, to_root).await?;
+
+    tracing::info!(folder_id = %folder_id, to_root, "Folder restored");
+    Ok(HttpResponse::Ok().json(folder))
+}
+
+pub async fn purge_folder(
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -753,8 +861,17 @@ pub async fn delete_folder(
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
     meta.delete_folder(&folder_id).await?;
-    tracing::info!(folder_id = %folder_id, "Folder deleted");
+    tracing::info!(folder_id = %folder_id, "Folder permanently deleted");
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// True when an item can be restored into `folder_id`: either the root, or a
+/// folder that still exists and is not itself trashed.
+async fn folder_is_available(meta: &MetadataClient, folder_id: Option<Uuid>) -> bool {
+    match folder_id {
+        None => true,
+        Some(id) => matches!(meta.get_folder(&id).await, Ok(folder) if !folder.is_trashed),
+    }
 }
 
 // -- Activity Handler --

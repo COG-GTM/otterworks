@@ -50,6 +50,22 @@ export interface FileItem {
   versions: FileVersion[];
 }
 
+/** A file or folder in the "Recently deleted" view. */
+export interface DeletedItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  isFolder: boolean;
+  /** Folder the item lived in when it was deleted. */
+  originalPath: string;
+  /** When false, restoring puts the item back at the root. */
+  originalLocationExists: boolean;
+  deletedBy: string | null;
+  deletedAt: string | null;
+  purgeAt: string | null;
+}
+
 export interface FileVersion {
   id: string;
   fileId: string;

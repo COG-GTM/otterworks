@@ -13,6 +13,7 @@ mod middleware;
 mod models;
 mod seed;
 mod storage;
+mod trash;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -43,6 +44,13 @@ async fn main() -> std::io::Result<()> {
 
     let port = app_config.server.port;
     tracing::info!(port = %port, "File Service starting");
+
+    spawn_trash_purge(
+        meta_client.clone(),
+        s3_client.clone(),
+        app_config.server.trash_retention_days,
+        app_config.server.trash_purge_interval_secs,
+    );
 
     let config_data = web::Data::new(app_config);
     let s3_data = web::Data::new(s3_client);
@@ -95,10 +103,37 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::post().to(handlers::create_folder))
                     .route("/{folder_id}", web::get().to(handlers::get_folder))
                     .route("/{folder_id}", web::put().to(handlers::update_folder))
-                    .route("/{folder_id}", web::delete().to(handlers::delete_folder)),
+                    .route("/{folder_id}", web::delete().to(handlers::delete_folder))
+                    .route(
+                        "/{folder_id}/restore",
+                        web::post().to(handlers::restore_folder),
+                    )
+                    .route(
+                        "/{folder_id}/permanent",
+                        web::delete().to(handlers::purge_folder),
+                    ),
             )
     })
     .bind(format!("0.0.0.0:{port}"))?
     .run()
     .await
+}
+
+/// Periodically drop trashed items that have outlived the retention window.
+fn spawn_trash_purge(
+    meta: metadata::MetadataClient,
+    s3: storage::S3Client,
+    retention_days: i64,
+    interval_secs: u64,
+) {
+    actix_web::rt::spawn(async move {
+        let mut ticker =
+            actix_web::rt::time::interval(std::time::Duration::from_secs(interval_secs));
+        loop {
+            ticker.tick().await;
+            if let Err(err) = trash::purge_expired(&meta, &s3, retention_days).await {
+                tracing::warn!(error = %err, "Trash purge failed");
+            }
+        }
+    });
 }

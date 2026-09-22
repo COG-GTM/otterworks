@@ -81,6 +81,18 @@ impl MetadataClient {
         if let Some(folder_id) = &file.folder_id {
             item.insert("folder_id".into(), AttributeValue::S(folder_id.to_string()));
         }
+        if let Some(trashed_at) = &file.trashed_at {
+            item.insert(
+                "trashed_at".into(),
+                AttributeValue::S(trashed_at.to_rfc3339()),
+            );
+        }
+        if let Some(trashed_by) = &file.trashed_by {
+            item.insert(
+                "trashed_by".into(),
+                AttributeValue::S(trashed_by.to_string()),
+            );
+        }
 
         self.client
             .put_item()
@@ -121,35 +133,63 @@ impl MetadataClient {
         Ok(())
     }
 
-    pub async fn trash_file(&self, file_id: &Uuid) -> Result<FileMetadata, ServiceError> {
+    pub async fn trash_file(
+        &self,
+        file_id: &Uuid,
+        trashed_by: Option<Uuid>,
+    ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
-        self.client
+        let mut builder = self
+            .client
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
-            .update_expression("SET is_trashed = :t, updated_at = :u")
             .condition_expression("attribute_exists(id)")
             .expression_attribute_values(":t", AttributeValue::Bool(true))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
-            .send()
-            .await
-            .map_err(|e| {
-                if is_conditional_check_failed(&e) {
-                    return ServiceError::FileNotFound(file_id.to_string());
-                }
-                ServiceError::DynamoError(e.to_string())
-            })?;
+            .expression_attribute_values(":d", AttributeValue::S(now.to_rfc3339()));
+
+        builder = match trashed_by {
+            Some(user_id) => builder
+                .update_expression(
+                    "SET is_trashed = :t, updated_at = :u, trashed_at = :d, trashed_by = :b",
+                )
+                .expression_attribute_values(":b", AttributeValue::S(user_id.to_string())),
+            None => builder.update_expression(
+                "SET is_trashed = :t, updated_at = :u, trashed_at = :d REMOVE trashed_by",
+            ),
+        };
+
+        builder.send().await.map_err(|e| {
+            if is_conditional_check_failed(&e) {
+                return ServiceError::FileNotFound(file_id.to_string());
+            }
+            ServiceError::DynamoError(e.to_string())
+        })?;
 
         self.get_file(file_id).await
     }
 
-    pub async fn restore_file(&self, file_id: &Uuid) -> Result<FileMetadata, ServiceError> {
+    /// Take a file out of the trash. `to_root` additionally clears the
+    /// original folder, for when that folder no longer exists.
+    pub async fn restore_file(
+        &self,
+        file_id: &Uuid,
+        to_root: bool,
+    ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
+        let removals = if to_root {
+            "trashed_at, trashed_by, folder_id"
+        } else {
+            "trashed_at, trashed_by"
+        };
         self.client
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
-            .update_expression("SET is_trashed = :t, updated_at = :u")
+            .update_expression(format!(
+                "SET is_trashed = :t, updated_at = :u REMOVE {removals}"
+            ))
             .condition_expression("attribute_exists(id)")
             .expression_attribute_values(":t", AttributeValue::Bool(false))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
@@ -255,8 +295,40 @@ impl MetadataClient {
             }
         }
 
-        files.sort_by_key(|f| std::cmp::Reverse(f.updated_at));
+        files.sort_by_key(|f| std::cmp::Reverse(f.deleted_at()));
         Ok(files)
+    }
+
+    pub async fn list_trashed_folders(
+        &self,
+        owner_id: Option<Uuid>,
+    ) -> Result<Vec<Folder>, ServiceError> {
+        let mut filter_parts = vec!["is_trashed = :trashed".to_string()];
+        let mut scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.folders_table)
+            .expression_attribute_values(":trashed", AttributeValue::Bool(true));
+
+        if let Some(oid) = &owner_id {
+            filter_parts.push("owner_id = :owner_id".to_string());
+            scan_builder = scan_builder
+                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
+        }
+
+        scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
+
+        let mut paginator = scan_builder.into_paginator().send();
+        let mut folders = Vec::new();
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            for item in page.items() {
+                folders.push(parse_folder(item)?);
+            }
+        }
+
+        folders.sort_by_key(|f| std::cmp::Reverse(f.deleted_at()));
+        Ok(folders)
     }
 
     pub async fn list_files(
@@ -320,8 +392,22 @@ impl MetadataClient {
             AttributeValue::S(folder.updated_at.to_rfc3339()),
         );
 
+        item.insert("is_trashed".into(), AttributeValue::Bool(folder.is_trashed));
+
         if let Some(pid) = &folder.parent_id {
             item.insert("parent_id".into(), AttributeValue::S(pid.to_string()));
+        }
+        if let Some(trashed_at) = &folder.trashed_at {
+            item.insert(
+                "trashed_at".into(),
+                AttributeValue::S(trashed_at.to_rfc3339()),
+            );
+        }
+        if let Some(trashed_by) = &folder.trashed_by {
+            item.insert(
+                "trashed_by".into(),
+                AttributeValue::S(trashed_by.to_string()),
+            );
         }
 
         self.client
@@ -426,6 +512,11 @@ impl MetadataClient {
             scan_builder = scan_builder
                 .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
         }
+        // Folders created before trash support have no is_trashed attribute.
+        filter_parts
+            .push("(attribute_not_exists(is_trashed) OR is_trashed = :trashed)".to_string());
+        scan_builder =
+            scan_builder.expression_attribute_values(":trashed", AttributeValue::Bool(false));
 
         if !filter_parts.is_empty() {
             scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
@@ -440,6 +531,103 @@ impl MetadataClient {
             }
         }
         Ok(folders)
+    }
+
+    /// Every folder owned by `owner_id`, trashed ones included. Used to
+    /// resolve the original location of deleted items.
+    pub async fn list_all_folders(
+        &self,
+        owner_id: Option<Uuid>,
+    ) -> Result<Vec<Folder>, ServiceError> {
+        let mut scan_builder = self.client.scan().table_name(&self.folders_table);
+
+        if let Some(oid) = &owner_id {
+            scan_builder = scan_builder
+                .filter_expression("owner_id = :owner_id")
+                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
+        }
+
+        let mut paginator = scan_builder.into_paginator().send();
+        let mut folders = Vec::new();
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            for item in page.items() {
+                folders.push(parse_folder(item)?);
+            }
+        }
+        Ok(folders)
+    }
+
+    pub async fn trash_folder(
+        &self,
+        folder_id: &Uuid,
+        trashed_by: Option<Uuid>,
+    ) -> Result<Folder, ServiceError> {
+        let now = Utc::now();
+        let mut builder = self
+            .client
+            .update_item()
+            .table_name(&self.folders_table)
+            .key("id", AttributeValue::S(folder_id.to_string()))
+            .condition_expression("attribute_exists(id)")
+            .expression_attribute_values(":t", AttributeValue::Bool(true))
+            .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
+            .expression_attribute_values(":d", AttributeValue::S(now.to_rfc3339()));
+
+        builder = match trashed_by {
+            Some(user_id) => builder
+                .update_expression(
+                    "SET is_trashed = :t, updated_at = :u, trashed_at = :d, trashed_by = :b",
+                )
+                .expression_attribute_values(":b", AttributeValue::S(user_id.to_string())),
+            None => builder.update_expression(
+                "SET is_trashed = :t, updated_at = :u, trashed_at = :d REMOVE trashed_by",
+            ),
+        };
+
+        builder.send().await.map_err(|e| {
+            if is_conditional_check_failed(&e) {
+                return ServiceError::FolderNotFound(folder_id.to_string());
+            }
+            ServiceError::DynamoError(e.to_string())
+        })?;
+
+        self.get_folder(folder_id).await
+    }
+
+    /// Take a folder out of the trash. `to_root` additionally clears the
+    /// original parent, for when that parent no longer exists.
+    pub async fn restore_folder(
+        &self,
+        folder_id: &Uuid,
+        to_root: bool,
+    ) -> Result<Folder, ServiceError> {
+        let now = Utc::now();
+        let removals = if to_root {
+            "trashed_at, trashed_by, parent_id"
+        } else {
+            "trashed_at, trashed_by"
+        };
+        self.client
+            .update_item()
+            .table_name(&self.folders_table)
+            .key("id", AttributeValue::S(folder_id.to_string()))
+            .update_expression(format!(
+                "SET is_trashed = :t, updated_at = :u REMOVE {removals}"
+            ))
+            .condition_expression("attribute_exists(id)")
+            .expression_attribute_values(":t", AttributeValue::Bool(false))
+            .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
+            .send()
+            .await
+            .map_err(|e| {
+                if is_conditional_check_failed(&e) {
+                    return ServiceError::FolderNotFound(folder_id.to_string());
+                }
+                ServiceError::DynamoError(e.to_string())
+            })?;
+
+        self.get_folder(folder_id).await
     }
 
     // -- File Versions --
@@ -693,6 +881,26 @@ fn parse_uuid(s: &str) -> Result<uuid::Uuid, ServiceError> {
         .map_err(|e| ServiceError::DynamoError(format!("invalid UUID: {e}")))
 }
 
+fn parse_optional_uuid(
+    item: &std::collections::HashMap<String, AttributeValue>,
+    key: &str,
+) -> Result<Option<uuid::Uuid>, ServiceError> {
+    get_optional_s(item, key)
+        .as_deref()
+        .map(parse_uuid)
+        .transpose()
+}
+
+fn parse_optional_datetime(
+    item: &std::collections::HashMap<String, AttributeValue>,
+    key: &str,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, ServiceError> {
+    get_optional_s(item, key)
+        .as_deref()
+        .map(parse_datetime)
+        .transpose()
+}
+
 fn parse_datetime(s: &str) -> Result<chrono::DateTime<chrono::Utc>, ServiceError> {
     chrono::DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -715,6 +923,8 @@ fn parse_file_metadata(
         owner_id: parse_uuid(&get_s(item, "owner_id")?)?,
         version: get_n_u32(item, "version")?,
         is_trashed: get_bool(item, "is_trashed")?,
+        trashed_at: parse_optional_datetime(item, "trashed_at")?,
+        trashed_by: parse_optional_uuid(item, "trashed_by")?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,
         updated_at: parse_datetime(&get_s(item, "updated_at")?)?,
     })
@@ -731,6 +941,9 @@ fn parse_folder(
             .map(parse_uuid)
             .transpose()?,
         owner_id: parse_uuid(&get_s(item, "owner_id")?)?,
+        is_trashed: get_bool(item, "is_trashed").unwrap_or(false),
+        trashed_at: parse_optional_datetime(item, "trashed_at")?,
+        trashed_by: parse_optional_uuid(item, "trashed_by")?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,
         updated_at: parse_datetime(&get_s(item, "updated_at")?)?,
     })

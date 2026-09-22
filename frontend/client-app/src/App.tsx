@@ -1,4 +1,4 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -17,7 +17,7 @@ import SearchPage from "@/pages/search";
 import SettingsPage from "@/pages/settings";
 import SharedPage from "@/pages/shared";
 import StarredPage from "@/pages/starred";
-import TrashPage from "@/pages/trash";
+import RecentlyDeletedPage from "@/pages/recently-deleted";
 import TermsPage from "@/pages/terms";
 import PrivacyPage from "@/pages/privacy";
 import BillingPlansPage from "@/features/billing/plans-page";
@@ -59,7 +59,8 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/shared" element={<SharedPage />} />
           <Route path="/starred" element={<StarredPage />} />
-          <Route path="/trash" element={<TrashPage />} />
+          <Route path="/recently-deleted" element={<RecentlyDeletedPage />} />
+          <Route path="/trash" element={<Navigate to="/recently-deleted" replace />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           {BILLING_FIXTURE_ENABLED && (

@@ -43,6 +43,6 @@ Feature: Application Navigation
     Given I navigate to "/shared"
     Then I should see the text "Shared" or "Sign in to your account"
 
-  Scenario: Trash page loads or redirects
-    Given I navigate to "/trash"
-    Then I should see the text "Trash" or "Sign in to your account"
+  Scenario: Recently deleted page loads or redirects
+    Given I navigate to "/recently-deleted"
+    Then I should see the text "Recently deleted" or "Sign in to your account"
