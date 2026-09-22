@@ -435,6 +435,7 @@ pub async fn list_trashed(
 }
 
 pub async fn delete_file(
+    req: HttpRequest,
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
@@ -446,6 +447,7 @@ pub async fn delete_file(
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
     let file = meta.get_file(&file_id).await?;
+    ensure_owner(&req, &file.owner_id)?;
     trash::purge_file(&meta, &s3, &file).await?;
 
     let _ = events.file_deleted(&file_id, &file.owner_id).await;
@@ -551,6 +553,7 @@ pub async fn trash_file(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
+    ensure_owner(&req, &meta.get_file(&file_id).await?.owner_id)?;
     let file = meta
         .trash_file(&file_id, resolve_owner_id(&req, None))
         .await?;
@@ -562,6 +565,7 @@ pub async fn trash_file(
 }
 
 pub async fn restore_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -574,6 +578,7 @@ pub async fn restore_file(
     // Items go back where they came from, or to the root when that folder is
     // itself gone.
     let trashed = meta.get_file(&file_id).await?;
+    ensure_owner(&req, &trashed.owner_id)?;
     let to_root =
         !restore_target_is_available(&meta, Some(trashed.owner_id), trashed.folder_id).await;
     let file = meta.restore_file(&file_id, to_root).await?;
@@ -828,6 +833,7 @@ pub async fn delete_folder(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
+    ensure_owner(&req, &meta.get_folder(&folder_id).await?.owner_id)?;
     meta.trash_folder(&folder_id, resolve_owner_id(&req, None))
         .await?;
     tracing::info!(folder_id = %folder_id, "Folder trashed");
@@ -835,6 +841,7 @@ pub async fn delete_folder(
 }
 
 pub async fn restore_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -844,6 +851,7 @@ pub async fn restore_folder(
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
     let trashed = meta.get_folder(&folder_id).await?;
+    ensure_owner(&req, &trashed.owner_id)?;
     let to_root =
         !restore_target_is_available(&meta, Some(trashed.owner_id), trashed.parent_id).await;
     let folder = meta.restore_folder(&folder_id, to_root).await?;
@@ -855,6 +863,7 @@ pub async fn restore_folder(
 /// Permanently remove a trashed folder and everything below it. Only reachable
 /// for folders already in the trash, so the retention window cannot be skipped.
 pub async fn purge_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     s3: web::Data<S3Client>,
     path: web::Path<String>,
@@ -865,6 +874,7 @@ pub async fn purge_folder(
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
     let folder = meta.get_folder(&folder_id).await?;
+    ensure_owner(&req, &folder.owner_id)?;
     if !folder.is_trashed {
         return Err(ServiceError::BadRequest(
             "folder must be trashed before it can be permanently deleted".into(),
@@ -874,6 +884,18 @@ pub async fn purge_folder(
     let purged = trash::purge_folder_tree(&meta, &s3, &folder_id).await?;
     tracing::info!(folder_id = %folder_id, purged, "Folder permanently deleted");
     Ok(HttpResponse::NoContent().finish())
+}
+
+/// Reject a mutation when the authenticated caller is not the resource owner.
+/// Requests without an identity header come from internal/direct callers,
+/// which the service already trusts elsewhere.
+fn ensure_owner(req: &HttpRequest, owner_id: &Uuid) -> Result<(), ServiceError> {
+    match resolve_owner_id(req, None) {
+        Some(caller) if caller != *owner_id => Err(ServiceError::Forbidden(
+            "resource belongs to another user".into(),
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// True when an item can be restored into `folder_id`: either the root, or a
