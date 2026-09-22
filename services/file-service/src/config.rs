@@ -20,6 +20,10 @@ pub struct ServerConfig {
     /// When true, owners with no files get a few demo documents seeded on
     /// first listing, so share flows are demoable even when uploads fail.
     pub seed_demo_docs: bool,
+    /// How long deleted items stay recoverable in "Recently deleted".
+    pub trash_retention_days: i64,
+    /// How often expired items are purged.
+    pub trash_purge_interval_secs: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +70,16 @@ impl ServerConfig {
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+            trash_retention_days: env::var("TRASH_RETENTION_DAYS")
+                .ok()
+                .and_then(|raw| raw.trim().parse().ok())
+                .filter(|days| *days > 0)
+                .unwrap_or(30),
+            trash_purge_interval_secs: env::var("TRASH_PURGE_INTERVAL_SECS")
+                .ok()
+                .and_then(|raw| raw.trim().parse().ok())
+                .filter(|secs| *secs > 0)
+                .unwrap_or(3600),
         }
     }
 }

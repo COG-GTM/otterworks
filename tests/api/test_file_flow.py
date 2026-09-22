@@ -101,6 +101,89 @@ def test_file_folder_upload_lifecycle_share_and_download(api_client):
     api_client.created_folders.remove(folder["id"])
 
 
+def test_recently_deleted_lists_items_and_restores_to_root_when_folder_is_gone(api_client):
+    owner = api_client.register_user("recently-deleted")
+
+    folder_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": f"Deleted Folder {api_client.run_id}", "owner_id": owner.id},
+    )
+    api_client.assert_gateway_route_available(folder_response, "/api/v1/folders")
+    assert folder_response.status_code == 201, folder_response.text
+    folder = folder_response.json()
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("recover-me.txt", b"recover me", "text/plain")},
+        data={"folder_id": folder["id"]},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+
+    trash_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/trash", headers=owner.auth_headers
+    )
+    assert trash_response.status_code == 200, trash_response.text
+
+    # The folder itself is deleted too, so the file has nowhere to go back to.
+    delete_folder_response = api_client.client.delete(
+        f"/api/v1/folders/{folder['id']}", headers=owner.auth_headers
+    )
+    assert delete_folder_response.status_code == 204, delete_folder_response.text
+
+    trashed_response = api_client.client.get(
+        "/api/v1/files/trash",
+        headers=owner.auth_headers,
+        params={"owner_id": owner.id, "page": 1, "page_size": 50},
+    )
+    assert trashed_response.status_code == 200, trashed_response.text
+    payload = trashed_response.json()
+    assert payload["retention_days"] == 30
+    items = {item["id"]: item for item in payload["items"]}
+
+    deleted_file = items[file_id]
+    assert deleted_file["is_folder"] is False
+    assert deleted_file["name"] == "recover-me.txt"
+    assert deleted_file["original_path"].endswith(folder["name"])
+    assert deleted_file["original_location_exists"] is False
+    assert deleted_file["deleted_by"] == owner.id
+    assert deleted_file["deleted_at"]
+
+    deleted_folder = items[folder["id"]]
+    assert deleted_folder["is_folder"] is True
+    assert deleted_folder["original_path"] == "/"
+
+    restore_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/restore", headers=owner.auth_headers
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["is_trashed"] is False
+    assert restored["folder_id"] is None
+
+    purge_file_response = api_client.client.delete(
+        f"/api/v1/files/{file_id}", headers=owner.auth_headers
+    )
+    assert purge_file_response.status_code == 204, purge_file_response.text
+
+    purge_folder_response = api_client.client.delete(
+        f"/api/v1/folders/{folder['id']}/permanent", headers=owner.auth_headers
+    )
+    assert purge_folder_response.status_code == 204, purge_folder_response.text
+
+    after_purge = api_client.client.get(
+        "/api/v1/files/trash",
+        headers=owner.auth_headers,
+        params={"owner_id": owner.id, "page": 1, "page_size": 50},
+    )
+    assert after_purge.status_code == 200, after_purge.text
+    remaining = {item["id"] for item in after_purge.json()["items"]}
+    assert file_id not in remaining
+    assert folder["id"] not in remaining
+
+
 @pytest.mark.gap_revealer
 def test_file_validation_and_route_gaps(api_client):
     owner = api_client.register_user("file-validation")

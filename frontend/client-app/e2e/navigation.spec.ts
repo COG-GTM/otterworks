@@ -67,9 +67,9 @@ test.describe("Navigation & Routing", () => {
     await expect(shared.or(login)).toBeVisible({ timeout: 10_000 });
   });
 
-  test("/trash loads or redirects to login", async ({ page }) => {
-    await page.goto("/trash");
-    const trash = page.getByRole("heading", { name: /Trash/i });
+  test("/recently-deleted loads or redirects to login", async ({ page }) => {
+    await page.goto("/recently-deleted");
+    const trash = page.getByRole("heading", { name: /Recently deleted/i });
     const login = page.getByText("Sign in to your account");
     await expect(trash.or(login)).toBeVisible({ timeout: 10_000 });
   });

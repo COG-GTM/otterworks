@@ -15,8 +15,20 @@ pub struct FileMetadata {
     pub owner_id: Uuid,
     pub version: u32,
     pub is_trashed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl FileMetadata {
+    /// When the file was moved to the trash. Files trashed before
+    /// `trashed_at` was recorded fall back to their last update.
+    pub fn deleted_at(&self) -> DateTime<Utc> {
+        self.trashed_at.unwrap_or(self.updated_at)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -34,8 +46,21 @@ pub struct Folder {
     pub name: String,
     pub parent_id: Option<Uuid>,
     pub owner_id: Uuid,
+    pub is_trashed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trashed_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Folder {
+    /// When the folder was moved to the trash. Folders trashed before
+    /// `trashed_at` was recorded fall back to their last update.
+    pub fn deleted_at(&self) -> DateTime<Utc> {
+        self.trashed_at.unwrap_or(self.updated_at)
+    }
 }
 
 // ── File Version ───────────────────────────────────────────────────────
@@ -123,6 +148,34 @@ pub struct ListFilesResponse {
     pub total: usize,
     pub page: u32,
     pub page_size: u32,
+}
+
+/// A file or folder in the "Recently deleted" view, with the context the
+/// client needs to describe and restore it.
+#[derive(Debug, Serialize)]
+pub struct TrashedItem {
+    pub id: Uuid,
+    pub name: String,
+    pub mime_type: Option<String>,
+    pub size_bytes: u64,
+    pub is_folder: bool,
+    /// Path of the folder the item lived in when it was deleted, e.g.
+    /// `/Reports/2026`. `/` when it lived at the root.
+    pub original_path: String,
+    /// False when the original folder is gone, so a restore lands at the root.
+    pub original_location_exists: bool,
+    pub deleted_by: Option<Uuid>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub purge_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListTrashedResponse {
+    pub items: Vec<TrashedItem>,
+    pub total: usize,
+    pub page: u32,
+    pub page_size: u32,
+    pub retention_days: i64,
 }
 
 #[derive(Debug, Serialize)]
