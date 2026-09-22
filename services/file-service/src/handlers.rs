@@ -20,8 +20,8 @@ use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
     ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, ShareStatus,
+    UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
 
@@ -549,13 +549,12 @@ pub async fn share_file(
     // Ensure file exists
     let file = meta.get_file(&file_id).await?;
 
-    // Recipient is either a resolved user id, or an email the client could
-    // not resolve to an OtterWorks account. Unresolved emails are rejected
-    // unless the share-event failure switch is on, in which case the
-    // notification publish is still attempted (and fails) without persisting
-    // a share to a nonexistent user — so the failure fires for any email.
-    let (shared_with, recipient_known) = match body.shared_with {
-        Some(id) => (id, true),
+    // Recipient is either a resolved user id, or an email the client could not
+    // resolve to an OtterWorks account. The latter becomes a pending invite,
+    // keyed by an id derived from the address so the same invitee maps to the
+    // same share record (and to the same user id once they register).
+    let (shared_with, invited_email) = match body.shared_with {
+        Some(id) => (id, None),
         None => {
             let email = body
                 .shared_with_email
@@ -564,37 +563,32 @@ pub async fn share_file(
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| {
                     ServiceError::BadRequest("shared_with or shared_with_email is required".into())
-                })?;
-            if !events.share_publish_forced() {
-                return Err(ServiceError::BadRequest(format!(
-                    "no OtterWorks user found for {email}"
-                )));
-            }
+                })?
+                .to_lowercase();
             (
-                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.to_lowercase().as_bytes()),
-                false,
+                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes()),
+                Some(email),
             )
         }
     };
+    let status = if invited_email.is_some() {
+        ShareStatus::Pending
+    } else {
+        ShareStatus::Active
+    };
 
-    // Check if share already exists for this file + user
-    let (share, created, permission_update) = if !recipient_known {
-        let share = FileShare {
-            id: Uuid::new_v4(),
-            file_id,
-            shared_with,
-            permission: body.permission.clone(),
-            shared_by: body.shared_by,
-            created_at: Utc::now(),
-        };
-        (share, false, false)
-    } else if let Some(existing) = meta.find_existing_share(&file_id, &shared_with).await? {
+    // Check if share already exists for this file + recipient
+    let (share, created, permission_update) = if let Some(existing) =
+        meta.find_existing_share(&file_id, &shared_with).await?
+    {
         // Update permission if different, otherwise keep the existing record
         if existing.permission != body.permission {
             let updated = FileShare {
                 id: existing.id,
                 file_id,
                 shared_with,
+                invited_email: existing.invited_email.clone(),
+                status: existing.status,
                 permission: body.permission.clone(),
                 shared_by: body.shared_by,
                 created_at: existing.created_at,
@@ -611,6 +605,8 @@ pub async fn share_file(
             id: Uuid::new_v4(),
             file_id,
             shared_with,
+            invited_email: invited_email.clone(),
+            status,
             permission: body.permission.clone(),
             shared_by: body.shared_by,
             created_at: Utc::now(),
@@ -627,7 +623,12 @@ pub async fn share_file(
     // share clicks and are left alone.
     if created || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
-            .file_shared(&file_id, &file.owner_id, &shared_with)
+            .file_shared(
+                &file_id,
+                &file.owner_id,
+                &shared_with,
+                share.invited_email.as_deref(),
+            )
             .await
         {
             tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
@@ -637,7 +638,7 @@ pub async fn share_file(
                 &err.to_string(),
                 reporter_email.as_deref(),
                 !events.share_publish_forced(),
-                recipient_known,
+                true,
             );
             // Only surface the failure to the caller when the demo switch is
             // on; otherwise event publishing stays fire-and-forget like the

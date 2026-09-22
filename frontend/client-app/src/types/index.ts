@@ -66,6 +66,8 @@ export interface SharedUser {
   email: string;
   avatarUrl?: string;
   permission: "view" | "edit" | "admin";
+  /** "pending" while an invitee has not yet created an OtterWorks account. */
+  status?: "active" | "pending";
 }
 
 export interface Document {

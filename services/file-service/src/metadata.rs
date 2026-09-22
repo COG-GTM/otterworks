@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
-use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission};
+use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission, ShareStatus};
 
 /// Check if an AWS SDK error is a ConditionalCheckFailedException.
 fn is_conditional_check_failed<E: std::fmt::Debug>(
@@ -512,6 +512,10 @@ impl MetadataClient {
             "shared_with".into(),
             AttributeValue::S(share.shared_with.to_string()),
         );
+        if let Some(email) = &share.invited_email {
+            item.insert("invited_email".into(), AttributeValue::S(email.clone()));
+        }
+        item.insert("status".into(), AttributeValue::S(share.status.to_string()));
         item.insert(
             "permission".into(),
             AttributeValue::S(share.permission.to_string()),
@@ -757,10 +761,22 @@ fn parse_file_share(
         ServiceError::DynamoError(format!("invalid permission: {permission_str}"))
     })?;
 
+    let invited_email = item
+        .get("invited_email")
+        .and_then(|v| v.as_s().ok())
+        .map(|s| s.to_string());
+    let status = item
+        .get("status")
+        .and_then(|v| v.as_s().ok())
+        .and_then(|s| ShareStatus::from_str_value(s))
+        .unwrap_or(ShareStatus::Active);
+
     Ok(FileShare {
         id: parse_uuid(&get_s(item, "id")?)?,
         file_id: parse_uuid(&get_s(item, "file_id")?)?,
         shared_with: parse_uuid(&get_s(item, "shared_with")?)?,
+        invited_email,
+        status,
         permission,
         shared_by: parse_uuid(&get_s(item, "shared_by")?)?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,

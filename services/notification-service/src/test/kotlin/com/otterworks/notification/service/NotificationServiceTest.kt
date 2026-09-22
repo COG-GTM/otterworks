@@ -42,6 +42,39 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `resolveEmailAddress uses the invitee email when the recipient has no account`() {
+        val event = SqsNotificationMessage(
+            eventType = "file_shared",
+            fileId = "file-123",
+            ownerId = "owner-1",
+            sharedWithUserId = "user-2",
+            sharedWithEmail = "outside@example.com",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        assertEquals(
+            "outside@example.com",
+            NotificationService.resolveEmailAddress(event, "user-2"),
+        )
+    }
+
+    @Test
+    fun `resolveEmailAddress falls back to the member address`() {
+        val event = SqsNotificationMessage(
+            eventType = "file_shared",
+            fileId = "file-123",
+            ownerId = "owner-1",
+            sharedWithUserId = "user-2",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        assertEquals(
+            "user-2@otterworks.io",
+            NotificationService.resolveEmailAddress(event, "user-2"),
+        )
+    }
+
+    @Test
     fun `resolveTargetUserId returns mentionedUserId for user_mentioned events`() {
         val event = SqsNotificationMessage(
             eventType = "user_mentioned",
