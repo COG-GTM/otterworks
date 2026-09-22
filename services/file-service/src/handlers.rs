@@ -375,11 +375,10 @@ pub async fn list_trashed(
             Some(fid) => meta.get_folder(&fid).await.ok().map(|f| f.name),
             None => None,
         };
-        let (original_location, original_folder_missing) =
-            crate::metadata::original_location_label(
-                file.trashed_from_folder_id,
-                folder_name.as_deref(),
-            );
+        let (original_location, original_folder_missing) = crate::metadata::original_location_label(
+            file.trashed_from_folder_id,
+            folder_name.as_deref(),
+        );
         items.push(TrashedFileItem {
             file,
             original_location,

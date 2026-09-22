@@ -249,15 +249,14 @@ impl MetadataClient {
 
         if let Some(by) = &trashed_by {
             set_parts.push("trashed_by = :tb".to_string());
-            builder =
-                builder.expression_attribute_values(":tb", AttributeValue::S(by.to_string()));
+            builder = builder.expression_attribute_values(":tb", AttributeValue::S(by.to_string()));
         } else {
             remove_parts.push("trashed_by".to_string());
         }
         if let Some(email) = trashed_by_email {
             set_parts.push("trashed_by_email = :te".to_string());
-            builder = builder
-                .expression_attribute_values(":te", AttributeValue::S(email.to_string()));
+            builder =
+                builder.expression_attribute_values(":te", AttributeValue::S(email.to_string()));
         } else {
             remove_parts.push("trashed_by_email".to_string());
         }
@@ -292,7 +291,8 @@ impl MetadataClient {
             Some(fid) => self.get_folder(&fid).await.is_ok(),
             None => false,
         };
-        let target_folder = restore_target_folder(file.trashed_from_folder_id, original_folder_exists);
+        let target_folder =
+            restore_target_folder(file.trashed_from_folder_id, original_folder_exists);
 
         let mut set_parts = vec!["is_trashed = :t".to_string(), "updated_at = :u".to_string()];
         let mut remove_parts = vec![
@@ -313,8 +313,8 @@ impl MetadataClient {
         match target_folder {
             Some(fid) => {
                 set_parts.push("folder_id = :f".to_string());
-                builder = builder
-                    .expression_attribute_values(":f", AttributeValue::S(fid.to_string()));
+                builder =
+                    builder.expression_attribute_values(":f", AttributeValue::S(fid.to_string()));
             }
             None => remove_parts.push("folder_id".to_string()),
         }
@@ -1038,7 +1038,10 @@ mod tests {
 
         let file = parse_file_metadata(&item).unwrap();
         assert!(file.is_trashed);
-        assert_eq!(file.trashed_at.unwrap().to_rfc3339(), trashed_at.to_rfc3339());
+        assert_eq!(
+            file.trashed_at.unwrap().to_rfc3339(),
+            trashed_at.to_rfc3339()
+        );
         assert_eq!(file.trashed_by, Some(trashed_by));
         assert_eq!(file.trashed_by_email.as_deref(), Some("otter@example.com"));
         assert_eq!(file.trashed_from_folder_id, Some(from_folder));
@@ -1102,7 +1105,10 @@ mod tests {
     fn test_expired_trash_selects_only_expired_items() {
         let now = Utc::now();
         let files = vec![
-            trashed_file("expired", Some(now - Duration::days(30) - Duration::minutes(1))),
+            trashed_file(
+                "expired",
+                Some(now - Duration::days(30) - Duration::minutes(1)),
+            ),
             trashed_file("kept", Some(now - Duration::days(29) - Duration::hours(23))),
         ];
 
@@ -1119,7 +1125,10 @@ mod tests {
     #[test]
     fn test_restore_target_folder_prefers_original_folder() {
         let folder_id = Uuid::new_v4();
-        assert_eq!(restore_target_folder(Some(folder_id), true), Some(folder_id));
+        assert_eq!(
+            restore_target_folder(Some(folder_id), true),
+            Some(folder_id)
+        );
     }
 
     #[test]
