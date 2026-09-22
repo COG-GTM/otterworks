@@ -59,7 +59,7 @@ public class UserService {
   @Transactional(readOnly = true)
   public UserDTO findByEmail(String email) {
     return userRepository
-        .findByEmail(email)
+        .findByEmailIgnoreCase(email)
         .map(UserDTO::fromEntity)
         .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
   }
