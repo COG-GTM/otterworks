@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import RecentlyDeletedPage from "./recently-deleted";
@@ -71,6 +71,30 @@ describe("Recently deleted", () => {
     expect(screen.getAllByTitle("Restore")).toHaveLength(2);
     expect(screen.getAllByTitle("Delete permanently")).toHaveLength(2);
     expect(await screen.findByText(/by Olive Otter/)).toBeInTheDocument();
+  });
+
+  it("loads further pages of deleted items on demand", async () => {
+    billingServer.use(
+      http.get(`${API}/files/trash`, ({ request }) => {
+        const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
+        return HttpResponse.json({
+          items: [{ ...trashResponse.items[0], id: `page-${page}`, name: `page-${page}.pdf` }],
+          total: 2,
+          page,
+          page_size: 1,
+          retention_days: 30,
+        });
+      }),
+      http.get(`${API}/*`, () => HttpResponse.json({}))
+    );
+
+    renderPage();
+
+    expect(await screen.findByText("page-1.pdf")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Load more/ }));
+
+    expect(await screen.findByText("page-2.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Load more/ })).not.toBeInTheDocument();
   });
 
   it("shows an empty state when nothing was deleted recently", async () => {

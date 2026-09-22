@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2,
   RotateCcw,
@@ -32,19 +32,24 @@ export default function RecentlyDeletedPage() {
   );
 }
 
+const PAGE_SIZE = 50;
+
 function RecentlyDeletedContent() {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<DeletedItem | null>(null);
   const [showPurgeAllConfirm, setShowPurgeAllConfirm] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["files", "trash"],
-    queryFn: () => filesApi.getRecentlyDeleted(),
+    queryFn: ({ pageParam }) => filesApi.getRecentlyDeleted(pageParam, PAGE_SIZE),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
   });
 
-  const items = data?.data || [];
-  const totalDeleted = data?.total ?? items.length;
-  const retentionDays = data?.retentionDays ?? 30;
+  const pages = data?.pages ?? [];
+  const items = pages.flatMap((page) => page.data);
+  const totalDeleted = pages[0]?.total ?? items.length;
+  const retentionDays = pages[0]?.retentionDays ?? 30;
 
   const deletedByNames = useDeletedByNames(items);
 
@@ -81,8 +86,7 @@ function RecentlyDeletedContent() {
 
   const deleteAllMutation = useMutation({
     mutationFn: async () => {
-      const pageSize = 50;
-      let batch = await filesApi.getRecentlyDeleted(1, pageSize);
+      let batch = await filesApi.getRecentlyDeleted(1, PAGE_SIZE);
       while (batch.data.length > 0) {
         await Promise.all(
           batch.data.map((item) =>
@@ -91,7 +95,7 @@ function RecentlyDeletedContent() {
               : filesApi.permanentDelete(item.id)
           )
         );
-        batch = await filesApi.getRecentlyDeleted(1, pageSize);
+        batch = await filesApi.getRecentlyDeleted(1, PAGE_SIZE);
       }
     },
     onSuccess: () => {
@@ -140,7 +144,7 @@ function RecentlyDeletedContent() {
         <EmptyState
           icon={Trash2}
           title="Nothing recently deleted"
-          description="Files and folders you delete appear here for 30 days"
+          description={`Files and folders you delete appear here for ${retentionDays} days`}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
@@ -154,6 +158,18 @@ function RecentlyDeletedContent() {
               isRestoring={restoreMutation.isPending}
             />
           ))}
+        </div>
+      )}
+
+      {hasNextPage && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition disabled:opacity-50"
+          >
+            {isFetchingNextPage ? "Loading..." : `Load more (${items.length} of ${totalDeleted})`}
+          </button>
         </div>
       )}
 

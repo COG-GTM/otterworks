@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 use crate::errors::ServiceError;
 use crate::metadata::MetadataClient;
-use crate::models::Folder;
+use crate::models::{FileMetadata, Folder};
 use crate::storage::S3Client;
 
 /// Guard against a cyclic parent chain while building a folder path.
@@ -67,6 +67,61 @@ pub fn resolve_location(folder_id: Option<Uuid>, folders: &HashMap<Uuid, Folder>
     }
 }
 
+/// Permanently remove a file. The stored object goes first so that a failed
+/// S3 delete leaves the metadata — and therefore the only record of the key —
+/// in place for the next attempt.
+pub async fn purge_file(
+    meta: &MetadataClient,
+    s3: &S3Client,
+    file: &FileMetadata,
+) -> Result<(), ServiceError> {
+    s3.delete_object(&file.s3_key).await?;
+    meta.delete_file(&file.id).await
+}
+
+/// Permanently remove a folder together with every descendant folder and file,
+/// so nothing is left pointing at a parent that no longer exists. Returns the
+/// number of records removed.
+pub async fn purge_folder_tree(
+    meta: &MetadataClient,
+    s3: &S3Client,
+    folder_id: &Uuid,
+) -> Result<usize, ServiceError> {
+    let mut children: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for folder in meta.list_all_folders(None).await? {
+        if let Some(parent) = folder.parent_id {
+            children.entry(parent).or_default().push(folder.id);
+        }
+    }
+
+    // Breadth-first so the subtree comes out parents-first; deleting in reverse
+    // then works from the leaves up. `seen` guards against a cyclic chain.
+    let mut seen: HashSet<Uuid> = HashSet::from([*folder_id]);
+    let mut subtree = vec![*folder_id];
+    let mut cursor = 0;
+    while cursor < subtree.len() {
+        let current = subtree[cursor];
+        cursor += 1;
+        for child in children.get(&current).into_iter().flatten() {
+            if seen.insert(*child) {
+                subtree.push(*child);
+            }
+        }
+    }
+
+    let mut purged = 0usize;
+    for id in subtree.iter().rev() {
+        for file in meta.list_files(Some(*id), None, true).await? {
+            purge_file(meta, s3, &file).await?;
+            purged += 1;
+        }
+        meta.delete_folder(id).await?;
+        purged += 1;
+    }
+
+    Ok(purged)
+}
+
 /// Permanently remove trashed files and folders past the retention window.
 pub async fn purge_expired(
     meta: &MetadataClient,
@@ -80,19 +135,24 @@ pub async fn purge_expired(
         if file.deleted_at() >= cutoff {
             continue;
         }
-        meta.delete_file(&file.id).await?;
-        if let Err(err) = s3.delete_object(&file.s3_key).await {
-            tracing::warn!(file_id = %file.id, error = %err, "Failed to purge file object");
+        // A failure here is not fatal to the run: leave the record alone and
+        // let the next tick retry it.
+        match purge_file(meta, s3, &file).await {
+            Ok(()) => purged += 1,
+            Err(err) => tracing::warn!(file_id = %file.id, error = %err, "Failed to purge file"),
         }
-        purged += 1;
     }
 
     for folder in meta.list_trashed_folders(None).await? {
         if folder.deleted_at() >= cutoff {
             continue;
         }
-        meta.delete_folder(&folder.id).await?;
-        purged += 1;
+        match purge_folder_tree(meta, s3, &folder.id).await {
+            Ok(count) => purged += count,
+            Err(err) => {
+                tracing::warn!(folder_id = %folder.id, error = %err, "Failed to purge folder")
+            }
+        }
     }
 
     if purged > 0 {

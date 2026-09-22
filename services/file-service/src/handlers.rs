@@ -446,8 +446,7 @@ pub async fn delete_file(
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
     let file = meta.get_file(&file_id).await?;
-    meta.delete_file(&file_id).await?;
-    s3.delete_object(&file.s3_key).await?;
+    trash::purge_file(&meta, &s3, &file).await?;
 
     let _ = events.file_deleted(&file_id, &file.owner_id).await;
 
@@ -575,7 +574,8 @@ pub async fn restore_file(
     // Items go back where they came from, or to the root when that folder is
     // itself gone.
     let trashed = meta.get_file(&file_id).await?;
-    let to_root = !folder_is_available(&meta, trashed.folder_id).await;
+    let to_root =
+        !restore_target_is_available(&meta, Some(trashed.owner_id), trashed.folder_id).await;
     let file = meta.restore_file(&file_id, to_root).await?;
 
     let _ = events
@@ -844,15 +844,19 @@ pub async fn restore_folder(
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
     let trashed = meta.get_folder(&folder_id).await?;
-    let to_root = !folder_is_available(&meta, trashed.parent_id).await;
+    let to_root =
+        !restore_target_is_available(&meta, Some(trashed.owner_id), trashed.parent_id).await;
     let folder = meta.restore_folder(&folder_id, to_root).await?;
 
     tracing::info!(folder_id = %folder_id, to_root, "Folder restored");
     Ok(HttpResponse::Ok().json(folder))
 }
 
+/// Permanently remove a trashed folder and everything below it. Only reachable
+/// for folders already in the trash, so the retention window cannot be skipped.
 pub async fn purge_folder(
     meta: web::Data<MetadataClient>,
+    s3: web::Data<S3Client>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
     let folder_id: Uuid = path
@@ -860,17 +864,37 @@ pub async fn purge_folder(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
-    meta.delete_folder(&folder_id).await?;
-    tracing::info!(folder_id = %folder_id, "Folder permanently deleted");
+    let folder = meta.get_folder(&folder_id).await?;
+    if !folder.is_trashed {
+        return Err(ServiceError::BadRequest(
+            "folder must be trashed before it can be permanently deleted".into(),
+        ));
+    }
+
+    let purged = trash::purge_folder_tree(&meta, &s3, &folder_id).await?;
+    tracing::info!(folder_id = %folder_id, purged, "Folder permanently deleted");
     Ok(HttpResponse::NoContent().finish())
 }
 
 /// True when an item can be restored into `folder_id`: either the root, or a
-/// folder that still exists and is not itself trashed.
-async fn folder_is_available(meta: &MetadataClient, folder_id: Option<Uuid>) -> bool {
-    match folder_id {
-        None => true,
-        Some(id) => matches!(meta.get_folder(&id).await, Ok(folder) if !folder.is_trashed),
+/// folder whose whole ancestor chain still exists and is not trashed. A live
+/// folder under a trashed ancestor is not a valid target — restoring there
+/// would hide the item again.
+async fn restore_target_is_available(
+    meta: &MetadataClient,
+    owner_id: Option<Uuid>,
+    folder_id: Option<Uuid>,
+) -> bool {
+    if folder_id.is_none() {
+        return true;
+    }
+    match meta.list_all_folders(owner_id).await {
+        Ok(folders) => {
+            let index: std::collections::HashMap<Uuid, Folder> =
+                folders.into_iter().map(|f| (f.id, f)).collect();
+            trash::resolve_location(folder_id, &index).exists
+        }
+        Err(_) => false,
     }
 }
 

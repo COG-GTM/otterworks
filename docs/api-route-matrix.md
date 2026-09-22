@@ -27,7 +27,7 @@ This matrix captures the primary API endpoints used to design and expand the bla
 | Templates | `GET /api/v1/templates`, `POST /api/v1/templates`, `POST /api/v1/documents/from-template/{template_id}` | Partial direct-service gap: gateway currently has no `/api/v1/templates` prefix in `ServiceRoutes`. |
 | File lifecycle | `POST /api/v1/files/upload`, `GET /api/v1/files`, `GET /api/v1/files/{id}`, `GET /api/v1/files/{id}/download`, `PUT /api/v1/files/{id}/move`, `POST /api/v1/files/{id}/trash`, `POST /api/v1/files/{id}/restore`, `DELETE /api/v1/files/{id}` | Planned next API flow suite. |
 | Recently deleted | `GET /api/v1/files/trash` (files and folders deleted within the retention window), `POST /api/v1/files/{id}/restore`, `POST /api/v1/folders/{id}/restore`, `DELETE /api/v1/files/{id}`, `DELETE /api/v1/folders/{id}/permanent` | `tests/api/test_file_flow.py` |
-| Folder lifecycle | `POST /api/v1/folders`, `GET /api/v1/folders/{id}`, `PUT /api/v1/folders/{id}`, `DELETE /api/v1/folders/{id}` (moves to trash) | Gateway prefix gap: `/api/v1/folders` is not currently in `ServiceRoutes`. |
+| Folder lifecycle | `POST /api/v1/folders`, `GET /api/v1/folders/{id}`, `PUT /api/v1/folders/{id}`, `DELETE /api/v1/folders/{id}` (moves to trash) | `tests/api/test_file_flow.py` |
 | Search/discovery | `GET /api/v1/search`, `GET /api/v1/search/suggest`, `POST /api/v1/search/advanced`, `POST /api/v1/search/index/document`, `POST /api/v1/search/index/file`, `DELETE /api/v1/search/index/{type}/{id}`, `POST /api/v1/search/reindex` | Planned next API flow suite. |
 | Collaboration | `GET /api/v1/collab/documents`, `GET /api/v1/collab/documents/{id}/presence`, Socket.IO connection to collab service | Planned WebSocket/API suite. |
 | Notifications/preferences | `GET /api/v1/notifications`, notification lifecycle routes, `/api/v1/preferences` | Gateway prefix gap: preferences are not currently in `ServiceRoutes`. |
@@ -37,7 +37,6 @@ This matrix captures the primary API endpoints used to design and expand the bla
 ## Known route and behavior gaps to verify
 
 - **Templates**: Document service exposes `/api/v1/templates`, but the gateway currently only routes `/api/v1/documents` to the document service.
-- **Folders**: File service exposes `/api/v1/folders`, but the gateway currently only routes `/api/v1/files` to the file service.
 - **Reports**: Compose config includes `REPORT_SERVICE_URL`, but gateway config does not currently route `/api/v1/reports`.
 - **Preferences**: Notification service exposes `/api/v1/preferences`, but gateway config does not currently route that prefix.
 - **Document ownership**: Document service endpoints should be tested for cross-user access; the current black-box suite expects denial for cross-user reads.
