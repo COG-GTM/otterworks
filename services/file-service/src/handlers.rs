@@ -20,8 +20,8 @@ use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
     ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, ShareStatus,
+    UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
 
@@ -301,6 +301,55 @@ pub async fn list_files(
     }))
 }
 
+/// Minimal server-side check that an invite address is deliverable-shaped:
+/// `local@domain.tld`, no whitespace, single `@`.
+fn is_valid_email(email: &str) -> bool {
+    if email.chars().any(char::is_whitespace) || email.len() > 254 {
+        return false;
+    }
+    let mut parts = email.split('@');
+    let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && domain.len() >= 3
+}
+
+/// Bind pending invites addressed to this user's email to their account, so a
+/// share created before they signed up becomes a normal active share keyed by
+/// their real user id.
+async fn claim_pending_invites(
+    meta: &MetadataClient,
+    user_id: &Uuid,
+    email: &str,
+) -> Result<(), ServiceError> {
+    for pending in meta
+        .list_pending_shares_for_email(&email.to_lowercase())
+        .await?
+    {
+        if meta
+            .find_existing_share(&pending.file_id, user_id)
+            .await?
+            .is_some()
+        {
+            meta.delete_share(&pending.id).await?;
+            continue;
+        }
+        meta.put_share(&FileShare {
+            shared_with: *user_id,
+            invited_email: None,
+            status: ShareStatus::Active,
+            ..pending.clone()
+        })
+        .await?;
+        tracing::info!(file_id = %pending.file_id, user_id = %user_id, "Pending invite claimed");
+    }
+    Ok(())
+}
+
 pub async fn list_shared_files(
     meta: web::Data<MetadataClient>,
     req: HttpRequest,
@@ -312,6 +361,16 @@ pub async fn list_shared_files(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .ok_or_else(|| ServiceError::BadRequest("missing X-User-ID header".into()))?;
+
+    let user_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(email) = user_email {
+        claim_pending_invites(&meta, &user_id, email).await?;
+    }
 
     let shares = meta.list_shares_for_user(&user_id).await?;
 
@@ -549,13 +608,12 @@ pub async fn share_file(
     // Ensure file exists
     let file = meta.get_file(&file_id).await?;
 
-    // Recipient is either a resolved user id, or an email the client could
-    // not resolve to an OtterWorks account. Unresolved emails are rejected
-    // unless the share-event failure switch is on, in which case the
-    // notification publish is still attempted (and fails) without persisting
-    // a share to a nonexistent user — so the failure fires for any email.
-    let (shared_with, recipient_known) = match body.shared_with {
-        Some(id) => (id, true),
+    // Recipient is either a resolved user id, or an email the client could not
+    // resolve to an OtterWorks account. The latter becomes a pending invite,
+    // keyed by an id derived from the address so the same invitee maps to the
+    // same share record (and to the same user id once they register).
+    let (shared_with, invited_email) = match body.shared_with {
+        Some(id) => (id, None),
         None => {
             let email = body
                 .shared_with_email
@@ -564,37 +622,37 @@ pub async fn share_file(
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| {
                     ServiceError::BadRequest("shared_with or shared_with_email is required".into())
-                })?;
-            if !events.share_publish_forced() {
+                })?
+                .to_lowercase();
+            if !is_valid_email(&email) {
                 return Err(ServiceError::BadRequest(format!(
-                    "no OtterWorks user found for {email}"
+                    "invalid email address: {email}"
                 )));
             }
             (
-                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.to_lowercase().as_bytes()),
-                false,
+                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes()),
+                Some(email),
             )
         }
     };
+    let status = if invited_email.is_some() {
+        ShareStatus::Pending
+    } else {
+        ShareStatus::Active
+    };
 
-    // Check if share already exists for this file + user
-    let (share, created, permission_update) = if !recipient_known {
-        let share = FileShare {
-            id: Uuid::new_v4(),
-            file_id,
-            shared_with,
-            permission: body.permission.clone(),
-            shared_by: body.shared_by,
-            created_at: Utc::now(),
-        };
-        (share, false, false)
-    } else if let Some(existing) = meta.find_existing_share(&file_id, &shared_with).await? {
+    // Check if share already exists for this file + recipient
+    let (share, created, permission_update) = if let Some(existing) =
+        meta.find_existing_share(&file_id, &shared_with).await?
+    {
         // Update permission if different, otherwise keep the existing record
         if existing.permission != body.permission {
             let updated = FileShare {
                 id: existing.id,
                 file_id,
                 shared_with,
+                invited_email: existing.invited_email.clone(),
+                status: existing.status,
                 permission: body.permission.clone(),
                 shared_by: body.shared_by,
                 created_at: existing.created_at,
@@ -611,6 +669,8 @@ pub async fn share_file(
             id: Uuid::new_v4(),
             file_id,
             shared_with,
+            invited_email: invited_email.clone(),
+            status,
             permission: body.permission.clone(),
             shared_by: body.shared_by,
             created_at: Utc::now(),
@@ -620,14 +680,22 @@ pub async fn share_file(
     };
 
     // The notification event is published for new shares only, so re-shares
-    // and permission updates don't send duplicate notifications. When the
-    // share-event failure switch is on, every share click (new share or
-    // re-share of the same recipient) attempts the publish so a failed
-    // attempt can be retried by sharing again; permission updates are not
-    // share clicks and are left alone.
-    if created || (events.share_publish_forced() && !permission_update) {
+    // and permission updates don't send duplicate notifications. Sharing again
+    // with an invitee who has not signed up yet resends the invite, which is
+    // also how a failed publish gets retried. When the share-event failure
+    // switch is on, every share click (new share or re-share of the same
+    // recipient) attempts the publish so a failed attempt can be retried by
+    // sharing again; permission updates are not share clicks and are left
+    // alone.
+    let resend_invite = share.status == ShareStatus::Pending && !permission_update;
+    if created || resend_invite || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
-            .file_shared(&file_id, &file.owner_id, &shared_with)
+            .file_shared(
+                &file_id,
+                &file.owner_id,
+                &shared_with,
+                share.invited_email.as_deref(),
+            )
             .await
         {
             tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
@@ -637,7 +705,7 @@ pub async fn share_file(
                 &err.to_string(),
                 reporter_email.as_deref(),
                 !events.share_publish_forced(),
-                recipient_known,
+                true,
             );
             // Only surface the failure to the caller when the demo switch is
             // on; otherwise event publishing stays fire-and-forget like the
@@ -827,6 +895,18 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn invite_addresses_are_validated() {
+        assert!(is_valid_email("outside@example.com"));
+        assert!(is_valid_email("first.last+tag@sub.example.co.uk"));
+        assert!(!is_valid_email("outside"));
+        assert!(!is_valid_email("outside@example"));
+        assert!(!is_valid_email("outside@@example.com"));
+        assert!(!is_valid_email("out side@example.com"));
+        assert!(!is_valid_email("@example.com"));
+        assert!(!is_valid_email("outside@example."));
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {

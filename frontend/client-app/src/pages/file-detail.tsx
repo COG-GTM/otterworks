@@ -61,6 +61,7 @@ function FileDetailContent() {
   useEffect(() => {
     if (!file?.sharedWith?.length) return;
     const userIds = file.sharedWith
+      .filter((s) => s.status !== "pending")
       .map((s) => s.userId)
       .filter((id) => id && !resolvedUsers[id]);
     if (userIds.length === 0) return;

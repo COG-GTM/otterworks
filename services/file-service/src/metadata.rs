@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
-use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission};
+use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission, ShareStatus};
 
 /// Check if an AWS SDK error is a ConditionalCheckFailedException.
 fn is_conditional_check_failed<E: std::fmt::Debug>(
@@ -512,6 +512,10 @@ impl MetadataClient {
             "shared_with".into(),
             AttributeValue::S(share.shared_with.to_string()),
         );
+        if let Some(email) = &share.invited_email {
+            item.insert("invited_email".into(), AttributeValue::S(email.clone()));
+        }
+        item.insert("status".into(), AttributeValue::S(share.status.to_string()));
         item.insert(
             "permission".into(),
             AttributeValue::S(share.permission.to_string()),
@@ -580,6 +584,28 @@ impl MetadataClient {
                     shares.push(parse_file_share(item)?);
                 }
             }
+        }
+        Ok(shares)
+    }
+
+    pub async fn list_pending_shares_for_email(
+        &self,
+        email: &str,
+    ) -> Result<Vec<FileShare>, ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.shares_table)
+            .filter_expression("invited_email = :email")
+            .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
+            .into_paginator()
+            .items()
+            .send();
+
+        let mut shares = Vec::new();
+        while let Some(item) = paginator.next().await {
+            let item = item.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            shares.push(parse_file_share(&item)?);
         }
         Ok(shares)
     }
@@ -757,10 +783,22 @@ fn parse_file_share(
         ServiceError::DynamoError(format!("invalid permission: {permission_str}"))
     })?;
 
+    let invited_email = item
+        .get("invited_email")
+        .and_then(|v| v.as_s().ok())
+        .map(|s| s.to_string());
+    let status = item
+        .get("status")
+        .and_then(|v| v.as_s().ok())
+        .and_then(|s| ShareStatus::from_str_value(s))
+        .unwrap_or(ShareStatus::Active);
+
     Ok(FileShare {
         id: parse_uuid(&get_s(item, "id")?)?,
         file_id: parse_uuid(&get_s(item, "file_id")?)?,
         shared_with: parse_uuid(&get_s(item, "shared_with")?)?,
+        invited_email,
+        status,
         permission,
         shared_by: parse_uuid(&get_s(item, "shared_by")?)?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,
