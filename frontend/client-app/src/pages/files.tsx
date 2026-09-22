@@ -86,12 +86,18 @@ function FileBrowserContent() {
     enabled: !!folderId,
   });
 
-  // Folder listings carry no share records, so the dialog reads them from the
-  // folder detail endpoint.
+  // Listings carry no share records, so the dialogs read them from the detail
+  // endpoints.
   const { data: shareFolder } = useQuery({
     queryKey: ["folders", "detail", shareFolderId],
     queryFn: () => filesApi.getFolder(shareFolderId!),
     enabled: !!shareFolderId,
+  });
+
+  const { data: shareFileDetail } = useQuery({
+    queryKey: ["files", "detail", shareFileId],
+    queryFn: () => filesApi.get(shareFileId!),
+    enabled: !!shareFileId,
   });
 
   const isLoading = filesLoading || foldersLoading;
@@ -516,7 +522,7 @@ function FileBrowserContent() {
         </div>
       )}
       {shareFileId && (() => {
-        const shareFile = files.find((f) => f.id === shareFileId);
+        const shareFile = shareFileDetail ?? files.find((f) => f.id === shareFileId);
         if (!shareFile) return null;
         return (
           <ShareDialog

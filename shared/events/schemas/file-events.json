@@ -19,12 +19,13 @@
     },
     "FileSharedEvent": {
       "type": "object",
-      "required": ["eventType", "fileId", "ownerId", "sharedWithUserId", "permission", "timestamp"],
+      "required": ["eventType", "fileId", "ownerId", "sharedWithUserId", "timestamp"],
       "properties": {
         "eventType": { "const": "file_shared" },
         "fileId": { "type": "string", "format": "uuid" },
         "ownerId": { "type": "string", "format": "uuid" },
         "sharedWithUserId": { "type": "string", "format": "uuid" },
+        "sharedWithEmail": { "type": "string", "format": "email" },
         "permission": { "enum": ["viewer", "editor"] },
         "timestamp": { "type": "string", "format": "date-time" }
       }
