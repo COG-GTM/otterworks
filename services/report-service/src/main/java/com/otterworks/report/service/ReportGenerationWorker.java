@@ -22,7 +22,7 @@ import java.util.Optional;
 /**
  * Separate bean for async report generation.
  *
- * LEGACY PATTERNS (intentional tech debt):
+ * REMAINING TECH DEBT:
  * - Extracted to separate bean to work around Spring AOP self-invocation limitation
  * - Still uses java.util.Date, fire-and-forget @Async, checked-to-unchecked exception wrapping
  *
@@ -61,14 +61,14 @@ public class ReportGenerationWorker {
     /**
      * Async report generation — runs in background thread pool.
      *
-     * LEGACY: @Async with no return type (fire-and-forget).
+     * @Async with no return type (fire-and-forget).
      * Modern approach: return CompletableFuture<Void> or use reactive pipeline.
      */
     @Async
     @SuppressWarnings("unchecked")
     public void generateReportAsync(Long reportId) {
         Optional<Report> optReport = reportRepository.findById(reportId);
-        if (!optReport.isPresent()) { // LEGACY: !isPresent() instead of isEmpty() (Java 11+)
+        if (optReport.isEmpty()) {
             logger.error("Report not found for generation: {}", reportId);
             return;
         }
