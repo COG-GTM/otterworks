@@ -22,6 +22,8 @@ interface RawShareItem {
   id: string;
   fileId: string;
   sharedWith: string;
+  sharedWithEmail?: string;
+  status?: "active" | "pending";
   permission: string;
   sharedBy: string;
   createdAt: string;
@@ -67,7 +69,8 @@ function mapRawFile(raw: RawFileItem): FileItem {
       const mapped = (raw.sharedWith ?? []).map((s) => ({
         userId: s.sharedWith,
         name: "",
-        email: "",
+        email: s.sharedWithEmail ?? "",
+        pending: s.status === "pending",
         permission: s.permission === "viewer" ? "view" as const : s.permission === "editor" ? "edit" as const : "view" as const,
       }));
       const seen = new Set<string>();

@@ -57,9 +57,41 @@ pub struct FileShare {
     pub id: Uuid,
     pub file_id: Uuid,
     pub shared_with: Uuid,
+    /// Set when the recipient has no OtterWorks account yet; the share is
+    /// held against a deterministic id derived from this address until the
+    /// invitee registers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_with_email: Option<String>,
+    pub status: ShareStatus,
     pub permission: SharePermission,
     pub shared_by: Uuid,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ShareStatus {
+    Active,
+    Pending,
+}
+
+impl std::fmt::Display for ShareStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShareStatus::Active => write!(f, "active"),
+            ShareStatus::Pending => write!(f, "pending"),
+        }
+    }
+}
+
+impl ShareStatus {
+    pub fn from_str_value(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "active" => Some(ShareStatus::Active),
+            "pending" => Some(ShareStatus::Pending),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

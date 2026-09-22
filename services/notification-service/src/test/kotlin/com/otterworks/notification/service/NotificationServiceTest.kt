@@ -42,6 +42,22 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `resolveEmailAddress prefers the invitee address over the internal mailbox`() {
+        val invite = SqsNotificationMessage(
+            eventType = "file_shared",
+            fileId = "file-123",
+            ownerId = "owner-1",
+            sharedWithUserId = "user-2",
+            sharedWithEmail = "outside@example.com",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+        assertEquals("outside@example.com", NotificationService.resolveEmailAddress(invite, "user-2"))
+
+        val internal = invite.copy(sharedWithEmail = null)
+        assertEquals("user-2@otterworks.io", NotificationService.resolveEmailAddress(internal, "user-2"))
+    }
+
+    @Test
     fun `resolveTargetUserId returns mentionedUserId for user_mentioned events`() {
         val event = SqsNotificationMessage(
             eventType = "user_mentioned",

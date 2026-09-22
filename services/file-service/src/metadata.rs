@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
-use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission};
+use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission, ShareStatus};
 
 /// Check if an AWS SDK error is a ConditionalCheckFailedException.
 fn is_conditional_check_failed<E: std::fmt::Debug>(
@@ -512,6 +512,10 @@ impl MetadataClient {
             "shared_with".into(),
             AttributeValue::S(share.shared_with.to_string()),
         );
+        if let Some(email) = &share.shared_with_email {
+            item.insert("shared_with_email".into(), AttributeValue::S(email.clone()));
+        }
+        item.insert("status".into(), AttributeValue::S(share.status.to_string()));
         item.insert(
             "permission".into(),
             AttributeValue::S(share.permission.to_string()),
@@ -757,10 +761,19 @@ fn parse_file_share(
         ServiceError::DynamoError(format!("invalid permission: {permission_str}"))
     })?;
 
+    // Shares written before invites existed carry neither attribute.
+    let status = match get_optional_s(item, "status") {
+        Some(value) => ShareStatus::from_str_value(&value)
+            .ok_or_else(|| ServiceError::DynamoError(format!("invalid share status: {value}")))?,
+        None => ShareStatus::Active,
+    };
+
     Ok(FileShare {
         id: parse_uuid(&get_s(item, "id")?)?,
         file_id: parse_uuid(&get_s(item, "file_id")?)?,
         shared_with: parse_uuid(&get_s(item, "shared_with")?)?,
+        shared_with_email: get_optional_s(item, "shared_with_email"),
+        status,
         permission,
         shared_by: parse_uuid(&get_s(item, "shared_by")?)?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,
@@ -876,6 +889,41 @@ mod tests {
         let share = parse_file_share(&item).unwrap();
         assert_eq!(share.permission, SharePermission::Editor);
         assert_eq!(share.file_id, file_id);
+        assert_eq!(share.status, ShareStatus::Active);
+        assert!(share.shared_with_email.is_none());
+    }
+
+    #[test]
+    fn test_parse_pending_invite_share() {
+        let now = Utc::now();
+        let mut item = HashMap::new();
+        item.insert("id".into(), AttributeValue::S(Uuid::new_v4().to_string()));
+        item.insert(
+            "file_id".into(),
+            AttributeValue::S(Uuid::new_v4().to_string()),
+        );
+        item.insert(
+            "shared_with".into(),
+            AttributeValue::S(Uuid::new_v4().to_string()),
+        );
+        item.insert(
+            "shared_with_email".into(),
+            AttributeValue::S("outside@example.com".into()),
+        );
+        item.insert("status".into(), AttributeValue::S("pending".into()));
+        item.insert("permission".into(), AttributeValue::S("viewer".into()));
+        item.insert(
+            "shared_by".into(),
+            AttributeValue::S(Uuid::new_v4().to_string()),
+        );
+        item.insert("created_at".into(), AttributeValue::S(now.to_rfc3339()));
+
+        let share = parse_file_share(&item).unwrap();
+        assert_eq!(share.status, ShareStatus::Pending);
+        assert_eq!(
+            share.shared_with_email.as_deref(),
+            Some("outside@example.com")
+        );
     }
 
     #[test]

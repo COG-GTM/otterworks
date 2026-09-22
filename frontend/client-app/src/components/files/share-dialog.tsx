@@ -243,7 +243,11 @@ export function ShareDialog({
                       .filter((user) => user.userId !== ownerId)
                       .map((user) => {
                         const resolved = resolvedUsers[user.userId];
-                        const displayName = resolved?.name || user.name || user.userId.slice(0, 8);
+                        const displayName =
+                          resolved?.name ||
+                          user.name ||
+                          (user.pending ? user.email : "") ||
+                          user.userId.slice(0, 8);
                         const displayEmail = resolved?.email || user.email;
                         const isUpdating = updatingUserId === user.userId;
                         const isRemoving = removingUserId === user.userId;
@@ -257,10 +261,17 @@ export function ShareDialog({
                                 {displayName.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {displayName}
-                                </p>
-                                {displayEmail && (
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900 truncate">
+                                    {displayName}
+                                  </p>
+                                  {user.pending && (
+                                    <span className="text-[10px] uppercase tracking-wide font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                      Pending
+                                    </span>
+                                  )}
+                                </div>
+                                {displayEmail && displayEmail !== displayName && (
                                   <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
                                 )}
                               </div>

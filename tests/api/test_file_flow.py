@@ -101,6 +101,41 @@ def test_file_folder_upload_lifecycle_share_and_download(api_client):
     api_client.created_folders.remove(folder["id"])
 
 
+def test_share_with_external_email_creates_pending_invite(api_client):
+    owner = api_client.register_user("share-inviter")
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("invite.txt", b"invite flow", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    invitee_email = f"outside-{api_client.run_id}@example.com"
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={
+            "shared_with_email": invitee_email,
+            "permission": "viewer",
+            "shared_by": owner.id,
+        },
+    )
+    assert share_response.status_code == 201, share_response.text
+    share = share_response.json()["share"]
+    assert share["status"] == "pending"
+    assert share["shared_with_email"] == invitee_email
+
+    detail_response = api_client.client.get(
+        f"/api/v1/files/{file_id}", headers=owner.auth_headers
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    shares = detail_response.json()["shared_with"]
+    assert [s["shared_with_email"] for s in shares] == [invitee_email]
+
+
 @pytest.mark.gap_revealer
 def test_file_validation_and_route_gaps(api_client):
     owner = api_client.register_user("file-validation")
