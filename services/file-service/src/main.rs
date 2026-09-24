@@ -11,6 +11,7 @@ mod handlers;
 mod metadata;
 mod middleware;
 mod models;
+mod quota;
 mod seed;
 mod storage;
 
@@ -68,6 +69,7 @@ async fn main() -> std::io::Result<()> {
                     .route("/shared", web::get().to(handlers::list_shared_files))
                     .route("/trash", web::get().to(handlers::list_trashed))
                     .route("/activity", web::get().to(handlers::list_activity))
+                    .route("/usage", web::get().to(handlers::storage_usage))
                     .route("", web::get().to(handlers::list_files))
                     .route("/{file_id}", web::get().to(handlers::get_file_metadata))
                     .route("/{file_id}", web::delete().to(handlers::delete_file))

@@ -22,6 +22,7 @@ import { useUIStore } from "@/stores/ui-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { getInitials } from "@/lib/utils";
 import { Logo } from "@/components/ui/logo";
+import { StorageBar } from "@/components/layout/storage-bar";
 
 interface NavItem {
   href: string;
@@ -149,6 +150,11 @@ export function Sidebar() {
             </div>
           ))}
         </nav>
+
+        {/* Storage quota */}
+        <div className="border-t border-otter-600 px-3">
+          <StorageBar collapsed={!sidebarOpen} />
+        </div>
 
         {/* User profile */}
         <div className="border-t border-otter-600 px-3 py-2">

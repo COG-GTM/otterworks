@@ -29,8 +29,8 @@ interface UploadingFile {
   error?: string;
   /** Rejected for size: retrying can never succeed. */
   tooLarge?: boolean;
-  /** Distinguishes a size rejection from a genuine upload failure. */
-  errorKind?: "size" | "failure";
+  /** Distinguishes a size rejection or a quota rejection from a genuine upload failure. */
+  errorKind?: "size" | "quota" | "failure";
   abortController?: AbortController;
 }
 
@@ -45,8 +45,25 @@ const TOO_LARGE_ERROR = `File is too large — the limit is ${formatFileSize(MAX
  */
 const SERVER_TOO_LARGE_ERROR = "Server rejected this file as too large";
 
+interface QuotaDetail {
+  used: number;
+  limit: number;
+}
+
+/** file-service answers 413 with this body when the owner is out of storage. */
+function quotaDetail(err: unknown): QuotaDetail | null {
+  if (!isAxiosError(err) || err.response?.status !== 413) return null;
+  const data = err.response.data as Partial<QuotaDetail> & { code?: string };
+  if (data?.code !== "QUOTA_EXCEEDED") return null;
+  return { used: data.used ?? 0, limit: data.limit ?? 0 };
+}
+
+function quotaMessage({ used, limit }: QuotaDetail): string {
+  return `Not enough storage — ${formatFileSize(used)} of ${formatFileSize(limit)} used`;
+}
+
 function isTooLargeError(err: unknown): boolean {
-  return isAxiosError(err) && err.response?.status === 413;
+  return isAxiosError(err) && err.response?.status === 413 && quotaDetail(err) === null;
 }
 
 let fileIdCounter = 0;
@@ -58,6 +75,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
   const [showUploadErrorBanner, setShowUploadErrorBanner] = useState(false);
   const [showTooLargeBanner, setShowTooLargeBanner] = useState(false);
+  const [quotaError, setQuotaError] = useState<QuotaDetail | null>(null);
   const [dismissing, setDismissing] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDismissRef = useRef(onDismiss);
@@ -71,6 +89,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
       setDismissing(false);
       setShowUploadErrorBanner(false);
       setShowTooLargeBanner(false);
+      setQuotaError(null);
       return;
     }
     const allDone = uploadingFiles.every((f) => f.status === "done");
@@ -81,6 +100,9 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     }
     if (!uploadingFiles.some((f) => f.status === "error" && f.errorKind === "size")) {
       setShowTooLargeBanner(false);
+    }
+    if (!uploadingFiles.some((f) => f.status === "error" && f.errorKind === "quota")) {
+      setQuotaError(null);
     }
 
     if (allDone && !hasUploading) {
@@ -147,21 +169,34 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           if (abortController.signal.aborted) {
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
+            const outOfSpace = quotaDetail(err);
             const rejectedTooLarge = isTooLargeError(err);
+            const message = outOfSpace
+              ? quotaMessage(outOfSpace)
+              : rejectedTooLarge
+                ? SERVER_TOO_LARGE_ERROR
+                : "Upload failed";
+            const kind = outOfSpace
+              ? ("quota" as const)
+              : rejectedTooLarge
+                ? ("size" as const)
+                : ("failure" as const);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
                   ? {
                       ...f,
                       status: "error" as const,
-                      error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
-                      errorKind: rejectedTooLarge ? ("size" as const) : ("failure" as const),
+                      error: message,
+                      errorKind: kind,
                       abortController: undefined,
                     }
                   : f,
               ),
             );
-            if (rejectedTooLarge) {
+            if (outOfSpace) {
+              setQuotaError(outOfSpace);
+            } else if (rejectedTooLarge) {
               setShowTooLargeBanner(true);
             } else {
               setShowUploadErrorBanner(true);
@@ -241,6 +276,17 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
 
   return (
     <div className={className}>
+      {quotaError && (
+        <ChaosErrorBanner
+          className="mb-4"
+          variant="warning"
+          title="Not enough storage"
+          message={`${quotaMessage(quotaError)}. Empty the trash or delete files you no longer need, then try again.`}
+          actionHref="/trash"
+          actionLabel="Open Trash"
+          onDismiss={() => setQuotaError(null)}
+        />
+      )}
       {showTooLargeBanner && oversizedNames.length > 0 && (
         <ChaosErrorBanner
           className="mb-4"

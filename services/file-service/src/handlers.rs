@@ -20,9 +20,10 @@ use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
     ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, StorageUsageResponse,
+    UpdateFolderRequest, UploadResponse,
 };
+use crate::quota;
 use crate::storage::S3Client;
 
 // -- Health & Metrics --
@@ -142,6 +143,15 @@ pub async fn upload_file(
         return Err(ServiceError::BadRequest("file field is required".into()));
     }
 
+    // Charged against the owner's quota before anything is written to S3, so a
+    // rejected upload leaves no partial object behind.
+    let owned = meta.list_files(None, Some(owner), true).await?;
+    quota::check_upload(
+        quota::used_bytes(&owned),
+        file_bytes.len() as u64,
+        config.server.storage_quota_bytes,
+    )?;
+
     let file_id = Uuid::new_v4();
     let s3_key = format!("files/{}/{}", owner, file_id);
     let now = Utc::now();
@@ -225,6 +235,30 @@ pub async fn upload_file(
     tracing::info!(file_id = %file_id, name = %file_meta.name, size = %size, "File uploaded");
 
     Ok(HttpResponse::Created().json(UploadResponse { file: file_meta }))
+}
+
+/// Storage consumed by the caller, against the configured quota. Trashed files
+/// still count; only a permanent delete frees their bytes.
+pub async fn storage_usage(
+    req: HttpRequest,
+    meta: web::Data<MetadataClient>,
+    config: web::Data<AppConfig>,
+    query: web::Query<ListFilesQuery>,
+) -> Result<HttpResponse, ServiceError> {
+    // Usage is per owner; without one the scan would aggregate every owner.
+    let owner_id = resolve_owner_id(&req, query.owner_id)
+        .ok_or_else(|| ServiceError::Unauthorized("missing user identity".into()))?;
+    let files = meta.list_files(None, Some(owner_id), true).await?;
+
+    let used = quota::used_bytes(&files);
+    let limit = config.server.storage_quota_bytes;
+
+    Ok(HttpResponse::Ok().json(StorageUsageResponse {
+        used,
+        limit,
+        percent_used: quota::percent_used(used, limit),
+        file_count: files.iter().filter(|f| !f.is_trashed).count(),
+    }))
 }
 
 pub async fn get_file_metadata(

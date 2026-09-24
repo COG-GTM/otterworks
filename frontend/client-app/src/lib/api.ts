@@ -472,48 +472,30 @@ export const activityApi = {
 };
 
 // ── Storage ───────────────────────────────────────────────────
+interface RawStorageUsage {
+  used: number;
+  limit: number;
+  percentUsed: number;
+  fileCount: number;
+}
+
 export const storageApi = {
   getUsage: async (): Promise<StorageUsage> => {
-    // The /storage/usage endpoint is not routed. Compute stats from
-    // existing file and document list endpoints instead.
-    const [fileRes, docRes] = await Promise.all([
-      apiClient.get<RawFileListResponse>("/files", { params: { page: 1, page_size: 1 } }),
-      apiClient.get<{ total?: number }>("/documents", { params: { page: 1, size: 1 } }),
+    // file-service owns the quota; the document count is decorative, so a
+    // document-service outage must not hide storage usage.
+    const [usageRes, docRes] = await Promise.all([
+      apiClient.get<RawStorageUsage>("/files/usage"),
+      apiClient
+        .get<{ total?: number }>("/documents", { params: { page: 1, size: 1 } })
+        .catch(() => null),
     ]);
 
-    const fileCount = fileRes.data.total ?? 0;
-    const documentCount = docRes.data.total ?? 0;
-
-    // Fetch all files to sum storage. The file-service caps page_size at 100,
-    // so paginate through all pages to get an accurate total.
-    let used = 0;
-    if (fileCount > 0) {
-      const PAGE_LIMIT = 100;
-      let page = 1;
-      let fetched = 0;
-      while (fetched < fileCount) {
-        const batch = await apiClient.get<RawFileListResponse>("/files", {
-          params: { page, page_size: PAGE_LIMIT },
-        });
-        const files = batch.data.files ?? [];
-        if (files.length === 0) break;
-        used += files.reduce(
-          (sum, f) => {
-            const raw = f as unknown as Record<string, number>;
-            return sum + (raw.sizeBytes ?? raw.size_bytes ?? 0);
-          },
-          0,
-        );
-        fetched += files.length;
-        page += 1;
-      }
-    }
-
     return {
-      used,
-      total: 10 * 1024 * 1024 * 1024, // 10 GB default quota
-      fileCount,
-      documentCount,
+      used: usageRes.data.used ?? 0,
+      limit: usageRes.data.limit ?? 0,
+      percentUsed: usageRes.data.percentUsed ?? 0,
+      fileCount: usageRes.data.fileCount ?? 0,
+      documentCount: docRes?.data.total ?? 0,
     };
   },
 };
