@@ -664,6 +664,39 @@ export const marginsApi = {
   },
 };
 
+// ── Audit ─────────────────────────────────────────────────────
+export interface AuditEvent {
+  id: string;
+  userId: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details?: Record<string, string> | null;
+  timestamp: string;
+}
+
+export interface ResourceHistory {
+  resourceId: string;
+  totalEvents: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  events: AuditEvent[];
+}
+
+export const auditApi = {
+  getResourceHistory: async (
+    resourceId: string,
+    { page = 1, size = 10 }: { page?: number; size?: number } = {}
+  ): Promise<ResourceHistory> => {
+    const { data } = await apiClient.get<ResourceHistory>(
+      `/audit/resources/${resourceId}/history`,
+      { params: { page, size } }
+    );
+    return data;
+  },
+};
+
 // ── Settings ──────────────────────────────────────────────────
 export const settingsApi = {
   get: async (): Promise<UserSettings> => {

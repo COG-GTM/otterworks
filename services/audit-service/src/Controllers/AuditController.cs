@@ -29,7 +29,8 @@ public static class AuditController
 
         group.MapGet("/resources/{resourceId}/history", GetResourceHistory)
             .WithName("GetResourceHistory")
-            .Produces<ResourceHistory>(StatusCodes.Status200OK);
+            .Produces<ResourceHistory>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status403Forbidden);
 
         group.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
@@ -96,11 +97,28 @@ public static class AuditController
         return Results.Ok(report);
     }
 
-    private static async Task<IResult> GetResourceHistory(
+    public static async Task<IResult> GetResourceHistory(
         string resourceId,
-        IAuditService auditService)
+        int? page,
+        int? size,
+        HttpContext http,
+        IAuditService auditService,
+        IResourceAccessAuthorizer accessAuthorizer)
     {
-        var history = await auditService.GetResourceHistoryAsync(resourceId);
+        // X-User-ID is injected by the api-gateway from the validated JWT.
+        var userId = http.Request.Headers["X-User-ID"].FirstOrDefault();
+
+        if (!await accessAuthorizer.CanReadHistoryAsync(resourceId, userId, http.RequestAborted))
+        {
+            return Results.Json(
+                new { error = "You do not have access to this resource's history." },
+                statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        var pageNumber = Math.Max(page ?? 1, 1);
+        var pageSize = Math.Clamp(size ?? 20, 1, 100);
+
+        var history = await auditService.GetResourceHistoryAsync(resourceId, pageNumber, pageSize);
         return Results.Ok(history);
     }
 

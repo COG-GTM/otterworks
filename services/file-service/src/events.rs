@@ -27,12 +27,42 @@ pub struct FileEvent {
     #[serde(rename = "sharedWithUserId")]
     pub shared_with: Option<String>,
     pub timestamp: String,
+    /// User who performed the action, when the request carried an identity.
+    /// Falls back to the owner downstream when absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+}
+
+impl FileEvent {
+    fn new(event_type: &str, file_id: &Uuid, owner_id: &Uuid, actor_id: Option<&Uuid>) -> Self {
+        Self {
+            event_type: event_type.into(),
+            file_id: file_id.to_string(),
+            owner_id: owner_id.to_string(),
+            folder_id: None,
+            shared_with: None,
+            timestamp: Utc::now().to_rfc3339(),
+            actor_id: actor_id.map(|a| a.to_string()),
+            name: None,
+            previous_name: None,
+            folder_name: None,
+            permission: None,
+            mime_type: None,
+            size_bytes: None,
+        }
+    }
 }
 
 impl EventPublisher {
@@ -118,40 +148,56 @@ impl EventPublisher {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn file_uploaded(
         &self,
         file_id: &Uuid,
         owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
         folder_id: Option<&Uuid>,
         name: &str,
         mime_type: &str,
         size_bytes: u64,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_uploaded".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            ..FileEvent::new("file_uploaded", file_id, owner_id, actor_id)
         };
         self.publish(&event).await
     }
 
     pub async fn file_deleted(&self, file_id: &Uuid, owner_id: &Uuid) -> Result<(), ServiceError> {
+        let event = FileEvent::new("file_deleted", file_id, owner_id, None);
+        self.publish(&event).await
+    }
+
+    pub async fn file_downloaded(
+        &self,
+        file_id: &Uuid,
+        owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
+        name: &str,
+    ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_deleted".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
-            folder_id: None,
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            name: Some(name.to_string()),
+            ..FileEvent::new("file_downloaded", file_id, owner_id, actor_id)
+        };
+        self.publish(&event).await
+    }
+
+    pub async fn file_unshared(
+        &self,
+        file_id: &Uuid,
+        owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
+        shared_with: &Uuid,
+    ) -> Result<(), ServiceError> {
+        let event = FileEvent {
+            shared_with: Some(shared_with.to_string()),
+            ..FileEvent::new("file_unshared", file_id, owner_id, actor_id)
         };
         self.publish(&event).await
     }
@@ -160,18 +206,14 @@ impl EventPublisher {
         &self,
         file_id: &Uuid,
         owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
         shared_with: &Uuid,
+        permission: &str,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_shared".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
-            folder_id: None,
             shared_with: Some(shared_with.to_string()),
-            timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            permission: Some(permission.to_string()),
+            ..FileEvent::new("file_shared", file_id, owner_id, actor_id)
         };
         self.publish_to(
             &event,
@@ -182,63 +224,58 @@ impl EventPublisher {
         .await
     }
 
-    pub async fn file_trashed(&self, file_id: &Uuid, owner_id: &Uuid) -> Result<(), ServiceError> {
-        let event = FileEvent {
-            event_type: "file_trashed".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
-            folder_id: None,
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
-        };
+    pub async fn file_trashed(
+        &self,
+        file_id: &Uuid,
+        owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
+    ) -> Result<(), ServiceError> {
+        let event = FileEvent::new("file_trashed", file_id, owner_id, actor_id);
         self.publish(&event).await
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn file_restored(
         &self,
         file_id: &Uuid,
         owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
         folder_id: Option<&Uuid>,
         name: &str,
         mime_type: &str,
         size_bytes: u64,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_restored".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            ..FileEvent::new("file_restored", file_id, owner_id, actor_id)
         };
         self.publish(&event).await
     }
 
+    /// `previous_name` is set when the update is a rename, so consumers can
+    /// render "renamed from <old>".
+    #[allow(clippy::too_many_arguments)]
     pub async fn file_updated(
         &self,
         file_id: &Uuid,
         owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
         folder_id: Option<&Uuid>,
         name: &str,
+        previous_name: Option<&str>,
         mime_type: &str,
         size_bytes: u64,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_updated".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
             name: Some(name.to_string()),
+            previous_name: previous_name.map(|n| n.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            ..FileEvent::new("file_updated", file_id, owner_id, actor_id)
         };
         self.publish(&event).await
     }
@@ -247,18 +284,14 @@ impl EventPublisher {
         &self,
         file_id: &Uuid,
         owner_id: &Uuid,
+        actor_id: Option<&Uuid>,
         folder_id: Option<&Uuid>,
+        folder_name: Option<&str>,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
-            event_type: "file_moved".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
             folder_id: folder_id.map(|f| f.to_string()),
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            folder_name: folder_name.map(|n| n.to_string()),
+            ..FileEvent::new("file_moved", file_id, owner_id, actor_id)
         };
         self.publish(&event).await
     }
@@ -271,15 +304,15 @@ mod tests {
     #[test]
     fn test_file_event_serialization() {
         let event = FileEvent {
-            event_type: "file_uploaded".into(),
-            file_id: Uuid::new_v4().to_string(),
-            owner_id: Uuid::new_v4().to_string(),
-            folder_id: None,
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
             name: Some("test.txt".to_string()),
             mime_type: Some("text/plain".to_string()),
             size_bytes: Some(100),
+            ..FileEvent::new(
+                "file_uploaded",
+                &Uuid::new_v4(),
+                &Uuid::new_v4(),
+                Some(&Uuid::new_v4()),
+            )
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("file_uploaded"));
@@ -292,18 +325,28 @@ mod tests {
     fn test_file_event_with_folder() {
         let folder = Uuid::new_v4();
         let event = FileEvent {
-            event_type: "file_moved".into(),
-            file_id: Uuid::new_v4().to_string(),
-            owner_id: Uuid::new_v4().to_string(),
             folder_id: Some(folder.to_string()),
-            shared_with: None,
-            timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            folder_name: Some("Finance/2026".to_string()),
+            ..FileEvent::new("file_moved", &Uuid::new_v4(), &Uuid::new_v4(), None)
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains(&folder.to_string()));
         assert!(json.contains("folderId"));
+        assert!(json.contains("folderName"));
+        assert!(!json.contains("actorId"));
+    }
+
+    #[test]
+    fn test_rename_event_carries_actor_and_previous_name() {
+        let actor = Uuid::new_v4();
+        let event = FileEvent {
+            name: Some("Q4.xlsx".to_string()),
+            previous_name: Some("Q3.xlsx".to_string()),
+            ..FileEvent::new("file_updated", &Uuid::new_v4(), &Uuid::new_v4(), Some(&actor))
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("previousName"));
+        assert!(json.contains("Q3.xlsx"));
+        assert!(json.contains(&actor.to_string()));
     }
 }

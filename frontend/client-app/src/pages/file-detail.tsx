@@ -23,6 +23,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
+import { FileActivity } from "@/components/files/file-activity";
 import { filesApi, authApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
 
@@ -258,6 +259,9 @@ function FileDetailContent() {
               </div>
             </div>
           )}
+
+          {/* Activity */}
+          <FileActivity fileId={file.id} />
         </div>
 
         {/* Sidebar info */}

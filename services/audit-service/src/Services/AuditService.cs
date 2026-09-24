@@ -87,15 +87,20 @@ public class AuditService : IAuditService
         return report;
     }
 
-    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId)
+    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId, int page = 1, int pageSize = 20)
     {
         var events = await _repository.GetResourceHistoryAsync(resourceId);
+        var skipped = (page - 1) * pageSize;
+        var pageEvents = events.Skip(skipped).Take(pageSize).ToList();
 
         return new ResourceHistory
         {
+            Page = page,
+            PageSize = pageSize,
+            HasMore = skipped + pageEvents.Count < events.Count,
             ResourceId = resourceId,
             TotalEvents = events.Count,
-            Events = events.Select(AuditEventResponse.FromEntity).ToList(),
+            Events = pageEvents.Select(AuditEventResponse.FromEntity).ToList(),
         };
     }
 

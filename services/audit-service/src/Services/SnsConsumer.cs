@@ -104,24 +104,12 @@ public class SnsConsumer : BackgroundService
             {
                 PropertyNameCaseInsensitive = true,
             });
-            if (fileEvent?.EventType == "file_shared")
+            if (fileEvent?.EventType is not null && FileEventActions.ContainsKey(fileEvent.EventType))
             {
-                var fileShareEvent = new AuditEvent
-                {
-                    Id = message.MessageId,
-                    UserId = fileEvent.OwnerId ?? "system",
-                    Action = "share",
-                    ResourceType = "file",
-                    ResourceId = fileEvent.FileId ?? string.Empty,
-                    Details = new Dictionary<string, string>
-                    {
-                        ["sharedWithUserId"] = fileEvent.SharedWithUserId ?? string.Empty,
-                    },
-                    Timestamp = fileEvent.Timestamp ?? DateTime.UtcNow,
-                };
+                var fileAuditEvent = ToAuditEvent(message.MessageId, fileEvent);
 
-                await _repository.SaveEventAsync(fileShareEvent);
-                _logger.LogDebug("Processed file share SNS event for {FileId}", fileEvent.FileId);
+                await _repository.SaveEventAsync(fileAuditEvent);
+                _logger.LogDebug("Processed {EventType} SNS event for {FileId}", fileEvent.EventType, fileEvent.FileId);
                 await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
                 return;
             }
@@ -163,6 +151,60 @@ public class SnsConsumer : BackgroundService
         }
     }
 
+    /// File-service event types that become audit events on the resource
+    /// timeline, mapped to the action verb stored in DynamoDB.
+    private static readonly Dictionary<string, string> FileEventActions = new()
+    {
+        ["file_uploaded"] = "upload",
+        ["file_updated"] = "update",
+        ["file_moved"] = "move",
+        ["file_shared"] = "share",
+        ["file_unshared"] = "unshare",
+        ["file_downloaded"] = "download",
+        ["file_trashed"] = "trash",
+        ["file_restored"] = "restore",
+        ["file_deleted"] = "delete",
+    };
+
+    internal static AuditEvent ToAuditEvent(string messageId, FileEventMessage fileEvent)
+    {
+        var eventType = fileEvent.EventType ?? string.Empty;
+        var action = FileEventActions.GetValueOrDefault(eventType, eventType);
+
+        // A rename arrives as an update carrying the old name.
+        if (action == "update" && !string.IsNullOrWhiteSpace(fileEvent.PreviousName))
+        {
+            action = "rename";
+        }
+
+        var details = new Dictionary<string, string>();
+        AddDetail(details, "name", fileEvent.Name);
+        AddDetail(details, "previousName", fileEvent.PreviousName);
+        AddDetail(details, "folderId", fileEvent.FolderId);
+        AddDetail(details, "folderName", fileEvent.FolderName);
+        AddDetail(details, "permission", fileEvent.Permission);
+        AddDetail(details, "sharedWithUserId", fileEvent.SharedWithUserId);
+
+        return new AuditEvent
+        {
+            Id = messageId,
+            UserId = fileEvent.ActorId ?? fileEvent.OwnerId ?? "system",
+            Action = action,
+            ResourceType = "file",
+            ResourceId = fileEvent.FileId ?? string.Empty,
+            Details = details.Count > 0 ? details : null,
+            Timestamp = fileEvent.Timestamp ?? DateTime.UtcNow,
+        };
+    }
+
+    private static void AddDetail(Dictionary<string, string> details, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            details[key] = value;
+        }
+    }
+
     private static string? TryParseSnsEnvelope(string body)
     {
         try
@@ -193,7 +235,7 @@ public class SnsConsumer : BackgroundService
         public DateTime? Timestamp { get; set; }
     }
 
-    private sealed class FileEventMessage
+    internal sealed class FileEventMessage
     {
         [JsonPropertyName("eventType")]
         public string? EventType { get; set; }
@@ -204,8 +246,26 @@ public class SnsConsumer : BackgroundService
         [JsonPropertyName("ownerId")]
         public string? OwnerId { get; set; }
 
+        [JsonPropertyName("actorId")]
+        public string? ActorId { get; set; }
+
         [JsonPropertyName("sharedWithUserId")]
         public string? SharedWithUserId { get; set; }
+
+        [JsonPropertyName("permission")]
+        public string? Permission { get; set; }
+
+        [JsonPropertyName("name")]
+        public string? Name { get; set; }
+
+        [JsonPropertyName("previousName")]
+        public string? PreviousName { get; set; }
+
+        [JsonPropertyName("folderId")]
+        public string? FolderId { get; set; }
+
+        [JsonPropertyName("folderName")]
+        public string? FolderName { get; set; }
 
         [JsonPropertyName("timestamp")]
         public DateTime? Timestamp { get; set; }

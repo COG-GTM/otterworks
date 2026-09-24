@@ -215,6 +215,7 @@ pub async fn upload_file(
         .file_uploaded(
             &file_id,
             &owner,
+            actor_id(&req).as_ref(),
             folder_id.as_ref(),
             &file_meta.name,
             &file_meta.mime_type,
@@ -241,6 +242,15 @@ pub async fn get_file_metadata(
         file,
         shared_with: shares,
     }))
+}
+
+/// The authenticated caller, from the `X-User-ID` header the api-gateway
+/// injects from the JWT. Absent for direct/internal callers.
+fn actor_id(req: &HttpRequest) -> Option<Uuid> {
+    req.headers()
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
 }
 
 /// Resolve the effective owner_id for list operations.
@@ -393,8 +403,10 @@ pub async fn delete_file(
 }
 
 pub async fn download_file(
+    req: HttpRequest,
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
+    events: web::Data<EventPublisher>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
     let file_id: Uuid = path
@@ -405,6 +417,10 @@ pub async fn download_file(
     let file = meta.get_file(&file_id).await?;
     let url = s3.presigned_download_url(&file.s3_key, 3600).await?;
 
+    let _ = events
+        .file_downloaded(&file_id, &file.owner_id, actor_id(&req).as_ref(), &file.name)
+        .await;
+
     Ok(HttpResponse::Ok().json(DownloadResponse {
         url,
         expires_in_secs: 3600,
@@ -412,6 +428,7 @@ pub async fn download_file(
 }
 
 pub async fn move_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -424,8 +441,19 @@ pub async fn move_file(
 
     let file = meta.move_file(&file_id, body.folder_id).await?;
 
+    let folder_name = match body.folder_id {
+        Some(folder_id) => meta.get_folder(&folder_id).await.ok().map(|f| f.name),
+        None => None,
+    };
+
     let _ = events
-        .file_moved(&file_id, &file.owner_id, body.folder_id.as_ref())
+        .file_moved(
+            &file_id,
+            &file.owner_id,
+            actor_id(&req).as_ref(),
+            body.folder_id.as_ref(),
+            folder_name.as_deref(),
+        )
         .await;
 
     tracing::info!(file_id = %file_id, folder_id = ?body.folder_id, "File moved");
@@ -433,6 +461,7 @@ pub async fn move_file(
 }
 
 pub async fn rename_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -448,14 +477,18 @@ pub async fn rename_file(
         return Err(ServiceError::BadRequest("name cannot be empty".into()));
     }
 
+    let previous_name = meta.get_file(&file_id).await.ok().map(|f| f.name);
+
     let file = meta.rename_file(&file_id, name).await?;
 
     let _ = events
         .file_updated(
             &file_id,
             &file.owner_id,
+            actor_id(&req).as_ref(),
             file.folder_id.as_ref(),
             &file.name,
+            previous_name.as_deref(),
             &file.mime_type,
             file.size_bytes as u64,
         )
@@ -479,6 +512,7 @@ pub async fn list_versions(
 }
 
 pub async fn trash_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -490,13 +524,16 @@ pub async fn trash_file(
 
     let file = meta.trash_file(&file_id).await?;
 
-    let _ = events.file_trashed(&file_id, &file.owner_id).await;
+    let _ = events
+        .file_trashed(&file_id, &file.owner_id, actor_id(&req).as_ref())
+        .await;
 
     tracing::info!(file_id = %file_id, "File trashed");
     Ok(HttpResponse::Ok().json(file))
 }
 
 pub async fn restore_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -512,6 +549,7 @@ pub async fn restore_file(
         .file_restored(
             &file_id,
             &file.owner_id,
+            actor_id(&req).as_ref(),
             file.folder_id.as_ref(),
             &file.name,
             &file.mime_type,
@@ -627,7 +665,13 @@ pub async fn share_file(
     // share clicks and are left alone.
     if created || (events.share_publish_forced() && !permission_update) {
         if let Err(err) = events
-            .file_shared(&file_id, &file.owner_id, &shared_with)
+            .file_shared(
+                &file_id,
+                &file.owner_id,
+                actor_id(&req).as_ref(),
+                &shared_with,
+                &share.permission.to_string(),
+            )
             .await
         {
             tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
@@ -657,7 +701,9 @@ pub async fn share_file(
 }
 
 pub async fn remove_share(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    events: web::Data<EventPublisher>,
     path: web::Path<(String, String)>,
 ) -> Result<HttpResponse, ServiceError> {
     let (file_id_str, user_id_str) = path.into_inner();
@@ -669,7 +715,7 @@ pub async fn remove_share(
         .map_err(|e| ServiceError::BadRequest(format!("invalid user id: {e}")))?;
 
     // Ensure file exists
-    let _file = meta.get_file(&file_id).await?;
+    let file = meta.get_file(&file_id).await?;
 
     // Find the existing share
     let share = meta
@@ -678,6 +724,10 @@ pub async fn remove_share(
         .ok_or_else(|| ServiceError::ShareNotFound("Share not found".into()))?;
 
     meta.delete_share(&share.id).await?;
+
+    let _ = events
+        .file_unshared(&file_id, &file.owner_id, actor_id(&req).as_ref(), &user_id)
+        .await;
 
     tracing::info!(file_id = %file_id, user_id = %user_id, "File share removed");
     Ok(HttpResponse::NoContent().finish())
