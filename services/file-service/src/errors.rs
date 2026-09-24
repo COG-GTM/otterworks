@@ -92,9 +92,11 @@ impl ResponseError for ServiceError {
         };
 
         let (code, used, limit) = match self {
-            ServiceError::QuotaExceeded { used, limit } => {
-                (Some("QUOTA_EXCEEDED".to_string()), Some(*used), Some(*limit))
-            }
+            ServiceError::QuotaExceeded { used, limit } => (
+                Some("QUOTA_EXCEEDED".to_string()),
+                Some(*used),
+                Some(*limit),
+            ),
             _ => (None, None, None),
         };
 
