@@ -3,7 +3,7 @@ import { Folder, MoreVertical, Trash2, Share2, Pencil } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import type { FileItem } from "@/types";
 import { formatRelativeTime, cn } from "@/lib/utils";
-import { actionRevealClass, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
+import { actionRevealClass, isInteractiveTarget, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
 
 interface FolderCardProps {
   folder: FileItem;
@@ -40,6 +40,7 @@ export function FolderCard({
   const handleCardClickCapture = (e: React.MouseEvent) => {
     if (!coarsePointer) return;
     const longPressed = consumeLongPress();
+    if (isInteractiveTarget(e.target)) return;
     if (longPressed || (selectionActive && onSelect)) {
       e.preventDefault();
       e.stopPropagation();

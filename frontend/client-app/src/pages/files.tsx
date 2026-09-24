@@ -259,7 +259,7 @@ function FileBrowserContent() {
     const anyUnstarred = ids.some((id) => !starredApi.isStarred(userId, id));
     for (const id of ids) {
       const isFolder = folders.some((f) => f.id === id);
-      if (starredApi.isStarred(userId, id) !== anyUnstarred) continue;
+      if (starredApi.isStarred(userId, id) === anyUnstarred) continue;
       starredApi.toggle(userId, id, isFolder ? "folder" : "file");
     }
     queryClient.invalidateQueries({ queryKey: ["starred"] });
@@ -565,6 +565,7 @@ function FileBrowserContent() {
             count={selectedIds.size}
             downloadDisabled={selectedFiles.length === 0}
             shareDisabled={selectedFiles.length !== 1}
+            moveDisabled={selectedFiles.length !== selectedIds.size}
             onDownload={async () => {
               for (const file of selectedFiles) {
                 await handleDownload(file.id, file.name);

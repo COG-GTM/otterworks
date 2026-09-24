@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { actionRevealClass, tapTargetClass, COARSE_POINTER_QUERY } from "./touch";
+import { actionRevealClass, isInteractiveTarget, tapTargetClass, COARSE_POINTER_QUERY } from "./touch";
 import { FileCard } from "@/components/files/file-card";
 import type { FileItem } from "@/types";
 
@@ -34,10 +34,10 @@ const file: FileItem = {
   sharedWith: [],
 } as unknown as FileItem;
 
-function renderCard() {
+function renderCard(props: Partial<React.ComponentProps<typeof FileCard>> = {}) {
   return render(
     <MemoryRouter>
-      <FileCard file={file} view="list" />
+      <FileCard file={file} view="list" {...props} />
     </MemoryRouter>
   );
 }
@@ -78,5 +78,29 @@ describe("coarse-pointer branch", () => {
     const star = screen.getByLabelText("Star");
     expect(star.className).not.toContain("opacity-0");
     expect(star.className).toContain("min-w-[44px]");
+  });
+
+  it("lets card controls keep working while a touch selection is active", () => {
+    mockMatchMedia(true);
+    const onSelect = vi.fn();
+    renderCard({ selectionActive: true, onSelect });
+    fireEvent.click(screen.getByLabelText("File actions"));
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByText("Download")).toBeTruthy();
+  });
+
+  it("treats only real controls as interactive targets", () => {
+    const { container } = render(
+      <div>
+        <button type="button">
+          <span data-testid="inside-button" />
+        </button>
+        <p data-testid="plain" />
+      </div>
+    );
+    expect(isInteractiveTarget(screen.getByTestId("inside-button"))).toBe(true);
+    expect(isInteractiveTarget(screen.getByTestId("plain"))).toBe(false);
+    expect(isInteractiveTarget(null)).toBe(false);
+    expect(container).toBeTruthy();
   });
 });

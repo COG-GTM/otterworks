@@ -11,6 +11,7 @@ interface SelectionActionBarProps {
   onCancel: () => void;
   shareDisabled?: boolean;
   downloadDisabled?: boolean;
+  moveDisabled?: boolean;
 }
 
 // Sticky bottom bar for touch multi-select: the hover-only card menus are not
@@ -25,6 +26,7 @@ export function SelectionActionBar({
   onCancel,
   shareDisabled = false,
   downloadDisabled = false,
+  moveDisabled = false,
 }: Readonly<SelectionActionBarProps>) {
   return (
     <div
@@ -46,7 +48,7 @@ export function SelectionActionBar({
         <BarAction label="Download" icon={Download} onClick={onDownload} disabled={downloadDisabled} />
         <BarAction label="Share" icon={Share2} onClick={onShare} disabled={shareDisabled} />
         <BarAction label="Star" icon={Star} onClick={onStar} />
-        <BarAction label="Move" icon={FolderInput} onClick={onMove} />
+        <BarAction label="Move" icon={FolderInput} onClick={onMove} disabled={moveDisabled} />
         <BarAction label="Trash" icon={Trash2} onClick={onTrash} danger />
       </div>
     </div>

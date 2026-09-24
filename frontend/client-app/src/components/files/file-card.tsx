@@ -20,7 +20,7 @@ import {
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { FileItem } from "@/types";
 import { formatFileSize, formatRelativeTime, cn } from "@/lib/utils";
-import { actionRevealClass, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
+import { actionRevealClass, isInteractiveTarget, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
 import { starredApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -86,6 +86,7 @@ export function FileCard({
   const handleCardClickCapture = (e: React.MouseEvent) => {
     if (!coarsePointer) return;
     const longPressed = consumeLongPress();
+    if (isInteractiveTarget(e.target)) return;
     if (longPressed || (selectionActive && onSelect)) {
       e.preventDefault();
       e.stopPropagation();

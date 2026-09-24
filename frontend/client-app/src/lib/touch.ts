@@ -40,6 +40,14 @@ export function tapTargetClass(coarse: boolean): string {
   return coarse ? "min-h-[44px] min-w-[44px] flex items-center justify-center" : "";
 }
 
+const INTERACTIVE_SELECTOR = 'button, input, textarea, select, label, [role="menuitem"], [role="button"]';
+
+// Clicks on a card's own controls (star, menu, checkbox, rename input) must
+// reach them rather than being swallowed by the card's selection handling.
+export function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
+}
+
 interface LongPressOptions {
   enabled?: boolean;
   delay?: number;
