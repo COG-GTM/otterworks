@@ -269,8 +269,9 @@ pub async fn list_files(
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
+    let root_only = query.root.unwrap_or(false);
     let mut files = meta
-        .list_files(query.folder_id, owner_id, include_trashed)
+        .list_files(query.folder_id, owner_id, include_trashed, root_only)
         .await?;
     // Seeding is only considered when the listing comes back empty, so the
     // common non-empty case costs no extra metadata reads.
@@ -278,7 +279,7 @@ pub async fn list_files(
         if let Some(owner) = owner_id {
             if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
                 files = meta
-                    .list_files(query.folder_id, owner_id, include_trashed)
+                    .list_files(query.folder_id, owner_id, include_trashed, root_only)
                     .await?;
             }
         }
@@ -425,16 +426,7 @@ pub async fn move_file(
 
     let file = meta.move_file(&file_id, body.folder_id).await?;
 
-    let _ = events
-        .file_moved(
-            &file_id,
-            &file.owner_id,
-            body.folder_id.as_ref(),
-            &file.name,
-            &file.mime_type,
-            file.size_bytes,
-        )
-        .await;
+    let _ = events.file_moved(&file).await;
 
     tracing::info!(file_id = %file_id, folder_id = ?body.folder_id, "File moved");
     Ok(HttpResponse::Ok().json(file))
@@ -822,7 +814,7 @@ pub async fn list_activity(
     let limit = query.limit.unwrap_or(20).min(50) as usize;
 
     let (files, shares) = futures_util::future::join(
-        meta.list_files(None, Some(owner_id), true),
+        meta.list_files(None, Some(owner_id), true, false),
         meta.list_shares_by_owner(&owner_id),
     )
     .await;

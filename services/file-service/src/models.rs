@@ -115,6 +115,9 @@ pub struct ListFilesQuery {
     pub page: Option<u32>,
     pub page_size: Option<u32>,
     pub include_trashed: Option<bool>,
+    // Restricts the listing to files that sit outside any folder. Without it an
+    // absent folder_id means "every folder".
+    pub root: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]

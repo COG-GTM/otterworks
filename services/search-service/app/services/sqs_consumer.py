@@ -152,7 +152,7 @@ class SQSConsumer:
                     "folder_id": body.get("folderId", ""),
                     "size": body.get("sizeBytes", 0),
                     "tags": body.get("tags", []),
-                    "created_at": body.get("timestamp"),
+                    "created_at": body.get("createdAt") or body.get("timestamp"),
                     "updated_at": body.get("timestamp"),
                 },
             }

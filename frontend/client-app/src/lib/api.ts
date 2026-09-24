@@ -162,8 +162,9 @@ export const filesApi = {
     page = 1,
     pageSize = 50
   ): Promise<PaginatedResponse<FileItem>> => {
-    const params: Record<string, string | number> = { page, page_size: pageSize };
+    const params: Record<string, string | number | boolean> = { page, page_size: pageSize };
     if (parentId) params.folder_id = parentId;
+    else params.root = true;
     const { data } = await apiClient.get<RawFileListResponse>("/files", { params });
     return {
       data: (data.files ?? []).map(mapRawFile),

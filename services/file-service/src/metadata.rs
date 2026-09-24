@@ -264,6 +264,7 @@ impl MetadataClient {
         folder_id: Option<Uuid>,
         owner_id: Option<Uuid>,
         include_trashed: bool,
+        root_only: bool,
     ) -> Result<Vec<FileMetadata>, ServiceError> {
         let mut scan_builder = self.client.scan().table_name(&self.files_table);
 
@@ -273,6 +274,8 @@ impl MetadataClient {
             filter_parts.push("folder_id = :folder_id".to_string());
             scan_builder = scan_builder
                 .expression_attribute_values(":folder_id", AttributeValue::S(fid.to_string()));
+        } else if root_only {
+            filter_parts.push("attribute_not_exists(folder_id)".to_string());
         }
         if let Some(oid) = &owner_id {
             filter_parts.push("owner_id = :owner_id".to_string());

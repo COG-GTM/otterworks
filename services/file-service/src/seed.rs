@@ -37,7 +37,7 @@ const DEMO_DOCS: &[(&str, &str, &str)] = &[
 /// came back empty; the unfiltered check here guards against filtered
 /// listings (folder/trash views) looking empty while files still exist.
 pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id: Uuid) -> bool {
-    let existing = match meta.list_files(None, Some(owner_id), true).await {
+    let existing = match meta.list_files(None, Some(owner_id), true, false).await {
         Ok(files) => files,
         Err(e) => {
             tracing::warn!(error = %e, "Demo-doc seeding: listing files failed; skipping");
