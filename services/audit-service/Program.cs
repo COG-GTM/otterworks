@@ -70,6 +70,14 @@ builder.Services.AddSingleton<IAuditRepository, DynamoDbAuditRepository>();
 builder.Services.AddSingleton<IAuditArchiver, S3AuditArchiver>();
 builder.Services.AddSingleton<IAuditService, OtterWorks.AuditService.Services.AuditService>();
 
+// File-service lookup backing the resource-history access rule
+var fileServiceUrl = builder.Configuration["FILE_SERVICE_URL"] ?? "http://file-service:8082";
+builder.Services.AddHttpClient<IResourceAccessAuthorizer, FileResourceAccessAuthorizer>(client =>
+{
+    client.BaseAddress = new Uri(fileServiceUrl);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // SNS/SQS Consumer background service
 builder.Services.AddHostedService<SnsConsumer>();
 

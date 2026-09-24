@@ -491,6 +491,7 @@ services:
       Aws__DynamoDbTable: otterworks-audit-events
       Aws__S3ArchiveBucket: otterworks-audit-archive
       ASPNETCORE_URLS: http://+:8090
+      FILE_SERVICE_URL: http://file-service:8082
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:

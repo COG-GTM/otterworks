@@ -235,8 +235,11 @@ export const filesApi = {
     });
     return normalizeFileItem(data);
   },
-  getDownloadUrl: async (id: string): Promise<string> => {
-    const { data } = await apiClient.get<{ url: string; expiresInSecs: number }>(`/files/${id}/download`);
+  // `preview` keeps rendering a file in the browser from being audited as a download.
+  getDownloadUrl: async (id: string, { preview = false } = {}): Promise<string> => {
+    const { data } = await apiClient.get<{ url: string; expiresInSecs: number }>(`/files/${id}/download`, {
+      params: preview ? { preview: true } : undefined,
+    });
     // Presigned URLs from S3/LocalStack use the internal Docker hostname.
     // Rewrite to localhost so the browser can reach the endpoint.
     return data.url.replace("://localstack:", "://localhost:");
@@ -659,6 +662,39 @@ export const marginsApi = {
     const { data } = await apiClient.get<string>(
       "/analytics/margins/export?format=csv",
       { responseType: "text", transformResponse: (d: string) => d },
+    );
+    return data;
+  },
+};
+
+// ── Audit ─────────────────────────────────────────────────────
+export interface AuditEvent {
+  id: string;
+  userId: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details?: Record<string, string> | null;
+  timestamp: string;
+}
+
+export interface ResourceHistory {
+  resourceId: string;
+  totalEvents: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  events: AuditEvent[];
+}
+
+export const auditApi = {
+  getResourceHistory: async (
+    resourceId: string,
+    { page = 1, size = 10 }: { page?: number; size?: number } = {}
+  ): Promise<ResourceHistory> => {
+    const { data } = await apiClient.get<ResourceHistory>(
+      `/audit/resources/${resourceId}/history`,
+      { params: { page, size } }
     );
     return data;
   },

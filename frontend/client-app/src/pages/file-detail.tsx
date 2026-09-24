@@ -23,6 +23,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
+import { FileActivity } from "@/components/files/file-activity";
 import { filesApi, authApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
 
@@ -49,7 +50,7 @@ function FileDetailContent() {
 
   const { data: presignedUrl, isLoading: isUrlLoading } = useQuery({
     queryKey: ["files", fileId, "download-url"],
-    queryFn: () => filesApi.getDownloadUrl(fileId),
+    queryFn: () => filesApi.getDownloadUrl(fileId, { preview: true }),
     enabled: !!file,
     staleTime: 30 * 60 * 1000,
   });
@@ -258,6 +259,9 @@ function FileDetailContent() {
               </div>
             </div>
           )}
+
+          {/* Activity */}
+          <FileActivity fileId={file.id} />
         </div>
 
         {/* Sidebar info */}

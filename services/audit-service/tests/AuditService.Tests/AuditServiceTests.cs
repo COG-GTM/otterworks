@@ -174,6 +174,25 @@ public class AuditServiceTests
     }
 
     [Fact]
+    public async Task GetResourceHistoryAsync_ShouldPaginate()
+    {
+        var events = Enumerable.Range(1, 5)
+            .Select(i => CreateSampleEvent($"e{i}", resourceId: "doc-1"))
+            .ToList();
+
+        _mockRepository.Setup(r => r.GetResourceHistoryAsync("doc-1")).ReturnsAsync(events);
+
+        var firstPage = await _service.GetResourceHistoryAsync("doc-1", page: 1, pageSize: 2);
+        Assert.Equal(5, firstPage.TotalEvents);
+        Assert.Equal(new[] { "e1", "e2" }, firstPage.Events.Select(e => e.Id));
+        Assert.True(firstPage.HasMore);
+
+        var lastPage = await _service.GetResourceHistoryAsync("doc-1", page: 3, pageSize: 2);
+        Assert.Equal(new[] { "e5" }, lastPage.Events.Select(e => e.Id));
+        Assert.False(lastPage.HasMore);
+    }
+
+    [Fact]
     public async Task GetComplianceReportAsync_ShouldBuildCorrectReport()
     {
         var events = new List<AuditEvent>
