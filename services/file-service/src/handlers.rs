@@ -903,7 +903,8 @@ mod tests {
         let root = Uuid::new_v4();
         let child = Uuid::new_v4();
         let grandchild = Uuid::new_v4();
-        let parent_of = HashMap::from([(root, None), (child, Some(root)), (grandchild, Some(child))]);
+        let parent_of =
+            HashMap::from([(root, None), (child, Some(root)), (grandchild, Some(child))]);
 
         assert!(is_self_or_descendant(&root, &grandchild, &parent_of));
     }
