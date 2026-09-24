@@ -78,14 +78,37 @@ const MODIFIED_OPTIONS = [
 const FILTER_KEYS = ["type", "owner", "mime", "modified", "folder"] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
 
-// Depth/size caps so the location picker can never fan out unboundedly.
+// Depth/size caps so the location picker can never fan out unboundedly, plus a
+// small concurrency limit to stay under the gateway's rate limit.
 const FOLDER_TREE_MAX_DEPTH = 3;
 const FOLDER_TREE_MAX_OPTIONS = 200;
+const FOLDER_TREE_CONCURRENCY = 4;
+
+type FolderNode = { id: string; label: string };
+
+/** Fetch children in small batches; a failed batch yields no children. */
+async function loadChildren(level: FolderNode[]): Promise<FolderNode[]> {
+  const children: FolderNode[] = [];
+  for (let i = 0; i < level.length; i += FOLDER_TREE_CONCURRENCY) {
+    const batch = await Promise.allSettled(
+      level.slice(i, i + FOLDER_TREE_CONCURRENCY).map(async (folder) =>
+        (await filesApi.listFolders(folder.id)).map((child) => ({
+          id: child.id,
+          label: `${folder.label} / ${child.name}`,
+        }))
+      )
+    );
+    for (const result of batch) {
+      if (result.status === "fulfilled") children.push(...result.value);
+    }
+  }
+  return children;
+}
 
 /** Flatten the folder tree into "Parent / Child" labelled options. */
 async function loadFolderOptions(): Promise<{ value: string; label: string }[]> {
   const options: { value: string; label: string }[] = [];
-  let level = (await filesApi.listFolders()).map((folder) => ({
+  let level: FolderNode[] = (await filesApi.listFolders()).map((folder) => ({
     id: folder.id,
     label: folder.name,
   }));
@@ -95,15 +118,7 @@ async function loadFolderOptions(): Promise<{ value: string; label: string }[]> 
       if (options.length >= FOLDER_TREE_MAX_OPTIONS) return options;
       options.push({ value: folder.id, label: folder.label });
     }
-    const children = await Promise.all(
-      level.map(async (folder) =>
-        (await filesApi.listFolders(folder.id)).map((child) => ({
-          id: child.id,
-          label: `${folder.label} / ${child.name}`,
-        }))
-      )
-    );
-    level = children.flat();
+    level = await loadChildren(level);
   }
 
   return options;
