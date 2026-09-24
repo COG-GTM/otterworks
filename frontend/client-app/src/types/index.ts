@@ -116,6 +116,16 @@ export interface SearchResult {
   ownerName: string;
 }
 
+export type SearchMimeGroup =
+  | "documents"
+  | "spreadsheets"
+  | "pdf"
+  | "images"
+  | "video"
+  | "archives";
+
+export type SearchModifiedPreset = "today" | "7d" | "30d" | "year";
+
 export interface SearchFilters {
   query: string;
   type?: "file" | "document" | "folder" | "all";
@@ -123,6 +133,12 @@ export interface SearchFilters {
   dateTo?: string;
   owner?: string;
   tags?: string[];
+  /** Friendly MIME group or comma-separated MIME types. */
+  mime?: string;
+  /** Preset (today|7d|30d|year) or an ISO `<from>..<to>` range. */
+  modified?: string;
+  /** Folder id; the backend includes descendants. */
+  folder?: string;
 }
 
 export interface ActivityItem {

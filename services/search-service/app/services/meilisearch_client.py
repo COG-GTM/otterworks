@@ -95,7 +95,9 @@ class MeiliSearchService:
         # Configure documents index
         docs_index = self.client.index(self.documents_index_name)
         docs_index.update_searchable_attributes(["title", "content", "tags"])
-        docs_index.update_filterable_attributes(["type", "owner_id", "tags", "created_at", "updated_at"])
+        docs_index.update_filterable_attributes([
+            "type", "owner_id", "tags", "created_at", "updated_at", "created_at_ts", "updated_at_ts",
+        ])
         docs_index.update_sortable_attributes(["updated_at", "created_at"])
         docs_index.update_ranking_rules([
             "words", "typo", "proximity", "attribute", "sort", "exactness",
@@ -104,7 +106,10 @@ class MeiliSearchService:
         # Configure files index
         files_index = self.client.index(self.files_index_name)
         files_index.update_searchable_attributes(["name", "tags", "mime_type"])
-        files_index.update_filterable_attributes(["type", "owner_id", "mime_type", "folder_id", "tags", "created_at", "updated_at"])
+        files_index.update_filterable_attributes([
+            "type", "owner_id", "mime_type", "folder_id", "tags", "created_at", "updated_at",
+            "created_at_ts", "updated_at_ts",
+        ])
         files_index.update_sortable_attributes(["updated_at", "created_at", "size"])
         files_index.update_ranking_rules([
             "words", "typo", "proximity", "attribute", "sort", "exactness",
@@ -155,15 +160,25 @@ class MeiliSearchService:
         owner_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        filter_parts: list[str] | None = None,
+        files_only: bool = False,
     ) -> SearchResponse:
-        """Full-text search across documents and files."""
-        filter_parts: list[str] = []
-        if doc_type:
-            filter_parts.append(f'type = "{self._escape(doc_type)}"')
-        if owner_id:
-            filter_parts.append(f'owner_id = "{self._escape(owner_id)}"')
+        """Full-text search across documents and files.
 
-        indices_to_search = self._resolve_indices(doc_type)
+        *filter_parts* are pre-built MeiliSearch filter expressions that
+        are AND-ed together; when omitted they are derived from
+        *doc_type* and *owner_id*.
+        """
+        if filter_parts is None:
+            filter_parts = []
+            if doc_type:
+                filter_parts.append(f'type = "{self._escape(doc_type)}"')
+            if owner_id:
+                filter_parts.append(f'owner_id = "{self._escape(owner_id)}"')
+
+        indices_to_search = (
+            [self.files_index_name] if files_only else self._resolve_indices(doc_type)
+        )
         multi_index = len(indices_to_search) > 1
         search_params = self._build_search_params(page, page_size, filter_parts, multi_index)
 

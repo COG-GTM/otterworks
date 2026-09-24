@@ -383,13 +383,17 @@ export const documentsApi = {
 // ── Search ────────────────────────────────────────────────────
 export const searchApi = {
   search: async (filters: SearchFilters): Promise<PaginatedResponse<SearchResult>> => {
-    const { query, type, dateFrom, dateTo, owner } = filters;
+    const { query, type, dateFrom, dateTo, owner, mime, modified, folder } = filters;
     const params: Record<string, string | number | undefined> = {
       q: query,
       type: type === "all" ? undefined : type,
       date_from: dateFrom,
       date_to: dateTo,
       owner_id: owner,
+      owner,
+      mime,
+      modified,
+      folder,
     };
     const { data } = await apiClient.get<Record<string, unknown>>("/search", { params });
     const rawResults = (data.results ?? []) as Record<string, unknown>[];

@@ -7,6 +7,7 @@ from typing import Any
 import requests
 import structlog
 
+from app.services.filters import to_epoch
 from app.services.meilisearch_client import MeiliSearchService
 
 logger = structlog.get_logger()
@@ -41,6 +42,8 @@ class Indexer:
             "tags": payload.get("tags", []),
             "created_at": payload.get("created_at"),
             "updated_at": payload.get("updated_at"),
+            "created_at_ts": to_epoch(payload.get("created_at")),
+            "updated_at_ts": to_epoch(payload.get("updated_at") or payload.get("created_at")),
         }
 
         self.search.index_document(document)
@@ -68,6 +71,8 @@ class Indexer:
             "size": payload.get("size", 0),
             "created_at": payload.get("created_at"),
             "updated_at": payload.get("updated_at"),
+            "created_at_ts": to_epoch(payload.get("created_at")),
+            "updated_at_ts": to_epoch(payload.get("updated_at") or payload.get("created_at")),
         }
 
         self.search.index_file(file_data)
@@ -130,6 +135,8 @@ class Indexer:
                         "tags": item.get("tags", []),
                         "created_at": item.get("created_at"),
                         "updated_at": item.get("updated_at"),
+                        "created_at_ts": to_epoch(item.get("created_at")),
+                        "updated_at_ts": to_epoch(item.get("updated_at") or item.get("created_at")),
                         "type": "document",
                     })
                 page += 1
@@ -168,6 +175,11 @@ class Indexer:
                         "size": item.get("size", item.get("size_bytes", item.get("sizeBytes", 0))),
                         "created_at": item.get("created_at", item.get("createdAt")),
                         "updated_at": item.get("updated_at", item.get("updatedAt")),
+                        "created_at_ts": to_epoch(item.get("created_at", item.get("createdAt"))),
+                        "updated_at_ts": to_epoch(
+                            item.get("updated_at", item.get("updatedAt"))
+                            or item.get("created_at", item.get("createdAt"))
+                        ),
                         "type": "file",
                     })
                 page += 1

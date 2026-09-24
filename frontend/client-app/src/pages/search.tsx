@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, Suspense } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -6,14 +6,14 @@ import {
   FileText,
   FolderOpen,
   File,
-  Filter,
+  ChevronDown,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { searchApi } from "@/lib/api";
+import { searchApi, filesApi } from "@/lib/api";
 import { formatRelativeTime, cn } from "@/lib/utils";
 
 /**
@@ -48,39 +48,97 @@ function escapeHtml(text: string): string {
 }
 import type { SearchResult } from "@/types";
 
+const TYPE_OPTIONS = [
+  { value: "file", label: "Files" },
+  { value: "document", label: "Documents" },
+  { value: "folder", label: "Folders" },
+];
+
+const MIME_OPTIONS = [
+  { value: "documents", label: "Documents" },
+  { value: "spreadsheets", label: "Spreadsheets" },
+  { value: "pdf", label: "PDFs" },
+  { value: "images", label: "Images" },
+  { value: "video", label: "Videos" },
+  { value: "archives", label: "Archives" },
+];
+
+const OWNER_OPTIONS = [
+  { value: "me", label: "Owned by me" },
+  { value: "shared", label: "Shared with me" },
+];
+
+const MODIFIED_OPTIONS = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "year", label: "This year" },
+];
+
+const FILTER_KEYS = ["type", "owner", "mime", "modified", "folder"] as const;
+type FilterKey = (typeof FILTER_KEYS)[number];
+
 function SearchContent() {
-  const [searchParams] = useSearchParams();
-  const initialQuery = searchParams.get("q") || "";
-  const [query, setQuery] = useState(initialQuery);
-  const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQuery = searchParams.get("q") || "";
+  const [query, setQuery] = useState(urlQuery);
+
+  const filters = useMemo(() => {
+    const active: Partial<Record<FilterKey, string>> = {};
+    for (const key of FILTER_KEYS) {
+      const value = searchParams.get(key);
+      if (value) active[key] = value;
+    }
+    return active;
+  }, [searchParams]);
 
   useEffect(() => {
-    const urlQuery = searchParams.get("q") || "";
     setQuery(urlQuery);
-    setSubmittedQuery(urlQuery);
-  }, [searchParams]);
-  const [showFilters, setShowFilters] = useState(false);
+  }, [urlQuery]);
+
+  const { data: folders = [] } = useQuery({
+    queryKey: ["search-folders"],
+    queryFn: () => filesApi.listFolders(),
+  });
+
+  const updateParams = useCallback(
+    (changes: Record<string, string | undefined>) => {
+      const next = new URLSearchParams(searchParams);
+      for (const [key, value] of Object.entries(changes)) {
+        if (value) next.set(key, value);
+        else next.delete(key);
+      }
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams]
+  );
 
   const { data, isLoading } = useQuery({
-    queryKey: ["search", submittedQuery, typeFilter],
+    queryKey: ["search", urlQuery, filters],
     queryFn: () =>
       searchApi.search({
-        query: submittedQuery,
-        type: typeFilter === "all" ? undefined : (typeFilter as "file" | "document" | "folder"),
+        query: urlQuery,
+        type: filters.type as "file" | "document" | "folder" | undefined,
+        owner: filters.owner,
+        mime: filters.mime,
+        modified: filters.modified,
+        folder: filters.folder,
       }),
-    enabled: submittedQuery.length > 0,
+    enabled: urlQuery.length > 0,
   });
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      setSubmittedQuery(query.trim());
+      updateParams({ q: query.trim() || undefined });
     },
-    [query]
+    [query, updateParams]
   );
 
+  const submittedQuery = urlQuery;
   const results = data?.data || [];
+  const hasFilters = Object.keys(filters).length > 0;
+  const folderOptions = folders.map((folder) => ({ value: folder.id, label: folder.name }));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -101,22 +159,12 @@ function SearchContent() {
           autoFocus
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={cn(
-              "p-2 rounded-lg transition",
-              showFilters ? "bg-otter-100 text-otter-700" : "text-gray-400 hover:text-gray-600"
-            )}
-          >
-            <Filter size={16} />
-          </button>
           {query && (
             <button
               type="button"
               onClick={() => {
                 setQuery("");
-                setSubmittedQuery("");
+                updateParams({ q: undefined });
               }}
               className="p-2 text-gray-400 hover:text-gray-600"
             >
@@ -126,25 +174,56 @@ function SearchContent() {
         </div>
       </form>
 
-      {/* Filters */}
-      {showFilters && (
-        <div className="flex items-center gap-2">
-          {["all", "file", "document", "folder"].map((type) => (
-            <button
-              key={type}
-              onClick={() => setTypeFilter(type)}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition",
-                typeFilter === type
-                  ? "bg-otter-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              )}
-            >
-              {type === "all" ? "All types" : type.charAt(0).toUpperCase() + type.slice(1) + "s"}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Filter chips */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="search-filter-chips">
+        <FilterChip
+          label="Type"
+          options={TYPE_OPTIONS}
+          value={filters.type}
+          onChange={(value) => updateParams({ type: value })}
+        />
+        <FilterChip
+          label="File type"
+          options={MIME_OPTIONS}
+          value={filters.mime}
+          onChange={(value) => updateParams({ mime: value })}
+        />
+        <FilterChip
+          label="People"
+          options={OWNER_OPTIONS}
+          value={filters.owner}
+          onChange={(value) => updateParams({ owner: value })}
+        />
+        <FilterChip
+          label="Modified"
+          options={MODIFIED_OPTIONS}
+          value={filters.modified}
+          onChange={(value) => updateParams({ modified: value })}
+        />
+        <FilterChip
+          label="Location"
+          options={folderOptions}
+          value={filters.folder}
+          onChange={(value) => updateParams({ folder: value })}
+        />
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() =>
+              updateParams({
+                type: undefined,
+                mime: undefined,
+                owner: undefined,
+                modified: undefined,
+                folder: undefined,
+              })
+            }
+            className="px-3 py-1.5 text-xs font-medium text-otter-700 hover:underline"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
 
       {/* Results */}
       {submittedQuery && isLoading ? (
@@ -170,6 +249,81 @@ function SearchContent() {
           title="Search OtterWorks"
           description="Find files, documents, and folders across your workspace"
         />
+      )}
+    </div>
+  );
+}
+
+interface FilterChipProps {
+  label: string;
+  options: Array<{ value: string; label: string }>;
+  value?: string;
+  onChange: (value: string | undefined) => void;
+}
+
+function FilterChip({ label, options, value, onChange }: Readonly<FilterChipProps>) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={cn(
+          "flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition",
+          selected
+            ? "bg-otter-600 border-otter-600 text-white"
+            : "bg-white border-gray-300 text-gray-700 hover:bg-gray-50"
+        )}
+      >
+        {selected ? `${label}: ${selected.label}` : label}
+        <ChevronDown size={14} />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 min-w-[180px] max-h-64 overflow-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1">
+          {options.length === 0 && (
+            <p className="px-3 py-2 text-xs text-gray-400">No options</p>
+          )}
+          {options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(option.value === value ? undefined : option.value);
+                setOpen(false);
+              }}
+              className={cn(
+                "w-full text-left px-3 py-2 text-xs hover:bg-gray-50",
+                option.value === value ? "text-otter-700 font-medium" : "text-gray-700"
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+          {selected && (
+            <button
+              type="button"
+              onClick={() => {
+                onChange(undefined);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 text-xs text-gray-500 border-t border-gray-100 hover:bg-gray-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
