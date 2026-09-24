@@ -3,6 +3,7 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use bytes::BytesMut;
 use chrono::Utc;
 use futures_util::StreamExt;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> bool {
@@ -268,8 +269,9 @@ pub async fn list_files(
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
+    let root_only = query.root.unwrap_or(false);
     let mut files = meta
-        .list_files(query.folder_id, owner_id, include_trashed)
+        .list_files(query.folder_id, owner_id, include_trashed, root_only)
         .await?;
     // Seeding is only considered when the listing comes back empty, so the
     // common non-empty case costs no extra metadata reads.
@@ -277,7 +279,7 @@ pub async fn list_files(
         if let Some(owner) = owner_id {
             if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
                 files = meta
-                    .list_files(query.folder_id, owner_id, include_trashed)
+                    .list_files(query.folder_id, owner_id, include_trashed, root_only)
                     .await?;
             }
         }
@@ -424,9 +426,7 @@ pub async fn move_file(
 
     let file = meta.move_file(&file_id, body.folder_id).await?;
 
-    let _ = events
-        .file_moved(&file_id, &file.owner_id, body.folder_id.as_ref())
-        .await;
+    let _ = events.file_moved(&file).await;
 
     tracing::info!(file_id = %file_id, folder_id = ?body.folder_id, "File moved");
     Ok(HttpResponse::Ok().json(file))
@@ -737,10 +737,50 @@ pub async fn update_folder(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
+    if let Some(Some(new_parent)) = body.parent_id {
+        let mut parent_of: HashMap<Uuid, Option<Uuid>> = HashMap::new();
+        let mut cursor = Some(new_parent);
+        while let Some(current) = cursor {
+            if current == folder_id || parent_of.contains_key(&current) {
+                break;
+            }
+            let ancestor = meta.get_folder(&current).await?;
+            parent_of.insert(current, ancestor.parent_id);
+            cursor = ancestor.parent_id;
+        }
+
+        if is_self_or_descendant(&folder_id, &new_parent, &parent_of) {
+            return Err(ServiceError::BadRequest(
+                "cannot move a folder into itself or one of its own descendants".into(),
+            ));
+        }
+    }
+
     let folder = meta
         .update_folder(&folder_id, body.name.clone(), body.parent_id)
         .await?;
     Ok(HttpResponse::Ok().json(folder))
+}
+
+/// True when `start` is `folder` itself or sits below it in the folder tree
+/// described by `parent_of` (child -> parent links walked upward).
+fn is_self_or_descendant(
+    folder: &Uuid,
+    start: &Uuid,
+    parent_of: &HashMap<Uuid, Option<Uuid>>,
+) -> bool {
+    let mut seen: HashSet<Uuid> = HashSet::new();
+    let mut cursor = Some(*start);
+    while let Some(current) = cursor {
+        if current == *folder {
+            return true;
+        }
+        if !seen.insert(current) {
+            break;
+        }
+        cursor = parent_of.get(&current).copied().flatten();
+    }
+    false
 }
 
 pub async fn delete_folder(
@@ -774,7 +814,7 @@ pub async fn list_activity(
     let limit = query.limit.unwrap_or(20).min(50) as usize;
 
     let (files, shares) = futures_util::future::join(
-        meta.list_files(None, Some(owner_id), true),
+        meta.list_files(None, Some(owner_id), true, false),
         meta.list_shares_by_owner(&owner_id),
     )
     .await;
@@ -838,5 +878,60 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[test]
+    fn test_folder_into_itself_is_rejected() {
+        let folder = Uuid::new_v4();
+        assert!(is_self_or_descendant(
+            &folder,
+            &folder,
+            &HashMap::from([(folder, None)])
+        ));
+    }
+
+    #[test]
+    fn test_folder_into_descendant_is_rejected() {
+        let root = Uuid::new_v4();
+        let child = Uuid::new_v4();
+        let grandchild = Uuid::new_v4();
+        let parent_of =
+            HashMap::from([(root, None), (child, Some(root)), (grandchild, Some(child))]);
+
+        assert!(is_self_or_descendant(&root, &grandchild, &parent_of));
+    }
+
+    #[test]
+    fn test_folder_into_sibling_is_allowed() {
+        let root = Uuid::new_v4();
+        let finance = Uuid::new_v4();
+        let legal = Uuid::new_v4();
+        let parent_of = HashMap::from([(root, None), (finance, Some(root)), (legal, Some(root))]);
+
+        assert!(!is_self_or_descendant(&finance, &legal, &parent_of));
+    }
+
+    #[test]
+    fn test_cyclic_parent_links_terminate() {
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let unrelated = Uuid::new_v4();
+        let parent_of = HashMap::from([(a, Some(b)), (b, Some(a))]);
+
+        assert!(!is_self_or_descendant(&unrelated, &a, &parent_of));
+    }
+
+    #[test]
+    fn test_update_folder_request_distinguishes_absent_and_null_parent() {
+        let absent: UpdateFolderRequest = serde_json::from_str(r#"{"name":"Legal"}"#).unwrap();
+        assert!(absent.parent_id.is_none());
+
+        let to_root: UpdateFolderRequest = serde_json::from_str(r#"{"parent_id":null}"#).unwrap();
+        assert_eq!(to_root.parent_id, Some(None));
+
+        let target = Uuid::new_v4();
+        let to_folder: UpdateFolderRequest =
+            serde_json::from_str(&format!(r#"{{"parent_id":"{target}"}}"#)).unwrap();
+        assert_eq!(to_folder.parent_id, Some(Some(target)));
     }
 }

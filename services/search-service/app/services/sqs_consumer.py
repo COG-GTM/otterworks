@@ -124,9 +124,10 @@ class SQSConsumer:
                 "file_deleted": "delete",
                 "file_trashed": "delete",
                 "file_restored": "index_file",
+                "file_moved": "index_file",
             }
-            # file_shared and file_moved events don't carry file metadata
-            # (name, mimeType, sizeBytes) so they can't be indexed — skip them
+            # file_shared events don't carry file metadata (name, mimeType,
+            # sizeBytes) so they can't be indexed — skip them
             action = action_map.get(event_type)
             if not action:
                 return body
@@ -151,7 +152,7 @@ class SQSConsumer:
                     "folder_id": body.get("folderId", ""),
                     "size": body.get("sizeBytes", 0),
                     "tags": body.get("tags", []),
-                    "created_at": body.get("timestamp"),
+                    "created_at": body.get("createdAt") or body.get("timestamp"),
                     "updated_at": body.get("timestamp"),
                 },
             }

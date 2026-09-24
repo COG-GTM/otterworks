@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
 // ── File Metadata ──────────────────────────────────────────────────────
@@ -115,6 +115,9 @@ pub struct ListFilesQuery {
     pub page: Option<u32>,
     pub page_size: Option<u32>,
     pub include_trashed: Option<bool>,
+    // Restricts the listing to files that sit outside any folder. Without it an
+    // absent folder_id means "every folder".
+    pub root: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -151,7 +154,17 @@ pub struct CreateFolderRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateFolderRequest {
     pub name: Option<String>,
-    pub parent_id: Option<Uuid>,
+    // Absent leaves the parent untouched; an explicit null moves the folder to the root.
+    #[serde(default, deserialize_with = "explicit_option")]
+    pub parent_id: Option<Option<Uuid>>,
+}
+
+fn explicit_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]

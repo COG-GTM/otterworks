@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::config::SnsConfig;
 use crate::errors::ServiceError;
+use crate::models::FileMetadata;
 
 /// Publisher for file-service domain events via SNS.
 #[derive(Clone)]
@@ -33,6 +34,8 @@ pub struct FileEvent {
     pub mime_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
 }
 
 impl EventPublisher {
@@ -137,6 +140,7 @@ impl EventPublisher {
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            created_at: None,
         };
         self.publish(&event).await
     }
@@ -152,6 +156,7 @@ impl EventPublisher {
             name: None,
             mime_type: None,
             size_bytes: None,
+            created_at: None,
         };
         self.publish(&event).await
     }
@@ -172,6 +177,7 @@ impl EventPublisher {
             name: None,
             mime_type: None,
             size_bytes: None,
+            created_at: None,
         };
         self.publish_to(
             &event,
@@ -193,6 +199,7 @@ impl EventPublisher {
             name: None,
             mime_type: None,
             size_bytes: None,
+            created_at: None,
         };
         self.publish(&event).await
     }
@@ -216,6 +223,7 @@ impl EventPublisher {
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            created_at: None,
         };
         self.publish(&event).await
     }
@@ -239,26 +247,23 @@ impl EventPublisher {
             name: Some(name.to_string()),
             mime_type: Some(mime_type.to_string()),
             size_bytes: Some(size_bytes),
+            created_at: None,
         };
         self.publish(&event).await
     }
 
-    pub async fn file_moved(
-        &self,
-        file_id: &Uuid,
-        owner_id: &Uuid,
-        folder_id: Option<&Uuid>,
-    ) -> Result<(), ServiceError> {
+    pub async fn file_moved(&self, file: &FileMetadata) -> Result<(), ServiceError> {
         let event = FileEvent {
             event_type: "file_moved".into(),
-            file_id: file_id.to_string(),
-            owner_id: owner_id.to_string(),
-            folder_id: folder_id.map(|f| f.to_string()),
+            file_id: file.id.to_string(),
+            owner_id: file.owner_id.to_string(),
+            folder_id: file.folder_id.map(|f| f.to_string()),
             shared_with: None,
             timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            name: Some(file.name.clone()),
+            mime_type: Some(file.mime_type.clone()),
+            size_bytes: Some(file.size_bytes),
+            created_at: Some(file.created_at.to_rfc3339()),
         };
         self.publish(&event).await
     }
@@ -280,6 +285,7 @@ mod tests {
             name: Some("test.txt".to_string()),
             mime_type: Some("text/plain".to_string()),
             size_bytes: Some(100),
+            created_at: None,
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("file_uploaded"));
@@ -298,9 +304,10 @@ mod tests {
             folder_id: Some(folder.to_string()),
             shared_with: None,
             timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            name: Some("moved.txt".to_string()),
+            mime_type: Some("text/plain".to_string()),
+            size_bytes: Some(10),
+            created_at: None,
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains(&folder.to_string()));
