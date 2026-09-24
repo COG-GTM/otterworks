@@ -63,12 +63,14 @@ MIME_GROUPS: dict[str, tuple[str, ...]] = {
     ),
 }
 
-MODIFIED_PRESETS: dict[str, timedelta] = {
-    "today": timedelta(days=1),
+# "today" and "year" are calendar-anchored (start of day / start of year in
+# UTC); "7d" and "30d" are rolling windows, as their labels say.
+ROLLING_PRESETS: dict[str, timedelta] = {
     "7d": timedelta(days=7),
     "30d": timedelta(days=30),
-    "year": timedelta(days=365),
 }
+
+MODIFIED_PRESETS: tuple[str, ...] = ("today", "7d", "30d", "year")
 
 OWNER_ME = "me"
 OWNER_SHARED = "shared"
@@ -77,7 +79,7 @@ OWNER_SHARED = "shared"
 # request can never build an unbounded filter expression.
 MAX_FOLDER_IDS = 500
 
-_DATE_RANGE_RE = re.compile(r"^(?P<from>[^.]*)\.\.(?P<to>[^.]*)$")
+_DATE_RANGE_RE = re.compile(r"^(?P<from>.*?)\.\.(?P<to>.*)$")
 
 
 class FilterError(ValueError):
@@ -165,9 +167,14 @@ def parse_modified(modified: str | None, now: datetime | None = None) -> tuple[d
         return None, None
 
     reference = now or datetime.now(timezone.utc)
-    preset = MODIFIED_PRESETS.get(value.lower())
-    if preset is not None:
-        return reference - preset, None
+    key = value.lower()
+    rolling = ROLLING_PRESETS.get(key)
+    if rolling is not None:
+        return reference - rolling, None
+    if key == "today":
+        return reference.replace(hour=0, minute=0, second=0, microsecond=0), None
+    if key == "year":
+        return reference.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0), None
 
     match = _DATE_RANGE_RE.match(value)
     if not match:

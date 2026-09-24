@@ -64,13 +64,20 @@ class TestOwnerFilter:
 
 
 class TestModifiedFilter:
-    @pytest.mark.parametrize(
-        ("preset", "days"),
-        [("today", 1), ("7d", 7), ("30d", 30), ("year", 365)],
-    )
-    def test_presets(self, preset, days):
+    @pytest.mark.parametrize(("preset", "days"), [("7d", 7), ("30d", 30)])
+    def test_rolling_presets(self, preset, days):
         date_from, date_to = parse_modified(preset, now=NOW)
         assert date_from == NOW - timedelta(days=days)
+        assert date_to is None
+
+    def test_today_starts_at_midnight(self):
+        date_from, date_to = parse_modified("today", now=NOW)
+        assert date_from == NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+        assert date_to is None
+
+    def test_year_starts_in_january(self):
+        date_from, date_to = parse_modified("year", now=NOW)
+        assert date_from == NOW.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         assert date_to is None
 
     def test_preset_builds_lower_bound(self):
@@ -81,6 +88,11 @@ class TestModifiedFilter:
         date_from, date_to = parse_modified("2026-01-01..2026-01-31", now=NOW)
         assert date_from == datetime(2026, 1, 1, tzinfo=timezone.utc)
         assert date_to == datetime(2026, 2, 1, tzinfo=timezone.utc) - timedelta(microseconds=1)
+
+    def test_range_accepts_fractional_seconds(self):
+        date_from, date_to = parse_modified("2026-01-01T12:30:00.500Z..2026-02-01", now=NOW)
+        assert date_from == datetime(2026, 1, 1, 12, 30, 0, 500000, tzinfo=timezone.utc)
+        assert date_to == datetime(2026, 2, 2, tzinfo=timezone.utc) - timedelta(microseconds=1)
 
     def test_open_ended_range(self):
         date_from, date_to = parse_modified("2026-01-01..", now=NOW)

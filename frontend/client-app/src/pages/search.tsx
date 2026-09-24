@@ -78,6 +78,37 @@ const MODIFIED_OPTIONS = [
 const FILTER_KEYS = ["type", "owner", "mime", "modified", "folder"] as const;
 type FilterKey = (typeof FILTER_KEYS)[number];
 
+// Depth/size caps so the location picker can never fan out unboundedly.
+const FOLDER_TREE_MAX_DEPTH = 3;
+const FOLDER_TREE_MAX_OPTIONS = 200;
+
+/** Flatten the folder tree into "Parent / Child" labelled options. */
+async function loadFolderOptions(): Promise<{ value: string; label: string }[]> {
+  const options: { value: string; label: string }[] = [];
+  let level = (await filesApi.listFolders()).map((folder) => ({
+    id: folder.id,
+    label: folder.name,
+  }));
+
+  for (let depth = 0; depth < FOLDER_TREE_MAX_DEPTH && level.length > 0; depth++) {
+    for (const folder of level) {
+      if (options.length >= FOLDER_TREE_MAX_OPTIONS) return options;
+      options.push({ value: folder.id, label: folder.label });
+    }
+    const children = await Promise.all(
+      level.map(async (folder) =>
+        (await filesApi.listFolders(folder.id)).map((child) => ({
+          id: child.id,
+          label: `${folder.label} / ${child.name}`,
+        }))
+      )
+    );
+    level = children.flat();
+  }
+
+  return options;
+}
+
 function SearchContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = searchParams.get("q") || "";
@@ -96,9 +127,9 @@ function SearchContent() {
     setQuery(urlQuery);
   }, [urlQuery]);
 
-  const { data: folders = [] } = useQuery({
-    queryKey: ["search-folders"],
-    queryFn: () => filesApi.listFolders(),
+  const { data: folderOptions = [] } = useQuery({
+    queryKey: ["folders", "search-options"],
+    queryFn: loadFolderOptions,
   });
 
   const updateParams = useCallback(
@@ -138,7 +169,6 @@ function SearchContent() {
   const submittedQuery = urlQuery;
   const results = data?.data || [];
   const hasFilters = Object.keys(filters).length > 0;
-  const folderOptions = folders.map((folder) => ({ value: folder.id, label: folder.name }));
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
