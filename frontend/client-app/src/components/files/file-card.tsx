@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { FileItem } from "@/types";
-import { formatFileSize, formatRelativeTime } from "@/lib/utils";
+import { formatFileSize, formatRelativeTime, cn } from "@/lib/utils";
+import { actionRevealClass, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
 import { starredApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -55,6 +56,7 @@ interface FileCardProps {
   onSelect?: (id: string) => void;
   selectionActive?: boolean;
   onStarToggle?: () => void;
+  onLongPress?: (id: string) => void;
 }
 
 export function FileCard({
@@ -68,8 +70,28 @@ export function FileCard({
   onSelect,
   selectionActive = false,
   onStarToggle,
+  onLongPress,
 }: FileCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const coarsePointer = useCoarsePointer();
+  const revealClass = actionRevealClass(coarsePointer);
+  const tapClass = tapTargetClass(coarsePointer);
+  const { handlers: longPressHandlers, consumeLongPress } = useLongPress(
+    onLongPress ? () => onLongPress(file.id) : undefined,
+    { enabled: coarsePointer }
+  );
+
+  // On touch, a long press or a tap while selecting operates on the selection
+  // instead of navigating into the file.
+  const handleCardClickCapture = (e: React.MouseEvent) => {
+    if (!coarsePointer) return;
+    const longPressed = consumeLongPress();
+    if (longPressed || (selectionActive && onSelect)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!longPressed) onSelect?.(file.id);
+    }
+  };
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, file.id) : false);
@@ -120,7 +142,14 @@ export function FileCard({
 
   if (view === "list") {
     return (
-      <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
+      <div
+        className={cn(
+          "flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0",
+          selected && "bg-otter-50"
+        )}
+        onClickCapture={handleCardClickCapture}
+        {...longPressHandlers}
+      >
         {selectionActive && (
           <div className="flex-shrink-0" onClick={handleCheckboxClick}>
             <input
@@ -168,22 +197,31 @@ export function FileCard({
         </Link>
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className={cn(
+            "p-1 rounded hover:bg-gray-200 transition flex-shrink-0",
+            tapClass,
+            !starred && revealClass
+          )}
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
             size={16}
-            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400"}
           />
         </button>
-        <div className="relative w-8">
+        <div className={cn("relative", coarsePointer ? "w-11" : "w-8")}>
           <button
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="File actions"
+            className={cn(
+              "p-1 rounded hover:bg-gray-200 text-gray-400 transition",
+              tapClass,
+              revealClass
+            )}
           >
             <MoreVertical size={16} />
           </button>
@@ -203,7 +241,14 @@ export function FileCard({
   }
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
+    <div
+      className={cn(
+        "group relative flex flex-col rounded-xl border bg-white hover:shadow-md transition p-4",
+        selected ? "border-otter-400 bg-otter-50" : "border-gray-200"
+      )}
+      onClickCapture={handleCardClickCapture}
+      {...longPressHandlers}
+    >
       {selectionActive && (
         <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
           <input
@@ -225,12 +270,16 @@ export function FileCard({
           <div className="flex items-center gap-1">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className={cn(
+                "p-1 rounded hover:bg-gray-100 transition",
+                tapClass,
+                !starred && revealClass
+              )}
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
                 size={16}
-                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400"}
               />
             </button>
             <div className="relative">
@@ -240,7 +289,12 @@ export function FileCard({
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                aria-label="File actions"
+                className={cn(
+                  "p-1 rounded hover:bg-gray-100 text-gray-400 transition",
+                  tapClass,
+                  revealClass
+                )}
               >
                 <MoreVertical size={16} />
               </button>

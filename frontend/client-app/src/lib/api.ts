@@ -328,6 +328,9 @@ export const filesApi = {
   permanentDelete: async (id: string): Promise<void> => {
     await apiClient.delete(`/files/${id}`);
   },
+  move: async (id: string, folderId: string | null): Promise<void> => {
+    await apiClient.put(`/files/${id}/move`, { folder_id: folderId });
+  },
   renameFile: async (id: string, name: string): Promise<FileItem> => {
     const { data } = await apiClient.patch<RawFileItem>(`/files/${id}/rename`, { name });
     return mapRawFile(data);

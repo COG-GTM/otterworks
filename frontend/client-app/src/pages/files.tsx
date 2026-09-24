@@ -23,12 +23,16 @@ import { FolderCard } from "@/components/files/folder-card";
 import { FileUploadDropzone } from "@/components/files/file-upload-dropzone";
 import type { FileUploadDropzoneHandle } from "@/components/files/file-upload-dropzone";
 import { ShareDialog } from "@/components/files/share-dialog";
+import { SelectionActionBar } from "@/components/files/selection-action-bar";
+import { MoveDialog } from "@/components/files/move-dialog";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { FileGridSkeleton, FileListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { filesApi } from "@/lib/api";
+import { filesApi, starredApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
+import { useAuthStore } from "@/stores/auth-store";
+import { useCoarsePointer } from "@/lib/touch";
 import { cn } from "@/lib/utils";
 import type { ViewMode, SortField } from "@/types";
 
@@ -63,6 +67,9 @@ function FileBrowserContent() {
   const [shareFileId, setShareFileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+  const coarsePointer = useCoarsePointer();
+  const { user } = useAuthStore();
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -213,6 +220,13 @@ function FileBrowserContent() {
     setSelectionActive(false);
   };
 
+  // Touch entry point into multi-select: hover-revealed controls and the
+  // "Select" toggle are awkward on a phone, so a long press starts a selection.
+  const handleLongPress = (id: string) => {
+    setSelectionActive(true);
+    setSelectedIds((prev) => new Set(prev).add(id));
+  };
+
   const handleBulkDelete = async () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -233,6 +247,42 @@ function FileBrowserContent() {
     if (msgs.length > 0) toast.success(msgs.join(", "));
     const failed = fileResult.failed + folderResult.failed;
     if (failed > 0) toast.error(`${failed} item${failed > 1 ? "s" : ""} failed to delete`);
+    clearSelection();
+  };
+
+  const selectedFiles = files.filter((f) => selectedIds.has(f.id));
+
+  const handleBulkStar = () => {
+    const userId = user?.id ?? "";
+    if (!userId) return;
+    const ids = Array.from(selectedIds);
+    const anyUnstarred = ids.some((id) => !starredApi.isStarred(userId, id));
+    for (const id of ids) {
+      const isFolder = folders.some((f) => f.id === id);
+      if (starredApi.isStarred(userId, id) !== anyUnstarred) continue;
+      starredApi.toggle(userId, id, isFolder ? "folder" : "file");
+    }
+    queryClient.invalidateQueries({ queryKey: ["starred"] });
+    toast.success(anyUnstarred ? "Added to starred" : "Removed from starred");
+    clearSelection();
+  };
+
+  const handleBulkMove = async (targetFolderId: string | null) => {
+    setShowMoveDialog(false);
+    let moved = 0;
+    let failed = 0;
+    for (const file of selectedFiles) {
+      try {
+        await filesApi.move(file.id, targetFolderId);
+        moved++;
+      } catch {
+        failed++;
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["folders"] });
+    if (moved > 0) toast.success(`${moved} file${moved > 1 ? "s" : ""} moved`);
+    if (failed > 0) toast.error(`${failed} file${failed > 1 ? "s" : ""} failed to move`);
     clearSelection();
   };
 
@@ -315,7 +365,7 @@ function FileBrowserContent() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Files</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <button
             onClick={() => {
               setSelectionActive(!selectionActive);
@@ -364,7 +414,7 @@ function FileBrowserContent() {
             <option value="createdAt-asc">Oldest created</option>
           </select>
 
-          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden ml-2">
+          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden sm:ml-2">
             <ViewModeButton
               mode="grid"
               current={viewMode}
@@ -469,6 +519,7 @@ function FileBrowserContent() {
                     selected={selectedIds.has(folder.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
+                    onLongPress={handleLongPress}
                   />
                 ))}
               </div>
@@ -498,12 +549,46 @@ function FileBrowserContent() {
                     selected={selectedIds.has(file.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
+                    onLongPress={handleLongPress}
                   />
                 ))}
               </div>
             </section>
           )}
         </div>
+      )}
+      {coarsePointer && selectedIds.size > 0 && (
+        <>
+          {/* Keep the last row of cards reachable above the fixed bar */}
+          <div className="h-28" aria-hidden="true" />
+          <SelectionActionBar
+            count={selectedIds.size}
+            downloadDisabled={selectedFiles.length === 0}
+            shareDisabled={selectedFiles.length !== 1}
+            onDownload={async () => {
+              for (const file of selectedFiles) {
+                await handleDownload(file.id, file.name);
+              }
+              clearSelection();
+            }}
+            onShare={() => {
+              const target = selectedFiles[0];
+              if (target) setShareFileId(target.id);
+            }}
+            onStar={handleBulkStar}
+            onMove={() => setShowMoveDialog(true)}
+            onTrash={handleBulkDelete}
+            onCancel={clearSelection}
+          />
+        </>
+      )}
+      {showMoveDialog && (
+        <MoveDialog
+          count={selectedFiles.length}
+          currentFolderId={folderId}
+          onMove={handleBulkMove}
+          onClose={() => setShowMoveDialog(false)}
+        />
       )}
       {shareFileId && (() => {
         const shareFile = files.find((f) => f.id === shareFileId);

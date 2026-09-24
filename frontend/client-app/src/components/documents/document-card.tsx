@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import { FileText, MoreVertical, Trash2, Share2, ExternalLink, Star } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import type { Document } from "@/types";
-import { formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
+import { formatRelativeTime, getInitials, generateColor, cn } from "@/lib/utils";
+import { actionRevealClass, tapTargetClass, useCoarsePointer } from "@/lib/touch";
 import { starredApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -16,6 +17,9 @@ interface DocumentCardProps {
 
 export function DocumentCard({ document, onDelete, onShare, view = "grid", onStarToggle }: DocumentCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const coarsePointer = useCoarsePointer();
+  const revealClass = actionRevealClass(coarsePointer);
+  const tapClass = tapTargetClass(coarsePointer);
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, document.id) : false);
@@ -67,12 +71,16 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
         )}
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className={cn(
+            "p-1 rounded hover:bg-gray-200 transition flex-shrink-0",
+            tapClass,
+            !starred && revealClass
+          )}
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
             size={16}
-            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400"}
           />
         </button>
         <div className="relative">
@@ -82,7 +90,12 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="Document actions"
+            className={cn(
+              "p-1 rounded hover:bg-gray-200 text-gray-400 transition",
+              tapClass,
+              revealClass
+            )}
           >
             <MoreVertical size={16} />
           </button>
@@ -124,12 +137,16 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
           <div className="flex items-center gap-1">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className={cn(
+                "p-1 rounded hover:bg-gray-100 transition",
+                tapClass,
+                !starred && revealClass
+              )}
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
                 size={16}
-                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400"}
               />
             </button>
             <div className="relative">
@@ -139,7 +156,12 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                aria-label="Document actions"
+                className={cn(
+                  "p-1 rounded hover:bg-gray-100 text-gray-400 transition",
+                  tapClass,
+                  revealClass
+                )}
               >
                 <MoreVertical size={16} />
               </button>

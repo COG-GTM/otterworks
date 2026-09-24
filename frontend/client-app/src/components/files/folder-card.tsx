@@ -2,7 +2,8 @@ import { Link } from "react-router-dom";
 import { Folder, MoreVertical, Trash2, Share2, Pencil } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import type { FileItem } from "@/types";
-import { formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime, cn } from "@/lib/utils";
+import { actionRevealClass, tapTargetClass, useCoarsePointer, useLongPress } from "@/lib/touch";
 
 interface FolderCardProps {
   folder: FileItem;
@@ -13,6 +14,7 @@ interface FolderCardProps {
   selected?: boolean;
   onSelect?: (id: string) => void;
   selectionActive?: boolean;
+  onLongPress?: (id: string) => void;
 }
 
 export function FolderCard({
@@ -24,8 +26,26 @@ export function FolderCard({
   selected = false,
   onSelect,
   selectionActive = false,
+  onLongPress,
 }: FolderCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const coarsePointer = useCoarsePointer();
+  const revealClass = actionRevealClass(coarsePointer);
+  const tapClass = tapTargetClass(coarsePointer);
+  const { handlers: longPressHandlers, consumeLongPress } = useLongPress(
+    onLongPress ? () => onLongPress(folder.id) : undefined,
+    { enabled: coarsePointer }
+  );
+
+  const handleCardClickCapture = (e: React.MouseEvent) => {
+    if (!coarsePointer) return;
+    const longPressed = consumeLongPress();
+    if (longPressed || (selectionActive && onSelect)) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!longPressed) onSelect?.(folder.id);
+    }
+  };
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(folder.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +76,14 @@ export function FolderCard({
 
   if (view === "list") {
     return (
-      <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
+      <div
+        className={cn(
+          "flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0",
+          selected && "bg-otter-50"
+        )}
+        onClickCapture={handleCardClickCapture}
+        {...longPressHandlers}
+      >
         {selectionActive && (
           <div className="flex-shrink-0" onClick={handleCheckboxClick}>
             <input
@@ -100,14 +127,19 @@ export function FolderCard({
           </span>
           <span className="text-xs text-gray-400 w-20 hidden sm:block text-right">&mdash;</span>
         </Link>
-        <div className="relative w-8">
+        <div className={cn("relative", coarsePointer ? "w-11" : "w-8")}>
           <button
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="Folder actions"
+            className={cn(
+              "p-1 rounded hover:bg-gray-200 text-gray-400 transition",
+              tapClass,
+              revealClass
+            )}
           >
             <MoreVertical size={16} />
           </button>
@@ -126,7 +158,14 @@ export function FolderCard({
   }
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
+    <div
+      className={cn(
+        "group relative flex flex-col rounded-xl border bg-white hover:shadow-md transition p-4",
+        selected ? "border-otter-400 bg-otter-50" : "border-gray-200"
+      )}
+      onClickCapture={handleCardClickCapture}
+      {...longPressHandlers}
+    >
       {selectionActive && (
         <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
           <input
@@ -152,7 +191,12 @@ export function FolderCard({
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+              aria-label="Folder actions"
+              className={cn(
+                "p-1 rounded hover:bg-gray-100 text-gray-400 transition",
+                tapClass,
+                revealClass
+              )}
             >
               <MoreVertical size={16} />
             </button>
