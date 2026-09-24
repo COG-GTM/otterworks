@@ -74,6 +74,8 @@ export function FileActivity({ fileId }: Readonly<{ fileId: string }>) {
           <Loader2 size={16} className="animate-spin" />
           Loading activity...
         </div>
+      ) : error && events.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-red-600">Could not load activity for this file</p>
       ) : events.length === 0 ? (
         <p className="px-5 py-6 text-sm text-gray-400">No activity yet for this file</p>
       ) : (

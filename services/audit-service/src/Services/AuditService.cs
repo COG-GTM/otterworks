@@ -98,6 +98,7 @@ public class AuditService : IAuditService
             Page = page,
             PageSize = pageSize,
             HasMore = skipped + pageEvents.Count < events.Count,
+            HasFileEvents = events.Any(e => string.Equals(e.ResourceType, "file", StringComparison.OrdinalIgnoreCase)),
             ResourceId = resourceId,
             TotalEvents = events.Count,
             Events = pageEvents.Select(AuditEventResponse.FromEntity).ToList(),

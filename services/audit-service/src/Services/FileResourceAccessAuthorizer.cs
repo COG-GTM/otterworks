@@ -18,7 +18,7 @@ public sealed class FileResourceAccessAuthorizer : IResourceAccessAuthorizer
         _logger = logger;
     }
 
-    public async Task<bool> CanReadHistoryAsync(string resourceId, string? userId, CancellationToken ct = default)
+    public async Task<ResourceAccessDecision> EvaluateAsync(string resourceId, string? userId, CancellationToken ct = default)
     {
         HttpResponseMessage response;
         try
@@ -28,14 +28,12 @@ public sealed class FileResourceAccessAuthorizer : IResourceAccessAuthorizer
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             _logger.LogWarning(ex, "file-service unreachable while authorizing history for {ResourceId}", resourceId);
-            return false;
+            return ResourceAccessDecision.Deny;
         }
 
-        // Anything that is not a known file (documents, folders, synthetic
-        // resource ids) is outside this access rule.
         if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest)
         {
-            return true;
+            return ResourceAccessDecision.Unknown;
         }
 
         if (!response.IsSuccessStatusCode)
@@ -44,12 +42,12 @@ public sealed class FileResourceAccessAuthorizer : IResourceAccessAuthorizer
                 "file-service returned {Status} while authorizing history for {ResourceId}",
                 (int)response.StatusCode,
                 resourceId);
-            return false;
+            return ResourceAccessDecision.Deny;
         }
 
         if (string.IsNullOrWhiteSpace(userId))
         {
-            return false;
+            return ResourceAccessDecision.Deny;
         }
 
         var body = await response.Content.ReadAsStringAsync(ct);
@@ -59,7 +57,7 @@ public sealed class FileResourceAccessAuthorizer : IResourceAccessAuthorizer
         if (root.TryGetProperty("owner_id", out var owner) &&
             string.Equals(owner.GetString(), userId, StringComparison.OrdinalIgnoreCase))
         {
-            return true;
+            return ResourceAccessDecision.Allow;
         }
 
         if (root.TryGetProperty("shared_with", out var shares) && shares.ValueKind == JsonValueKind.Array)
@@ -69,11 +67,11 @@ public sealed class FileResourceAccessAuthorizer : IResourceAccessAuthorizer
                 if (share.TryGetProperty("shared_with", out var sharedWith) &&
                     string.Equals(sharedWith.GetString(), userId, StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
+                    return ResourceAccessDecision.Allow;
                 }
             }
         }
 
-        return false;
+        return ResourceAccessDecision.Deny;
     }
 }

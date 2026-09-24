@@ -235,8 +235,11 @@ export const filesApi = {
     });
     return normalizeFileItem(data);
   },
-  getDownloadUrl: async (id: string): Promise<string> => {
-    const { data } = await apiClient.get<{ url: string; expiresInSecs: number }>(`/files/${id}/download`);
+  // `preview` keeps rendering a file in the browser from being audited as a download.
+  getDownloadUrl: async (id: string, { preview = false } = {}): Promise<string> => {
+    const { data } = await apiClient.get<{ url: string; expiresInSecs: number }>(`/files/${id}/download`, {
+      params: preview ? { preview: true } : undefined,
+    });
     // Presigned URLs from S3/LocalStack use the internal Docker hostname.
     // Rewrite to localhost so the browser can reach the endpoint.
     return data.url.replace("://localstack:", "://localhost:");

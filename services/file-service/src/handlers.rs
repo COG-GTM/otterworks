@@ -417,14 +417,23 @@ pub async fn download_file(
     let file = meta.get_file(&file_id).await?;
     let url = s3.presigned_download_url(&file.s3_key, 3600).await?;
 
-    let _ = events
-        .file_downloaded(
-            &file_id,
-            &file.owner_id,
-            actor_id(&req).as_ref(),
-            &file.name,
-        )
-        .await;
+    // Previews request the same presigned url; only an actual download is
+    // recorded as one.
+    let is_preview = req
+        .query_string()
+        .split('&')
+        .any(|pair| pair == "preview=true");
+
+    if !is_preview {
+        let _ = events
+            .file_downloaded(
+                &file_id,
+                &file.owner_id,
+                actor_id(&req).as_ref(),
+                &file.name,
+            )
+            .await;
+    }
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
         url,
