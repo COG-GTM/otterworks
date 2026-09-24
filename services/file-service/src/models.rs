@@ -126,6 +126,14 @@ pub struct ListFilesResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct StorageUsageResponse {
+    pub used: u64,
+    pub limit: u64,
+    pub percent_used: f64,
+    pub file_count: usize,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ListVersionsResponse {
     pub versions: Vec<FileVersion>,
 }

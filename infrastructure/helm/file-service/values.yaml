@@ -77,6 +77,10 @@ config:
   # the same way as FILE_UPLOAD_ALWAYS_FAIL, with the same redeploy caveat.
   FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
   FILE_SEED_DEMO_DOCS: "true"
+  # Per-owner storage quota in bytes, trashed files included. 15 GiB matches the
+  # service default; override per tenant at deploy time, e.g.
+  #   --set-string config.STORAGE_QUOTA_BYTES=53687091200
+  STORAGE_QUOTA_BYTES: "16106127360"
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.

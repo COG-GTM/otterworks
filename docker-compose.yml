@@ -124,6 +124,9 @@ services:
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
       FILE_SEED_DEMO_DOCS: ${FILE_SEED_DEMO_DOCS:-false}
+      # Total bytes one owner may keep stored (trashed files included).
+      # Defaults to the service default of 15 GiB; lower it to exercise quota.
+      STORAGE_QUOTA_BYTES: ${STORAGE_QUOTA_BYTES:-16106127360}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:

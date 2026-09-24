@@ -101,7 +101,7 @@ function DashboardContent() {
           icon={HardDrive}
           label="Storage used"
           value={storage ? formatFileSize(storage.used) : "0 B"}
-          subtitle={storage ? `of ${formatFileSize(storage.total)}` : undefined}
+          subtitle={storage ? `of ${formatFileSize(storage.limit)}` : undefined}
           color="green"
         />
         <StatCard
@@ -119,14 +119,15 @@ function DashboardContent() {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-gray-700">Storage</span>
             <span className="text-sm text-gray-500">
-              {formatFileSize(storage.used)} of {formatFileSize(storage.total)}
+              {formatFileSize(storage.used)} of {formatFileSize(storage.limit)} (
+              {Math.round(storage.percentUsed)}%)
             </span>
           </div>
           <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full bg-otter-600 rounded-full transition-all"
               style={{
-                width: `${storage.total > 0 ? Math.min((storage.used / storage.total) * 100, 100) : 0}%`,
+                width: `${Math.min(storage.percentUsed, 100)}%`,
               }}
             />
           </div>

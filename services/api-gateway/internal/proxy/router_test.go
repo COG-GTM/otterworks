@@ -102,3 +102,42 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+// A quota rejection from file-service must reach the client exactly as the
+// upstream wrote it: same status, same body bytes, same content type.
+func TestProxyForwardsUpstream413WithBodyIntact(t *testing.T) {
+	const quotaBody = `{"error":"quota_exceeded","message":"Not enough storage: 16106127359 of 16106127360 bytes used","code":"QUOTA_EXCEEDED","used":16106127359,"limit":16106127360}`
+
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		_, _ = w.Write([]byte(quotaBody))
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+
+	claims := middleware.JWTClaims{
+		UserID: "user-123",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Subject:   "user-123",
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenStr, err := token.SignedString([]byte(routerTestSecret))
+	require.NoError(t, err)
+
+	// Repeated rejections must not trip the circuit breaker: a quota error is
+	// the backend answering correctly, not a backend failure.
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenStr)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		assert.Equal(t, quotaBody, rec.Body.String())
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	}
+}

@@ -21,6 +21,9 @@ pub enum ServiceError {
     #[error("File too large: max {max_bytes} bytes, got {actual_bytes} bytes")]
     FileTooLarge { max_bytes: u64, actual_bytes: u64 },
 
+    #[error("Not enough storage: {used} of {limit} bytes used")]
+    QuotaExceeded { used: u64, limit: u64 },
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -62,6 +65,10 @@ impl ResponseError for ServiceError {
                 actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",
             ),
+            ServiceError::QuotaExceeded { .. } => (
+                actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
+                "quota_exceeded",
+            ),
             ServiceError::Unauthorized(_) => {
                 (actix_web::http::StatusCode::UNAUTHORIZED, "unauthorized")
             }
@@ -84,9 +91,19 @@ impl ResponseError for ServiceError {
             ),
         };
 
+        let (code, used, limit) = match self {
+            ServiceError::QuotaExceeded { used, limit } => {
+                (Some("QUOTA_EXCEEDED".to_string()), Some(*used), Some(*limit))
+            }
+            _ => (None, None, None),
+        };
+
         HttpResponse::build(status).json(ErrorResponse {
             error: error_type.to_string(),
             message: self.to_string(),
+            code,
+            used,
+            limit,
         })
     }
 }
@@ -95,6 +112,13 @@ impl ResponseError for ServiceError {
 pub struct ErrorResponse {
     pub error: String,
     pub message: String,
+    /// Machine-readable code, set for errors clients branch on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub used: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u64>,
 }
 
 impl fmt::Display for ErrorResponse {

@@ -2,6 +2,9 @@ use std::env;
 
 use crate::alerts::AlertConfig;
 
+/// 15 GiB.
+pub const DEFAULT_STORAGE_QUOTA_BYTES: u64 = 15 * 1024 * 1024 * 1024;
+
 #[derive(Clone, Debug)]
 pub struct AppConfig {
     pub server: ServerConfig,
@@ -14,6 +17,8 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
+    /// Total bytes a single owner may keep stored, trashed files included.
+    pub storage_quota_bytes: u64,
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
@@ -64,6 +69,10 @@ impl ServerConfig {
                 .unwrap_or_else(|_| "104857600".into()) // 100 MB
                 .parse()
                 .unwrap_or(104_857_600),
+            storage_quota_bytes: env::var("STORAGE_QUOTA_BYTES")
+                .ok()
+                .and_then(|raw| raw.trim().parse::<u64>().ok())
+                .unwrap_or(DEFAULT_STORAGE_QUOTA_BYTES),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
@@ -146,6 +155,17 @@ mod tests {
             false
         ));
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
+    }
+
+    #[test]
+    fn storage_quota_defaults_to_15_gib() {
+        if std::env::var("STORAGE_QUOTA_BYTES").is_ok() {
+            return;
+        }
+        assert_eq!(
+            super::ServerConfig::from_env().storage_quota_bytes,
+            16_106_127_360
+        );
     }
 
     #[test]

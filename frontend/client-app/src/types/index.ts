@@ -139,7 +139,8 @@ export interface ActivityItem {
 
 export interface StorageUsage {
   used: number;
-  total: number;
+  limit: number;
+  percentUsed: number;
   fileCount: number;
   documentCount: number;
 }
