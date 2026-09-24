@@ -229,6 +229,20 @@ function FolderMenu({
           <Pencil size={14} />
           Rename
         </button>
+        {onMove && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMove(folder.id);
+              onClose();
+            }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <FolderInput size={14} />
+            Move to…
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.preventDefault();
