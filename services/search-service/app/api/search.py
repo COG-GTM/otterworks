@@ -9,6 +9,8 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.services.filters import FilterError, build_filter_expression, files_only
+from app.services.folders import resolve_folder_ids
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -45,9 +47,10 @@ def _get_service() -> MeiliSearchService:
 def search_documents() -> tuple:
     """Full-text search across documents and files.
 
-    Query params: q (required), type, page, size
-    Results are automatically scoped to the authenticated user via the
-    ``X-User-ID`` header set by the API gateway.
+    Query params: q (required), type, page, size, owner, mime, modified,
+    folder. Results are scoped to the authenticated user via the
+    ``X-User-ID`` header set by the API gateway unless ``owner`` says
+    otherwise.
     """
     query = request.args.get("q", "")
     try:
@@ -57,9 +60,23 @@ def search_documents() -> tuple:
         return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
     owner_id = request.headers.get("X-User-ID", "").strip() or None
+    folder = (request.args.get("folder") or "").strip() or None
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
+
+    try:
+        filter_parts, applied = build_filter_expression(
+            doc_type=doc_type,
+            caller_id=owner_id,
+            owner=request.args.get("owner"),
+            mime=request.args.get("mime"),
+            modified=request.args.get("modified"),
+            folder=folder,
+            folder_ids=resolve_folder_ids(folder) if folder else None,
+        )
+    except FilterError as e:
+        return jsonify({"error": str(e)}), 400
 
     try:
         service = _get_service()
@@ -69,7 +86,10 @@ def search_documents() -> tuple:
             owner_id=owner_id,
             page=page,
             page_size=page_size,
+            filter_parts=filter_parts,
+            files_only=files_only(applied),
         )
+        results.filters = applied.to_dict()
         SEARCH_COUNT.inc()
         logger.info("search_executed", query=query, result_count=results.total)
         return jsonify(results.to_dict()), 200
