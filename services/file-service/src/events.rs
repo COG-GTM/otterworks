@@ -342,7 +342,12 @@ mod tests {
         let event = FileEvent {
             name: Some("Q4.xlsx".to_string()),
             previous_name: Some("Q3.xlsx".to_string()),
-            ..FileEvent::new("file_updated", &Uuid::new_v4(), &Uuid::new_v4(), Some(&actor))
+            ..FileEvent::new(
+                "file_updated",
+                &Uuid::new_v4(),
+                &Uuid::new_v4(),
+                Some(&actor),
+            )
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("previousName"));
