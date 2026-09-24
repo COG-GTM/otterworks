@@ -29,14 +29,14 @@
 
         <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
         <springfox.version>3.0.0</springfox.version>
-        <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
+        <!-- Apache POI 5.5.1 — requires commons-io >= 2.15 at runtime -->
         <poi.version>5.5.1</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
         <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
         <commons-lang.version>2.6</commons-lang.version>
-        <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
-        <commons-io.version>2.6</commons-io.version>
+        <!-- Commons IO 2.21.0 — the version Apache POI 5.5.1 is built against -->
+        <commons-io.version>2.21.0</commons-io.version>
         <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
         <guava.version>28.0-jre</guava.version>
         <!-- Commons Text 1.9 — report banner/footer interpolation -->
