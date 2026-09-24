@@ -481,10 +481,13 @@ interface RawStorageUsage {
 
 export const storageApi = {
   getUsage: async (): Promise<StorageUsage> => {
-    // file-service owns the quota; the document count is not part of it.
+    // file-service owns the quota; the document count is decorative, so a
+    // document-service outage must not hide storage usage.
     const [usageRes, docRes] = await Promise.all([
       apiClient.get<RawStorageUsage>("/files/usage"),
-      apiClient.get<{ total?: number }>("/documents", { params: { page: 1, size: 1 } }),
+      apiClient
+        .get<{ total?: number }>("/documents", { params: { page: 1, size: 1 } })
+        .catch(() => null),
     ]);
 
     return {
@@ -492,7 +495,7 @@ export const storageApi = {
       limit: usageRes.data.limit ?? 0,
       percentUsed: usageRes.data.percentUsed ?? 0,
       fileCount: usageRes.data.fileCount ?? 0,
-      documentCount: docRes.data.total ?? 0,
+      documentCount: docRes?.data.total ?? 0,
     };
   },
 };

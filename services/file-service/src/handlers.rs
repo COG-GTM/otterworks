@@ -245,8 +245,10 @@ pub async fn storage_usage(
     config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta.list_files(None, owner_id, true).await?;
+    // Usage is per owner; without one the scan would aggregate every owner.
+    let owner_id = resolve_owner_id(&req, query.owner_id)
+        .ok_or_else(|| ServiceError::Unauthorized("missing user identity".into()))?;
+    let files = meta.list_files(None, Some(owner_id), true).await?;
 
     let used = quota::used_bytes(&files);
     let limit = config.server.storage_quota_bytes;
