@@ -332,6 +332,18 @@ export const filesApi = {
     const { data } = await apiClient.patch<RawFileItem>(`/files/${id}/rename`, { name });
     return mapRawFile(data);
   },
+  move: async (fileId: string, folderId: string | null): Promise<FileItem> => {
+    const { data } = await apiClient.patch<RawFileItem>(`/files/${fileId}/move`, {
+      folder_id: folderId,
+    });
+    return mapRawFile(data);
+  },
+  moveFolder: async (folderId: string, parentId: string | null): Promise<FileItem> => {
+    const { data } = await apiClient.put<Record<string, unknown>>(`/folders/${folderId}`, {
+      parent_id: parentId,
+    });
+    return normalizeFileItem({ ...data, isFolder: true });
+  },
   renameFolder: async (id: string, name: string): Promise<FileItem> => {
     const { data } = await apiClient.put<Record<string, unknown>>(`/folders/${id}`, { name });
     return normalizeFileItem({ ...data, isFolder: true });

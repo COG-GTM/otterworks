@@ -13,6 +13,7 @@ import {
   Share2,
   Download,
   Pencil,
+  FolderInput,
   Check,
   X,
   Star,
@@ -50,6 +51,7 @@ interface FileCardProps {
   onShare?: (id: string) => void;
   onRename?: (id: string, name: string) => void;
   onDownload?: (id: string, name: string) => void;
+  onMove?: (id: string) => void;
   view?: "grid" | "list";
   selected?: boolean;
   onSelect?: (id: string) => void;
@@ -63,6 +65,7 @@ export function FileCard({
   onShare,
   onRename,
   onDownload,
+  onMove,
   view = "grid",
   selected = false,
   onSelect,
@@ -195,6 +198,7 @@ export function FileCard({
               onShare={onShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
               onDownload={onDownload}
+              onMove={onMove}
             />
           )}
         </div>
@@ -252,6 +256,7 @@ export function FileCard({
                   onShare={onShare}
                   onDownload={onDownload}
                   onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
+                  onMove={onMove}
                 />
               )}
             </div>
@@ -293,6 +298,7 @@ function FileMenu({
   onShare,
   onRename,
   onDownload,
+  onMove,
 }: {
   file: FileItem;
   onClose: () => void;
@@ -300,6 +306,7 @@ function FileMenu({
   onShare?: (id: string) => void;
   onRename?: () => void;
   onDownload?: (id: string, name: string) => void;
+  onMove?: (id: string) => void;
 }) {
   return (
     <>
@@ -317,6 +324,20 @@ function FileMenu({
           <Pencil size={14} />
           Rename
         </button>
+        {onMove && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMove(file.id);
+              onClose();
+            }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <FolderInput size={14} />
+            Move to…
+          </button>
+        )}
         {!file.isFolder && (
           <button
             onClick={(e) => {

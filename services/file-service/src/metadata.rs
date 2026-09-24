@@ -356,10 +356,11 @@ impl MetadataClient {
         &self,
         folder_id: &Uuid,
         name: Option<String>,
-        parent_id: Option<Uuid>,
+        parent_id: Option<Option<Uuid>>,
     ) -> Result<Folder, ServiceError> {
         let now = Utc::now();
         let mut update_parts = vec!["updated_at = :u".to_string()];
+        let mut remove_parts: Vec<String> = Vec::new();
         let mut builder = self
             .client
             .update_item()
@@ -374,12 +375,21 @@ impl MetadataClient {
                 .expression_attribute_names("#n", "name")
                 .expression_attribute_values(":n", AttributeValue::S(n.clone()));
         }
-        if let Some(pid) = &parent_id {
-            update_parts.push("parent_id = :p".to_string());
-            builder = builder.expression_attribute_values(":p", AttributeValue::S(pid.to_string()));
+        match &parent_id {
+            Some(Some(pid)) => {
+                update_parts.push("parent_id = :p".to_string());
+                builder =
+                    builder.expression_attribute_values(":p", AttributeValue::S(pid.to_string()));
+            }
+            Some(None) => remove_parts.push("parent_id".to_string()),
+            None => {}
         }
 
-        builder = builder.update_expression(format!("SET {}", update_parts.join(", ")));
+        let mut expression = format!("SET {}", update_parts.join(", "));
+        if !remove_parts.is_empty() {
+            expression.push_str(&format!(" REMOVE {}", remove_parts.join(", ")));
+        }
+        builder = builder.update_expression(expression);
 
         builder.send().await.map_err(|e| {
             if is_conditional_check_failed(&e) {

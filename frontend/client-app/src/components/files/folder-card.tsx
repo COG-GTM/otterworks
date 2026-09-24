@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Folder, MoreVertical, Trash2, Share2, Pencil } from "lucide-react";
+import { Folder, MoreVertical, Trash2, Share2, Pencil, FolderInput } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import type { FileItem } from "@/types";
 import { formatRelativeTime } from "@/lib/utils";
@@ -9,6 +9,7 @@ interface FolderCardProps {
   onDelete?: (id: string) => void;
   onShare?: (id: string) => void;
   onRename?: (id: string, name: string) => void;
+  onMove?: (id: string) => void;
   view?: "grid" | "list";
   selected?: boolean;
   onSelect?: (id: string) => void;
@@ -20,6 +21,7 @@ export function FolderCard({
   onDelete,
   onShare,
   onRename,
+  onMove,
   view = "grid",
   selected = false,
   onSelect,
@@ -118,6 +120,7 @@ export function FolderCard({
               onDelete={onDelete}
               onShare={onShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(folder.name); }}
+              onMove={onMove}
             />
           )}
         </div>
@@ -163,6 +166,7 @@ export function FolderCard({
                 onDelete={onDelete}
                 onShare={onShare}
                 onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(folder.name); }}
+                onMove={onMove}
               />
             )}
           </div>
@@ -200,12 +204,14 @@ function FolderMenu({
   onDelete,
   onShare,
   onRename,
+  onMove,
 }: {
   folder: FileItem;
   onClose: () => void;
   onDelete?: (id: string) => void;
   onShare?: (id: string) => void;
   onRename?: () => void;
+  onMove?: (id: string) => void;
 }) {
   return (
     <>

@@ -124,9 +124,10 @@ class SQSConsumer:
                 "file_deleted": "delete",
                 "file_trashed": "delete",
                 "file_restored": "index_file",
+                "file_moved": "index_file",
             }
-            # file_shared and file_moved events don't carry file metadata
-            # (name, mimeType, sizeBytes) so they can't be indexed — skip them
+            # file_shared events don't carry file metadata (name, mimeType,
+            # sizeBytes) so they can't be indexed — skip them
             action = action_map.get(event_type)
             if not action:
                 return body

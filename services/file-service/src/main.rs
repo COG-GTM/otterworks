@@ -76,6 +76,7 @@ async fn main() -> std::io::Result<()> {
                         web::get().to(handlers::download_file),
                     )
                     .route("/{file_id}/move", web::put().to(handlers::move_file))
+                    .route("/{file_id}/move", web::patch().to(handlers::move_file))
                     .route("/{file_id}/rename", web::patch().to(handlers::rename_file))
                     .route(
                         "/{file_id}/versions",

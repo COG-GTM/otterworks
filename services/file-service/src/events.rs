@@ -248,6 +248,9 @@ impl EventPublisher {
         file_id: &Uuid,
         owner_id: &Uuid,
         folder_id: Option<&Uuid>,
+        name: &str,
+        mime_type: &str,
+        size_bytes: u64,
     ) -> Result<(), ServiceError> {
         let event = FileEvent {
             event_type: "file_moved".into(),
@@ -256,9 +259,9 @@ impl EventPublisher {
             folder_id: folder_id.map(|f| f.to_string()),
             shared_with: None,
             timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            name: Some(name.to_string()),
+            mime_type: Some(mime_type.to_string()),
+            size_bytes: Some(size_bytes),
         };
         self.publish(&event).await
     }
@@ -298,9 +301,9 @@ mod tests {
             folder_id: Some(folder.to_string()),
             shared_with: None,
             timestamp: Utc::now().to_rfc3339(),
-            name: None,
-            mime_type: None,
-            size_bytes: None,
+            name: Some("moved.txt".to_string()),
+            mime_type: Some("text/plain".to_string()),
+            size_bytes: Some(10),
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains(&folder.to_string()));

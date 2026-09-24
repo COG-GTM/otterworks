@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
   CheckSquare,
+  FolderInput,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/layout/breadcrumb";
@@ -23,6 +24,7 @@ import { FolderCard } from "@/components/files/folder-card";
 import { FileUploadDropzone } from "@/components/files/file-upload-dropzone";
 import type { FileUploadDropzoneHandle } from "@/components/files/file-upload-dropzone";
 import { ShareDialog } from "@/components/files/share-dialog";
+import { MoveDialog } from "@/components/files/move-dialog";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { FileGridSkeleton, FileListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -30,7 +32,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
-import type { ViewMode, SortField } from "@/types";
+import type { ViewMode, SortField, FileItem, PaginatedResponse } from "@/types";
 
 // Run a delete operation over a list of ids, tallying successes and failures
 // so a single failure doesn't abort the rest of a bulk action.
@@ -51,6 +53,25 @@ async function runDeletions(
   return { succeeded, failed };
 }
 
+// Move each item to its paired destination, tallying outcomes so one failure
+// doesn't abort the rest of a bulk move.
+async function runMoves(
+  pairs: Array<{ item: FileItem; target: string | null }>
+): Promise<{ moved: FileItem[]; failed: FileItem[] }> {
+  const moved: FileItem[] = [];
+  const failed: FileItem[] = [];
+  for (const { item, target } of pairs) {
+    try {
+      if (item.isFolder) await filesApi.moveFolder(item.id, target);
+      else await filesApi.move(item.id, target);
+      moved.push(item);
+    } catch {
+      failed.push(item);
+    }
+  }
+  return { moved, failed };
+}
+
 function FileBrowserContent() {
   const [searchParams] = useSearchParams();
   const folderId = searchParams.get("folder");
@@ -63,6 +84,7 @@ function FileBrowserContent() {
   const [shareFileId, setShareFileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
+  const [moveItems, setMoveItems] = useState<FileItem[] | null>(null);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -236,6 +258,68 @@ function FileBrowserContent() {
     clearSelection();
   };
 
+  // Drop the moved rows from the current listing right away so the source
+  // folder updates before the requests resolve.
+  const removeFromCurrentLists = (ids: Set<string>) => {
+    queryClient.setQueryData<PaginatedResponse<FileItem>>(["files", "list", folderId], (prev) =>
+      prev ? { ...prev, data: prev.data.filter((f) => !ids.has(f.id)) } : prev
+    );
+    queryClient.setQueryData<FileItem[]>(["folders", "list", folderId], (prev) =>
+      prev ? prev.filter((f) => !ids.has(f.id)) : prev
+    );
+  };
+
+  const refreshAfterMove = () => {
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["folders"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+
+  const undoMove = async (movedItems: FileItem[]) => {
+    removeFromCurrentLists(new Set(movedItems.map((i) => i.id)));
+    const { moved, failed } = await runMoves(
+      movedItems.map((item) => ({ item, target: item.parentId ?? null }))
+    );
+    refreshAfterMove();
+    if (failed.length > 0) toast.error("Could not undo the move");
+    else if (moved.length > 0) toast.success("Move undone");
+  };
+
+  const handleMove = async (movingItems: FileItem[], target: string | null) => {
+    setMoveItems(null);
+    if (movingItems.length === 0) return;
+    removeFromCurrentLists(new Set(movingItems.map((i) => i.id)));
+    const { moved, failed } = await runMoves(
+      movingItems.map((item) => ({ item, target }))
+    );
+    refreshAfterMove();
+    clearSelection();
+
+    if (failed.length > 0) {
+      toast.error(`${failed.length} item${failed.length > 1 ? "s" : ""} could not be moved`);
+    }
+    if (moved.length === 0) return;
+
+    const label = moved.length === 1 ? `"${moved[0].name}" moved` : `${moved.length} items moved`;
+    toast.success(
+      (t) => (
+        <span className="flex items-center gap-3">
+          {label}
+          <button
+            onClick={() => {
+              toast.dismiss(t.id);
+              void undoMove(moved);
+            }}
+            className="font-medium text-otter-600 hover:text-otter-800 underline"
+          >
+            Undo
+          </button>
+        </span>
+      ),
+      { duration: 5000 }
+    );
+  };
+
   const handleDownload = useCallback(
     async (id: string, name: string) => {
       try {
@@ -294,6 +378,13 @@ function FileBrowserContent() {
             </button>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMoveItems(items.filter((i) => selectedIds.has(i.id)))}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-700 bg-white border border-otter-200 rounded-lg hover:bg-otter-50 transition"
+            >
+              <FolderInput size={14} />
+              Move to…
+            </button>
             <button
               onClick={handleBulkDelete}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
@@ -466,6 +557,7 @@ function FileBrowserContent() {
                     view={viewMode}
                     onDelete={(id) => deleteFolderMutation.mutate(id)}
                     onRename={(id, name) => renameFolderMutation.mutate({ id, name })}
+                    onMove={() => setMoveItems([folder])}
                     selected={selectedIds.has(folder.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
@@ -495,6 +587,7 @@ function FileBrowserContent() {
                     onShare={(id) => setShareFileId(id)}
                     onRename={(id, name) => renameFileMutation.mutate({ id, name })}
                     onDownload={handleDownload}
+                    onMove={() => setMoveItems([file])}
                     selected={selectedIds.has(file.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
@@ -504,6 +597,14 @@ function FileBrowserContent() {
             </section>
           )}
         </div>
+      )}
+      {moveItems && (
+        <MoveDialog
+          items={moveItems}
+          currentFolderId={folderId}
+          onClose={() => setMoveItems(null)}
+          onMove={(target) => void handleMove(moveItems, target)}
+        />
       )}
       {shareFileId && (() => {
         const shareFile = files.find((f) => f.id === shareFileId);
