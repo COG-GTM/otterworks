@@ -365,7 +365,7 @@ function FileBrowserContent() {
 
       {/* Bulk action bar */}
       {selectionActive && selectedIds.size > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 bg-otter-50 border border-otter-200 rounded-lg">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 px-4 py-3 bg-otter-50 border border-otter-200 rounded-lg">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-otter-800">
               {selectedIds.size} selected
@@ -377,7 +377,7 @@ function FileBrowserContent() {
               Select all
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setMoveItems(items.filter((i) => selectedIds.has(i.id)))}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-700 bg-white border border-otter-200 rounded-lg hover:bg-otter-50 transition"
