@@ -450,9 +450,9 @@ grep -rn "org.apache.commons.lang\." src/main/java/ | grep -v "lang3"
 
 ---
 
-## Axis 8 -- Commons IO (2.6 to 2.15+)
+## Axis 8 -- Commons IO (2.6 to 2.21) -- DONE
 
-### What changes
+### What changed
 
 **Files affected:** `pom.xml`, `controller/ReportController.java`
 
@@ -463,17 +463,23 @@ In `pom.xml`:
 <commons-io.version>2.6</commons-io.version>
 
 <!-- AFTER -->
-<commons-io.version>2.15.1</commons-io.version>
+<commons-io.version>2.21.0</commons-io.version>
 ```
 
 No import changes needed. `org.apache.commons.io.FileUtils.readFileToByteArray` has
-the same signature in 2.15. The upgrade addresses known CVEs in 2.6.
+the same signature. The upgrade addresses known CVEs in 2.6.
+
+This pin must track the commons-io version Apache POI is built against: it is a
+**direct** dependency, so Maven's nearest-wins resolution makes it override POI's
+own transitive commons-io. Leaving it at 2.6 under POI 5 hides
+`UnsynchronizedByteArrayOutputStream` and every `XSSFWorkbook` path fails with
+`NoClassDefFoundError` at runtime.
 
 ### How to verify
 
 ```bash
 mvn dependency:tree | grep commons-io
-# Should show commons-io:commons-io:jar:2.15.1
+# Should show commons-io:commons-io:jar:2.21.0
 mvn test
 ```
 
@@ -533,9 +539,9 @@ mvn test
 
 ---
 
-## Axis 10 -- Apache POI (4.1.2 to 5.2+)
+## Axis 10 -- Apache POI (4.1.2 to 5.5.1) -- DONE
 
-### What changes
+### What changed
 
 **Files affected:** `pom.xml`, `service/ExcelReportGenerator.java`
 
@@ -546,16 +552,17 @@ In `pom.xml`:
 <poi.version>4.1.2</poi.version>
 
 <!-- AFTER -->
-<poi.version>5.2.5</poi.version>
+<poi.version>5.5.1</poi.version>
 ```
 
 The APIs used in `ExcelReportGenerator.java` (`XSSFWorkbook`, `Sheet`, `Row`,
 `CellStyle`, `Font`, `IndexedColors`, `CellRangeAddress`, etc.) are stable across
-POI 4.x to 5.x. Some deprecated factory methods in POI 4 may produce warnings but
-still compile.
+POI 4.x to 5.x, so no source migration was needed.
 
 Key differences to watch:
 
+- POI 5 needs commons-io 2.15+ at runtime; see Axis 8 -- the direct commons-io pin
+  overrides POI's transitive one, so the two must be bumped together.
 - `IndexedColors` is still available but some colors may render differently.
 - `SXSSFWorkbook` (streaming) is recommended for large datasets.
 - POI 5.x requires Java 8+ (already satisfied by Axis 1).
@@ -563,8 +570,8 @@ Key differences to watch:
 ### How to verify
 
 ```bash
-mvn dependency:tree | grep poi
-# Should show org.apache.poi:poi:jar:5.2.5 and poi-ooxml:5.2.5
+mvn dependency:tree | grep -E "poi|commons-io"
+# Should show org.apache.poi:poi:jar:5.5.1, poi-ooxml:5.5.1, commons-io:2.21.0
 mvn test   # ExcelReportGeneratorTest passes
 ```
 
