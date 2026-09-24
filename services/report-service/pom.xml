@@ -30,7 +30,7 @@
         <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
         <springfox.version>3.0.0</springfox.version>
         <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
-        <poi.version>4.1.2</poi.version>
+        <poi.version>5.5.1</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
         <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
