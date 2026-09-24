@@ -17,7 +17,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { filesApi } from "@/lib/api";
-import { formatFileSize, formatRelativeTime } from "@/lib/utils";
+import { formatFileSize, formatRelativeTime, cn } from "@/lib/utils";
+import { tapTargetClass, useCoarsePointer } from "@/lib/touch";
 import toast from "react-hot-toast";
 import type { FileItem } from "@/types";
 
@@ -191,6 +192,8 @@ function TrashRow({
   isRestoring: boolean;
 }>) {
   const Icon = getTrashIcon(item);
+  const coarsePointer = useCoarsePointer();
+  const tapClass = tapTargetClass(coarsePointer);
 
   return (
     <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition">
@@ -204,23 +207,31 @@ function TrashRow({
           {item.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(item.trashedAt)}`}
         </p>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-shrink-0">
         <button
           onClick={onRestore}
           disabled={isRestoring}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-600 bg-otter-50 rounded-lg hover:bg-otter-100 transition disabled:opacity-50"
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-600 bg-otter-50 rounded-lg hover:bg-otter-100 transition disabled:opacity-50",
+            tapClass
+          )}
           title="Restore"
+          aria-label="Restore"
         >
           <RotateCcw size={14} />
-          Restore
+          {!coarsePointer && "Restore"}
         </button>
         <button
           onClick={onDelete}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition"
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition",
+            tapClass
+          )}
           title="Delete permanently"
+          aria-label="Delete permanently"
         >
           <X size={14} />
-          Delete
+          {!coarsePointer && "Delete"}
         </button>
       </div>
     </div>
