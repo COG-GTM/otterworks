@@ -33,7 +33,7 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 
 | Job | Tool | Purpose |
 |-----|------|---------|
-| `dependency-scan` | Trivy v0.36.0 | Scans filesystem for CRITICAL/HIGH CVEs. Skips `report-service` (legacy). Uses `.trivyignore` for acknowledged CVEs. |
+| `dependency-scan` | Trivy v0.36.0 | Scans filesystem for CRITICAL/HIGH CVEs. Skips `report-service`. Uses `.trivyignore` for acknowledged CVEs. |
 | `secret-scan` | Gitleaks v8.21.2 | Full-history secret detection with redaction. |
 | `sast` | Semgrep | Static analysis with OWASP Top 10, default, and security-audit rulesets. |
 
@@ -56,7 +56,7 @@ After PR #31 (this PR):
 ### Immediate (No Changes Required)
 1. **Change detection is working well** — Only affected services are built on PRs, keeping CI fast (~2-5 min per service vs 30+ min for full monorepo build).
 2. **Security scanning is comprehensive** — Trivy + Gitleaks + Semgrep covers dependencies, secrets, and static analysis.
-3. **Legacy service isolation** — Report service (Java 8) is correctly skipped by Trivy since it's intentionally outdated for upgrade exercises.
+3. **Report service scan exclusion** — Report service is still skipped by Trivy; now that it runs Java 17 / Spring Boot 3.2 with current dependencies, that exclusion should be revisited.
 
 ### Short-Term Improvements
 1. **Add `concurrency` groups** to cancel stale CI runs when new commits are pushed:
