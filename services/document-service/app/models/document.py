@@ -32,6 +32,9 @@ class Document(Base):
         UUID(as_uuid=True), nullable=True
     )
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     is_template: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
