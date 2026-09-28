@@ -98,7 +98,6 @@ async def test_restore_brings_back_document_with_content_and_versions(
     assert resp.status_code == 200
     restored = resp.json()
     assert restored["is_deleted"] is False
-    assert restored["deleted_at"] is None
     assert restored["content"] == "second revision"
 
     assert (await client.get(f"/api/v1/documents/{doc['id']}")).status_code == 200

@@ -37,6 +37,7 @@ interface TrashEntry {
   name: string;
   detail: string;
   trashedAt?: string;
+  sortKey: string;
   icon: typeof File;
 }
 
@@ -47,6 +48,7 @@ function fileEntry(item: FileItem): TrashEntry {
     name: item.name,
     detail: item.isFolder ? "Folder" : formatFileSize(item.size),
     trashedAt: item.trashedAt,
+    sortKey: item.trashedAt ?? item.updatedAt ?? "",
     icon: getFileIcon(item),
   };
 }
@@ -58,6 +60,7 @@ function documentEntry(doc: Document): TrashEntry {
     name: doc.title,
     detail: `Document \u00B7 ${doc.wordCount} word${doc.wordCount === 1 ? "" : "s"}`,
     trashedAt: doc.trashedAt,
+    sortKey: doc.trashedAt ?? doc.updatedAt ?? "",
     icon: FileText,
   };
 }
@@ -118,7 +121,7 @@ function TrashContent() {
   const items: TrashEntry[] = [
     ...(filesQuery.data?.data ?? []).map(fileEntry),
     ...(documentsQuery.data?.data ?? []).map(documentEntry),
-  ].sort((a, b) => (b.trashedAt ?? "").localeCompare(a.trashedAt ?? ""));
+  ].sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
   const totalTrashed =
     (filesQuery.data?.total ?? 0) + (documentsQuery.data?.total ?? 0) || items.length;

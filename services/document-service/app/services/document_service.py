@@ -246,10 +246,9 @@ class DocumentService:
         await self.db.commit()
         await self.db.refresh(document)
 
-        await event_publisher.publish(
-            "document_restored",
-            _document_index_payload(document),
-        )
+        payload = _document_index_payload(document)
+        await event_publisher.publish("document_restored", payload)
+        await event_publisher.publish("document_updated", payload)
         return document
 
     async def purge(self, document_id: UUID) -> bool:
