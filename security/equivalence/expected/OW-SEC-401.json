@@ -272,6 +272,7 @@
        "content": "Revenue for the quarter came in ahead of plan.",
        "content_type": "text/markdown",
        "created_at": "2026-01-02T09:00:00",
+       "deleted_at": null,
        "folder_id": "f01de001-0000-4000-8000-00000000000f",
        "id": "d0c00001-0000-4000-8000-000000000001",
        "is_deleted": false,
@@ -317,6 +318,7 @@
        "content": "<h1>Welcome</h1>",
        "content_type": "text/html",
        "created_at": "2026-01-04T09:00:00",
+       "deleted_at": null,
        "folder_id": "f01de001-0000-4000-8000-00000000000f",
        "id": "d0c00003-0000-4000-8000-000000000003",
        "is_deleted": false,
@@ -331,6 +333,7 @@
        "content": "Agenda, decisions and follow-ups.",
        "content_type": "text/markdown",
        "created_at": "2026-01-03T09:00:00",
+       "deleted_at": null,
        "folder_id": null,
        "id": "d0c00002-0000-4000-8000-000000000002",
        "is_deleted": false,
@@ -345,6 +348,7 @@
        "content": "Revenue for the quarter came in ahead of plan.",
        "content_type": "text/markdown",
        "created_at": "2026-01-02T09:00:00",
+       "deleted_at": null,
        "folder_id": "f01de001-0000-4000-8000-00000000000f",
        "id": "d0c00001-0000-4000-8000-000000000001",
        "is_deleted": false,
@@ -504,7 +508,7 @@
   "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
   "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
   "observed_sha256": {
-   "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
+   "services/document-service/app/api/documents.py": "452469734ef85d70814bee3260d77414e3bf8411acfbe26154f67a0c91b3b1f5"
   },
   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
   "subject_sha256": {
@@ -517,37 +521,27 @@
   "app.services.document_query_repository:DocumentQueryRepository.search_documents": "search_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, folder_id: 'str | None' = None, sort: 'str' = 'updated_at', direction: 'str' = 'desc', limit: 'int' = 20, offset: 'int' = 0) -> 'list[dict[str, Any]]'"
  },
  "module": "document-service",
- "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
- "recorded_at": "2026-08-18T01:19:28.827608+00:00",
+ "reason": "DocumentResponse gained deleted_at for the document trash (MBA-2842); subject unchanged",
+ "recorded_at": "2026-09-28T03:18:53.397649+00:00",
  "rerecorded_from": {
   "fingerprint": {
    "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
    "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
    "observed_sha256": {
-    "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1"
+    "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
    },
    "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
    "subject_sha256": {
     "services/document-service/app/services/document_query_repository.py": "a79c49a410fe174bab2247f776088d76d747c8bacc96c8f91fd5e0d281b95e6d"
    }
   },
-  "reason": "harness v2: subject vs observes split so one finding's refactor no longer regrades its neighbours",
-  "recorded_at": "2026-08-18T00:47:16.618672+00:00"
+  "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
+  "recorded_at": "2026-08-18T01:19:28.827608+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-y77h6q2j/junit.xml",
-  "exit_code": 1,
-  "failed": [
-   "tests.test_documents_api::test_delete_document",
-   "tests.test_documents_api::test_document_versions",
-   "tests.test_documents_api::test_export_document_html",
-   "tests.test_documents_api::test_export_document_markdown",
-   "tests.test_documents_api::test_get_document",
-   "tests.test_documents_api::test_get_document_not_found",
-   "tests.test_documents_api::test_patch_document",
-   "tests.test_documents_api::test_restore_version",
-   "tests.test_documents_api::test_update_document"
-  ],
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-rmfjnna9/junit.xml",
+  "exit_code": 0,
+  "failed": [],
   "passed": [
    "tests.test_comments_api::test_add_comment",
    "tests.test_comments_api::test_add_comment_document_not_found",
@@ -574,14 +568,37 @@
    "tests.test_document_service::test_soft_delete",
    "tests.test_document_service::test_template_crud_and_create_from",
    "tests.test_document_service::test_update_creates_version",
+   "tests.test_document_service_version_order::test_list_versions_matches_recent_versions_ordering",
+   "tests.test_document_service_version_order::test_list_versions_returns_newest_first",
+   "tests.test_document_trash::test_delete_defaults_to_soft_delete",
+   "tests.test_document_trash::test_deleted_document_appears_in_trash",
+   "tests.test_document_trash::test_permanent_delete_denied_for_other_owner",
+   "tests.test_document_trash::test_permanent_delete_removes_document_versions_and_comments",
+   "tests.test_document_trash::test_permanent_delete_requires_a_trashed_document",
+   "tests.test_document_trash::test_restore_brings_document_back_with_versions",
+   "tests.test_document_trash::test_restore_denied_for_other_owner",
+   "tests.test_document_trash::test_restore_unknown_or_live_document_is_404",
+   "tests.test_document_trash::test_service_restore_and_purge",
+   "tests.test_document_trash::test_trash_excludes_other_owners",
+   "tests.test_document_trash::test_trash_is_paginated_newest_first",
+   "tests.test_document_trash::test_trash_route_is_not_swallowed_by_document_id",
    "tests.test_documents_api::test_create_document",
    "tests.test_documents_api::test_create_document_no_auth_returns_401",
    "tests.test_documents_api::test_create_document_via_jwt",
    "tests.test_documents_api::test_create_document_via_jwt_hs384",
    "tests.test_documents_api::test_create_document_x_user_id_header_ignored",
+   "tests.test_documents_api::test_delete_document",
+   "tests.test_documents_api::test_document_versions",
+   "tests.test_documents_api::test_export_document_html",
+   "tests.test_documents_api::test_export_document_markdown",
+   "tests.test_documents_api::test_get_document",
+   "tests.test_documents_api::test_get_document_not_found",
    "tests.test_documents_api::test_list_documents",
    "tests.test_documents_api::test_list_documents_pagination",
+   "tests.test_documents_api::test_patch_document",
+   "tests.test_documents_api::test_restore_version",
    "tests.test_documents_api::test_search_documents",
+   "tests.test_documents_api::test_update_document",
    "tests.test_export_archive::test_export_endpoint_404s_for_undecodable_file",
    "tests.test_export_archive::test_export_endpoint_404s_for_unknown_name",
    "tests.test_export_archive::test_export_endpoint_404s_for_unreadable_file",
