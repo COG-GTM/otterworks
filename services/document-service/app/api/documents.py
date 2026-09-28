@@ -20,8 +20,10 @@ from app.schemas.document import (
     DocumentListResponse,
     DocumentPatch,
     DocumentResponse,
+    DocumentTrashListResponse,
     DocumentUpdate,
     DocumentVersionResponse,
+    TrashedDocumentResponse,
 )
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
@@ -173,7 +175,7 @@ async def search_documents(
     )
 
 
-@router.get("/trash", response_model=DocumentListResponse)
+@router.get("/trash", response_model=DocumentTrashListResponse)
 async def list_trashed_documents(
     request: Request,
     page: int = Query(1, ge=1),
@@ -185,7 +187,7 @@ async def list_trashed_documents(
     user_id = _require_user_id(request)
     service = DocumentService(db)
     items, total = await service.list_trashed(user_id, page=page, size=size)
-    return DocumentListResponse(
+    return DocumentTrashListResponse(
         items=items,
         total=total,
         page=page,
@@ -443,7 +445,7 @@ async def delete_document(
     logger.info("document_deleted", document_id=str(document_id))
 
 
-@router.post("/{document_id}/restore", response_model=DocumentResponse)
+@router.post("/{document_id}/restore", response_model=TrashedDocumentResponse)
 async def restore_document(
     document_id: UUID,
     request: Request,
