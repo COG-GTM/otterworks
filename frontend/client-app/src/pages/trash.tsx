@@ -27,6 +27,7 @@ type TrashEntry = {
   name: string;
   detail: string;
   trashedAt?: string;
+  sortedAt: string;
   icon: typeof File;
 };
 
@@ -39,6 +40,7 @@ function fileEntry(item: FileItem): TrashEntry {
     name: item.name,
     detail: item.isFolder ? "Folder" : formatFileSize(item.size),
     trashedAt: item.trashedAt,
+    sortedAt: item.trashedAt ?? item.updatedAt ?? "",
     icon: getFileIcon(item),
   };
 }
@@ -50,6 +52,7 @@ function documentEntry(doc: Document): TrashEntry {
     name: doc.title,
     detail: "Document",
     trashedAt: doc.trashedAt,
+    sortedAt: doc.trashedAt ?? doc.updatedAt ?? "",
     icon: FileText,
   };
 }
@@ -116,7 +119,7 @@ function TrashContent() {
   const items: TrashEntry[] = [
     ...(filesData?.data ?? []).map(fileEntry),
     ...(documentsData?.data ?? []).map(documentEntry),
-  ].sort((a, b) => (b.trashedAt ?? "").localeCompare(a.trashedAt ?? ""));
+  ].sort((a, b) => b.sortedAt.localeCompare(a.sortedAt));
 
   const totalTrashed =
     (filesData?.total ?? filesData?.data.length ?? 0) +
@@ -135,11 +138,9 @@ function TrashContent() {
         documents = await documentsApi.getTrashed(1, PAGE_SIZE);
       }
     },
-    onSuccess: () => {
-      invalidateTrashViews();
-      toast.success("Trash emptied");
-    },
+    onSuccess: () => toast.success("Trash emptied"),
     onError: () => toast.error("Failed to empty trash"),
+    onSettled: invalidateTrashViews,
   });
 
   return (
