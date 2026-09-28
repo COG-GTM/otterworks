@@ -65,6 +65,25 @@ function documentEntry(doc: Document): TrashEntry {
   };
 }
 
+const TRASH_PAGE_SIZE = 50;
+const TRASH_MAX_PAGES = 40;
+
+async function fetchAllTrashed<T>(
+  fetchPage: (page: number, pageSize: number) => Promise<{ data: T[]; total: number; hasMore: boolean }>
+): Promise<{ data: T[]; total: number }> {
+  const collected: T[] = [];
+  let page = 1;
+  let total = 0;
+  for (;;) {
+    const batch = await fetchPage(page, TRASH_PAGE_SIZE);
+    collected.push(...batch.data);
+    total = batch.total;
+    if (!batch.hasMore || batch.data.length === 0 || page >= TRASH_MAX_PAGES) break;
+    page += 1;
+  }
+  return { data: collected, total };
+}
+
 function restoreEntry(entry: TrashEntry): Promise<void> {
   return entry.kind === "file" ? filesApi.restore(entry.id) : documentsApi.restore(entry.id);
 }
@@ -89,11 +108,11 @@ function TrashContent() {
 
   const filesQuery = useQuery({
     queryKey: ["files", "trash"],
-    queryFn: () => filesApi.getTrashed(),
+    queryFn: () => fetchAllTrashed(filesApi.getTrashed),
   });
   const documentsQuery = useQuery({
     queryKey: ["documents", "trash"],
-    queryFn: () => documentsApi.getTrashed(),
+    queryFn: () => fetchAllTrashed(documentsApi.getTrashed),
   });
 
   const restoreMutation = useMutation({

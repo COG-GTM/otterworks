@@ -80,6 +80,7 @@ function mapRawFile(raw: RawFileItem): FileItem {
     tags: [],
     createdAt: raw.createdAt ?? "",
     updatedAt: raw.updatedAt ?? "",
+    trashedAt: raw.isTrashed ? raw.updatedAt ?? undefined : undefined,
     versions: [],
   };
 }
