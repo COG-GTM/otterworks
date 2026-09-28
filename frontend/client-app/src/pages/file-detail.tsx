@@ -87,6 +87,7 @@ function FileDetailContent() {
     mutationFn: () => filesApi.delete(fileId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("File moved to trash");
       navigate("/files");

@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -17,9 +18,16 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 
 async def init_db() -> None:
-    """Create all tables."""
+    """Create all tables and apply additive column upgrades."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            await conn.execute(
+                text(
+                    "ALTER TABLE documents "
+                    "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ"
+                )
+            )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

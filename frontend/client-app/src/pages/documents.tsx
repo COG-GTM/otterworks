@@ -52,6 +52,7 @@ function DocumentsContent() {
     mutationFn: documentsApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
     },
   });

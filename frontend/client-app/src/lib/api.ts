@@ -372,6 +372,26 @@ export const documentsApi = {
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
   },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<{
+      items?: Document[];
+      total?: number;
+      page?: number;
+      size?: number;
+    }>("/documents/trash", { params: { page, size: pageSize } });
+    const items = data.items ?? [];
+    const total = data.total ?? items.length;
+    return {
+      data: items,
+      total,
+      page: data.page ?? page,
+      pageSize: data.size ?? pageSize,
+      hasMore: (data.page ?? page) * (data.size ?? pageSize) < total,
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
+  },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
       params: { page: 1, size: limit },

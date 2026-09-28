@@ -66,6 +66,18 @@ class DocumentListResponse(BaseModel):
     pages: int
 
 
+class TrashedDocumentResponse(DocumentResponse):
+    deleted_at: datetime | None = None
+
+
+class TrashedDocumentListResponse(BaseModel):
+    items: list[TrashedDocumentResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
 # ---- Version schemas ----
 
 

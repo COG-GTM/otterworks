@@ -91,6 +91,7 @@ function FileBrowserContent() {
     mutationFn: filesApi.delete,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
       toast.success("File moved to trash");
@@ -103,6 +104,7 @@ function FileBrowserContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
       queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
       toast.success("Folder deleted");
@@ -224,6 +226,7 @@ function FileBrowserContent() {
 
     queryClient.invalidateQueries({ queryKey: ["files"] });
     queryClient.invalidateQueries({ queryKey: ["folders"] });
+    queryClient.invalidateQueries({ queryKey: ["trash"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
 

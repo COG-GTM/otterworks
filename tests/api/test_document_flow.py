@@ -175,3 +175,119 @@ def test_document_validation_and_ownership_risk_cases(api_client):
         headers=user_a.auth_headers,
     )
     assert not_found.status_code == 404
+
+
+def test_document_trash_restore_and_purge_flow(api_client):
+    user = api_client.register_user("document-trash-flow")
+    headers = user.auth_headers
+
+    create_response = api_client.client.post(
+        "/api/v1/documents/",
+        headers=headers,
+        json={
+            "title": f"Trash Document {api_client.run_id}",
+            "content": "recoverable body",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    document_id = create_response.json()["id"]
+
+    put_response = api_client.client.put(
+        f"/api/v1/documents/{document_id}",
+        headers=headers,
+        json={"title": "Trash Document", "content": "second revision body"},
+    )
+    assert put_response.status_code == 200, put_response.text
+
+    delete_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers
+    )
+    assert delete_response.status_code == 204, delete_response.text
+    assert (
+        api_client.client.get(
+            f"/api/v1/documents/{document_id}", headers=headers
+        ).status_code
+        == 404
+    )
+
+    trash_response = api_client.client.get(
+        "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+    )
+    assert trash_response.status_code == 200, trash_response.text
+    trashed = trash_response.json()["items"]
+    entry = next((item for item in trashed if item["id"] == document_id), None)
+    assert entry is not None
+    assert entry["is_deleted"] is True
+    assert entry["deleted_at"] is not None
+
+    other_user = api_client.register_user("document-trash-other")
+    other_trash = api_client.client.get(
+        "/api/v1/documents/trash", headers=other_user.auth_headers
+    )
+    assert other_trash.status_code == 200, other_trash.text
+    assert all(item["id"] != document_id for item in other_trash.json()["items"])
+
+    cross_restore = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=other_user.auth_headers
+    )
+    assert cross_restore.status_code in {401, 403, 404}
+
+    restore_response = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["is_deleted"] is False
+    assert restored["content"] == "second revision body"
+
+    read_back = api_client.client.get(
+        f"/api/v1/documents/{document_id}", headers=headers
+    )
+    assert read_back.status_code == 200, read_back.text
+
+    versions_response = api_client.client.get(
+        f"/api/v1/documents/{document_id}/versions", headers=headers
+    )
+    assert versions_response.status_code == 200, versions_response.text
+    assert len(versions_response.json()) >= 1
+
+    assert all(
+        item["id"] != document_id
+        for item in api_client.client.get(
+            "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+        ).json()["items"]
+    )
+
+    # Permanent delete only applies to documents already in the trash.
+    premature_purge = api_client.client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers=headers,
+        params={"permanent": "true"},
+    )
+    assert premature_purge.status_code == 404
+
+    assert (
+        api_client.client.delete(
+            f"/api/v1/documents/{document_id}", headers=headers
+        ).status_code
+        == 204
+    )
+    purge_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers=headers,
+        params={"permanent": "true"},
+    )
+    assert purge_response.status_code == 204, purge_response.text
+
+    assert (
+        api_client.client.post(
+            f"/api/v1/documents/{document_id}/restore", headers=headers
+        ).status_code
+        == 404
+    )
+    assert all(
+        item["id"] != document_id
+        for item in api_client.client.get(
+            "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+        ).json()["items"]
+    )
