@@ -63,10 +63,11 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
     )
     assert versions_response.status_code == 200, versions_response.text
     versions = versions_response.json()
-    assert [version["version_number"] for version in versions] == [1, 2, 3]
+    assert [version["version_number"] for version in versions] == [3, 2, 1]
 
+    first_version = next(version for version in versions if version["version_number"] == 1)
     restore_response = api_client.client.post(
-        f"/api/v1/documents/{document_id}/versions/{versions[0]['id']}/restore",
+        f"/api/v1/documents/{document_id}/versions/{first_version['id']}/restore",
         headers=headers,
     )
     assert restore_response.status_code == 200, restore_response.text
@@ -130,6 +131,78 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
 
     deleted_get_response = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
     assert deleted_get_response.status_code == 404
+
+
+def test_document_trash_restore_and_purge_flow(api_client):
+    user = api_client.register_user("document-trash")
+    headers = user.auth_headers
+
+    create_response = api_client.client.post(
+        "/api/v1/documents/",
+        headers=headers,
+        json={
+            "title": f"Trash Document {api_client.run_id}",
+            "content": "recoverable body",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    document_id = create_response.json()["id"]
+
+    delete_response = api_client.client.delete(f"/api/v1/documents/{document_id}", headers=headers)
+    assert delete_response.status_code == 204, delete_response.text
+
+    trash_response = api_client.client.get(
+        "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+    )
+    assert trash_response.status_code == 200, trash_response.text
+    trashed = trash_response.json()["items"]
+    trashed_document = next((item for item in trashed if item["id"] == document_id), None)
+    assert trashed_document is not None
+    assert trashed_document["is_deleted"] is True
+    assert trashed_document["deleted_at"] is not None
+
+    restore_response = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["is_deleted"] is False
+    assert restored["content"] == "recoverable body"
+
+    get_response = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
+    assert get_response.status_code == 200, get_response.text
+
+    trash_after_restore = api_client.client.get(
+        "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+    )
+    assert trash_after_restore.status_code == 200
+    assert all(item["id"] != document_id for item in trash_after_restore.json()["items"])
+
+    purge_before_delete = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers, params={"permanent": "true"}
+    )
+    assert purge_before_delete.status_code == 404
+
+    soft_delete_again = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers
+    )
+    assert soft_delete_again.status_code == 204, soft_delete_again.text
+
+    purge_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers, params={"permanent": "true"}
+    )
+    assert purge_response.status_code == 204, purge_response.text
+
+    final_trash = api_client.client.get(
+        "/api/v1/documents/trash", headers=headers, params={"page": 1, "size": 50}
+    )
+    assert final_trash.status_code == 200
+    assert all(item["id"] != document_id for item in final_trash.json()["items"])
+
+    restore_after_purge = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert restore_after_purge.status_code == 404
 
 
 def test_document_validation_and_ownership_risk_cases(api_client):
