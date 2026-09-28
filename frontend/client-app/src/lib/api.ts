@@ -80,7 +80,47 @@ function mapRawFile(raw: RawFileItem): FileItem {
     tags: [],
     createdAt: raw.createdAt ?? "",
     updatedAt: raw.updatedAt ?? "",
+    trashedAt: raw.isTrashed ? raw.updatedAt ?? undefined : undefined,
     versions: [],
+  };
+}
+
+// Shape after the axios camelCase interceptor transforms the document-service response
+interface RawDocument {
+  id: string;
+  title: string;
+  content: string;
+  ownerId: string;
+  folderId: string | null;
+  deletedAt?: string | null;
+  wordCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RawDocumentListResponse {
+  items: RawDocument[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
+function mapRawDocument(raw: RawDocument): Document {
+  return {
+    id: raw.id,
+    title: raw.title,
+    content: raw.content ?? "",
+    ownerId: raw.ownerId ?? "",
+    ownerName: "",
+    parentId: raw.folderId ?? null,
+    sharedWith: [],
+    collaborators: [],
+    tags: [],
+    wordCount: raw.wordCount ?? 0,
+    createdAt: raw.createdAt ?? "",
+    updatedAt: raw.updatedAt ?? "",
+    trashedAt: raw.deletedAt ?? undefined,
   };
 }
 
@@ -371,6 +411,22 @@ export const documentsApi = {
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = (data.items ?? []).map(mapRawDocument);
+    return {
+      data: items,
+      total: data.total ?? items.length,
+      page: data.page ?? page,
+      pageSize: data.size ?? pageSize,
+      hasMore: (data.page ?? page) * (data.size ?? pageSize) < (data.total ?? items.length),
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {

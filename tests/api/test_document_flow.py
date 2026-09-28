@@ -132,6 +132,83 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
     assert deleted_get_response.status_code == 404
 
 
+def test_document_trash_restore_and_purge_flow(api_client):
+    user = api_client.register_user("document-trash-flow")
+    headers = user.auth_headers
+
+    create_response = api_client.client.post(
+        "/api/v1/documents/",
+        headers=headers,
+        json={
+            "title": f"Trash Document {api_client.run_id}",
+            "content": "recoverable body",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    document_id = create_response.json()["id"]
+
+    delete_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers
+    )
+    assert delete_response.status_code == 204, delete_response.text
+    assert (
+        api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers).status_code
+        == 404
+    )
+
+    trash_response = api_client.client.get("/api/v1/documents/trash", headers=headers)
+    assert trash_response.status_code == 200, trash_response.text
+    trashed = trash_response.json()
+    trashed_document = next(item for item in trashed["items"] if item["id"] == document_id)
+    assert trashed_document["is_deleted"] is True
+    assert trashed_document["deleted_at"] is not None
+
+    other_user = api_client.register_user("document-trash-intruder")
+    cross_user_trash = api_client.client.get(
+        "/api/v1/documents/trash", headers=other_user.auth_headers
+    )
+    assert cross_user_trash.status_code == 200, cross_user_trash.text
+    assert all(item["id"] != document_id for item in cross_user_trash.json()["items"])
+
+    cross_user_restore = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=other_user.auth_headers
+    )
+    assert cross_user_restore.status_code in {401, 403, 404}
+
+    restore_response = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["is_deleted"] is False
+    assert restored["content"] == "recoverable body"
+
+    readable = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
+    assert readable.status_code == 200, readable.text
+    versions = api_client.client.get(
+        f"/api/v1/documents/{document_id}/versions", headers=headers
+    )
+    assert versions.status_code == 200, versions.text
+    assert len(versions.json()) >= 1
+
+    api_client.client.delete(f"/api/v1/documents/{document_id}", headers=headers)
+    purge_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers=headers,
+        params={"permanent": "true"},
+    )
+    assert purge_response.status_code == 204, purge_response.text
+
+    final_trash = api_client.client.get("/api/v1/documents/trash", headers=headers)
+    assert all(item["id"] != document_id for item in final_trash.json()["items"])
+    assert (
+        api_client.client.post(
+            f"/api/v1/documents/{document_id}/restore", headers=headers
+        ).status_code
+        == 404
+    )
+
+
 def test_document_validation_and_ownership_risk_cases(api_client):
     user_a = api_client.register_user("document-owner-a")
     user_b = api_client.register_user("document-owner-b")
