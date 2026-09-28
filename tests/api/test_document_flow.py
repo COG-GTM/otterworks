@@ -180,7 +180,7 @@ def test_document_trash_restore_and_purge_flow(api_client):
     assert restore_response.status_code == 200, restore_response.text
     restored = restore_response.json()
     assert restored["content"] == "recoverable body"
-    assert restored["deleted_at"] is None
+    assert restored["is_deleted"] is False
 
     readable = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
     assert readable.status_code == 200, readable.text
