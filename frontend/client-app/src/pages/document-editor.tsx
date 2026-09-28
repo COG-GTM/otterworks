@@ -66,6 +66,7 @@ function DocumentEditorContent() {
     mutationFn: () => documentsApi.delete(documentId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
+      queryClient.invalidateQueries({ queryKey: ["trash"] });
       navigate("/documents");
     },
   });
