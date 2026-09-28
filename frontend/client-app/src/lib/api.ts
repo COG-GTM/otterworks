@@ -42,6 +42,13 @@ interface RawFileItem {
   sharedWith?: RawShareItem[];
 }
 
+interface RawDocumentListResponse {
+  items: Document[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 interface RawFileListResponse {
   files: RawFileItem[];
   total: number;
@@ -371,6 +378,22 @@ export const documentsApi = {
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = data.items ?? [];
+    return {
+      data: items,
+      total: data.total ?? items.length,
+      page: data.page ?? page,
+      pageSize: data.size ?? pageSize,
+      hasMore: (data.page ?? page) * (data.size ?? pageSize) < (data.total ?? items.length),
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
