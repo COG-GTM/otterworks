@@ -49,6 +49,13 @@ interface RawFileListResponse {
   pageSize: number;
 }
 
+interface RawDocumentListResponse {
+  items: (Document & { deletedAt?: string | null })[];
+  total: number;
+  page: number;
+  size: number;
+}
+
 // Normalize a single file from the file-service format to the frontend FileItem shape
 function mapRawFile(raw: RawFileItem): FileItem {
   return {
@@ -371,6 +378,26 @@ export const documentsApi = {
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = (data.items ?? []).map((doc) => ({
+      ...doc,
+      trashedAt: doc.deletedAt ?? doc.updatedAt,
+    }));
+    const total = data.total ?? items.length;
+    return {
+      data: items,
+      total,
+      page: data.page ?? page,
+      pageSize: data.size ?? pageSize,
+      hasMore: (data.page ?? page) * (data.size ?? pageSize) < total,
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {

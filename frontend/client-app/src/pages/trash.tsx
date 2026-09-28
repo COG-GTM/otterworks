@@ -16,10 +16,14 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { filesApi } from "@/lib/api";
+import { documentsApi, filesApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
 import toast from "react-hot-toast";
-import type { FileItem } from "@/types";
+import type { Document, FileItem } from "@/types";
+
+type TrashEntry =
+  | { kind: "file"; id: string; name: string; detail: string; trashedAt?: string; item: FileItem }
+  | { kind: "document"; id: string; name: string; detail: string; trashedAt?: string };
 
 export default function TrashPage() {
   return (
@@ -33,53 +37,75 @@ export default function TrashPage() {
 
 function TrashContent() {
   const queryClient = useQueryClient();
-  const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TrashEntry | null>(null);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const invalidateTrash = () => {
+    queryClient.invalidateQueries({ queryKey: ["files"] });
+    queryClient.invalidateQueries({ queryKey: ["documents"] });
+    queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
+  };
+
+  const { data: filesData, isLoading: filesLoading } = useQuery({
     queryKey: ["files", "trash"],
     queryFn: () => filesApi.getTrashed(),
   });
 
+  const { data: documentsData, isLoading: documentsLoading } = useQuery({
+    queryKey: ["documents", "trash"],
+    queryFn: () => documentsApi.getTrashed(),
+  });
+
   const restoreMutation = useMutation({
-    mutationFn: filesApi.restore,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
-      toast.success("File restored");
+    mutationFn: (entry: TrashEntry) =>
+      entry.kind === "file" ? filesApi.restore(entry.id) : documentsApi.restore(entry.id),
+    onSuccess: (_result, entry) => {
+      invalidateTrash();
+      toast.success(entry.kind === "file" ? "File restored" : "Document restored");
     },
-    onError: () => toast.error("Failed to restore file"),
+    onError: () => toast.error("Failed to restore item"),
   });
 
   const permanentDeleteMutation = useMutation({
-    mutationFn: filesApi.permanentDelete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
-      toast.success("File permanently deleted");
+    mutationFn: (entry: TrashEntry) =>
+      entry.kind === "file"
+        ? filesApi.permanentDelete(entry.id)
+        : documentsApi.permanentDelete(entry.id),
+    onSuccess: (_result, entry) => {
+      invalidateTrash();
+      toast.success(
+        entry.kind === "file" ? "File permanently deleted" : "Document permanently deleted"
+      );
     },
-    onError: () => toast.error("Failed to delete file"),
+    onError: () => toast.error("Failed to delete item"),
   });
 
-  const items = data?.data || [];
+  const items: TrashEntry[] = [
+    ...(filesData?.data ?? []).map(toFileEntry),
+    ...(documentsData?.data ?? []).map(toDocumentEntry),
+  ].sort((a, b) => (b.trashedAt ?? "").localeCompare(a.trashedAt ?? ""));
 
-  const totalTrashed = data?.total ?? items.length;
+  const isLoading = filesLoading || documentsLoading;
+
+  const totalTrashed = (filesData?.total ?? 0) + (documentsData?.total ?? 0) || items.length;
 
   const emptyTrashMutation = useMutation({
     mutationFn: async () => {
       const pageSize = 50;
-      let batch = await filesApi.getTrashed(1, pageSize);
-      while (batch.data.length > 0) {
-        await Promise.all(batch.data.map((item) => filesApi.permanentDelete(item.id)));
-        batch = await filesApi.getTrashed(1, pageSize);
+      let files = await filesApi.getTrashed(1, pageSize);
+      while (files.data.length > 0) {
+        await Promise.all(files.data.map((item) => filesApi.permanentDelete(item.id)));
+        files = await filesApi.getTrashed(1, pageSize);
+      }
+      let documents = await documentsApi.getTrashed(1, pageSize);
+      while (documents.data.length > 0) {
+        await Promise.all(documents.data.map((doc) => documentsApi.permanentDelete(doc.id)));
+        documents = await documentsApi.getTrashed(1, pageSize);
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["files"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
+      invalidateTrash();
       toast.success("Trash emptied");
     },
     onError: () => toast.error("Failed to empty trash"),
@@ -129,9 +155,9 @@ function TrashContent() {
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
           {items.map((item) => (
             <TrashRow
-              key={item.id}
-              item={item}
-              onRestore={() => restoreMutation.mutate(item.id)}
+              key={`${item.kind}-${item.id}`}
+              entry={item}
+              onRestore={() => restoreMutation.mutate(item)}
               onDelete={() => setDeleteTarget(item)}
               isRestoring={restoreMutation.isPending}
             />
@@ -147,7 +173,7 @@ function TrashContent() {
         confirmLabel="Delete permanently"
         variant="destructive"
         onConfirm={() => {
-          if (deleteTarget) permanentDeleteMutation.mutate(deleteTarget.id);
+          if (deleteTarget) permanentDeleteMutation.mutate(deleteTarget);
           setDeleteTarget(null);
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -170,7 +196,30 @@ function TrashContent() {
   );
 }
 
-function getTrashIcon(item: FileItem) {
+function toFileEntry(item: FileItem): TrashEntry {
+  return {
+    kind: "file",
+    id: item.id,
+    name: item.name,
+    detail: item.isFolder ? "Folder" : formatFileSize(item.size),
+    trashedAt: item.trashedAt,
+    item,
+  };
+}
+
+function toDocumentEntry(document: Document): TrashEntry {
+  return {
+    kind: "document",
+    id: document.id,
+    name: document.title,
+    detail: "Document",
+    trashedAt: document.trashedAt ?? document.updatedAt,
+  };
+}
+
+function getTrashIcon(entry: TrashEntry) {
+  if (entry.kind === "document") return FileText;
+  const item = entry.item;
   if (item.isFolder) return Folder;
   if (item.mimeType.startsWith("image/")) return Image;
   if (item.mimeType.startsWith("video/")) return Film;
@@ -180,17 +229,17 @@ function getTrashIcon(item: FileItem) {
 }
 
 function TrashRow({
-  item,
+  entry,
   onRestore,
   onDelete,
   isRestoring,
 }: Readonly<{
-  item: FileItem;
+  entry: TrashEntry;
   onRestore: () => void;
   onDelete: () => void;
   isRestoring: boolean;
 }>) {
-  const Icon = getTrashIcon(item);
+  const Icon = getTrashIcon(entry);
 
   return (
     <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition">
@@ -198,10 +247,10 @@ function TrashRow({
         <Icon size={20} className="text-gray-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+        <p className="text-sm font-medium text-gray-900 truncate">{entry.name}</p>
         <p className="text-xs text-gray-500">
-          {item.isFolder ? "Folder" : formatFileSize(item.size)}
-          {item.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(item.trashedAt)}`}
+          {entry.detail}
+          {entry.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(entry.trashedAt)}`}
         </p>
       </div>
       <div className="flex items-center gap-1">

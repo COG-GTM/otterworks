@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import Connection, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -16,10 +17,26 @@ engine = create_async_engine(
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+def _add_missing_columns(conn: Connection) -> None:
+    """Add columns that create_all cannot add to a table that already exists."""
+    inspector = inspect(conn)
+    if "documents" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("documents")}
+    if "deleted_at" not in columns:
+        conn.execute(
+            text("ALTER TABLE documents ADD COLUMN deleted_at TIMESTAMP WITH TIME ZONE")
+        )
+        conn.execute(
+            text("UPDATE documents SET deleted_at = updated_at WHERE is_deleted = true")
+        )
+
+
 async def init_db() -> None:
     """Create all tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
