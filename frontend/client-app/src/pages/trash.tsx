@@ -26,7 +26,13 @@ type TrashEntry =
   | { kind: "document"; id: string; name: string; deletedAt?: string };
 
 function toFileEntry(file: FileItem): TrashEntry {
-  return { kind: "file", id: file.id, name: file.name, deletedAt: file.trashedAt, file };
+  return {
+    kind: "file",
+    id: file.id,
+    name: file.name,
+    deletedAt: file.trashedAt ?? file.updatedAt,
+    file,
+  };
 }
 
 function toDocumentEntry(document: Document): TrashEntry {

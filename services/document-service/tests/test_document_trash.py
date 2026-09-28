@@ -233,6 +233,9 @@ async def test_service_restore_and_purge(db_session: AsyncSession, owner_id: uui
     assert restored.is_deleted is False
     assert await service.restore(doc.id) is None
 
+    assert await service.purge(doc.id) is False
+
+    assert await service.delete(doc.id) is True
     assert await service.purge(doc.id) is True
     assert await service.get(doc.id) is None
     assert await service.purge(doc.id) is False

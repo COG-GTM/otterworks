@@ -255,9 +255,11 @@ class DocumentService:
         return document
 
     async def purge(self, document_id: UUID) -> bool:
-        """Hard-delete a document along with its versions and comments."""
+        """Hard-delete a trashed document along with its versions and comments."""
         result = await self.db.execute(
-            select(Document).where(Document.id == document_id)
+            select(Document)
+            .where(Document.id == document_id, Document.is_deleted.is_(True))
+            .with_for_update()
         )
         document = result.scalar_one_or_none()
         if not document:

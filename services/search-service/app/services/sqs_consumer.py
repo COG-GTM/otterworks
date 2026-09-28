@@ -101,7 +101,9 @@ class SQSConsumer:
             action_map = {
                 "document_created": "index_document",
                 "document_updated": "index_document",
+                "document_restored": "index_document",
                 "document_deleted": "delete",
+                "document_purged": "delete",
                 "file_created": "index_file",
                 "file_uploaded": "index_file",
                 "file_updated": "index_file",
