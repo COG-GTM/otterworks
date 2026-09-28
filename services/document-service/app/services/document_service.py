@@ -2,6 +2,7 @@
 
 import html as html_mod
 import math
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -78,6 +79,15 @@ class DocumentService:
         result = await self.db.execute(
             select(Document).where(
                 Document.id == document_id, Document.is_deleted.is_(False)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_deleted(self, document_id: UUID) -> Document | None:
+        """Return a soft-deleted document, or None if it is live or unknown."""
+        result = await self.db.execute(
+            select(Document).where(
+                Document.id == document_id, Document.is_deleted.is_(True)
             )
         )
         return result.scalar_one_or_none()
@@ -189,15 +199,70 @@ class DocumentService:
             )
         return document
 
+    async def list_trashed(
+        self,
+        owner_id: UUID | None = None,
+        page: int = 1,
+        size: int = 20,
+    ) -> tuple[list[Document], int]:
+        """List soft-deleted documents, most recently deleted first."""
+        base = select(Document).where(
+            Document.is_deleted.is_(True), Document.is_template.is_(False)
+        )
+        if owner_id:
+            base = base.where(Document.owner_id == owner_id)
+
+        count_q = select(func.count()).select_from(base.subquery())
+        total = (await self.db.execute(count_q)).scalar_one()
+
+        query = (
+            base.order_by(Document.deleted_at.desc(), Document.updated_at.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all()), total
+
     async def delete(self, document_id: UUID) -> bool:
         document = await self.get(document_id)
         if not document:
             return False
         document.is_deleted = True
+        document.deleted_at = datetime.now(UTC)
         await self.db.commit()
 
         await event_publisher.publish(
             "document_deleted", {"id": document_id, "type": "document"}
+        )
+        return True
+
+    async def restore(self, document_id: UUID) -> Document | None:
+        """Bring a soft-deleted document back to the live listing."""
+        document = await self.get_deleted(document_id)
+        if not document:
+            return None
+        document.is_deleted = False
+        document.deleted_at = None
+        await self.db.commit()
+        await self.db.refresh(document)
+
+        payload = _document_index_payload(document)
+        await event_publisher.publish("document_restored", payload)
+        # The search subscription and indexer only know created/updated/deleted,
+        # so the restored row needs an update event to return to the index.
+        await event_publisher.publish("document_updated", payload)
+        return document
+
+    async def purge(self, document_id: UUID) -> bool:
+        """Hard-delete a soft-deleted document with its versions and comments."""
+        document = await self.get_deleted(document_id)
+        if not document:
+            return False
+        await self.db.delete(document)
+        await self.db.commit()
+
+        await event_publisher.publish(
+            "document_purged", {"id": document_id, "type": "document"}
         )
         return True
 

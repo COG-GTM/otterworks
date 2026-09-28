@@ -17,9 +17,14 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 
 async def init_db() -> None:
-    """Create all tables."""
+    """Create all tables, and add columns missing from databases created earlier."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            await conn.exec_driver_sql(
+                "ALTER TABLE documents "
+                "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE"
+            )
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
