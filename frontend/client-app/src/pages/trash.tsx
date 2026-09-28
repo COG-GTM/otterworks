@@ -46,7 +46,7 @@ function fileEntry(item: FileItem): TrashEntry {
     name: item.name,
     detail: item.isFolder ? "Folder" : formatFileSize(item.size),
     icon: fileIcon(item),
-    trashedAt: item.trashedAt,
+    trashedAt: item.trashedAt ?? item.updatedAt,
   };
 }
 
