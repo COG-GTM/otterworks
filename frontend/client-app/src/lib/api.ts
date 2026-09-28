@@ -372,6 +372,19 @@ export const documentsApi = {
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
   },
+  getTrashed: async (page = 1, size = 50): Promise<Document[]> => {
+    const { data } = await apiClient.get<{ items?: (Document & { deletedAt?: string | null })[] }>(
+      "/documents/trash",
+      { params: { page, size } }
+    );
+    return (data.items ?? []).map((doc) => ({
+      ...doc,
+      trashedAt: doc.deletedAt ?? doc.updatedAt,
+    }));
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
+  },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
       params: { page: 1, size: limit },
