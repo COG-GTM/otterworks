@@ -1,8 +1,12 @@
 # Report Service Dependency Upgrade Guide
 
 This document describes 11 upgrade axes for migrating the report-service from its
-current legacy stack to a modern, supported baseline. Each axis lists the exact
+legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
+
+**Status:** axes 1-5 and 11 (Java 17, Spring Boot 3.2, `jakarta.*`, JUnit 5,
+springdoc-openapi, Mockito 5) are done. Axes 6-10 (iText, Commons IO, Guava,
+Apache POI) remain open; Commons Lang 3 (axis 7) is in place via the Boot BOM.
 
 ---
 
