@@ -344,6 +344,18 @@ export const filesApi = {
 };
 
 // ── Documents ─────────────────────────────────────────────────
+// Shape after the axios camelCase interceptor transforms the document-service response
+interface RawDocumentListResponse {
+  items: Array<Document & { deletedAt?: string | null }>;
+  total: number;
+  page: number;
+  size: number;
+}
+
+function mapTrashedDocument(raw: Document & { deletedAt?: string | null }): Document {
+  return { ...raw, trashedAt: raw.deletedAt ?? raw.trashedAt };
+}
+
 export const documentsApi = {
   list: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
     const { data } = await apiClient.get<PaginatedResponse<Document>>("/documents", {
@@ -371,6 +383,19 @@ export const documentsApi = {
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = (data.items ?? []).map(mapTrashedDocument);
+    const total = data.total ?? items.length;
+    const pg = data.page ?? page;
+    const ps = data.size ?? pageSize;
+    return { data: items, total, page: pg, pageSize: ps, hasMore: pg * ps < total };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
