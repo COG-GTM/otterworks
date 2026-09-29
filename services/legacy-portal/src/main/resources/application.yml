@@ -7,10 +7,10 @@ spring:
   application:
     name: legacy-portal
   # Default profile: embedded H2 with ONE SCHEMA PER BOUNDED CONTEXT still in the monolith.
-  # The schema boundaries (user_preferences / feedback) are the decomposition seams;
-  # announcements has moved to services/announcements-service (DECOMPOSITION.md §13).
+  # The feedback schema is the remaining decomposition seam; announcements and user_preferences
+  # have moved to services/announcements-service and services/preferences-service (DECOMPOSITION.md §13).
   datasource:
-    url: 'jdbc:h2:mem:legacyportal;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS USER_PREFERENCES\;CREATE SCHEMA IF NOT EXISTS FEEDBACK'
+    url: 'jdbc:h2:mem:legacyportal;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS FEEDBACK'
     username: sa
     password: ''
     driver-class-name: org.h2.Driver

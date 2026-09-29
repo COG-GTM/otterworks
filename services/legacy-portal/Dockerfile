@@ -11,6 +11,7 @@ WORKDIR /app
 COPY portal-parent/pom.xml portal-parent/
 # Every module the reactor lists must be present for Maven to read it; only this one's sources are copied.
 COPY announcements-service/pom.xml announcements-service/
+COPY preferences-service/pom.xml preferences-service/
 COPY legacy-portal/pom.xml legacy-portal/
 COPY portal-common/pom.xml portal-common/
 # Download dependencies first for Docker layer caching.

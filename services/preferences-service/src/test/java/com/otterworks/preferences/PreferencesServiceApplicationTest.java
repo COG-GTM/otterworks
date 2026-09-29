@@ -1,7 +1,6 @@
-package com.otterworks.legacyportal;
+package com.otterworks.preferences;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -9,15 +8,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Full-context test: the monolith boots and the routes of every context it still serves are wired. */
+/** Full-context test: the service boots on H2 with its Flyway schema and its routes are wired. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class LegacyPortalApplicationTest {
+class PreferencesServiceApplicationTest {
 
     @Autowired private MockMvc mockMvc;
 
@@ -26,7 +24,7 @@ class LegacyPortalApplicationTest {
         mockMvc.perform(get("/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("legacy-portal"));
+                .andExpect(jsonPath("$.service").value("preferences-service"));
     }
 
     @Test
@@ -35,19 +33,16 @@ class LegacyPortalApplicationTest {
     }
 
     @Test
-    void feedbackModuleValidatesRating() throws Exception {
-        mockMvc.perform(
-                        post("/api/feedback")
-                                .contentType(MediaType.APPLICATION_JSON)
-                                .content(
-                                        "{\"userId\":\"u1\",\"rating\":9,\"message\":\"bad rating\"}"))
-                .andExpect(status().isBadRequest());
+    void preferencesModuleReturnsDefaults() throws Exception {
+        mockMvc.perform(get("/api/preferences/newuser"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.theme").value("light"));
     }
 
     @Test
     void trailingSlashMatchesTheMappedRoute() throws Exception {
-        mockMvc.perform(get("/api/feedback/average-rating/"))
+        mockMvc.perform(get("/api/preferences/newuser/"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.averageRating").isNumber());
+                .andExpect(jsonPath("$.userId").value("newuser"));
     }
 }

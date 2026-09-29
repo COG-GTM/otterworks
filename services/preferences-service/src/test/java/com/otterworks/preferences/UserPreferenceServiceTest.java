@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.userpreferences;
+package com.otterworks.preferences;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

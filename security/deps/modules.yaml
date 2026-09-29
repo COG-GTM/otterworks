@@ -62,6 +62,20 @@ modules:
     # portal-common, whose contract is recorded via cases/legacy-portal.json.
     cases: null
 
+  - id: preferences-service
+    path: services/preferences-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    tool:
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :preferences-service -am
+      - mvn -f ../portal-parent/pom.xml -pl :preferences-service -am
+    test: -B test
+    # Extracted from legacy-portal; reaches Commons Configuration only through
+    # portal-common, whose contract is recorded via cases/legacy-portal.json.
+    cases: null
+
   - id: portal-common
     path: services/portal-common
     build: maven

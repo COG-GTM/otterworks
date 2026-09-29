@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.userpreferences;
+package com.otterworks.preferences;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

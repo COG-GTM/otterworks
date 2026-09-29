@@ -2,8 +2,8 @@
 *
 !portal-parent/pom.xml
 !portal-common/pom.xml
-!announcements-service/pom.xml
-!preferences-service/pom.xml
-!portal-common/src/main/
 !legacy-portal/pom.xml
-!legacy-portal/src/
+!announcements-service/pom.xml
+!portal-common/src/main/
+!preferences-service/pom.xml
+!preferences-service/src/main/

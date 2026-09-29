@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.userpreferences;
+package com.otterworks.preferences;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
