@@ -2,8 +2,8 @@
 # ------------------------------------------------------------------------------
 # Verify one stage of the legacy-portal decomposition locally (nothing is deployed).
 #
-#   1. Build and test every available module: services/legacy-portal (JDK 11) and any of
-#      services/{announcements,preferences,feedback}-service that exist (JDK 17).
+#   1. Build and test every available module: services/legacy-portal and any of
+#      services/{announcements,preferences,feedback}-service that exist (all JDK 17).
 #   2. For each profile and run: start fresh local processes (H2 in-memory, or PostgreSQL
 #      from services/legacy-portal/docker-compose.onprem.yml recreated with `down -v`),
 #      replay tests/parity/legacy_portal against them, then stop everything.
@@ -79,7 +79,7 @@ jdk_home() {
 }
 
 # name|dir|jdk|port|context url var ("" = serves every context not claimed by another module)
-MODULES=("legacy-portal|${PORTAL_DIR}|11|${MONOLITH_PORT}|")
+MODULES=("legacy-portal|${PORTAL_DIR}|17|${MONOLITH_PORT}|")
 for ctx in announcements preferences feedback; do
   dir="${REPO_ROOT}/services/${ctx}-service"
   [[ -f "${dir}/pom.xml" ]] || continue

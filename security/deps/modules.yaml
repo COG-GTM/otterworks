@@ -15,7 +15,7 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules pin JDK 11: their recorded transcripts include the
+  # report-service pins JDK 11: its recorded transcript includes the
   # ${script:javascript:...} lookup, which only resolves while the JVM still ships
   # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
   # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
@@ -32,10 +32,13 @@ modules:
   - id: legacy-portal
     path: services/legacy-portal
     build: maven
+    # JDK 17. Its script case is a contract (Commons Configuration refuses the
+    # lookup); standalone Nashorn stays on its test classpath so the refusal is
+    # measured with a JavaScript engine present, as it was on JDK 11.
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
-    # Spring Boot 2.x, and it pins its own Maven (3.9.9) via the wrapper — the same
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # It pins its own Maven (3.9.9) via the wrapper — the same
     # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
     # reach the wrapper's distribution.
     tool:
