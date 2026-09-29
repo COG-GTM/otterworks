@@ -94,6 +94,9 @@ module "ecr" {
     "admin-service",
     "audit-service",
     "report-service",
+    "announcements-service",
+    "user-preferences-service",
+    "feedback-service",
     "web-app",
     "admin-dashboard",
   ]
