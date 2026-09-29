@@ -76,12 +76,12 @@ RSpec.describe Api::V1::Admin::SettingsController do
     it 'reports bot token presence without exposing the token' do
       allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
       allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
-      allow(AdminSettingsService).to receive(:slack_bot_token).and_return('test-slack-token')
+      allow(AdminSettingsService).to receive(:slack_bot_token).and_return('xoxb-sekrit')
 
       get :slack_notifications
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body['bot_token_configured']).to be(true)
-      expect(response.body).not_to include('test-slack-token')
+      expect(response.body).not_to include('xoxb-sekrit')
     end
   end
 
@@ -106,9 +106,9 @@ RSpec.describe Api::V1::Admin::SettingsController do
     it 'stores the bot token' do
       allow(AdminSettingsService).to receive(:set_slack_bot_token)
 
-      put :update_slack_notifications, params: { bot_token: 'test-slack-token' }
+      put :update_slack_notifications, params: { bot_token: 'xoxb-1234' }
       expect(response).to have_http_status(:ok)
-      expect(AdminSettingsService).to have_received(:set_slack_bot_token).with('test-slack-token')
+      expect(AdminSettingsService).to have_received(:set_slack_bot_token).with('xoxb-1234')
     end
 
     it 'rejects a malformed bot token' do
@@ -122,7 +122,7 @@ RSpec.describe Api::V1::Admin::SettingsController do
     it 'rejects a non-bot xoxp- token' do
       allow(AdminSettingsService).to receive(:set_slack_bot_token)
 
-      put :update_slack_notifications, params: { bot_token: 'test-slack-token' }
+      put :update_slack_notifications, params: { bot_token: 'xoxp-user' }
       expect(response).to have_http_status(:bad_request)
       expect(AdminSettingsService).not_to have_received(:set_slack_bot_token)
     end

@@ -54,25 +54,25 @@ RSpec.describe SlackNotifierService do
   end
 
   it 'posts to chat.postMessage with the routed channel when SLACK_BOT_TOKEN is set' do
-    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test')
     read_posted, read_request = stub_post
 
     described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
 
     expect(Net::HTTP).to have_received(:new).with('slack.com', 443)
-    expect(read_request.call['Authorization']).to eq('Bearer test-slack-token')
+    expect(read_request.call['Authorization']).to eq('Bearer xoxb-test')
     expect(read_posted.call['channel']).to eq('#automated-alerts')
     expect(read_posted.call['blocks']).to be_an(Array)
   end
 
   it 'uses the runtime-stored bot token when SLACK_BOT_TOKEN is not set' do
-    allow(AdminSettingsService).to receive(:slack_bot_token).and_return('test-slack-token')
+    allow(AdminSettingsService).to receive(:slack_bot_token).and_return('xoxb-stored')
     read_posted, read_request = stub_post
 
     described_class.notify_incident(incident: incident, alert_name: 'FileUploadFailed')
 
     expect(Net::HTTP).to have_received(:new).with('slack.com', 443)
-    expect(read_request.call['Authorization']).to eq('Bearer test-slack-token')
+    expect(read_request.call['Authorization']).to eq('Bearer xoxb-stored')
     expect(read_posted.call['channel']).to eq('#automated-alerts')
   end
 
@@ -89,7 +89,7 @@ RSpec.describe SlackNotifierService do
   end
 
   it 'falls back to the webhook when chat.postMessage rejects the token' do
-    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-revoked')
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')
     requests = []
@@ -114,7 +114,7 @@ RSpec.describe SlackNotifierService do
   end
 
   it 'falls back to the webhook when the Slack API is unreachable' do
-    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test')
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')
     requests = []
@@ -139,7 +139,7 @@ RSpec.describe SlackNotifierService do
   end
 
   it 'routes unknown alert names to the default channel' do
-    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test')
     read_posted, = stub_post
 
     described_class.notify_incident(incident: incident, alert_name: 'SomeBrandNewChaosError')
@@ -148,7 +148,7 @@ RSpec.describe SlackNotifierService do
   end
 
   it 'prefers the bot token over a configured webhook' do
-    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test')
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')
     _, read_request = stub_post
@@ -287,7 +287,7 @@ RSpec.describe SlackNotifierService do
     end
 
     before do
-      allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('test-slack-token')
+      allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test')
     end
 
     it 'resolves the reporter to a true mention via users.lookupByEmail' do
@@ -300,7 +300,7 @@ RSpec.describe SlackNotifierService do
       lookup = requests.find { |r| r.uri.path == '/api/users.lookupByEmail' }
       expect(lookup).not_to be_nil
       expect(lookup.uri.query).to include('email=preston%40example.com')
-      expect(lookup['Authorization']).to eq('Bearer test-slack-token')
+      expect(lookup['Authorization']).to eq('Bearer xoxb-test')
       fields = read_posted.call['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
       expect(fields).to include("*On-Call:*\n<@U0DYNAMIC1>")
     end
