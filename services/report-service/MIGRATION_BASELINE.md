@@ -11,7 +11,7 @@ Recorded 2026-09-29 against `main` @ `cc23bf1993db9db1c40dc7a4b475082443f80092`.
 |---|---|
 | Java source/target | 1.8 |
 | Spring Boot parent | 2.5.15 |
-| Test framework | JUnit 4 (via `spring-boot-starter-test`), `org.junit.Assume` for skips |
+| Test framework | JUnit 4.13.2 (direct `junit:junit` test dependency; `spring-boot-starter-test` excludes `junit-jupiter`), `org.junit.Assume` for skips |
 | Surefire / compiler / jar plugins | 2.22.2 / 3.8.1 / 3.2.2 |
 
 ## Local run
