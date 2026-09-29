@@ -1,6 +1,6 @@
 # Java 17 feedback-service (extracted from legacy-portal). Multi-stage Maven build of the
-# portal-parent reactor, non-root JRE runtime. Runs in the root docker-compose.yml (make portal-up);
-# it is not on the Helm/EKS deploy path yet.
+# portal-parent reactor, non-root JRE runtime. Runs in the root docker-compose.yml (make portal-up)
+# and is built by cd-tenant.yml / docker-build.yml with context services/ and this file.
 #
 # Build context is services/ (the portal-parent reactor), e.g. from services/feedback-service:
 #   docker build -f Dockerfile ..

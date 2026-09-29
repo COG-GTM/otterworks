@@ -81,6 +81,11 @@ jobs:
             admin-service: ['services/admin-service/**']
             audit-service: ['services/audit-service/**']
             report-service: ['services/report-service/**']
+            # Portal services build from the shared services/ reactor, so a
+            # portal-parent or portal-common change rebuilds all three.
+            announcements-service: ['services/announcements-service/**', 'services/portal-parent/**', 'services/portal-common/**']
+            preferences-service: ['services/preferences-service/**', 'services/portal-parent/**', 'services/portal-common/**']
+            feedback-service: ['services/feedback-service/**', 'services/portal-parent/**', 'services/portal-common/**']
             web-app: ['frontend/client-app/**']
             admin-dashboard: ['frontend/admin-dashboard/**']
             deployable: ['services/**', 'frontend/**', 'infrastructure/helm/**', 'scripts/**']
@@ -198,12 +203,17 @@ jobs:
           SERVICE: ${{ matrix.service }}
         run: |
           set -euo pipefail
+          dockerfile=
           case "${SERVICE}" in
             web-app)         path=frontend/client-app ;;
             admin-dashboard) path=frontend/admin-dashboard ;;
+            # Portal images build from the services/ reactor (portal-parent + portal-common).
+            announcements-service|preferences-service|feedback-service)
+                             path=services dockerfile=services/${SERVICE}/Dockerfile ;;
             *)               path=services/${SERVICE} ;;
           esac
           echo "path=${path}" >> "$GITHUB_OUTPUT"
+          echo "file=${dockerfile:-${path}/Dockerfile}" >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
@@ -274,6 +284,7 @@ jobs:
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ${{ steps.ctx.outputs.path }}
+          file: ${{ steps.ctx.outputs.file }}
           push: true
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.service }}
