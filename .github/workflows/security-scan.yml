@@ -2,9 +2,9 @@ name: Security Scan
 
 on:
   push:
-    branches: [main]
+    branches: [main, siemens-demo]
   pull_request:
-    branches: [main]
+    branches: [main, siemens-demo]
   schedule:
     - cron: '0 6 * * 1' # Weekly Monday 6AM UTC
 

@@ -14,7 +14,7 @@ name: SAST Auto-Remediation
 on:
   pull_request:
     types: [opened, synchronize]
-    branches: [main]
+    branches: [main, siemens-demo]
 
 permissions:
   contents: read
