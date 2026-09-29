@@ -21,6 +21,7 @@
         portal module.</description>
 
     <modules>
+        <module>../portal-common</module>
         <module>../legacy-portal</module>
     </modules>
 
@@ -37,6 +38,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.otterworks</groupId>
+                <artifactId>portal-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-configuration2</artifactId>

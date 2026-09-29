@@ -215,13 +215,27 @@ Hibernate 6 (Boot 3 step) changes the generated PostgreSQL DDL for ids and would
 `Instant`; what was measured and pinned is in §12. The target "own credentials per schema" model
 replaces the single `legacyportal` owner.
 
-## 7. `common` package
+## 7. `common` package → `services/portal-common`
+
+Moved out of the monolith into the Boot 3 library `services/portal-common` (package
+`com.otterworks.portal.common`), a module of the `services/portal-parent` reactor. Every portal
+service gets it by depending on `com.otterworks:portal-common`; nothing is copied.
+`PortalCommonAutoConfiguration` (registered in
+`META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`, servlet
+applications only, each bean `@ConditionalOnMissingBean`) and `PortalCommonEnvironmentPostProcessor`
+provide:
 
 | Class | What it does | Used by |
 |---|---|---|
-| `HealthController` | `GET /health` → `{"status":"UP","service":"legacy-portal","banner":"OtterWorks Portal (on-prem) - contact portal-support@otterworks.example"}` | ops / healthchecks (Dockerfile, `docker-compose.onprem.yml`), `LegacyPortalApplicationTest`. Depends on `PortalBrandingSettings`. `service` is a hard-coded literal each extracted service must replace. |
-| `GlobalExceptionHandler` | error mapping, §2 | announcements (404, 400 on bad `{id}` / `publishedOnly`); feedback (service-level only); userpreferences (none) |
-| `PortalBrandingSettings` | `@Component`, `@PostConstruct` loads `portal-settings.properties` from the classpath via commons-configuration2 `FileBasedConfigurationBuilder<PropertiesConfiguration>`; `bannerText()`, `supportContact()`, `interpolate(template)` | `HealthController`; `PortalBrandingSettingsTest`; `deps/DependencyTranscriptEmitterTest` (dependency harness) |
+| `HealthController` | `GET /health` → `{"status":"UP","service":"<service>","banner":"OtterWorks Portal (on-prem) - contact portal-support@otterworks.example"}`. `service` is `portal.common.service-name`, defaulting to `spring.application.name` (`legacy-portal` for the monolith). | ops / healthchecks (Dockerfile, `docker-compose.onprem.yml`), `LegacyPortalApplicationTest`, `HealthControllerTest`. Depends on `PortalBrandingSettings`. |
+| `GlobalExceptionHandler` | error mapping, §2 | announcements (404, 400 on bad `{id}` / `publishedOnly`); feedback (service-level only); userpreferences (none); `GlobalExceptionHandlerTest` |
+| `PortalBrandingSettings` | `@PostConstruct` loads `portal-settings.properties` (shipped in the library jar) from the classpath via commons-configuration2 `FileBasedConfigurationBuilder<PropertiesConfiguration>`; `bannerText()`, `supportContact()`, `interpolate(template)` | `HealthController`; `PortalBrandingSettingsTest`; legacy-portal `deps/DependencyTranscriptEmitterTest` (dependency harness) |
+| `LegacyWebMvcConfig` | trailing-slash match, §12 | every route |
+| `PortalCommonEnvironmentPostProcessor` | lowest-precedence defaults `server.error.include-*` and `spring.mvc.problemdetails.enabled: false`, §12 (a service's own configuration still wins) | every service's default error body |
+
+No domain code lives in the library. Its own tests (`services/portal-common/src/test`) cover the
+error mapping, the health payload, the auto-configuration conditions, the pinned defaults and a
+sample service booted with only the library (`app/PortalCommonServiceTest`).
 
 `portal-settings.properties`:
 
@@ -234,7 +248,9 @@ portal.classification=${base64Decoder:SU5URVJOQUw=}
 
 The interpolation behaviour of this file is under contract in `security/deps` (§9): the
 banner/support values, `base64Decoder`, `sys:`, `file:` resolve; `script:` and `url:` must stay
-unresolved. Whatever library carries `PortalBrandingSettings` after the split inherits that contract.
+unresolved. `portal-common` carries `PortalBrandingSettings` and inherits that contract; the
+transcript is still recorded through legacy-portal (`cases/legacy-portal.json`), and
+`portal-common` is registered in `security/deps/modules.yaml` for its tree and suite.
 
 ## 8. Proof: no cross-context imports or calls
 
@@ -305,7 +321,7 @@ In-module deploy/run artifacts that model the "runs on a VM today" path (all ass
 | `announcements/AnnouncementServiceTest` | `@DataJpaTest` (real H2 URL, `Replace.NONE`) | announcements |
 | `userpreferences/UserPreferenceServiceTest` | `@DataJpaTest` | userpreferences |
 | `feedback/FeedbackServiceTest` | `@DataJpaTest` | feedback |
-| `common/PortalBrandingSettingsTest` | plain unit | common |
+| portal-common `PortalBrandingSettingsTest`, `GlobalExceptionHandlerTest`, `HealthControllerTest`, `PortalCommonAutoConfigurationTest`, `PortalCommonEnvironmentPostProcessorTest`, `app/PortalCommonServiceTest` | library suite (§7), run by the reactor | common |
 | `deps/DependencyTranscriptEmitterTest` | skipped unless the `security/deps` harness passes `-Dow.deps.*` | common |
 
 `./mvnw verify` on JDK 11 at `main` @ `cc23bf19` was **red** (16 run, 1 failure, 1 skipped):
@@ -343,10 +359,10 @@ unchanged and pass on H2 and PostgreSQL.
 
 | Boot 3 default change | Old behaviour kept | Where |
 |---|---|---|
-| Spring 6 no longer matches a trailing slash (`GET /api/announcements/` → **404**, measured with the pin removed) | Trailing slash matches the mapped route (`GET /api/announcements/`, `GET /api/preferences/{userId}/` → 200) | `common/LegacyWebMvcConfig` (`setUseTrailingSlashMatch(true)`, deprecated in Spring 6, removed in 7); `LegacyPortalApplicationTest.trailingSlashMatchesTheMappedRoute` |
+| Spring 6 no longer matches a trailing slash (`GET /api/announcements/` → **404**, measured with the pin removed) | Trailing slash matches the mapped route (`GET /api/announcements/`, `GET /api/preferences/{userId}/` → 200) | portal-common `LegacyWebMvcConfig` (`setUseTrailingSlashMatch(true)`, deprecated in Spring 6, removed in 7); `LegacyPortalApplicationTest.trailingSlashMatchesTheMappedRoute`, `PortalCommonServiceTest` |
 | Hibernate 6 maps `Instant` to `timestamp(6) with time zone` | `created_at` stays `timestamp` (without time zone) | `@JdbcTypeCode(SqlTypes.TIMESTAMP)` on `Announcement.createdAt` and `Feedback.createdAt` |
-| RFC 7807 problem details available for MVC exceptions | Off: MVC exceptions still render Boot's default error body (§2) | `spring.mvc.problemdetails.enabled: false` |
-| Error attribute exposure (unchanged between 2.7 and 3.5, pinned so extracted services inherit it) | No `message`, `errors`, `exception` or `trace` in the default body | `server.error.include-message: never`, `include-binding-errors: never`, `include-stacktrace: never`, `include-exception: false` |
+| RFC 7807 problem details available for MVC exceptions | Off: MVC exceptions still render Boot's default error body (§2) | `spring.mvc.problemdetails.enabled: false`, supplied by portal-common `PortalCommonEnvironmentPostProcessor` |
+| Error attribute exposure (unchanged between 2.7 and 3.5, pinned so extracted services inherit it) | No `message`, `errors`, `exception` or `trace` in the default body | `server.error.include-message: never`, `include-binding-errors: never`, `include-stacktrace: never`, `include-exception: false`, supplied by portal-common `PortalCommonEnvironmentPostProcessor` |
 
 ### Measured, no pin needed
 

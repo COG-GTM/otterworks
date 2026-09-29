@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.common;
+package com.otterworks.portal.common;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

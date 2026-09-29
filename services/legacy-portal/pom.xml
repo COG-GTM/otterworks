@@ -36,15 +36,11 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- Portal branding/settings file with interpolation -->
+        <!-- /health, error mapping, branding settings (Commons Configuration) and the
+             pinned Boot 3 web defaults, shared by every portal service. -->
         <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-configuration2</artifactId>
-        </dependency>
-        <!-- Required at runtime by the Commons Configuration builder API -->
-        <dependency>
-            <groupId>commons-beanutils</groupId>
-            <artifactId>commons-beanutils</artifactId>
+            <groupId>com.otterworks</groupId>
+            <artifactId>portal-common</artifactId>
         </dependency>
 
         <!-- Embedded DB used by the default profile, run-onprem.sh, and tests. -->

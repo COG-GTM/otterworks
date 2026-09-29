@@ -1,12 +1,7 @@
 server:
   port: 8095
-  # Error body contract (DECOMPOSITION.md §12): Boot's default error body without message,
-  # binding errors, exception or trace. These are the Boot defaults, pinned explicitly.
-  error:
-    include-message: never
-    include-binding-errors: never
-    include-stacktrace: never
-    include-exception: false
+  # server.error.include-* and spring.mvc.problemdetails.enabled come from portal-common
+  # (DECOMPOSITION.md §12).
 
 spring:
   application:
@@ -22,9 +17,6 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-  mvc:
-    problemdetails:
-      enabled: false
 
 management:
   endpoints:

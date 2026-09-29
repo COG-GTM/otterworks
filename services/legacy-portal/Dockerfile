@@ -9,10 +9,12 @@ FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 COPY portal-parent/pom.xml portal-parent/
+COPY portal-common/pom.xml portal-common/
 COPY legacy-portal/pom.xml legacy-portal/
 # Download dependencies first for Docker layer caching.
 RUN mvn -B -f portal-parent/pom.xml -pl :legacy-portal -am dependency:go-offline
 
+COPY portal-common/src/main/ portal-common/src/main/
 COPY legacy-portal/src/ legacy-portal/src/
 RUN mvn -B -f portal-parent/pom.xml -pl :legacy-portal -am package -DskipTests
 

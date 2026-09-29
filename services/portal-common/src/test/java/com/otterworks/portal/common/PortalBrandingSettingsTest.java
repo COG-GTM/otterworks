@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.common;
+package com.otterworks.portal.common;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

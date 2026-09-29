@@ -48,6 +48,21 @@ modules:
     test: -B test
     cases: cases/legacy-portal.json
 
+  - id: portal-common
+    path: services/portal-common
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    tool:
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :portal-common
+      - mvn -f ../portal-parent/pom.xml -pl :portal-common
+    test: -B test
+    # Carries PortalBrandingSettings and Commons Configuration for every portal
+    # service; its interpolation contract is recorded through the consuming service
+    # (cases/legacy-portal.json), so this entry measures the tree and the suite.
+    cases: null
+
   - id: notification-service
     path: services/notification-service
     build: gradle

@@ -141,8 +141,8 @@ module_tests() {
 
 build_modules() {
   local goal dir name tests
-  goal=verify
-  [[ "${SKIP_MODULE_TESTS}" == "1" ]] && goal="-DskipTests package"
+  goal="clean verify"
+  [[ "${SKIP_MODULE_TESTS}" == "1" ]] && goal="clean package -DskipTests"
   local cmd="cd ${REACTOR_DIR#"${REPO_ROOT}/"} && ./mvnw -B ${goal} (JDK ${REACTOR_JDK})"
   log "building reactor: ${cmd}"
   # shellcheck disable=SC2086
@@ -150,7 +150,7 @@ build_modules() {
     while read -r dir; do
       name="$(basename "${dir}")"
       tests="$(module_tests "${dir}")"
-      record "PASS module ${name}: ${cmd}${tests:+ - ${tests}}"
+      record "PASS module ${name}: ${cmd}${tests:+ - ${name}: ${tests}}"
     done < <(reactor_modules)
   else
     tail -60 "${WORK_DIR}/reactor-build.log" >&2

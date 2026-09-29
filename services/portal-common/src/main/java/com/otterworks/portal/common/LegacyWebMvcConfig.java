@@ -1,6 +1,5 @@
-package com.otterworks.legacyportal.common;
+package com.otterworks.portal.common;
 
-import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -8,7 +7,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * Keeps the portal's route matching as clients know it: {@code /api/announcements/} matches
  * {@code /api/announcements}. See DECOMPOSITION.md, "Pinned framework defaults".
  */
-@Configuration
 public class LegacyWebMvcConfig implements WebMvcConfigurer {
 
     @Override

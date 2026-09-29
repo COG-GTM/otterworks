@@ -71,6 +71,7 @@ jobs:
             legacy-portal:
               - 'services/legacy-portal/**'
               - 'services/portal-parent/**'
+              - 'services/portal-common/**'
             api-tests:
               - 'tests/api/**'
               - 'docs/api-route-matrix.md'

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.otterworks</groupId>
+        <artifactId>portal-parent</artifactId>
+        <version>0.1.0</version>
+        <relativePath>../portal-parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>portal-common</artifactId>
+    <packaging>jar</packaging>
+    <name>OtterWorks Portal Common</name>
+    <description>Spring Boot auto-configuration shared by every portal service: /health payload,
+        JSON error mapping, portal branding settings and the pinned Boot 3 web defaults.
+        No domain code.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Commons Configuration 2.8.0 — portal settings file with interpolation -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-configuration2</artifactId>
+        </dependency>
+        <!-- Required at runtime by the Commons Configuration builder API -->
+        <dependency>
+            <groupId>commons-beanutils</groupId>
+            <artifactId>commons-beanutils</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

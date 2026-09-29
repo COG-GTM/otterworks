@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.common;
+package com.otterworks.portal.common;
 
 import jakarta.annotation.PostConstruct;
 import org.apache.commons.configuration2.Configuration;
@@ -6,7 +6,6 @@ import org.apache.commons.configuration2.PropertiesConfiguration;
 import org.apache.commons.configuration2.builder.FileBasedConfigurationBuilder;
 import org.apache.commons.configuration2.builder.fluent.Parameters;
 import org.apache.commons.configuration2.ex.ConfigurationException;
-import org.springframework.stereotype.Component;
 
 /**
  * Portal branding strings, loaded from {@code portal-settings.properties} with Commons
@@ -16,7 +15,6 @@ import org.springframework.stereotype.Component;
  * prefixed lookups), which is why this loads through Commons Configuration rather than
  * Spring's own property binding.
  */
-@Component
 public class PortalBrandingSettings {
 
     private static final String SETTINGS_FILE = "portal-settings.properties";
