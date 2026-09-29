@@ -21,7 +21,7 @@ name: DAST Scan
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, siemens-demo]
     paths:
       - 'services/**'
       - 'infrastructure/helm/**'
