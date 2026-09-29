@@ -11,7 +11,11 @@ process. It exists as a realistic **"before" state** for two migration demos:
   by package **and by database schema**, so the seams for splitting it into services are obvious.
 
 > This component is part of the OtterWorks **golden app** as a durable before-state. The
-> after-state (EC2/ASG IaC, decomposed services) is intentionally **not** included here.
+> decomposed after-state lives alongside it: [`announcements-service`](../announcements-service),
+> [`user-preferences-service`](../user-preferences-service) and [`feedback-service`](../feedback-service)
+> (Spring Boot 3 / Java 17, one schema each), held to this monolith's behavior by the transcript
+> harness in [`parity/legacy-portal`](../../parity/legacy-portal). Cutover and rollback:
+> [`docs/runbooks/legacy-portal-decomposition.md`](../../docs/runbooks/legacy-portal-decomposition.md).
 
 ## Bounded contexts
 

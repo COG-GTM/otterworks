@@ -23,6 +23,9 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 | admin-service | Ruby 3.3 (Rails) | `db:schema:load`, `rspec` (with Postgres service container) | **Fixed** (was failing due to missing `table_name`) |
 | audit-service | C# / .NET 8 | `dotnet restore`, `dotnet build`, `dotnet test` | Passing |
 | report-service | Java 8 (Maven) — **LEGACY** | `mvn compile`, `mvn test`, `mvn package` | Passing |
+| announcements-service | Java 17 (Maven, Spring Boot 3) | `./mvnw verify` | New |
+| user-preferences-service | Java 17 (Maven, Spring Boot 3) | `./mvnw verify` | New |
+| feedback-service | Java 17 (Maven, Spring Boot 3) | `./mvnw verify` | New |
 | web-app | Node.js 20 (Next.js) | `npm ci`, `npm run lint`, `npm test`, `npm run build` | Passing |
 | admin-dashboard | Node.js 20 (Angular) | `npm ci`, `npm run lint \|\| true`, `npm test \|\| true`, `npm run build` | Passing |
 | infrastructure | Terraform 1.7 | `terraform fmt -check`, `terraform init`, `terraform validate` | Passing |

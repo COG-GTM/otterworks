@@ -55,6 +55,9 @@ make down
 | Admin Service | Ruby 3.3 | Rails 7.1 | 8089 | Admin dashboard backend |
 | Audit Service | C# 12 | ASP.NET 8 | 8090 | Immutable audit trail, compliance |
 | Report Service *(legacy)* | Java 8 | Spring Boot 2.5 | 8091 | PDF/CSV/Excel report generation (tech-debt: upgrade target Java 17+, Spring Boot 3.2+) |
+| Announcements Service | Java 17 | Spring Boot 3 | 8092 | Portal announcements (extracted from legacy-portal) |
+| User Preferences Service | Java 17 | Spring Boot 3 | 8093 | Portal user preferences (extracted from legacy-portal) |
+| Feedback Service | Java 17 | Spring Boot 3 | 8094 | Portal feedback and ratings (extracted from legacy-portal) |
 
 > **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
 
@@ -170,7 +173,11 @@ otterworks/
 │   ├── analytics-service/ #   Scala / Akka HTTP
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
-│   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   ├── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   ├── legacy-portal/     #   Java 11 / Spring Boot 2.7 modular monolith (decomposition before-state)
+│   ├── announcements-service/     # Java 17 / Spring Boot 3 (from legacy-portal)
+│   ├── user-preferences-service/  # Java 17 / Spring Boot 3 (from legacy-portal)
+│   └── feedback-service/          # Java 17 / Spring Boot 3 (from legacy-portal)
 ├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)
