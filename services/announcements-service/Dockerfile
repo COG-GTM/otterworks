@@ -8,8 +8,10 @@ FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /app
 COPY portal-parent/pom.xml portal-parent/
-COPY portal-common/pom.xml portal-common/
+# Every module the reactor lists must be present for Maven to read it; only this one's sources are copied.
 COPY announcements-service/pom.xml announcements-service/
+COPY legacy-portal/pom.xml legacy-portal/
+COPY portal-common/pom.xml portal-common/
 # Download dependencies first for Docker layer caching.
 RUN mvn -B -f portal-parent/pom.xml -pl :announcements-service -am dependency:go-offline
 

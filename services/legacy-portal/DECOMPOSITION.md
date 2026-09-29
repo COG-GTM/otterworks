@@ -400,7 +400,7 @@ feedback-service copy this layout; only the names, the port and the DDL change.
 services/<context>-service/
 ├── pom.xml                      parent portal-parent (relativePath ../portal-parent/pom.xml), finalName <context>-service
 ├── Dockerfile                   build context services/ (the reactor)
-├── Dockerfile.dockerignore      allow-list: reactor POMs, portal-common/src/main, <module>/src/main
+├── Dockerfile.dockerignore      allow-list: every reactor module's pom.xml, portal-common/src/main, <module>/src/main
 ├── .gitignore                   target/ (also listed in the root .gitignore)
 ├── scripts/initdb.sh            PostgreSQL init: the service's own role + schema (see "Data ownership")
 └── src/
@@ -415,7 +415,8 @@ services/<context>-service/
         └── <Context>PostgresIT.java                Testcontainers PostgreSQL, `postgres` profile
 ```
 
-- Registered in the same commit as a `<module>` of `services/portal-parent/pom.xml`, in
+- Registered in the same commit as a `<module>` of `services/portal-parent/pom.xml` (and its
+  `pom.xml` added to every other reactor module's `Dockerfile` / `Dockerfile.dockerignore`), in
   `security/deps/modules.yaml` (JDK 17, `tool: ../portal-parent/mvnw ... -pl :<module> -am`),
   and in the `legacy-portal` paths filter of `ci.yml` and the triggers of `deps-remediation.yml`.
 - Dependencies: web, data-jpa, validation, actuator, `portal-common` (version managed by the
@@ -467,8 +468,9 @@ same commit. `docker-compose.onprem.yml` mounts each service's `initdb.sh` next 
 ### Dockerfile
 
 Same shape as the monolith's: `maven:3.9-eclipse-temurin-17` builder over the `services/`
-context (copy reactor POMs → `dependency:go-offline -pl :<module> -am` → copy `src/main` →
-`package -DskipTests`), then `eclipse-temurin:17-jre-jammy` with curl, `useradd -r -u 1001 appuser`,
+context (copy the POM of **every** module the reactor lists, since Maven must read them all even
+with `-pl`; → `dependency:go-offline -pl :<module> -am` → copy only portal-common's and this module's
+`src/main` → `package -DskipTests`), then `eclipse-temurin:17-jre-jammy` with curl, `useradd -r -u 1001 appuser`,
 `USER appuser`, `EXPOSE <port>`, `HEALTHCHECK curl -f http://localhost:<port>/health`,
 `ENTRYPOINT ["java", "-jar", "app.jar"]`. Built with `docker build -f <module>/Dockerfile services/`.
 
