@@ -29,7 +29,7 @@ jobs:
       demo-platform: ${{ steps.changes.outputs.demo-platform }}
       infrastructure: ${{ steps.changes.outputs.infrastructure }}
       report-service: ${{ steps.changes.outputs.report-service }}
-      legacy-portal: ${{ steps.changes.outputs.legacy-portal }}
+      portal-services: ${{ steps.changes.outputs.portal-services }}
       api-tests: ${{ steps.changes.outputs.api-tests }}
     steps:
       - uses: actions/checkout@v4
@@ -68,8 +68,7 @@ jobs:
               - 'infrastructure/**'
             report-service:
               - 'services/report-service/**'
-            legacy-portal:
-              - 'services/legacy-portal/**'
+            portal-services:
               - 'services/portal-parent/**'
               - 'services/portal-common/**'
               - 'services/announcements-service/**'
@@ -339,11 +338,11 @@ jobs:
       - run: mvn test -B
       - run: mvn package -DskipTests -B -q
 
-  # Java 17 / Maven - Legacy Portal reactor (services/portal-parent). Uses the
+  # Java 17 / Maven - portal services reactor (services/portal-parent). Uses the
   # checked-in wrapper rather than the runner's mvn: the portal pins its own Maven.
-  legacy-portal:
+  portal-services:
     needs: detect-changes
-    if: needs.detect-changes.outputs.legacy-portal == 'true'
+    if: needs.detect-changes.outputs.portal-services == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

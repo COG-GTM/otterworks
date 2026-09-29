@@ -5,7 +5,6 @@ on:
     paths:
       - "security/deps/**"
       - "services/report-service/**"
-      - "services/legacy-portal/**"
       - "services/portal-parent/**"
       - "services/portal-common/**"
       - "services/announcements-service/**"
@@ -18,7 +17,6 @@ on:
     paths:
       - "security/deps/**"
       - "services/report-service/**"
-      - "services/legacy-portal/**"
       - "services/portal-parent/**"
       - "services/portal-common/**"
       - "services/announcements-service/**"

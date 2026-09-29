@@ -1,5 +1,9 @@
 # legacy-portal decomposition inventory
 
+> Moved here from `services/legacy-portal/DECOMPOSITION.md` when the step `legacy-portal(compose)`
+> retired the empty monolith module; see the last section for the current state. Sections 1–13
+> are the record of each step as it was measured and keep their original file references.
+
 Baseline inventory for splitting `services/legacy-portal` (one Spring Boot 2.7 / Java 11 JVM,
 three bounded contexts) into **announcements-service**, **preferences-service** and
 **feedback-service** on Spring Boot 3 / JDK 17.
@@ -528,3 +532,38 @@ removes it.
 | announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
 | userpreferences | `services/preferences-service` (`com.otterworks.preferences`) | 8097 | role `preferences` |
 | feedback | `services/feedback-service` (`com.otterworks.feedback`) | 8098 | role `feedback` |
+
+### State after `legacy-portal(compose)`
+
+The three services run together from the root compose files, like the rest of OtterWorks, and
+the monolith is gone: `services/legacy-portal` (module, `Dockerfile`, `docker-compose.onprem.yml`,
+`scripts/run-onprem.sh`, `scripts/initdb.sql`, `deploy/legacy-portal.service`, README) is deleted
+and `portal-parent` lists only `portal-common` and the three services.
+
+- **Compose**: `docker-compose.yml` adds `announcements-service` (8096), `preferences-service`
+  (8097) and `feedback-service` (8098), each built from the `services/` context with
+  `SPRING_PROFILES_ACTIVE=postgres` against `jdbc:postgresql://postgres:5432/otterworks` (the
+  `docker-compose.infra.yml` database) as its own role, healthchecked on `/actuator/health`
+  (includes the datasource). They start after `portal-db-init`, a one-shot `postgres:15-alpine`
+  container that waits for a healthy `postgres` and runs `scripts/init-portal-db.sh`, which runs
+  every service's `scripts/initdb.sh` (now idempotent: create the role if missing, reset its
+  password, create the schema it owns). Running on every start also covers an existing
+  `postgres_data` volume, which `/docker-entrypoint-initdb.d` would skip.
+- **Make**: `portal-build`, `portal-up` (`up -d --wait`, all three healthy), `portal-down`,
+  `portal-reset` (drops the three schemas via `PORTAL_DB_RESET=1` and restarts the services, so
+  parity sees empty tables). `make parity-legacy-portal` now defaults to :8096/:8097/:8098.
+- **Verification**: `verify-stage.sh` has profiles `h2`, `postgres` (JARs on the host against
+  the root compose postgres) and `compose` (the service images, `up --wait`, ownership and
+  connection role checked in `pg_stat_activity`); the PostgreSQL profiles run in an isolated
+  compose project (`otterworks-portal-verify`) so the developer stack is untouched.
+- **Dependency harness**: the interpolation transcript follows `PortalBrandingSettings` into
+  `portal-common` (`cases/portal-common.json`, emitter in its test sources, Nashorn on its test
+  classpath). The cases and expected files are renamed byte-for-byte, so the recorded
+  baseline's `cases_sha256` still matches and nothing is re-recorded; their `"module"` field keeps
+  the recording's original id, `legacy-portal` (the harness keys on the registry id and file name).
+
+| Context | Served by | Port | Schema owner (PostgreSQL) |
+|---|---|---|---|
+| announcements | `announcements-service` in `docker-compose.yml` | 8096 | role `announcements` |
+| userpreferences | `preferences-service` in `docker-compose.yml` | 8097 | role `preferences` |
+| feedback | `feedback-service` in `docker-compose.yml` | 8098 | role `feedback` |

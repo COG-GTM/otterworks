@@ -5,7 +5,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
  * Keeps the portal's route matching as clients know it: {@code /api/announcements/} matches
- * {@code /api/announcements}. See DECOMPOSITION.md, "Pinned framework defaults".
+ * {@code /api/announcements}. See docs/legacy-portal-decomposition.md, "Pinned framework defaults".
  */
 public class LegacyWebMvcConfig implements WebMvcConfigurer {
 

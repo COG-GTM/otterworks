@@ -57,7 +57,7 @@ jobs:
           java-version: '8'
       - run: mvn test -B
 
-  legacy-portal-tests:
+  portal-services-tests:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -71,7 +71,7 @@ jobs:
       - run: ./mvnw test -B
 
   build-and-push:
-    needs: [auth-service-tests, report-service-tests, legacy-portal-tests]
+    needs: [auth-service-tests, report-service-tests, portal-services-tests]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

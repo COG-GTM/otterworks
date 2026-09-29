@@ -1,6 +1,6 @@
 # Java 17 announcements-service (extracted from legacy-portal). Multi-stage Maven build of the
-# portal-parent reactor, non-root JRE runtime. Like legacy-portal it runs on the on-prem / VM
-# stack (docker-compose.onprem.yml); it is not on the Helm/EKS deploy path yet.
+# portal-parent reactor, non-root JRE runtime. Runs in the root docker-compose.yml (make portal-up);
+# it is not on the Helm/EKS deploy path yet.
 #
 # Build context is services/ (the portal-parent reactor), e.g. from services/announcements-service:
 #   docker build -f Dockerfile ..
@@ -12,7 +12,6 @@ COPY portal-parent/pom.xml portal-parent/
 COPY announcements-service/pom.xml announcements-service/
 COPY preferences-service/pom.xml preferences-service/
 COPY feedback-service/pom.xml feedback-service/
-COPY legacy-portal/pom.xml legacy-portal/
 COPY portal-common/pom.xml portal-common/
 # Download dependencies first for Docker layer caching.
 RUN mvn -B -f portal-parent/pom.xml -pl :announcements-service -am dependency:go-offline

@@ -29,25 +29,6 @@ modules:
     test: -B test
     cases: cases/report-service.json
 
-  - id: legacy-portal
-    path: services/legacy-portal
-    build: maven
-    # JDK 17. Its script case is a contract (Commons Configuration refuses the
-    # lookup); standalone Nashorn stays on its test classpath so the refusal is
-    # measured with a JavaScript engine present, as it was on JDK 11.
-    java_home:
-      - $JAVA_HOME_17_X64
-      - /usr/lib/jvm/java-17-openjdk-amd64
-    # Built as a module of the services/portal-parent reactor, which pins its own
-    # Maven (3.9.9) via the wrapper — the same tool ci.yml builds it with. `-am` also
-    # builds the reactor modules it depends on; the module's own results come last.
-    # `mvn` is the fallback for a machine that cannot reach the wrapper's distribution.
-    tool:
-      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :legacy-portal -am
-      - mvn -f ../portal-parent/pom.xml -pl :legacy-portal -am
-    test: -B test
-    cases: cases/legacy-portal.json
-
   - id: announcements-service
     path: services/announcements-service
     build: maven
@@ -59,7 +40,7 @@ modules:
       - mvn -f ../portal-parent/pom.xml -pl :announcements-service -am
     test: -B test
     # Extracted from legacy-portal; reaches Commons Configuration only through
-    # portal-common, whose contract is recorded via cases/legacy-portal.json.
+    # portal-common, whose contract is recorded via cases/portal-common.json.
     cases: null
 
   - id: preferences-service
@@ -73,7 +54,7 @@ modules:
       - mvn -f ../portal-parent/pom.xml -pl :preferences-service -am
     test: -B test
     # Extracted from legacy-portal; reaches Commons Configuration only through
-    # portal-common, whose contract is recorded via cases/legacy-portal.json.
+    # portal-common, whose contract is recorded via cases/portal-common.json.
     cases: null
 
   - id: feedback-service
@@ -87,7 +68,7 @@ modules:
       - mvn -f ../portal-parent/pom.xml -pl :feedback-service -am
     test: -B test
     # Extracted from legacy-portal; reaches Commons Configuration only through
-    # portal-common, whose contract is recorded via cases/legacy-portal.json.
+    # portal-common, whose contract is recorded via cases/portal-common.json.
     cases: null
 
   - id: portal-common
@@ -96,14 +77,18 @@ modules:
     java_home:
       - $JAVA_HOME_17_X64
       - /usr/lib/jvm/java-17-openjdk-amd64
+    # Built as a module of the services/portal-parent reactor, which pins its own
+    # Maven (3.9.9) via the wrapper — the same tool ci.yml builds it with. `mvn` is the
+    # fallback for a machine that cannot reach the wrapper's distribution.
     tool:
       - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :portal-common
       - mvn -f ../portal-parent/pom.xml -pl :portal-common
     test: -B test
     # Carries PortalBrandingSettings and Commons Configuration for every portal
-    # service; its interpolation contract is recorded through the consuming service
-    # (cases/legacy-portal.json), so this entry measures the tree and the suite.
-    cases: null
+    # service, so it records the interpolation contract itself. Its script case is a
+    # contract (Commons Configuration refuses the lookup); standalone Nashorn stays on
+    # its test classpath so the refusal is measured with a JavaScript engine present.
+    cases: cases/portal-common.json
 
   - id: notification-service
     path: services/notification-service
@@ -137,8 +122,8 @@ modules:
 exempt:
   - path: services/portal-parent
     reason: >
-      Parent POM / reactor aggregator (packaging pom) for the legacy-portal
-      decomposition. Declares no dependencies of its own; every module it lists is
+      Parent POM / reactor aggregator (packaging pom) for the portal services
+      (legacy-portal decomposition). Declares no dependencies of its own; every module it lists is
       registered above and measured on its own.
   - path: frontend/client-app/mobile/android
     reason: >

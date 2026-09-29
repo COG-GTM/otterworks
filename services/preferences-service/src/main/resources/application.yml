@@ -1,7 +1,7 @@
 server:
   port: 8097
   # server.error.include-* and spring.mvc.problemdetails.enabled come from portal-common
-  # (DECOMPOSITION.md §12).
+  # (docs/legacy-portal-decomposition.md §12).
 
 spring:
   application:
@@ -40,7 +40,7 @@ spring:
     activate:
       on-profile: postgres
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/legacyportal}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/otterworks}
     username: ${SPRING_DATASOURCE_USERNAME:preferences}
     password: ${SPRING_DATASOURCE_PASSWORD:preferences}
     driver-class-name: org.postgresql.Driver

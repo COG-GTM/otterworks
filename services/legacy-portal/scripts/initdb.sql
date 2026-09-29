@@ -1,6 +1,0 @@
--- One schema per bounded context still served by the monolith. These are the decomposition
--- seams: each schema moves to its own service when that context is extracted.
--- announcements is owned by announcements-service (services/announcements-service/scripts/initdb.sh).
--- user_preferences is owned by preferences-service (services/preferences-service/scripts/initdb.sh).
--- feedback is owned by feedback-service (services/feedback-service/scripts/initdb.sh).
--- No context is left in the monolith, so it creates no schema.

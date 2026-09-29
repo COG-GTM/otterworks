@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.deps;
+package com.otterworks.portal.common.deps;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 

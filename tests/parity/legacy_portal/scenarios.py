@@ -1,4 +1,4 @@
-"""Parity scenarios for every route in services/legacy-portal/DECOMPOSITION.md.
+"""Parity scenarios for every route in docs/legacy-portal-decomposition.md.
 
 Order matters only where a context has global state: each ``*_empty_state`` scenario
 must run before anything writes to that context, and ``announcements_validation`` writes

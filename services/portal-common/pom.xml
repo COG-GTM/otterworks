@@ -40,5 +40,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- JDK 15+ no longer ships Nashorn. Keeping a JavaScript engine on the test
+             classpath means the dependency transcript's script-lookup contract case is
+             still refused by Commons Configuration, not by a missing engine. -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>
