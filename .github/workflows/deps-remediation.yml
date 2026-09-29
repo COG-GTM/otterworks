@@ -26,8 +26,8 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           version: latest
-      # 17 first so $JAVA_HOME_17_X64 exists for the Gradle modules, then 11 as the
-      # ambient JDK the Maven modules build on.
+      # 17 first so $JAVA_HOME_17_X64 exists for the Gradle modules and report-service,
+      # then 11 as the ambient JDK, which legacy-portal is pinned to.
       - uses: actions/setup-java@8df1039502a15bceb9433410b1a100fbe190c53b # v4
         with:
           distribution: temurin
