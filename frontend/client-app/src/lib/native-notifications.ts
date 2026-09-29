@@ -7,6 +7,23 @@ let notificationId = 0;
 // audible while muting routine completion notices.
 const UPLOAD_ERROR_CHANNEL_ID = "upload-errors";
 
+// Android drops notifications posted to a channel that does not exist.
+let uploadErrorChannel: Promise<void> | undefined;
+
+function ensureUploadErrorChannel(): Promise<void> {
+  if (Capacitor.getPlatform() !== "android") return Promise.resolve();
+  uploadErrorChannel ??= LocalNotifications.createChannel({
+    id: UPLOAD_ERROR_CHANNEL_ID,
+    name: "Upload errors",
+    description: "Alerts when a file could not be uploaded",
+    importance: 4,
+  }).catch((err: unknown) => {
+    uploadErrorChannel = undefined;
+    throw err;
+  });
+  return uploadErrorChannel;
+}
+
 async function hasDisplayPermission(): Promise<boolean> {
   const { display } = await LocalNotifications.checkPermissions();
   if (display === "granted") return true;
@@ -20,6 +37,7 @@ async function notify(title: string, body: string, channelId?: string): Promise<
   if (!Capacitor.isNativePlatform()) return;
   try {
     if (!(await hasDisplayPermission())) return;
+    if (channelId === UPLOAD_ERROR_CHANNEL_ID) await ensureUploadErrorChannel();
     await LocalNotifications.schedule({
       notifications: [{ id: ++notificationId, title, body, channelId }],
     });
