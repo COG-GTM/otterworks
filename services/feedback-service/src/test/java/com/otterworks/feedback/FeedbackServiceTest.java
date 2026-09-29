@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.feedback;
+package com.otterworks.feedback;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

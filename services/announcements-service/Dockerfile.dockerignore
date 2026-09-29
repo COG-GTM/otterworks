@@ -4,6 +4,7 @@
 !portal-common/pom.xml
 !legacy-portal/pom.xml
 !preferences-service/pom.xml
+!feedback-service/pom.xml
 !portal-common/src/main/
 !announcements-service/pom.xml
 !announcements-service/src/main/

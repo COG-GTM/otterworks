@@ -9,13 +9,15 @@
 # The single tenant database holds one schema per context. announcements is owned by its own
 # role (created by announcements-service/scripts/initdb.sh) and served by announcements-service
 # on :8096; user_preferences likewise by preferences-service (preferences-service/scripts/initdb.sh)
-# on :8097; the monolith keeps feedback on :8095.
+# on :8097; feedback likewise by feedback-service (feedback-service/scripts/initdb.sh) on :8098.
+# The monolith on :8095 no longer serves any context.
 #
 #   Usage (from services/legacy-portal/):
 #     docker compose -f docker-compose.onprem.yml up --build
 #     curl http://localhost:8095/health
 #     curl http://localhost:8096/health
 #     curl http://localhost:8097/health
+#     curl http://localhost:8098/health
 #     docker compose -f docker-compose.onprem.yml down -v
 services:
   legacy-portal-db:
@@ -27,10 +29,12 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-legacyportal}
       ANNOUNCEMENTS_DB_PASSWORD: ${ANNOUNCEMENTS_DB_PASSWORD:-announcements}
       PREFERENCES_DB_PASSWORD: ${PREFERENCES_DB_PASSWORD:-preferences}
+      FEEDBACK_DB_PASSWORD: ${FEEDBACK_DB_PASSWORD:-feedback}
     volumes:
       - ./scripts/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
       - ../announcements-service/scripts/initdb.sh:/docker-entrypoint-initdb.d/announcements-service.sh:ro
       - ../preferences-service/scripts/initdb.sh:/docker-entrypoint-initdb.d/preferences-service.sh:ro
+      - ../feedback-service/scripts/initdb.sh:/docker-entrypoint-initdb.d/feedback-service.sh:ro
       - legacy-portal-db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U legacyportal -d legacyportal"]
@@ -100,6 +104,28 @@ services:
       - "8097:8097"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8097/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 40s
+      retries: 5
+
+  feedback-service:
+    build:
+      context: ..
+      dockerfile: feedback-service/Dockerfile
+    container_name: feedback-service
+    depends_on:
+      legacy-portal-db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://legacy-portal-db:5432/legacyportal
+      SPRING_DATASOURCE_USERNAME: feedback
+      SPRING_DATASOURCE_PASSWORD: ${FEEDBACK_DB_PASSWORD:-feedback}
+    ports:
+      - "8098:8098"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8098/health"]
       interval: 10s
       timeout: 5s
       start_period: 40s

@@ -6,11 +6,11 @@ server:
 spring:
   application:
     name: legacy-portal
-  # Default profile: embedded H2 with ONE SCHEMA PER BOUNDED CONTEXT still in the monolith.
-  # The feedback schema is the remaining decomposition seam; announcements and user_preferences
-  # have moved to services/announcements-service and services/preferences-service (DECOMPOSITION.md §13).
+  # Default profile: embedded H2. Every bounded context has moved to its own service
+  # (services/{announcements,preferences,feedback}-service, DECOMPOSITION.md §13); the monolith
+  # owns no schema any more.
   datasource:
-    url: 'jdbc:h2:mem:legacyportal;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;INIT=CREATE SCHEMA IF NOT EXISTS FEEDBACK'
+    url: 'jdbc:h2:mem:legacyportal;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE'
     username: sa
     password: ''
     driver-class-name: org.h2.Driver
@@ -30,8 +30,8 @@ management:
 
 ---
 # On-prem / VM profile: talks to a real PostgreSQL running alongside the app on the VM
-# (see docker-compose.onprem.yml and scripts/run-onprem.sh). The monolith's schemas are
-# created by scripts/initdb.sql at database init time.
+# (see docker-compose.onprem.yml and scripts/run-onprem.sh). The monolith owns no schema:
+# each extracted service's scripts/initdb.sh creates its own role and schema.
 spring:
   config:
     activate:

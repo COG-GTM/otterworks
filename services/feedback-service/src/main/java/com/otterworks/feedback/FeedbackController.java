@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.feedback;
+package com.otterworks.feedback;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;

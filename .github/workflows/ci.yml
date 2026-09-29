@@ -74,6 +74,7 @@ jobs:
               - 'services/portal-common/**'
               - 'services/announcements-service/**'
               - 'services/preferences-service/**'
+              - 'services/feedback-service/**'
             api-tests:
               - 'tests/api/**'
               - 'docs/api-route-matrix.md'

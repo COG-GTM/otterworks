@@ -24,6 +24,7 @@
         <module>../portal-common</module>
         <module>../announcements-service</module>
         <module>../preferences-service</module>
+        <module>../feedback-service</module>
         <module>../legacy-portal</module>
     </modules>
 

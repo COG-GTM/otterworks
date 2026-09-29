@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.feedback;
+package com.otterworks.feedback;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

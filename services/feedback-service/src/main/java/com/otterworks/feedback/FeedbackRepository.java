@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.feedback;
+package com.otterworks.feedback;
 
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
