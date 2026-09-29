@@ -8,7 +8,9 @@
 #      services/{announcements,preferences,feedback}-service that exist.
 #   2. For each profile and run: start fresh local processes (H2 in-memory, or PostgreSQL
 #      from services/legacy-portal/docker-compose.onprem.yml recreated with `down -v`),
-#      replay tests/parity/legacy_portal against them, then stop everything.
+#      replay tests/parity/legacy_portal against them, then stop everything. Each extracted
+#      service connects to PostgreSQL with its own role (<context>/<CONTEXT>_DB_PASSWORD),
+#      and the monolith must answer 404 on the routes of every context it no longer serves.
 #   3. Print a summary usable as commit trailers and as the ticket status note.
 #
 # Contexts served by an extracted service are pointed at it (ANNOUNCEMENTS_URL etc.);
@@ -22,6 +24,8 @@
 #   PARITY_PG_PORT            host port for the parity PostgreSQL (default 55495)
 #   ANNOUNCEMENTS_PORT / PREFERENCES_PORT / FEEDBACK_PORT
 #                             ports for extracted services (default 8096 / 8097 / 8098)
+#   ANNOUNCEMENTS_DB_PASSWORD / PREFERENCES_DB_PASSWORD / FEEDBACK_DB_PASSWORD
+#                             PostgreSQL passwords of the per-service roles (default: role name)
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -46,7 +50,7 @@ while [[ $# -gt 0 ]]; do
     --runs) RUNS="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --skip-module-tests) SKIP_MODULE_TESTS=1; shift ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -82,15 +86,22 @@ jdk_home() {
   return 1
 }
 
-# name|dir|jdk|port|context url var ("" = serves every context not claimed by another module)
-MODULES=("legacy-portal|${PORTAL_DIR}|17|${MONOLITH_PORT}|")
+# name|dir|jdk|port|context url var ("" = serves every context not claimed by another module)|db role
+MODULES=("legacy-portal|${PORTAL_DIR}|17|${MONOLITH_PORT}||legacyportal")
+# Routes the monolith must no longer serve once their context is extracted.
+EXTRACTED_PROBES=()
 for ctx in announcements preferences feedback; do
   dir="${REPO_ROOT}/services/${ctx}-service"
   [[ -f "${dir}/pom.xml" ]] || continue
   upper="$(echo "${ctx}" | tr '[:lower:]' '[:upper:]')"
   port_var="${upper}_PORT"
-  case "${ctx}" in announcements) default_port=8096 ;; preferences) default_port=8097 ;; *) default_port=8098 ;; esac
-  MODULES+=("${ctx}-service|${dir}|17|${!port_var:-${default_port}}|${upper}_URL")
+  case "${ctx}" in
+    announcements) default_port=8096; probe=/api/announcements ;;
+    preferences) default_port=8097; probe=/api/preferences/parity-probe ;;
+    *) default_port=8098; probe=/api/feedback/average-rating ;;
+  esac
+  MODULES+=("${ctx}-service|${dir}|17|${!port_var:-${default_port}}|${upper}_URL|${ctx}")
+  EXTRACTED_PROBES+=("${ctx}|${probe}")
 done
 
 stop_processes() {
@@ -129,11 +140,16 @@ reactor_modules() {
   done
 }
 
-# "Tests run: N, Failures: F, Errors: E, Skipped: S" summed over a module's surefire reports.
+# "Tests run: N, Failures: F, Errors: E, Skipped: S" summed over a module's surefire
+# (unit) and failsafe (*IT integration) reports.
 module_tests() {
-  local reports="$1/target/surefire-reports"
-  compgen -G "${reports}/TEST-*.xml" >/dev/null || return 0
-  sed -n 's/.*<testsuite [^>]*>.*/&/p' "${reports}"/TEST-*.xml | awk '
+  local -a reports=()
+  local kind
+  for kind in surefire failsafe; do
+    compgen -G "$1/target/${kind}-reports/TEST-*.xml" >/dev/null && reports+=("$1/target/${kind}-reports"/TEST-*.xml)
+  done
+  [[ ${#reports[@]} -gt 0 ]] || return 0
+  sed -n 's/.*<testsuite [^>]*>.*/&/p' "${reports[@]}" | awk '
     { for (i = 1; i <= NF; i++) if (match($i, /^(tests|failures|errors|skipped)="[0-9]+"/)) {
         split($i, kv, "\""); sub(/=.*/, "", kv[1]); n[kv[1]] += kv[2] } }
     END { printf "Tests run: %d, Failures: %d, Errors: %d, Skipped: %d", n["tests"], n["failures"], n["errors"], n["skipped"] }'
@@ -160,20 +176,36 @@ build_modules() {
 }
 
 start_postgres() {
+  local entry name role upper
   cat >"${WORK_DIR}/compose.parity.yml" <<YAML
 services:
   legacy-portal-db:
     ports:
       - "127.0.0.1:${PG_PORT}:5432"
+    environment:
 YAML
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r name _ _ _ _ role <<<"${entry}"
+    [[ "${name}" == legacy-portal ]] && continue
+    upper="$(echo "${role}" | tr '[:lower:]' '[:upper:]')"
+    echo "      ${upper}_DB_PASSWORD: \"$(db_password "${role}")\"" >>"${WORK_DIR}/compose.parity.yml"
+  done
   docker compose -f "${COMPOSE_FILE}" -f "${WORK_DIR}/compose.parity.yml" down -v >/dev/null 2>&1 || true
   PG_STARTED=1
   DB_PASSWORD="${DB_PASSWORD}" docker compose -f "${COMPOSE_FILE}" -f "${WORK_DIR}/compose.parity.yml" \
     up -d --wait legacy-portal-db >"${WORK_DIR}/compose.log" 2>&1 || { cat "${WORK_DIR}/compose.log" >&2; return 1; }
 }
 
+# Password of a per-service PostgreSQL role: <ROLE>_DB_PASSWORD, defaulting to the role name.
+db_password() {
+  local var
+  [[ "$1" == legacyportal ]] && { echo "${DB_PASSWORD}"; return; }
+  var="$(echo "$1" | tr '[:lower:]' '[:upper:]')_DB_PASSWORD"
+  echo "${!var:-$1}"
+}
+
 start_module() {
-  local profile="$1" name="$2" dir="$3" jdk="$4" port="$5" run="$6"
+  local profile="$1" name="$2" dir="$3" jdk="$4" port="$5" run="$6" role="$7"
   local jar
   jar="$(find "${dir}/target" -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' ! -name '*.original' | head -1)"
   [[ -n "${jar}" ]] || { log "no jar under ${dir}/target"; return 1; }
@@ -182,8 +214,8 @@ start_module() {
     env_args+=(
       "SPRING_PROFILES_ACTIVE=postgres"
       "SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:${PG_PORT}/legacyportal"
-      "SPRING_DATASOURCE_USERNAME=legacyportal"
-      "SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}"
+      "SPRING_DATASOURCE_USERNAME=${role}"
+      "SPRING_DATASOURCE_PASSWORD=$(db_password "${role}")"
     )
   fi
   env "${env_args[@]}" "$(jdk_home "${jdk}")/bin/java" -jar "${jar}" \
@@ -203,8 +235,21 @@ wait_ready() {
   done
 }
 
+# The strangler cut: the monolith answers 404 on every extracted context's routes.
+check_extracted_routes() {
+  local entry ctx probe code
+  for entry in "${EXTRACTED_PROBES[@]+"${EXTRACTED_PROBES[@]}"}"; do
+    IFS='|' read -r ctx probe <<<"${entry}"
+    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${MONOLITH_PORT}${probe}")"
+    if [[ "${code}" != 404 ]]; then
+      log "legacy-portal still serves ${ctx}: GET ${probe} -> ${code} (expected 404)"
+      return 1
+    fi
+  done
+}
+
 run_parity() {
-  local profile="$1" run="$2" entry name dir jdk port url_var
+  local profile="$1" run="$2" entry name dir jdk port url_var role
   local -a url_env=()
   if lsof -iTCP:"${MONOLITH_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
     log "port ${MONOLITH_PORT} is already in use; stop the running legacy-portal first"
@@ -212,14 +257,15 @@ run_parity() {
   fi
   [[ "${profile}" == "postgres" ]] && { start_postgres || return 1; }
   for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name dir jdk port url_var <<<"${entry}"
-    start_module "${profile}" "${name}" "${dir}" "${jdk}" "${port}" "${run}" || return 1
+    IFS='|' read -r name dir jdk port url_var role <<<"${entry}"
+    start_module "${profile}" "${name}" "${dir}" "${jdk}" "${port}" "${run}" "${role}" || return 1
     [[ -n "${url_var}" ]] && url_env+=("${url_var}=http://localhost:${port}")
   done
   for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name _ _ port _ <<<"${entry}"
+    IFS='|' read -r name _ _ port _ _ <<<"${entry}"
     wait_ready "${name}" "${port}" "${WORK_DIR}/${name}-${profile}-${run}.log" || return 1
   done
+  check_extracted_routes || { PARITY_RESULT="monolith still serves an extracted context"; return 1; }
   local out="${WORK_DIR}/parity-${profile}-${run}.log"
   local rc=0
   (cd "${REPO_ROOT}" && env ${url_env[@]+"${url_env[@]}"} \
@@ -254,7 +300,7 @@ done
 GOLDEN_AFTER="$(cd "${PARITY_DIR}/golden" && sha256sum ./*.json | sha256sum | cut -c1-12)"
 [[ "${GOLDEN_BEFORE}" == "${GOLDEN_AFTER}" ]] || { record "FAIL golden transcripts changed during verification"; FAILED=1; }
 
-targets="$(for entry in "${MODULES[@]}"; do IFS='|' read -r name _ _ port _ <<<"${entry}"; printf '%s:%s ' "${name}" "${port}"; done)"
+targets="$(for entry in "${MODULES[@]}"; do IFS='|' read -r name _ _ port _ _ <<<"${entry}"; printf '%s:%s ' "${name}" "${port}"; done)"
 echo
 echo "=== legacy-portal verify-stage summary ==="
 echo "commit:  $(git -C "${REPO_ROOT}" rev-parse --short HEAD)$(git -C "${REPO_ROOT}" diff --quiet HEAD -- || echo ' (dirty)')"

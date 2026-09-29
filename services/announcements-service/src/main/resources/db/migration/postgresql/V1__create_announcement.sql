@@ -1,0 +1,1 @@
+create table announcements.announcement (id  bigserial not null, body varchar(4000) not null, created_at timestamp not null, published boolean not null, title varchar(200) not null, primary key (id));

@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.announcements;
+package com.otterworks.announcements;
 
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;

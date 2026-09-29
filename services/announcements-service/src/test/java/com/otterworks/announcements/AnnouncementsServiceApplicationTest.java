@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal;
+package com.otterworks.announcements;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -13,11 +13,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Full-context test: the monolith boots and the routes of every context it still serves are wired. */
+/** Full-context test: the service boots on H2 with its Flyway schema and its routes are wired. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class LegacyPortalApplicationTest {
+class AnnouncementsServiceApplicationTest {
 
     @Autowired private MockMvc mockMvc;
 
@@ -26,7 +26,7 @@ class LegacyPortalApplicationTest {
         mockMvc.perform(get("/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("legacy-portal"));
+                .andExpect(jsonPath("$.service").value("announcements-service"));
     }
 
     @Test
@@ -35,26 +35,22 @@ class LegacyPortalApplicationTest {
     }
 
     @Test
-    void preferencesModuleReturnsDefaults() throws Exception {
-        mockMvc.perform(get("/api/preferences/newuser"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.theme").value("light"));
-    }
-
-    @Test
-    void feedbackModuleValidatesRating() throws Exception {
+    void announcementsModuleRoundTrips() throws Exception {
         mockMvc.perform(
-                        post("/api/feedback")
+                        post("/api/announcements")
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"userId\":\"u1\",\"rating\":9,\"message\":\"bad rating\"}"))
-                .andExpect(status().isBadRequest());
+                                        "{\"title\":\"Release\",\"body\":\"v1 is out\",\"published\":true}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber());
+
+        mockMvc.perform(get("/api/announcements"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Release"));
     }
 
     @Test
     void trailingSlashMatchesTheMappedRoute() throws Exception {
-        mockMvc.perform(get("/api/preferences/newuser/"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId").value("newuser"));
+        mockMvc.perform(get("/api/announcements/")).andExpect(status().isOk());
     }
 }

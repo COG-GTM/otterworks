@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.announcements;
+package com.otterworks.announcements;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

@@ -1,4 +1,4 @@
-package com.otterworks.legacyportal.announcements;
+package com.otterworks.announcements;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

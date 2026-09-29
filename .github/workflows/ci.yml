@@ -72,6 +72,7 @@ jobs:
               - 'services/legacy-portal/**'
               - 'services/portal-parent/**'
               - 'services/portal-common/**'
+              - 'services/announcements-service/**'
             api-tests:
               - 'tests/api/**'
               - 'docs/api-route-matrix.md'
@@ -352,7 +353,8 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: maven
-      - run: ./mvnw test -B
+      # verify also runs the *IT Testcontainers PostgreSQL tests (Docker is on the runner).
+      - run: ./mvnw verify -B
 
   # Terraform validation
   infrastructure:
