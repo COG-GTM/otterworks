@@ -388,3 +388,111 @@ unchanged and pass on H2 and PostgreSQL.
   `security/deps/modules.yaml` runs the module on JDK 17 and the recorded cases/expected
   transcript are unchanged (all 7 cases match).
 
+
+## 13. Extracted-service template (set by announcements-service)
+
+Step `legacy-portal(announcements)` extracted the first context. preferences-service and
+feedback-service copy this layout; only the names, the port and the DDL change.
+
+### Module layout
+
+```
+services/<context>-service/
+├── pom.xml                      parent portal-parent (relativePath ../portal-parent/pom.xml), finalName <context>-service
+├── Dockerfile                   build context services/ (the reactor)
+├── Dockerfile.dockerignore      allow-list: reactor POMs, portal-common/src/main, <module>/src/main
+├── .gitignore                   target/ (also listed in the root .gitignore)
+├── scripts/initdb.sh            PostgreSQL init: the service's own role + schema (see "Data ownership")
+└── src/
+    ├── main/java/com/otterworks/<context>/        moved package, base package renamed only
+    │   └── <Context>ServiceApplication.java        plain @SpringBootApplication
+    ├── main/resources/application.yml
+    ├── main/resources/db/migration/h2/V1__create_<table>.sql
+    ├── main/resources/db/migration/postgresql/V1__create_<table>.sql
+    └── test/java/com/otterworks/<context>/
+        ├── <X>ServiceTest.java                     moved @DataJpaTest, package renamed only
+        ├── <Context>ServiceApplicationTest.java    @SpringBootTest + MockMvc on H2, @Transactional
+        └── <Context>PostgresIT.java                Testcontainers PostgreSQL, `postgres` profile
+```
+
+- Registered in the same commit as a `<module>` of `services/portal-parent/pom.xml`, in
+  `security/deps/modules.yaml` (JDK 17, `tool: ../portal-parent/mvnw ... -pl :<module> -am`),
+  and in the `legacy-portal` paths filter of `ci.yml` and the triggers of `deps-remediation.yml`.
+- Dependencies: web, data-jpa, validation, actuator, `portal-common` (version managed by the
+  parent), `flyway-core` + `flyway-database-postgresql`, H2 and PostgreSQL drivers (runtime);
+  tests: `spring-boot-starter-test`, `spring-boot-testcontainers`, Testcontainers `junit-jupiter`
+  and `postgresql` (all versions from the Boot BOM). `maven-failsafe-plugin` is declared so
+  `*IT` classes run in `verify`.
+- Nothing from portal-common is copied: `/health` (reports `spring.application.name`), the
+  `GlobalExceptionHandler` mappings, branding, trailing-slash matching and the `server.error.*` /
+  problem-details pins (§7, §12) arrive through its auto-configuration.
+
+### Config keys (`application.yml`)
+
+| Key | Default document (H2, local runs) | `postgres` profile (compose stack) |
+|---|---|---|
+| `server.port` | announcements **8096**, preferences 8097, feedback 8098 | same |
+| `spring.application.name` | `<context>-service` | same |
+| `spring.datasource.url` | `jdbc:h2:mem:<context>;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;DATABASE_TO_LOWER=TRUE` | `${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/legacyportal}` |
+| `spring.datasource.username` / `password` | `sa` / empty | `${SPRING_DATASOURCE_USERNAME:<context>}` / `${SPRING_DATASOURCE_PASSWORD:<context>}` |
+| `spring.flyway.schemas` / `default-schema` | `<schema>` | same |
+| `spring.flyway.locations` | `classpath:db/migration/{vendor}` | same |
+| `spring.flyway.create-schemas` | default (`true`: Flyway creates the H2 schema) | `false`: the schema exists and is owned by the role |
+| `spring.jpa.hibernate.ddl-auto` | `validate` | same |
+| `management.*` | `health,info` exposure, `probes.enabled: true` | same |
+
+`DATABASE_TO_LOWER=TRUE` makes H2 fold unquoted identifiers to lower case as PostgreSQL does,
+so Flyway's schema, the migration DDL and the entity's `schema = "<schema>"` agree without the
+monolith's `INIT=CREATE SCHEMA` URL. Hibernate is never allowed to create or alter tables.
+
+### Flyway naming
+
+- One directory per vendor, selected by `{vendor}`: `db/migration/h2`, `db/migration/postgresql`.
+- `V<n>__<verb>_<table>.sql`, lower-case snake case; V1 is `V1__create_<table>.sql`.
+- V1 reproduces the DDL recorded in §3/§4/§5 **character for character** for that vendor
+  (the Boot 2.7 `ddl-auto: update` output, including `bigserial` on PostgreSQL rather than the
+  identity column Hibernate 6 would now generate, §12). Existing monolith databases therefore
+  already match V1; a later step that attaches a service to a pre-populated schema uses
+  `spring.flyway.baseline-on-migrate` rather than editing V1.
+- `flyway_schema_history` lives in the service's own schema.
+
+### Data ownership (PostgreSQL)
+
+`scripts/initdb.sh` runs from `/docker-entrypoint-initdb.d` of the tenant database container and
+creates a login role named after the context (password `<CONTEXT>_DB_PASSWORD`, local default = the
+role name) plus `CREATE SCHEMA <schema> AUTHORIZATION <role>`, with `PUBLIC` revoked. The service
+connects only as that role; the monolith's `scripts/initdb.sql` stops creating the schema in the
+same commit. `docker-compose.onprem.yml` mounts each service's `initdb.sh` next to `initdb.sql`.
+
+### Dockerfile
+
+Same shape as the monolith's: `maven:3.9-eclipse-temurin-17` builder over the `services/`
+context (copy reactor POMs → `dependency:go-offline -pl :<module> -am` → copy `src/main` →
+`package -DskipTests`), then `eclipse-temurin:17-jre-jammy` with curl, `useradd -r -u 1001 appuser`,
+`USER appuser`, `EXPOSE <port>`, `HEALTHCHECK curl -f http://localhost:<port>/health`,
+`ENTRYPOINT ["java", "-jar", "app.jar"]`. Built with `docker build -f <module>/Dockerfile services/`.
+
+### Tests
+
+| Test | What it proves |
+|---|---|
+| moved `@DataJpaTest` (package rename only) | repository/service behaviour, now on the Flyway schema under `ddl-auto: validate` |
+| `<Context>ServiceApplicationTest` | the context boots on H2; `/health` reports `<context>-service`; `/actuator/health`; the route round trip that lived in `LegacyPortalApplicationTest`; trailing-slash pin |
+| `<Context>PostgresIT` | `postgres:15-alpine` initialised with the module's `initdb.sh`; connects as the service role; the role owns the schema; Flyway V1 applied; column types/lengths/nullability and the `<schema>.<table>_id_seq` sequence match §3–§5; a write/read round trip |
+
+### Strangler cut
+
+In the same stack of commits the package and its tests are `git mv`'d out of legacy-portal,
+the context's round trip leaves `LegacyPortalApplicationTest`, the schema leaves the monolith's
+H2 URL and `initdb.sql`, and `verify-stage.sh` (which starts every `services/<context>-service`
+with a `pom.xml`, exports `<CONTEXT>_URL`, connects it as its own role on PostgreSQL) fails the
+stage if the monolith still answers anything but 404 on the extracted context's routes. The
+golden transcripts are never re-recorded.
+
+### State after `legacy-portal(announcements)`
+
+| Context | Served by | Port | Schema owner (PostgreSQL) |
+|---|---|---|---|
+| announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
+| userpreferences | legacy-portal | 8095 | `legacyportal` |
+| feedback | legacy-portal | 8095 | `legacyportal` |

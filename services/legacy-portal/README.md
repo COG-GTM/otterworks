@@ -21,7 +21,7 @@ and the datasource. That is exactly what makes this a good decomposition candida
 
 | Context | Package | Schema | Routes |
 |---|---|---|---|
-| Announcements | `com.otterworks.legacyportal.announcements` | `announcements` | `GET/POST /api/announcements`, `GET /api/announcements/{id}`, `POST /api/announcements/{id}/publish` |
+| Announcements | extracted to [`announcements-service`](../announcements-service/README.md) (port 8096) | `announcements` | `GET/POST /api/announcements`, `GET /api/announcements/{id}`, `POST /api/announcements/{id}/publish` |
 | User Preferences | `com.otterworks.legacyportal.userpreferences` | `user_preferences` | `GET /api/preferences/{userId}`, `PUT /api/preferences/{userId}` |
 | Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
 
@@ -67,8 +67,9 @@ curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v
 ```
 
-This brings up PostgreSQL alongside the app; the three schemas are created by
-[`scripts/initdb.sql`](scripts/initdb.sql). This stack is intentionally separate from the
+This brings up PostgreSQL alongside the monolith and announcements-service (:8096); the monolith's
+schemas are created by [`scripts/initdb.sql`](scripts/initdb.sql), the `announcements` schema and its
+role by [`../announcements-service/scripts/initdb.sh`](../announcements-service/scripts/initdb.sh). This stack is intentionally separate from the
 Helm/EKS deploy path — it models the on-prem host the rehost demo lifts *from*.
 
 ## Legacy markers (upgrade targets)
