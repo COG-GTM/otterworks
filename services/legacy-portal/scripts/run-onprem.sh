@@ -15,18 +15,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REACTOR_DIR="$(cd "${APP_DIR}/../portal-parent" && pwd)"
 JAR="${APP_DIR}/target/legacy-portal.jar"
 
-cd "${APP_DIR}"
-
 if [[ "${SKIP_BUILD:-0}" != "1" || ! -f "${JAR}" ]]; then
-  echo "[run-onprem] Building legacy-portal fat JAR..."
-  if [[ -x ./mvnw ]]; then
-    ./mvnw -B -DskipTests package
+  echo "[run-onprem] Building legacy-portal fat JAR (reactor: services/portal-parent)..."
+  if [[ -x "${REACTOR_DIR}/mvnw" ]]; then
+    (cd "${REACTOR_DIR}" && ./mvnw -B -DskipTests -pl :legacy-portal -am package)
   else
-    mvn -B -DskipTests package
+    (cd "${REACTOR_DIR}" && mvn -B -DskipTests -pl :legacy-portal -am package)
   fi
 fi
+
+cd "${APP_DIR}"
 
 echo "[run-onprem] Starting legacy-portal on port ${SERVER_PORT:-8095}..."
 exec java -jar "${JAR}"

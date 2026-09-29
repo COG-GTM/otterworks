@@ -29,8 +29,9 @@ services:
 
   legacy-portal:
     build:
-      context: .
-      dockerfile: Dockerfile
+      # The reactor (portal-parent + modules) lives under services/.
+      context: ..
+      dockerfile: legacy-portal/Dockerfile
     container_name: legacy-portal
     depends_on:
       legacy-portal-db:

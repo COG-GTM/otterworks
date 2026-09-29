@@ -38,12 +38,13 @@ modules:
     java_home:
       - $JAVA_HOME_17_X64
       - /usr/lib/jvm/java-17-openjdk-amd64
-    # It pins its own Maven (3.9.9) via the wrapper — the same
-    # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
-    # reach the wrapper's distribution.
+    # Built as a module of the services/portal-parent reactor, which pins its own
+    # Maven (3.9.9) via the wrapper — the same tool ci.yml builds it with. `-am` also
+    # builds the reactor modules it depends on; the module's own results come last.
+    # `mvn` is the fallback for a machine that cannot reach the wrapper's distribution.
     tool:
-      - ./mvnw
-      - mvn
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :legacy-portal -am
+      - mvn -f ../portal-parent/pom.xml -pl :legacy-portal -am
     test: -B test
     cases: cases/legacy-portal.json
 
@@ -77,6 +78,11 @@ modules:
     cases: null
 
 exempt:
+  - path: services/portal-parent
+    reason: >
+      Parent POM / reactor aggregator (packaging pom) for the legacy-portal
+      decomposition. Declares no dependencies of its own; every module it lists is
+      registered above and measured on its own.
   - path: frontend/client-app/mobile/android
     reason: >
       Capacitor Android shell. Ships no server-side JVM dependencies and needs the

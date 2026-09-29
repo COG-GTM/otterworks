@@ -1,0 +1,5 @@
+# Context is services/: send only the reactor POMs and sources this image builds.
+*
+!portal-parent/pom.xml
+!legacy-portal/pom.xml
+!legacy-portal/src/

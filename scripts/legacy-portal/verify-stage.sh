@@ -2,8 +2,10 @@
 # ------------------------------------------------------------------------------
 # Verify one stage of the legacy-portal decomposition locally (nothing is deployed).
 #
-#   1. Build and test every available module: services/legacy-portal and any of
-#      services/{announcements,preferences,feedback}-service that exist (all JDK 17).
+#   1. Build and test the Maven reactor (services/portal-parent, JDK 17): every module it
+#      lists, i.e. services/legacy-portal, the shared libraries and any extracted service.
+#      Runtime targets are services/legacy-portal and any of
+#      services/{announcements,preferences,feedback}-service that exist.
 #   2. For each profile and run: start fresh local processes (H2 in-memory, or PostgreSQL
 #      from services/legacy-portal/docker-compose.onprem.yml recreated with `down -v`),
 #      replay tests/parity/legacy_portal against them, then stop everything.
@@ -25,6 +27,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PORTAL_DIR="${REPO_ROOT}/services/legacy-portal"
+REACTOR_DIR="${REPO_ROOT}/services/portal-parent"
+REACTOR_JDK=17
 PARITY_DIR="${REPO_ROOT}/tests/parity/legacy_portal"
 COMPOSE_FILE="${PORTAL_DIR}/docker-compose.onprem.yml"
 MONOLITH_PORT=8095
@@ -118,24 +122,41 @@ record() {
   log "$1"
 }
 
-build_modules() {
-  local entry name dir jdk goal
-  for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name dir jdk _ _ <<<"${entry}"
-    goal=verify
-    [[ "${SKIP_MODULE_TESTS}" == "1" ]] && goal="-DskipTests package"
-    log "building ${name} (JDK ${jdk}): ./mvnw -B ${goal}"
-    # shellcheck disable=SC2086
-    if (cd "${dir}" && JAVA_HOME="$(jdk_home "${jdk}")" ./mvnw -B ${goal} >"${WORK_DIR}/${name}-build.log" 2>&1); then
-      local tests
-      tests="$(grep -E '^\[(INFO|WARNING|ERROR)\] Tests run:' "${WORK_DIR}/${name}-build.log" | tail -1 | sed -E 's/^\[[A-Z]+\] //')"
-      record "PASS module ${name}: cd ${dir#"${REPO_ROOT}/"} && ./mvnw -B ${goal} (JDK ${jdk})${tests:+ - ${tests}}"
-    else
-      tail -60 "${WORK_DIR}/${name}-build.log" >&2
-      record "FAIL module ${name}: cd ${dir#"${REPO_ROOT}/"} && ./mvnw -B ${goal} (JDK ${jdk})"
-      FAILED=1
-    fi
+# Module directories listed in the reactor POM, in declaration order.
+reactor_modules() {
+  sed -n 's:.*<module>\(.*\)</module>.*:\1:p' "${REACTOR_DIR}/pom.xml" | while read -r rel; do
+    (cd "${REACTOR_DIR}/${rel}" && pwd)
   done
+}
+
+# "Tests run: N, Failures: F, Errors: E, Skipped: S" summed over a module's surefire reports.
+module_tests() {
+  local reports="$1/target/surefire-reports"
+  compgen -G "${reports}/TEST-*.xml" >/dev/null || return 0
+  sed -n 's/.*<testsuite [^>]*>.*/&/p' "${reports}"/TEST-*.xml | awk '
+    { for (i = 1; i <= NF; i++) if (match($i, /^(tests|failures|errors|skipped)="[0-9]+"/)) {
+        split($i, kv, "\""); sub(/=.*/, "", kv[1]); n[kv[1]] += kv[2] } }
+    END { printf "Tests run: %d, Failures: %d, Errors: %d, Skipped: %d", n["tests"], n["failures"], n["errors"], n["skipped"] }'
+}
+
+build_modules() {
+  local goal dir name tests
+  goal=verify
+  [[ "${SKIP_MODULE_TESTS}" == "1" ]] && goal="-DskipTests package"
+  local cmd="cd ${REACTOR_DIR#"${REPO_ROOT}/"} && ./mvnw -B ${goal} (JDK ${REACTOR_JDK})"
+  log "building reactor: ${cmd}"
+  # shellcheck disable=SC2086
+  if (cd "${REACTOR_DIR}" && JAVA_HOME="$(jdk_home "${REACTOR_JDK}")" ./mvnw -B ${goal} >"${WORK_DIR}/reactor-build.log" 2>&1); then
+    while read -r dir; do
+      name="$(basename "${dir}")"
+      tests="$(module_tests "${dir}")"
+      record "PASS module ${name}: ${cmd}${tests:+ - ${tests}}"
+    done < <(reactor_modules)
+  else
+    tail -60 "${WORK_DIR}/reactor-build.log" >&2
+    record "FAIL reactor: ${cmd}"
+    FAILED=1
+  fi
 }
 
 start_postgres() {

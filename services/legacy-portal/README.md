@@ -40,9 +40,11 @@ exception handling).
 
 ## Build & test
 
+The module is built from the Maven reactor in `services/portal-parent` (parent POM + wrapper):
+
 ```bash
-cd services/legacy-portal
-./mvnw verify        # compile + run unit tests (uses embedded H2)
+cd services/portal-parent
+./mvnw verify        # compile + run unit tests of every portal module (uses embedded H2)
 ```
 
 ## Run
