@@ -21,8 +21,8 @@ The same image runs in docker compose and in Helm; everything is set through the
 |---|---|---|
 | `SERVER_PORT` | `8080` | |
 | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/otterworks` | tenant DB `otterworks_<ID>` in EKS |
-| `SPRING_DATASOURCE_USERNAME` | `otterworks` | |
-| `SPRING_DATASOURCE_PASSWORD` | `otterworks_dev` | |
+| `SPRING_DATASOURCE_USERNAME` | none (required) | |
+| `SPRING_DATASOURCE_PASSWORD` | none (required) | |
 | `SERVICE_DB_SCHEMA` | `service_template` | schema-per-service; Flyway creates it and keeps its history table there, Hibernate uses it as `default_schema` |
 
 ## Health / probes
@@ -48,6 +48,7 @@ cd services/service-template
 docker build -t otterworks/service-template:dev .
 docker run --rm -p 8080:8080 \
   -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/otterworks \
+  -e SPRING_DATASOURCE_USERNAME=otterworks -e SPRING_DATASOURCE_PASSWORD=otterworks_dev \
   otterworks/service-template:dev
 curl http://localhost:8080/readyz
 ```

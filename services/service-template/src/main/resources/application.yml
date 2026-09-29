@@ -11,8 +11,6 @@ spring:
     name: service-template
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/otterworks}
-    username: ${SPRING_DATASOURCE_USERNAME:otterworks}
-    password: ${SPRING_DATASOURCE_PASSWORD:otterworks_dev}
   jpa:
     open-in-view: false
     hibernate:
