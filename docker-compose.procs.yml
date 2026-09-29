@@ -1,0 +1,83 @@
+# Standalone legacy billing stack. This is intentionally separate from the
+# Helm/EKS deployment path and models the database-centric before state.
+services:
+  legacy-billing-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: billing_${NS:-dev}
+      POSTGRES_USER: billing
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-billing}
+    ports:
+      - "127.0.0.1:${PROCS_DB_PORT:-55432}:5432"
+    volumes:
+      - ./services/legacy-billing/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./services/legacy-billing/db/procs/plans.sql:/docker-entrypoint-initdb.d/02-plans.sql:ro
+      - ./services/legacy-billing/db/procs/rating.sql:/docker-entrypoint-initdb.d/03-rating.sql:ro
+      - ./services/legacy-billing/db/procs/invoicing.sql:/docker-entrypoint-initdb.d/04-invoicing.sql:ro
+      - ./services/legacy-billing/db/procs/dunning.sql:/docker-entrypoint-initdb.d/05-dunning.sql:ro
+      - ./services/legacy-billing/db/seed.sql:/docker-entrypoint-initdb.d/06-seed.sql:ro
+      - legacy-billing-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing -d billing_${NS:-dev}"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  legacy-billing:
+    build:
+      context: ./services/legacy-billing
+      dockerfile: Dockerfile
+    depends_on:
+      legacy-billing-db:
+        condition: service_healthy
+    environment:
+      DB_HOST: legacy-billing-db
+      DB_PORT: 5432
+      DB_NAME: billing_${NS:-dev}
+      DB_USER: billing
+      DB_PASSWORD: ${DB_PASSWORD:-billing}
+    ports:
+      - "127.0.0.1:${PROCS_APP_PORT:-8096}:8096"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8096/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  billing-service:
+    build:
+      context: ./services/billing-service
+      dockerfile: Dockerfile
+    depends_on:
+      billing-service-db:
+        condition: service_healthy
+    environment:
+      BILLING_SVC_DATABASE_URL: postgresql://billing_svc:billing_svc@billing-service-db:5432/billing_svc_${NS:-dev}
+      BILLING_SVC_ALLOW_INTERNAL_RESET: "true"
+    ports:
+      - "127.0.0.1:${PROCS_TARGET_PORT:-8097}:8097"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8097/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  billing-service-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: billing_svc_${NS:-dev}
+      POSTGRES_USER: billing_svc
+      POSTGRES_PASSWORD: billing_svc
+    ports:
+      - "127.0.0.1:${PROCS_TARGET_DB_PORT:-56432}:5432"
+    volumes:
+      - billing-service-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U billing_svc -d billing_svc_${NS:-dev}"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  legacy-billing-db-data:
+  billing-service-db-data:

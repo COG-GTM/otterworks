@@ -25,13 +25,15 @@ ingress:
       hosts:
         - admin-service.otterworks.workshop.example.com
 
+# Rails needs more headroom than the slim-service default: boot + db:migrate
+# on a throttled CPU takes minutes, and the VM comfortably exceeds 256Mi.
 resources:
   limits:
-    cpu: 500m
-    memory: 256Mi
+    cpu: "1"
+    memory: 512Mi
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 200m
+    memory: 256Mi
 
 healthCheck:
   path: /health

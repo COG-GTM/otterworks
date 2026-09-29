@@ -71,7 +71,7 @@ module Api
 
         def redis
           @redis ||= begin
-            url = ENV.fetch('REDIS_URL', "redis://#{ENV.fetch('REDIS_HOST', 'localhost')}:#{ENV.fetch('REDIS_PORT', '6379')}/0")
+            url = ServiceEnv.redis_url
             Redis.new(url: url, timeout: 2)
           end
         end

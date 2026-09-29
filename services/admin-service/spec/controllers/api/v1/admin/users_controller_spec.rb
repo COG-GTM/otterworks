@@ -6,6 +6,12 @@ RSpec.describe Api::V1::Admin::UsersController do
   describe 'GET #index' do
     let!(:users) { create_list(:admin_user, 3) }
 
+    it 'forbids user listings for non-admin roles' do
+      set_jwt_env(request, role: 'viewer')
+      get :index
+      expect(response).to have_http_status(:forbidden)
+    end
+
     it 'returns paginated user list' do
       get :index
       expect(response).to have_http_status(:ok)

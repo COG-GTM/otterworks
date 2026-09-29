@@ -1,0 +1,38 @@
+{
+  "business_fields": {
+    "amounts": [
+      "49.00",
+      "5.56",
+      "2.25",
+      "2.25",
+      "0.00"
+    ],
+    "line_numbers": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "totals": [
+      "49.00",
+      "5.56",
+      "2.25",
+      "2.25",
+      "0.00"
+    ]
+  },
+  "entrypoint": "billing.fn_invoice_preview",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "period_end": "2026-02-28",
+    "period_start": "2026-02-01",
+    "tenant_id": "00000000-0000-0000-0000-000000000006"
+  },
+  "module": "invoicing",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [],
+  "scenario": "INVOICE-001",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

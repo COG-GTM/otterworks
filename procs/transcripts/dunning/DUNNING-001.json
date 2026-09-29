@@ -1,0 +1,23 @@
+{
+  "business_fields": {
+    "days_overdue": [
+      27,
+      15
+    ],
+    "tenant_ids": [
+      "00000000-0000-0000-0000-000000000002",
+      "00000000-0000-0000-0000-000000000005"
+    ]
+  },
+  "entrypoint": "billing.fn_overdue_accounts",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "as_of": "2026-02-28"
+  },
+  "module": "dunning",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [],
+  "scenario": "DUNNING-001",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

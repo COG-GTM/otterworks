@@ -1,0 +1,18 @@
+id: INVOICE-005
+module: invoicing
+description: Issue tenant 6 for 2026-02-01 through 2026-02-28.
+entrypoint: billing.sp_issue_invoice
+kind: procedure
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000006}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+capture_query: "SELECT status, subtotal::text, tax::text, total::text FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000006' || '2026-02-01')::uuid"
+fields:
+  - {name: status, from: status, type: text}
+  - {name: tax, from: tax, type: decimal}
+  - {name: total, from: total, type: decimal}
+probes:
+  - id: invoice_state
+    collect_rows: true
+    query: "SELECT status, subtotal::text AS subtotal, tax::text AS tax, total::text FROM billing.invoices WHERE period_id = md5('00000000-0000-0000-0000-000000000006' || '2026-02-01')::uuid"

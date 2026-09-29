@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { X, Link2, Copy, Check, UserPlus, Globe, Lock, ChevronDown } from "lucide-react";
+import { X, Link2, Copy, Check, UserPlus, Globe, Lock, ChevronDown, AlertCircle } from "lucide-react";
+import { isAxiosError } from "axios";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
 import { filesApi } from "@/lib/api";
@@ -42,16 +43,33 @@ export function ShareDialog({
   const [linkAccess, setLinkAccess] = useState<LinkAccess>("restricted");
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+  const [shareError, setShareError] = useState<string | null>(null);
 
   const handleShare = async () => {
     if (!email.trim()) return;
     setIsSharing(true);
+    setShareError(null);
     try {
       await onShare(email.trim(), permission);
       setEmail("");
       toast.success(`Shared with ${email.trim()}`);
-    } catch {
-      toast.error("Failed to share file");
+    } catch (err) {
+      let detail = "";
+      let isAwsError = false;
+      if (isAxiosError(err)) {
+        const data = err.response?.data as
+          | { error?: string; message?: string }
+          | undefined;
+        detail = data?.message ?? "";
+        isAwsError = data?.error === "event_error" || data?.error === "storage_error";
+      }
+      const message = detail
+        ? isAwsError
+          ? `Sharing failed. AWS ${detail}`
+          : `Sharing failed: ${detail}`
+        : "Sharing failed.";
+      setShareError(message);
+      toast.error(message);
     } finally {
       setIsSharing(false);
     }
@@ -153,6 +171,15 @@ export function ShareDialog({
           <div className="px-6 py-5">
             {activeTab === "people" ? (
               <div className="space-y-4">
+                {shareError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700"
+                  >
+                    <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-red-500" />
+                    <span className="break-words min-w-0">{shareError}</span>
+                  </div>
+                )}
                 {/* Email input + permission */}
                 <div className="flex gap-2">
                   <input

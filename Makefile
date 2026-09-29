@@ -1,9 +1,59 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+PROCS_COMPOSE = docker compose -f docker-compose.procs.yml -p otterworks-procs-$(NS)
+PROCS_UV = uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2
+PROCS_PORT_OFFSET = $(shell if command -v python3 >/dev/null 2>&1 && test -n "$(NS)"; then python3 -c "import zlib; print(zlib.crc32('$(NS)'.encode()) % 1000)"; fi)
+PROCS_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(55432 + $(PROCS_PORT_OFFSET))")
+PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(8096 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
+PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
+PROCS_ENV = NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
+
+procs-validate:
+	@test -n "$(NS)" || (echo "NS is required, e.g. make procs-up NS=dev" >&2; exit 2)
+	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required for namespace port derivation" >&2; exit 2)
+	@test -n "$(PROCS_PORT_OFFSET)" || (echo "could not derive namespace port offset" >&2; exit 2)
+
+procs-up: procs-validate ## Start the legacy billing stored-procedure stack (NS=<namespace>)
+	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
+
+procs-down: procs-validate ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
+	$(PROCS_ENV) $(PROCS_COMPOSE) down -v
+
+procs-record: procs-validate ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
+	$(PROCS_ENV) DB_NAME=billing_$(NS) DB_PORT=$(PROCS_DB_PORT) $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),) $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),) $(if $(ALLOW_RERECORD),--allow-rerecord,) $(if $(RERECORD_REASON),--rerecord-reason $(RERECORD_REASON),)
+
+procs-list: ## List stored-procedure modules and scenarios
+	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
+
+procs-parity: procs-validate ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
+	$(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
+
+procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module> or ALL=1)
+	@test -n "$(MODULE)$(ALL)" || (echo "MODULE or ALL=1 is required" >&2; exit 2)
+	uv run --with pyyaml==6.0.2 procs/harness/rules_gate.py $(if $(ALL),--all,--module $(MODULE))
+
+# --- Industry Solutions: insurance Commission Pay (Oracle) ---
+
+INSURANCE_COMPOSE = docker compose -f docker-compose.insurance.yml -p otterworks-insurance-$(NS)
+INSURANCE_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(51521 + $(PROCS_PORT_OFFSET))")
+INSURANCE_ENV = NS=$(NS) INSURANCE_DB_PORT=$(INSURANCE_DB_PORT)
+INSURANCE_SQLPLUS = docker exec -i otterworks-insurance-$(NS)-insurance-oracle-1 sqlplus -s
+
+insurance-up: procs-validate ## Start the Oracle insurance Commission Pay fixture (NS=<namespace>)
+	$(INSURANCE_ENV) $(INSURANCE_COMPOSE) up -d --wait --wait-timeout 900
+
+insurance-down: procs-validate ## Stop the Oracle insurance fixture and drop its data (NS=<namespace>)
+	$(INSURANCE_ENV) $(INSURANCE_COMPOSE) down -v
+
+insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites (NS=<namespace>)
+	$(INSURANCE_SQLPLUS) commission_pay/commission_pay@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_tests.sql
+	$(INSURANCE_SQLPLUS) commission_dw/commission_dw@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_olap_tests.sql
 
 # --- Local Development ---
 
@@ -226,6 +276,110 @@ security-scan: ## Run security scans across all services
 	@echo ""
 	@echo "=== Report Service (skipped - legacy) ==="
 
+# --- Dynamic Application Security Testing (DAST) ---
+#
+# DAST attacks the *running* application through the API gateway. TARGET can be
+# the local stack (default), a tenant URL, or a preview environment.
+
+DAST_TARGET ?= http://localhost:8080
+# Each script declares its own dependencies (PEP 723), so `uv run` needs no --with.
+# Note that make reports 2 for any failed recipe: to act on the harness's own exit
+# codes (1 findings, 2 nothing tested, 3 no verdict), call security/dast/run.sh.
+DAST := uv run security/dast/harness/dast_scan.py
+DAST_COVERAGE := uv run security/dast/harness/dast_coverage.py
+
+dast-list: ## List the registered DAST attack probes
+	$(DAST) --list
+
+dast-scan: ## Run the DAST suite against a running app (DAST_TARGET=<url>), gated by the baseline
+	$(DAST) --target $(DAST_TARGET) $(if $(FAIL_ON),--fail-on $(FAIL_ON),)
+
+dast-verify: ## Prove one finding is remediated (FINDING=<id> DAST_TARGET=<url>); baseline is ignored
+ifndef FINDING
+	$(error FINDING is required, e.g. make dast-verify FINDING=DAST-MISSING-SECURITY-HEADERS)
+endif
+	$(DAST) --target $(DAST_TARGET) --only $(FINDING) --no-baseline --fail-on info
+
+dast-routes: ## List the edge-reachable routes read from the services' source
+	uv run security/dast/harness/route_inventory.py
+
+dast-coverage: ## Fail if a route the gateway proxies was never attacked by the last scan
+	$(DAST_COVERAGE)
+
+dast-test: ## Unit-test the harness itself (route extraction, coverage gate, perimeter verdicts)
+	uv run --python '>=3.11' --with pytest --with httpx --with pyyaml --with tabulate \
+		python -m pytest security/dast/harness/tests -q
+
+dast-baseline: ## Record current findings as accepted (REASON="...")
+	$(DAST) --target $(DAST_TARGET) --reason "$${REASON:-recorded by make dast-baseline}" --update-baseline
+
+dast-zap: ## Run the OWASP ZAP baseline sweep and merge it into the DAST report
+	@mkdir -p security/dast/reports
+# ZAP writes its report *and* its generated automation plan into its working
+# directory, and the image runs as uid 1000 while a CI runner is 1001 (running the
+# container as the host uid instead is not an option: ZAP needs /home/zap, which
+# only exists for uid 1000). Rather than open up a host directory, the working
+# directory is a throwaway docker volume chowned to the image's uid from inside a
+# container, so nothing on the host is ever writable by another local user. The
+# rule file goes in read-only, and the report is read back out through the volume.
+# The stale report is removed first, so "a report exists" can only mean this run
+# produced one.
+	@rm -f security/dast/reports/zap-report.json
+	@set -e; \
+	vol="dast-zap-$$$$"; \
+	trap 'docker volume rm -f "$$vol" >/dev/null 2>&1' EXIT INT TERM; \
+	docker volume create "$$vol" >/dev/null; \
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" \
+		ghcr.io/zaproxy/zaproxy:stable chown 1000:1000 /zap/wrk; \
+	docker run --rm --network host \
+		-v "$$vol:/zap/wrk" \
+		-v "$(CURDIR)/security/dast/zap/zap-baseline.conf:/zap/wrk/zap-baseline.conf:ro" \
+		ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+		-t $(DAST_TARGET) -c zap-baseline.conf -J zap-report.json -I || true; \
+	docker run --rm --user 0 -v "$$vol:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable \
+		sh -c 'cat /zap/wrk/zap-report.json 2>/dev/null' \
+		> security/dast/reports/zap-report.json || true; \
+	[ -s security/dast/reports/zap-report.json ] || rm -f security/dast/reports/zap-report.json
+# A ZAP failure must not cost the probe suite: the sweep still reports, without it.
+	@if [ -f security/dast/reports/zap-report.json ]; then \
+		$(DAST) --target $(DAST_TARGET) --zap-report security/dast/reports/zap-report.json; \
+	else \
+		echo "::warning::ZAP produced no report (see the log above); the passive sweep is"\
+		     "missing from this run. Running the probe suite on its own."; \
+		$(DAST) --target $(DAST_TARGET); \
+	fi
+
+# --- Dependency CVE remediation ---
+#
+# The advisory (security/deps/advisory.yaml) names the artifact and its vulnerable
+# range; modules.yaml registers every JVM module so the blast radius cannot be
+# partial. Reports land in security/deps/reports/ (git-ignored: collect them as CI
+# artifacts and paste the summary into the PR).
+
+DEPS := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 security/deps/harness/deps_check.py
+
+deps-inventory: ## Report the blast radius of the advisory across every JVM module
+	$(DEPS) inventory
+
+deps-gate: ## Fail if the vulnerable version is still reachable from any dependency tree
+	$(DEPS) gate
+
+deps-command: ## Print the harness invocation, for callers that need its exact exit code
+	@echo '$(DEPS)'
+
+deps-tests: ## Build and run every affected module's own suite (MODULE=<id> optional)
+	$(DEPS) tests $(if $(MODULE),--module $(MODULE),)
+
+deps-transcript: ## Grade interpolation behavior after remediation (MODULE=<id> optional)
+	$(DEPS) transcript --stage remediated $(if $(MODULE),--module $(MODULE),)
+
+deps-transcript-baseline: ## Prove the recorded before-state still reproduces (MODULE=<id> optional)
+	$(DEPS) transcript --stage baseline $(if $(MODULE),--module $(MODULE),)
+
+deps-record: ## Record the transcripts as the reference evidence (REASON="..." required)
+	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make deps-record REASON="baseline on commons-text 1.9"' >&2; exit 2)
+	$(DEPS) transcript --record --reason "$(REASON)" $(if $(MODULE),--module $(MODULE),) $(if $(ALLOW_RERECORD),--allow-rerecord,)
+
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test
 
@@ -239,3 +393,39 @@ batch-usage-rollup: ## Run the nightly usage-rollup batch job locally (OUT=<path
 
 batch-usage-rollup-seed: ## Regenerate the deterministic usage-rollup seed events
 	cd services/analytics-service && python3 scripts/generate_seed_events.py
+
+# --- Functional-equivalence gate for source-level security refactors ---
+#
+# security/equivalence/findings.yaml registers each finding (subject class,
+# methods, secure pattern) and each module's emit/test commands. The recorded
+# before-state lives in security/equivalence/expected/ and is fingerprinted
+# against the cases, the seed, the emitter and the subject sources. Reports land
+# in security/equivalence/reports/ (git-ignored: collect them as CI artifacts and
+# paste the summary into the PR).
+
+EQ := uv run --with pyyaml==6.0.2 --with tabulate==0.10.0 --with defusedxml==0.7.1 security/equivalence/harness/equivalence_check.py
+
+eq-list: ## List the registered findings and the state of their recorded evidence
+	$(EQ) list
+
+eq-gate: ## Grade every finding against its recorded evidence, before-state or refactored
+	$(EQ) grade --stage auto $(if $(FINDING),--finding $(FINDING),)
+
+eq-baseline: ## Prove the recorded before-state still reproduces (FINDING=<id> optional)
+	$(EQ) grade --stage baseline $(if $(FINDING),--finding $(FINDING),)
+
+eq-verify: ## Grade a refactor: contract cases unchanged, attacks neutralised (FINDING=<id> optional)
+	$(EQ) grade --stage remediated $(if $(FINDING),--finding $(FINDING),)
+
+eq-exploit: ## Report whether the attack cases still fire, ignoring the recording
+	$(EQ) exploit $(if $(FINDING),--finding $(FINDING),)
+
+eq-exploit-refactored: ## Require a closed exploit verdict from every finding whose subject changed
+	$(EQ) exploit --refactored-only $(if $(FINDING),--finding $(FINDING),)
+
+eq-tests: ## Run the affected module's own suite against the recorded pass list
+	$(EQ) tests $(if $(FINDING),--finding $(FINDING),)
+
+eq-record: ## Record the before-state as the reference evidence (REASON="..." required)
+	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make eq-record REASON="baseline before OW-SEC-401 refactor"' >&2; exit 2)
+	$(EQ) record --reason "$(REASON)" $(if $(FINDING),--finding $(FINDING),) $(if $(ALLOW_RERECORD),--allow-rerecord,)

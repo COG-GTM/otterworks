@@ -483,6 +483,10 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tenant-ingress
+  annotations:
+    # ingress-nginx defaults to 1m, which 413s uploads at the edge before they
+    # reach file-service. Match file-service's MAX_UPLOAD_BYTES (100 MB).
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
 spec:
   ingressClassName: nginx
   rules:
@@ -512,6 +516,7 @@ kind: Ingress
 metadata:
   name: tenant-ingress-api
   annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /api/\$2
 spec:
@@ -529,6 +534,7 @@ kind: Ingress
 metadata:
   name: tenant-ingress-web
   annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
     nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /\$2
 spec:

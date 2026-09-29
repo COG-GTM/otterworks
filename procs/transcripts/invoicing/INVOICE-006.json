@@ -1,0 +1,23 @@
+{
+  "business_fields": {
+    "amounts": [
+      "149.00",
+      "12.29"
+    ],
+    "line_types": [
+      "plan",
+      "usage"
+    ]
+  },
+  "entrypoint": "billing.fn_invoice_lines",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "invoice_id": "60000000-0000-0000-0000-000000000001"
+  },
+  "module": "invoicing",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [],
+  "scenario": "INVOICE-006",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

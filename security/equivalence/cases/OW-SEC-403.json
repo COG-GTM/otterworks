@@ -1,0 +1,70 @@
+{
+ "finding": "OW-SEC-403",
+ "module": "document-service",
+ "notes": [
+  "The token value itself is deliberately not part of the contract: a keyed",
+  "construction changes the bytes. What must survive is the observable behaviour",
+  "of a share link - it verifies, it is stable so existing links keep working,",
+  "and another document's token is rejected.",
+  "SHARE_LINK_SALT is pinned to the value shipped in the source so the forgery",
+  "probe uses nothing an attacker could not read from the repository.",
+  "SHARE_LINK_SECRET is the fixture's keying material for a keyed construction;",
+  "the before-state ignores it."
+ ],
+ "env": {
+  "SHARE_LINK_SALT": "otterworks-share",
+  "SHARE_LINK_SECRET": "fixture-share-secret-2b7f4c"
+ },
+ "interface": [
+  "app.services.share_link:ShareLinkService.mint_token",
+  "app.services.share_link:ShareLinkService.verify_token"
+ ],
+ "cases": [
+  {
+   "id": "contract-share-token-behaviour",
+   "policy": "contract",
+   "kind": "probe",
+   "probe": "share_link_contract",
+   "args": {
+    "document_id": "d0c00001-0000-4000-8000-000000000001",
+    "other_document_id": "d0c00004-0000-4000-8000-000000000004"
+   }
+  },
+  {
+   "id": "contract-http-share-link-round-trip",
+   "policy": "contract",
+   "kind": "probe",
+   "probe": "share_link_http_roundtrip",
+   "args": {
+    "document_id": "d0c00001-0000-4000-8000-000000000001",
+    "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
+   }
+  },
+  {
+   "id": "contract-http-share-link-rejects-unknown-token",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/shared",
+    "params": {
+     "document_id": "d0c00001-0000-4000-8000-000000000001",
+     "token": "not-a-real-share-token"
+    }
+   }
+  },
+  {
+   "id": "attack-offline-token-forgery",
+   "policy": "attack",
+   "kind": "probe",
+   "probe": "offline_share_token_forgery",
+   "args": {
+    "document_id": "d0c00001-0000-4000-8000-000000000001",
+    "salt": "otterworks-share",
+    "length": 16
+   },
+   "detect": {"kind": "json_field_true", "field": "forged_token_accepted"},
+   "after": {"outcome": "ok"}
+  }
+ ]
+}

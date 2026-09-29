@@ -62,10 +62,47 @@ scenarios:
       var makes file-service route every upload to a nonexistent S3 bucket, so
       uploads keep returning 5xx across Redis restarts and TTL expiry (the chaos
       flag is transient). Downloads, listing, folders and sharing are unaffected,
-      and no metadata row is written for the failed upload. Requires a rollout
-      restart to take effect, and another one to revert (the deployment has no
-      ConfigMap checksum annotation, so resetting the value alone leaves the
-      running pod with the stale env).
+      and no metadata row is written for the failed upload. Already ON for this
+      tenant: the demo-coggtm branch bakes the variable into the file-service
+      image's Dockerfile, which is what the tenant actually runs (the runner
+      renders charts from its own bundled tree, so a chart value on the branch
+      may never reach the pod). Turning it off therefore means setting the value
+      to false explicitly -- the pod template's ConfigMap checksum rolls the pod.
+
+  notification-queue-fail:
+    mechanism: config
+    service: notification-service
+    set: "config.NOTIFICATION_SQS_ALWAYS_FAIL=true"
+    description: >
+      Permanent SQS failure point: the NOTIFICATION_SQS_ALWAYS_FAIL env var
+      points the notification consumer at a nonexistent SQS queue, so every
+      ReceiveMessage poll fails with a real AWS SQS error
+      (QueueDoesNotExist). The consumer fires the
+      NotificationConsumerProcessingErrors alert at admin-service's ingest
+      endpoint (rate-limited; dedup keeps one open incident per service), so
+      a Devin session is created even on tenants without Grafana. OFF by
+      default (image Dockerfile sets false); the click-triggered
+      share-notify-fail scenario below is the demo's primary notification
+      failure. NOTIFICATION_STRICT_SCHEMA is the durable env equivalent of
+      the notification-schema chaos flag (deserialization failures; needs
+      live message traffic).
+
+  share-notify-fail:
+    mechanism: config
+    service: file-service
+    set: "config.FILE_SHARE_EVENT_ALWAYS_FAIL=true"
+    description: >
+      Click-triggered notification failure: with FILE_SHARE_EVENT_ALWAYS_FAIL
+      set, a user clicking "Share" makes file-service publish the file_shared
+      notification event to a nonexistent SNS topic (the real topic name with
+      a plausible "-v2" suffix), so the publish fails with a real AWS SNS
+      NotFound error. The share record is persisted, but the request returns
+      the error so the UI shows a red failure banner, and file-service
+      fires the NotificationEventPublishFailure alert at admin-service's
+      ingest endpoint (dedup=false: one incident + Devin session + Slack
+      message per share, attributed to the sharing user via reporter_email).
+      Already ON for the coggtm tenant: the demo branch bakes the variable
+      into the file-service image's Dockerfile.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =

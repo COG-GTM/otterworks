@@ -1,0 +1,20 @@
+id: RATING-008
+module: rating
+description: Finalize tenant 1 for 2026-02-01 through 2026-02-28.
+entrypoint: billing.sp_finalize_rating
+kind: procedure
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000001}
+  - {name: period_start, type: date, value: 2026-02-01}
+  - {name: period_end, type: date, value: 2026-02-28}
+capture_query: "SELECT used_units, quota_units, rollover_units, billable_units, overage_amount::text FROM billing.rating_results rr JOIN billing.rating_periods rp ON rp.id = rr.period_id WHERE rp.tenant_id = '00000000-0000-0000-0000-000000000001' AND rp.period_start = '2026-02-01'"
+fields:
+  - {name: used_units, from: used_units, type: integer}
+  - {name: quota_units, from: quota_units, type: integer}
+  - {name: rollover_units, from: rollover_units, type: integer}
+  - {name: billable_units, from: billable_units, type: integer}
+  - {name: overage_amount, from: overage_amount, type: decimal}
+probes:
+  - id: rating_result
+    collect_rows: true
+    query: "SELECT used_units, quota_units, rollover_units, billable_units, overage_amount::text AS overage_amount FROM billing.rating_results rr JOIN billing.rating_periods rp ON rp.id = rr.period_id WHERE rp.tenant_id = '00000000-0000-0000-0000-000000000001' AND rp.period_start = '2026-02-01'"

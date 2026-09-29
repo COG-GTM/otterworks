@@ -1,0 +1,58 @@
+module: plans
+rules:
+  - id: PLANS-001
+    statement: Active plans are returned in monthly-fee and code order.
+    source:
+      file: services/legacy-billing/db/procs/plans.sql
+      lines: [1, 16]
+    inputs: []
+    outputs: [plan_id, code, tier, monthly_fee, included_units, overage_rate]
+    confidence: high
+    scenarios: [PLANS-001]
+    decision:
+      status: approved
+      reviewer: product-owner
+      date: "2026-08-11"
+      note: Approved for the reference extraction.
+  - id: PLANS-002
+    statement: Entitlement selects the subscription effective on the requested date.
+    source:
+      file: services/legacy-billing/db/procs/plans.sql
+      lines: [18, 40]
+    inputs: [tenant_id, on]
+    outputs: [tenant_id, plan_code, tier, monthly_fee, included_units, subscription_status, effective_on]
+    confidence: high
+    scenarios: [PLANS-002, PLANS-003]
+    decision:
+      status: approved
+      reviewer: product-owner
+      date: "2026-08-11"
+      note: Approved for the reference extraction.
+  - id: PLANS-003
+    statement: A plan change closes the open prior subscription on the preceding date.
+    source:
+      file: services/legacy-billing/db/procs/plans.sql
+      lines: [42, 64]
+    inputs: [tenant_id, plan_id, effective_on]
+    outputs: [subscriptions]
+    confidence: high
+    scenarios: [PLANS-004]
+    decision:
+      status: approved
+      reviewer: product-owner
+      date: "2026-08-11"
+      note: Approved for the reference extraction.
+  - id: PLANS-004
+    statement: A plan change inserts a new active subscription while preserving prior history.
+    source:
+      file: services/legacy-billing/db/procs/plans.sql
+      lines: [57, 64]
+    inputs: [tenant_id, plan_id, effective_on]
+    outputs: [subscriptions]
+    confidence: high
+    scenarios: [PLANS-005]
+    decision:
+      status: approved
+      reviewer: product-owner
+      date: "2026-08-11"
+      note: Approved for the reference extraction.

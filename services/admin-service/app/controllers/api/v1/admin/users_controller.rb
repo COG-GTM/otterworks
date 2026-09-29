@@ -2,6 +2,9 @@ module Api
   module V1
     module Admin
       class UsersController < ApplicationController
+        # User listings expose emails/roles/quotas, so reads are guarded too
+        # (the api-gateway flow test expects non-admins to get 403 here).
+        before_action :require_admin!
         before_action :set_user, only: %i[show update destroy suspend activate]
 
         # GET /api/v1/admin/users

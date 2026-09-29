@@ -14,6 +14,8 @@ name: Deploy tenant environment
 #
 # Only the services a push actually changed are rebuilt; the tenant picks up the
 # golden image for everything else (see resolve_tag in scripts/deploy-tenant.sh).
+# A fork is the exception -- it publishes no golden image, so a push to one of
+# its variant branches rebuilds every service and redeploys unconditionally.
 # Deployment goes through the ops dashboard API, never straight at the cluster:
 # the dashboard runs the work as a runner Job under its own IRSA role, so this
 # workflow needs no EKS access.
@@ -52,13 +54,16 @@ jobs:
       services: ${{ steps.select.outputs.services }}
       image_tag: ${{ steps.select.outputs.image_tag }}
       tenant_tag: ${{ steps.select.outputs.tenant_tag }}
+      pin: ${{ steps.select.outputs.pin }}
       golden: ${{ steps.select.outputs.golden }}
       deploy: ${{ steps.select.outputs.deploy }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
-          # paths-filter compares against the previous commit on push; it needs
-          # that commit present, and a shallow clone does not have it.
+          # paths-filter compares against the previous commit on default-branch
+          # pushes, and against the merge-base with main (its default `base`) on
+          # workshop-*/demo-* pushes -- so a variant branch diffs as its own
+          # patches. Either way it needs history a shallow clone does not have.
           fetch-depth: 0
 
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
@@ -87,6 +92,8 @@ jobs:
           REBUILD_ALL: ${{ inputs.rebuild_all }}
           DEPLOYABLE: ${{ steps.changes.outputs.deployable }}
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
+          REPOSITORY: ${{ github.repository }}
+          CANONICAL_REPOSITORY: Cognition-Partner-Workshops/otterworks
         run: |
           set -euo pipefail
           source scripts/lib/tenant-common.sh
@@ -95,13 +102,46 @@ jobs:
           echo "tenant_tag=$(tenant_image_tag "$(branch_tenant_id "${GITHUB_REF_NAME}")")" >> "$GITHUB_OUTPUT"
           echo "image_tag=${TENANT_PREFIX:+${TENANT_PREFIX}-}${slug}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-          # Only this repository's main is the golden app. A fork publishing to
-          # `:main` would replace the image every other tenant falls back to.
+          # Only the canonical repository's main is the golden app and the
+          # perpetual t-main tenant; a fork publishing to `:main` would replace
+          # the image every other tenant falls back to. A fork's main is a demo
+          # baseline that ships nothing -- its OIDC trust covers only
+          # workshop-*/demo-* refs, so building there just fails the run.
+          canonical_main=false
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${REPOSITORY}" = "${CANONICAL_REPOSITORY}" ]; then
+            canonical_main=true
+          fi
+
+          # A fork publishes no golden image, so its tenant runs upstream's
+          # golden build for every service the fork has not rebuilt itself --
+          # and paths-filter diffs a variant branch against its own main, which
+          # on a fork carries the demo baseline. A variant that is level with
+          # the fork's main therefore reports no change and ships nothing, no
+          # matter how much of the tree main has moved. Every push to a fork's
+          # variant branch rebuilds and redeploys instead.
+          fork_variant=false
+          if [ "${REPOSITORY}" != "${CANONICAL_REPOSITORY}" ] \
+             && [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            fork_variant=true
+          fi
+
           golden=false
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
+          if [ "${canonical_main}" = "true" ] && [ -z "${TENANT_PREFIX}" ]; then golden=true; fi
           echo "golden=${golden}" >> "$GITHUB_OUTPUT"
 
-          if [ "${REBUILD_ALL}" = "true" ]; then
+          # The CI role cannot move the tenant-<id> pointer tag (no
+          # ecr:BatchDeleteImage grant), so an incremental push build fails
+          # at the retag step and the deploy never runs. Until that grant
+          # lands, deployable tenant-branch pushes behave like rebuild_all:
+          # build every service so the deploy can pin this run's immutable
+          # tag instead of the stale pointer.
+          full="${REBUILD_ALL}"
+          if [ "${GITHUB_REF_NAME}" != "main" ] && [ "${GITHUB_EVENT_NAME}" = "push" ] \
+             && { [ "${DEPLOYABLE}" = "true" ] || [ "${fork_variant}" = "true" ]; }; then
+            full=true
+          fi
+
+          if [ "${full}" = "true" ]; then
             services="$(printf '%s\n' "${ALL_SERVICES[@]}" | jq -R . | jq -sc .)"
           else
             # paths-filter emits every matching filter, including the
@@ -110,15 +150,30 @@ jobs:
           fi
           echo "services=${services}" >> "$GITHUB_OUTPUT"
 
+          # When every service is rebuilt, the deploy can be pinned to this
+          # run's immutable <slug>-<sha> tag instead of relying on the moving
+          # tenant-<id> pointer, which the CI role may lack permission to move
+          # (ecr:BatchDeleteImage). Pinning is only safe on a full rebuild:
+          # the tag must exist for every service the tenant deploys.
+          pin=false
+          if [ "${full}" = "true" ]; then pin=true; fi
+          echo "pin=${pin}" >> "$GITHUB_OUTPUT"
+
           # A push that touches nothing deployable -- docs, CI config, the
           # control plane itself -- does not redeploy. The tenant would come
           # back byte-identical, minutes later, for no reason. Neither does a
-          # fork's main: the perpetual environment tracks this repository.
+          # fork's main: the perpetual environment tracks this repository. A
+          # fork's variant branch always redeploys, docs-only pushes included:
+          # its path filter cannot tell a stale tenant from an unchanged one.
           deploy=false
-          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ]; then
+          if [ "${DEPLOYABLE}" = "true" ] || [ "${REBUILD_ALL}" = "true" ] \
+             || [ "${fork_variant}" = "true" ]; then
             deploy=true
           fi
-          if [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
+          if [ "${GITHUB_REF_NAME}" = "main" ] && [ "${canonical_main}" != "true" ]; then
+            echo "::notice::main is not deployed from ${REPOSITORY}; only ${CANONICAL_REPOSITORY} owns the perpetual tenant"
+            deploy=false
+          elif [ "${GITHUB_REF_NAME}" = "main" ] && [ -n "${TENANT_PREFIX}" ]; then
             echo "::notice::TENANT_PREFIX is set, so main is not deployed from this repository"
             deploy=false
           fi
@@ -126,7 +181,9 @@ jobs:
 
   build:
     needs: plan
-    if: needs.plan.outputs.services != '[]'
+    # Nothing consumes an image the run will not deploy, and a fork's main has
+    # no OIDC trust to push one -- assuming the role there just fails the run.
+    if: needs.plan.outputs.services != '[]' && needs.plan.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -160,28 +217,60 @@ jobs:
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
-      # Each tag has a job:
-      #   <slug>-<sha>  immutable, exactly what this run built
-      #   tenant-<id>   the environment's current build, what it deploys
-      #   main          the golden image every other tenant falls back to
-      - name: Resolve image tags
-        id: tags
+      # A re-run of the same commit (notably a rebuild_all dispatch after a run
+      # that pushed the image but failed later) cannot push <slug>-<sha> again:
+      # the registry keeps tags immutable. The build is redundant anyway, so
+      # skip straight to the pointer step, which works off the existing
+      # manifest.
+      - name: Check for an existing immutable tag
+        id: existing
         env:
-          REPO: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}
+          SERVICE: ${{ matrix.service }}
           IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
-          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
-          GOLDEN: ${{ needs.plan.outputs.golden }}
         run: |
           set -euo pipefail
-          {
-            echo "list<<EOF"
-            echo "${REPO}:${IMAGE_TAG}"
-            echo "${REPO}:${TENANT_TAG}"
-            if [ "${GOLDEN}" = "true" ]; then echo "${REPO}:main"; fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          # Same media types as the pointer step: the defaults exclude manifest
+          # lists and OCI indexes, so a multi-platform or attestation-carrying
+          # image would read as absent and the build would run and fail again.
+          if out="$(aws ecr batch-get-image --repository-name "otterworks/${SERVICE}" \
+                      --image-ids imageTag="${IMAGE_TAG}" \
+                      --accepted-media-types \
+                        application/vnd.docker.distribution.manifest.v2+json \
+                        application/vnd.docker.distribution.manifest.list.v2+json \
+                        application/vnd.oci.image.manifest.v1+json \
+                        application/vnd.oci.image.index.v1+json \
+                      --output json 2>"${RUNNER_TEMP}/probe.err")"; then
+            found="$(printf '%s' "${out}" | jq -r '.images | length')"
+          else
+            # A repository that does not exist yet is simply "not built"; any
+            # other failure leaves the build to hit the immutable-tag push, so
+            # say why rather than failing silently.
+            err="$(cat "${RUNNER_TEMP}/probe.err")"
+            case "${err}" in
+              *RepositoryNotFoundException*) ;;
+              *) echo "::warning::could not check for ${IMAGE_TAG} in otterworks/${SERVICE}: ${err}" ;;
+            esac
+            found=0
+          fi
+          if [ "${found:-0}" -gt 0 ]; then
+            echo "::notice::otterworks/${SERVICE}:${IMAGE_TAG} already exists; skipping build"
+            echo "built=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "built=false" >> "$GITHUB_OUTPUT"
+          fi
 
+      # Each tag has a job:
+      #   <slug>-<sha>  immutable, exactly what this run built (pushed here)
+      #   tenant-<id>   the environment's current build, what it deploys
+      #   main          the golden image every other tenant falls back to
+      #
+      # The registry keeps tags immutable (platform/terraform/modules/ecr), so
+      # only the <slug>-<sha> tag is pushed with the build; the moving pointer
+      # tags are re-pointed afterwards, once the new manifest exists, so a
+      # failed build never leaves an environment without its pointer and the
+      # tag is only ever absent for the instant between delete and put.
       - name: Build and push
+        if: steps.existing.outputs.built != 'true'
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: ${{ steps.ctx.outputs.path }}
@@ -189,7 +278,98 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          tags: ${{ steps.tags.outputs.list }}
+          tags: ${{ steps.ecr.outputs.registry }}/otterworks/${{ matrix.service }}:${{ needs.plan.outputs.image_tag }}
+
+      # Deleting a pointer tag only untags: the manifest stays as long as
+      # another tag (normally its immutable <slug>-<sha> tag) still holds it.
+      - name: Move pointer tags
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_TAG: ${{ needs.plan.outputs.image_tag }}
+          TENANT_TAG: ${{ needs.plan.outputs.tenant_tag }}
+          GOLDEN: ${{ needs.plan.outputs.golden }}
+          PIN: ${{ needs.plan.outputs.pin }}
+        run: |
+          set -euo pipefail
+          repo="otterworks/${SERVICE}"
+          # Accept single manifests and lists/indexes, so the step survives a
+          # future multi-platform or attestation-enabled build.
+          media_types=(
+            application/vnd.docker.distribution.manifest.v2+json
+            application/vnd.docker.distribution.manifest.list.v2+json
+            application/vnd.oci.image.manifest.v1+json
+            application/vnd.oci.image.index.v1+json
+          )
+          get_manifest() {  # jq -r, not --output text: byte-exact JSON round-trip
+            aws ecr batch-get-image --repository-name "${repo}" \
+              --image-ids imageTag="$1" \
+              --accepted-media-types "${media_types[@]}" --output json |
+              jq -r '.images[0].imageManifest // empty'
+          }
+          manifest="$(get_manifest "${IMAGE_TAG}")"
+          [ -n "${manifest}" ] || {
+            echo "::error::no manifest found for ${repo}:${IMAGE_TAG}"; exit 1; }
+
+          tags=("${TENANT_TAG}")
+          if [ "${GOLDEN}" = "true" ]; then tags+=(main); fi
+          for tag in "${tags[@]}"; do
+            current="$(get_manifest "${tag}")"
+            if [ "${current}" = "${manifest}" ]; then
+              echo "${repo}:${tag} already points at ${IMAGE_TAG}"
+              continue
+            fi
+            # An absent pointer needs no untag at all; go straight to put-image
+            # (a brand-new environment must still get its pointer created even
+            # when the role cannot delete tags).
+            if [ -n "${current}" ]; then
+              if failures="$(aws ecr batch-delete-image --repository-name "${repo}" \
+                --image-ids imageTag="${tag}" \
+                --query 'failures[?failureCode!=`ImageNotFound`]' --output text 2>"${RUNNER_TEMP}/untag.err")"; then
+                # stderr is captured for the failure path; surface anything the
+                # CLI wrote while still succeeding rather than dropping it.
+                if [ -s "${RUNNER_TEMP}/untag.err" ]; then cat "${RUNNER_TEMP}/untag.err" >&2; fi
+                if [ -n "${failures}" ]; then
+                  echo "::error::failed to untag ${repo}:${tag}: ${failures}"; exit 1
+                fi
+              else
+                err="$(cat "${RUNNER_TEMP}/untag.err")"
+                # Only a missing ecr:BatchDeleteImage grant is survivable, and
+                # only for the tenant pointer on a run that pins the immutable
+                # tag: everything else (throttling, transient API errors, the
+                # golden `main` pointer every other tenant falls back to) would
+                # deploy the previous build behind a green run. Match the exact
+                # authorization failure -- an AccessDenied for any other reason
+                # is not something this run should paper over.
+                case "${err}" in
+                  *AccessDenied*ecr:BatchDeleteImage*) ;;
+                  *) echo "::error::failed to untag ${repo}:${tag}: ${err}"; exit 1 ;;
+                esac
+                if [ "${tag}" = "main" ] || [ "${PIN}" != "true" ]; then
+                  echo "::error::cannot untag ${repo}:${tag} and this run does not pin ${IMAGE_TAG}, so the deploy would ship the previous build: ${err}"
+                  exit 1
+                fi
+                # The pointer stays stale after this run, so a later push that
+                # rebuilds no service (scripts/**, infrastructure/helm/**)
+                # deploys from it and reverts the tenant: re-dispatch with
+                # rebuild_all=true until the IAM grant lands.
+                echo "::warning::cannot untag ${repo}:${tag}; pointer left stale, deploy pinned to ${IMAGE_TAG}"
+                continue
+              fi
+            fi
+            # Retry: a put-image failure here would strand the environment
+            # with no pointer at all until the next successful build.
+            for attempt in 1 2 3 4 5; do
+              if aws ecr put-image --repository-name "${repo}" \
+                   --image-tag "${tag}" --image-manifest "${manifest}" \
+                   --query 'image.imageId.imageDigest' --output text; then
+                break
+              fi
+              if [ "${attempt}" = 5 ]; then
+                echo "::error::could not re-point ${repo}:${tag} at ${IMAGE_TAG}"; exit 1
+              fi
+              sleep $((attempt * 5))
+            done
+          done
 
   deploy:
     needs: [plan, build]
@@ -214,4 +394,5 @@ jobs:
       - name: Sync tenant environment
         env:
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
-        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}"
+          PIN_TAG: ${{ needs.plan.outputs.pin == 'true' && needs.plan.outputs.image_tag || '' }}
+        run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}" ${PIN_TAG:+"${PIN_TAG}"}

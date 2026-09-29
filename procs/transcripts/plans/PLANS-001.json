@@ -1,0 +1,25 @@
+{
+  "business_fields": {
+    "codes": [
+      "STARTER",
+      "GROWTH",
+      "SCALE"
+    ],
+    "fees": [
+      "49.00",
+      "149.00",
+      "499.00"
+    ]
+  },
+  "entrypoint": "billing.fn_list_plans",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {},
+  "module": "plans",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [
+    "PLANS-001"
+  ],
+  "scenario": "PLANS-001",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

@@ -1,0 +1,10 @@
+id: PLANS-001
+module: plans
+description: Return the catalog for the active plans.
+entrypoint: billing.fn_list_plans
+kind: function
+inputs: []
+fields:
+  - {name: codes, from: code, type: text, collect: true}
+  - {name: fees, from: monthly_fee, type: decimal, collect: true}
+probes: []

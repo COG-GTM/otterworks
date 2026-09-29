@@ -166,7 +166,8 @@ pub struct RenameFileRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct ShareFileRequest {
-    pub shared_with: Uuid,
+    pub shared_with: Option<Uuid>,
+    pub shared_with_email: Option<String>,
     pub permission: SharePermission,
     pub shared_by: Uuid,
 }

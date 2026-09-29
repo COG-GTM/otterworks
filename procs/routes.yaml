@@ -1,0 +1,51 @@
+modules:
+  plans:
+    status: extracted
+    entrypoints:
+      billing.fn_list_plans:
+        method: GET
+        path: /api/plans
+        response:
+          business_fields:
+            codes: {json_path: "$[*].code", type: text, collect: true}
+            fees: {json_path: "$[*].monthly_fee", type: decimal, collect: true}
+      billing.fn_entitlement:
+        method: GET
+        path: /api/tenants/{tenant_id}/entitlement
+        inputs:
+          path:
+            tenant_id: tenant_id
+          query:
+            "on": as_of
+        response:
+          business_fields:
+            plan_code: {json_path: "$.plan_code", type: text}
+            tier: {json_path: "$.tier", type: text}
+            included_units: {json_path: "$.included_units", type: integer}
+            subscription_status: {json_path: "$.subscription_status", type: text}
+      billing.sp_change_plan:
+        method: POST
+        path: /api/tenants/{tenant_id}/plan-change
+        inputs:
+          path:
+            tenant_id: tenant_id
+          body:
+            plan_id: plan_id
+            effective_on: effective_on
+        response:
+          business_fields:
+            subscriptions:
+              json_path: "$.subscriptions"
+              type: rows
+          probes:
+            subscription_rows:
+              json_path: "$.subscriptions"
+  rating:
+    status: pending
+    entrypoints: {}
+  invoicing:
+    status: pending
+    entrypoints: {}
+  dunning:
+    status: pending
+    entrypoints: {}

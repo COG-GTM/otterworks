@@ -1,0 +1,132 @@
+[
+  {
+    "module": "dunning",
+    "rules": [],
+    "scenario": "DUNNING-001"
+  },
+  {
+    "module": "dunning",
+    "rules": [],
+    "scenario": "DUNNING-002"
+  },
+  {
+    "module": "dunning",
+    "rules": [],
+    "scenario": "DUNNING-003"
+  },
+  {
+    "module": "dunning",
+    "rules": [],
+    "scenario": "DUNNING-004"
+  },
+  {
+    "module": "dunning",
+    "rules": [],
+    "scenario": "DUNNING-005"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-001"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-002"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-003"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-004"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-005"
+  },
+  {
+    "module": "invoicing",
+    "rules": [],
+    "scenario": "INVOICE-006"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-001"
+    ],
+    "scenario": "PLANS-001"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-002"
+    ],
+    "scenario": "PLANS-002"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-002"
+    ],
+    "scenario": "PLANS-003"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-003"
+    ],
+    "scenario": "PLANS-004"
+  },
+  {
+    "module": "plans",
+    "rules": [
+      "PLANS-004"
+    ],
+    "scenario": "PLANS-005"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-001"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-002"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-003"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-004"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-005"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-006"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-007"
+  },
+  {
+    "module": "rating",
+    "rules": [],
+    "scenario": "RATING-008"
+  }
+]

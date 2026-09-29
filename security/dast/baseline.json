@@ -1,0 +1,4 @@
+{
+  "_comment": "Accepted DAST findings. An entry here suppresses the gate for that finding ID; every entry needs a reason and is expected to be temporary. Regenerate with: make dast-baseline REASON='...'",
+  "accepted": []
+}

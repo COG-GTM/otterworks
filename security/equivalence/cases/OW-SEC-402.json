@@ -1,0 +1,92 @@
+{
+ "finding": "OW-SEC-402",
+ "module": "document-service",
+ "notes": [
+  "The archive legitimately holds exports in subdirectories, so 'reports/q3.md'",
+  "is a contract case: a fix that rejects every path separator closes the",
+  "traversal but breaks a documented read, and the gate must say so.",
+  "The fixture writes the outside file as a sibling of the archive directory, so",
+  "the traversal case reproduces from the seed alone."
+ ],
+ "interface": [
+  "app.services.export_archive:ExportArchive.read_export"
+ ],
+ "cases": [
+  {
+   "id": "contract-reads-export",
+   "policy": "contract",
+   "kind": "call",
+   "target": "export_archive",
+   "method": "read_export",
+   "args": {"name": "report.md"}
+  },
+  {
+   "id": "contract-reads-export-in-subdirectory",
+   "policy": "contract",
+   "kind": "call",
+   "target": "export_archive",
+   "method": "read_export",
+   "args": {"name": "reports/q3.md"}
+  },
+  {
+   "id": "contract-missing-export-raises-file-not-found",
+   "policy": "contract",
+   "kind": "call",
+   "target": "export_archive",
+   "method": "read_export",
+   "args": {"name": "absent.md"}
+  },
+  {
+   "id": "contract-http-serves-export",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/exports",
+    "params": {"name": "report.md"}
+   }
+  },
+  {
+   "id": "contract-http-serves-export-in-subdirectory",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/exports",
+    "params": {"name": "reports/q3.md"}
+   }
+  },
+  {
+   "id": "contract-http-missing-export-is-404",
+   "policy": "contract",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/exports",
+    "params": {"name": "absent.md"}
+   }
+  },
+  {
+   "id": "attack-traversal-reads-outside-the-archive",
+   "policy": "attack",
+   "kind": "call",
+   "target": "export_archive",
+   "method": "read_export",
+   "args": {"name": "../outside/tenant-secrets.env"},
+   "detect": {"kind": "text_matches", "pattern": "SUPPLIER_API_KEY"},
+   "after": {"outcome": "error"}
+  },
+  {
+   "id": "attack-http-traversal-serves-a-file-outside-the-archive",
+   "policy": "attack",
+   "kind": "http",
+   "request": {
+    "method": "GET",
+    "path": "/api/v1/documents/exports",
+    "params": {"name": "../outside/tenant-secrets.env"}
+   },
+   "detect": {"kind": "text_matches", "pattern": "SUPPLIER_API_KEY"},
+   "after": {"status": 404}
+  }
+ ]
+}

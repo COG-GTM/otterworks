@@ -1,0 +1,57 @@
+name: Stored procedure parity
+
+on:
+  push:
+    paths:
+      - "procs/**"
+      - "services/legacy-billing/**"
+      - "services/billing-service/**"
+      - "frontend/client-app/src/features/billing/**"
+      - "frontend/client-app/src/App.tsx"
+      - "frontend/client-app/src/test-setup.ts"
+      - "frontend/client-app/package.json"
+      - "frontend/client-app/package-lock.json"
+      - "frontend/client-app/vite.config.ts"
+      - "docker-compose.procs.yml"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "procs/**"
+      - "services/legacy-billing/**"
+      - "services/billing-service/**"
+      - "frontend/client-app/src/features/billing/**"
+      - "frontend/client-app/src/App.tsx"
+      - "frontend/client-app/src/test-setup.ts"
+      - "frontend/client-app/package.json"
+      - "frontend/client-app/package-lock.json"
+      - "frontend/client-app/vite.config.ts"
+      - "docker-compose.procs.yml"
+      - "Makefile"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: latest
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/client-app/package-lock.json
+      - run: uv run --with ruff==0.9.10 ruff check procs/harness
+      - run: cd services/billing-service && uv sync --locked && uv run ruff check app scripts tests && uv run pytest
+      - run: uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2 --with pytest==8.3.5 pytest procs/harness/tests
+      - run: cd frontend/client-app && npm ci && npm run lint && npm test
+      - run: make procs-up NS=ci
+      - run: make procs-rules-gate ALL=1
+      - run: make procs-parity NS=ci
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: stored-procedure-parity-report
+          path: procs/reports/parity.*
+      - if: always()
+        run: make procs-down NS=ci

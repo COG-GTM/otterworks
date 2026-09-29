@@ -27,6 +27,8 @@
         <itext.version>5.5.13.3</itext.version>
         <commons-io.version>2.15.1</commons-io.version>
         <guava.version>33.0.0-jre</guava.version>
+        <!-- Commons Text 1.9 — report banner/footer interpolation -->
+        <commons-text.version>1.9</commons-text.version>
     </properties>
 
     <dependencies>
@@ -96,6 +98,13 @@
             <artifactId>commons-lang3</artifactId>
         </dependency>
 
+        <!-- Commons Text — report banner and footer interpolation -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-text</artifactId>
+            <version>${commons-text.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
@@ -136,6 +145,13 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- JS engine for the security/deps transcript's script: lookup case (Nashorn left the JDK in 15) -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

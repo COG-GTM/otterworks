@@ -1,0 +1,38 @@
+{
+  "business_fields": {
+    "attempt_no": 2,
+    "scheduled_for": "2026-02-17"
+  },
+  "entrypoint": "billing.sp_schedule_dunning",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "as_of": "2026-02-17"
+  },
+  "module": "dunning",
+  "probes": {
+    "schedule_rows": [
+      {
+        "attempt_no": 1,
+        "invoice_id": "60000000-0000-0000-0000-000000000001",
+        "scheduled_for": "2026-02-17",
+        "status": "scheduled"
+      },
+      {
+        "attempt_no": 1,
+        "invoice_id": "60000000-0000-0000-0000-000000000002",
+        "scheduled_for": "2026-02-16",
+        "status": "sent"
+      },
+      {
+        "attempt_no": 2,
+        "invoice_id": "60000000-0000-0000-0000-000000000002",
+        "scheduled_for": "2026-02-17",
+        "status": "scheduled"
+      }
+    ]
+  },
+  "rerecord_reason": "scenario-redesign",
+  "rules": [],
+  "scenario": "DUNNING-003",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}

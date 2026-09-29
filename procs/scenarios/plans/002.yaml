@@ -1,0 +1,14 @@
+id: PLANS-002
+module: plans
+description: Read the entitlement for tenant 1 on 2026-02-28.
+entrypoint: billing.fn_entitlement
+kind: function
+inputs:
+  - {name: tenant_id, type: uuid, value: 00000000-0000-0000-0000-000000000001}
+  - {name: as_of, type: date, value: 2026-02-28}
+fields:
+  - {name: plan_code, from: plan_code, type: text}
+  - {name: tier, from: tier, type: text}
+  - {name: included_units, from: included_units, type: integer}
+  - {name: subscription_status, from: subscription_status, type: text}
+probes: []

@@ -10,6 +10,7 @@ async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> boo
     result.unwrap_or(0) > 0
 }
 
+use crate::alerts;
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
@@ -58,6 +59,16 @@ pub async fn upload_file(
         .get("X-User-ID")
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.trim().parse::<Uuid>().ok());
+
+    // Uploader's email, injected by api-gateway from the JWT; carried on
+    // upload-failure alerts so admin-service can attribute the incident.
+    let reporter_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
 
     let mut file_bytes = BytesMut::new();
     let mut file_name = String::from("unnamed");
@@ -161,9 +172,18 @@ pub async fn upload_file(
         client: s3.client.clone(),
         bucket: effective_bucket,
     };
-    chaos_s3
+    if let Err(err) = chaos_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
-        .await?;
+        .await
+    {
+        alerts::notify_upload_failure(
+            &config.alerts,
+            &file_name,
+            &err.to_string(),
+            reporter_email.as_deref(),
+        );
+        return Err(err);
+    }
 
     let file_meta = FileMetadata {
         id: file_id,
@@ -242,13 +262,26 @@ fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<U
 pub async fn list_files(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    s3: web::Data<S3Client>,
+    config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta
+    let mut files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
+    // Seeding is only considered when the listing comes back empty, so the
+    // common non-empty case costs no extra metadata reads.
+    if files.is_empty() && config.server.seed_demo_docs {
+        if let Some(owner) = owner_id {
+            if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
+                files = meta
+                    .list_files(query.folder_id, owner_id, include_trashed)
+                    .await?;
+            }
+        }
+    }
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
@@ -491,11 +524,23 @@ pub async fn restore_file(
 }
 
 pub async fn share_file(
+    req: HttpRequest,
+    config: web::Data<AppConfig>,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
     body: web::Json<ShareFileRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    // Sharer's email, injected by api-gateway from the JWT; carried on
+    // share-notification alerts so admin-service can attribute the incident.
+    let reporter_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
     let file_id: Uuid = path
         .into_inner()
         .parse()
@@ -504,46 +549,111 @@ pub async fn share_file(
     // Ensure file exists
     let file = meta.get_file(&file_id).await?;
 
+    // Recipient is either a resolved user id, or an email the client could
+    // not resolve to an OtterWorks account. Unresolved emails are rejected
+    // unless the share-event failure switch is on, in which case the
+    // notification publish is still attempted (and fails) without persisting
+    // a share to a nonexistent user — so the failure fires for any email.
+    let (shared_with, recipient_known) = match body.shared_with {
+        Some(id) => (id, true),
+        None => {
+            let email = body
+                .shared_with_email
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| {
+                    ServiceError::BadRequest("shared_with or shared_with_email is required".into())
+                })?;
+            if !events.share_publish_forced() {
+                return Err(ServiceError::BadRequest(format!(
+                    "no OtterWorks user found for {email}"
+                )));
+            }
+            (
+                Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.to_lowercase().as_bytes()),
+                false,
+            )
+        }
+    };
+
     // Check if share already exists for this file + user
-    if let Some(existing) = meta
-        .find_existing_share(&file_id, &body.shared_with)
-        .await?
-    {
-        // Update permission if different, otherwise return existing
+    let (share, created, permission_update) = if !recipient_known {
+        let share = FileShare {
+            id: Uuid::new_v4(),
+            file_id,
+            shared_with,
+            permission: body.permission.clone(),
+            shared_by: body.shared_by,
+            created_at: Utc::now(),
+        };
+        (share, false, false)
+    } else if let Some(existing) = meta.find_existing_share(&file_id, &shared_with).await? {
+        // Update permission if different, otherwise keep the existing record
         if existing.permission != body.permission {
             let updated = FileShare {
                 id: existing.id,
                 file_id,
-                shared_with: body.shared_with,
+                shared_with,
                 permission: body.permission.clone(),
                 shared_by: body.shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
-            tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File share updated");
-            return Ok(HttpResponse::Ok().json(ShareFileResponse { share: updated }));
+            tracing::info!(file_id = %file_id, shared_with = %shared_with, "File share updated");
+            (updated, false, true)
+        } else {
+            tracing::info!(file_id = %file_id, shared_with = %shared_with, "File already shared");
+            (existing, false, false)
         }
-        tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File already shared");
-        return Ok(HttpResponse::Ok().json(ShareFileResponse { share: existing }));
-    }
-
-    let share = FileShare {
-        id: Uuid::new_v4(),
-        file_id,
-        shared_with: body.shared_with,
-        permission: body.permission.clone(),
-        shared_by: body.shared_by,
-        created_at: Utc::now(),
+    } else {
+        let share = FileShare {
+            id: Uuid::new_v4(),
+            file_id,
+            shared_with,
+            permission: body.permission.clone(),
+            shared_by: body.shared_by,
+            created_at: Utc::now(),
+        };
+        meta.put_share(&share).await?;
+        (share, true, false)
     };
 
-    meta.put_share(&share).await?;
+    // The notification event is published for new shares only, so re-shares
+    // and permission updates don't send duplicate notifications. When the
+    // share-event failure switch is on, every share click (new share or
+    // re-share of the same recipient) attempts the publish so a failed
+    // attempt can be retried by sharing again; permission updates are not
+    // share clicks and are left alone.
+    if created || (events.share_publish_forced() && !permission_update) {
+        if let Err(err) = events
+            .file_shared(&file_id, &file.owner_id, &shared_with)
+            .await
+        {
+            tracing::error!(file_id = %file_id, error = %err, "Failed to publish file_shared event");
+            alerts::notify_share_notification_failure(
+                &config.alerts,
+                &file.name,
+                &err.to_string(),
+                reporter_email.as_deref(),
+                !events.share_publish_forced(),
+                recipient_known,
+            );
+            // Only surface the failure to the caller when the demo switch is
+            // on; otherwise event publishing stays fire-and-forget like the
+            // other handlers, since the share is already persisted.
+            if events.share_publish_forced() {
+                return Err(err);
+            }
+        }
+    }
 
-    let _ = events
-        .file_shared(&file_id, &file.owner_id, &body.shared_with)
-        .await;
-
-    tracing::info!(file_id = %file_id, shared_with = %body.shared_with, "File shared");
-    Ok(HttpResponse::Created().json(ShareFileResponse { share }))
+    tracing::info!(file_id = %file_id, shared_with = %shared_with, "File shared");
+    if created {
+        Ok(HttpResponse::Created().json(ShareFileResponse { share }))
+    } else {
+        Ok(HttpResponse::Ok().json(ShareFileResponse { share }))
+    }
 }
 
 pub async fn remove_share(

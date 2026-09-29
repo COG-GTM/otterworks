@@ -4,6 +4,7 @@ import aws.sdk.kotlin.services.dynamodb.DynamoDbClient
 import aws.sdk.kotlin.services.ses.SesClient
 import aws.sdk.kotlin.services.sqs.SqsClient
 import aws.smithy.kotlin.runtime.net.url.Url
+import com.otterworks.notification.alerts.AlertPublisher
 import com.otterworks.notification.config.AppConfig
 import com.otterworks.notification.consumer.SqsConsumer
 import com.otterworks.notification.plugins.configureMonitoring
@@ -142,7 +143,16 @@ fun Application.configureDependencyInjection(
                         meterRegistry = get<io.micrometer.core.instrument.MeterRegistry>(),
                     )
                 }
-                single { SqsConsumer(get<SqsClient>(), get<NotificationService>(), get<AppConfig>(), get<MeterRegistry>()) }
+                single { AlertPublisher(get<AppConfig>()) }
+                single {
+                    SqsConsumer(
+                        get<SqsClient>(),
+                        get<NotificationService>(),
+                        get<AppConfig>(),
+                        get<MeterRegistry>(),
+                        get<AlertPublisher>(),
+                    )
+                }
             }
         )
     }

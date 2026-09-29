@@ -121,6 +121,40 @@ class SqsConsumerTest {
     }
 
     @Test
+    fun `strict schema rejects epoch-int timestamps that the lenient parser accepts`() {
+        val body = """
+            {
+                "eventType": "file_shared",
+                "fileId": "file-123",
+                "timestamp": 1704067200
+            }
+        """.trimIndent()
+
+        assertNotNull(consumer.parseMessage(body))
+
+        val strictConsumer = SqsConsumer(
+            sqsClient,
+            notificationService,
+            config.copy(strictSchema = true),
+        )
+        assertNull(strictConsumer.parseMessage(body))
+    }
+
+    @Test
+    fun `sqsAlwaysFail redirects polling to a nonexistent queue`() {
+        assertEquals(config.sqsQueueUrl, config.effectiveSqsQueueUrl)
+
+        val failing = config.copy(sqsAlwaysFail = true)
+        assertEquals("${config.sqsQueueUrl}-chaos-nonexistent", failing.effectiveSqsQueueUrl)
+
+        val tenantLike = config.copy(sqsAlwaysFail = true, sqsQueueUrl = "")
+        assertEquals(
+            "https://sqs.us-east-1.amazonaws.com/000000000000/otterworks-notifications-chaos-nonexistent",
+            tenantLike.effectiveSqsQueueUrl,
+        )
+    }
+
+    @Test
     fun `parseMessage handles missing optional fields`() {
         val body = """
             {

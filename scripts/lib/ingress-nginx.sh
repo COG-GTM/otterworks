@@ -44,6 +44,10 @@ ensure_ingress_nginx() {
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
   helm repo update ingress-nginx >/dev/null 2>&1 || true
 
+  # proxy-body-size defaults to 1m in the chart, so any upload over 1 MB is
+  # rejected with a 413 at the edge and never reaches file-service (whose own
+  # MAX_UPLOAD_BYTES is 100 MB). Set the cluster-wide default to match.
+  #
   # controller.metrics.enabled is off in the chart by default, but the reaper
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
@@ -57,6 +61,7 @@ ensure_ingress_nginx() {
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \
     --set controller.metrics.enabled=true \
+    --set controller.config.proxy-body-size=100m \
     --wait --timeout 5m || ing_warn "ingress-nginx install reported an issue; continuing."
 
   kubectl label namespace "${INGRESS_NAMESPACE}" \

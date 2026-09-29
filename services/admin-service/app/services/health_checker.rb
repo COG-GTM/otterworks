@@ -27,7 +27,7 @@ class HealthChecker
 
   def self.check_service(name)
     host = ENV.fetch("#{name.tr('-', '_').upcase}_HOST", name)
-    port = ENV.fetch("#{name.tr('-', '_').upcase}_PORT", DEFAULT_PORTS[name])
+    port = ServiceEnv.port("#{name.tr('-', '_').upcase}_PORT", DEFAULT_PORTS[name])
     url = "http://#{host}:#{port}/health" if port.present?
 
     start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -60,10 +60,7 @@ class HealthChecker
 
   def self.check_redis
     start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    redis_host = ENV.fetch('REDIS_HOST', 'localhost')
-    redis_port = ENV.fetch('REDIS_PORT', '6379')
-    redis_url = ENV.fetch('REDIS_URL', "redis://#{redis_host}:#{redis_port}/0")
-    redis = Redis.new(url: redis_url, timeout: 2)
+    redis = Redis.new(url: ServiceEnv.redis_url, timeout: 2)
     redis.ping
     latency = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(1)
     { status: 'healthy', latency_ms: latency }

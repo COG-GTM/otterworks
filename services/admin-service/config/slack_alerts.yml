@@ -1,0 +1,17 @@
+# Slack routing for incident alerts, keyed by alert type — the Grafana
+# `alertname` label a service sends to POST /api/v1/admin/alerts/ingest.
+#
+# To give a new chaos error its own Slack message:
+#   1. Emit its alert to /api/v1/admin/alerts/ingest with a unique alertname
+#      (see services/file-service/src/alerts.rs for the payload shape).
+#   2. Optionally add an entry under `alerts:` to route it to a different
+#      channel. Alert types without an entry use `default`.
+#
+# The channel is applied verbatim when SLACK_BOT_TOKEN is set (delivery via
+# chat.postMessage). With only a webhook configured, delivery goes to the
+# channel the webhook is bound to, so the webhook must be created for the
+# default channel below.
+default:
+  channel: "#automated-alerts"
+alerts:
+  FileUploadFailed: {}

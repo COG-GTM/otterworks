@@ -1,0 +1,22 @@
+{
+  "business_fields": {
+    "included_units": 100,
+    "plan_code": "STARTER",
+    "subscription_status": "active",
+    "tier": "starter"
+  },
+  "entrypoint": "billing.fn_entitlement",
+  "fixture_sha": "53b308f59df78d844cc95bb8d9071fdd8eb03bbae52c708dd67820d099f406da",
+  "inputs": {
+    "as_of": "2026-02-28",
+    "tenant_id": "00000000-0000-0000-0000-000000000001"
+  },
+  "module": "plans",
+  "probes": {},
+  "rerecord_reason": "scenario-redesign",
+  "rules": [
+    "PLANS-002"
+  ],
+  "scenario": "PLANS-002",
+  "source_sha": "2b98f8dc350f9c70906398cf1ee3bae173239b53237b89b2ade4a51d43821929"
+}
