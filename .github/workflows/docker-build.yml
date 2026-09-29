@@ -70,8 +70,47 @@ jobs:
           java-version: '11'
       - run: ./mvnw test -B
 
+  announcements-service-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/announcements-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: ./mvnw verify -B
+
+  user-preferences-service-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/user-preferences-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: ./mvnw verify -B
+
+  feedback-service-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/feedback-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: ./mvnw verify -B
+
   build-and-push:
-    needs: [auth-service-tests, report-service-tests, legacy-portal-tests]
+    needs: [auth-service-tests, report-service-tests, legacy-portal-tests, announcements-service-tests, user-preferences-service-tests, feedback-service-tests]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -88,6 +127,9 @@ jobs:
           - { name: admin-service, context: services/admin-service }
           - { name: audit-service, context: services/audit-service }
           - { name: report-service, context: services/report-service }
+          - { name: announcements-service, context: services/announcements-service }
+          - { name: user-preferences-service, context: services/user-preferences-service }
+          - { name: feedback-service, context: services/feedback-service }
           - { name: web-app, context: frontend/client-app }
           - { name: admin-dashboard, context: frontend/admin-dashboard }
 

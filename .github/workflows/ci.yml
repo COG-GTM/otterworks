@@ -30,6 +30,9 @@ jobs:
       infrastructure: ${{ steps.changes.outputs.infrastructure }}
       report-service: ${{ steps.changes.outputs.report-service }}
       legacy-portal: ${{ steps.changes.outputs.legacy-portal }}
+      announcements-service: ${{ steps.changes.outputs.announcements-service }}
+      user-preferences-service: ${{ steps.changes.outputs.user-preferences-service }}
+      feedback-service: ${{ steps.changes.outputs.feedback-service }}
       api-tests: ${{ steps.changes.outputs.api-tests }}
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +73,12 @@ jobs:
               - 'services/report-service/**'
             legacy-portal:
               - 'services/legacy-portal/**'
+            announcements-service:
+              - 'services/announcements-service/**'
+            user-preferences-service:
+              - 'services/user-preferences-service/**'
+            feedback-service:
+              - 'services/feedback-service/**'
             api-tests:
               - 'tests/api/**'
               - 'docs/api-route-matrix.md'
@@ -351,6 +360,57 @@ jobs:
           java-version: '11'
           cache: maven
       - run: ./mvnw test -B
+
+  # Java 17 / Maven - announcements-service (Spring Boot 3, extracted from legacy-portal)
+  announcements-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.announcements-service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/announcements-service
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: ./mvnw verify -B
+
+  # Java 17 / Maven - user-preferences-service (Spring Boot 3, extracted from legacy-portal)
+  user-preferences-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.user-preferences-service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/user-preferences-service
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: ./mvnw verify -B
+
+  # Java 17 / Maven - feedback-service (Spring Boot 3, extracted from legacy-portal)
+  feedback-service:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.feedback-service == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/feedback-service
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - run: ./mvnw verify -B
 
   # Terraform validation
   infrastructure:

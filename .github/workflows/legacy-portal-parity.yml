@@ -1,0 +1,87 @@
+name: Legacy portal decomposition parity
+
+# Replays the golden HTTP transcripts recorded from services/legacy-portal
+# against the three extracted Spring Boot 3 services -- on H2, on PostgreSQL,
+# and through the monolith -> services -> monolith data-lift/rollback drill.
+# Everything runs on the runner; nothing is pushed or deployed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "parity/legacy-portal/**"
+      - "services/legacy-portal/**"
+      - "services/announcements-service/**"
+      - "services/user-preferences-service/**"
+      - "services/feedback-service/**"
+      - "infrastructure/helm/announcements-service/**"
+      - "infrastructure/helm/user-preferences-service/**"
+      - "infrastructure/helm/feedback-service/**"
+      - "Makefile"
+  pull_request:
+    paths:
+      - "parity/legacy-portal/**"
+      - "services/legacy-portal/**"
+      - "services/announcements-service/**"
+      - "services/user-preferences-service/**"
+      - "services/feedback-service/**"
+      - "infrastructure/helm/announcements-service/**"
+      - "infrastructure/helm/user-preferences-service/**"
+      - "infrastructure/helm/feedback-service/**"
+      - "Makefile"
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    env:
+      PARITY_PG_PORT: "15432"
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: |
+            11
+            17
+          cache: maven
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: latest
+      - uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
+        with:
+          version: v3.15.4
+      - run: uv run --with ruff==0.9.10 ruff check parity/legacy-portal/harness
+      - run: make parity-tests
+      - name: Chart lint
+        run: |
+          for c in announcements-service user-preferences-service feedback-service; do
+            helm lint "infrastructure/helm/$c" --set image.tag=ci
+            helm template "$c" "infrastructure/helm/$c" --set image.tag=ci > /dev/null
+          done
+      - name: Build monolith and services
+        env:
+          JAVA_HOME_11: ${{ env.JAVA_HOME_11_X64 }}
+          JAVA_HOME_17: ${{ env.JAVA_HOME_17_X64 }}
+        run: make parity-build
+      - name: Monolith baseline (transcripts reproduce)
+        env:
+          JAVA_HOME_11: ${{ env.JAVA_HOME_11_X64 }}
+          JAVA_HOME_17: ${{ env.JAVA_HOME_17_X64 }}
+        run: make parity-baseline
+      - name: Services on H2
+        env:
+          JAVA_HOME_11: ${{ env.JAVA_HOME_11_X64 }}
+          JAVA_HOME_17: ${{ env.JAVA_HOME_17_X64 }}
+        run: make parity-verify
+      - name: PostgreSQL replay and data-lift/rollback drill
+        env:
+          JAVA_HOME_11: ${{ env.JAVA_HOME_11_X64 }}
+          JAVA_HOME_17: ${{ env.JAVA_HOME_17_X64 }}
+        run: make parity-postgres
+      - name: Service images
+        run: make parity-containers
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: legacy-portal-parity-reports
+          path: parity/legacy-portal/reports/
