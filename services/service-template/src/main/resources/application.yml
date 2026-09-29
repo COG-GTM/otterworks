@@ -1,0 +1,38 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+app:
+  db:
+    schema: ${SERVICE_DB_SCHEMA:service_template}
+
+spring:
+  application:
+    name: service-template
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/otterworks}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ${app.db.schema}
+  flyway:
+    schemas: ${app.db.schema}
+    default-schema: ${app.db.schema}
+    create-schemas: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+        add-additional-paths: true
+      group:
+        readiness:
+          include: readinessState,db
