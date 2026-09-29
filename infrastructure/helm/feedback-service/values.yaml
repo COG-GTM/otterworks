@@ -1,0 +1,86 @@
+replicaCount: 1
+
+image:
+  repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/workshop/otterworks-feedback-service
+  tag: ""  # Set at deploy time (ECR uses IMMUTABLE tags)
+  pullPolicy: IfNotPresent
+
+# ClusterIP only: the chart fails to render any other type (AGENTS.md
+# "Never create AWS resources from Kubernetes").
+service:
+  type: ClusterIP
+  port: 8098
+  targetPort: 8098
+
+# No api-gateway route: callers reach the service directly on its port, as
+# legacy-portal was reached. Enable only if a gateway/ingress route is chosen.
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: feedback-service.otterworks.workshop.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: feedback-service-tls
+      hosts:
+        - feedback-service.otterworks.workshop.example.com
+
+# JVM sizing, in line with the other Spring Boot chart (report-service).
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Startup gates on the portal-common /health payload (kept for parity with
+# legacy-portal); liveness/readiness use the Spring Boot actuator probe groups.
+# Readiness includes the datasource (see readinessIncludesDb).
+probes:
+  port: 8098
+  startupPath: /health
+  livenessPath: /actuator/health/liveness
+  readinessPath: /actuator/health/readiness
+  readinessIncludesDb: true
+
+# The services expose no Prometheus endpoint yet (actuator exposes health,info).
+monitoring:
+  enabled: false
+  path: /actuator/prometheus
+  port: 8098
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: ingress-nginx
+  monitoringNamespace: monitoring
+  # Direct callers in the same (tenant) namespace; there is no gateway route.
+  allowSameNamespace: true
+
+serviceAccount:
+  roleArn: ""
+
+# Schema-per-service on the tenant's single PostgreSQL database: this service
+# connects as its own role, which owns the schema (created by
+# services/feedback-service/scripts/initdb.sh, never by the service).
+database:
+  # Tenant database; set at deploy time (e.g. jdbc:postgresql://<rds>:5432/otterworks_<ID>).
+  url: jdbc:postgresql://postgres:5432/otterworks
+  # Must match the schema in the service's entities and Flyway migrations.
+  schema: feedback
+  username: feedback
+  # Set at deploy time; never commit. Without it no Secret is rendered and the
+  # pod does not start (the password is a required secretKeyRef).
+  password: ""
+
+# Extra non-sensitive configuration merged into {{ .Release.Name }}-config
+# and injected via envFrom.
+config: {}
+
+# Extra sensitive configuration merged into {{ .Release.Name }}-secrets (Opaque,
+# stringData) and injected via envFrom. Populate at deploy time; never commit values.
+secrets: {}

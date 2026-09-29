@@ -567,3 +567,37 @@ and `portal-parent` lists only `portal-common` and the three services.
 | announcements | `announcements-service` in `docker-compose.yml` | 8096 | role `announcements` |
 | userpreferences | `preferences-service` in `docker-compose.yml` | 8097 | role `preferences` |
 | feedback | `feedback-service` in `docker-compose.yml` | 8098 | role `feedback` |
+
+### State after `legacy-portal(helm)`
+
+Each service has a chart under `infrastructure/helm/{announcements,preferences,feedback}-service`,
+modelled on `auth-service` (Chart, values, deployment, service, configmap, secret, serviceaccount
+with an empty IRSA `roleArn`, networkpolicy, ingress, servicemonitor). The templates are identical
+across the three; only `values.yaml` and the chart name differ. Nothing wires them into
+`deploy-dev.sh`, `deploy-tenant.sh` or CI yet, and they are never installed against a remote
+cluster from this branch (Helm charts ship only from upstream `main`, AGENTS.md).
+
+| Chart | Port | Image (`<AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/workshop/…`) | Schema / role |
+|---|---|---|---|
+| `announcements-service` | 8096 | `otterworks-announcements-service` | `announcements` / `announcements` |
+| `preferences-service` | 8097 | `otterworks-preferences-service` | `user_preferences` / `preferences` |
+| `feedback-service` | 8098 | `otterworks-feedback-service` | `feedback` / `feedback` |
+
+- **Service**: `ClusterIP` only; any other `service.type` fails the render. `ingress.enabled: false`
+  (no gateway routes); the NetworkPolicy admits ingress-nginx, monitoring and pods of the same
+  namespace (the direct callers).
+- **Probes**: startup on the portal-common `/health` (kept for parity, up to 180 s), liveness on
+  `/actuator/health/liveness`, readiness on `/actuator/health/readiness` with the datasource added
+  to the readiness group (`MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE=readinessState,db`).
+- **Data**: the configmap sets `SPRING_PROFILES_ACTIVE=postgres`, `SPRING_DATASOURCE_URL` (the
+  tenant database, set at deploy time) and `SPRING_FLYWAY_SCHEMAS` / `SPRING_FLYWAY_DEFAULT_SCHEMA`;
+  the secret carries `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` from
+  `database.username` / `database.password`. With no password no Secret is rendered and the pod
+  does not start (required `secretKeyRef`), so it never falls back to the `application.yml`
+  defaults. Role and schema are still created by each service's `scripts/initdb.sh`.
+- **Sizing**: 256Mi/512Mi memory, 100m/500m CPU, as the other Spring Boot chart (`report-service`).
+  `monitoring.enabled: false`: the services expose no Prometheus endpoint.
+- **Verification**: `make verify-legacy-portal-helm` (`scripts/legacy-portal/verify-helm.sh`)
+  lints each chart with defaults and with every optional template on, validates both renders with
+  `kubeconform -strict` against the EKS version in `platform/terraform` (1.32) plus the CRD
+  catalog for ServiceMonitor, and checks the ClusterIP guard. The kind install is the next step.
