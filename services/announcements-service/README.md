@@ -33,3 +33,5 @@ Behavioral parity with the monolith is enforced by the transcript harness in
   schema legacy-portal already populated is a no-op migration.
 - Branding (`portal-settings.properties`) resolves through Spring placeholders;
   Commons Configuration / Commons Text are no longer on the classpath.
+- Trailing-slash matching (on by default in Spring 5.3, off in 6) is re-enabled
+  explicitly -- see `platform/LegacyPathMatchingConfig`.

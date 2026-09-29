@@ -55,6 +55,11 @@ class AnnouncementsServiceApplicationTest {
     }
 
     @Test
+    void trailingSlashStillRoutesLikeLegacyPortal() throws Exception {
+        mockMvc.perform(get("/api/announcements/")).andExpect(status().isOk());
+    }
+
+    @Test
     void validationFailureIsBadRequest() throws Exception {
         mockMvc.perform(
                         post("/api/announcements")
