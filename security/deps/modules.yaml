@@ -15,7 +15,7 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules pin JDK 11: their recorded transcripts include the
+  # report-service pins JDK 11: its recorded transcript includes the
   # ${script:javascript:...} lookup, which only resolves while the JVM still ships
   # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
   # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
@@ -29,20 +29,66 @@ modules:
     test: -B test
     cases: cases/report-service.json
 
-  - id: legacy-portal
-    path: services/legacy-portal
+  - id: announcements-service
+    path: services/announcements-service
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
-    # Spring Boot 2.x, and it pins its own Maven (3.9.9) via the wrapper — the same
-    # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
-    # reach the wrapper's distribution.
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
     tool:
-      - ./mvnw
-      - mvn
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :announcements-service -am
+      - mvn -f ../portal-parent/pom.xml -pl :announcements-service -am
     test: -B test
-    cases: cases/legacy-portal.json
+    # Extracted from legacy-portal; reaches Commons Configuration only through
+    # portal-common, whose contract is recorded via cases/portal-common.json.
+    cases: null
+
+  - id: preferences-service
+    path: services/preferences-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    tool:
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :preferences-service -am
+      - mvn -f ../portal-parent/pom.xml -pl :preferences-service -am
+    test: -B test
+    # Extracted from legacy-portal; reaches Commons Configuration only through
+    # portal-common, whose contract is recorded via cases/portal-common.json.
+    cases: null
+
+  - id: feedback-service
+    path: services/feedback-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    tool:
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :feedback-service -am
+      - mvn -f ../portal-parent/pom.xml -pl :feedback-service -am
+    test: -B test
+    # Extracted from legacy-portal; reaches Commons Configuration only through
+    # portal-common, whose contract is recorded via cases/portal-common.json.
+    cases: null
+
+  - id: portal-common
+    path: services/portal-common
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # Built as a module of the services/portal-parent reactor, which pins its own
+    # Maven (3.9.9) via the wrapper — the same tool ci.yml builds it with. `mvn` is the
+    # fallback for a machine that cannot reach the wrapper's distribution.
+    tool:
+      - ../portal-parent/mvnw -f ../portal-parent/pom.xml -pl :portal-common
+      - mvn -f ../portal-parent/pom.xml -pl :portal-common
+    test: -B test
+    # Carries PortalBrandingSettings and Commons Configuration for every portal
+    # service, so it records the interpolation contract itself. Its script case is a
+    # contract (Commons Configuration refuses the lookup); standalone Nashorn stays on
+    # its test classpath so the refusal is measured with a JavaScript engine present.
+    cases: cases/portal-common.json
 
   - id: notification-service
     path: services/notification-service
@@ -74,6 +120,11 @@ modules:
     cases: null
 
 exempt:
+  - path: services/portal-parent
+    reason: >
+      Parent POM / reactor aggregator (packaging pom) for the portal services
+      (legacy-portal decomposition). Declares no dependencies of its own; every module it lists is
+      registered above and measured on its own.
   - path: frontend/client-app/mobile/android
     reason: >
       Capacitor Android shell. Ships no server-side JVM dependencies and needs the

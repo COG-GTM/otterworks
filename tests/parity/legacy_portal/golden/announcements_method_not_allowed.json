@@ -1,0 +1,59 @@
+{
+  "context": "announcements",
+  "description": "Mapped paths with unmapped methods return Boot's default 405 body.",
+  "scenario": "announcements_method_not_allowed",
+  "steps": [
+    {
+      "name": "DELETE by id",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/announcements/1"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/announcements/1",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    },
+    {
+      "name": "PUT collection",
+      "request": {
+        "json": {},
+        "method": "PUT",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/announcements",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    },
+    {
+      "name": "GET publish",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/1/publish"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/announcements/1/publish",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    }
+  ]
+}

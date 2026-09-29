@@ -1,0 +1,207 @@
+{
+  "context": "preferences",
+  "description": "Validation and parsing failures return the default 400 body and persist nothing.",
+  "scenario": "preferences_validation",
+  "steps": [
+    {
+      "name": "empty object",
+      "request": {
+        "json": {},
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "blank theme",
+      "request": {
+        "json": {
+          "locale": "en-US",
+          "theme": " "
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "missing locale",
+      "request": {
+        "json": {
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "theme over 20 chars",
+      "request": {
+        "json": {
+          "locale": "en-US",
+          "theme": "xxxxxxxxxxxxxxxxxxxxx"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "locale over 20 chars",
+      "request": {
+        "json": {
+          "locale": "lllllllllllllllllllll",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "emailNotifications not a boolean",
+      "request": {
+        "json": {
+          "emailNotifications": "sometimes",
+          "locale": "en-US",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "malformed json",
+      "request": {
+        "content_type": "application/json",
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid",
+        "raw": "{theme: dark}"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/preferences/pref-invalid",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "unsupported content type",
+      "request": {
+        "content_type": "text/plain",
+        "method": "PUT",
+        "path": "/api/preferences/pref-invalid",
+        "raw": "theme=dark"
+      },
+      "response": {
+        "body": {
+          "error": "Unsupported Media Type",
+          "path": "/api/preferences/pref-invalid",
+          "status": 415,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 415
+      }
+    },
+    {
+      "name": "nothing persisted",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-invalid"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref-invalid"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "theme and locale at maximum length",
+      "request": {
+        "json": {
+          "emailNotifications": true,
+          "locale": "llllllllllllllllllll",
+          "theme": "xxxxxxxxxxxxxxxxxxxx"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-limits"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "llllllllllllllllllll",
+          "theme": "xxxxxxxxxxxxxxxxxxxx",
+          "userId": "pref-limits"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

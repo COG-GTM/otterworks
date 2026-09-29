@@ -24,7 +24,10 @@ services/auth-service/build/
 services/auth-service/.gradle/
 services/auth-service/out/
 services/report-service/target/
-services/legacy-portal/target/
+services/announcements-service/target/
+services/preferences-service/target/
+services/feedback-service/target/
+services/portal-common/target/
 *.class
 *.jar
 

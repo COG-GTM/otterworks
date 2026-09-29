@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record parity-legacy-portal parity-legacy-portal-record verify-legacy-portal-stage verify-legacy-portal-helm verify-legacy-portal-kind portal-build portal-up portal-down portal-reset
 
 SHELL := /bin/bash
 
@@ -189,6 +189,41 @@ test-api-flows: ## Run black-box API flow tests against the local API gateway
 
 test-api-flows-collect: ## Collect black-box API flow tests without running them
 	UV_PROJECT_ENVIRONMENT=.venv uv run python -m pytest tests/api --collect-only -q
+
+PARITY_LP_DIR = tests/parity/legacy_portal
+PARITY_LP_PYTEST = uv run --quiet --no-project --with-requirements $(PARITY_LP_DIR)/requirements.txt python -m pytest -c $(PARITY_LP_DIR)/pytest.ini $(PARITY_LP_DIR)
+
+PORTAL_COMPOSE = docker compose -f docker-compose.infra.yml -f docker-compose.yml
+PORTAL_SERVICES = announcements-service preferences-service feedback-service
+
+portal-build: ## Build the announcements/preferences/feedback service images
+	$(PORTAL_COMPOSE) build $(PORTAL_SERVICES)
+
+portal-up: ## Start the portal services on :8096-8098 (+ postgres, role/schema init) and wait until healthy
+	$(PORTAL_COMPOSE) up -d --wait $(PORTAL_SERVICES)
+
+portal-down: ## Stop and remove the portal services (shared infra keeps running)
+	$(PORTAL_COMPOSE) rm -sf $(PORTAL_SERVICES) portal-db-init
+
+portal-reset: ## Recreate the portal schemas empty and restart the portal services (fresh parity target)
+	$(PORTAL_COMPOSE) rm -sf $(PORTAL_SERVICES)
+	PORTAL_DB_RESET=1 $(PORTAL_COMPOSE) run --rm -e PORTAL_DB_RESET portal-db-init
+	$(PORTAL_COMPOSE) up -d --wait $(PORTAL_SERVICES)
+
+parity-legacy-portal: ## Replay legacy-portal golden transcripts against fresh portal services (ANNOUNCEMENTS_URL/PREFERENCES_URL/FEEDBACK_URL, default :8096/:8097/:8098)
+	$(PARITY_LP_PYTEST)
+
+parity-legacy-portal-record: ## Re-record legacy-portal golden transcripts from freshly started portal services
+	$(PARITY_LP_PYTEST) --record-golden
+
+verify-legacy-portal-stage: ## Build/test the portal reactor and run parity on H2, postgres and the compose stack (PROFILE=, RUNS=)
+	scripts/legacy-portal/verify-stage.sh --profile $(or $(PROFILE),all) --runs $(or $(RUNS),2)
+
+verify-legacy-portal-helm: ## helm lint + kubeconform the announcements/preferences/feedback charts (KUBE_VERSION=, default the EKS version)
+	scripts/legacy-portal/verify-helm.sh
+
+verify-legacy-portal-kind: ## Build the portal images, helm install them on a throwaway kind cluster as a tenant and run parity through it
+	scripts/legacy-portal/verify-kind.sh --runs $(or $(RUNS),2)
 
 lint: ## Lint all services
 	@echo "=== API Gateway ===" && cd services/api-gateway && golangci-lint run

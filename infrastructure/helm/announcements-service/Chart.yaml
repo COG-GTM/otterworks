@@ -1,0 +1,6 @@
+apiVersion: v2
+name: announcements-service
+description: OtterWorks Announcements Service - Java 17/Spring Boot 3 portal announcements (extracted from legacy-portal)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

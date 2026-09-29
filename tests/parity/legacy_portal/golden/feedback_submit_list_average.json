@@ -1,0 +1,221 @@
+{
+  "context": "feedback",
+  "description": "Submit, list by userId newest first, filtering, empty userId, and the in-memory average across every row.",
+  "scenario": "feedback_submit_list_average",
+  "steps": [
+    {
+      "name": "alice rates 5",
+      "request": {
+        "json": {
+          "message": "great",
+          "rating": 5,
+          "userId": "fb-alice"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "message": "great",
+          "rating": 5,
+          "userId": "fb-alice"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "alice rates 4",
+      "request": {
+        "json": {
+          "message": "good",
+          "rating": 4,
+          "userId": "fb-alice"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "createdAt": "<instant:Z>",
+          "id": "<id#2>",
+          "message": "good",
+          "rating": 4,
+          "userId": "fb-alice"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "bob rates 2",
+      "request": {
+        "json": {
+          "message": "meh",
+          "rating": 2,
+          "userId": "fb-bob"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "createdAt": "<instant:Z>",
+          "id": "<id#3>",
+          "message": "meh",
+          "rating": 2,
+          "userId": "fb-bob"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "alice newest first",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=fb-alice"
+      },
+      "response": {
+        "body": [
+          {
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "message": "good",
+            "rating": 4,
+            "userId": "fb-alice"
+          },
+          {
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "message": "great",
+            "rating": 5,
+            "userId": "fb-alice"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "bob only",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=fb-bob"
+      },
+      "response": {
+        "body": [
+          {
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "message": "meh",
+            "rating": 2,
+            "userId": "fb-bob"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "unknown user",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=fb-nobody"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "empty userId",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId="
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "average of 5, 4, 2",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "response": {
+        "body": {
+          "averageRating": 3.6666666666666665
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "rating as a numeric string is coerced",
+      "request": {
+        "json": {
+          "message": "ok",
+          "rating": "3",
+          "userId": "fb-carol"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "createdAt": "<instant:Z>",
+          "id": "<id#4>",
+          "message": "ok",
+          "rating": 3,
+          "userId": "fb-carol"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "rating and message at the limits",
+      "request": {
+        "json": {
+          "message": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+          "rating": 1,
+          "userId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "createdAt": "<instant:Z>",
+          "id": "<id#5>",
+          "message": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+          "rating": 1,
+          "userId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "average of 5, 4, 2, 3, 1",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "response": {
+        "body": {
+          "averageRating": 3.0
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

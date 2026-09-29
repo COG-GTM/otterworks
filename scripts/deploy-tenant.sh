@@ -11,8 +11,9 @@
 #   - namespace otterworks-<ID> (TTL-labeled for the reaper)
 #   - ResourceQuota + LimitRange + a namespace NetworkPolicy
 #   - per-tenant in-cluster Redis + MeiliSearch (chaos/session/search isolation)
-#   - a per-tenant RDS database otterworks_<ID> (Postgres data isolation)
-#   - all 11 backends + 2 frontends via Helm (replicas=1), frontends on the
+#   - a per-tenant RDS database otterworks_<ID> (Postgres data isolation), with
+#     a schema + login role per portal service inside it (no new RDS objects)
+#   - all 14 backends + 2 frontends via Helm (replicas=1), frontends on the
 #     SHARED ingress (ClusterIP + one Ingress), NOT one LoadBalancer per tenant
 #
 # Usage:
@@ -76,6 +77,9 @@ T_MEILI_URL="http://meilisearch:7700"
 # Tier A shares SNS/SQS eventing off by default to avoid cross-tenant queue
 # consumption; Tier B (data-isolated) can opt in later. Kept off for both here.
 T_WIRE_EVENTING="false"
+# Set once create_portal_db_roles has created the portal services' own roles.
+# shellcheck disable=SC2034  # read by build_helm_args in lib/tenant-common.sh
+T_PORTAL_DB_ROLES="false"
 # Convert a compact TTL (e.g. 8h, 30m, 2d) into an absolute UTC expiry, working
 # with both GNU date (-d "8 hours") and BSD/macOS date (-v+8H).
 # `never` marks a perpetual tenant: the reaper skips it on the control table's
@@ -146,12 +150,13 @@ spec:
     requests.cpu: "4"
     requests.memory: 8Gi
     # Limits only cap bursting, but the quota counts them, and the full service
-    # set declares ~9.25 CPU of limits. At 8 the last two Deployments to be
+    # set declares ~12.75 CPU of limits (the three JVM portal services add 3).
+    # At 8, against the then ~9.25, the last two Deployments to be
     # created were rejected by the quota and simply never appeared -- the
     # namespace looked healthy because the failure lands on the ReplicaSet, not
     # on a pod. Sized above the profile's total rather than by trimming limits,
     # which would only make services throttle under load.
-    limits.cpu: "12"
+    limits.cpu: "16"
     limits.memory: 20Gi
     pods: "40"
 ---
@@ -302,6 +307,78 @@ YAML
     kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | tail -5 || true
   fi
   kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
+  create_portal_db_roles
+}
+
+# Portal services each own a schema in ${T_DB_NAME} and log in as their own
+# role (portal_db_setup_sql). Only the services this profile deploys are
+# touched, so a partial redeploy never changes a running service's credentials.
+create_portal_db_roles() {
+  local portal=() service env_name env_yaml="" secret_data="" sql
+  for service in "${TENANT_SERVICES[@]}"; do
+    [ -n "${PORTAL_DB_SCHEMA[$service]:-}" ] && portal+=("${service}")
+  done
+  [ "${#portal[@]}" -gt 0 ] || return 0
+  log "Ensuring portal roles/schemas in ${T_DB_NAME} (${portal[*]})..."
+  for service in "${portal[@]}"; do
+    env_name="$(portal_db_password_env "${service}")"
+    secret_data+="  ${env_name}: $(printf '%s' "$(portal_db_password "$(portal_db_role "${T_DB_NAME}" "${service}")")" | base64 | tr -d '\n')"$'\n'
+    env_yaml+="            - name: ${env_name}"$'\n'
+    env_yaml+="              valueFrom: { secretKeyRef: { name: tenant-db-portal, key: ${env_name} } }"$'\n'
+  done
+  # Indented to sit inside the Job's args block scalar, which strips it again.
+  sql="$(portal_db_setup_sql "${T_DB_NAME}" "${portal[@]}" | sed 's/^/              /')"
+
+  kubectl -n "${NS}" delete job tenant-db-portal --ignore-not-found >/dev/null 2>&1 || true
+  apply_db_admin_secret "${NS}"
+  # Values are base64'd through a pipe and applied on stdin: no password on argv.
+  kubectl -n "${NS}" apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tenant-db-portal
+type: Opaque
+data:
+${secret_data}
+EOF
+  kubectl apply -n "${NS}" -f - <<YAML
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tenant-db-portal
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 120
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: psql
+          image: postgres:16-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: tenant-db-admin, key: PGPASSWORD } }
+${env_yaml}          command: ["/bin/sh","-c"]
+          args:
+            - |
+              set -e
+              psql "host=${RDS_HOST} port=${RDS_PORT} dbname=${T_DB_NAME} user=${DB_USER} sslmode=prefer connect_timeout=10" <<'SQL'
+${sql}
+              SQL
+              echo "portal roles/schemas ready in ${T_DB_NAME}"
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+YAML
+  if kubectl -n "${NS}" wait --for=condition=complete job/tenant-db-portal --timeout=120s >/dev/null 2>&1; then
+    log "  portal roles/schemas ready."
+    # shellcheck disable=SC2034  # read by build_helm_args in lib/tenant-common.sh
+    T_PORTAL_DB_ROLES=true
+  else
+    warn "  portal DB init did not complete; portal services fall back to the admin user. Check: kubectl -n ${NS} logs job/tenant-db-portal"
+    kubectl -n "${NS}" logs job/tenant-db-portal 2>/dev/null | tail -5 || true
+  fi
+  kubectl -n "${NS}" delete secret tenant-db-admin tenant-db-portal --ignore-not-found >/dev/null 2>&1 || true
 }
 if [ "${SKIP_DB}" = true ]; then
   warn "--skip-db set: using the shared default database (no Postgres data isolation)."

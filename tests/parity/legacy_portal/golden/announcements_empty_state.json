@@ -1,0 +1,43 @@
+{
+  "context": "announcements",
+  "description": "Lists on an empty table, default and explicit publishedOnly.",
+  "scenario": "announcements_empty_state",
+  "steps": [
+    {
+      "name": "list default (publishedOnly=true)",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list publishedOnly=true",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=true"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list publishedOnly=false",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=false"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

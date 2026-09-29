@@ -1,0 +1,6 @@
+apiVersion: v2
+name: preferences-service
+description: OtterWorks Preferences Service - Java 17/Spring Boot 3 portal user preferences (extracted from legacy-portal)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

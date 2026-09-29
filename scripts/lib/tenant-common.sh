@@ -34,19 +34,21 @@ BACKEND_SERVICES=(
   api-gateway auth-service file-service document-service collab-service
   notification-service search-service analytics-service admin-service
   audit-service report-service
+  announcements-service preferences-service feedback-service
 )
 FRONTEND_SERVICES=(web-app admin-dashboard)
 ALL_SERVICES=("${BACKEND_SERVICES[@]}" "${FRONTEND_SERVICES[@]}")
 
-# Service profiles. A full tenant is ~1.5 vCPU / 3.5GiB of requests, which does
-# not multiply to 100 tenants affordably -- but few labs exercise all 13
+# Service profiles. A full tenant is ~1.8 vCPU / 5GiB of requests, which does
+# not multiply to 100 tenants affordably -- but few labs exercise all 16
 # services. "core" is the subset a browser session actually touches (~0.5 vCPU).
 #
 # "full" remains the default: "core" deliberately omits admin-service, which
 # hosts the incident-triage path (and, on the upstream golden app, the planted
 # crash-loop bug for bug-hunt labs), so switching the default would silently
 # break those demos. Opt in with --profile core when a lab is known not to
-# need the whole estate.
+# need the whole estate. The portal services (announcements, preferences,
+# feedback) have no browser route and are "full" only.
 PROFILE_CORE_SERVICES=(api-gateway auth-service file-service document-service web-app)
 
 # Echo the service list for a profile.
@@ -64,8 +66,16 @@ declare -A CONTAINER_PORT=(
   [api-gateway]=8080 [auth-service]=8081 [file-service]=8082 [document-service]=8083
   [collab-service]=8084 [notification-service]=8086 [search-service]=8087
   [analytics-service]=8088 [admin-service]=8089 [audit-service]=8090 [report-service]=8091
+  [announcements-service]=8096 [preferences-service]=8097 [feedback-service]=8098
 )
-JVM_SERVICES=" auth-service report-service notification-service analytics-service "
+JVM_SERVICES=" auth-service report-service notification-service analytics-service announcements-service preferences-service feedback-service "
+
+# Portal services own one schema each in the tenant database and log in as
+# their own role (docs/legacy-portal-decomposition.md). Schema names are fixed
+# by each service's entities and Flyway migrations.
+declare -A PORTAL_DB_SCHEMA=(
+  [announcements-service]=announcements [preferences-service]=user_preferences [feedback-service]=feedback
+)
 
 # Naming ----------------------------------------------------------------------
 # Namespace must be RFC-1123 (lowercase alnum + '-'); DB name uses '_'.
@@ -202,13 +212,67 @@ data:
 EOF
 }
 
+# Login role for a portal service in a tenant database: <db>_<service stem>,
+# e.g. otterworks_a01_announcements. Roles are cluster-wide on the shared RDS
+# instance, so the tenant is part of the name. A name past PostgreSQL's 63-byte
+# identifier limit is shortened with a hash suffix rather than truncated by the
+# server, which would leave the JDBC username and the role out of step.
+portal_db_role() {
+  local name="$1_${2%-service}"
+  if [ "${#name}" -gt 63 ]; then
+    name="${name:0:54}_$(printf '%s' "${name}" | openssl dgst -sha256 | sed 's/^.* //' | cut -c1-8)"
+  fi
+  printf '%s' "${name}"
+}
+
+# Password for a portal role, derived from DB_PASSWORD so the database Job, the
+# Helm release and every later redeploy agree without storing anything. The
+# admin password reaches openssl on stdin only, never on an argv.
+portal_db_password() {
+  printf 'otterworks-portal-db:%s:%s' "$1" "${DB_PASSWORD}" | openssl dgst -sha256 | sed 's/^.* //'
+}
+
+# Env var the database Job reads a portal role's password from.
+portal_db_password_env() { local stem="${1%-service}"; printf 'PORTAL_%s_DB_PASSWORD' "${stem^^}"; }
+
+# psql script that creates each portal service's role and schema inside
+# database $1 (run while connected to it). Idempotent, and mirrors
+# services/<service>/scripts/initdb.sh from the compose stack. Passwords are read
+# with \getenv, so they appear neither in the script nor on any argv.
+portal_db_setup_sql() {
+  local db="$1" service; shift
+  printf '\\set ON_ERROR_STOP on\n\\set db %s\n' "${db}"
+  # Only the database owner and the portal roles granted below may connect; any
+  # other tenant's portal role is refused at login.
+  printf 'REVOKE CONNECT ON DATABASE :"db" FROM PUBLIC;\n'
+  for service in "$@"; do
+    printf '\\set role %s\n\\set schema %s\n\\getenv role_password %s\n' \
+      "$(portal_db_role "${db}" "${service}")" "${PORTAL_DB_SCHEMA[$service]}" "$(portal_db_password_env "${service}")"
+    cat <<'SQL'
+SELECT format('CREATE ROLE %I', :'role') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role')\gexec
+ALTER ROLE :"role" WITH LOGIN PASSWORD :'role_password';
+GRANT CONNECT ON DATABASE :"db" TO :"role";
+-- AUTHORIZATION needs membership in the owning role; the RDS master user is not a superuser.
+GRANT :"role" TO CURRENT_USER;
+CREATE SCHEMA IF NOT EXISTS :"schema" AUTHORIZATION :"role";
+ALTER SCHEMA :"schema" OWNER TO :"role";
+REVOKE ALL ON SCHEMA :"schema" FROM PUBLIC;
+SQL
+  done
+}
+
 # Drop a per-tenant database via an in-cluster Job in ${run_ns}. Callers MUST
 # delete the tenant namespace first so no application pods are still connected
 # (otherwise DROP DATABASE races the pods' connection-pool reconnects). Requires
 # load_infra_outputs to have set RDS_HOST/RDS_PORT/DB_USER, and DB_PASSWORD set.
+# Also drops the tenant's portal service roles.
 drop_tenant_db() {
-  local db="$1" run_ns="$2" frag job secret
+  local db="$1" run_ns="$2" frag job secret service drop_roles=""
   frag="$(k8s_name_fragment "${db}")"
+  # Portal roles are cluster-wide, so they outlive the database unless dropped.
+  for service in "${!PORTAL_DB_SCHEMA[@]}"; do
+    drop_roles+=" -c \"DROP ROLE IF EXISTS \\\"$(portal_db_role "${db}" "${service}")\\\"\""
+  done
   job="tenant-db-drop-${frag}"
   secret="tenant-db-admin-${frag}"
   apply_db_admin_secret "${run_ns}" "${secret}"
@@ -234,7 +298,7 @@ spec:
           args:
             - |
               CONN="host=${RDS_HOST} port=${RDS_PORT} dbname=otterworks user=${DB_USER} sslmode=prefer connect_timeout=10"
-              psql "\$CONN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE)"
+              psql "\$CONN" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"${db}\" WITH (FORCE)"${drop_roles}
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 200m, memory: 128Mi }
@@ -260,6 +324,7 @@ urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 # Build per-service Helm --set flags (EXTRA_ARGS) + secret pairs (SECRET_KV) for
 # a tenant. Requires these tenant-scoped globals to be set by the caller:
 #   T_REDIS_HOST, T_MEILI_URL, T_DB_NAME, T_WIRE_EVENTING (true/false)
+# and optionally T_PORTAL_DB_ROLES=true once the portal roles exist.
 build_helm_args() {
   local service=$1
   EXTRA_ARGS=()
@@ -382,5 +447,26 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DB_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DB_PORT=${DB_ENDPOINT_PORT}")
       EXTRA_ARGS+=(--set-string "config.DB_NAME=${T_DB_NAME}" --set-string "config.DB_USER=${DB_USER}")
       add_secret DB_PASSWORD "${DB_PASSWORD}" ;;
+    announcements-service|preferences-service|feedback-service)
+      # Each owns one schema and logs in as its own role (portal_db_setup_sql).
+      # PgBouncer's userlist holds only the admin user, so those roles go
+      # straight to RDS -- with a small pool, since every connection counts
+      # against the instance's limit rather than the pooler's.
+      EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=3")
+      EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=1")
+      if [ "${T_PORTAL_DB_ROLES:-false}" = "true" ]; then
+        local db_role; db_role="$(portal_db_role "${T_DB_NAME}" "${service}")"
+        EXTRA_ARGS+=(--set-string "database.url=jdbc:postgresql://${RDS_HOST}:${RDS_PORT}/${T_DB_NAME}")
+        EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_USERNAME=${db_role}")
+        add_secret SPRING_DATASOURCE_PASSWORD "$(portal_db_password "${db_role}")"
+      else
+        # No per-tenant roles (--skip-db, or the database Job did not finish):
+        # the admin user, and Flyway creates the schema itself. Session port,
+        # for Flyway's advisory lock.
+        EXTRA_ARGS+=(--set-string "database.url=jdbc:postgresql://${DB_ENDPOINT_HOST}:${DB_SESSION_PORT}/${T_DB_NAME}")
+        EXTRA_ARGS+=(--set-string "config.SPRING_DATASOURCE_USERNAME=${DB_USER}")
+        EXTRA_ARGS+=(--set-string "config.SPRING_FLYWAY_CREATE_SCHEMAS=true")
+        add_secret SPRING_DATASOURCE_PASSWORD "${DB_PASSWORD}"
+      fi ;;
   esac
 }

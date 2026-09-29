@@ -1,0 +1,146 @@
+{
+  "context": "announcements",
+  "description": "GlobalExceptionHandler mappings: 404 for unknown ids, 400 with message for unconvertible ids and publishedOnly values.",
+  "scenario": "announcements_not_found_and_bad_ids",
+  "steps": [
+    {
+      "name": "get unknown id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/999999"
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "announcement 999999 not found"
+        },
+        "content_type": "application/json",
+        "status": 404
+      }
+    },
+    {
+      "name": "get negative id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/-1"
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "announcement -1 not found"
+        },
+        "content_type": "application/json",
+        "status": 404
+      }
+    },
+    {
+      "name": "publish unknown id",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/999999/publish"
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "announcement 999999 not found"
+        },
+        "content_type": "application/json",
+        "status": 404
+      }
+    },
+    {
+      "name": "get non-numeric id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/abc"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "For input string: \"abc\""
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "get decimal id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/1.5"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "For input string: \"1.5\""
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "publish non-numeric id",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/abc/publish"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "For input string: \"abc\""
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "list with non-boolean publishedOnly",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=maybe"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "Invalid boolean value [maybe]"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "list with empty publishedOnly",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly="
+      },
+      "response": {
+        "body": [
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          },
+          {
+            "body": "Saturday 02:00-04:00 UTC",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Maintenance window"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

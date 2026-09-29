@@ -1,0 +1,33 @@
+{
+  "context": "feedback",
+  "description": "Average of an empty table is 0.0; unknown user has no feedback.",
+  "scenario": "feedback_empty_state",
+  "steps": [
+    {
+      "name": "average rating on empty table",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "response": {
+        "body": {
+          "averageRating": 0.0
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list for user with no feedback",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=fb-alice"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}
