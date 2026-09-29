@@ -1,0 +1,66 @@
+# Feedback context -- POST /api/feedback, GET /api/feedback?userId=,
+# GET /api/feedback/average-rating.
+context: feedback
+scenarios:
+  - id: empty-state
+    steps:
+      - name: average-with-no-feedback
+        request: {method: GET, path: /api/feedback/average-rating}
+      - name: list-unknown-user
+        request: {method: GET, path: "/api/feedback?userId=nobody"}
+
+  - id: submit-and-list
+    steps:
+      - name: u1-first
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: 5, message: "Love the new dashboard"}}
+      - name: u1-second
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: 4, message: "Search is a bit slow"}}
+      - name: u2-first
+        request: {method: POST, path: /api/feedback, json: {userId: u2, rating: 2, message: "Could not find the export button"}}
+      - name: list-u1-newest-first
+        request: {method: GET, path: "/api/feedback?userId=u1"}
+      - name: list-u2
+        request: {method: GET, path: "/api/feedback?userId=u2"}
+      - name: average-non-terminating-double
+        request: {method: GET, path: /api/feedback/average-rating}
+      - name: u3-boundary-low
+        request: {method: POST, path: /api/feedback, json: {userId: u3, rating: 1, message: "min rating"}}
+      - name: u3-boundary-high
+        request: {method: POST, path: /api/feedback, json: {userId: u3, rating: 5, message: "max rating"}}
+      - name: average-after-boundaries
+        request: {method: GET, path: /api/feedback/average-rating}
+
+  - id: validation
+    steps:
+      - name: rating-zero
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: 0, message: "too low"}}
+      - name: rating-six
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: 6, message: "too high"}}
+      - name: rating-missing-defaults-to-zero
+        request: {method: POST, path: /api/feedback, json: {userId: u1, message: "no rating"}}
+      - name: rating-not-a-number
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: "five", message: "nan"}}
+      - name: rating-fractional
+        request: {method: POST, path: /api/feedback, json: {userId: u1, rating: 4.5, message: "fraction"}}
+      - name: blank-user
+        request: {method: POST, path: /api/feedback, json: {userId: "", rating: 3, message: "anon"}}
+      - name: message-too-long
+        request:
+          method: POST
+          path: /api/feedback
+          json: {userId: u1, rating: 3, message: {$repeat: "m", times: 2001}}
+      - name: malformed-json
+        request: {method: POST, path: /api/feedback, raw: "not json", content_type: application/json}
+      - name: failed-writes-not-counted
+        request: {method: GET, path: /api/feedback/average-rating}
+
+  - id: routing-edges
+    steps:
+      - name: list-without-user-param
+        request: {method: GET, path: /api/feedback}
+      - name: list-blank-user-param
+        request: {method: GET, path: "/api/feedback?userId="}
+      - name: put-not-allowed
+        request: {method: PUT, path: /api/feedback, json: {userId: u1, rating: 3, message: "m"}}
+      - name: trailing-slash-average
+        request: {method: GET, path: /api/feedback/average-rating/}

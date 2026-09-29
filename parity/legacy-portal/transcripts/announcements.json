@@ -1,0 +1,517 @@
+{
+  "context": "announcements",
+  "recordedFrom": {
+    "service": "legacy-portal",
+    "runtime": "Spring Boot 2.7.18 / Java 11",
+    "sourceFingerprint": "deee8ab1983c91e3",
+    "gitRev": "cc23bf19"
+  },
+  "exchanges": [
+    {
+      "scenario": "empty-state",
+      "step": "get-0",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": []
+    },
+    {
+      "scenario": "empty-state",
+      "step": "get-1",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=false"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": []
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "create-draft",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 1,
+        "title": "Maintenance window",
+        "body": "Portal read-only Sat 02:00-04:00 UTC",
+        "published": false,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "create-published-first",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 2,
+        "title": "Release 1.0",
+        "body": "The portal is live",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "create-published-second",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 3,
+        "title": "Release 1.1",
+        "body": "Dark mode is here",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "list-published-newest-first",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 3,
+          "title": "Release 1.1",
+          "body": "Dark mode is here",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 2,
+          "title": "Release 1.0",
+          "body": "The portal is live",
+          "published": true,
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "list-all",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=false"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 1,
+          "title": "Maintenance window",
+          "body": "Portal read-only Sat 02:00-04:00 UTC",
+          "published": false,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 2,
+          "title": "Release 1.0",
+          "body": "The portal is live",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 3,
+          "title": "Release 1.1",
+          "body": "Dark mode is here",
+          "published": true,
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "create-and-read",
+      "step": "get-draft",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/1"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "id": 1,
+        "title": "Maintenance window",
+        "body": "Portal read-only Sat 02:00-04:00 UTC",
+        "published": false,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "publish-lifecycle",
+      "step": "publish-draft",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/1/publish"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "id": 1,
+        "title": "Maintenance window",
+        "body": "Portal read-only Sat 02:00-04:00 UTC",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "publish-lifecycle",
+      "step": "publish-is-idempotent",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/1/publish"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "id": 1,
+        "title": "Maintenance window",
+        "body": "Portal read-only Sat 02:00-04:00 UTC",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "publish-lifecycle",
+      "step": "draft-now-listed",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 3,
+          "title": "Release 1.1",
+          "body": "Dark mode is here",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 2,
+          "title": "Release 1.0",
+          "body": "The portal is live",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 1,
+          "title": "Maintenance window",
+          "body": "Portal read-only Sat 02:00-04:00 UTC",
+          "published": true,
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "publish-lifecycle",
+      "step": "publish-unknown",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/424242/publish"
+      },
+      "status": 404,
+      "mediaType": "application/json",
+      "body": {
+        "error": "Not Found",
+        "message": "announcement 424242 not found"
+      }
+    },
+    {
+      "scenario": "create-defaults",
+      "step": "published-omitted-defaults-to-draft",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 4,
+        "title": "Implicit draft",
+        "body": "published flag omitted",
+        "published": false,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "create-defaults",
+      "step": "unknown-fields-ignored",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 5,
+        "title": "Extra fields",
+        "body": "id and createdAt are server-owned",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "blank-title",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "missing-body",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "title-too-long",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "title-at-limit",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 6,
+        "title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "body": "exactly 200 chars of title",
+        "published": false,
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "body-too-long",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "malformed-json",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "wrong-content-type",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "status": 415,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 415,
+        "error": "Unsupported Media Type",
+        "path": "/api/announcements"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "unknown-id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/999999"
+      },
+      "status": 404,
+      "mediaType": "application/json",
+      "body": {
+        "error": "Not Found",
+        "message": "announcement 999999 not found"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "non-numeric-id",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/abc"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "error": "Bad Request",
+        "message": "For input string: \"abc\""
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "id-overflows-long",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/99999999999999999999"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "error": "Bad Request",
+        "message": "For input string: \"99999999999999999999\""
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "bad-boolean-param",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=maybe"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "error": "Bad Request",
+        "message": "Invalid boolean value [maybe]"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "method-not-allowed",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/announcements/1"
+      },
+      "status": 405,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 405,
+        "error": "Method Not Allowed",
+        "path": "/api/announcements/1"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "trailing-slash-collection",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 5,
+          "title": "Extra fields",
+          "body": "id and createdAt are server-owned",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 3,
+          "title": "Release 1.1",
+          "body": "Dark mode is here",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 2,
+          "title": "Release 1.0",
+          "body": "The portal is live",
+          "published": true,
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 1,
+          "title": "Maintenance window",
+          "body": "Portal read-only Sat 02:00-04:00 UTC",
+          "published": true,
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "trailing-slash-item",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/2/"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "id": 2,
+        "title": "Release 1.0",
+        "body": "The portal is live",
+        "published": true,
+        "createdAt": "<instant>"
+      }
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "context": "platform",
+  "recordedFrom": {
+    "service": "legacy-portal",
+    "runtime": "Spring Boot 2.7.18 / Java 11",
+    "sourceFingerprint": "deee8ab1983c91e3",
+    "gitRev": "cc23bf19"
+  },
+  "exchanges": [
+    {
+      "scenario": "health",
+      "step": "health",
+      "request": {
+        "method": "GET",
+        "path": "/health"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "status": "UP",
+        "banner": "OtterWorks Portal (on-prem) - contact portal-support@otterworks.example"
+      }
+    },
+    {
+      "scenario": "health",
+      "step": "actuator-health",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "status": "UP",
+        "groups": [
+          "liveness",
+          "readiness"
+        ]
+      }
+    },
+    {
+      "scenario": "health",
+      "step": "actuator-liveness",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health/liveness"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "status": "UP"
+      }
+    },
+    {
+      "scenario": "health",
+      "step": "actuator-readiness",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health/readiness"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "status": "UP"
+      }
+    },
+    {
+      "scenario": "health",
+      "step": "actuator-info",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/info"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {}
+    },
+    {
+      "scenario": "unrouted",
+      "step": "unknown-api-path",
+      "request": {
+        "method": "GET",
+        "path": "/api/does-not-exist"
+      },
+      "status": 404,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 404,
+        "error": "Not Found",
+        "path": "/api/does-not-exist"
+      }
+    },
+    {
+      "scenario": "unrouted",
+      "step": "root",
+      "request": {
+        "method": "GET",
+        "path": "/"
+      },
+      "status": 404,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 404,
+        "error": "Not Found",
+        "path": "/"
+      }
+    }
+  ]
+}

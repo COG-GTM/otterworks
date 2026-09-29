@@ -1,0 +1,101 @@
+# Announcements context -- GET/POST /api/announcements, GET /api/announcements/{id},
+# POST /api/announcements/{id}/publish. Scenarios run in order against ONE fresh
+# instance, so identity values (1, 2, 3...) are part of the contract.
+context: announcements
+scenarios:
+  - id: empty-state
+    steps:
+      - request: {method: GET, path: /api/announcements}
+      - request: {method: GET, path: "/api/announcements?publishedOnly=false"}
+
+  - id: create-and-read
+    steps:
+      - name: create-draft
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "Maintenance window", body: "Portal read-only Sat 02:00-04:00 UTC", published: false}
+        capture: {draft_id: $.id}
+      - name: create-published-first
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "Release 1.0", body: "The portal is live", published: true}
+      - name: create-published-second
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "Release 1.1", body: "Dark mode is here", published: true}
+      - name: list-published-newest-first
+        request: {method: GET, path: /api/announcements}
+      - name: list-all
+        request: {method: GET, path: "/api/announcements?publishedOnly=false"}
+      - name: get-draft
+        request: {method: GET, path: "/api/announcements/{draft_id}"}
+
+  - id: publish-lifecycle
+    steps:
+      - name: publish-draft
+        request: {method: POST, path: "/api/announcements/1/publish"}
+      - name: publish-is-idempotent
+        request: {method: POST, path: "/api/announcements/1/publish"}
+      - name: draft-now-listed
+        request: {method: GET, path: /api/announcements}
+      - name: publish-unknown
+        request: {method: POST, path: "/api/announcements/424242/publish"}
+
+  - id: create-defaults
+    steps:
+      - name: published-omitted-defaults-to-draft
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "Implicit draft", body: "published flag omitted"}
+      - name: unknown-fields-ignored
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "Extra fields", body: "id and createdAt are server-owned", published: true, id: 999, createdAt: "1999-01-01T00:00:00Z"}
+
+  - id: validation
+    steps:
+      - name: blank-title
+        request: {method: POST, path: /api/announcements, json: {title: "  ", body: "b", published: true}}
+      - name: missing-body
+        request: {method: POST, path: /api/announcements, json: {title: "t"}}
+      - name: title-too-long
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: {$repeat: "x", times: 201}, body: "b"}
+      - name: title-at-limit
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: {$repeat: "y", times: 200}, body: "exactly 200 chars of title"}
+      - name: body-too-long
+        request:
+          method: POST
+          path: /api/announcements
+          json: {title: "t", body: {$repeat: "z", times: 4001}}
+      - name: malformed-json
+        request: {method: POST, path: /api/announcements, raw: "{\"title\": ", content_type: application/json}
+      - name: wrong-content-type
+        request: {method: POST, path: /api/announcements, raw: "title=t&body=b", content_type: text/plain}
+
+  - id: routing-edges
+    steps:
+      - name: unknown-id
+        request: {method: GET, path: /api/announcements/999999}
+      - name: non-numeric-id
+        request: {method: GET, path: /api/announcements/abc}
+      - name: id-overflows-long
+        request: {method: GET, path: /api/announcements/99999999999999999999}
+      - name: bad-boolean-param
+        request: {method: GET, path: "/api/announcements?publishedOnly=maybe"}
+      - name: method-not-allowed
+        request: {method: DELETE, path: /api/announcements/1}
+      - name: trailing-slash-collection
+        request: {method: GET, path: /api/announcements/}
+      - name: trailing-slash-item
+        request: {method: GET, path: /api/announcements/2/}

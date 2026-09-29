@@ -1,0 +1,347 @@
+{
+  "context": "user-preferences",
+  "recordedFrom": {
+    "service": "legacy-portal",
+    "runtime": "Spring Boot 2.7.18 / Java 11",
+    "sourceFingerprint": "deee8ab1983c91e3",
+    "gitRev": "cc23bf19"
+  },
+  "exchanges": [
+    {
+      "scenario": "defaults",
+      "step": "unknown-user-gets-defaults",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/newuser"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "newuser",
+        "theme": "light",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "defaults",
+      "step": "defaults-are-not-persisted",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/newuser"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "newuser",
+        "theme": "light",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "create",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "dark",
+        "locale": "fr-FR",
+        "emailNotifications": false
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "read-back",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/alice"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "dark",
+        "locale": "fr-FR",
+        "emailNotifications": false
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "update",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "light",
+        "locale": "en-GB",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "read-updated",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/alice"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "light",
+        "locale": "en-GB",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "email-flag-omitted-defaults-false",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/bob"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "bob",
+        "theme": "solarized",
+        "locale": "de-DE",
+        "emailNotifications": false
+      }
+    },
+    {
+      "scenario": "upsert",
+      "step": "other-users-isolated",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/newuser"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "newuser",
+        "theme": "light",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "user-id-shapes",
+      "step": "email-like-id",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/carol@example.com"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "carol@example.com",
+        "theme": "dark",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "user-id-shapes",
+      "step": "dotted-id-no-suffix-matching",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/alice.json"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice.json",
+        "theme": "light",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "user-id-shapes",
+      "step": "url-encoded-space",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/dave%20smith"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "dave smith",
+        "theme": "light",
+        "locale": "en-US",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "blank-theme",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "missing-locale",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "locale-too-long",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "theme-at-limit",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/erin"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "erin",
+        "theme": "tttttttttttttttttttt",
+        "locale": "en-US",
+        "emailNotifications": false
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "bad-boolean",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "malformed-json",
+      "request": {
+        "method": "PUT",
+        "path": "/api/preferences/alice"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "failed-validation-did-not-write",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/alice"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "light",
+        "locale": "en-GB",
+        "emailNotifications": true
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "collection-root-not-routed",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences"
+      },
+      "status": 404,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 404,
+        "error": "Not Found",
+        "path": "/api/preferences"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "post-not-allowed",
+      "request": {
+        "method": "POST",
+        "path": "/api/preferences/alice"
+      },
+      "status": 405,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 405,
+        "error": "Method Not Allowed",
+        "path": "/api/preferences/alice"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "trailing-slash",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/alice/"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "userId": "alice",
+        "theme": "light",
+        "locale": "en-GB",
+        "emailNotifications": true
+      }
+    }
+  ]
+}

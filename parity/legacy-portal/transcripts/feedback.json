@@ -1,0 +1,389 @@
+{
+  "context": "feedback",
+  "recordedFrom": {
+    "service": "legacy-portal",
+    "runtime": "Spring Boot 2.7.18 / Java 11",
+    "sourceFingerprint": "deee8ab1983c91e3",
+    "gitRev": "cc23bf19"
+  },
+  "exchanges": [
+    {
+      "scenario": "empty-state",
+      "step": "average-with-no-feedback",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "averageRating": 0.0
+      }
+    },
+    {
+      "scenario": "empty-state",
+      "step": "list-unknown-user",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=nobody"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": []
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "u1-first",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 1,
+        "userId": "u1",
+        "rating": 5,
+        "message": "Love the new dashboard",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "u1-second",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 2,
+        "userId": "u1",
+        "rating": 4,
+        "message": "Search is a bit slow",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "u2-first",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 3,
+        "userId": "u2",
+        "rating": 2,
+        "message": "Could not find the export button",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "list-u1-newest-first",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=u1"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 2,
+          "userId": "u1",
+          "rating": 4,
+          "message": "Search is a bit slow",
+          "createdAt": "<instant>"
+        },
+        {
+          "id": 1,
+          "userId": "u1",
+          "rating": 5,
+          "message": "Love the new dashboard",
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "list-u2",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=u2"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": [
+        {
+          "id": 3,
+          "userId": "u2",
+          "rating": 2,
+          "message": "Could not find the export button",
+          "createdAt": "<instant>"
+        }
+      ]
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "average-non-terminating-double",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "averageRating": 3.6666666666666665
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "u3-boundary-low",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 4,
+        "userId": "u3",
+        "rating": 1,
+        "message": "min rating",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "u3-boundary-high",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 5,
+        "userId": "u3",
+        "rating": 5,
+        "message": "max rating",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "submit-and-list",
+      "step": "average-after-boundaries",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "averageRating": 3.4
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "rating-zero",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "rating-six",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "rating-missing-defaults-to-zero",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "rating-not-a-number",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "rating-fractional",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 201,
+      "mediaType": "application/json",
+      "body": {
+        "id": 6,
+        "userId": "u1",
+        "rating": 4,
+        "message": "fraction",
+        "createdAt": "<instant>"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "blank-user",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "message-too-long",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "malformed-json",
+      "request": {
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "validation",
+      "step": "failed-writes-not-counted",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "averageRating": 3.5
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "list-without-user-param",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback"
+      },
+      "status": 400,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 400,
+        "error": "Bad Request",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "list-blank-user-param",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId="
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": []
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "put-not-allowed",
+      "request": {
+        "method": "PUT",
+        "path": "/api/feedback"
+      },
+      "status": 405,
+      "mediaType": "application/json",
+      "body": {
+        "timestamp": "<instant>",
+        "status": 405,
+        "error": "Method Not Allowed",
+        "path": "/api/feedback"
+      }
+    },
+    {
+      "scenario": "routing-edges",
+      "step": "trailing-slash-average",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback/average-rating/"
+      },
+      "status": 200,
+      "mediaType": "application/json",
+      "body": {
+        "averageRating": 3.5
+      }
+    }
+  ]
+}

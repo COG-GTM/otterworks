@@ -1,0 +1,28 @@
+# Cross-cutting contract every deployable must keep: the /health convention used by
+# the gateway and Helm probes, Actuator probes, and the default error envelope for
+# unrouted paths. Fanned out: replayed against EVERY extracted service.
+context: platform
+fanout: true
+scenarios:
+  - id: health
+    steps:
+      - name: health
+        request: {method: GET, path: /health}
+        # The service name is expected to change (legacy-portal -> <service>);
+        # status and the operator-editable banner are not.
+        ignore: [$.service]
+      - name: actuator-health
+        request: {method: GET, path: /actuator/health}
+      - name: actuator-liveness
+        request: {method: GET, path: /actuator/health/liveness}
+      - name: actuator-readiness
+        request: {method: GET, path: /actuator/health/readiness}
+      - name: actuator-info
+        request: {method: GET, path: /actuator/info}
+
+  - id: unrouted
+    steps:
+      - name: unknown-api-path
+        request: {method: GET, path: /api/does-not-exist}
+      - name: root
+        request: {method: GET, path: /}

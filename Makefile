@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help parity-tests parity-build parity-record parity-baseline parity-verify infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -379,6 +379,34 @@ deps-transcript-baseline: ## Prove the recorded before-state still reproduces (M
 deps-record: ## Record the transcripts as the reference evidence (REASON="..." required)
 	@test -n "$(REASON)" || (echo 'REASON is required, e.g. make deps-record REASON="baseline on commons-text 1.9"' >&2; exit 2)
 	$(DEPS) transcript --record --reason "$(REASON)" $(if $(MODULE),--module $(MODULE),) $(if $(ALLOW_RERECORD),--allow-rerecord,)
+
+# --- legacy-portal decomposition parity ---
+#
+# The monolith (Boot 2.7 / Java 11) is the oracle; transcripts are recorded from it
+# and replayed against each extracted Boot 3 service. See parity/legacy-portal/README.md.
+# Local only: every target boots jars on 18xxx ports or replays against TARGETS.
+
+PARITY := cd parity/legacy-portal && uv run --no-project --with pyyaml==6.0.2 python -m harness.run
+PARITY_SERVICES := $(wildcard services/announcements-service services/user-preferences-service services/feedback-service)
+
+parity-tests: ## Unit-test the parity harness (normalisation, diffing, scenario files)
+	cd parity/legacy-portal && uv run --no-project --with pyyaml==6.0.2 python -m unittest discover -s harness/tests -t .
+
+parity-build: ## Package the monolith and every extracted service for a parity run
+	cd services/legacy-portal && JAVA_HOME=$${JAVA_HOME_11:-/usr/lib/jvm/java-11-openjdk-amd64} ./mvnw -B -q -DskipTests package
+	@for d in $(PARITY_SERVICES); do \
+		echo "packaging $$d"; \
+		(cd $$d && JAVA_HOME=$${JAVA_HOME_17:-/usr/lib/jvm/java-17-openjdk-amd64} ./mvnw -B -q -DskipTests package) || exit 1; \
+	done
+
+parity-record: ## Re-record golden transcripts from the monolith
+	$(PARITY) record
+
+parity-baseline: ## Prove the transcripts reproduce against a fresh monolith
+	$(PARITY) verify --against monolith --label monolith
+
+parity-verify: ## Replay transcripts against the extracted services (CONTEXT=<ctx>, TARGETS="ctx=url ..." optional)
+	$(PARITY) verify $(foreach c,$(CONTEXT),--context $(c)) $(foreach t,$(TARGETS),--target $(t)) $(if $(LABEL),--label $(LABEL),)
 
 test-report: ## Run report-service tests only
 	cd services/report-service && mvn test

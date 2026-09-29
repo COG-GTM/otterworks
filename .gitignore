@@ -110,3 +110,6 @@ __pycache__/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
+
+# --- Parity harness (legacy-portal decomposition) ---
+parity/legacy-portal/reports/

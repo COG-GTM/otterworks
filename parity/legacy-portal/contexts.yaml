@@ -1,0 +1,44 @@
+# Decomposition map for services/legacy-portal.
+#
+# The monolith is the behavioral oracle: its responses are recorded once into
+# transcripts/ and every extracted service is replayed against them. Each bounded
+# context maps 1:1 onto one independently deployable service that owns the
+# context's routes and its database schema.
+#
+# Local ports are offset (18xxx) so a parity run never collides with the
+# docker-compose stack (8080-8095) that may already be running on the host.
+monolith:
+  name: legacy-portal
+  dir: services/legacy-portal
+  jar: services/legacy-portal/target/legacy-portal.jar
+  java: "11"
+  port: 18095
+
+contexts:
+  announcements:
+    service: announcements-service
+    dir: services/announcements-service
+    jar: services/announcements-service/target/announcements-service.jar
+    java: "17"
+    port: 18092
+    schema: announcements
+    routes:
+      - /api/announcements
+  user-preferences:
+    service: user-preferences-service
+    dir: services/user-preferences-service
+    jar: services/user-preferences-service/target/user-preferences-service.jar
+    java: "17"
+    port: 18093
+    schema: user_preferences
+    routes:
+      - /api/preferences
+  feedback:
+    service: feedback-service
+    dir: services/feedback-service
+    jar: services/feedback-service/target/feedback-service.jar
+    java: "17"
+    port: 18094
+    schema: feedback
+    routes:
+      - /api/feedback
