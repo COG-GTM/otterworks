@@ -1,8 +1,8 @@
 package com.otterworks.report.util;
 
-import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.DateFormatUtils;
-import org.apache.commons.lang.time.DateUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.time.DateFormatUtils;
+import org.apache.commons.lang3.time.DateUtils;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -11,16 +11,14 @@ import java.util.Date;
 import java.util.TimeZone;
 
 /**
- * Date utility class using legacy java.util.Date and Commons Lang 2.
+ * Date utility class using legacy java.util.Date and Commons Lang 3.
  *
  * LEGACY PATTERNS (multiple upgrade targets):
  * 1. java.util.Date everywhere → java.time.Instant / LocalDateTime / ZonedDateTime
  * 2. SimpleDateFormat (not thread-safe) → DateTimeFormatter (thread-safe)
- * 3. Commons Lang 2 DateUtils/DateFormatUtils → java.time API (no external dep needed)
+ * 3. Commons Lang DateUtils/DateFormatUtils → java.time API (no external dep needed)
  * 4. Calendar manipulation → java.time.temporal.ChronoUnit / Period
  * 5. Manual timezone handling → ZoneId / ZoneOffset
- *
- * This class is a prime candidate for complete rewrite during Java 8→17 migration.
  */
 public final class ReportDateUtils {
 
@@ -48,7 +46,6 @@ public final class ReportDateUtils {
         if (date == null) {
             return null;
         }
-        // LEGACY: Commons Lang 2 DateFormatUtils
         return DateFormatUtils.formatUTC(date, "yyyy-MM-dd'T'HH:mm:ss'Z'");
     }
 
