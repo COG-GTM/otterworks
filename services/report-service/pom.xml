@@ -7,9 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- LEGACY: Spring Boot 2.5.14 — last 2.5.x release. Upgrade target: 3.2+ -->
-        <!-- Pinned via 2.5.15 patch release pending security review; see internal ticket OW-4471 -->
-        <version>2.5.15</version>
+        <version>3.2.12</version>
         <relativePath/>
     </parent>
 
@@ -18,28 +16,17 @@
     <version>0.1.0</version>
     <packaging>jar</packaging>
     <name>OtterWorks Report Service</name>
-    <description>Legacy report generation service — PDF, CSV, Excel exports from analytics and audit data</description>
+    <description>Report generation service — PDF, CSV, Excel exports from analytics and audit data</description>
 
     <properties>
-        <!-- LEGACY: Java 8 source/target. Upgrade target: Java 17+ -->
-        <java.version>1.8</java.version>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
-        <springfox.version>3.0.0</springfox.version>
-        <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
+        <springdoc.version>2.5.0</springdoc.version>
         <poi.version>4.1.2</poi.version>
-        <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
-        <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
-        <commons-lang.version>2.6</commons-lang.version>
-        <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
         <commons-io.version>2.6</commons-io.version>
-        <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
         <guava.version>28.0-jre</guava.version>
-        <!-- Commons Text 1.9 — report banner/footer interpolation -->
         <commons-text.version>1.9</commons-text.version>
     </properties>
 
@@ -66,12 +53,10 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
-        <!-- LEGACY: javax.servlet — removed in Jakarta EE 9+. Upgrade: jakarta.servlet -->
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>4.0.1</version>
-            <scope>provided</scope>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>test</scope>
         </dependency>
 
         <!-- Database -->
@@ -80,15 +65,12 @@
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
-
-        <!-- LEGACY: SpringFox Swagger 2 (dead project, last release 2020) -->
         <dependency>
-            <groupId>io.springfox</groupId>
-            <artifactId>springfox-boot-starter</artifactId>
-            <version>${springfox.version}</version>
+            <groupId>jakarta.validation</groupId>
+            <artifactId>jakarta.validation-api</artifactId>
         </dependency>
 
-        <!-- LEGACY: Apache POI 4.x for Excel generation -->
+        <!-- Apache POI for Excel generation -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi</artifactId>
@@ -99,19 +81,22 @@
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
 
-        <!-- LEGACY: iText 5 for PDF generation (AGPL license concerns) -->
+        <!-- iText 5 for PDF generation (AGPL license concerns; OpenPDF migration is a follow-up) -->
         <dependency>
             <groupId>com.itextpdf</groupId>
             <artifactId>itextpdf</artifactId>
             <version>${itext.version}</version>
         </dependency>
 
-        <!-- LEGACY: Commons Lang 2 (EOL since 2012) -->
         <dependency>
-            <groupId>commons-lang</groupId>
-            <artifactId>commons-lang</artifactId>
-            <version>${commons-lang.version}</version>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
         </dependency>
 
         <!-- Commons Text — report banner and footer interpolation -->
@@ -121,59 +106,40 @@
             <version>${commons-text.version}</version>
         </dependency>
 
-        <!-- LEGACY: Commons IO 2.6 (outdated) -->
+        <!-- Commons IO -->
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
             <version>${commons-io.version}</version>
         </dependency>
 
-        <!-- LEGACY: Guava 28 (2019, multiple CVEs including DoS) -->
+        <!-- Guava -->
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
             <version>${guava.version}</version>
         </dependency>
-
-        <!-- LEGACY: RestTemplate HTTP client (deprecated in favor of WebClient) -->
         <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpclient</artifactId>
-            <version>4.5.13</version>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
         </dependency>
 
-        <!-- Observability (also legacy versions) -->
+        <!-- Observability -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
-        <!-- LEGACY: OpenCSV 4.6 (2018). Upgrade target: 5.9+ -->
+        <!-- OpenCSV -->
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
             <version>4.6</version>
         </dependency>
-
-        <!-- Testing -->
-        <!-- LEGACY: JUnit 4 (not JUnit 5/Jupiter). Upgrade target: junit-jupiter -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-            <scope>test</scope>
-        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-            <!-- Exclude JUnit 5 to force JUnit 4 usage -->
-            <exclusions>
-                <exclusion>
-                    <groupId>org.junit.jupiter</groupId>
-                    <artifactId>junit-jupiter</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
@@ -183,7 +149,6 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>3.12.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -198,16 +163,9 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.1</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <release>${java.version}</release>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.22.2</version>
             </plugin>
         </plugins>
     </build>

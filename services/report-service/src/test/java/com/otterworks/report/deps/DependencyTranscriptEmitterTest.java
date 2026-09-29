@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.otterworks.report.service.ReportHeaderRenderer;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.io.IOException;
@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static org.junit.Assume.assumeTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Emits the observed interpolation transcript for this module.
@@ -36,7 +36,7 @@ public class DependencyTranscriptEmitterTest {
     public void emitTranscript() throws IOException {
         String casesPath = System.getProperty("ow.deps.cases");
         String observedPath = System.getProperty("ow.deps.observed");
-        assumeTrue("dependency transcript not requested", casesPath != null && observedPath != null);
+        assumeTrue(casesPath != null && observedPath != null, "dependency transcript not requested");
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode spec = mapper.readTree(new File(casesPath));
