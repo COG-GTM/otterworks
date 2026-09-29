@@ -80,7 +80,11 @@ def play(base_url: str, context: str) -> list[dict[str, Any]]:
             mtype = media_type(resp.content_type)
             body = parse_body(resp.body, mtype)
             for var, path in step.capture.items():
-                variables[var] = json_path_get(body, path)
+                try:
+                    variables[var] = json_path_get(body, path)
+                except (KeyError, IndexError, TypeError):
+                    # Keep replaying so the mismatch lands in the report instead of a traceback.
+                    variables[var] = f"uncaptured-{var}"
             out.append(
                 {
                     "scenario": sc.id,
