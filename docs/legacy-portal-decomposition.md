@@ -600,7 +600,16 @@ cluster from this branch (Helm charts ship only from upstream `main`, AGENTS.md)
 - **Verification**: `make verify-legacy-portal-helm` (`scripts/legacy-portal/verify-helm.sh`)
   lints each chart with defaults and with every optional template on, validates both renders with
   `kubeconform -strict` against the EKS version in `platform/terraform` (1.32) plus the CRD
-  catalog for ServiceMonitor, and checks the ClusterIP guard. The kind install is the next step.
+  catalog for ServiceMonitor, and checks the ClusterIP guard.
+- **Install**: `make verify-legacy-portal-kind` (`scripts/legacy-portal/verify-kind.sh`) builds
+  the three images locally (Maven cache as a named build context), creates a kind cluster on the
+  EKS Kubernetes version and `kind load`s them, runs PostgreSQL 15 in the tenant namespace with a
+  non-superuser admin role, creates the roles and schemas with `portal_db_setup_sql` in the same
+  Job `deploy-tenant.sh` uses, and `helm install`s each chart with the `build_helm_args` output for
+  a tenant with portal roles (ClusterIP, 1 replica, no NetworkPolicy, per-service role). It checks
+  the pods are Ready, each schema is owned by and connected as its role only, replays the parity
+  suite through `kubectl port-forward`, and deletes the cluster. Any context but `kind-*` is refused,
+  and the kubeconfig is private to the run, so no other cluster is reachable.
 
 ### State after `legacy-portal(tooling)`
 
