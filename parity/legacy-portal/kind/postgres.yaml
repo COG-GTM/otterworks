@@ -1,0 +1,47 @@
+# Throwaway in-cluster PostgreSQL for the local kind rehearsal only. Stands in for
+# the RDS instance deploy-dev.sh wires from Terraform; init scripts come from the
+# `legacy-portal-pg-init` ConfigMap (the parity layout + handover SQL).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacyportal-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: legacyportal-db}
+  template:
+    metadata:
+      labels: {app: legacyportal-db}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - {name: POSTGRES_DB, value: legacyportal}
+            - {name: POSTGRES_USER, value: postgres}
+            - {name: POSTGRES_PASSWORD, value: postgres}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "legacyportal"]
+            periodSeconds: 2
+          volumeMounts:
+            - {name: init, mountPath: /docker-entrypoint-initdb.d}
+            - {name: data, mountPath: /var/lib/postgresql/data}
+      volumes:
+        - name: init
+          configMap:
+            name: legacy-portal-pg-init
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacyportal-db
+spec:
+  selector: {app: legacyportal-db}
+  ports:
+    - port: 5432

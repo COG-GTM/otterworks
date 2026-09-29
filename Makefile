@@ -1,4 +1,4 @@
-.PHONY: help parity-tests parity-build parity-record parity-baseline parity-verify parity-postgres parity-containers infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help parity-tests parity-build parity-record parity-baseline parity-verify parity-postgres parity-containers parity-kind infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -428,6 +428,9 @@ parity-containers: ## Build the three service images locally and replay the tran
 		--target feedback=http://localhost:18194) || status=1; \
 	$(PARITY_SVC_COMPOSE) down -v; \
 	exit $$status
+
+parity-kind: ## Rehearse the Helm rollout of the three services in a local kind cluster and replay the transcripts (KEEP_CLUSTER=1 to keep it)
+	PATH="$$HOME/bin:$$PATH" ./parity/legacy-portal/kind/rehearse.sh
 
 parity-verify: ## Replay transcripts against the extracted services (CONTEXT=<ctx>, TARGETS="ctx=url ..." optional)
 	$(PARITY) verify $(foreach c,$(CONTEXT),--context $(c)) $(foreach t,$(TARGETS),--target $(t)) $(if $(LABEL),--label $(LABEL),)

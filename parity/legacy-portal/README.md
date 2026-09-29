@@ -53,6 +53,7 @@ OpenJDK paths and then `java` on `PATH`.
 ```bash
 make parity-postgres     # needs Docker; everything runs against a throwaway local postgres:15
 make parity-containers   # builds the three images locally (never pushed) and replays against them
+make parity-kind         # installs the real Helm charts into a local kind cluster and replays through port-forward
 ```
 
 `parity-postgres` runs three passes against one local PostgreSQL:
@@ -72,3 +73,10 @@ make parity-containers   # builds the three images locally (never pushed) and re
 
 Service images pick up `$HOME/.m2/settings.xml` (or `MAVEN_SETTINGS=`) as a
 BuildKit secret, so a local Maven mirror works without landing in a layer.
+
+`parity-kind` is the rehearsal of the EKS rollout: the charts under
+`infrastructure/helm/<service>` are installed unmodified except for the
+values `deploy-dev.sh` would supply (image, datasource, credentials), with
+`image.pullPolicy=Never` against locally built images. It needs `kind`,
+`kubectl` and `helm` on `PATH` (or in `~/bin`) and deletes the cluster when
+done unless `KEEP_CLUSTER=1`.
