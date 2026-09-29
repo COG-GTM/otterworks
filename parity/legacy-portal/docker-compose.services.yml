@@ -1,0 +1,82 @@
+# The decomposed stack as containers: one PostgreSQL in the post-handover layout
+# (each schema owned by its service's role) and the three extracted services built
+# from their Dockerfiles. Used by `make parity-containers` to replay the golden
+# transcripts against the real images; local only, nothing is pushed.
+#
+#   DOCKER_BUILDKIT=1 docker compose -f parity/legacy-portal/docker-compose.services.yml up -d --build --wait
+#   make parity-verify TARGETS="announcements=http://localhost:18192 user-preferences=http://localhost:18193 feedback=http://localhost:18194"
+#   docker compose -f parity/legacy-portal/docker-compose.services.yml down -v
+x-service: &service
+  depends_on:
+    services-postgres:
+      condition: service_healthy
+  environment: &env
+    SPRING_PROFILES_ACTIVE: postgres
+    SPRING_DATASOURCE_URL: jdbc:postgresql://services-postgres:5432/legacyportal
+    JAVA_OPTS: -XX:MaxRAMPercentage=75
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fs http://localhost:$${SERVER_PORT}/actuator/health/readiness"]
+    interval: 3s
+    timeout: 3s
+    retries: 60
+
+services:
+  services-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: legacyportal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./postgres/00-legacy-layout.sql:/docker-entrypoint-initdb.d/00-legacy-layout.sql:ro
+      - ./postgres/10-handover.sql:/docker-entrypoint-initdb.d/10-handover.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legacyportal"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  announcements-service:
+    <<: *service
+    build:
+      context: ../../services/announcements-service
+      secrets: [maven-settings]
+    image: otterworks/announcements-service:local
+    environment:
+      <<: *env
+      SPRING_DATASOURCE_USERNAME: announcements_svc
+      SPRING_DATASOURCE_PASSWORD: announcements_svc
+      SERVER_PORT: "8092"
+    ports: ["18192:8092"]
+
+  user-preferences-service:
+    <<: *service
+    build:
+      context: ../../services/user-preferences-service
+      secrets: [maven-settings]
+    image: otterworks/user-preferences-service:local
+    environment:
+      <<: *env
+      SPRING_DATASOURCE_USERNAME: user_preferences_svc
+      SPRING_DATASOURCE_PASSWORD: user_preferences_svc
+      SERVER_PORT: "8093"
+    ports: ["18193:8093"]
+
+  feedback-service:
+    <<: *service
+    build:
+      context: ../../services/feedback-service
+      secrets: [maven-settings]
+    image: otterworks/feedback-service:local
+    environment:
+      <<: *env
+      SPRING_DATASOURCE_USERNAME: feedback_svc
+      SPRING_DATASOURCE_PASSWORD: feedback_svc
+      SERVER_PORT: "8094"
+    ports: ["18194:8094"]
+
+secrets:
+  maven-settings:
+    file: ${MAVEN_SETTINGS:-/dev/null}
