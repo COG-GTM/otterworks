@@ -38,6 +38,12 @@ PR that touches the monolith, the services, their charts or the harness.
    baselines the existing schema (`baseline-on-migrate`); `V1` is
    `CREATE ... IF NOT EXISTS`, so it adopts the tables in place and Hibernate
    only validates.
+   Demo tenants are deployed by the ops-dashboard runner from its own bundled
+   upstream checkout, so tenants only pick up the three services after this
+   lands on `main` and the runner image is rebuilt. Until then a fork push
+   builds the images but the runner neither lists nor installs them.
+   `spinup-dev.sh` only reaches them through `--build` (which delegates to
+   `deploy-dev.sh`); its fast path passes no datasource settings.
 3. **Move traffic per context.** Point the `/api/announcements`,
    `/api/preferences` and `/api/feedback` prefixes at the new Services one at a
    time. The monolith was never behind the api-gateway (its routes are not
