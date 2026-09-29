@@ -8,6 +8,9 @@ on:
       - "services/legacy-portal/**"
       - "services/notification-service/**"
       - "services/auth-service/**"
+      - "services/announcements-service/**"
+      - "services/user-preferences-service/**"
+      - "services/feedback-service/**"
       - "Makefile"
   pull_request:
     paths:
@@ -16,6 +19,9 @@ on:
       - "services/legacy-portal/**"
       - "services/notification-service/**"
       - "services/auth-service/**"
+      - "services/announcements-service/**"
+      - "services/user-preferences-service/**"
+      - "services/feedback-service/**"
       - "Makefile"
 
 jobs:

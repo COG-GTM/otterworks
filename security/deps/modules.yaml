@@ -73,6 +73,51 @@ modules:
     # hit here would still be reported, which is the point of measuring it.
     cases: null
 
+  - id: announcements-service
+    path: services/announcements-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # Spring Boot 3 service extracted from legacy-portal; builds with its wrapper,
+    # as ci.yml does. Its behavior contract is the parity harness in
+    # parity/legacy-portal, so it is measured for the dependency tree only.
+    tool:
+      - ./mvnw
+      - mvn
+    test: -B test
+    cases: null
+
+  - id: user-preferences-service
+    path: services/user-preferences-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # Spring Boot 3 service extracted from legacy-portal; builds with its wrapper,
+    # as ci.yml does. Its behavior contract is the parity harness in
+    # parity/legacy-portal, so it is measured for the dependency tree only.
+    tool:
+      - ./mvnw
+      - mvn
+    test: -B test
+    cases: null
+
+  - id: feedback-service
+    path: services/feedback-service
+    build: maven
+    java_home:
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # Spring Boot 3 service extracted from legacy-portal; builds with its wrapper,
+    # as ci.yml does. Its behavior contract is the parity harness in
+    # parity/legacy-portal, so it is measured for the dependency tree only.
+    tool:
+      - ./mvnw
+      - mvn
+    test: -B test
+    cases: null
+
 exempt:
   - path: frontend/client-app/mobile/android
     reason: >
