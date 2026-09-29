@@ -498,3 +498,16 @@ golden transcripts are never re-recorded.
 | announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
 | userpreferences | legacy-portal | 8095 | `legacyportal` |
 | feedback | legacy-portal | 8095 | `legacyportal` |
+
+### State after `legacy-portal(preferences)`
+
+preferences-service copies the template unchanged: `V1__create_user_preference.sql` per vendor
+(§4 DDL verbatim, no sequence), role `preferences` (`PREFERENCES_DB_PASSWORD`) owning
+`user_preferences`, port 8097. The monolith's `trailingSlashMatchesTheMappedRoute` pin now uses
+`GET /api/feedback/average-rating/`, the only context it still serves.
+
+| Context | Served by | Port | Schema owner (PostgreSQL) |
+|---|---|---|---|
+| announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
+| userpreferences | `services/preferences-service` (`com.otterworks.preferences`) | 8097 | role `preferences` |
+| feedback | legacy-portal | 8095 | `legacyportal` |
