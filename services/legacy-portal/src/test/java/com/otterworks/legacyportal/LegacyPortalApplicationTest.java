@@ -11,10 +11,12 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Full-context test: the whole modular monolith boots and every module's routes are wired. */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class LegacyPortalApplicationTest {
 
     @Autowired private MockMvc mockMvc;
