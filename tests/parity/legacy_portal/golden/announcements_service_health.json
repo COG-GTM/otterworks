@@ -1,0 +1,81 @@
+{
+  "context": "announcements",
+  "description": "Custom /health plus Actuator health, probes and info.",
+  "scenario": "announcements_service_health",
+  "steps": [
+    {
+      "name": "custom health",
+      "request": {
+        "method": "GET",
+        "path": "/health"
+      },
+      "response": {
+        "body": {
+          "banner": "OtterWorks Portal (on-prem) - contact portal-support@otterworks.example",
+          "service": "<service-name>",
+          "status": "UP"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "actuator health",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health"
+      },
+      "response": {
+        "body": {
+          "groups": [
+            "liveness",
+            "readiness"
+          ],
+          "status": "UP"
+        },
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "status": 200
+      }
+    },
+    {
+      "name": "liveness probe",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health/liveness"
+      },
+      "response": {
+        "body": {
+          "status": "UP"
+        },
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "status": 200
+      }
+    },
+    {
+      "name": "readiness probe",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/health/readiness"
+      },
+      "response": {
+        "body": {
+          "status": "UP"
+        },
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "status": 200
+      }
+    },
+    {
+      "name": "actuator info",
+      "request": {
+        "method": "GET",
+        "path": "/actuator/info"
+      },
+      "response": {
+        "body": {},
+        "content_type": "application/vnd.spring-boot.actuator.v3+json",
+        "status": 200
+      }
+    }
+  ]
+}

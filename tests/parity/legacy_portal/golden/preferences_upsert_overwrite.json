@@ -1,0 +1,157 @@
+{
+  "context": "preferences",
+  "description": "PUT creates, a second PUT overwrites, absent emailNotifications is false.",
+  "scenario": "preferences_upsert_overwrite",
+  "steps": [
+    {
+      "name": "defaults before first write",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "create",
+      "request": {
+        "json": {
+          "emailNotifications": false,
+          "locale": "nl-NL",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "nl-NL",
+          "theme": "dark",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read created",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "nl-NL",
+          "theme": "dark",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "overwrite",
+      "request": {
+        "json": {
+          "emailNotifications": true,
+          "locale": "en-GB",
+          "theme": "solarized"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-GB",
+          "theme": "solarized",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read overwritten",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-GB",
+          "theme": "solarized",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "overwrite without emailNotifications",
+      "request": {
+        "json": {
+          "locale": "de-DE",
+          "theme": "light"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "de-DE",
+          "theme": "light",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read after absent emailNotifications",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "de-DE",
+          "theme": "light",
+          "userId": "pref-alice"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "other user untouched",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-bob"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref-bob"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

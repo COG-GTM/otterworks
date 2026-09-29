@@ -1,0 +1,60 @@
+{
+  "context": "feedback",
+  "description": "Mapped paths with unmapped methods return Boot's default 405 body.",
+  "scenario": "feedback_method_not_allowed",
+  "steps": [
+    {
+      "name": "DELETE collection",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/feedback",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    },
+    {
+      "name": "POST average-rating",
+      "request": {
+        "json": {},
+        "method": "POST",
+        "path": "/api/feedback/average-rating"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/feedback/average-rating",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    },
+    {
+      "name": "PUT average-rating",
+      "request": {
+        "json": {},
+        "method": "PUT",
+        "path": "/api/feedback/average-rating"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/feedback/average-rating",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    }
+  ]
+}

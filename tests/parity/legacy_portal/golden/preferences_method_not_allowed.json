@@ -1,0 +1,45 @@
+{
+  "context": "preferences",
+  "description": "Mapped paths with unmapped methods return Boot's default 405 body.",
+  "scenario": "preferences_method_not_allowed",
+  "steps": [
+    {
+      "name": "DELETE by user",
+      "request": {
+        "method": "DELETE",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/preferences/pref-alice",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    },
+    {
+      "name": "POST by user",
+      "request": {
+        "json": {
+          "locale": "en-US",
+          "theme": "dark"
+        },
+        "method": "POST",
+        "path": "/api/preferences/pref-alice"
+      },
+      "response": {
+        "body": {
+          "error": "Method Not Allowed",
+          "path": "/api/preferences/pref-alice",
+          "status": 405,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 405
+      }
+    }
+  ]
+}

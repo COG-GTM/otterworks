@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record parity-legacy-portal parity-legacy-portal-record
 
 SHELL := /bin/bash
 
@@ -189,6 +189,15 @@ test-api-flows: ## Run black-box API flow tests against the local API gateway
 
 test-api-flows-collect: ## Collect black-box API flow tests without running them
 	UV_PROJECT_ENVIRONMENT=.venv uv run python -m pytest tests/api --collect-only -q
+
+PARITY_LP_DIR = tests/parity/legacy_portal
+PARITY_LP_PYTEST = uv run --quiet --no-project --with-requirements $(PARITY_LP_DIR)/requirements.txt python -m pytest -c $(PARITY_LP_DIR)/pytest.ini $(PARITY_LP_DIR)
+
+parity-legacy-portal: ## Replay legacy-portal golden transcripts against a fresh target (ANNOUNCEMENTS_URL/PREFERENCES_URL/FEEDBACK_URL, default :8095)
+	$(PARITY_LP_PYTEST)
+
+parity-legacy-portal-record: ## Re-record legacy-portal golden transcripts from a freshly started monolith
+	$(PARITY_LP_PYTEST) --record-golden
 
 lint: ## Lint all services
 	@echo "=== API Gateway ===" && cd services/api-gateway && golangci-lint run

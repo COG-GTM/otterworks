@@ -1,0 +1,289 @@
+{
+  "context": "feedback",
+  "description": "Bean validation (rating 1..5, blank/oversized fields) and parsing failures return the default 400 body; userId is required on the list.",
+  "scenario": "feedback_validation",
+  "steps": [
+    {
+      "name": "rating 0",
+      "request": {
+        "json": {
+          "message": "zero",
+          "rating": 0,
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "rating 6",
+      "request": {
+        "json": {
+          "message": "six",
+          "rating": 6,
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "rating 9",
+      "request": {
+        "json": {
+          "message": "nine",
+          "rating": 9,
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "rating absent",
+      "request": {
+        "json": {
+          "message": "no rating",
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "rating not a number",
+      "request": {
+        "json": {
+          "message": "text",
+          "rating": "five",
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "blank message",
+      "request": {
+        "json": {
+          "message": "",
+          "rating": 3,
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "message over 2000 chars",
+      "request": {
+        "json": {
+          "message": "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm",
+          "rating": 3,
+          "userId": "fb-invalid"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "blank userId",
+      "request": {
+        "json": {
+          "message": "who",
+          "rating": 3,
+          "userId": " "
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "userId over 100 chars",
+      "request": {
+        "json": {
+          "message": "long",
+          "rating": 3,
+          "userId": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+        },
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "empty object",
+      "request": {
+        "json": {},
+        "method": "POST",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "malformed json",
+      "request": {
+        "content_type": "application/json",
+        "method": "POST",
+        "path": "/api/feedback",
+        "raw": "{\"userId\": \"fb-invalid\", \"rating\": }"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "unsupported content type",
+      "request": {
+        "content_type": "text/plain",
+        "method": "POST",
+        "path": "/api/feedback",
+        "raw": "rating=3"
+      },
+      "response": {
+        "body": {
+          "error": "Unsupported Media Type",
+          "path": "/api/feedback",
+          "status": 415,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 415
+      }
+    },
+    {
+      "name": "list without userId",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "path": "/api/feedback",
+          "status": 400,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 400
+      }
+    },
+    {
+      "name": "nothing persisted for rejected user",
+      "request": {
+        "method": "GET",
+        "path": "/api/feedback?userId=fb-invalid"
+      },
+      "response": {
+        "body": [],
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

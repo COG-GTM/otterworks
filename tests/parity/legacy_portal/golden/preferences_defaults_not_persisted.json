@@ -1,0 +1,41 @@
+{
+  "context": "preferences",
+  "description": "Unknown users get defaults on every read; reads do not create rows.",
+  "scenario": "preferences_defaults_not_persisted",
+  "steps": [
+    {
+      "name": "defaults for unknown user",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-new-user"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref-new-user"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "defaults again",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref-new-user"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref-new-user"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

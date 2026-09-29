@@ -1,0 +1,403 @@
+{
+  "context": "announcements",
+  "description": "Create draft and published rows, newest-first published list, publish transition, idempotent re-publish, explicit published=false.",
+  "scenario": "announcements_lifecycle",
+  "steps": [
+    {
+      "name": "create draft (published absent)",
+      "request": {
+        "json": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "title": "Maintenance window"
+        },
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "published": false,
+          "title": "Maintenance window"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "create published release 1.0",
+      "request": {
+        "json": {
+          "body": "v1.0 is out",
+          "published": true,
+          "title": "Release 1.0"
+        },
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": {
+          "body": "v1.0 is out",
+          "createdAt": "<instant:Z>",
+          "id": "<id#2>",
+          "published": true,
+          "title": "Release 1.0"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "create published release 1.1",
+      "request": {
+        "json": {
+          "body": "v1.1 is out",
+          "published": true,
+          "title": "Release 1.1"
+        },
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": {
+          "body": "v1.1 is out",
+          "createdAt": "<instant:Z>",
+          "id": "<id#3>",
+          "published": true,
+          "title": "Release 1.1"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "get draft",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/{draft}"
+      },
+      "response": {
+        "body": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "published": false,
+          "title": "Maintenance window"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "get release 1.0",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/{rel10}"
+      },
+      "response": {
+        "body": {
+          "body": "v1.0 is out",
+          "createdAt": "<instant:Z>",
+          "id": "<id#2>",
+          "published": true,
+          "title": "Release 1.0"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list default is published newest first",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list publishedOnly=true is published newest first",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=true"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "list publishedOnly=false has every row (database order, compared by id)",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=false"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "Saturday 02:00-04:00 UTC",
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "published": false,
+            "title": "Maintenance window"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          },
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "publish draft",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/{draft}/publish"
+      },
+      "response": {
+        "body": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "published": true,
+          "title": "Maintenance window"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "re-publish draft is idempotent",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/{draft}/publish"
+      },
+      "response": {
+        "body": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "published": true,
+          "title": "Maintenance window"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "re-publish release 1.1",
+      "request": {
+        "method": "POST",
+        "path": "/api/announcements/{rel11}/publish"
+      },
+      "response": {
+        "body": {
+          "body": "v1.1 is out",
+          "createdAt": "<instant:Z>",
+          "id": "<id#3>",
+          "published": true,
+          "title": "Release 1.1"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "get draft after publish",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements/{draft}"
+      },
+      "response": {
+        "body": {
+          "body": "Saturday 02:00-04:00 UTC",
+          "createdAt": "<instant:Z>",
+          "id": "<id#1>",
+          "published": true,
+          "title": "Maintenance window"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "published list orders by createdAt, not publish time",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          },
+          {
+            "body": "Saturday 02:00-04:00 UTC",
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "published": true,
+            "title": "Maintenance window"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "create with explicit published=false",
+      "request": {
+        "json": {
+          "body": "not yet",
+          "published": false,
+          "title": "Hidden"
+        },
+        "method": "POST",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": {
+          "body": "not yet",
+          "createdAt": "<instant:Z>",
+          "id": "<id#4>",
+          "published": false,
+          "title": "Hidden"
+        },
+        "content_type": "application/json",
+        "status": 201
+      }
+    },
+    {
+      "name": "published list excludes explicit draft",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          },
+          {
+            "body": "Saturday 02:00-04:00 UTC",
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "published": true,
+            "title": "Maintenance window"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "full list includes explicit draft",
+      "request": {
+        "method": "GET",
+        "path": "/api/announcements?publishedOnly=false"
+      },
+      "response": {
+        "body": [
+          {
+            "body": "Saturday 02:00-04:00 UTC",
+            "createdAt": "<instant:Z>",
+            "id": "<id#1>",
+            "published": true,
+            "title": "Maintenance window"
+          },
+          {
+            "body": "v1.0 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#2>",
+            "published": true,
+            "title": "Release 1.0"
+          },
+          {
+            "body": "v1.1 is out",
+            "createdAt": "<instant:Z>",
+            "id": "<id#3>",
+            "published": true,
+            "title": "Release 1.1"
+          },
+          {
+            "body": "not yet",
+            "createdAt": "<instant:Z>",
+            "id": "<id#4>",
+            "published": false,
+            "title": "Hidden"
+          }
+        ],
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

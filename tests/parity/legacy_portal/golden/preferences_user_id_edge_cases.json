@@ -1,0 +1,141 @@
+{
+  "context": "preferences",
+  "description": "userId is an unchecked path String: dots and encoded spaces are kept, 100 chars fits the column, 101 chars reads as defaults but fails on write with a 500.",
+  "scenario": "preferences_user_id_edge_cases",
+  "steps": [
+    {
+      "name": "userId with a dot",
+      "request": {
+        "json": {
+          "emailNotifications": true,
+          "locale": "fr-FR",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/first.last"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "fr-FR",
+          "theme": "dark",
+          "userId": "first.last"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read userId with a dot",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/first.last"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "fr-FR",
+          "theme": "dark",
+          "userId": "first.last"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "userId with an encoded space",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/pref%20space"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "pref space"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "userId of 100 chars",
+      "request": {
+        "json": {
+          "emailNotifications": false,
+          "locale": "en-US",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "en-US",
+          "theme": "dark",
+          "userId": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read userId of 100 chars",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": false,
+          "locale": "en-US",
+          "theme": "dark",
+          "userId": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "read userId of 101 chars",
+      "request": {
+        "method": "GET",
+        "path": "/api/preferences/vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+      },
+      "response": {
+        "body": {
+          "emailNotifications": true,
+          "locale": "en-US",
+          "theme": "light",
+          "userId": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+        },
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "write userId of 101 chars",
+      "request": {
+        "json": {
+          "emailNotifications": false,
+          "locale": "en-US",
+          "theme": "dark"
+        },
+        "method": "PUT",
+        "path": "/api/preferences/vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+      },
+      "response": {
+        "body": {
+          "error": "Internal Server Error",
+          "path": "/api/preferences/vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+          "status": 500,
+          "timestamp": "<instant:+00:00>"
+        },
+        "content_type": "application/json",
+        "status": 500
+      }
+    }
+  ]
+}
