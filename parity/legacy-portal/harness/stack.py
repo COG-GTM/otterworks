@@ -1,7 +1,8 @@
 """Boots the monolith and/or extracted services as local JVM processes.
 
-Every boot gets a fresh in-memory H2 database, which is what makes identity
-values and ordering in the transcripts reproducible.
+By default every boot gets a fresh in-memory H2 database, which is what makes
+identity values and ordering in the transcripts reproducible. The postgres stage
+passes Spring datasource overrides through ``extra_args`` instead (see pg.py).
 """
 
 from __future__ import annotations
@@ -66,11 +67,13 @@ def stop(p: Process) -> None:
 
 
 @contextmanager
-def running(specs: list[tuple[str, str, str, int]]) -> Iterator[dict[str, Process]]:
+def running(
+    specs: list[tuple[str, str, str, int]], extra_args: dict[str, list[str]] | None = None
+) -> Iterator[dict[str, Process]]:
     procs: dict[str, Process] = {}
     try:
         for name, jar, java, port in specs:
-            procs[name] = start(name, jar, java, port)
+            procs[name] = start(name, jar, java, port, (extra_args or {}).get(name))
         for p in procs.values():
             try:
                 client.wait_healthy(p.base_url)

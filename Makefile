@@ -1,4 +1,4 @@
-.PHONY: help parity-tests parity-build parity-record parity-baseline parity-verify infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help parity-tests parity-build parity-record parity-baseline parity-verify parity-postgres parity-containers infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -404,6 +404,30 @@ parity-record: ## Re-record golden transcripts from the monolith
 
 parity-baseline: ## Prove the transcripts reproduce against a fresh monolith
 	$(PARITY) verify --against monolith --label monolith
+
+PARITY_PG_COMPOSE := docker compose -f parity/legacy-portal/docker-compose.postgres.yml
+
+parity-postgres: ## Replay transcripts on local PostgreSQL (monolith, then services on handed-over schemas) and run the cutover/rollback drill
+	$(PARITY_PG_COMPOSE) up -d --wait
+	@status=0; \
+	($(PARITY) verify --against monolith --db postgres --label postgres-monolith) || status=1; \
+	($(PARITY) verify --against services --db postgres --label postgres-services) || status=1; \
+	($(PARITY) datalift --label postgres-datalift) || status=1; \
+	$(PARITY_PG_COMPOSE) down -v; \
+	exit $$status
+
+PARITY_SVC_COMPOSE := docker compose -f parity/legacy-portal/docker-compose.services.yml
+
+parity-containers: ## Build the three service images locally and replay the transcripts against them on PostgreSQL (nothing is pushed)
+	MAVEN_SETTINGS=$${MAVEN_SETTINGS:-$$([ -f $$HOME/.m2/settings.xml ] && echo $$HOME/.m2/settings.xml || echo /dev/null)} \
+		$(PARITY_SVC_COMPOSE) up -d --build --wait
+	@status=0; \
+	($(PARITY) verify --label containers \
+		--target announcements=http://localhost:18192 \
+		--target user-preferences=http://localhost:18193 \
+		--target feedback=http://localhost:18194) || status=1; \
+	$(PARITY_SVC_COMPOSE) down -v; \
+	exit $$status
 
 parity-verify: ## Replay transcripts against the extracted services (CONTEXT=<ctx>, TARGETS="ctx=url ..." optional)
 	$(PARITY) verify $(foreach c,$(CONTEXT),--context $(c)) $(foreach t,$(TARGETS),--target $(t)) $(if $(LABEL),--label $(LABEL),)

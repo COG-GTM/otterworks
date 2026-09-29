@@ -1,6 +1,9 @@
 import unittest
 
+from harness.datalift import load_drill
+from harness.pg import spring_args
 from harness.scenario import (
+    BUSINESS_CONTEXTS,
     CONTEXT_ORDER,
     diff,
     expand,
@@ -92,3 +95,20 @@ class ScenarioFilesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DataliftDrillTest(unittest.TestCase):
+    def test_drill_covers_every_business_context(self) -> None:
+        drill = load_drill()
+        for section in ("seed", "reads", "cutover_writes", "rollback_reads"):
+            self.assertEqual(sorted(drill[section]), sorted(BUSINESS_CONTEXTS), section)
+            for requests in drill[section].values():
+                for req in requests:
+                    self.assertIn(req["method"], {"GET", "POST", "PUT"})
+                    self.assertTrue(req["path"].startswith("/api/"), req["path"])
+
+    def test_spring_args_point_at_local_postgres_as_role(self) -> None:
+        args = spring_args("feedback_svc")
+        self.assertIn("--spring.profiles.active=postgres", args)
+        self.assertIn("--spring.datasource.username=feedback_svc", args)
+        self.assertTrue(any(a.startswith("--spring.datasource.url=jdbc:postgresql://") for a in args))

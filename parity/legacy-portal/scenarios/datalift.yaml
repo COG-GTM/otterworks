@@ -1,0 +1,64 @@
+# Data-lift / cutover drill on PostgreSQL (`make parity-postgres`).
+#
+#   1. monolith (legacy layout) takes `seed` writes, then answers `reads`
+#   2. monolith stops; 10-handover.sql moves each schema to its service role
+#   3. the three services boot on the same database; Flyway baselines + applies V1
+#      in place; `reads` must return exactly what the monolith returned
+#   4. `cutover_writes` go through the services (new rows must continue the
+#      legacy identity sequences), then `rollback_reads` are captured
+#   5. services stop, monolith boots again (rollback) and must return exactly
+#      the same `rollback_reads`
+#
+# Comparisons here are strict: no instant normalisation, because it is the same
+# rows being read back.
+
+seed:
+  announcements:
+    - {method: POST, path: /api/announcements, json: {title: "Planned maintenance", body: "Sat 02:00-04:00 UTC"}}
+    - {method: POST, path: /api/announcements, json: {title: "Dark mode", body: "Settings > Appearance"}}
+    - {method: POST, path: /api/announcements, json: {title: "Draft: Q3 roadmap", body: "not yet"}}
+    - {method: POST, path: /api/announcements/1/publish}
+    - {method: POST, path: /api/announcements/2/publish}
+  user-preferences:
+    - {method: PUT, path: /api/preferences/alice, json: {theme: dark, locale: en-GB, emailNotifications: false}}
+    - {method: PUT, path: /api/preferences/bob, json: {theme: light, locale: de-DE, emailNotifications: true}}
+  feedback:
+    - {method: POST, path: /api/feedback, json: {userId: alice, rating: 5, message: "Love the new portal"}}
+    - {method: POST, path: /api/feedback, json: {userId: alice, rating: 3, message: "Search is slow"}}
+    - {method: POST, path: /api/feedback, json: {userId: bob, rating: 4, message: "Solid"}}
+
+reads:
+  announcements:
+    - {method: GET, path: /api/announcements}
+    - {method: GET, path: /api/announcements/1}
+    - {method: GET, path: /api/announcements/3}
+  user-preferences:
+    - {method: GET, path: /api/preferences/alice}
+    - {method: GET, path: /api/preferences/bob}
+    - {method: GET, path: /api/preferences/carol}
+  feedback:
+    - {method: GET, path: "/api/feedback?userId=alice"}
+    - {method: GET, path: "/api/feedback?userId=bob"}
+    - {method: GET, path: /api/feedback/average-rating}
+
+cutover_writes:
+  announcements:
+    - {method: POST, path: /api/announcements, json: {title: "Written after cutover", body: "by announcements-service"}}
+    - {method: POST, path: /api/announcements/4/publish}
+  user-preferences:
+    - {method: PUT, path: /api/preferences/alice, json: {theme: light, locale: en-GB, emailNotifications: true}}
+    - {method: PUT, path: /api/preferences/carol, json: {theme: dark, locale: fr-FR, emailNotifications: false}}
+  feedback:
+    - {method: POST, path: /api/feedback, json: {userId: bob, rating: 2, message: "Written after cutover"}}
+
+rollback_reads:
+  announcements:
+    - {method: GET, path: /api/announcements}
+    - {method: GET, path: /api/announcements/4}
+    - {method: GET, path: /api/announcements/3}
+  user-preferences:
+    - {method: GET, path: /api/preferences/alice}
+    - {method: GET, path: /api/preferences/carol}
+  feedback:
+    - {method: GET, path: "/api/feedback?userId=bob"}
+    - {method: GET, path: /api/feedback/average-rating}

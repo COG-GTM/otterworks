@@ -47,3 +47,28 @@ silently. Reports land in `reports/` (git-ignored).
 
 JDKs are located via `JAVA_HOME_11` / `JAVA_HOME_17`, falling back to the Ubuntu
 OpenJDK paths and then `java` on `PATH`.
+
+## PostgreSQL, data lift and rollback
+
+```bash
+make parity-postgres     # needs Docker; everything runs against a throwaway local postgres:15
+make parity-containers   # builds the three images locally (never pushed) and replays against them
+```
+
+`parity-postgres` runs three passes against one local PostgreSQL:
+
+1. **postgres-monolith** - the transcripts replay against the monolith on its
+   `postgres` profile (legacy layout: all three schemas owned by `legacyportal`).
+2. **postgres-services** - the database is reset to the post-handover layout
+   (`postgres/10-handover.sql`: each schema owned by its service role) and the
+   transcripts replay against the three services.
+3. **datalift** (`scenarios/datalift.yaml`) - the cutover drill on shared data:
+   seed through the monolith, stop it, hand the schemas over, boot the services
+   and read the monolith's rows back unchanged, write through the services
+   (Flyway must *baseline* the pre-existing tables, not recreate them), confirm
+   each service role cannot read the other contexts' schemas, then stop the
+   services and boot the monolith again as the rollback path and confirm it
+   reads the rows the services wrote.
+
+Service images pick up `$HOME/.m2/settings.xml` (or `MAVEN_SETTINGS=`) as a
+BuildKit secret, so a local Maven mirror works without landing in a layer.

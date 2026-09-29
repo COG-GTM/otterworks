@@ -27,6 +27,7 @@ INSTANT_TOKEN = "<instant>"
 PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 CONTEXT_ORDER = ("announcements", "user-preferences", "feedback", "platform")
+BUSINESS_CONTEXTS = [c for c in CONTEXT_ORDER if c != "platform"]
 
 
 @dataclass

@@ -13,6 +13,7 @@ monolith:
   jar: services/legacy-portal/target/legacy-portal.jar
   java: "11"
   port: 18095
+  db_role: legacyportal
 
 contexts:
   announcements:
@@ -22,6 +23,7 @@ contexts:
     java: "17"
     port: 18092
     schema: announcements
+    db_role: announcements_svc
     routes:
       - /api/announcements
   user-preferences:
@@ -31,6 +33,7 @@ contexts:
     java: "17"
     port: 18093
     schema: user_preferences
+    db_role: user_preferences_svc
     routes:
       - /api/preferences
   feedback:
@@ -40,5 +43,6 @@ contexts:
     java: "17"
     port: 18094
     schema: feedback
+    db_role: feedback_svc
     routes:
       - /api/feedback

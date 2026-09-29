@@ -1,0 +1,24 @@
+# Local PostgreSQL for the parity harness's postgres stage (`make parity-postgres`).
+# Starts in the legacy layout; the harness resets/hands over schemas itself via psql.
+#
+#   docker compose -f parity/legacy-portal/docker-compose.postgres.yml up -d --wait
+#   docker compose -f parity/legacy-portal/docker-compose.postgres.yml down -v
+services:
+  parity-postgres:
+    image: postgres:15-alpine
+    container_name: legacy-portal-parity-pg
+    environment:
+      POSTGRES_DB: legacyportal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${PARITY_PG_PORT:-15432}:5432"
+    volumes:
+      - ./postgres/00-legacy-layout.sql:/docker-entrypoint-initdb.d/00-legacy-layout.sql:ro
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d legacyportal"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

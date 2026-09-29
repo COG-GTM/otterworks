@@ -8,6 +8,13 @@ Targets for ``verify``:
   --against services          boot each extracted service jar (default)
   --target ctx=URL ...        replay against already-running endpoints
                               (docker compose, kind port-forward, gateway)
+  --db postgres               boot jars against the local PostgreSQL from
+                              docker-compose.postgres.yml instead of H2
+                              (schemas are reset first)
+
+  datalift  Cutover drill on PostgreSQL: seed via the monolith, hand schemas
+            over to the service roles, read through the services, write
+            through them, then roll back to the monolith (scenarios/datalift.yaml).
 
 Scenarios run in declaration order against a single fresh instance per
 context, so a target must start with an empty database.
@@ -24,8 +31,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import client, stack
+from . import client, datalift, pg, stack
 from .scenario import (
+    BUSINESS_CONTEXTS,
     CONTEXT_ORDER,
     REPO_ROOT,
     ROOT,
@@ -41,7 +49,6 @@ from .scenario import (
 )
 
 REPORT_DIR = ROOT / "reports"
-BUSINESS_CONTEXTS = [c for c in CONTEXT_ORDER if c != "platform"]
 
 
 def git_rev() -> str:
@@ -187,7 +194,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
         run_against(explicit, {c: explicit[c] for c in contexts})
     elif args.against == "monolith":
         mono = cfg["monolith"]
-        with stack.running([(mono["name"], mono["jar"], mono["java"], mono["port"])]) as procs:
+        mono_args = {}
+        if args.db == "postgres":
+            pg.reset("legacy")
+            mono_args[mono["name"]] = pg.spring_args(mono["db_role"])
+        with stack.running([(mono["name"], mono["jar"], mono["java"], mono["port"])], mono_args) as procs:
             url = procs[mono["name"]].base_url
             for ctx in contexts:
                 reports.append(compare(ctx, mono["name"], url))
@@ -197,14 +208,24 @@ def cmd_verify(args: argparse.Namespace) -> int:
             (cfg["contexts"][c]["service"], cfg["contexts"][c]["jar"], cfg["contexts"][c]["java"], cfg["contexts"][c]["port"])
             for c in contexts
         ]
-        with stack.running(specs) as procs:
+        svc_args = {}
+        if args.db == "postgres":
+            pg.reset("split")
+            svc_args = {cfg["contexts"][c]["service"]: pg.spring_args(cfg["contexts"][c]["db_role"]) for c in contexts}
+        with stack.running(specs, svc_args) as procs:
             labels = {c: cfg["contexts"][c]["service"] for c in contexts}
             run_against({c: procs[labels[c]].base_url for c in contexts}, labels)
 
     return report(reports, args)
 
 
-def report(reports: list[dict[str, Any]], args: argparse.Namespace) -> int:
+def cmd_datalift(args: argparse.Namespace) -> int:
+    reports = datalift.run()
+    args.against, args.target = "datalift", None
+    return report(reports, args, summary="datalift checks passed")
+
+
+def report(reports: list[dict[str, Any]], args: argparse.Namespace, summary: str = "exchanges match the monolith transcript") -> int:
     total = sum(len(r["results"]) for r in reports)
     failed = [(r, x) for r in reports for x in r["results"] if not x["ok"]]
     lines = ["| target | context | exchanges | result |", "|---|---|---:|---|"]
@@ -213,10 +234,10 @@ def report(reports: list[dict[str, Any]], args: argparse.Namespace) -> int:
         lines.append(f"| {r['target']} | {r['context']} | {len(r['results'])} | {'PASS' if not bad else f'FAIL ({bad})'} |")
     print("\n".join(lines))
     for r, x in failed:
-        print(f"\nFAIL {r['target']} {r['context']}/{x['scenario']}/{x['step']}  {x['request']}")
+        print(f"\nFAIL {r['target']} {r['context']}/{x.get('scenario', '-')}/{x['step']}  {x['request']}")
         for p in x["problems"]:
             print(f"    {p}")
-    print(f"\n{total - len(failed)}/{total} exchanges match the monolith transcript")
+    print(f"\n{total - len(failed)}/{total} {summary}")
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -237,8 +258,15 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--context", action="append", choices=BUSINESS_CONTEXTS, help="limit to a context (repeatable)")
     v.add_argument("--target", action="append", metavar="CTX=URL", help="replay against a running endpoint")
     v.add_argument("--label", help="report file label")
+    v.add_argument("--db", choices=["h2", "postgres"], default="h2", help="database the booted jars use")
+    d = sub.add_parser("datalift", help="PostgreSQL cutover + rollback drill")
+    d.add_argument("--label", default="datalift", help="report file label")
     args = parser.parse_args(argv)
-    return cmd_record(args) if args.cmd == "record" else cmd_verify(args)
+    if args.cmd == "record":
+        return cmd_record(args)
+    if args.cmd == "datalift":
+        return cmd_datalift(args)
+    return cmd_verify(args)
 
 
 if __name__ == "__main__":
