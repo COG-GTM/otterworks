@@ -18,10 +18,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Generates CSV reports using OpenCSV 4.6.
+ * Generates CSV reports using OpenCSV.
  *
  * LEGACY PATTERNS:
- * - OpenCSV 4.x (2018). Upgrade target: 5.9+ (different bean mapping API)
  * - FileWriter without explicit charset (platform-dependent encoding)
  * - Manual column extraction from Map keys
  *

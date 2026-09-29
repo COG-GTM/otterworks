@@ -4,6 +4,10 @@ This document describes 11 upgrade axes for migrating the report-service from it
 current legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
 
+**Status:** axes 1-5 and 7-11 are done — the service now builds on Java 17 /
+Spring Boot 3.2 with jakarta namespaces, JUnit 5, and springdoc-openapi. Axis 6
+(iText 5 to OpenPDF / iText 7) is still open and tracked as a follow-up.
+
 ---
 
 ## Overview

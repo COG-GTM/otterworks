@@ -4,9 +4,9 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.model.ReportType;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -18,9 +18,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for {@link CsvReportGenerator}.
@@ -41,14 +41,14 @@ public class CsvReportGeneratorTest {
     private CsvReportGenerator generator;
     private File outputDir;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         generator = new CsvReportGenerator();
         outputDir = new File(System.getProperty("java.io.tmpdir"), "csv-test-" + System.currentTimeMillis());
         outputDir.mkdirs();
     }
 
-    @After
+    @AfterEach
     public void tearDown() {
         if (outputDir != null && outputDir.exists()) {
             File[] files = outputDir.listFiles();
@@ -68,10 +68,10 @@ public class CsvReportGeneratorTest {
 
         File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
 
-        assertNotNull("CSV file should not be null", csv);
-        assertTrue("CSV file should exist", csv.exists());
-        assertTrue("CSV file should have content", csv.length() > 0);
-        assertTrue("CSV file should have .csv extension", csv.getName().endsWith(".csv"));
+        assertNotNull(csv, "CSV file should not be null");
+        assertTrue(csv.exists(), "CSV file should exist");
+        assertTrue(csv.length() > 0, "CSV file should have content");
+        assertTrue(csv.getName().endsWith(".csv"), "CSV file should have .csv extension");
     }
 
     @Test
@@ -82,7 +82,7 @@ public class CsvReportGeneratorTest {
         File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
         List<String> lines = readAllLines(csv);
 
-        assertTrue("CSV should have metadata lines", lines.size() > 0);
+        assertTrue(lines.size() > 0, "CSV should have metadata lines");
 
         boolean hasReportNameComment = false;
         boolean hasGeneratedComment = false;
@@ -104,10 +104,10 @@ public class CsvReportGeneratorTest {
             }
         }
 
-        assertTrue("CSV should contain report name comment", hasReportNameComment);
-        assertTrue("CSV should contain generated timestamp comment", hasGeneratedComment);
-        assertTrue("CSV should contain period comment", hasPeriodComment);
-        assertTrue("CSV should contain row count comment", hasRowsComment);
+        assertTrue(hasReportNameComment, "CSV should contain report name comment");
+        assertTrue(hasGeneratedComment, "CSV should contain generated timestamp comment");
+        assertTrue(hasPeriodComment, "CSV should contain period comment");
+        assertTrue(hasRowsComment, "CSV should contain row count comment");
     }
 
     @Test
@@ -127,11 +127,11 @@ public class CsvReportGeneratorTest {
             }
         }
 
-        assertNotNull("Should find a header line", headerLine);
-        assertTrue("Header should contain user_id column", headerLine.contains("user_id"));
-        assertTrue("Header should contain action column", headerLine.contains("action"));
-        assertTrue("Header should contain timestamp column", headerLine.contains("timestamp"));
-        assertTrue("Header should contain department column", headerLine.contains("department"));
+        assertNotNull(headerLine, "Should find a header line");
+        assertTrue(headerLine.contains("user_id"), "Header should contain user_id column");
+        assertTrue(headerLine.contains("action"), "Header should contain action column");
+        assertTrue(headerLine.contains("timestamp"), "Header should contain timestamp column");
+        assertTrue(headerLine.contains("department"), "Header should contain department column");
     }
 
     @Test
@@ -157,7 +157,7 @@ public class CsvReportGeneratorTest {
             dataLineCount++;
         }
 
-        assertEquals("Data row count should match input", expectedRows, dataLineCount);
+        assertEquals(expectedRows, dataLineCount, "Data row count should match input");
     }
 
     @Test
@@ -167,8 +167,8 @@ public class CsvReportGeneratorTest {
 
         File csv = generator.generateCsv(report, emptyData, outputDir.getAbsolutePath());
 
-        assertNotNull("CSV file should not be null", csv);
-        assertTrue("CSV file should exist even with no data", csv.exists());
+        assertNotNull(csv, "CSV file should not be null");
+        assertTrue(csv.exists(), "CSV file should exist even with no data");
     }
 
     @Test
@@ -178,8 +178,8 @@ public class CsvReportGeneratorTest {
 
         File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
 
-        assertTrue("File name should contain sanitized report name",
-                csv.getName().startsWith("monthly_security_audit_"));
+        assertTrue(csv.getName().startsWith("monthly_security_audit_"),
+                "File name should contain sanitized report name");
     }
 
     // ---- Helpers ----
