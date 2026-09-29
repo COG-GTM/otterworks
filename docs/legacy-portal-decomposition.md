@@ -601,3 +601,35 @@ cluster from this branch (Helm charts ship only from upstream `main`, AGENTS.md)
   lints each chart with defaults and with every optional template on, validates both renders with
   `kubeconform -strict` against the EKS version in `platform/terraform` (1.32) plus the CRD
   catalog for ServiceMonitor, and checks the ClusterIP guard. The kind install is the next step.
+
+### State after `legacy-portal(tooling)`
+
+The three services are on the tenant path; nothing here is run against AWS from this branch
+(deploy scripts ship only from upstream `main`, AGENTS.md).
+
+- **Profiles**: `scripts/lib/tenant-common.sh` lists them in `BACKEND_SERVICES` (so `full`),
+  `JVM_SERVICES` (512Mi/1Gi memory, 1 CPU limit) and `CONTAINER_PORT` (8096/8097/8098).
+  `core` is still the five browser services. The tenant `ResourceQuota` `limits.cpu` goes from 12
+  to 16: the `full` set now declares ~12.75 CPU of limits with Redis and MeiliSearch.
+- **Database**: `deploy-tenant.sh` runs a second in-cluster Job (`tenant-db-portal`) after the
+  database Job, connected to `otterworks_<ID>` itself, that applies `portal_db_setup_sql`: per
+  deployed portal service, role `otterworks_<ID>_<stem>` (roles are instance-wide, so the tenant is
+  in the name; past 63 bytes it is shortened with a hash suffix), `LOGIN` with its password, the
+  schema from the table above owned by that role, `REVOKE ALL ON SCHEMA ... FROM PUBLIC`, and
+  `CONNECT` on the tenant database only (`PUBLIC` loses `CONNECT` there, so another tenant's portal
+  role is refused). Same statements as each service's `scripts/initdb.sh`; idempotent.
+  `drop_tenant_db` drops the three roles with the database.
+- **Credentials**: each role's password is `sha256("otterworks-portal-db:<role>:" + DB_PASSWORD)`,
+  so the Job, the Helm release and later redeploys agree with nothing stored. It reaches the Job
+  through a short-lived Secret (`psql \getenv`) and the chart through the `secrets` values file;
+  never an argv.
+- **Wiring** (`build_helm_args`): `database.url=jdbc:postgresql://<RDS>:5432/otterworks_<ID>`,
+  `SPRING_DATASOURCE_USERNAME=<role>`, `SPRING_DATASOURCE_PASSWORD` in the Secret, Hikari pool 3
+  (min idle 1). Direct to RDS because PgBouncer's userlist holds only the admin user. When the
+  roles do not exist (`--skip-db`, or the Job failed) they fall back to the admin user through
+  PgBouncer's session port with `SPRING_FLYWAY_CREATE_SCHEMAS=true`.
+- **CI/CD**: `cd-tenant.yml` has a path filter per service (plus `portal-parent/**` and
+  `portal-common/**`) and builds them with context `services/` and `services/<service>/Dockerfile`;
+  `docker-build.yml` adds them to the release matrix the same way, behind the existing
+  `portal-services-tests` gate (JDK 17 reactor). `ci.yml`, `deps-remediation.yml` and
+  `security/deps/modules.yaml` already carried the services from earlier steps.
