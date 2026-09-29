@@ -511,3 +511,20 @@ preferences-service copies the template unchanged: `V1__create_user_preference.s
 | announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
 | userpreferences | `services/preferences-service` (`com.otterworks.preferences`) | 8097 | role `preferences` |
 | feedback | legacy-portal | 8095 | `legacyportal` |
+
+### State after `legacy-portal(feedback)`
+
+feedback-service copies the template unchanged: `V1__create_feedback.sql` per vendor (§5 DDL
+verbatim; PostgreSQL gets the implicit `feedback.feedback_id_seq`), role `feedback`
+(`FEEDBACK_DB_PASSWORD`) owning `feedback`, port 8098. `FeedbackService.averageRating()` moves
+verbatim, so `average-rating` still returns the unrounded `IntStream.average()` of every row and
+`0.0` for an empty table. The monolith now serves no domain route and owns no schema
+(`scripts/initdb.sql` creates nothing); its `trailingSlashMatchesTheMappedRoute` pin uses
+`GET /health/`. The empty module stays until the local compose step for the three services
+removes it.
+
+| Context | Served by | Port | Schema owner (PostgreSQL) |
+|---|---|---|---|
+| announcements | `services/announcements-service` (`com.otterworks.announcements`) | 8096 | role `announcements` |
+| userpreferences | `services/preferences-service` (`com.otterworks.preferences`) | 8097 | role `preferences` |
+| feedback | `services/feedback-service` (`com.otterworks.feedback`) | 8098 | role `feedback` |
