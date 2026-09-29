@@ -37,7 +37,7 @@ JAVA_HOME=<temurin-8> mvn -B package   # BUILD SUCCESS -> target/report-service.
 
 `mvn -B package` runs the same 50 tests (1 skipped) before building the jar.
 
-Skipped: `DependencyTranscriptEmitterTest.emitsObservedTranscript` — skips itself via
+Skipped: `DependencyTranscriptEmitterTest.emitTranscript` — skips itself via
 `assumeTrue("dependency transcript not requested", ...)` unless the deps harness passes
 `-Dow.deps.cases=<file> -Dow.deps.observed=<file>`. That skip is expected in a plain run.
 
@@ -71,5 +71,5 @@ are unchanged between `b41a5cd` and `cc23bf1`, so those runs still reflect curre
   `ReportHeaderRendererTest` and `DependencyTranscriptEmitterTest` (44 tests / 5 classes),
   so it has no run against current `main`.
 - That same run (and every `docker-build.yml` run on record) is red overall: the
-  `build-and-push` matrix failed or was cancelled for all services. The report-service test
+  `build-and-push` matrix failed (AWS credentials could not be loaded) or was cancelled for all services. The report-service test
   job itself was green.
