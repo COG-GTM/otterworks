@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record parity-legacy-portal parity-legacy-portal-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record parity-legacy-portal parity-legacy-portal-record verify-legacy-portal-stage
 
 SHELL := /bin/bash
 
@@ -198,6 +198,9 @@ parity-legacy-portal: ## Replay legacy-portal golden transcripts against a fresh
 
 parity-legacy-portal-record: ## Re-record legacy-portal golden transcripts from a freshly started monolith
 	$(PARITY_LP_PYTEST) --record-golden
+
+verify-legacy-portal-stage: ## Build/test legacy-portal modules and run parity twice on H2 and postgres (PROFILE=, RUNS=)
+	scripts/legacy-portal/verify-stage.sh --profile $(or $(PROFILE),all) --runs $(or $(RUNS),2)
 
 lint: ## Lint all services
 	@echo "=== API Gateway ===" && cd services/api-gateway && golangci-lint run
