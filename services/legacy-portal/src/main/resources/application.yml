@@ -1,5 +1,12 @@
 server:
   port: 8095
+  # Error body contract (DECOMPOSITION.md §12): Boot's default error body without message,
+  # binding errors, exception or trace. These are the Boot defaults, pinned explicitly.
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
 
 spring:
   application:
@@ -15,9 +22,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.H2Dialect
+  mvc:
+    problemdetails:
+      enabled: false
 
 management:
   endpoints:
@@ -45,6 +52,3 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect

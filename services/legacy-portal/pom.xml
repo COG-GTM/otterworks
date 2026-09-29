@@ -7,8 +7,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <!-- LEGACY: Spring Boot 2.7.18 — final 2.7.x release (Java 8-19). Upgrade target: 3.2+ -->
-        <version>2.7.18</version>
+        <version>3.5.16</version>
         <relativePath/>
     </parent>
 

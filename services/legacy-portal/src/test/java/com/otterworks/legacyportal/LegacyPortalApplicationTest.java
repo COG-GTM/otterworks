@@ -65,4 +65,12 @@ class LegacyPortalApplicationTest {
                                         "{\"userId\":\"u1\",\"rating\":9,\"message\":\"bad rating\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void trailingSlashMatchesTheMappedRoute() throws Exception {
+        mockMvc.perform(get("/api/announcements/")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/preferences/newuser/"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value("newuser"));
+    }
 }
