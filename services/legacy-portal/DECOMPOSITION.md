@@ -279,7 +279,7 @@ the `Makefile` or `cd-tenant.yml` references it — legacy-portal is not part of
 | `.github/workflows/ci.yml` | 32, 71-72 (paths filter `services/legacy-portal/**`), 337-353 (job `legacy-portal`: temurin **11**, `./mvnw test -B`) | CI on push to `main` / PRs to `main` only | Needs a filter + job per new service on JDK 17. |
 | `.github/workflows/docker-build.yml` | 60-70 (`legacy-portal-tests`: JDK 11, `./mvnw test -B`), 74 (`build-and-push.needs`) | Release gate; legacy-portal is tested but **not** in the image matrix | Swap the gate for the three services; decide whether they join the matrix (no release is cut in this migration). |
 | `.github/workflows/deps-remediation.yml` | 8, 16 (path triggers), 29-37 (JDK 17 + 11) | Runs `make deps-inventory / deps-tests / deps gate / transcript` on **any branch push** touching `services/legacy-portal/**` | Fires on pushes to this branch. Its `deps-tests` step runs `./mvnw -B test` here, so it had the same test-order failure as §10. |
-| `security/deps/modules.yaml` | 32-45 | Registers module `legacy-portal` (`java_home` JDK 11 because the recorded transcript needs Nashorn, `tool: ./mvnw, mvn`, `test: -B test`, `cases: cases/legacy-portal.json`). Discovery **fails the gate for any unregistered JVM build file** | Every new `pom.xml` must be registered (or exempted) in the same commit that adds it; the JDK 11 pin conflicts with a JDK 17 module. |
+| `security/deps/modules.yaml` | 32-45 | Registers module `legacy-portal` (`java_home` JDK 17 since the Java 17 step, with standalone Nashorn on the test classpath for the transcript — §12; `tool: ./mvnw, mvn`, `test: -B test`, `cases: cases/legacy-portal.json`). Discovery **fails the gate for any unregistered JVM build file** | Every new `pom.xml` must be registered (or exempted) in the same commit that adds it, on JDK 17 with the same Nashorn arrangement. |
 | `security/deps/cases/legacy-portal.json` | whole file | 7 contract cases against `PortalBrandingSettings` (banner, support, base64, sys, file, script-unresolved, url-unresolved) | Follows whichever module owns `PortalBrandingSettings` after the split. |
 | `security/deps/expected/legacy-portal.json` | whole file | Recorded baseline transcript (commons-text 1.9), `cases_sha256` pinned | Moves/re-records with the cases; `script:` case behaviour is JDK-dependent. |
 | `.devin/blueprint.yaml` | 27-29 (comment claims legacy-portal is "Boot 3.2" and installs JDK 17 only), 166 (`./mvnw -B -q dependency:go-offline` warm-up) | Session VM setup | Comment is inaccurate today (pom is Boot 2.7.18 / Java 11); warm-up needs the new modules. |
@@ -365,3 +365,10 @@ unchanged and pass on H2 and PostgreSQL.
 - **Serialisation and error bodies**: Jackson output (`Instant` as ISO-8601 `Z`), the `@ControllerAdvice`
   bodies of §2 (including the `Invalid boolean value [maybe]` message and cause matching) and the
   101-char `userId` write → 500 are unchanged (parity).
+- **Dependencies**: `commons-configuration2` 2.8.0 and `commons-beanutils` 1.11.0 stay pinned
+  (Boot 3.5 manages neither); `commons-text` stays 1.9 transitively. The only change in that
+  subtree is Boot-managed `commons-lang3` 3.12.0 → 3.17.0. On JDK 17 the transcript's
+  script engine comes from `org.openjdk.nashorn:nashorn-core` 15.7 (test scope) instead of the JDK;
+  `security/deps/modules.yaml` runs the module on JDK 17 and the recorded cases/expected
+  transcript are unchanged (all 7 cases match).
+
