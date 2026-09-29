@@ -79,4 +79,4 @@ BuildKit secret, so a local Maven mirror works without landing in a layer.
 values `deploy-dev.sh` would supply (image, datasource, credentials), with
 `image.pullPolicy=Never` against locally built images. It needs `kind`,
 `kubectl` and `helm` on `PATH` (or in `~/bin`) and deletes the cluster when
-done unless `KEEP_CLUSTER=1`.
+done unless `KEEP_CLUSTER=1`; a pre-existing `legacy-portal` cluster is reused and never deleted.

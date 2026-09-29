@@ -24,8 +24,19 @@ for bin in docker kind kubectl helm; do
   command -v "$bin" >/dev/null || { echo "$bin not found" >&2; exit 1; }
 done
 
+PIDS=()
+CREATED=0
+cleanup() {
+  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
+  if [ "$CREATED" = "1" ] && [ "${KEEP_CLUSTER:-0}" != "1" ]; then
+    kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+
 if ! kind get clusters | grep -qx "$CLUSTER"; then
   log "creating cluster $CLUSTER"
+  CREATED=1
   kind create cluster --name "$CLUSTER" --wait 120s
 fi
 
@@ -66,13 +77,6 @@ for svc in "${SERVICES[@]}"; do
     --wait --timeout 5m
 done
 kubectl --context "$CTX" -n "$NS" get pods -o wide
-
-PIDS=()
-cleanup() {
-  for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
-  if [ "${KEEP_CLUSTER:-0}" != "1" ]; then kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true; fi
-}
-trap cleanup EXIT
 
 TARGET_ARGS=()
 i=0

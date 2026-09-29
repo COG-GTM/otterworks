@@ -59,6 +59,8 @@ make down
 | User Preferences Service | Java 17 | Spring Boot 3 | 8093 | Portal user preferences (extracted from legacy-portal) |
 | Feedback Service | Java 17 | Spring Boot 3 | 8094 | Portal feedback and ratings (extracted from legacy-portal) |
 
+> **Note:** The Announcements, User Preferences and Feedback services are not part of the root `make up` stack (the legacy portal never was). Run them locally with the parity stack in [`parity/legacy-portal`](parity/legacy-portal/) (`make parity-containers`), and see [`docs/runbooks/legacy-portal-decomposition.md`](docs/runbooks/legacy-portal-decomposition.md) for cutover.
+
 > **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
 
 ## Frontend Applications
