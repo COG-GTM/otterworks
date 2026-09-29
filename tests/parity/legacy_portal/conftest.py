@@ -11,11 +11,15 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from harness import CONTEXTS
 
-DEFAULT_MONOLITH_URL = "http://localhost:8095"
 TARGET_ENV = {
     "announcements": "ANNOUNCEMENTS_URL",
     "preferences": "PREFERENCES_URL",
     "feedback": "FEEDBACK_URL",
+}
+DEFAULT_URLS = {
+    "announcements": "http://localhost:8096",
+    "preferences": "http://localhost:8097",
+    "feedback": "http://localhost:8098",
 }
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
@@ -31,7 +35,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def target_urls() -> dict[str, str]:
     return {
-        context: os.getenv(TARGET_ENV[context], DEFAULT_MONOLITH_URL).rstrip("/")
+        context: os.getenv(TARGET_ENV[context], DEFAULT_URLS[context]).rstrip("/")
         for context in CONTEXTS
     }
 
@@ -86,7 +90,7 @@ def _require_fresh(clients: dict[str, httpx.Client]) -> None:
     if problems:
         pytest.exit(
             "parity target is not freshly started (restart the JVM for H2, "
-            "`docker compose ... down -v` for postgres): " + "; ".join(problems),
+            "`make portal-reset` for the compose stack): " + "; ".join(problems),
             3,
         )
 

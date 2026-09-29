@@ -550,6 +550,125 @@ services:
     read_only: true
     tmpfs:
     - /tmp
+  # Portal services (the legacy-portal decomposition): each owns one schema in the shared
+  # otterworks database and connects only as its own role. portal-db-init creates the roles and
+  # schemas (scripts/init-portal-db.sh runs every service's scripts/initdb.sh) once postgres is
+  # healthy and exits; the services start after it succeeded. Direct ports, no gateway route.
+  portal-db-init:
+    image: postgres:15-alpine
+    container_name: otterworks-portal-db-init
+    entrypoint:
+    - sh
+    - /portal-initdb/init-portal-db.sh
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: otterworks_dev
+      POSTGRES_USER: otterworks
+      POSTGRES_DB: otterworks
+      ANNOUNCEMENTS_DB_PASSWORD: ${ANNOUNCEMENTS_DB_PASSWORD:-announcements}
+      PREFERENCES_DB_PASSWORD: ${PREFERENCES_DB_PASSWORD:-preferences}
+      FEEDBACK_DB_PASSWORD: ${FEEDBACK_DB_PASSWORD:-feedback}
+    volumes:
+    - ./scripts/init-portal-db.sh:/portal-initdb/init-portal-db.sh:ro
+    - ./services/announcements-service/scripts/initdb.sh:/portal-initdb/services/announcements-service.sh:ro
+    - ./services/preferences-service/scripts/initdb.sh:/portal-initdb/services/preferences-service.sh:ro
+    - ./services/feedback-service/scripts/initdb.sh:/portal-initdb/services/feedback-service.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+  announcements-service:
+    build:
+      context: ./services
+      dockerfile: announcements-service/Dockerfile
+    container_name: otterworks-announcements-service
+    ports:
+    - 8096:8096
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/otterworks
+      SPRING_DATASOURCE_USERNAME: announcements
+      SPRING_DATASOURCE_PASSWORD: ${ANNOUNCEMENTS_DB_PASSWORD:-announcements}
+    depends_on:
+      portal-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8096/actuator/health
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+    tmpfs:
+    - /tmp
+  preferences-service:
+    build:
+      context: ./services
+      dockerfile: preferences-service/Dockerfile
+    container_name: otterworks-preferences-service
+    ports:
+    - 8097:8097
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/otterworks
+      SPRING_DATASOURCE_USERNAME: preferences
+      SPRING_DATASOURCE_PASSWORD: ${PREFERENCES_DB_PASSWORD:-preferences}
+    depends_on:
+      portal-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8097/actuator/health
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+    tmpfs:
+    - /tmp
+  feedback-service:
+    build:
+      context: ./services
+      dockerfile: feedback-service/Dockerfile
+    container_name: otterworks-feedback-service
+    ports:
+    - 8098:8098
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/otterworks
+      SPRING_DATASOURCE_USERNAME: feedback
+      SPRING_DATASOURCE_PASSWORD: ${FEEDBACK_DB_PASSWORD:-feedback}
+    depends_on:
+      portal-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+      - CMD
+      - curl
+      - -f
+      - http://localhost:8098/actuator/health
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+    tmpfs:
+    - /tmp
 networks:
   default:
     name: otterworks-network

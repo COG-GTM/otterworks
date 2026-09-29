@@ -2,47 +2,50 @@
 # ------------------------------------------------------------------------------
 # Verify one stage of the legacy-portal decomposition locally (nothing is deployed).
 #
-#   1. Build and test the Maven reactor (services/portal-parent, JDK 17): every module it
-#      lists, i.e. services/legacy-portal, the shared libraries and any extracted service.
-#      Runtime targets are services/legacy-portal and any of
-#      services/{announcements,preferences,feedback}-service that exist.
-#   2. For each profile and run: start fresh local processes (H2 in-memory, or PostgreSQL
-#      from services/legacy-portal/docker-compose.onprem.yml recreated with `down -v`),
-#      replay tests/parity/legacy_portal against them, then stop everything. Each extracted
-#      service connects to PostgreSQL with its own role (<context>/<CONTEXT>_DB_PASSWORD),
-#      and the monolith must answer 404 on the routes of every context it no longer serves.
+#   1. Build and test the Maven reactor (services/portal-parent, JDK 17): portal-common and
+#      services/{announcements,preferences,feedback}-service.
+#   2. For each profile and run, start a fresh target, replay tests/parity/legacy_portal against
+#      it with every context at its own service (ANNOUNCEMENTS_URL / PREFERENCES_URL /
+#      FEEDBACK_URL), then tear it down:
+#        h2        the three JARs on the host, embedded H2
+#        postgres  the three JARs on the host against the root compose postgres, each connected
+#                  as its own role (<context> / <CONTEXT>_DB_PASSWORD)
+#        compose   the three service images from docker-compose.yml with docker-compose.infra.yml
+#                  postgres, started with `up --wait` (all healthy) and checked for role/schema
+#                  ownership
+#      The PostgreSQL profiles run in an isolated compose project (own containers, network,
+#      volume and host ports), recreated with `down -v`, so the developer stack is not touched.
 #   3. Print a summary usable as commit trailers and as the ticket status note.
 #
-# Contexts served by an extracted service are pointed at it (ANNOUNCEMENTS_URL etc.);
-# the rest stay on the monolith at :8095.
-#
 # Usage:
-#   scripts/legacy-portal/verify-stage.sh [--profile h2|postgres|all] [--runs N]
+#   scripts/legacy-portal/verify-stage.sh [--profile h2|postgres|compose|all|<a>,<b>] [--runs N]
 #                                         [--skip-build] [--skip-module-tests]
+#                                         [--skip-image-build]
+#   --skip-image-build  compose profile uses the already built otterworks-<service> images
+#                       (e.g. from `make portal-build`) instead of building them
 # Env:
-#   JDK11_HOME / JDK17_HOME   JDK locations (auto-detected under /usr/lib/jvm otherwise)
+#   JDK17_HOME                JDK location (auto-detected under /usr/lib/jvm otherwise)
 #   PARITY_PG_PORT            host port for the parity PostgreSQL (default 55495)
 #   ANNOUNCEMENTS_PORT / PREFERENCES_PORT / FEEDBACK_PORT
-#                             ports for extracted services (default 8096 / 8097 / 8098)
+#                             host ports of the services (default 8096 / 8097 / 8098)
 #   ANNOUNCEMENTS_DB_PASSWORD / PREFERENCES_DB_PASSWORD / FEEDBACK_DB_PASSWORD
 #                             PostgreSQL passwords of the per-service roles (default: role name)
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PORTAL_DIR="${REPO_ROOT}/services/legacy-portal"
 REACTOR_DIR="${REPO_ROOT}/services/portal-parent"
 REACTOR_JDK=17
 PARITY_DIR="${REPO_ROOT}/tests/parity/legacy_portal"
-COMPOSE_FILE="${PORTAL_DIR}/docker-compose.onprem.yml"
-MONOLITH_PORT=8095
 PG_PORT="${PARITY_PG_PORT:-55495}"
-DB_PASSWORD="${DB_PASSWORD:-legacyportal}"
+PROJECT=otterworks-portal-verify
+DB_NAME=otterworks
 
 PROFILE=all
 RUNS=2
 SKIP_BUILD=0
 SKIP_MODULE_TESTS=0
+SKIP_IMAGE_BUILD=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,22 +53,25 @@ while [[ $# -gt 0 ]]; do
     --runs) RUNS="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
     --skip-module-tests) SKIP_MODULE_TESTS=1; shift ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    --skip-image-build) SKIP_IMAGE_BUILD=1; shift ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-case "${PROFILE}" in
-  h2) PROFILES=(h2) ;;
-  postgres) PROFILES=(postgres) ;;
-  all) PROFILES=(h2 postgres) ;;
-  *) echo "--profile must be h2, postgres or all" >&2; exit 2 ;;
-esac
+[[ "${PROFILE}" == all ]] && PROFILE=h2,postgres,compose
+IFS=',' read -r -a PROFILES <<<"${PROFILE}"
+for profile in "${PROFILES[@]}"; do
+  case "${profile}" in
+    h2|postgres|compose) ;;
+    *) echo "--profile must be h2, postgres, compose, all or a comma-separated list" >&2; exit 2 ;;
+  esac
+done
 [[ "${RUNS}" =~ ^[1-9][0-9]*$ ]] || { echo "--runs must be a positive integer" >&2; exit 2; }
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/legacy-portal-verify.XXXXXX")"
 PIDS=()
-PG_STARTED=0
+STACK_STARTED=0
 SUMMARY=()
 FAILED=0
 
@@ -86,23 +92,74 @@ jdk_home() {
   return 1
 }
 
-# name|dir|jdk|port|context url var ("" = serves every context not claimed by another module)|db role
-MODULES=("legacy-portal|${PORTAL_DIR}|17|${MONOLITH_PORT}||legacyportal")
-# Routes the monolith must no longer serve once their context is extracted.
-EXTRACTED_PROBES=()
+# name|dir|host port|container port|context url var|db role|schema
+MODULES=()
 for ctx in announcements preferences feedback; do
-  dir="${REPO_ROOT}/services/${ctx}-service"
-  [[ -f "${dir}/pom.xml" ]] || continue
   upper="$(echo "${ctx}" | tr '[:lower:]' '[:upper:]')"
   port_var="${upper}_PORT"
   case "${ctx}" in
-    announcements) default_port=8096; probe=/api/announcements ;;
-    preferences) default_port=8097; probe=/api/preferences/parity-probe ;;
-    *) default_port=8098; probe=/api/feedback/average-rating ;;
+    announcements) default_port=8096; schema=announcements ;;
+    preferences) default_port=8097; schema=user_preferences ;;
+    *) default_port=8098; schema=feedback ;;
   esac
-  MODULES+=("${ctx}-service|${dir}|17|${!port_var:-${default_port}}|${upper}_URL|${ctx}")
-  EXTRACTED_PROBES+=("${ctx}|${probe}")
+  MODULES+=("${ctx}-service|${REPO_ROOT}/services/${ctx}-service|${!port_var:-${default_port}}|${default_port}|${upper}_URL|${ctx}|${schema}")
 done
+
+# Password of a per-service PostgreSQL role: <ROLE>_DB_PASSWORD, defaulting to the role name.
+db_password() {
+  local var
+  var="$(echo "$1" | tr '[:lower:]' '[:upper:]')_DB_PASSWORD"
+  echo "${!var:-$1}"
+}
+
+# The root compose stack in its own project: containers, network, volume and host ports differ
+# from the developer stack, and images are shared with it (otterworks-<service>).
+write_override() {
+  local entry name port container_port role upper
+  cat >"${WORK_DIR}/compose.verify.yml" <<YAML
+services:
+  postgres:
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:${PG_PORT}:5432"
+  portal-db-init:
+    container_name: !reset null
+    environment:
+YAML
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r _ _ _ _ _ role _ <<<"${entry}"
+    upper="$(echo "${role}" | tr '[:lower:]' '[:upper:]')"
+    echo "      ${upper}_DB_PASSWORD: \"$(db_password "${role}")\"" >>"${WORK_DIR}/compose.verify.yml"
+  done
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r name _ port container_port _ role _ <<<"${entry}"
+    upper="$(echo "${role}" | tr '[:lower:]' '[:upper:]')"
+    cat >>"${WORK_DIR}/compose.verify.yml" <<YAML
+  ${name}:
+    image: otterworks-${name}
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:${port}:${container_port}"
+    environment:
+      SPRING_DATASOURCE_PASSWORD: "$(db_password "${role}")"
+YAML
+  done
+  cat >>"${WORK_DIR}/compose.verify.yml" <<YAML
+networks:
+  default:
+    name: ${PROJECT}-network
+YAML
+}
+
+compose() {
+  docker compose -p "${PROJECT}" -f "${REPO_ROOT}/docker-compose.infra.yml" \
+    -f "${REPO_ROOT}/docker-compose.yml" -f "${WORK_DIR}/compose.verify.yml" "$@"
+}
+
+service_names() {
+  local entry name
+  for entry in "${MODULES[@]}"; do IFS='|' read -r name _ <<<"${entry}"; echo "${name}"; done
+}
 
 stop_processes() {
   local pid
@@ -114,16 +171,16 @@ stop_processes() {
   PIDS=()
 }
 
-stop_postgres() {
-  if [[ "${PG_STARTED}" == "1" ]]; then
-    docker compose -f "${COMPOSE_FILE}" -f "${WORK_DIR}/compose.parity.yml" down -v >/dev/null 2>&1 || true
-    PG_STARTED=0
+stop_stack() {
+  if [[ "${STACK_STARTED}" == "1" ]]; then
+    compose down -v --remove-orphans >/dev/null 2>&1 || true
+    STACK_STARTED=0
   fi
 }
 
 cleanup() {
   stop_processes
-  stop_postgres
+  stop_stack
   rm -rf "${WORK_DIR}"
 }
 trap cleanup EXIT
@@ -175,37 +232,65 @@ build_modules() {
   fi
 }
 
-start_postgres() {
-  local entry name role upper
-  cat >"${WORK_DIR}/compose.parity.yml" <<YAML
-services:
-  legacy-portal-db:
-    ports:
-      - "127.0.0.1:${PG_PORT}:5432"
-    environment:
-YAML
-  for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name _ _ _ _ role <<<"${entry}"
-    [[ "${name}" == legacy-portal ]] && continue
-    upper="$(echo "${role}" | tr '[:lower:]' '[:upper:]')"
-    echo "      ${upper}_DB_PASSWORD: \"$(db_password "${role}")\"" >>"${WORK_DIR}/compose.parity.yml"
-  done
-  docker compose -f "${COMPOSE_FILE}" -f "${WORK_DIR}/compose.parity.yml" down -v >/dev/null 2>&1 || true
-  PG_STARTED=1
-  DB_PASSWORD="${DB_PASSWORD}" docker compose -f "${COMPOSE_FILE}" -f "${WORK_DIR}/compose.parity.yml" \
-    up -d --wait legacy-portal-db >"${WORK_DIR}/compose.log" 2>&1 || { cat "${WORK_DIR}/compose.log" >&2; return 1; }
+build_images() {
+  local cmd
+  cmd="docker compose -f docker-compose.infra.yml -f docker-compose.yml build $(service_names | tr '\n' ' ')"
+  cmd="${cmd% }"
+  # shellcheck disable=SC2046
+  if compose build $(service_names) >"${WORK_DIR}/image-build.log" 2>&1; then
+    record "PASS images: ${cmd} - built $(service_names | sed 's/^/otterworks-/' | tr '\n' ' ' | sed 's/ $//')"
+  else
+    tail -60 "${WORK_DIR}/image-build.log" >&2
+    record "FAIL images: ${cmd}"
+    FAILED=1
+  fi
 }
 
-# Password of a per-service PostgreSQL role: <ROLE>_DB_PASSWORD, defaulting to the role name.
-db_password() {
-  local var
-  [[ "$1" == legacyportal ]] && { echo "${DB_PASSWORD}"; return; }
-  var="$(echo "$1" | tr '[:lower:]' '[:upper:]')_DB_PASSWORD"
-  echo "${!var:-$1}"
+start_postgres() {
+  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  STACK_STARTED=1
+  { compose up -d --wait postgres && compose run --rm portal-db-init; } >"${WORK_DIR}/compose.log" 2>&1 \
+    || { cat "${WORK_DIR}/compose.log" >&2; return 1; }
+}
+
+start_compose_services() {
+  compose down -v --remove-orphans >/dev/null 2>&1 || true
+  STACK_STARTED=1
+  # shellcheck disable=SC2046
+  compose up -d --no-build --wait --wait-timeout 300 $(service_names) >"${WORK_DIR}/compose.log" 2>&1 \
+    || { cat "${WORK_DIR}/compose.log" >&2; compose logs --tail 60 >&2 || true; return 1; }
+}
+
+psql_query() {
+  compose exec -T postgres psql -U otterworks -d "${DB_NAME}" -Atc "$1"
+}
+
+# Each schema exists, is owned by its service role, and (compose) the service is connected as it.
+check_ownership() {
+  local profile="$1" entry name role schema owner connected
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r name _ _ _ _ role schema <<<"${entry}"
+    owner="$(psql_query "SELECT pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = '${schema}'")"
+    if [[ "${owner}" != "${role}" ]]; then
+      log "schema ${schema} owned by '${owner}', expected ${role}"
+      return 1
+    fi
+    connected="$(psql_query "SELECT count(*) FROM pg_stat_activity WHERE datname = '${DB_NAME}' AND usename = '${role}'")"
+    if [[ "${connected}" == 0 ]]; then
+      log "${name} has no connection as role ${role}"
+      return 1
+    fi
+  done
+  [[ "${profile}" == compose ]] || return 0
+  local health
+  for name in $(service_names); do
+    health="$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q "${name}")")"
+    [[ "${health}" == healthy ]] || { log "${name} is ${health}, expected healthy"; return 1; }
+  done
 }
 
 start_module() {
-  local profile="$1" name="$2" dir="$3" jdk="$4" port="$5" run="$6" role="$7"
+  local profile="$1" name="$2" dir="$3" port="$4" run="$5" role="$6"
   local jar
   jar="$(find "${dir}/target" -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' ! -name '*.original' | head -1)"
   [[ -n "${jar}" ]] || { log "no jar under ${dir}/target"; return 1; }
@@ -213,12 +298,12 @@ start_module() {
   if [[ "${profile}" == "postgres" ]]; then
     env_args+=(
       "SPRING_PROFILES_ACTIVE=postgres"
-      "SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:${PG_PORT}/legacyportal"
+      "SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:${PG_PORT}/${DB_NAME}"
       "SPRING_DATASOURCE_USERNAME=${role}"
       "SPRING_DATASOURCE_PASSWORD=$(db_password "${role}")"
     )
   fi
-  env "${env_args[@]}" "$(jdk_home "${jdk}")/bin/java" -jar "${jar}" \
+  env "${env_args[@]}" "$(jdk_home "${REACTOR_JDK}")/bin/java" -jar "${jar}" \
     >"${WORK_DIR}/${name}-${profile}-${run}.log" 2>&1 &
   PIDS+=("$!")
 }
@@ -235,40 +320,38 @@ wait_ready() {
   done
 }
 
-# The strangler cut: the monolith answers 404 on every extracted context's routes.
-check_extracted_routes() {
-  local entry ctx probe code
-  for entry in "${EXTRACTED_PROBES[@]+"${EXTRACTED_PROBES[@]}"}"; do
-    IFS='|' read -r ctx probe <<<"${entry}"
-    code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${MONOLITH_PORT}${probe}")"
-    if [[ "${code}" != 404 ]]; then
-      log "legacy-portal still serves ${ctx}: GET ${probe} -> ${code} (expected 404)"
+run_parity() {
+  local profile="$1" run="$2" entry name dir port url_var role
+  local -a url_env=()
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r name _ port _ _ _ _ <<<"${entry}"
+    if lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+      log "port ${port} (${name}) is already in use; stop it first (e.g. make portal-down)"
       return 1
     fi
   done
-}
-
-run_parity() {
-  local profile="$1" run="$2" entry name dir jdk port url_var role
-  local -a url_env=()
-  if lsof -iTCP:"${MONOLITH_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
-    log "port ${MONOLITH_PORT} is already in use; stop the running legacy-portal first"
-    return 1
+  case "${profile}" in
+    postgres) start_postgres || return 1 ;;
+    compose) start_compose_services || { PARITY_RESULT="compose services not healthy"; return 1; } ;;
+  esac
+  for entry in "${MODULES[@]}"; do
+    IFS='|' read -r name dir port _ url_var role _ <<<"${entry}"
+    url_env+=("${url_var}=http://localhost:${port}")
+    [[ "${profile}" == compose ]] && continue
+    start_module "${profile}" "${name}" "${dir}" "${port}" "${run}" "${role}" || return 1
+  done
+  if [[ "${profile}" != compose ]]; then
+    for entry in "${MODULES[@]}"; do
+      IFS='|' read -r name _ port _ _ _ _ <<<"${entry}"
+      wait_ready "${name}" "${port}" "${WORK_DIR}/${name}-${profile}-${run}.log" || return 1
+    done
   fi
-  [[ "${profile}" == "postgres" ]] && { start_postgres || return 1; }
-  for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name dir jdk port url_var role <<<"${entry}"
-    start_module "${profile}" "${name}" "${dir}" "${jdk}" "${port}" "${run}" "${role}" || return 1
-    [[ -n "${url_var}" ]] && url_env+=("${url_var}=http://localhost:${port}")
-  done
-  for entry in "${MODULES[@]}"; do
-    IFS='|' read -r name _ _ port _ _ <<<"${entry}"
-    wait_ready "${name}" "${port}" "${WORK_DIR}/${name}-${profile}-${run}.log" || return 1
-  done
-  check_extracted_routes || { PARITY_RESULT="monolith still serves an extracted context"; return 1; }
+  if [[ "${profile}" != h2 ]]; then
+    check_ownership "${profile}" || { PARITY_RESULT="role/schema/health check failed"; return 1; }
+  fi
   local out="${WORK_DIR}/parity-${profile}-${run}.log"
   local rc=0
-  (cd "${REPO_ROOT}" && env ${url_env[@]+"${url_env[@]}"} \
+  (cd "${REPO_ROOT}" && env "${url_env[@]}" \
     uv run --quiet --no-project --with-requirements "${PARITY_DIR}/requirements.txt" \
     python -m pytest -c "${PARITY_DIR}/pytest.ini" "${PARITY_DIR}" -q) >"${out}" 2>&1 || rc=$?
   PARITY_RESULT="$(grep -E '^[0-9]+ (passed|failed)|^=+ .*(passed|failed|error)' "${out}" | tail -1 | tr -d '=' | sed -E 's/^ +| +$//g; s/ in [0-9.]+s$//')"
@@ -276,10 +359,19 @@ run_parity() {
   return ${rc}
 }
 
+write_override
+
 if [[ "${SKIP_BUILD}" == "1" ]]; then
   log "skipping module build/test"
 else
   build_modules
+fi
+if [[ " ${PROFILES[*]} " == *" compose "* ]]; then
+  if [[ "${SKIP_IMAGE_BUILD}" == "1" ]]; then
+    log "skipping image build; using existing otterworks-<service> images"
+  else
+    build_images
+  fi
 fi
 
 GOLDEN_BEFORE="$(cd "${PARITY_DIR}/golden" && sha256sum ./*.json | sha256sum | cut -c1-12)"
@@ -287,20 +379,23 @@ for profile in "${PROFILES[@]}"; do
   for run in $(seq 1 "${RUNS}"); do
     PARITY_RESULT=""
     log "parity ${profile} run ${run}/${RUNS}"
+    detail=""
+    [[ "${profile}" == compose ]] && detail="; 3/3 healthy, schemas owned by and connected as their service role"
+    [[ "${profile}" == postgres ]] && detail="; schemas owned by and connected as their service role"
     if run_parity "${profile}" "${run}"; then
-      record "PASS parity ${profile} run ${run}/${RUNS}: make parity-legacy-portal (${profile}, run ${run}/${RUNS}) - ${PARITY_RESULT}"
+      record "PASS parity ${profile} run ${run}/${RUNS}: make parity-legacy-portal (${profile}, run ${run}/${RUNS}) - ${PARITY_RESULT}${detail}"
     else
       record "FAIL parity ${profile} run ${run}/${RUNS}: make parity-legacy-portal (${profile}, run ${run}/${RUNS}) - ${PARITY_RESULT:-did not run}"
       FAILED=1
     fi
     stop_processes
-    stop_postgres
+    stop_stack
   done
 done
 GOLDEN_AFTER="$(cd "${PARITY_DIR}/golden" && sha256sum ./*.json | sha256sum | cut -c1-12)"
 [[ "${GOLDEN_BEFORE}" == "${GOLDEN_AFTER}" ]] || { record "FAIL golden transcripts changed during verification"; FAILED=1; }
 
-targets="$(for entry in "${MODULES[@]}"; do IFS='|' read -r name _ _ port _ _ <<<"${entry}"; printf '%s:%s ' "${name}" "${port}"; done)"
+targets="$(for entry in "${MODULES[@]}"; do IFS='|' read -r name _ port _ <<<"${entry}"; printf '%s:%s ' "${name}" "${port}"; done)"
 echo
 echo "=== legacy-portal verify-stage summary ==="
 echo "commit:  $(git -C "${REPO_ROOT}" rev-parse --short HEAD)$(git -C "${REPO_ROOT}" diff --quiet HEAD -- || echo ' (dirty)')"
