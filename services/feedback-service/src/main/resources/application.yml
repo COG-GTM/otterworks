@@ -1,0 +1,58 @@
+server:
+  port: 8094
+  shutdown: graceful
+
+spring:
+  application:
+    name: feedback-service
+  # Operator-editable branding, carried over from legacy-portal. Any key can be
+  # overridden by environment (the Helm chart sets PORTAL_ENVIRONMENT) or by a file
+  # mounted at /config.
+  config:
+    import:
+      - classpath:portal-settings.properties
+      - optional:file:/config/portal-settings.properties
+  # Default profile: embedded H2 owning only this service's schema, in PostgreSQL mode
+  # so identifier case and SQL match the postgres profile.
+  datasource:
+    url: 'jdbc:h2:mem:feedback;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH'
+    username: sa
+    password: ''
+  flyway:
+    schemas: feedback
+    default-schema: feedback
+    # legacy-portal created this schema with Hibernate ddl-auto=update. V1 is a no-op
+    # on those tables, and baselining makes adopting a legacy database idempotent.
+    baseline-on-migrate: true
+    baseline-version: 0
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # Hibernate 6 maps Instant to TIMESTAMP WITH TIME ZONE by default; the tables
+        # inherited from legacy-portal (Hibernate 5) use plain TIMESTAMP.
+        type.preferred_instant_jdbc_type: TIMESTAMP
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/legacyportal}
+    username: ${SPRING_DATASOURCE_USERNAME:legacyportal}
+    password: ${SPRING_DATASOURCE_PASSWORD:legacyportal}
