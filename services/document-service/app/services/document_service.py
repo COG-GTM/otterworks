@@ -2,6 +2,7 @@
 
 import html as html_mod
 import math
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -194,10 +195,70 @@ class DocumentService:
         if not document:
             return False
         document.is_deleted = True
+        document.deleted_at = datetime.now(UTC)
         await self.db.commit()
 
         await event_publisher.publish(
             "document_deleted", {"id": document_id, "type": "document"}
+        )
+        return True
+
+    # ---- Trash ----
+
+    async def get_trashed(self, document_id: UUID) -> Document | None:
+        result = await self.db.execute(
+            select(Document).where(
+                Document.id == document_id,
+                Document.is_deleted.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_trashed(
+        self, owner_id: UUID, page: int = 1, size: int = 20
+    ) -> tuple[list[Document], int]:
+        base = select(Document).where(
+            Document.owner_id == owner_id,
+            Document.is_deleted.is_(True),
+            Document.is_template.is_(False),
+        )
+        count_q = select(func.count()).select_from(base.subquery())
+        total = (await self.db.execute(count_q)).scalar_one()
+
+        q = base.order_by(
+            Document.deleted_at.desc().nulls_last(), Document.updated_at.desc()
+        )
+        q = q.offset((page - 1) * size).limit(size)
+        result = await self.db.execute(q)
+        return list(result.scalars().all()), total
+
+    async def restore(self, document_id: UUID) -> Document | None:
+        document = await self.get_trashed(document_id)
+        if not document:
+            return None
+        document.is_deleted = False
+        document.deleted_at = None
+        await self.db.commit()
+        await self.db.refresh(document)
+
+        await event_publisher.publish(
+            "document_restored",
+            _document_index_payload(document),
+        )
+        return document
+
+    async def purge(self, document_id: UUID) -> bool:
+        result = await self.db.execute(
+            select(Document).where(Document.id == document_id)
+        )
+        document = result.scalar_one_or_none()
+        if not document:
+            return False
+        await self.db.delete(document)
+        await self.db.commit()
+
+        await event_publisher.publish(
+            "document_purged", {"id": document_id, "type": "document"}
         )
         return True
 
