@@ -46,6 +46,21 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(2)
     end
 
+    it 'leaves the Devin session to the Slack listener for slack_listener routes' do
+      allow(SlackNotifierService).to receive(:notify_incident)
+      alert = firing_alert(
+        labels: { alertname: 'DocumentCreateFailed', affected_service: 'document-service', dedup: 'false' },
+        summary: 'Document creation failed: Untitled document'
+      )
+
+      2.times { post :ingest, params: { alerts: [alert] } }
+
+      expect(Incident.count).to eq(2)
+      expect(DevinSessionService).not_to have_received(:create_session)
+      expect(SlackNotifierService).to have_received(:notify_incident)
+        .with(hash_including(alert_name: 'DocumentCreateFailed', devin_listener: true)).twice
+    end
+
     it 'rejects payloads without an alerts array' do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)

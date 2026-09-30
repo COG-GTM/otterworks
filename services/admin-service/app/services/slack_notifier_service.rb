@@ -23,11 +23,11 @@ class SlackNotifierService
   LOOKUP_CACHE_MUTEX = Mutex.new
 
   class << self
-    def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
+    def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil, devin_listener: false)
       return unless AdminSettingsService.slack_notifications_enabled?
 
       channel = SlackAlertRoutes.channel_for(alert_name.presence || infer_alert_name(incident))
-      payload = build_payload(incident, session_url, reporter_email)
+      payload = build_payload(incident, session_url, reporter_email, devin_listener)
 
       bot_token = resolve_bot_token
       return if bot_token && post_via_api(bot_token, channel, payload)
@@ -150,13 +150,15 @@ class SlackNotifierService
       nil
     end
 
-    def build_payload(incident, session_url, reporter_email)
+    def build_payload(incident, session_url, reporter_email, devin_listener = false)
       raw_service = incident.affected_service.presence || 'unknown-service'
       service = escape_mrkdwn(raw_service)
       title = escape_mrkdwn(incident.title)
       type = escape_mrkdwn(incident.title.to_s.split(':').first.to_s.strip)
       on_call_devin = if session_url.present?
                         ":robot_face: <#{session_url}|Devin AI (auto-investigating)>"
+                      elsif devin_listener
+                        ':robot_face: Devin AI (Slack listener starting a session)'
                       else
                         ':robot_face: No Devin session'
                       end

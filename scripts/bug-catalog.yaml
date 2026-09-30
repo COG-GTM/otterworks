@@ -104,6 +104,23 @@ scenarios:
       Already ON for the coggtm tenant: the demo branch bakes the variable
       into the file-service image's Dockerfile.
 
+  document-create-fail:
+    mechanism: config
+    service: document-service
+    set: "config.DOC_SVC_CREATE_ALWAYS_FAIL=true"
+    description: >
+      Click-triggered Slack-listener failure: with DOC_SVC_CREATE_ALWAYS_FAIL
+      set, clicking "New document" makes document-service publish the
+      document_created event to a nonexistent SNS topic (the real topic name
+      with a "-v2" suffix) before persisting, so the request fails with a real
+      AWS SNS error, no document row is written, and the UI shows a red
+      failure banner. document-service fires the DocumentCreateFailed alert
+      at admin-service's ingest endpoint (dedup=false, reporter_email =
+      clicking user); admin-service routes it to #eng-otterworks with
+      devin_trigger=slack_listener, so it skips the Devin API session and a
+      Devin Automation listening on that channel starts the session from the
+      OtterWorks bot's Slack message. Baked ON in the document-service image.
+
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
   # re-deploy the tenant with the golden tag.

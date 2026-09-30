@@ -84,8 +84,11 @@ module Api
             reporter_id:      nil, # system-generated
           )
 
+          slack_listener = SlackAlertRoutes.slack_listener?(alert_name)
           session_result = nil
-          if auto_investigate
+          if slack_listener
+            Rails.logger.info("Incident #{incident.id} routed to the Devin Slack listener — skipping API session")
+          elsif auto_investigate
             session_result = DevinSessionService.create_session(incident: incident)
           else
             Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
@@ -103,7 +106,8 @@ module Api
             incident: incident,
             session_url: session_result&.dig(:url),
             reporter_email: reporter_email,
-            alert_name: alert_name
+            alert_name: alert_name,
+            devin_listener: slack_listener
           )
 
           Rails.logger.info("Incident #{incident.id} created from alert #{alert_name}, devin=#{session_result.present?}")

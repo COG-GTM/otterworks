@@ -11,6 +11,16 @@ RSpec.describe SlackAlertRoutes do
     expect(described_class.channel_for('BrandNewChaosError')).to eq('#automated-alerts')
   end
 
+  it 'routes DocumentCreateFailed to #eng-otterworks for the Devin Slack listener' do
+    expect(described_class.channel_for('DocumentCreateFailed')).to eq('#eng-otterworks')
+    expect(described_class.slack_listener?('DocumentCreateFailed')).to be(true)
+  end
+
+  it 'leaves other alerts on the API-created Devin session path' do
+    expect(described_class.slack_listener?('FileUploadFailed')).to be(false)
+    expect(described_class.slack_listener?('BrandNewChaosError')).to be(false)
+  end
+
   it 'honors a per-alert channel override' do
     allow(YAML).to receive(:safe_load_file).and_return(
       'default' => { 'channel' => '#automated-alerts' },

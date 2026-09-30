@@ -188,6 +188,18 @@ RSpec.describe SlackNotifierService do
     expect(footer).to start_with('Service: `file-service` | ')
   end
 
+  it 'routes DocumentCreateFailed to #eng-otterworks and names the Slack listener as on-call' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
+    read_posted, = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'DocumentCreateFailed', devin_listener: true)
+
+    posted = read_posted.call
+    fields = posted['blocks'].select { |b| b['fields'] }.flat_map { |b| b['fields'].map { |f| f['text'] } }
+    expect(posted['channel']).to eq('#eng-otterworks')
+    expect(fields).to include("*On-Call:*\n:robot_face: Devin AI (Slack listener starting a session)")
+  end
+
   it 'escapes Slack control sequences in the description so alert text cannot inject mentions or links' do
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')

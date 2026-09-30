@@ -9,10 +9,11 @@ import jwt
 import redis as redis_lib
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentCreate,
@@ -23,8 +24,14 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
+from app.services.alerts import notify_document_create_failure
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
+from app.services.event_publisher import (
+    EventPublishError,
+    event_publisher,
+    forced_failure_topic_arn,
+)
 from app.services.export_archive import ExportArchive
 from app.services.share_link import ShareLinkService
 
@@ -110,7 +117,7 @@ async def _do_create_document(
     body: DocumentCreate,
     request: Request,
     db: AsyncSession,
-) -> DocumentResponse:
+) -> DocumentResponse | JSONResponse:
     if not body.owner_id:
         extracted_id = _extract_user_id(request)
         if not extracted_id:
@@ -119,6 +126,23 @@ async def _do_create_document(
                 detail="owner_id is required: provide it in the body or authenticate via JWT",
             )
         body.owner_id = extracted_id
+
+    if settings.create_always_fail:
+        try:
+            await event_publisher.publish_or_raise(
+                "document_created",
+                {"title": body.title, "owner_id": body.owner_id},
+                forced_failure_topic_arn(),
+            )
+        except EventPublishError as err:
+            logger.error("document_create_event_publish_failed", error=str(err))
+            notify_document_create_failure(
+                body.title, str(err), request.headers.get("X-User-Email")
+            )
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"error": "event_error", "message": str(err)},
+            )
 
     service = DocumentService(db)
     document = await service.create(body)

@@ -167,6 +167,12 @@ services:
       DOC_SVC_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
+      # DocumentCreateFailed alerts go to admin-service's ingest endpoint, which
+      # routes them to the Devin Slack listener channel.
+      ADMIN_SERVICE_URL: http://admin-service:8089
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Off locally; the document-service image bakes it on (see its Dockerfile).
+      DOC_SVC_CREATE_ALWAYS_FAIL: ${DOC_SVC_CREATE_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       postgres:
