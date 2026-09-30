@@ -22,6 +22,7 @@ from app.schemas.document import (
     DocumentResponse,
     DocumentUpdate,
     DocumentVersionResponse,
+    TrashedDocumentListResponse,
 )
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
@@ -196,6 +197,27 @@ async def get_shared_document(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
+
+
+@router.get("/trash", response_model=TrashedDocumentListResponse)
+async def list_trashed_documents(
+    request: Request,
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """List the caller's soft-deleted documents, most recently deleted first."""
+    await _maybe_inject_latency()
+    user_id = _require_user_id(request)
+    service = DocumentService(db)
+    items, total = await service.list_trashed(user_id, page=page, size=size)
+    return TrashedDocumentListResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=service.paginate(total, page, size),
+    )
 
 
 async def _do_list_documents(
@@ -399,18 +421,46 @@ async def patch_document(
 async def delete_document(
     document_id: UUID,
     request: Request,
+    permanent: bool = Query(False),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a document (soft delete)."""
+    """Move a document to trash, or hard-delete it when ``permanent`` is set."""
     await _maybe_inject_latency()
     user_id = _require_user_id(request)
     service = DocumentService(db)
     existing = await service.get(document_id)
+    if not existing and permanent:
+        existing = await service.get_trashed(document_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Document not found")
     _ensure_owner(existing, user_id)
+    if permanent:
+        await service.purge(document_id)
+        logger.info("document_purged", document_id=str(document_id))
+        return
     await service.delete(document_id)
     logger.info("document_deleted", document_id=str(document_id))
+
+
+@router.post("/{document_id}/restore", response_model=DocumentResponse)
+async def restore_document(
+    document_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore a trashed document to the documents list."""
+    await _maybe_inject_latency()
+    user_id = _require_user_id(request)
+    service = DocumentService(db)
+    existing = await service.get_trashed(document_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _ensure_owner(existing, user_id)
+    document = await service.restore(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    logger.info("document_restored", document_id=str(document_id))
+    return document
 
 
 @router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])

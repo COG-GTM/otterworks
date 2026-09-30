@@ -237,3 +237,38 @@ async def test_paginate_helper():
     assert DocumentService.paginate(11, 1, 5) == 3
     assert DocumentService.paginate(0, 1, 5) == 1
     assert DocumentService.paginate(10, 1, 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_trash_restore_and_purge(db_session: AsyncSession, owner_id: uuid.UUID):
+    service = DocumentService(db_session)
+    doc = await service.create(
+        DocumentCreate(title="Trash Me", content="keep this", owner_id=owner_id)
+    )
+    other = await service.create(
+        DocumentCreate(title="Not Mine", content="", owner_id=uuid.uuid4())
+    )
+    await service.delete(doc.id)
+    await service.delete(other.id)
+
+    trashed, total = await service.list_trashed(owner_id)
+    assert total == 1
+    assert [d.id for d in trashed] == [doc.id]
+    assert trashed[0].deleted_at is not None
+    assert await service.get_trashed(doc.id) is not None
+    assert await service.get(doc.id) is None
+
+    restored = await service.restore(doc.id)
+    assert restored is not None
+    assert restored.is_deleted is False
+    assert restored.deleted_at is None
+    assert restored.content == "keep this"
+    assert len(await service.list_versions(doc.id)) == 1
+    assert await service.restore(doc.id) is None
+    assert (await service.list_trashed(owner_id))[1] == 0
+
+    await service.delete(doc.id)
+    assert await service.purge(doc.id) is True
+    assert await service.get_trashed(doc.id) is None
+    assert await service.list_versions(doc.id) == []
+    assert await service.purge(doc.id) is False

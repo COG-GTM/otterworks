@@ -344,6 +344,15 @@ export const filesApi = {
 };
 
 // ── Documents ─────────────────────────────────────────────────
+// Shape after the axios camelCase interceptor transforms the document-service response
+interface RawDocumentListResponse {
+  items?: Document[];
+  total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
+}
+
 export const documentsApi = {
   list: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
     const { data } = await apiClient.get<PaginatedResponse<Document>>("/documents", {
@@ -369,8 +378,28 @@ export const documentsApi = {
   share: async (id: string, users: SharedUser[]): Promise<void> => {
     await apiClient.post(`/documents/${id}/share`, { users });
   },
-  restore: async (id: string): Promise<void> => {
-    await apiClient.post(`/documents/${id}/restore`);
+  restore: async (id: string): Promise<Document> => {
+    const { data } = await apiClient.post<Document>(`/documents/${id}/restore`);
+    return data;
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = data.items ?? [];
+    const total = data.total ?? items.length;
+    const currentPage = data.page ?? page;
+    const size = data.size ?? pageSize;
+    return {
+      data: items,
+      total,
+      page: currentPage,
+      pageSize: size,
+      hasMore: currentPage * size < total,
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
