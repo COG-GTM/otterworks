@@ -175,3 +175,115 @@ def test_document_validation_and_ownership_risk_cases(api_client):
         headers=user_a.auth_headers,
     )
     assert not_found.status_code == 404
+
+
+def test_document_trash_restore_and_permanent_delete_flow(api_client):
+    user = api_client.register_user("document-trash")
+    headers = user.auth_headers
+    other_user = api_client.register_user("document-trash-other")
+
+    document = api_client.create_document(
+        user, f"Trash Flow {api_client.run_id}", "first draft"
+    )
+    document_id = document["id"]
+
+    patch_response = api_client.client.patch(
+        f"/api/v1/documents/{document_id}",
+        headers=headers,
+        json={"content": "second draft"},
+    )
+    assert patch_response.status_code == 200, patch_response.text
+    assert patch_response.json()["version"] == 2
+
+    delete_response = api_client.client.delete(f"/api/v1/documents/{document_id}", headers=headers)
+    assert delete_response.status_code == 204, delete_response.text
+
+    gone_response = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
+    assert gone_response.status_code == 404, gone_response.text
+
+    trash_response = api_client.client.get("/api/v1/documents/trash", headers=headers)
+    api_client.assert_gateway_route_available(trash_response, "/api/v1/documents/trash")
+    assert trash_response.status_code == 200, trash_response.text
+    trash_data = trash_response.json()
+    trashed = next((item for item in trash_data["items"] if item["id"] == document_id), None)
+    assert trashed is not None, trash_data
+    assert trashed["is_deleted"] is True
+    assert trashed["deleted_at"]
+
+    other_trash = api_client.client.get("/api/v1/documents/trash", headers=other_user.auth_headers)
+    assert other_trash.status_code == 200, other_trash.text
+    assert all(item["id"] != document_id for item in other_trash.json()["items"])
+
+    other_restore = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=other_user.auth_headers
+    )
+    assert other_restore.status_code == 403, other_restore.text
+
+    restore_response = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["id"] == document_id
+    assert restored["is_deleted"] is False
+    assert restored["content"] == "second draft"
+    assert restored["version"] == 2
+
+    readable_response = api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers)
+    assert readable_response.status_code == 200, readable_response.text
+    assert readable_response.json()["content"] == "second draft"
+
+    versions_response = api_client.client.get(
+        f"/api/v1/documents/{document_id}/versions", headers=headers
+    )
+    assert versions_response.status_code == 200, versions_response.text
+    assert [v["version_number"] for v in versions_response.json()] == [2, 1]
+
+    list_response = api_client.client.get(
+        "/api/v1/documents/", headers=headers, params={"owner_id": user.id, "page": 1, "size": 10}
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert any(item["id"] == document_id for item in list_response.json()["items"])
+
+    trash_after_restore = api_client.client.get("/api/v1/documents/trash", headers=headers)
+    assert all(item["id"] != document_id for item in trash_after_restore.json()["items"])
+
+    second_restore = api_client.client.post(
+        f"/api/v1/documents/{document_id}/restore", headers=headers
+    )
+    assert second_restore.status_code == 404, second_restore.text
+
+    # A live document cannot be purged directly; it must be trashed first.
+    premature_purge = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers, params={"permanent": "true"}
+    )
+    assert premature_purge.status_code == 404, premature_purge.text
+
+    delete_again = api_client.client.delete(f"/api/v1/documents/{document_id}", headers=headers)
+    assert delete_again.status_code == 204, delete_again.text
+
+    other_purge = api_client.client.delete(
+        f"/api/v1/documents/{document_id}",
+        headers=other_user.auth_headers,
+        params={"permanent": "true"},
+    )
+    assert other_purge.status_code == 403, other_purge.text
+
+    purge_response = api_client.client.delete(
+        f"/api/v1/documents/{document_id}", headers=headers, params={"permanent": "true"}
+    )
+    assert purge_response.status_code == 204, purge_response.text
+
+    trash_after_purge = api_client.client.get("/api/v1/documents/trash", headers=headers)
+    assert all(item["id"] != document_id for item in trash_after_purge.json()["items"])
+    assert (
+        api_client.client.get(f"/api/v1/documents/{document_id}", headers=headers).status_code
+        == 404
+    )
+    assert (
+        api_client.client.post(
+            f"/api/v1/documents/{document_id}/restore", headers=headers
+        ).status_code
+        == 404
+    )
+    api_client.created_documents.remove(document_id)

@@ -281,3 +281,145 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_trash_lists_only_callers_deleted_documents(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    live = await client.post("/api/v1/documents/", json={"title": "Live", "content": ""})
+    first = await client.post("/api/v1/documents/", json={"title": "First", "content": ""})
+    second = await client.post("/api/v1/documents/", json={"title": "Second", "content": ""})
+    first_id, second_id = first.json()["id"], second.json()["id"]
+
+    other_id = uuid.uuid4()
+    other_headers = {"Authorization": f"Bearer {_make_jwt(str(other_id))}"}
+    other_doc = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Other", "content": ""},
+        headers=other_headers,
+    )
+    await client.delete(f"/api/v1/documents/{other_doc.json()['id']}", headers=other_headers)
+
+    assert (await client.delete(f"/api/v1/documents/{first_id}")).status_code == 204
+    assert (await client.delete(f"/api/v1/documents/{second_id}")).status_code == 204
+
+    resp = await client.get("/api/v1/documents/trash")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 2
+    assert [item["id"] for item in data["items"]] == [second_id, first_id]
+    assert all(item["is_deleted"] and item["deleted_at"] for item in data["items"])
+    assert live.json()["id"] not in {item["id"] for item in data["items"]}
+
+    paged = await client.get("/api/v1/documents/trash", params={"page": 2, "size": 1})
+    assert paged.status_code == 200
+    assert paged.json()["pages"] == 2
+    assert [item["id"] for item in paged.json()["items"]] == [first_id]
+
+    listed = await client.get("/api/v1/documents/")
+    assert {item["id"] for item in listed.json()["items"]} == {live.json()["id"]}
+
+
+@pytest.mark.asyncio
+async def test_trash_requires_auth(client: AsyncClient):
+    resp = await client.get("/api/v1/documents/trash", auth=None)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_restore_document_keeps_content_and_versions(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    create_resp = await client.post(
+        "/api/v1/documents/", json={"title": "Restorable", "content": "v1 body"}
+    )
+    doc_id = create_resp.json()["id"]
+    await client.patch(f"/api/v1/documents/{doc_id}", json={"content": "v2 body"})
+
+    assert (await client.delete(f"/api/v1/documents/{doc_id}")).status_code == 204
+    assert (await client.get(f"/api/v1/documents/{doc_id}")).status_code == 404
+
+    resp = await client.post(f"/api/v1/documents/{doc_id}/restore")
+    assert resp.status_code == 200
+    restored = resp.json()
+    assert restored["id"] == doc_id
+    assert restored["is_deleted"] is False
+    assert restored["content"] == "v2 body"
+    assert restored["version"] == 2
+
+    assert (await client.get(f"/api/v1/documents/{doc_id}")).status_code == 200
+    versions = await client.get(f"/api/v1/documents/{doc_id}/versions")
+    assert [v["version_number"] for v in versions.json()] == [2, 1]
+
+    trash = await client.get("/api/v1/documents/trash")
+    assert trash.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_restore_not_in_trash_returns_404(client: AsyncClient):
+    create_resp = await client.post("/api/v1/documents/", json={"title": "Live", "content": ""})
+    doc_id = create_resp.json()["id"]
+
+    assert (await client.post(f"/api/v1/documents/{doc_id}/restore")).status_code == 404
+    assert (await client.post(f"/api/v1/documents/{uuid.uuid4()}/restore")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_permanent_delete_purges_trashed_document(client: AsyncClient):
+    create_resp = await client.post(
+        "/api/v1/documents/", json={"title": "Purge Me", "content": "bye"}
+    )
+    doc_id = create_resp.json()["id"]
+    await client.post(
+        f"/api/v1/documents/{doc_id}/comments",
+        json={"author_id": str(uuid.uuid4()), "content": "a comment"},
+    )
+
+    # Default DELETE is still a soft delete.
+    assert (await client.delete(f"/api/v1/documents/{doc_id}")).status_code == 204
+    assert (await client.get("/api/v1/documents/trash")).json()["total"] == 1
+
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", params={"permanent": "true"})
+    assert resp.status_code == 204
+
+    assert (await client.get("/api/v1/documents/trash")).json()["total"] == 0
+    assert (await client.get(f"/api/v1/documents/{doc_id}")).status_code == 404
+    assert (await client.post(f"/api/v1/documents/{doc_id}/restore")).status_code == 404
+    assert (
+        await client.delete(f"/api/v1/documents/{doc_id}", params={"permanent": "true"})
+    ).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_permanent_delete_requires_document_in_trash(client: AsyncClient):
+    create_resp = await client.post("/api/v1/documents/", json={"title": "Live", "content": ""})
+    doc_id = create_resp.json()["id"]
+
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", params={"permanent": "true"})
+    assert resp.status_code == 404
+    assert (await client.get(f"/api/v1/documents/{doc_id}")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_trash_actions_denied_for_other_owner(client: AsyncClient):
+    create_resp = await client.post("/api/v1/documents/", json={"title": "Mine", "content": ""})
+    doc_id = create_resp.json()["id"]
+    assert (await client.delete(f"/api/v1/documents/{doc_id}")).status_code == 204
+
+    other_headers = {"Authorization": f"Bearer {_make_jwt(str(uuid.uuid4()))}"}
+
+    trash = await client.get("/api/v1/documents/trash", headers=other_headers)
+    assert trash.status_code == 200
+    assert trash.json()["total"] == 0
+
+    resp = await client.post(f"/api/v1/documents/{doc_id}/restore", headers=other_headers)
+    assert resp.status_code == 403
+
+    resp = await client.delete(
+        f"/api/v1/documents/{doc_id}", params={"permanent": "true"}, headers=other_headers
+    )
+    assert resp.status_code == 403
+
+    # Still restorable by the owner afterwards.
+    assert (await client.post(f"/api/v1/documents/{doc_id}/restore")).status_code == 200
