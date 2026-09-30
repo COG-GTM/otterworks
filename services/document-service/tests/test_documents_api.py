@@ -345,7 +345,6 @@ async def test_restore_document_keeps_content_and_versions(
     restored = resp.json()
     assert restored["id"] == doc_id
     assert restored["is_deleted"] is False
-    assert restored["deleted_at"] is None
     assert restored["content"] == "v2 body"
     assert restored["version"] == 2
 

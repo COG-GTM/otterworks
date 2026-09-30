@@ -31,7 +31,7 @@ function toTrashItems(files: FileItem[], documents: Document[]): TrashItem[] {
       kind: "file",
       id: file.id,
       name: file.name,
-      deletedAt: file.trashedAt,
+      deletedAt: file.trashedAt ?? file.updatedAt ?? undefined,
       file,
     })),
     ...documents.map((document): TrashItem => ({
@@ -131,11 +131,9 @@ function TrashContent() {
         documentBatch = await documentsApi.getTrashed(1, pageSize);
       }
     },
-    onSuccess: () => {
-      invalidateAfterChange();
-      toast.success("Trash emptied");
-    },
+    onSuccess: () => toast.success("Trash emptied"),
     onError: () => toast.error("Failed to empty trash"),
+    onSettled: () => invalidateAfterChange(),
   });
 
   return (

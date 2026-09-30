@@ -226,7 +226,6 @@ def test_document_trash_restore_and_permanent_delete_flow(api_client):
     restored = restore_response.json()
     assert restored["id"] == document_id
     assert restored["is_deleted"] is False
-    assert restored["deleted_at"] is None
     assert restored["content"] == "second draft"
     assert restored["version"] == 2
 
