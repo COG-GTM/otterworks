@@ -200,6 +200,34 @@ RSpec.describe SlackNotifierService do
     expect(fields).to include("*On-Call:*\n:robot_face: Devin AI (Slack listener starting a session)")
   end
 
+  it 'does not use the webhook for listener posts, since it cannot reach the listener channel' do
+    allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
+      .and_return('https://hooks.slack.com/services/T/B/x')
+    expect(Net::HTTP).not_to receive(:new)
+
+    result = described_class.notify_incident(incident: incident, alert_name: 'DocumentCreateFailed', devin_listener: true)
+
+    expect(result).to be(false)
+  end
+
+  it 'reports a failed listener post so the caller can fall back' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
+    stub_post(response_body: '{"ok":false,"error":"not_in_channel"}')
+
+    result = described_class.notify_incident(incident: incident, alert_name: 'DocumentCreateFailed', devin_listener: true)
+
+    expect(result).to be(false)
+  end
+
+  it 'keeps non-listener notifications for listener routes out of the listener channel' do
+    allow(ENV).to receive(:fetch).with('SLACK_BOT_TOKEN', nil).and_return('xoxb-test-token')
+    read_posted, = stub_post
+
+    described_class.notify_incident(incident: incident, alert_name: 'DocumentCreateFailed')
+
+    expect(read_posted.call['channel']).to eq('#automated-alerts')
+  end
+
   it 'escapes Slack control sequences in the description so alert text cannot inject mentions or links' do
     allow(ENV).to receive(:fetch).with('SLACK_WEBHOOK_URL', nil)
       .and_return('https://hooks.slack.com/services/T/B/x')

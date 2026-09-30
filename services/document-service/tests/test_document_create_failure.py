@@ -55,7 +55,7 @@ async def test_create_fails_with_sns_error_and_alerts_when_switch_on(
             json={"title": "Untitled document"},
             headers={"X-User-Email": "preston@example.com"},
         )
-        assert resp.status_code == 503
+        assert resp.status_code == 424
         assert resp.json() == {
             "error": "event_error",
             "message": "SNS error: NotFound: Topic does not exist",

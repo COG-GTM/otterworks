@@ -113,13 +113,17 @@ scenarios:
       set, clicking "New document" makes document-service publish the
       document_created event to a nonexistent SNS topic (the real topic name
       with a "-v2" suffix) before persisting, so the request fails with a real
-      AWS SNS error, no document row is written, and the UI shows a red
-      failure banner. document-service fires the DocumentCreateFailed alert
+      AWS SNS error (NotFound on LocalStack; AuthorizationError on AWS, where
+      the IRSA policy only allows the real topic), no document row is written,
+      and the UI shows a red failure banner. The response is 424, not 5xx, so
+      repeated clicks do not open the gateway's documents circuit breaker. document-service fires the DocumentCreateFailed alert
       at admin-service's ingest endpoint (dedup=false, reporter_email =
       clicking user); admin-service routes it to #eng-otterworks with
-      devin_trigger=slack_listener, so it skips the Devin API session and a
-      Devin Automation listening on that channel starts the session from the
-      OtterWorks bot's Slack message. Baked ON in the document-service image.
+      devin_trigger=slack_listener. When auto-investigate is on and the bot
+      post lands there, it skips the Devin API session and a Devin Automation
+      listening on that channel starts the session from the OtterWorks bot's
+      Slack message; otherwise (auto-investigate off, no bot token, bot post
+      fails) it falls back to the normal API-session/default-channel path. Baked ON in the document-service image.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =

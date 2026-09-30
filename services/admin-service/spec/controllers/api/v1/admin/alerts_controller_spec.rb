@@ -46,19 +46,51 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(2)
     end
 
-    it 'leaves the Devin session to the Slack listener for slack_listener routes' do
-      allow(SlackNotifierService).to receive(:notify_incident)
-      alert = firing_alert(
-        labels: { alertname: 'DocumentCreateFailed', affected_service: 'document-service', dedup: 'false' },
-        summary: 'Document creation failed: Untitled document'
-      )
+    context 'with a slack_listener route' do
+      let(:alert) do
+        firing_alert(
+          labels: { alertname: 'DocumentCreateFailed', affected_service: 'document-service', dedup: 'false' },
+          summary: 'Document creation failed: Untitled document'
+        )
+      end
 
-      2.times { post :ingest, params: { alerts: [alert] } }
+      it 'leaves the Devin session to the Slack listener once the bot post lands' do
+        allow(SlackNotifierService).to receive(:notify_incident).and_return(true)
 
-      expect(Incident.count).to eq(2)
-      expect(DevinSessionService).not_to have_received(:create_session)
-      expect(SlackNotifierService).to have_received(:notify_incident)
-        .with(hash_including(alert_name: 'DocumentCreateFailed', devin_listener: true)).twice
+        2.times { post :ingest, params: { alerts: [alert] } }
+
+        expect(Incident.count).to eq(2)
+        expect(DevinSessionService).not_to have_received(:create_session)
+        expect(SlackNotifierService).to have_received(:notify_incident)
+          .with(hash_including(alert_name: 'DocumentCreateFailed', devin_listener: true)).twice
+        expect(SlackNotifierService).not_to have_received(:notify_incident)
+          .with(hash_excluding(devin_listener: true))
+      end
+
+      it 'falls back to an API session and a regular notification when the bot post fails' do
+        allow(SlackNotifierService).to receive(:notify_incident).and_return(false)
+
+        post :ingest, params: { alerts: [alert] }
+
+        expect(DevinSessionService).to have_received(:create_session).once
+        expect(SlackNotifierService).to have_received(:notify_incident)
+          .with(hash_including(devin_listener: true)).once
+        expect(SlackNotifierService).to have_received(:notify_incident)
+          .with(hash_excluding(devin_listener: true)).once
+      end
+
+      it 'does not hand the alert to the listener when auto-investigate is disabled' do
+        allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(false)
+        allow(SlackNotifierService).to receive(:notify_incident)
+
+        post :ingest, params: { alerts: [alert] }
+
+        expect(DevinSessionService).not_to have_received(:create_session)
+        expect(SlackNotifierService).not_to have_received(:notify_incident)
+          .with(hash_including(devin_listener: true))
+        expect(SlackNotifierService).to have_received(:notify_incident)
+          .with(hash_including(alert_name: 'DocumentCreateFailed')).once
+      end
     end
 
     it 'rejects payloads without an alerts array' do

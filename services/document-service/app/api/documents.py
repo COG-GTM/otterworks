@@ -140,7 +140,7 @@ async def _do_create_document(
                 body.title, str(err), request.headers.get("X-User-Email")
             )
             return JSONResponse(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                status_code=status.HTTP_424_FAILED_DEPENDENCY,
                 content={"error": "event_error", "message": str(err)},
             )
 

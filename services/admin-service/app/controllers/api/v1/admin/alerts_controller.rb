@@ -84,31 +84,40 @@ module Api
             reporter_id:      nil, # system-generated
           )
 
-          slack_listener = SlackAlertRoutes.slack_listener?(alert_name)
-          session_result = nil
-          if slack_listener
-            Rails.logger.info("Incident #{incident.id} routed to the Devin Slack listener — skipping API session")
-          elsif auto_investigate
-            session_result = DevinSessionService.create_session(incident: incident)
-          else
-            Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
-          end
+          handed_to_listener = auto_investigate &&
+                               SlackAlertRoutes.slack_listener?(alert_name) &&
+                               SlackNotifierService.notify_incident(
+                                 incident: incident,
+                                 reporter_email: reporter_email,
+                                 alert_name: alert_name,
+                                 devin_listener: true
+                               )
 
-          if session_result
-            incident.update!(
-              devin_session_id:     session_result[:session_id],
-              devin_session_url:    session_result[:url],
-              devin_session_status: 'running',
+          session_result = nil
+          if handed_to_listener
+            Rails.logger.info("Incident #{incident.id} posted to the Devin Slack listener channel — skipping API session")
+          else
+            if auto_investigate
+              session_result = DevinSessionService.create_session(incident: incident)
+            else
+              Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
+            end
+
+            if session_result
+              incident.update!(
+                devin_session_id:     session_result[:session_id],
+                devin_session_url:    session_result[:url],
+                devin_session_status: 'running',
+              )
+            end
+
+            SlackNotifierService.notify_incident(
+              incident: incident,
+              session_url: session_result&.dig(:url),
+              reporter_email: reporter_email,
+              alert_name: alert_name
             )
           end
-
-          SlackNotifierService.notify_incident(
-            incident: incident,
-            session_url: session_result&.dig(:url),
-            reporter_email: reporter_email,
-            alert_name: alert_name,
-            devin_listener: slack_listener
-          )
 
           Rails.logger.info("Incident #{incident.id} created from alert #{alert_name}, devin=#{session_result.present?}")
 
