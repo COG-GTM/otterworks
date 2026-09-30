@@ -49,7 +49,6 @@ class DocumentResponse(BaseModel):
     owner_id: UUID
     folder_id: UUID | None
     is_deleted: bool
-    deleted_at: datetime | None = None
     is_template: bool
     word_count: int
     version: int
@@ -61,6 +60,18 @@ class DocumentResponse(BaseModel):
 
 class DocumentListResponse(BaseModel):
     items: list[DocumentResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+class TrashedDocumentResponse(DocumentResponse):
+    deleted_at: datetime | None
+
+
+class TrashedDocumentListResponse(BaseModel):
+    items: list[TrashedDocumentResponse]
     total: int
     page: int
     size: int

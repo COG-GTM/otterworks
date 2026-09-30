@@ -18,7 +18,16 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _has_deleted_at() -> bool:
+    columns = sa.inspect(op.get_bind()).get_columns("documents")
+    return any(column["name"] == "deleted_at" for column in columns)
+
+
 def upgrade() -> None:
+    # The service backfills nullable model columns at startup, so the column may
+    # already exist when this migration runs.
+    if _has_deleted_at():
+        return
     op.add_column(
         "documents",
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
@@ -26,4 +35,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("documents", "deleted_at")
+    if _has_deleted_at():
+        op.drop_column("documents", "deleted_at")

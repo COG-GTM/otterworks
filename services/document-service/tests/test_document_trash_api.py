@@ -32,7 +32,7 @@ async def test_deleted_document_appears_in_trash_with_deleted_at(
     client: AsyncClient, owner_id: uuid.UUID
 ):
     doc = await _create(client, owner_id, "Trash Me")
-    assert doc["deleted_at"] is None
+    assert "deleted_at" not in doc
 
     resp = await client.delete(f"/api/v1/documents/{doc['id']}")
     assert resp.status_code == 204
@@ -82,9 +82,7 @@ async def test_trash_only_lists_callers_documents(client: AsyncClient, owner_id:
     mine = await _create(client, owner_id, "Mine")
     theirs = await _create(client, other_owner, "Theirs")
     await client.delete(f"/api/v1/documents/{mine['id']}")
-    await client.delete(
-        f"/api/v1/documents/{theirs['id']}", auth=bearer_auth(other_owner)
-    )
+    await client.delete(f"/api/v1/documents/{theirs['id']}", auth=bearer_auth(other_owner))
 
     resp = await client.get("/api/v1/documents/trash")
     ids = [item["id"] for item in resp.json()["items"]]
@@ -111,7 +109,7 @@ async def test_restore_returns_document_to_list_with_content_and_versions(
     restored = resp.json()
     assert restored["id"] == doc["id"]
     assert restored["is_deleted"] is False
-    assert restored["deleted_at"] is None
+    assert "deleted_at" not in restored
     assert restored["content"] == "second draft"
     assert restored["version"] == 2
 
@@ -181,9 +179,7 @@ async def test_permanent_delete_removes_document_versions_and_comments(
     assert comment.status_code == 201
     assert (await client.delete(f"/api/v1/documents/{doc['id']}")).status_code == 204
 
-    resp = await client.delete(
-        f"/api/v1/documents/{doc['id']}", params={"permanent": "true"}
-    )
+    resp = await client.delete(f"/api/v1/documents/{doc['id']}", params={"permanent": "true"})
     assert resp.status_code == 204
 
     assert (await client.get(f"/api/v1/documents/{doc['id']}")).status_code == 404
@@ -195,9 +191,7 @@ async def test_permanent_delete_removes_document_versions_and_comments(
 
 @pytest.mark.asyncio
 async def test_permanent_delete_unknown_document_is_404(client: AsyncClient):
-    resp = await client.delete(
-        f"/api/v1/documents/{uuid.uuid4()}", params={"permanent": "true"}
-    )
+    resp = await client.delete(f"/api/v1/documents/{uuid.uuid4()}", params={"permanent": "true"})
     assert resp.status_code == 404
 
 

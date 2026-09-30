@@ -136,19 +136,24 @@ function TrashContent() {
     (filesQuery.data?.total ?? fileItems.length) +
     (documentsQuery.data?.total ?? documentItems.length);
   const isLoading = filesQuery.isLoading || documentsQuery.isLoading;
+  const loadError = filesQuery.isError || documentsQuery.isError;
+  const refetchAll = () => {
+    if (filesQuery.isError) filesQuery.refetch();
+    if (documentsQuery.isError) documentsQuery.refetch();
+  };
 
   const emptyTrashMutation = useMutation({
     mutationFn: async () => {
-      await Promise.all([
+      const results = await Promise.allSettled([
         purgeAll(filesApi.getTrashed, filesApi.permanentDelete),
         purgeAll(documentsApi.getTrashed, documentsApi.permanentDelete),
       ]);
+      const failed = results.find((r) => r.status === "rejected");
+      if (failed) throw failed.reason;
     },
-    onSuccess: () => {
-      invalidateAll();
-      toast.success("Trash emptied");
-    },
+    onSuccess: () => toast.success("Trash emptied"),
     onError: () => toast.error("Failed to empty trash"),
+    onSettled: invalidateAll,
   });
 
   return (
@@ -182,15 +187,40 @@ function TrashContent() {
         </div>
       )}
 
+      {/* Load error */}
+      {!isLoading && loadError && (
+        <div className="flex items-center justify-between gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={18} className="text-red-600 flex-shrink-0" />
+            <p className="text-sm text-red-800">
+              Couldn&apos;t load {filesQuery.isError && documentsQuery.isError
+                ? "trashed files and documents"
+                : filesQuery.isError
+                  ? "trashed files"
+                  : "trashed documents"}
+              . Some items may be missing from this list.
+            </p>
+          </div>
+          <button
+            onClick={refetchAll}
+            className="px-3 py-1.5 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-100 transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Trash items */}
       {isLoading ? (
         <PageLoader />
       ) : items.length === 0 ? (
-        <EmptyState
-          icon={Trash2}
-          title="Trash is empty"
-          description="Deleted files and documents will appear here"
-        />
+        !loadError && (
+          <EmptyState
+            icon={Trash2}
+            title="Trash is empty"
+            description="Deleted files and documents will appear here"
+          />
+        )
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
           {items.map((entry) => (

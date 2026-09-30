@@ -23,7 +23,6 @@ COLUMNS = (
     "owner_id",
     "folder_id",
     "is_deleted",
-    "deleted_at",
     "is_template",
     "word_count",
     "version",
