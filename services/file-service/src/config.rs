@@ -155,4 +155,16 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn shipped_image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        for line in dockerfile.lines() {
+            let stmt = line.trim();
+            assert!(
+                stmt.starts_with('#') || !stmt.contains("FILE_UPLOAD_ALWAYS_FAIL="),
+                "Dockerfile must not set FILE_UPLOAD_ALWAYS_FAIL: {stmt}"
+            );
+        }
+    }
 }
