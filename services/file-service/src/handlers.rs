@@ -5,9 +5,21 @@ use chrono::Utc;
 use futures_util::StreamExt;
 use uuid::Uuid;
 
+const CHAOS_BUCKET: &str = "otterworks-files-chaos-nonexistent";
+
 async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> bool {
     let result: redis::RedisResult<i64> = redis::cmd("EXISTS").arg(flag).query_async(cm).await;
     result.unwrap_or(0) > 0
+}
+
+/// Bucket an upload is written to: always the configured bucket, except while
+/// the transient Redis chaos flag is active.
+fn upload_bucket(configured: &str, chaos: bool) -> String {
+    if chaos {
+        CHAOS_BUCKET.to_string()
+    } else {
+        configured.to_string()
+    }
 }
 
 use crate::alerts;
@@ -147,32 +159,22 @@ pub async fn upload_file(
     let now = Utc::now();
     let size = file_bytes.len() as u64;
 
-    // CHAOS: when FILE_UPLOAD_ALWAYS_FAIL is set, or the Redis chaos flag is
-    // active, the S3 client targets a nonexistent bucket, simulating a
-    // misconfigured bucket name after a recent infra change.  The AWS SDK
-    // returns NoSuchBucket which surfaces as a 500.  The env var is a
-    // permanent, per-deployment switch; the Redis flag is transient.
-    let effective_bucket = if config.server.upload_always_fail {
-        tracing::warn!(
-            "FILE_UPLOAD_ALWAYS_FAIL is enabled: redirecting upload to nonexistent bucket"
-        );
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else if chaos_active(
+    // CHAOS: while the transient Redis chaos flag is active, the S3 client
+    // targets a nonexistent bucket, simulating a misconfigured bucket name.
+    // The AWS SDK returns NoSuchBucket which surfaces as a 500.
+    let chaos = chaos_active(
         &mut redis_cm.get_ref().clone(),
         "chaos:file-service:upload_s3_error",
     )
-    .await
-    {
+    .await;
+    if chaos {
         tracing::warn!("Chaos flag active: redirecting upload to nonexistent bucket");
-        "otterworks-files-chaos-nonexistent".to_string()
-    } else {
-        s3.bucket.clone()
-    };
-    let chaos_s3 = crate::storage::S3Client {
+    }
+    let upload_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
-        bucket: effective_bucket,
+        bucket: upload_bucket(&s3.bucket, chaos),
     };
-    if let Err(err) = chaos_s3
+    if let Err(err) = upload_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)
         .await
     {
@@ -827,6 +829,15 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_targets_configured_bucket_unless_chaos_is_active() {
+        assert_eq!(upload_bucket("otterworks-files", false), "otterworks-files");
+        assert_eq!(
+            upload_bucket("otterworks-files", true),
+            CHAOS_BUCKET.to_string()
+        );
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
