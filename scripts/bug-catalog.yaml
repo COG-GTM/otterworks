@@ -101,8 +101,8 @@ scenarios:
       fires the NotificationEventPublishFailure alert at admin-service's
       ingest endpoint (dedup=false: one incident + Devin session + Slack
       message per share, attributed to the sharing user via reporter_email).
-      Already ON for the coggtm tenant: the demo branch bakes the variable
-      into the file-service image's Dockerfile.
+      OFF by default (the file-service image ships the switch off); inject it
+      per tenant when a scenario needs it.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =

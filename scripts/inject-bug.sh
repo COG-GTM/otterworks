@@ -102,8 +102,7 @@ if [ "${SCENARIO}" = "share-notify-fail" ]; then
   helm upgrade file-service "${REPO_ROOT}/infrastructure/helm/file-service" -n "${NS}" --reuse-values \
     --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=true
   log "Applied (the file-service ConfigMap checksum annotation rolls the pod)."
-  log "Tenant coggtm is already failing anyway: the demo branch bakes the variable"
-  log "into the file-service image itself. Turn it off with:"
+  log "Scoped to this tenant only; the image ships with the switch off. Turn it off with:"
   log "  helm upgrade file-service infrastructure/helm/file-service -n ${NS} --reuse-values --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=false"
   exit 0
 fi
