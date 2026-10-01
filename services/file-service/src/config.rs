@@ -155,4 +155,18 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Dockerfile")).unwrap();
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            let lower = line.to_ascii_lowercase();
+            assert!(
+                !(lower.starts_with("env ") && lower.contains("file_upload_always_fail")),
+                "Dockerfile sets the upload failure switch: {line}"
+            );
+        }
+    }
 }
