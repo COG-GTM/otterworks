@@ -3,9 +3,10 @@
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.documents import _require_user_id
 from app.db.session import get_db
 from app.schemas.document import CommentCreate, CommentResponse
 from app.services.document_service import DocumentService
@@ -36,11 +37,62 @@ async def add_comment(
 @router.get("/{document_id}/comments", response_model=list[CommentResponse])
 async def list_comments(
     document_id: UUID,
+    include_resolved: bool = Query(True),
     db: AsyncSession = Depends(get_db),
 ):
     """List comments for a document."""
     service = DocumentService(db)
-    return await service.list_comments(document_id)
+    return await service.list_comments(document_id, include_resolved)
+
+
+@router.post(
+    "/{document_id}/comments/{comment_id}/resolve",
+    response_model=CommentResponse,
+)
+async def resolve_comment(
+    document_id: UUID,
+    comment_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Resolve a comment."""
+    resolver_id = _require_user_id(request)
+    service = DocumentService(db)
+    comment = await service.resolve_comment(document_id, comment_id, resolver_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    logger.info(
+        "comment_resolved",
+        document_id=str(document_id),
+        comment_id=str(comment_id),
+        resolved_by=str(resolver_id),
+    )
+    return comment
+
+
+@router.post(
+    "/{document_id}/comments/{comment_id}/unresolve",
+    response_model=CommentResponse,
+)
+async def unresolve_comment(
+    document_id: UUID,
+    comment_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Unresolve a comment."""
+    resolver_id = _require_user_id(request)
+    service = DocumentService(db)
+    comment = await service.unresolve_comment(document_id, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    logger.info(
+        "comment_unresolved",
+        document_id=str(document_id),
+        comment_id=str(comment_id),
+        resolved_by=str(resolver_id),
+    )
+    return comment
 
 
 @router.delete(

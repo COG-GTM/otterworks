@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 enum class EventType {
     file_shared,
     comment_added,
+    comment_resolved,
     document_edited,
     user_mentioned;
 
@@ -38,6 +39,7 @@ data class SqsNotificationMessage(
     val commentId: String = "",
     val userId: String = "",
     val actorId: String = "",
+    val resolvedBy: String = "",
     val mentionedUserId: String = "",
     val timestamp: String,
 )
@@ -70,6 +72,7 @@ data class NotificationPreference(
     val channels: Map<String, List<DeliveryChannel>> = mapOf(
         "file_shared" to listOf(DeliveryChannel.EMAIL, DeliveryChannel.IN_APP, DeliveryChannel.PUSH),
         "comment_added" to listOf(DeliveryChannel.IN_APP, DeliveryChannel.PUSH),
+        "comment_resolved" to listOf(DeliveryChannel.IN_APP, DeliveryChannel.PUSH),
         "document_edited" to listOf(DeliveryChannel.IN_APP),
         "user_mentioned" to listOf(DeliveryChannel.EMAIL, DeliveryChannel.IN_APP, DeliveryChannel.PUSH),
     ),

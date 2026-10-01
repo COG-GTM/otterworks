@@ -67,6 +67,20 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `resolveTargetUserId returns comment author for comment_resolved events`() {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            userId = "comment-author",
+            ownerId = "doc-owner",
+            commentId = "comment-1",
+            documentId = "doc-1",
+            resolvedBy = "resolver",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+        assertEquals("comment-author", NotificationService.resolveTargetUserId(event))
+    }
+
+    @Test
     fun `resolveTargetUserId returns userId for document_edited events`() {
         val event = SqsNotificationMessage(
             eventType = "document_edited",
@@ -100,6 +114,17 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `resolveResourceId returns commentId for comment_resolved`() {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            commentId = "comment-xyz",
+            documentId = "doc-1",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+        assertEquals("comment-xyz", NotificationService.resolveResourceId(event))
+    }
+
+    @Test
     fun `resolveResourceId returns documentId for document_edited`() {
         val event = SqsNotificationMessage(
             eventType = "document_edited",
@@ -116,6 +141,9 @@ class NotificationServiceTest {
         ))
         assertEquals("comment", NotificationService.resolveResourceType(
             SqsNotificationMessage(eventType = "comment_added", timestamp = "2024-01-01T00:00:00Z")
+        ))
+        assertEquals("comment", NotificationService.resolveResourceType(
+            SqsNotificationMessage(eventType = "comment_resolved", timestamp = "2024-01-01T00:00:00Z")
         ))
         assertEquals("document", NotificationService.resolveResourceType(
             SqsNotificationMessage(eventType = "document_edited", timestamp = "2024-01-01T00:00:00Z")
@@ -151,6 +179,33 @@ class NotificationServiceTest {
         assertEquals("file_shared", lastSaved.type)
         assertEquals("File Shared With You", lastSaved.title)
         assertTrue(lastSaved.deliveredVia.contains("in_app"))
+    }
+
+    @Test
+    fun `processEvent delivers comment_resolved on default channels`() = runTest {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            userId = "comment-author",
+            actorId = "",
+            resolvedBy = "resolver-1",
+            documentId = "doc-1",
+            commentId = "comment-1",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        coEvery { repository.getPreferences("comment-author") } returns
+            NotificationPreference(userId = "comment-author")
+
+        service.processEvent(event)
+
+        val savedNotifications = mutableListOf<Notification>()
+        coVerify(atLeast = 1) { repository.saveNotification(capture(savedNotifications)) }
+        val saved = savedNotifications.first()
+        assertEquals("comment-author", saved.userId)
+        assertEquals("comment-1", saved.resourceId)
+        assertEquals("comment", saved.resourceType)
+        assertEquals("resolver-1", saved.actorId)
+        assertTrue(saved.deliveredVia.contains("in_app"))
     }
 
     @Test

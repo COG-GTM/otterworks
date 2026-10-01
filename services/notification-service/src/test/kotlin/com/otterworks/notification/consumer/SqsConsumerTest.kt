@@ -74,6 +74,50 @@ class SqsConsumerTest {
     }
 
     @Test
+    fun `parseMessage parses comment_resolved direct message`() {
+        val body = """
+            {
+                "eventType": "comment_resolved",
+                "userId": "comment-author",
+                "resolvedBy": "resolver-1",
+                "documentId": "doc-1",
+                "commentId": "comment-1",
+                "timestamp": "2024-01-01T00:00:00Z"
+            }
+        """.trimIndent()
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_resolved", event.eventType)
+        assertEquals("comment-author", event.userId)
+        assertEquals("resolver-1", event.resolvedBy)
+        assertEquals("comment-1", event.commentId)
+    }
+
+    @Test
+    fun `parseMessage parses SNS-wrapped comment_resolved message`() {
+        val innerMessage = """{"eventType":"comment_resolved","userId":"comment-author","resolvedBy":"resolver-1","documentId":"doc-1","commentId":"comment-1","timestamp":"2024-01-01T00:00:00Z"}"""
+        val escapedInner = innerMessage.replace("\"", "\\\"")
+        val body = """
+            {
+                "Type": "Notification",
+                "MessageId": "msg-resolved",
+                "TopicArn": "arn:aws:sns:us-east-1:000000000000:test-topic",
+                "Message": "$escapedInner"
+            }
+        """.trimIndent()
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_resolved", event.eventType)
+        assertEquals("comment-author", event.userId)
+        assertEquals("resolver-1", event.resolvedBy)
+        assertEquals("comment-1", event.commentId)
+    }
+
+    @Test
     fun `parseMessage returns null for invalid JSON`() {
         val event = consumer.parseMessage("not json at all")
         assertNull(event)

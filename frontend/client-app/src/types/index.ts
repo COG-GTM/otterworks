@@ -84,6 +84,18 @@ export interface Document {
   trashedAt?: string;
 }
 
+export interface Comment {
+  id: string;
+  documentId: string;
+  authorId: string;
+  content: string;
+  isResolved: boolean;
+  resolvedBy?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Collaborator {
   userId: string;
   name: string;
