@@ -57,9 +57,9 @@ function NotificationsContent() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
+          <h1 className="text-2xl font-bold text-slate-100">Notifications</h1>
           {unreadCount > 0 && (
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-slate-400 mt-1">
               {unreadCount} unread notification{unreadCount !== 1 ? "s" : ""}
             </p>
           )}
@@ -68,7 +68,7 @@ function NotificationsContent() {
           <button
             onClick={() => markAllReadMutation.mutate()}
             disabled={markAllReadMutation.isPending}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-otter-600 bg-otter-50 rounded-lg hover:bg-otter-100 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-otter-200 bg-otter-500/15 rounded-lg hover:bg-otter-500/25 transition"
           >
             <CheckCheck size={16} />
             Mark all as read
@@ -86,7 +86,7 @@ function NotificationsContent() {
           description="You&apos;re all caught up! New notifications will appear here."
         />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        <div className="bg-surface rounded-xl border border-line divide-y divide-line overflow-hidden">
           {notifications.map((notification) => (
             <NotificationRow
               key={notification.id}
@@ -109,11 +109,11 @@ const notificationIcons: Record<string, typeof Bell> = {
 };
 
 const notificationColors: Record<string, string> = {
-  share: "text-purple-600 bg-purple-50",
-  comment: "text-orange-600 bg-orange-50",
-  mention: "text-blue-600 bg-blue-50",
-  edit: "text-green-600 bg-green-50",
-  system: "text-gray-600 bg-gray-100",
+  share: "text-purple-300 bg-purple-500/10",
+  comment: "text-orange-300 bg-orange-500/10",
+  mention: "text-blue-300 bg-blue-500/10",
+  edit: "text-green-300 bg-green-500/10",
+  system: "text-slate-300 bg-surface-raised",
 };
 
 function NotificationRow({
@@ -124,7 +124,7 @@ function NotificationRow({
   onMarkRead: () => void;
 }>) {
   const Icon = notificationIcons[notification.type] || Bell;
-  const color = notificationColors[notification.type] || "text-gray-600 bg-gray-100";
+  const color = notificationColors[notification.type] || "text-slate-300 bg-surface-raised";
 
   const href =
     notification.resourceId && notification.resourceType === "document"
@@ -143,7 +143,7 @@ function NotificationRow({
       tabIndex={0}
       className={cn(
         "flex items-start gap-4 px-5 py-4 transition cursor-pointer",
-        !notification.read ? "bg-otter-50/30" : "hover:bg-gray-50"
+        !notification.read ? "bg-otter-500/10 hover:bg-otter-500/15" : "hover:bg-surface-raised"
       )}
       onClick={handleActivate}
       onKeyDown={(e) => {
@@ -173,16 +173,16 @@ function NotificationRow({
         </div>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-900">
+        <p className="text-sm text-slate-100">
           <span className="font-medium">{notification.title}</span>
         </p>
-        <p className="text-sm text-gray-500 mt-0.5">{notification.message}</p>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-sm text-slate-400 mt-0.5">{notification.message}</p>
+        <p className="text-xs text-slate-500 mt-1">
           {formatRelativeTime(notification.createdAt)}
         </p>
       </div>
       {!notification.read && (
-        <div className="w-2.5 h-2.5 rounded-full bg-otter-600 flex-shrink-0 mt-1.5" />
+        <div className="w-2.5 h-2.5 rounded-full bg-otter-400 flex-shrink-0 mt-1.5" />
       )}
     </div>
   );
