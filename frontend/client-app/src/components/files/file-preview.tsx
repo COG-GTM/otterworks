@@ -72,7 +72,7 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
       <div className="w-full">
         <iframe
           src={presignedUrl}
-          className="w-full min-h-[500px] bg-white rounded-lg border border-line"
+          className="w-full min-h-[500px] bg-white [color-scheme:light] rounded-lg border border-line"
           sandbox="allow-same-origin"
           title={`Preview of ${fileName}`}
         />
