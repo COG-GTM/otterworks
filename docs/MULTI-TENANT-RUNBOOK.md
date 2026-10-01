@@ -86,7 +86,7 @@ isolation for all Postgres-backed services today.
 
 ```bash
 ./scripts/inject-bug.sh a01 list
-./scripts/inject-bug.sh a01 file-upload-fails     # chaos flag in a01's Redis only
+./scripts/inject-bug.sh a01 search-suggest-500    # chaos flag in a01's Redis only
 ./scripts/inject-bug.sh a01 reset                 # clear a01's chaos flags
 ```
 
