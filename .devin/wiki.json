@@ -349,7 +349,7 @@
     },
     {
       "title": "Chaos Scenarios & Injection Mechanisms",
-      "purpose": "Detailed documentation of all chaos scenarios: upload_s3_error (file-service), slow_queries (document-service), suggest_500 (search-service), consumer_strict_schema (notification-service). Covers the Redis flag pattern (_chaos_active checks), the chaos_controller.rb API, the inject-bug.sh script, the bug-catalog.yaml, and the Grafana chaos-scenarios dashboard.",
+      "purpose": "Detailed documentation of all chaos scenarios: slow_queries (document-service), suggest_500 (search-service), consumer_strict_schema (notification-service). Covers the Redis flag pattern (_chaos_active checks), the chaos_controller.rb API, the inject-bug.sh script, the bug-catalog.yaml, and the Grafana chaos-scenarios dashboard.",
       "parent": "Chaos Engineering",
       "page_notes": [
         {
