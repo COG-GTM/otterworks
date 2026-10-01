@@ -73,20 +73,20 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/70 z-40 lg:hidden"
           onClick={toggleSidebar}
         />
       )}
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full bg-otter-700 text-white border-r border-otter-800 transition-transform duration-200 flex flex-col",
+          "fixed top-0 left-0 z-50 h-full bg-[#0d1626] text-white border-r border-line transition-transform duration-200 flex flex-col",
           "w-64",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-16"
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-12 px-3 border-b border-otter-600">
+        <div className="flex items-center justify-between h-12 px-3 border-b border-line">
           {sidebarOpen && (
             <Link to="/dashboard" className="flex items-center gap-2">
               <Logo size={28} className="rounded-sm bg-white" />
@@ -95,7 +95,7 @@ export function Sidebar() {
           )}
           <button
             onClick={toggleSidebar}
-            className="p-2 rounded hover:bg-otter-600 text-otter-200"
+            className="p-2 rounded hover:bg-surface-hover text-slate-400 hover:text-slate-200"
             aria-label="Toggle sidebar"
           >
             {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
@@ -120,7 +120,7 @@ export function Sidebar() {
           {navGroups.map((group) => (
             <div key={group.label} className="mb-2">
               {sidebarOpen && (
-                <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-otter-300">
+                <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                   {group.label}
                 </p>
               )}
@@ -135,8 +135,8 @@ export function Sidebar() {
                         className={cn(
                           "flex items-center gap-3 px-3 py-1.5 rounded-sm text-sm font-medium transition border-l-2",
                           isActive
-                            ? "bg-otter-600 text-white border-accent-500"
-                            : "text-otter-100 border-transparent hover:bg-otter-600 hover:text-white"
+                            ? "bg-surface-raised text-white border-accent-500"
+                            : "text-slate-300 border-transparent hover:bg-surface-raised hover:text-white"
                         )}
                       >
                         <item.icon size={18} />
@@ -151,7 +151,7 @@ export function Sidebar() {
         </nav>
 
         {/* User profile */}
-        <div className="border-t border-otter-600 px-3 py-2">
+        <div className="border-t border-line px-3 py-2">
           {user && sidebarOpen && (
             <div className="flex items-center gap-3 px-1 py-2">
               <div className="w-8 h-8 rounded-full bg-otter-500 text-white flex items-center justify-center text-xs font-semibold">
@@ -161,11 +161,11 @@ export function Sidebar() {
                 <p className="text-sm font-medium text-white truncate">
                   {user.displayName}
                 </p>
-                <p className="text-xs text-otter-200 truncate">{user.email}</p>
+                <p className="text-xs text-slate-400 truncate">{user.email}</p>
               </div>
               <button
                 onClick={logout}
-                className="p-1.5 rounded hover:bg-otter-600 text-otter-200 hover:text-white"
+                className="p-1.5 rounded hover:bg-surface-hover text-slate-400 hover:text-white"
                 aria-label="Sign out"
               >
                 <LogOut size={16} />

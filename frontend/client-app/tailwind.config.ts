@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 // OtterWorks classic-enterprise theme: navy/steel primary, flat square corners,
-// muted amber accent, system sans stack.
+// muted amber accent, system sans stack. Dark UI: canvas/surface/line tokens.
 const config: Config = {
   content: [
     "./index.html",
@@ -32,6 +32,16 @@ const config: Config = {
           700: "#1a3252",
           800: "#152a45",
           900: "#102138",
+        },
+        canvas: "#0b1220",
+        surface: {
+          DEFAULT: "#111a2b",
+          raised: "#18233a",
+          hover: "#1f2c47",
+        },
+        line: {
+          DEFAULT: "#24324b",
+          strong: "#334563",
         },
         accent: {
           400: "#d99a3d",

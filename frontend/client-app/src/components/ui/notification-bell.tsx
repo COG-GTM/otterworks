@@ -13,7 +13,7 @@ export function NotificationBell() {
   return (
     <Link
       to="/notifications"
-      className="relative p-2 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition"
+      className="relative p-2 rounded-lg hover:bg-surface-hover text-slate-400 hover:text-slate-200 transition"
       aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
     >
       <Bell size={20} />
