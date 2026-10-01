@@ -155,4 +155,17 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn shipped_image_does_not_enable_upload_always_fail() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/Dockerfile");
+        let Ok(dockerfile) = std::fs::read_to_string(path) else {
+            return; // not a source checkout (e.g. running inside the image)
+        };
+        assert!(
+            !dockerfile.contains("FILE_UPLOAD_ALWAYS_FAIL"),
+            "the image must not set FILE_UPLOAD_ALWAYS_FAIL: it routes every upload \
+             to a nonexistent bucket and fails the request with a 500"
+        );
+    }
 }

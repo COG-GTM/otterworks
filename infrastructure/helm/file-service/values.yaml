@@ -53,28 +53,15 @@ serviceAccount:
 # Non-sensitive service configuration rendered into {{ .Release.Name }}-config
 # and injected via envFrom. Populate at deploy time (e.g. from Terraform outputs).
 config:
-  # Permanently force every upload to fail (file-service writes to a nonexistent
-  # S3 bucket and returns 5xx). OFF on the golden app (`main`); ON here because
-  # this is the demo-coggtm variant branch, whose whole point is a broken upload
-  # path that survives Redis restarts and TTL expiry. What actually reaches the
-  # tenant is the branch's file-service *image*, which sets the variable in its
-  # Dockerfile -- the deploy runner renders charts from its own bundled tree, so
-  # this value only applies when someone deploys from this checkout -- and then
-  # it is not inert: deploy-tenant.sh renders without --reuse-values, so it also
-  # discards a manual --set-string of false. Kept in agreement with the image so
-  # the two can never contradict each other. To turn the failure off for this
-  # tenant without reverting the branch, set it explicitly (an explicit value
+  # Demo-variant settings, kept in agreement with the image ENVs: every Share
+  # click publishes file_shared to a nonexistent SNS topic (real AWS NotFound
+  # -> red banner + incident + Slack alert), and users with no files get a few
+  # demo documents seeded. Both OFF on the golden app. To disable for a tenant
+  # without changing this file, set the value explicitly (an explicit value
   # beats the image's, until the next redeploy re-renders the chart):
   #   helm upgrade file-service infrastructure/helm/file-service \
-  #     -n otterworks-coggtm --reuse-values \
-  #     --set-string config.FILE_UPLOAD_ALWAYS_FAIL=false
-  FILE_UPLOAD_ALWAYS_FAIL: "true"
-  # Same demo-variant convention as above (values kept in agreement with the
-  # image ENVs): every Share click publishes file_shared to a nonexistent SNS
-  # topic (real AWS NotFound -> red banner + incident + Slack alert), and users
-  # with no files get a few demo documents seeded so the share flow stays
-  # demoable while uploads fail. Both OFF on the golden app. Disable per tenant
-  # the same way as FILE_UPLOAD_ALWAYS_FAIL, with the same redeploy caveat.
+  #     -n otterworks-<id> --reuse-values \
+  #     --set-string config.FILE_SHARE_EVENT_ALWAYS_FAIL=false
   FILE_SHARE_EVENT_ALWAYS_FAIL: "true"
   FILE_SEED_DEMO_DOCS: "true"
 
