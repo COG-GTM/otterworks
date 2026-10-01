@@ -15,3 +15,31 @@ contactPoints:
           authorization_scheme: Bearer
           authorization_credentials: $ALERT_WEBHOOK_SECRET
         disableResolveMessage: false
+  # Fires a Devin investigation session directly from the alert, so the loop
+  # works even when admin-service is down. Grafana groups alerts per service
+  # and only re-notifies every repeat_interval, so repeated failures do not
+  # fan out into one session per request. Requires DEVIN_API_KEY and
+  # DEVIN_ORG_ID in the Grafana container environment.
+  - orgId: 1
+    name: devin-session-receiver
+    receivers:
+      - uid: devin-session-receiver
+        type: webhook
+        settings:
+          url: https://api.devin.ai/v3/organizations/$DEVIN_ORG_ID/sessions
+          httpMethod: POST
+          authorization_scheme: Bearer
+          authorization_credentials: $DEVIN_API_KEY
+          payload:
+            template: |-
+              {{ coll.Dict
+                "prompt" (print
+                  "Grafana alert '" .CommonLabels.alertname "' is firing on the OtterWorks demo environment. "
+                  "Affected service: " .CommonLabels.affected_service ". "
+                  "Summary: " .CommonAnnotations.summary ". "
+                  "Description: " .CommonAnnotations.description " "
+                  "Work in the COG-GTM/otterworks repository on the demo-testfailupload branch: "
+                  "reproduce the failure, identify the root cause in the affected service, "
+                  "implement a fix, and open a pull request targeting the demo-testfailupload branch.")
+              | data.ToJSON }}
+        disableResolveMessage: true
