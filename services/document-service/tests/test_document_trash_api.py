@@ -104,7 +104,7 @@ async def test_restore_brings_document_back_with_content_and_versions(
     restored = resp.json()
     assert restored["id"] == doc["id"]
     assert restored["is_deleted"] is False
-    assert restored["deleted_at"] is None
+    assert "deleted_at" not in restored
     assert restored["content"] == "second draft"
     assert restored["version"] == 2
 

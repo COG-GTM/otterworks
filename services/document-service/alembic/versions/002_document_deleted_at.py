@@ -18,7 +18,15 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _has_deleted_at() -> bool:
+    inspector = sa.inspect(op.get_bind())
+    return any(col["name"] == "deleted_at" for col in inspector.get_columns("documents"))
+
+
 def upgrade() -> None:
+    # init_db() may already have added the column on a running stack.
+    if _has_deleted_at():
+        return
     op.add_column(
         "documents",
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
@@ -26,4 +34,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("documents", "deleted_at")
+    if _has_deleted_at():
+        op.drop_column("documents", "deleted_at")

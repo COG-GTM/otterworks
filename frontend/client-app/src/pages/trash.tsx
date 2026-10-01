@@ -31,7 +31,7 @@ function toTrashItems(files: FileItem[], documents: Document[]): TrashItem[] {
       kind: "file",
       id: file.id,
       name: file.name,
-      trashedAt: file.trashedAt,
+      trashedAt: file.trashedAt ?? file.updatedAt,
       file,
     })),
     ...documents.map((document): TrashItem => ({
@@ -84,6 +84,10 @@ function TrashContent() {
     queryFn: () => documentsApi.getTrashed(),
   });
   const isLoading = filesQuery.isLoading || documentsQuery.isLoading;
+  const failedSources = [
+    filesQuery.isError ? "files" : null,
+    documentsQuery.isError ? "documents" : null,
+  ].filter((source): source is string => source !== null);
 
   const restoreMutation = useMutation({
     mutationFn: async (item: TrashItem) => {
@@ -175,10 +179,27 @@ function TrashContent() {
         </div>
       )}
 
+      {failedSources.length > 0 && (
+        <div className="flex items-center justify-between gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-sm text-red-800">
+            Couldn&apos;t load trashed {failedSources.join(" and ")}. Some items may be missing.
+          </p>
+          <button
+            onClick={() => {
+              if (filesQuery.isError) filesQuery.refetch();
+              if (documentsQuery.isError) documentsQuery.refetch();
+            }}
+            className="px-3 py-1.5 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-100 transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Trash items */}
       {isLoading ? (
         <PageLoader />
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && failedSources.length === 0 ? (
         <EmptyState
           icon={Trash2}
           title="Trash is empty"
@@ -186,6 +207,9 @@ function TrashContent() {
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+          {items.length === 0 && (
+            <p className="px-5 py-4 text-sm text-gray-500">No items could be loaded.</p>
+          )}
           {items.map((item) => (
             <TrashRow
               key={item.id}
