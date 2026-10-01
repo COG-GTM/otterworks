@@ -149,6 +149,13 @@ mod tests {
     }
 
     #[test]
+    fn image_does_not_configure_share_event_failures() {
+        let dockerfile = include_str!("../Dockerfile");
+
+        assert!(!dockerfile.contains("FILE_SHARE_EVENT_ALWAYS_FAIL"));
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
