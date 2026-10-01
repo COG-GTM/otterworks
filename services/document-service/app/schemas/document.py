@@ -94,6 +94,9 @@ class CommentResponse(BaseModel):
     document_id: UUID
     author_id: UUID
     content: str
+    is_resolved: bool
+    resolved_by: UUID | None
+    resolved_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
