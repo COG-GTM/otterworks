@@ -68,17 +68,17 @@ function DocumentsContent() {
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
+        <h1 className="text-2xl font-bold text-slate-100">Documents</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => createMutation.mutate("Untitled document")}
             disabled={createMutation.isPending}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-otter-600 rounded-lg hover:bg-otter-700 disabled:opacity-50 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-otter-500 rounded-lg hover:bg-otter-400 disabled:opacity-50 transition"
           >
             <Plus size={16} />
             New document
           </button>
-          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden ml-2">
+          <div className="flex items-center border border-line rounded-lg overflow-hidden ml-2">
             <ViewBtn
               mode="grid"
               current={viewMode}
@@ -99,14 +99,14 @@ function DocumentsContent() {
       <div className="relative max-w-md">
         <Search
           size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
         />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Filter documents..."
-          className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent"
+          className="w-full pl-9 pr-4 py-2 bg-surface-raised border border-line rounded-lg text-sm text-slate-100 placeholder:text-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400 focus:border-transparent"
         />
       </div>
 
@@ -201,8 +201,8 @@ function ViewBtn({
       className={cn(
         "p-2 transition",
         mode === current
-          ? "bg-gray-100 text-gray-900"
-          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+          ? "bg-surface-raised text-slate-100"
+          : "text-slate-500 hover:text-slate-300 hover:bg-surface-raised"
       )}
     >
       <Icon size={16} />
