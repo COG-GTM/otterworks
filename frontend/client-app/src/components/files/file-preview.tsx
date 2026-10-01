@@ -52,8 +52,8 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
   if (loading) {
     return (
       <div className="w-full text-center py-8">
-        <div className="w-6 h-6 border-2 border-otter-600 border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-xs text-gray-400 mt-2">Loading preview…</p>
+        <div className="w-6 h-6 border-2 border-otter-400 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-xs text-slate-500 mt-2">Loading preview…</p>
       </div>
     );
   }
@@ -61,8 +61,8 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
   if (!presignedUrl) {
     return (
       <div className="text-center py-8">
-        <AlertCircle size={48} className="text-gray-300 mx-auto mb-3" />
-        <p className="text-sm text-gray-500">No download URL available</p>
+        <AlertCircle size={48} className="text-slate-600 mx-auto mb-3" />
+        <p className="text-sm text-slate-400">No download URL available</p>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
       <div className="w-full">
         <iframe
           src={presignedUrl}
-          className="w-full min-h-[500px] bg-white rounded-lg border border-gray-200"
+          className="w-full min-h-[500px] bg-white rounded-lg border border-line"
           sandbox="allow-same-origin"
           title={`Preview of ${fileName}`}
         />
@@ -83,8 +83,8 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
   if (content === null) {
     return (
       <div className="text-center py-8">
-        <AlertCircle size={48} className="text-gray-300 mx-auto mb-3" />
-        <p className="text-sm text-gray-500">Could not load preview</p>
+        <AlertCircle size={48} className="text-slate-600 mx-auto mb-3" />
+        <p className="text-sm text-slate-400">Could not load preview</p>
       </div>
     );
   }
@@ -94,12 +94,12 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
 
   return (
     <div className="w-full">
-      <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
-          <span className="text-xs font-medium text-gray-500 truncate">
+      <div className="rounded-lg border border-line bg-surface overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-2 bg-surface-raised border-b border-line">
+          <span className="text-xs font-medium text-slate-400 truncate">
             {fileName}
           </span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-slate-500">
             {lines.length} line{lines.length !== 1 ? "s" : ""}
           </span>
         </div>
@@ -107,14 +107,14 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
           <table className="w-full border-collapse">
             <tbody>
               {lines.map((line, i) => (
-                <tr key={i} className="hover:bg-gray-50">
+                <tr key={i} className="hover:bg-surface-raised">
                   <td
-                    className="sticky left-0 bg-gray-50 text-right select-none px-3 py-0 text-xs text-gray-400 font-mono border-r border-gray-200"
+                    className="sticky left-0 bg-surface-raised text-right select-none px-3 py-0 text-xs text-slate-500 font-mono border-r border-line"
                     style={{ minWidth: `${gutterWidth + 2}ch` }}
                   >
                     {i + 1}
                   </td>
-                  <td className="px-4 py-0 whitespace-pre font-mono text-sm text-gray-800 overflow-x-auto">
+                  <td className="px-4 py-0 whitespace-pre font-mono text-sm text-slate-100 overflow-x-auto">
                     {line || "\u00A0"}
                   </td>
                 </tr>
@@ -124,7 +124,7 @@ export function TextFilePreview({ presignedUrl, fileName }: TextFilePreviewProps
         </div>
       </div>
       {truncated && (
-        <p className="text-xs text-amber-600 mt-2 text-center">
+        <p className="text-xs text-amber-400 mt-2 text-center">
           File truncated — showing first {(MAX_PREVIEW_SIZE / 1000).toFixed(0)} KB. Download the file to see full contents.
         </p>
       )}
@@ -141,7 +141,7 @@ export function PdfFilePreview({ presignedUrl }: PdfFilePreviewProps) {
     return (
       <div className="text-center py-8">
         <File size={64} className="text-red-400 mx-auto mb-3" />
-        <p className="text-sm text-gray-500">PDF preview not available</p>
+        <p className="text-sm text-slate-400">PDF preview not available</p>
       </div>
     );
   }
@@ -150,17 +150,17 @@ export function PdfFilePreview({ presignedUrl }: PdfFilePreviewProps) {
     <div className="w-full">
       <iframe
         src={presignedUrl}
-        className="w-full rounded-lg border border-gray-200"
+        className="w-full rounded-lg border border-line"
         style={{ minHeight: "600px" }}
         title="PDF preview"
       />
-      <p className="text-xs text-gray-400 mt-2 text-center">
+      <p className="text-xs text-slate-500 mt-2 text-center">
         If the preview doesn&apos;t load,{" "}
         <a
           href={presignedUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-otter-600 hover:underline"
+          className="text-otter-300 hover:underline"
         >
           open in a new tab
         </a>
@@ -184,8 +184,8 @@ export function ImageFilePreview({ presignedUrl, fileName }: ImageFilePreviewPro
   if (!presignedUrl || error) {
     return (
       <div className="text-center py-8">
-        <File size={64} className="text-gray-300 mx-auto mb-3" />
-        <p className="text-sm text-gray-500">Image preview not available</p>
+        <File size={64} className="text-slate-600 mx-auto mb-3" />
+        <p className="text-sm text-slate-400">Image preview not available</p>
       </div>
     );
   }
@@ -194,7 +194,7 @@ export function ImageFilePreview({ presignedUrl, fileName }: ImageFilePreviewPro
     <img
       src={presignedUrl}
       alt={fileName}
-      className="max-w-full max-h-[500px] rounded-lg shadow-sm"
+      className="max-w-full max-h-[500px] rounded-lg shadow-sm shadow-black/40"
       onError={() => setError(true)}
     />
   );

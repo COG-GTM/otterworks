@@ -108,8 +108,8 @@ function FileDetailContent() {
   if (!file) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">File not found</p>
-        <Link to="/files" className="text-otter-600 hover:underline mt-2 text-sm">
+        <p className="text-slate-400">File not found</p>
+        <Link to="/files" className="text-otter-300 hover:underline mt-2 text-sm">
           Back to files
         </Link>
       </div>
@@ -142,16 +142,16 @@ function FileDetailContent() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+            className="p-2 rounded-lg hover:bg-surface-hover text-slate-400"
           >
             <ArrowLeft size={20} />
           </button>
-          <div className="w-12 h-12 rounded-xl bg-otter-50 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-otter-500/15 flex items-center justify-center">
             <FileIcon mimeType={file.mimeType} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">{file.name}</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl font-bold text-slate-100">{file.name}</h1>
+            <p className="text-sm text-slate-400">
               {formatFileSize(file.size)} &middot; {formatRelativeTime(file.updatedAt)}
             </p>
           </div>
@@ -177,21 +177,21 @@ function FileDetailContent() {
                 setIsDownloading(false);
               }
             }}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             {isDownloading ? "Downloading..." : "Download"}
           </button>
           <button
             onClick={() => setShowShareDialog(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong transition"
           >
             <Share2 size={16} />
             Share
           </button>
           <button
             onClick={() => deleteMutation.mutate()}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-red-400 bg-surface-raised border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
           >
             <Trash2 size={16} />
             Delete
@@ -202,14 +202,14 @@ function FileDetailContent() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Preview */}
         <div className="lg:col-span-2">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200">
-              <h2 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <div className="bg-surface rounded-xl border border-line overflow-hidden">
+            <div className="px-5 py-4 border-b border-line">
+              <h2 className="text-sm font-medium text-slate-300 flex items-center gap-2">
                 <Eye size={16} />
                 Preview
               </h2>
             </div>
-            <div className="p-8 flex items-center justify-center min-h-[300px] bg-gray-50">
+            <div className="p-8 flex items-center justify-center min-h-[300px] bg-surface-raised">
               <FilePreviewContent
                 isImage={isImage}
                 isVideo={isVideo}
@@ -224,24 +224,24 @@ function FileDetailContent() {
 
           {/* Versions */}
           {file.versions && file.versions.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 mt-6">
-              <div className="px-5 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+            <div className="bg-surface rounded-xl border border-line mt-6">
+              <div className="px-5 py-4 border-b border-line">
+                <h2 className="text-sm font-medium text-slate-300 flex items-center gap-2">
                   <Clock size={16} />
                   Versions ({file.versions.length})
                 </h2>
               </div>
-              <div className="divide-y divide-gray-100">
+              <div className="divide-y divide-line">
                 {file.versions.map((version) => (
                   <div
                     key={version.id}
                     className="flex items-center justify-between px-5 py-3"
                   >
                     <div>
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-slate-100">
                         Version {version.versionNumber}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-slate-400">
                         {formatFileSize(version.size)} &middot;{" "}
                         {formatRelativeTime(version.createdAt)} &middot;{" "}
                         {version.uploadedBy}
@@ -249,7 +249,7 @@ function FileDetailContent() {
                     </div>
                     <a
                       href={version.downloadUrl}
-                      className="text-sm text-otter-600 hover:underline"
+                      className="text-sm text-otter-300 hover:underline"
                     >
                       Download
                     </a>
@@ -263,9 +263,9 @@ function FileDetailContent() {
         {/* Sidebar info */}
         <div className="space-y-6">
           {/* File info */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200">
-              <h2 className="text-sm font-medium text-gray-700">Details</h2>
+          <div className="bg-surface rounded-xl border border-line">
+            <div className="px-5 py-4 border-b border-line">
+              <h2 className="text-sm font-medium text-slate-300">Details</h2>
             </div>
             <div className="p-5 space-y-4">
               <InfoRow icon={User} label="Owner" value={file.ownerName || "You"} />
@@ -300,16 +300,16 @@ function FileDetailContent() {
           </div>
 
           {/* Shared with */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-700">Shared with</h2>
-              <button className="text-xs text-otter-600 hover:underline">
+          <div className="bg-surface rounded-xl border border-line">
+            <div className="px-5 py-4 border-b border-line flex items-center justify-between">
+              <h2 className="text-sm font-medium text-slate-300">Shared with</h2>
+              <button className="text-xs text-otter-300 hover:underline">
                 Manage
               </button>
             </div>
             <div className="p-5">
               {file.sharedWith.length === 0 ? (
-                <p className="text-sm text-gray-400">Not shared with anyone</p>
+                <p className="text-sm text-slate-500">Not shared with anyone</p>
               ) : (
                 <div className="space-y-3">
                   {file.sharedWith.map((shared) => {
@@ -325,10 +325,10 @@ function FileDetailContent() {
                           {getInitials(displayName)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
+                          <p className="text-sm font-medium text-slate-100 truncate">
                             {displayName}
                           </p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-xs text-slate-400">
                             {displayEmail ? `${displayEmail} · ${shared.permission}` : shared.permission}
                           </p>
                         </div>
@@ -342,15 +342,15 @@ function FileDetailContent() {
 
           {/* Tags */}
           {file.tags.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="px-5 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-700">Tags</h2>
+            <div className="bg-surface rounded-xl border border-line">
+              <div className="px-5 py-4 border-b border-line">
+                <h2 className="text-sm font-medium text-slate-300">Tags</h2>
               </div>
               <div className="p-5 flex flex-wrap gap-2">
                 {file.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs"
+                    className="px-2.5 py-1 bg-surface-raised text-slate-300 rounded-full text-xs"
                   >
                     {tag}
                   </span>
@@ -396,10 +396,10 @@ function InfoRow({
 }>) {
   return (
     <div className="flex items-start gap-3">
-      <Icon size={16} className="text-gray-400 mt-0.5" />
+      <Icon size={16} className="text-slate-500 mt-0.5" />
       <div>
-        <p className="text-xs text-gray-400">{label}</p>
-        <p className="text-sm text-gray-700 break-all">{value}</p>
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-sm text-slate-300 break-all">{value}</p>
       </div>
     </div>
   );
@@ -425,7 +425,7 @@ function FilePreviewContent({
   if ((isImage || isVideo || isText || isPdf) && isUrlLoading) {
     return (
       <div className="w-full text-center py-8">
-        <div className="w-6 h-6 border-2 border-otter-600 border-t-transparent rounded-full animate-spin mx-auto" />
+        <div className="w-6 h-6 border-2 border-otter-400 border-t-transparent rounded-full animate-spin mx-auto" />
       </div>
     );
   }
@@ -452,20 +452,20 @@ function FilePreviewContent({
 
   return (
     <div className="text-center">
-      <File size={64} className="text-gray-300 mx-auto mb-3" />
-      <p className="text-sm text-gray-500">Preview not available for this file type</p>
+      <File size={64} className="text-slate-600 mx-auto mb-3" />
+      <p className="text-sm text-slate-400">Preview not available for this file type</p>
     </div>
   );
 }
 
 function FileIcon({ mimeType }: Readonly<{ mimeType: string }>) {
   if (mimeType.startsWith("image/"))
-    return <ImageIcon size={24} className="text-otter-600" />;
+    return <ImageIcon size={24} className="text-otter-300" />;
   if (mimeType.startsWith("video/"))
-    return <Film size={24} className="text-otter-600" />;
+    return <Film size={24} className="text-otter-300" />;
   if (mimeType === "application/pdf")
-    return <FileText size={24} className="text-red-500" />;
-  return <File size={24} className="text-otter-600" />;
+    return <FileText size={24} className="text-red-400" />;
+  return <File size={24} className="text-otter-300" />;
 }
 
 

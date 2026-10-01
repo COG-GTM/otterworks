@@ -269,11 +269,11 @@ function FileBrowserContent() {
   return (
     <div {...getRootProps()} className="max-w-7xl mx-auto space-y-6 relative">
       {isDragActive && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-otter-600/10 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl border-2 border-dashed border-otter-500 p-12 text-center">
-            <Upload size={48} className="mx-auto mb-4 text-otter-600" />
-            <p className="text-lg font-semibold text-gray-900">Drop files to upload</p>
-            <p className="text-sm text-gray-500 mt-1">Files will be added to the current folder</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-surface rounded-2xl shadow-2xl shadow-black/40 border-2 border-dashed border-otter-400 p-12 text-center">
+            <Upload size={48} className="mx-auto mb-4 text-otter-300" />
+            <p className="text-lg font-semibold text-slate-100">Drop files to upload</p>
+            <p className="text-sm text-slate-400 mt-1">Files will be added to the current folder</p>
           </div>
         </div>
       )}
@@ -281,14 +281,14 @@ function FileBrowserContent() {
 
       {/* Bulk action bar */}
       {selectionActive && selectedIds.size > 0 && (
-        <div className="flex items-center justify-between px-4 py-3 bg-otter-50 border border-otter-200 rounded-lg">
+        <div className="flex items-center justify-between px-4 py-3 bg-otter-500/15 border border-otter-500/40 rounded-lg">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-otter-800">
+            <span className="text-sm font-medium text-otter-200">
               {selectedIds.size} selected
             </span>
             <button
               onClick={selectAll}
-              className="text-sm text-otter-600 hover:text-otter-800 underline"
+              className="text-sm text-otter-300 hover:text-otter-200 underline"
             >
               Select all
             </button>
@@ -296,14 +296,14 @@ function FileBrowserContent() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleBulkDelete}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 bg-surface-raised border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
             >
               <Trash2 size={14} />
               Delete
             </button>
             <button
               onClick={clearSelection}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong transition"
             >
               <X size={14} />
               Cancel
@@ -314,7 +314,7 @@ function FileBrowserContent() {
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Files</h1>
+        <h1 className="text-2xl font-bold text-slate-100">Files</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -324,8 +324,8 @@ function FileBrowserContent() {
             className={cn(
               "flex items-center gap-2 px-3 py-2 text-sm border rounded-lg transition",
               selectionActive
-                ? "text-otter-700 bg-otter-50 border-otter-300"
-                : "text-gray-700 bg-white border-gray-300 hover:bg-gray-50"
+                ? "text-otter-200 bg-otter-500/15 border-otter-500/40"
+                : "text-slate-300 bg-surface-raised border-line hover:bg-surface-hover hover:border-line-strong"
             )}
           >
             <CheckSquare size={16} />
@@ -333,14 +333,14 @@ function FileBrowserContent() {
           </button>
           <button
             onClick={() => setShowNewFolder(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong transition"
           >
             <FolderPlus size={16} />
             New folder
           </button>
           <button
             onClick={() => setShowUpload(!showUpload)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-otter-600 rounded-lg hover:bg-otter-700 transition"
+            className="flex items-center gap-2 px-3 py-2 text-sm text-white bg-otter-500 rounded-lg hover:bg-otter-400 transition"
           >
             <Upload size={16} />
             Upload
@@ -352,7 +352,7 @@ function FileBrowserContent() {
               const [field, direction] = e.target.value.split("-") as [SortField, "asc" | "desc"];
               setSortConfig({ field, direction });
             }}
-            className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-otter-500"
+            className="px-3 py-2 text-sm border border-line rounded-lg bg-surface-raised text-slate-300 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400"
           >
             <option value="updatedAt-desc">Last modified</option>
             <option value="updatedAt-asc">Oldest modified</option>
@@ -364,7 +364,7 @@ function FileBrowserContent() {
             <option value="createdAt-asc">Oldest created</option>
           </select>
 
-          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden ml-2">
+          <div className="flex items-center border border-line rounded-lg overflow-hidden ml-2">
             <ViewModeButton
               mode="grid"
               current={viewMode}
@@ -383,14 +383,14 @@ function FileBrowserContent() {
 
       {/* New folder input */}
       {showNewFolder && (
-        <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200">
+        <div className="flex items-center gap-2 p-3 bg-surface rounded-lg border border-line">
           <FolderPlus size={20} className="text-amber-500" />
           <input
             type="text"
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
             placeholder="Folder name"
-            className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500"
+            className="flex-1 px-3 py-1.5 bg-surface-raised border border-line rounded-lg text-sm text-slate-100 placeholder-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400"
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter" && newFolderName.trim()) {
@@ -403,13 +403,13 @@ function FileBrowserContent() {
             onClick={() => {
               if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim());
             }}
-            className="px-3 py-1.5 bg-otter-600 text-white rounded-lg text-sm hover:bg-otter-700 transition"
+            className="px-3 py-1.5 bg-otter-500 text-white rounded-lg text-sm hover:bg-otter-400 transition"
           >
             Create
           </button>
           <button
             onClick={() => setShowNewFolder(false)}
-            className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-sm hover:bg-gray-200 transition"
+            className="px-3 py-1.5 bg-surface-raised text-slate-300 rounded-lg text-sm hover:bg-surface-hover transition"
           >
             Cancel
           </button>
@@ -439,7 +439,7 @@ function FileBrowserContent() {
       ) : (
         <div className="space-y-6">
           {viewMode === "list" && (
-            <div className="flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
+            <div className="flex items-center gap-4 px-4 py-2 text-xs font-medium text-slate-400 uppercase tracking-wider border-b border-line">
               {selectionActive && <div className="w-4" />}
               <div className="w-10" />
               <SortableHeader field="name" label="Name" current={sortConfig} onSort={toggleSort} className="flex-1" />
@@ -451,7 +451,7 @@ function FileBrowserContent() {
           {/* Folders */}
           {folders.length > 0 && (
             <section>
-              {viewMode === "grid" && <h2 className="text-sm font-medium text-gray-500 mb-3">Folders</h2>}
+              {viewMode === "grid" && <h2 className="text-sm font-medium text-slate-400 mb-3">Folders</h2>}
               <div
                 className={cn(
                   viewMode === "grid"
@@ -478,7 +478,7 @@ function FileBrowserContent() {
           {/* Files */}
           {files.length > 0 && (
             <section>
-              {viewMode === "grid" && <h2 className="text-sm font-medium text-gray-500 mb-3">Files</h2>}
+              {viewMode === "grid" && <h2 className="text-sm font-medium text-slate-400 mb-3">Files</h2>}
               <div
                 className={cn(
                   viewMode === "grid"
@@ -557,8 +557,8 @@ function ViewModeButton({
       className={cn(
         "p-2 transition",
         mode === current
-          ? "bg-gray-100 text-gray-900"
-          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+          ? "bg-surface-raised text-slate-100"
+          : "text-slate-500 hover:text-slate-200 hover:bg-surface-raised"
       )}
     >
       <Icon size={16} />
@@ -584,8 +584,8 @@ function SortableHeader({
     <button
       onClick={() => onSort(field)}
       className={cn(
-        "group/sort flex items-center gap-1 hover:text-gray-700 transition",
-        isActive && "text-gray-900",
+        "group/sort flex items-center gap-1 hover:text-slate-200 transition",
+        isActive && "text-slate-100",
         className
       )}
     >
