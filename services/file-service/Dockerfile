@@ -18,16 +18,9 @@ USER appuser
 
 # demo-coggtm tenant variant -- NEVER merge this to `main`. The tenant runs the
 # image this branch builds (tag `tenant-coggtm`), so baking the switch in here is
-# the only way to make its uploads fail permanently: it survives pod restarts,
-# Redis restarts, TTL expiry and idle-suspend/wake, and needs no chart override:
-# the deploy runner renders charts from its own bundled tree, whose file-service
-# values are `config: {}` and whose build_helm_args sets a fixed list of
-# config.* keys that does not include this one, so nothing overrides the image.
-# Anything that does set the variable explicitly still wins -- docker-compose.yml
-# passes false, so local stacks behave like the golden app.
-ENV FILE_UPLOAD_ALWAYS_FAIL=true
-
-# Click-triggered notification failure (same bake rationale as above): sharing
+# the only way to make it stick: the deploy runner renders charts from its own
+# bundled tree, so no chart value overrides the image.
+# Click-triggered notification failure: sharing
 # a file publishes the file_shared event to a nonexistent SNS topic, so every
 # share click fails with a real AWS SNS error and fires the
 # NotificationEventPublishFailure alert at admin-service (incident + Devin
@@ -37,9 +30,8 @@ ENV FILE_UPLOAD_ALWAYS_FAIL=true
 # stacks behave like the golden app.
 ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true
 
-# With uploads failing permanently (above), users would have no files to share.
 # Seeding gives every user a few demo documents on their first file listing,
-# so the share-notification failure is demoable alongside the upload failure.
+# so the share-notification failure is demoable.
 # docker-compose.yml passes false, so local stacks behave like the golden app.
 ENV FILE_SEED_DEMO_DOCS=true
 
