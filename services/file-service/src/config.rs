@@ -155,4 +155,19 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    /// The shipped image must not force uploads onto a nonexistent bucket:
+    /// deployments that set no explicit value would fail every upload.
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Dockerfile")).unwrap();
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            assert!(
+                !line.starts_with("ENV FILE_UPLOAD_ALWAYS_FAIL"),
+                "Dockerfile sets the upload failure switch: {line}"
+            );
+        }
+    }
 }
