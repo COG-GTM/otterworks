@@ -121,7 +121,7 @@ The golden app's config is already tenant-parameterizable — no code changes ne
 Three layers, from lightest to heaviest — none touch other tenants:
 
 1. **Runtime chaos flags (no redeploy).** The app supports **chaos injection via Redis flags**
-   (e.g. `upload_s3_error`). Set a tenant-scoped flag to fault a specific operation live — ideal
+   (e.g. `suggest_500`). Set a tenant-scoped flag to fault a specific operation live — ideal
    for "find and fix the incident" demos. Clears instantly.
 2. **Config/variant flags (seconds).** `helm upgrade` the tenant's release with a changed value
    (feature flag, bad env value, resource starvation) — scoped to `otterworks-<ATTENDEE_ID>`.
