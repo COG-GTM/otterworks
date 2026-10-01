@@ -37,6 +37,38 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   409 for a persistent tenant: the perpetual environment exists precisely not to be broken.
 - `POST /api/tenants/:id/reset` → clear injected scenarios. Allowed for every tenant, including
   the perpetual one, because it only restores.
+- `POST /api/tenants/:id/seed` `{ scale?, departments?, force? }` → load the synthetic RetailCo
+  enterprise drive into the tenant via a runner Job (`OP=seed`), which stamps
+  `testdata/generated/retail-drive/seed-loader.job.tpl.yaml` into `otterworks-<id>`.
+  `scale` defaults to `1.0` (the whole drive, ~2,445 files) and is bounded to
+  `0.01..2`; `departments` defaults to `all`. 409 unless the tenant is `active` (the
+  loader writes through that tenant's own api-gateway) *and* has a ready `api-gateway`
+  pod, since that is the one service every uploaded file goes through — an
+  idle-suspended tenant is still `active` in the control table, so wake it first with a
+  redeploy (`POST /api/tenants/:id/redeploy`, i.e. `tenant.sh sync <branch>`), which is
+  the wake-up available to a caller with no cluster access. A tenant whose namespace is
+  gone while the table still says `active` reads the same way from a pod list, so that
+  409 names the namespace instead of blaming idle-suspend.
+  409 if a seed is already running: the in-flight check is the loader Job in
+  `otterworks-<id>`, since the runner Job that creates it exits within seconds; 503 when
+  that check — or the tenant's live state — cannot be read, rather than acting on an
+  answer the cluster did not give. `force: true` skips both in-flight checks (loader Job and
+  runner Job) *and* the readiness checks above — a tenant idle-suspended after its loader
+  wedged would otherwise have no way out, since waking it does not delete a Job; the forced
+  seed clears the loader, its own replacement fails, and the seed after the redeploy works.
+  The one gate force does *not* skip is `status !== active`: a tenant being deployed or torn
+  down is not one to delete Jobs in, and a wedged loader in a tenant that is not active goes
+  away with the tenant.
+  Force passes `SEED_FORCE=true` to the runner: it discards whatever the running
+  loader has uploaded, and is the only way out of a Job that never reaches a terminal state
+  — a loader pod the tenant's ResourceQuota will not admit — without direct `kubectl`
+  access. Under force the runner also escalates a delete its 120s foreground wait did not
+  finish, removing the stuck loader pod with `--force --grace-period=0` before retrying;
+  unforced, that delete simply fails and the tenant is left as it was.
+  Returns once the *runner* Job is queued — the loader appears seconds later and then runs
+  for minutes to hours, and a seed the runner refuses (asleep tenant, missing Secret,
+  loader already running) shows up only in the runner Job's logs, which
+  `GET /api/tenants/:id` returns as `logs` when the seed is the tenant's latest Job.
 
 ## Reaper
 - `GET /api/reaper` → `CONFIG#reaper`.
@@ -68,6 +100,7 @@ The web pod stays light: mutating actions create a Kubernetes **Job** (`otterwor
 ns) from the `otterworks-demo-runner` image, which carries the repo + `aws/kubectl/helm/
 terraform/jq` and runs `scripts/deploy-tenant.sh` / `teardown-tenant.sh` / `inject-bug.sh`.
 The Job uses the dashboard's IRSA role + a ClusterRole that can manage `otterworks-*`
-namespaces. Job name = `deploy-<id>-<epoch>` / `teardown-<id>-<epoch>`; logs stream back via
+namespaces. Job name = `deploy-<id>-<epoch>` / `teardown-<id>-<epoch>` / `seed-<id>-<epoch>`;
+logs stream back via
 `GET /api/tenants/:id` (reads Job pod logs). The runner reads/writes the control table so
 status transitions survive even if the web pod restarts.

@@ -19,10 +19,10 @@ export const GET = withSession(async (_req, { params }) => {
     getTenantWithLiveState(base),
     podsForNamespace(base.namespace),
     queryAudit(id, 50),
-    // Stream the latest deploy/teardown Job pod logs for this tenant.
-    latestJobLogs(env.platformNamespace, `deploy-${id}-`).then(
-      (d) => d ?? latestJobLogs(env.platformNamespace, `teardown-${id}-`),
-    ),
+    // Logs of whichever runner Job ran last for this tenant. A seed that never
+    // produced a loader Job (missing Secret, tenant asleep) leaves its reason
+    // only here, so seed Jobs are in the set too.
+    latestJobLogs(env.platformNamespace, id),
   ]);
 
   const detail: TenantDetail = { ...tenant, pods, audit, logs };

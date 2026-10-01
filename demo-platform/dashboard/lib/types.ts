@@ -63,6 +63,8 @@ export type AuditAction =
   | "reap"
   | "inject"
   | "reset"
+  | "seed"
+  | "seed_fail"
   | "redeploy"
   | "persist"
   | "login_ok"
@@ -127,6 +129,13 @@ export interface ExtendRequest {
 
 export interface InjectRequest {
   scenario: string;
+}
+
+export interface SeedRequest {
+  scale?: number;
+  departments?: string;
+  // Replace a loader that is still running, or one whose state cannot be read.
+  force?: boolean;
 }
 
 export interface ReaperUpdateRequest {

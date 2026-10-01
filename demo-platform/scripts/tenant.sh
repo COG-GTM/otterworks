@@ -23,6 +23,9 @@
 #   tenant.sh checkin  <id>
 #   tenant.sh extend   <id> <ttl>
 #   tenant.sh status   <id>
+#   tenant.sh seed     <id> [scale] [departments]  # load the RetailCo drive
+#                                                  # SEED_FORCE=true restarts a
+#                                                  # loader that is still running
 #   tenant.sh sync     <branch> [image-tag]    # CD: redeploy, creating if absent
 #   tenant.sh persist  <id> true|false
 #
@@ -33,6 +36,7 @@
 #   tenant.sh checkout derek                   # -> workshop-derek, 8h
 #   tenant.sh checkout derek workshop-derek 24h
 #   tenant.sh sync workshop-derek              # -> tenant derek
+#   tenant.sh seed derek 0.1                   # ~110 files, quick + data-rich
 #   OPS_HOST=https://ops.example.app tenant.sh list
 # ------------------------------------------------------------------------------
 set -euo pipefail
@@ -167,7 +171,7 @@ warn_if_degraded() {
 # ------------------------------------------------------------------------------
 
 cmd="${1:-}"
-[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status> [args]"
+[ -n "${cmd}" ] || fail "usage: tenant.sh <list|checkout|checkin|extend|status|seed|sync|persist> [args]"
 shift || true
 
 case "${cmd}" in
@@ -230,6 +234,9 @@ case "${cmd}" in
     [ -n "${id}" ] || fail "usage: tenant.sh status <id>"
 
     login
+    # The seed loader is a Job pod, which the dashboard keeps out of the live
+    # counters (it is a task, not one of the tenant's services), so it gets a
+    # line of its own -- otherwise a run in progress would be invisible here.
     api GET "/api/tenants/${id}" |
       jq -r '"id       : \(.id)",
              "status   : \(.status)",
@@ -237,7 +244,64 @@ case "${cmd}" in
              "url      : \(.url // "-")",
              "api      : \(.apiUrl // "-")",
              "expires  : \(if .expiresAt then (.expiresAt | todate) else "-" end)",
-             "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready"'
+             "pods     : \(.live.readyPods // 0)/\(.live.totalPods // 0) ready",
+             ((.pods // [])
+              | map(select(.name | startswith("retail-drive-seed-loader")))
+              | if length == 0 then empty
+                else "seed     : \(.[0].phase) (\(.[0].name))" end)'
+    ;;
+
+  # Load the synthetic "RetailCo enterprise drive" into a live tenant, so a demo
+  # opens on a deep, browsable drive instead of an empty one. The dashboard runs
+  # the loader as a Job in the tenant's OWN namespace (this caller has no
+  # cluster access); it writes through that tenant's api-gateway and is
+  # idempotent, so re-seeding only adds what is missing.
+  seed)
+    id="${1:-}"
+    [ -n "${id}" ] || fail "usage: tenant.sh seed <id> [scale] [departments]"
+    # 1.0 is the whole drive (~2,445 files / 15 departments, tens of minutes);
+    # 0.1 (~110 files) is enough to make every screen look real.
+    scale="${2:-1.0}"
+    departments="${3:-all}"
+    # Checked here because it is sent as a JSON number: a stray character (or a
+    # bare `1.`, which is not valid JSON) would otherwise fail inside jq with a
+    # parse error rather than this message.
+    case "${scale}" in
+      ''|*[!0-9.]*|*.*.*|.*|*.) fail "invalid scale '${scale}' (a number, e.g. 0.1 or 1.0)" ;;
+    esac
+    case "${scale//./}" in
+      *[!0]*) ;;
+      *) fail "invalid scale '${scale}' (must be greater than zero)" ;;
+    esac
+    # Only the CLI needs this one: `01` is a number everywhere else in the chain,
+    # but not in JSON, so jq --argjson would reject it after the login.
+    case "${scale}" in
+      0[0-9]*) fail "invalid scale '${scale}' (no leading zero: 0.5, not 00.5)" ;;
+    esac
+    # The same bounds the route enforces, checked here so an out-of-range scale
+    # costs a message rather than a login and a 400. awk because the shell has
+    # no decimal comparison.
+    awk -v s="${scale}" 'BEGIN { exit !(s >= 0.01 && s <= 2) }' ||
+      fail "invalid scale '${scale}' (0.01 to 2)"
+
+    # A loader that is already uploading is refused, because restarting it
+    # throws away everything it has done so far. SEED_FORCE=true is the way back
+    # from a wedged one (a pod the tenant's ResourceQuota will never admit, say)
+    # that would otherwise need the cluster access this script does not have.
+    force=false
+    if [ "${SEED_FORCE:-false}" = "true" ]; then force=true; fi
+
+    login
+    log "seeding '${id}' (scale ${scale}, departments ${departments}, force ${force})..."
+    out="$(api POST "/api/tenants/${id}/seed" \
+             "$(jq -nc --argjson s "${scale}" --arg d "${departments}" --argjson f "${force}" \
+                     '{scale:$s, departments:$d, force:$f}')")"
+    log "${id}: $(printf '%s' "${out}" | jq -r '.job // "accepted"')"
+    # The loader Job outlives the runner Job that created it, so "accepted" is
+    # not "seeded": it shows up as an extra pod in the tenant's namespace and
+    # takes minutes to hours depending on the scale.
+    log "the loader runs in otterworks-${id}; watch it with: tenant.sh status ${id}"
+    log "an ephemeral tenant loses its seeded data at teardown -- 'tenant.sh persist ${id} true' to keep it"
     ;;
 
   # The CD entry point: make the environment for a branch match that branch.
@@ -310,6 +374,6 @@ case "${cmd}" in
     ;;
 
   *)
-    fail "unknown command '${cmd}' -- expected list, checkout, checkin, extend, status, sync or persist"
+    fail "unknown command '${cmd}' -- expected list, checkout, checkin, extend, status, seed, sync or persist"
     ;;
 esac

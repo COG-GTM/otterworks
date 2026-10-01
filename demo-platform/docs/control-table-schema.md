@@ -69,7 +69,15 @@ updated_by          string
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_ok, deploy_fail,
-reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+reap, inject, reset, seed, seed_fail, suspend, login_ok, login_fail}. Attributes: `actor`,
+`detail`, `ts`. A seed writes two `seed` rows, as deploy and inject do: the dashboard's
+means *requested* (it precedes the runner Job and survives a runner that then refuses the
+seed), the runner's means the loader was created. `seed_fail` is written for every failure
+from the delete of the previous loader onwards — the namespace is left with no usable
+loader — and, under `SEED_WAIT=true`, for a loader that ran and failed or was deleted
+mid-run. A wait that hits `SEED_TIMEOUT` does not: the loader is still uploading, and its
+outcome is simply no longer being watched. A loader that fails after an unwatched dispatch
+leaves those `seed` rows and nothing else.
 `redeploy` is a deploy into a tenant that was already up (continuous delivery), as distinct
 from the `checkout` that created it.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it

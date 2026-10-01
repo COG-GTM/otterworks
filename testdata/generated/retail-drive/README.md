@@ -107,10 +107,137 @@ pip install -r requirements.txt pytest
 python -m pytest tests -q
 ```
 
-## Seed-loader integration
+## Seed-loader integration (seeding a live tenant)
 
-`seed-loader.job.yaml` is a Kubernetes Job that runs this generator against the
-in-cluster gateway (`api-gateway.<ns>.svc.cluster.local:8080`) on demand /
-after a spin-up, mirroring the golden reference-data loader. It reads the drive
-credentials from the `retail-drive-seed` Secret and passes `--register` so it
-bootstraps the account on a fresh environment. See the job manifest for details.
+`seed-loader.job.tpl.yaml` is a Kubernetes Job that runs this generator against
+an in-cluster gateway on demand / after a spin-up, mirroring the golden
+reference-data loader. It reads the drive credentials from the
+`retail-drive-seed` Secret and passes `--register` so it bootstraps the account
+on a fresh environment.
+
+Each demo tenant is its own namespace (`otterworks-<id>`) with its own
+api-gateway Service, so the manifest is a **template**: `./render-seed-job.sh`
+stamps the namespace and gateway URL (and the scale / departments) for one
+tenant and prints the manifest on stdout.
+
+```bash
+render-seed-job.sh <tenant-id> [scale] [departments]
+```
+
+### Seeding tenant `coggtm`
+
+```bash
+# 1. credentials for the drive account, IN THE TENANT NAMESPACE
+kubectl -n otterworks-coggtm create secret generic retail-drive-seed \
+    --from-literal=DRIVE_EMAIL='<email>' \
+    --from-literal=DRIVE_PASSWORD='<password>'
+
+# 2. render the Job for this tenant and apply it
+#    -> namespace otterworks-coggtm
+#    -> GATEWAY_URL http://api-gateway.otterworks-coggtm.svc.cluster.local:8080
+testdata/generated/retail-drive/render-seed-job.sh coggtm 0.1 | kubectl apply -f -
+
+# 3. follow it
+kubectl -n otterworks-coggtm logs -f job/retail-drive-seed-loader
+```
+
+Any tenant works the same way — `render-seed-job.sh <id>`. For a single-tenant
+deploy (namespace `otterworks`, not derived from a tenant id) override the
+namespace: `TENANT_NAMESPACE=otterworks render-seed-job.sh otterworks | kubectl apply -f -`.
+
+Notes:
+
+- **Scale.** `1.0` (the default) is the whole drive: ~2,445 files / 15
+  departments, tens of minutes of uploads. `0.1` (~110 files) is enough to make
+  every screen look real and finishes quickly.
+- **Departments.** `all`, or a comma-separated subset of the names in
+  `taxonomy.py`, matched exactly — three of them contain an ampersand, so quote
+  the argument: `render-seed-job.sh coggtm 1.0 'Supply Chain & Logistics'`.
+- **Re-running.** The generator is idempotent, but a Job's pod template is not
+  mutable — `kubectl -n otterworks-<id> delete job retail-drive-seed-loader`
+  before re-applying at a different scale. Deleting a loader that is still
+  uploading throws that run's progress away and starts from the beginning; the
+  dashboard path refuses to do so unless the runner is given `SEED_FORCE=true`.
+- **A suspended tenant cannot be seeded.** The loader writes through the
+  tenant's api-gateway, so wake a scaled-to-zero tenant first. Without cluster
+  access that means a redeploy — `tenant.sh sync <branch>` — since
+  `scripts/tenant-scale.sh <id> up` needs kubectl and dashboard check-out only
+  applies to a tenant that is free.
+- **Ephemeral tenants lose the data.** `coggtm` is a TTL'd tenant on
+  `demo.otterworks.app`; the reaper deletes its namespace *and its database* at
+  expiry, taking the seeded drive with it. Extend it
+  (`tenant.sh extend coggtm 8h`) or make it perpetual
+  (`tenant.sh persist coggtm true`) if the data has to outlive the demo.
+- The loader pod counts against the tenant's `ResourceQuota` (it requests
+  250m CPU / 512Mi) and lives in the tenant namespace. It is a Job pod, so it is
+  deliberately left out of the tenant's ready/total counters; `tenant.sh status
+  <id>` prints it on its own `seed` line while it exists.
+- **NetworkPolicy.** The api-gateway chart's own policy lists only
+  `ingress-nginx` and `monitoring` as sources, but `deploy-tenant.sh` also
+  stamps a `tenant-isolation` policy into every tenant namespace that allows
+  traffic from that namespace itself — and policies are additive — so the loader
+  reaches the gateway even if NetworkPolicy enforcement is ever turned on for
+  the cluster. The single-tenant `otterworks` namespace has no such policy, so
+  there the loader does depend on enforcement being off (the EKS VPC CNI does
+  not enforce NetworkPolicy unless network-policy support is enabled).
+- **The generator that runs is the one on public `main`,** not the one in the
+  runner image or on the tenant's branch: the init container clones
+  `REPO_URL@REPO_REF` anonymously (defaults
+  `https://github.com/Cognition-Partner-Workshops/otterworks.git`, `main`), so a
+  change to `generate_drive.py` or `taxonomy.py` is not exercised by a seed until
+  it lands there. Point a test run at a branch with
+  `REPO_REF=<branch> render-seed-job.sh ...` (`SEED_REPO_URL`/`SEED_REPO_REF` on
+  the runner) — a branch or tag, not a commit SHA, since the init container
+  clones with `--branch`.
+- **Idle-suspend can interrupt a long seed.** The reaper measures idleness from
+  *ingress* requests, and the loader talks to the api-gateway Service directly —
+  so on a tenant nobody is browsing, a full-scale run (longer than
+  `IDLE_AFTER_SECONDS`, default 1h) can be scaled to zero underneath itself.
+  Seed at a smaller scale, or keep a browser on the tenant while it runs. The
+  dashboard's ready-pod check is made when the request arrives, not when the
+  loader starts, so a tenant suspended in that window (seconds, longer if the
+  platform node pool is busy) gets a loader that exhausts its `backoffLimit`
+  against a Service with no endpoints, and fails.
+
+### Without cluster access: `tenant.sh seed`
+
+The provisioner credential most operators have can read the ops-dashboard
+passcode and nothing else — no EKS access, so the `kubectl` commands above are
+not available to it. The dashboard does the same work from inside the cluster:
+
+```bash
+./demo-platform/scripts/tenant.sh seed coggtm 0.1        # [scale] [departments]
+./demo-platform/scripts/tenant.sh status coggtm
+
+# a loader that is still uploading is left alone; restart it from scratch with
+SEED_FORCE=true ./demo-platform/scripts/tenant.sh seed coggtm 0.1
+```
+
+That posts to `POST /api/tenants/coggtm/seed`, which launches a runner Job
+(`OP=seed`) that upserts the `retail-drive-seed` Secret from the dashboard's own
+`DRIVE_EMAIL`/`DRIVE_PASSWORD` (falling back to a Secret an operator already
+created in the namespace) and applies this template into `otterworks-coggtm`.
+Dashboard credentials **win**: when they are configured the runner overwrites a
+hand-created Secret in the namespace, so a drive account registered earlier with
+a different password stops working. Configure one or the other, not both.
+The upsert is a **server-side** apply under its own field manager, so the
+credentials are not echoed back into the Secret's
+`kubectl.kubernetes.io/last-applied-configuration` annotation; if a client-side
+`kubectl apply` of your own left one there, the runner deletes it.
+
+`SEED_FORCE=true` sets `force` on that request, which skips the in-flight check
+and lets the runner replace a loader that is still going. It is also the only way
+out of a loader that never finishes *and* never fails — one whose pod the
+tenant's `ResourceQuota` will not admit, say — which would otherwise leave every
+later seed of that tenant refused as "already loading". A loader pod that will
+not terminate is the other half of that: the runner's delete waits 120s for it,
+and only under force does it then remove the pod outright
+(`--force --grace-period=0`) and retry.
+
+Two deployment prerequisites for that path, both one-off:
+
+- the **runner image** must be built from a revision that has `OP=seed` and this
+  template (`demo-platform/runner/README.md`), and the dashboard rolled onto it;
+- the `demo-ops-dashboard` Secret must carry `DRIVE_EMAIL` / `DRIVE_PASSWORD`
+  keys, otherwise every target namespace needs the `retail-drive-seed` Secret
+  created by hand first (which needs cluster access).

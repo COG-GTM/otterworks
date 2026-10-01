@@ -24,6 +24,7 @@ docker push <registry>/otterworks/demo-runner:<tag>
 | `teardown` | `scripts/teardown-tenant.sh` | `draining` → `free`; audit `checkin` |
 | `inject`   | `scripts/inject-bug.sh <id> <scenario>` | audit `inject` |
 | `reset`    | `scripts/inject-bug.sh <id> reset`      | audit `reset` |
+| `seed`     | `testdata/generated/retail-drive/render-seed-job.sh` → `kubectl apply` into `otterworks-<id>` | audit `seed` |
 | `reap`     | `demo-platform/reaper/reaper.sh`        | reaper GC + audit `reap` |
 
 ## Environment
@@ -33,8 +34,25 @@ Non-secret (control-plane metadata): `OP`, `TENANT_ID`, `TIER`, `TTL`,
 `TENANT_BRANCH`, `CONTROL_TABLE` (default `otterworks-demo-control`),
 `AWS_REGION`, `EKS_CLUSTER` (default `otterworks-dev`), `ACTOR`.
 
+`OP=seed` adds `SCALE` (default `1.0`, bounded to `0.01..2` exactly as the dashboard
+route bounds it, since a runner Job can also be created by hand),
+`DEPARTMENTS` (default `all`),
+`SEED_FORCE` (default `false`; the runner refuses to replace a loader Job that
+is still uploading, since that discards its progress),
+`SEED_WAIT`/`SEED_TIMEOUT` (block until the loader finishes; default `false`,
+3600s — `SEED_TIMEOUT` is only *used* under `SEED_WAIT`, but it is validated
+either way, before the seed touches anything: bash reads `0900` as an invalid
+octal, and finding that out at the wait would mean dying with the new loader
+already running)
+and `SEED_REPO_URL`/`SEED_REPO_REF` (the **public** repo the loader's
+init container clones the generator from — it clones anonymously, so this is not
+`REPO_HTTPS_URL`).
+
 Secrets (from Kubernetes Secret refs — **env only, never argv**): `DB_PASSWORD`,
-`JWT_SECRET`, `SECRET_KEY_BASE`. AWS creds come from the pod's IRSA role.
+`JWT_SECRET`, `SECRET_KEY_BASE`, and for `OP=seed` `DRIVE_EMAIL` /
+`DRIVE_PASSWORD`, which the runner materialises as the `retail-drive-seed`
+Secret in the tenant namespace, **overwriting** a hand-created one (without them
+that Secret must already exist there). AWS creds come from the pod's IRSA role.
 
 ## Example Job (deploy)
 
