@@ -89,8 +89,8 @@ function TrashContent() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Trash</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-slate-100">Trash</h1>
+          <p className="text-sm text-slate-400 mt-1">
             Items in trash will be permanently deleted after 30 days
           </p>
         </div>
@@ -98,7 +98,7 @@ function TrashContent() {
           <button
             onClick={() => setShowEmptyTrashConfirm(true)}
             disabled={emptyTrashMutation.isPending}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-red-300 bg-red-500/10 rounded-lg hover:bg-red-500/20 transition disabled:opacity-50"
           >
             <Trash2 size={16} />
             Empty Trash
@@ -108,9 +108,9 @@ function TrashContent() {
 
       {/* Warning banner */}
       {items.length > 0 && (
-        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-          <AlertTriangle size={18} className="text-amber-600 flex-shrink-0" />
-          <p className="text-sm text-amber-800">
+        <div className="flex items-center gap-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <AlertTriangle size={18} className="text-amber-400 flex-shrink-0" />
+          <p className="text-sm text-amber-200">
             Items in trash are automatically deleted after 30 days. Restore items to keep them.
           </p>
         </div>
@@ -126,7 +126,7 @@ function TrashContent() {
           description="Deleted files and documents will appear here"
         />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        <div className="bg-surface rounded-xl border border-line divide-y divide-line overflow-hidden">
           {items.map((item) => (
             <TrashRow
               key={item.id}
@@ -193,13 +193,13 @@ function TrashRow({
   const Icon = getTrashIcon(item);
 
   return (
-    <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition">
-      <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-        <Icon size={20} className="text-gray-400" />
+    <div className="flex items-center gap-4 px-5 py-4 hover:bg-surface-raised transition">
+      <div className="w-10 h-10 rounded-lg bg-surface-raised flex items-center justify-center flex-shrink-0">
+        <Icon size={20} className="text-slate-500" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-sm font-medium text-slate-100 truncate">{item.name}</p>
+        <p className="text-xs text-slate-400">
           {item.isFolder ? "Folder" : formatFileSize(item.size)}
           {item.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(item.trashedAt)}`}
         </p>
@@ -208,7 +208,7 @@ function TrashRow({
         <button
           onClick={onRestore}
           disabled={isRestoring}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-600 bg-otter-50 rounded-lg hover:bg-otter-100 transition disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-otter-200 bg-otter-500/15 rounded-lg hover:bg-otter-500/25 transition disabled:opacity-50"
           title="Restore"
         >
           <RotateCcw size={14} />
@@ -216,7 +216,7 @@ function TrashRow({
         </button>
         <button
           onClick={onDelete}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-300 bg-red-500/10 rounded-lg hover:bg-red-500/20 transition"
           title="Delete permanently"
         >
           <X size={14} />

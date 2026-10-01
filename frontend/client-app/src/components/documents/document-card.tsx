@@ -39,14 +39,14 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
     return (
       <Link
         to={`/documents/${document.id}`}
-        className="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 rounded-lg transition group"
+        className="flex items-center gap-4 px-4 py-3 hover:bg-surface-raised rounded-lg transition group"
       >
-        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-          <FileText size={20} className="text-blue-600" />
+        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+          <FileText size={20} className="text-blue-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{document.title}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-sm font-medium text-slate-100 truncate">{document.title}</p>
+          <p className="text-xs text-slate-400">
             {document.ownerName} &middot; {formatRelativeTime(document.updatedAt)}
             {document.wordCount > 0 && ` \u00B7 ${document.wordCount} words`}
           </p>
@@ -56,7 +56,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
             {document.collaborators.slice(0, 3).map((c) => (
               <div
                 key={c.userId}
-                className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white"
+                className="w-6 h-6 rounded-full border-2 border-surface flex items-center justify-center text-[10px] font-bold text-white"
                 style={{ backgroundColor: c.color || generateColor(c.userId) }}
                 title={c.name}
               >
@@ -67,12 +67,12 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
         )}
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className="p-1 rounded hover:bg-surface-hover transition flex-shrink-0"
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
             size={16}
-            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+            className={starred ? "text-yellow-400 fill-yellow-400" : "text-slate-500 opacity-0 group-hover:opacity-100"}
           />
         </button>
         <div className="relative">
@@ -82,7 +82,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            className="p-1 rounded hover:bg-surface-hover text-slate-500 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -102,11 +102,11 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
   return (
     <Link
       to={`/documents/${document.id}`}
-      className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition overflow-hidden"
+      className="group relative flex flex-col rounded-xl border border-line bg-surface hover:border-line-strong hover:shadow-md hover:shadow-black/40 transition overflow-hidden"
     >
       {/* Preview area */}
-      <div className="h-32 bg-gradient-to-br from-blue-50 to-otter-50 p-4 flex items-start">
-        <p className="text-xs text-gray-500 line-clamp-4 leading-relaxed">
+      <div className="h-32 bg-gradient-to-br from-blue-500/10 to-otter-500/15 p-4 flex items-start">
+        <p className="text-xs text-slate-400 line-clamp-4 leading-relaxed">
           {document.content
             ? document.content.replace(/<[^>]{0,2048}>/g, "").slice(0, 200)
             : "Empty document"}
@@ -116,20 +116,20 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
       <div className="p-4">
         <div className="flex items-start justify-between mb-2">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">{document.title}</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-sm font-medium text-slate-100 truncate">{document.title}</p>
+            <p className="text-xs text-slate-400 mt-0.5">
               {formatRelativeTime(document.updatedAt)}
             </p>
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className="p-1 rounded hover:bg-surface-raised transition"
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
                 size={16}
-                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+                className={starred ? "text-yellow-400 fill-yellow-400" : "text-slate-500 opacity-0 group-hover:opacity-100"}
               />
             </button>
             <div className="relative">
@@ -139,7 +139,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                className="p-1 rounded hover:bg-surface-raised text-slate-500 opacity-0 group-hover:opacity-100 transition"
               >
                 <MoreVertical size={16} />
               </button>
@@ -160,7 +160,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
             {document.collaborators.slice(0, 4).map((c) => (
               <div
                 key={c.userId}
-                className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-bold text-white"
+                className="w-6 h-6 rounded-full border-2 border-surface flex items-center justify-center text-[10px] font-bold text-white"
                 style={{ backgroundColor: c.color || generateColor(c.userId) }}
                 title={c.name}
               >
@@ -188,11 +188,11 @@ function DocMenu({
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+      <div className="absolute right-0 top-full mt-1 w-40 bg-surface rounded-lg shadow-lg shadow-black/40 border border-line py-1 z-20">
         <Link
           to={`/documents/${docId}`}
           onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-surface-raised hover:text-slate-100"
         >
           <ExternalLink size={14} />
           Open
@@ -204,7 +204,7 @@ function DocMenu({
             onShare?.(docId);
             onClose();
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-surface-raised hover:text-slate-100"
         >
           <Share2 size={14} />
           Share
@@ -216,7 +216,7 @@ function DocMenu({
             onDelete?.(docId);
             onClose();
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10"
         >
           <Trash2 size={14} />
           Delete

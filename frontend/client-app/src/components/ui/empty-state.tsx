@@ -26,17 +26,17 @@ export function EmptyState({
         className
       )}
     >
-      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-        <Icon size={28} className="text-gray-400" />
+      <div className="w-16 h-16 rounded-full bg-surface-raised flex items-center justify-center mb-4">
+        <Icon size={28} className="text-slate-500" />
       </div>
-      <h3 className="text-lg font-medium text-gray-900 mb-1">{title}</h3>
+      <h3 className="text-lg font-medium text-slate-100 mb-1">{title}</h3>
       {description && (
-        <p className="text-sm text-gray-500 max-w-sm mb-4">{description}</p>
+        <p className="text-sm text-slate-400 max-w-sm mb-4">{description}</p>
       )}
       {action && (
         <button
           onClick={action.onClick}
-          className="px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 transition text-sm font-medium"
+          className="px-4 py-2 bg-otter-500 text-white rounded-lg hover:bg-otter-400 transition text-sm font-medium"
         >
           {action.label}
         </button>

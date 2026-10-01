@@ -149,15 +149,15 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
   if (!editor) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-otter-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-otter-400 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="bg-surface text-slate-200 rounded-xl border border-line overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-200 bg-gray-50 flex-wrap">
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-line bg-surface-raised flex-wrap">
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           active={editor.isActive("bold")}
@@ -187,7 +187,7 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
           <Code size={16} />
         </ToolbarButton>
 
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-line-strong mx-1" />
 
         <ToolbarButton
           onClick={() =>
@@ -208,7 +208,7 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
           <Heading2 size={16} />
         </ToolbarButton>
 
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-line-strong mx-1" />
 
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -266,8 +266,8 @@ function SaveStatusIndicator({
   if (connectionStatus === "disconnected") {
     return (
       <div className="flex items-center gap-1.5">
-        <WifiOff size={14} className="text-amber-500" />
-        <span className="text-xs text-amber-600 font-medium">Offline</span>
+        <WifiOff size={14} className="text-amber-400" />
+        <span className="text-xs text-amber-300 font-medium">Offline</span>
       </div>
     );
   }
@@ -275,8 +275,8 @@ function SaveStatusIndicator({
   if (connectionStatus === "connecting") {
     return (
       <div className="flex items-center gap-1.5">
-        <RefreshCw size={14} className="text-blue-500 animate-spin" />
-        <span className="text-xs text-blue-600 font-medium">Reconnecting…</span>
+        <RefreshCw size={14} className="text-blue-400 animate-spin" />
+        <span className="text-xs text-blue-300 font-medium">Reconnecting…</span>
       </div>
     );
   }
@@ -284,16 +284,16 @@ function SaveStatusIndicator({
   if (hasLocalChanges || !isSynced) {
     return (
       <div className="flex items-center gap-1.5">
-        <Loader2 size={14} className="text-gray-400 animate-spin" />
-        <span className="text-xs text-gray-500">Saving…</span>
+        <Loader2 size={14} className="text-slate-500 animate-spin" />
+        <span className="text-xs text-slate-400">Saving…</span>
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-1.5">
-      <Check size={14} className="text-green-500" />
-      <span className="text-xs text-gray-500">All changes saved</span>
+      <Check size={14} className="text-green-400" />
+      <span className="text-xs text-slate-400">All changes saved</span>
     </div>
   );
 }
@@ -314,8 +314,8 @@ function ToolbarButton({
       onClick={onClick}
       title={title}
       className={cn(
-        "p-1.5 rounded hover:bg-gray-200 transition",
-        active ? "bg-gray-200 text-otter-700" : "text-gray-600"
+        "p-1.5 rounded hover:bg-surface-hover transition",
+        active ? "bg-surface-hover text-otter-300" : "text-slate-300"
       )}
     >
       {children}

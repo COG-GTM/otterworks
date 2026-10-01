@@ -22,3 +22,32 @@ body {
   background-color: var(--background);
   color: var(--text-primary);
 }
+
+.theme-dark {
+  color-scheme: dark;
+  --primary: #6d84a4;
+  --primary-dark: #3f5a82;
+  --secondary: #94a3b8;
+  --success: #22c55e;
+  --warning: #eab308;
+  --danger: #ef4444;
+  --background: #0b1220;
+  --surface: #111a2b;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+}
+
+.theme-dark ::selection {
+  background-color: rgba(109, 132, 164, 0.45);
+}
+
+.theme-dark * {
+  scrollbar-color: #334563 transparent;
+}
+
+.theme-dark input:-webkit-autofill,
+.theme-dark input:-webkit-autofill:hover,
+.theme-dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e2e8f0;
+  -webkit-box-shadow: 0 0 0 1000px #18233a inset;
+}
