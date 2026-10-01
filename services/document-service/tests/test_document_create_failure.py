@@ -1,6 +1,7 @@
 """Tests for the DOC_SVC_CREATE_ALWAYS_FAIL demo failure point."""
 
 import uuid
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,7 +9,7 @@ from botocore.exceptions import ClientError
 from httpx import AsyncClient
 
 from app.api import documents as documents_api
-from app.config import settings
+from app.config import Settings, settings
 from app.services import alerts
 from app.services.event_publisher import (
     EventPublishError,
@@ -157,3 +158,36 @@ async def test_deliver_skips_without_webhook_url(monkeypatch):
     monkeypatch.setattr(alerts.httpx.AsyncClient, "post", fail_post)
 
     await alerts._deliver({"alert": "DocumentCreateFailed"})
+
+
+def test_create_switch_defaults_off_and_is_not_set_by_the_image(monkeypatch):
+    monkeypatch.delenv("DOC_SVC_CREATE_ALWAYS_FAIL", raising=False)
+    assert Settings(_env_file=None).create_always_fail is False
+
+    dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    env_lines = [line for line in dockerfile.splitlines() if line.lstrip().startswith("ENV")]
+    assert not any("DOC_SVC_CREATE_ALWAYS_FAIL" in line for line in env_lines)
+
+
+@pytest.mark.asyncio
+async def test_create_publishes_document_created_to_configured_topic_when_switch_off(
+    client: AsyncClient, owner_id: uuid.UUID, monkeypatch, sent_alerts
+):
+    topic = "arn:aws:sns:us-east-1:000000000000:otterworks-events"
+    sns = MagicMock()
+    monkeypatch.setattr(event_publisher, "_client", sns)
+    monkeypatch.setattr(settings, "create_always_fail", False)
+    monkeypatch.setattr(settings, "sns_enabled", True)
+    monkeypatch.setattr(settings, "sns_topic_arn", topic)
+
+    resp = await client.post("/api/v1/documents", json={"title": "Untitled document"})
+
+    assert resp.status_code == 201
+    sns.publish.assert_called_once()
+    published = sns.publish.call_args.kwargs
+    assert published["TopicArn"] == topic
+    assert published["MessageAttributes"]["event_type"]["StringValue"] == "document_created"
+    assert sent_alerts == []
+
+    listing = await client.get("/api/v1/documents/", params={"owner_id": str(owner_id)})
+    assert listing.json()["total"] == 1
