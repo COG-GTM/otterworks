@@ -101,7 +101,8 @@ groups:
       # -----------------------------------------------------------------------
       # File Service: Uploads failing with S3 errors
       # Fires when the file-service 5xx rate exceeds 10% over a 1-minute window.
-      # Triggered by chaos flag: chaos:file-service:upload_s3_error
+      # Typical cause: uploads rejected by S3 (missing/misconfigured bucket,
+      # credentials or permissions) — see docs/runbooks/file-upload-failure.md.
       # -----------------------------------------------------------------------
       - uid: file-upload-errors
         title: FileUploadHighErrorRate
