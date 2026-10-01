@@ -95,8 +95,8 @@ function StarredContent() {
       <Breadcrumb items={[{ label: "Starred" }]} />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Starred</h1>
-        <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+        <h1 className="text-2xl font-bold text-slate-100">Starred</h1>
+        <div className="flex items-center border border-line rounded-lg overflow-hidden">
           <ViewBtn
             mode="grid"
             current={viewMode}
@@ -124,7 +124,7 @@ function StarredContent() {
         <div className="space-y-8">
           {files.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Files
               </h2>
               <div
@@ -148,7 +148,7 @@ function StarredContent() {
 
           {documents.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Documents
               </h2>
               <div
@@ -192,8 +192,8 @@ function ViewBtn({
       className={cn(
         "p-2 transition",
         mode === current
-          ? "bg-gray-100 text-gray-900"
-          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+          ? "bg-surface-raised text-slate-100"
+          : "text-slate-500 hover:text-slate-300 hover:bg-surface-raised"
       )}
     >
       <Icon size={16} />
