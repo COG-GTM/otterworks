@@ -170,7 +170,7 @@ services:
       # Failed "New document" clicks trigger this Devin Automation webhook (unset = skipped).
       DEVIN_AUTOMATION_WEBHOOK_URL: ${DEVIN_AUTOMATION_WEBHOOK_URL:-}
       DEVIN_AUTOMATION_WEBHOOK_SECRET: ${DEVIN_AUTOMATION_WEBHOOK_SECRET:-}
-      # Off locally; the document-service image bakes it on (see its Dockerfile).
+      # Demo failure point; off unless injected (scripts/inject-bug.sh document-create-fail).
       DOC_SVC_CREATE_ALWAYS_FAIL: ${DOC_SVC_CREATE_ALWAYS_FAIL:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:

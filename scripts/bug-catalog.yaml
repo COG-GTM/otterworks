@@ -120,8 +120,8 @@ scenarios:
       Each failure POSTs a DocumentCreateFailed payload (reporter_email =
       clicking user) to DEVIN_AUTOMATION_WEBHOOK_URL with
       X-Webhook-Secret = DEVIN_AUTOMATION_WEBHOOK_SECRET, which starts a Devin
-      session that posts its result in #eng-otterworks. Baked ON in the
-      document-service image.
+      session that posts its result in #eng-otterworks. Off by default; inject
+      per tenant with scripts/inject-bug.sh document-create-fail.
 
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
