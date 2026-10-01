@@ -149,6 +149,37 @@ mod tests {
     }
 
     #[test]
+    fn image_does_not_force_share_event_failures() {
+        let mut configured_values = include_str!("../Dockerfile")
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| {
+                let mut parts = line.split_whitespace();
+                if !parts
+                    .next()
+                    .is_some_and(|instruction| instruction.eq_ignore_ascii_case("ENV"))
+                {
+                    return None;
+                }
+
+                let first = parts.next()?;
+                match first.split_once('=') {
+                    Some(("FILE_SHARE_EVENT_ALWAYS_FAIL", value)) => Some(value),
+                    None if first == "FILE_SHARE_EVENT_ALWAYS_FAIL" => parts.next(),
+                    _ => parts.find_map(|assignment| {
+                        assignment
+                            .split_once('=')
+                            .filter(|(key, _)| *key == "FILE_SHARE_EVENT_ALWAYS_FAIL")
+                            .map(|(_, value)| value)
+                    }),
+                }
+            });
+
+        assert!(!configured_values.any(|value| parse_bool(value.trim_matches(['"', '\'']), false)));
+    }
+
+    #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
             return;
