@@ -74,42 +74,42 @@ function SettingsContent() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-slate-100">Settings</h1>
 
       {/* Profile section */}
-      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-          <User size={18} className="text-gray-500" />
-          <h2 className="font-medium text-gray-900">Profile</h2>
+      <section className="bg-surface rounded-xl border border-line overflow-hidden">
+        <div className="px-6 py-4 border-b border-line flex items-center gap-2">
+          <User size={18} className="text-slate-400" />
+          <h2 className="font-medium text-slate-100">Profile</h2>
         </div>
         <form onSubmit={handleSubmit((data) => profileMutation.mutate(data))} className="p-6 space-y-5">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-1.5">
               Full name
             </label>
             <input
               id="name"
               type="text"
               {...register("displayName")}
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent transition"
+              className="w-full px-3.5 py-2.5 bg-surface-raised border border-line rounded-lg text-sm text-slate-100 placeholder:text-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400 focus:border-transparent transition"
             />
             {errors.displayName && (
-              <p className="text-xs text-red-500 mt-1">{errors.displayName.message}</p>
+              <p className="text-xs text-red-400 mt-1">{errors.displayName.message}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
               Email
             </label>
             <input
               id="email"
               type="email"
               {...register("email")}
-              className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent transition"
+              className="w-full px-3.5 py-2.5 bg-surface-raised border border-line rounded-lg text-sm text-slate-100 placeholder:text-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400 focus:border-transparent transition"
             />
             {errors.email && (
-              <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
+              <p className="text-xs text-red-400 mt-1">{errors.email.message}</p>
             )}
           </div>
 
@@ -117,7 +117,7 @@ function SettingsContent() {
             <button
               type="submit"
               disabled={!isDirty || profileMutation.isPending}
-              className="flex items-center gap-2 px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 bg-otter-500 text-white rounded-lg hover:bg-otter-400 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm font-medium"
             >
               <Save size={16} />
               {profileMutation.isPending ? "Saving..." : "Save changes"}
@@ -125,16 +125,16 @@ function SettingsContent() {
           </div>
 
           {profileMutation.isSuccess && (
-            <p className="text-sm text-green-600">Profile updated successfully.</p>
+            <p className="text-sm text-green-400">Profile updated successfully.</p>
           )}
         </form>
       </section>
 
       {/* Notification preferences */}
-      <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-          <Bell size={18} className="text-gray-500" />
-          <h2 className="font-medium text-gray-900">Notification preferences</h2>
+      <section className="bg-surface rounded-xl border border-line overflow-hidden">
+        <div className="px-6 py-4 border-b border-line flex items-center gap-2">
+          <Bell size={18} className="text-slate-400" />
+          <h2 className="font-medium text-slate-100">Notification preferences</h2>
         </div>
         <div className="p-6 space-y-4">
           <ToggleRow
@@ -181,18 +181,18 @@ function ToggleRow({
   return (
     <div className="flex items-center justify-between py-2">
       <div>
-        <p className="text-sm font-medium text-gray-900">{label}</p>
-        <p className="text-xs text-gray-500">{description}</p>
+        <p className="text-sm font-medium text-slate-100">{label}</p>
+        <p className="text-xs text-slate-400">{description}</p>
       </div>
       <button
         type="button"
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-          checked ? "bg-otter-600" : "bg-gray-300"
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-otter-400 ${
+          checked ? "bg-otter-500" : "bg-line-strong"
         }`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+          className={`inline-block h-4 w-4 transform rounded-full bg-slate-100 transition ${
             checked ? "translate-x-6" : "translate-x-1"
           }`}
         />
