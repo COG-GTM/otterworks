@@ -155,4 +155,38 @@ mod tests {
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
     }
+
+    #[test]
+    fn share_event_always_fail_is_off_by_default() {
+        if std::env::var("FILE_SHARE_EVENT_ALWAYS_FAIL").is_ok() {
+            return;
+        }
+        assert!(!super::SnsConfig::from_env().share_event_always_fail);
+    }
+
+    /// The shipped image must not enable the share-event failure switch: a
+    /// baked-in `ENV FILE_SHARE_EVENT_ALWAYS_FAIL=true` publishes every
+    /// `file_shared` event to a nonexistent SNS topic, so sharing returns 5xx
+    /// for every deployment that does not explicitly override it.
+    #[test]
+    fn image_does_not_enable_share_event_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        for line in dockerfile.lines() {
+            let line = line.trim();
+            // Dockerfile instructions are case-insensitive, and one ENV may
+            // declare several variables.
+            if !line
+                .get(..3)
+                .is_some_and(|kw| kw.eq_ignore_ascii_case("ENV"))
+            {
+                continue;
+            }
+            for assignment in line[3..].split_whitespace() {
+                assert!(
+                    !assignment.starts_with("FILE_SHARE_EVENT_ALWAYS_FAIL"),
+                    "Dockerfile must not set FILE_SHARE_EVENT_ALWAYS_FAIL: {line}"
+                );
+            }
+        }
+    }
 }
