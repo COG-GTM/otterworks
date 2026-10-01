@@ -35,6 +35,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
+    # The shell references hashed asset names, so a cached copy pins the browser
+    # to a build that no longer exists in the image after a redeploy.
+    location = /index.html {
+        add_header Cache-Control "no-cache";
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }
