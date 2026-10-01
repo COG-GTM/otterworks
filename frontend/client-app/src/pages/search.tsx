@@ -84,20 +84,20 @@ function SearchContent() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Search</h1>
+      <h1 className="text-2xl font-bold text-slate-100">Search</h1>
 
       {/* Search form */}
       <form onSubmit={handleSubmit} className="relative">
         <Search
           size={20}
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"
         />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search files, documents, and folders..."
-          className="w-full pl-12 pr-20 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent"
+          className="w-full pl-12 pr-20 py-3 bg-surface-raised border border-line rounded-xl text-sm text-slate-100 placeholder:text-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400 focus:border-transparent"
           autoFocus
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -106,7 +106,7 @@ function SearchContent() {
             onClick={() => setShowFilters(!showFilters)}
             className={cn(
               "p-2 rounded-lg transition",
-              showFilters ? "bg-otter-100 text-otter-700" : "text-gray-400 hover:text-gray-600"
+              showFilters ? "bg-otter-500/15 text-otter-200" : "text-slate-500 hover:text-slate-300"
             )}
           >
             <Filter size={16} />
@@ -118,7 +118,7 @@ function SearchContent() {
                 setQuery("");
                 setSubmittedQuery("");
               }}
-              className="p-2 text-gray-400 hover:text-gray-600"
+              className="p-2 text-slate-500 hover:text-slate-300"
             >
               <X size={16} />
             </button>
@@ -136,8 +136,8 @@ function SearchContent() {
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-medium transition",
                 typeFilter === type
-                  ? "bg-otter-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-otter-500 text-white"
+                  : "bg-surface-raised text-slate-300 hover:bg-surface-hover"
               )}
             >
               {type === "all" ? "All types" : type.charAt(0).toUpperCase() + type.slice(1) + "s"}
@@ -157,7 +157,7 @@ function SearchContent() {
         />
       ) : submittedQuery ? (
         <div className="space-y-1">
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-slate-400 mb-4">
             {data?.total || results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{submittedQuery}&rdquo;
           </p>
           {results.map((result) => (
@@ -192,15 +192,15 @@ function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
 
   const iconColor =
     result.type === "document"
-      ? "text-blue-600 bg-blue-50"
+      ? "text-blue-400 bg-blue-500/10"
       : result.type === "folder"
-      ? "text-amber-600 bg-amber-50"
-      : "text-otter-600 bg-otter-50";
+      ? "text-amber-400 bg-amber-500/10"
+      : "text-otter-200 bg-otter-500/15";
 
   return (
     <Link
       to={href}
-      className="flex items-start gap-4 px-4 py-3 rounded-lg hover:bg-gray-50 transition"
+      className="flex items-start gap-4 px-4 py-3 rounded-lg hover:bg-surface-raised transition"
     >
       <div
         className={cn(
@@ -211,23 +211,23 @@ function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
         <Icon size={20} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{result.name}</p>
+        <p className="text-sm font-medium text-slate-100">{result.name}</p>
         {result.snippet && (
           <p
-            className="text-xs text-gray-500 mt-0.5 line-clamp-2 [&>em]:font-semibold [&>em]:not-italic [&>em]:text-gray-700"
+            className="text-xs text-slate-400 mt-0.5 line-clamp-2 [&>em]:font-semibold [&>em]:not-italic [&>em]:text-slate-200"
             dangerouslySetInnerHTML={{
               __html: sanitizeSnippet(result.snippet),
             }}
           />
         )}
         <div className="flex items-center gap-2 mt-1">
-          <span className="text-xs text-gray-400">{result.path}</span>
-          <span className="text-xs text-gray-300">&middot;</span>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-slate-500">{result.path}</span>
+          <span className="text-xs text-slate-600">&middot;</span>
+          <span className="text-xs text-slate-500">
             {formatRelativeTime(result.updatedAt)}
           </span>
-          <span className="text-xs text-gray-300">&middot;</span>
-          <span className="text-xs text-gray-400">{result.ownerName}</span>
+          <span className="text-xs text-slate-600">&middot;</span>
+          <span className="text-xs text-slate-500">{result.ownerName}</span>
         </div>
       </div>
     </Link>
