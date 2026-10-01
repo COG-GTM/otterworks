@@ -117,6 +117,52 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn image_enables_upload_always_fail(dockerfile: &str) -> bool {
+        let mut logical_dockerfile = String::with_capacity(dockerfile.len());
+        let mut continued = false;
+        for line in dockerfile.lines() {
+            let line = line.trim_end();
+            if continued {
+                logical_dockerfile.push_str(line.trim_start());
+            } else {
+                logical_dockerfile.push_str(line);
+            }
+
+            continued = line.ends_with('\\');
+            if continued {
+                logical_dockerfile.pop();
+            } else {
+                logical_dockerfile.push('\n');
+            }
+        }
+
+        logical_dockerfile.lines().any(|line| {
+            let mut tokens = line.split_ascii_whitespace();
+            if !tokens
+                .next()
+                .is_some_and(|instruction| instruction.eq_ignore_ascii_case("ENV"))
+            {
+                return false;
+            }
+
+            while let Some(token) = tokens.next() {
+                let value = if let Some((name, value)) = token.split_once('=') {
+                    (name.eq_ignore_ascii_case("FILE_UPLOAD_ALWAYS_FAIL")).then_some(value)
+                } else if token.eq_ignore_ascii_case("FILE_UPLOAD_ALWAYS_FAIL") {
+                    tokens.next()
+                } else {
+                    None
+                };
+
+                if value.is_some_and(|value| parse_bool(value.trim_matches(['"', '\'']), false)) {
+                    return true;
+                }
+            }
+
+            false
+        })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -154,5 +200,30 @@ mod tests {
             return;
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
+    }
+
+    #[test]
+    fn image_does_not_enable_upload_always_fail() {
+        let dockerfile = include_str!("../Dockerfile");
+        assert!(!image_enables_upload_always_fail(dockerfile));
+    }
+
+    #[test]
+    fn image_guard_matches_runtime_boolean_parsing() {
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL 1",
+            "ENV OTHER=false FILE_UPLOAD_ALWAYS_FAIL=\"TRUE\"",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=\\\n    1",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL \\\n    true",
+        ] {
+            assert!(image_enables_upload_always_fail(dockerfile));
+        }
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=false",
+            "ENV FILE_UPLOAD_ALWAYS_FAIL 0",
+        ] {
+            assert!(!image_enables_upload_always_fail(dockerfile));
+        }
     }
 }
