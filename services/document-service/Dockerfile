@@ -19,6 +19,13 @@ RUN useradd -r -u 1001 appuser
 # exist in the image: a missing directory turns every export read into a 404,
 # including the runtime probe's control read.
 ENV EXPORT_ARCHIVE_DIR=/var/lib/otterworks/exports
+# Demo failure point: "New document" publishes document_created to a
+# nonexistent SNS topic (the real topic with a "-v2" suffix), so every click
+# fails with a real AWS SNS error, shows a red banner, and calls the Devin
+# Automation webhook (DEVIN_AUTOMATION_WEBHOOK_URL) that starts an
+# investigation session. docker-compose.yml passes false, so local stacks
+# behave like the golden app.
+ENV DOC_SVC_CREATE_ALWAYS_FAIL=true
 RUN mkdir -p "$EXPORT_ARCHIVE_DIR" \
     && printf 'export archive reachable\n' > "$EXPORT_ARCHIVE_DIR/dast-control.txt" \
     && chown -R appuser "$EXPORT_ARCHIVE_DIR"

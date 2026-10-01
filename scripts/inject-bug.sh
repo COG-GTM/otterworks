@@ -120,6 +120,16 @@ if [ "${SCENARIO}" = "notification-queue-fail" ]; then
   exit 0
 fi
 
+if [ "${SCENARIO}" = "document-create-fail" ]; then
+  log "Injecting config bug 'document-create-fail' (New document -> document_created publish to nonexistent SNS topic)..."
+  helm upgrade document-service "${REPO_ROOT}/infrastructure/helm/document-service" -n "${NS}" --reuse-values \
+    --set-string config.DOC_SVC_CREATE_ALWAYS_FAIL=true
+  kubectl -n "${NS}" rollout restart deploy/document-service
+  log "Applied (rollout restarting). The image already bakes this on; turn it off with:"
+  log "  helm upgrade document-service infrastructure/helm/document-service -n ${NS} --reuse-values --set-string config.DOC_SVC_CREATE_ALWAYS_FAIL=false && kubectl -n ${NS} rollout restart deploy/document-service"
+  exit 0
+fi
+
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }

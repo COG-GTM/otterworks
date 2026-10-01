@@ -104,6 +104,25 @@ scenarios:
       Already ON for the coggtm tenant: the demo branch bakes the variable
       into the file-service image's Dockerfile.
 
+  document-create-fail:
+    mechanism: config
+    service: document-service
+    set: "config.DOC_SVC_CREATE_ALWAYS_FAIL=true"
+    description: >
+      Click-triggered Devin Automation failure: with DOC_SVC_CREATE_ALWAYS_FAIL
+      set, clicking "New document" makes document-service publish the
+      document_created event to a nonexistent SNS topic (the real topic name
+      with a "-v2" suffix) before persisting, so the request fails with a real
+      AWS SNS error (NotFound on LocalStack; AuthorizationError on AWS, where
+      the IRSA policy only allows the real topic), no document row is written,
+      and the UI shows a red failure banner. The response is 424, not 5xx, so
+      repeated clicks do not open the gateway's documents circuit breaker.
+      Each failure POSTs a DocumentCreateFailed payload (reporter_email =
+      clicking user) to DEVIN_AUTOMATION_WEBHOOK_URL with
+      X-Webhook-Secret = DEVIN_AUTOMATION_WEBHOOK_SECRET, which starts a Devin
+      session that posts its result in #eng-otterworks. Baked ON in the
+      document-service image.
+
   # Example of a code-level variant. Build a variant image from a bug branch/patch
   # off the golden app, push it to ECR, then inject by tag. Immediate rollback =
   # re-deploy the tenant with the golden tag.
