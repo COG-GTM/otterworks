@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { isAxiosError } from "axios";
 import {
   Plus,
   LayoutGrid,
@@ -9,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
+import { ChaosErrorBanner } from "@/components/chaos/chaos-error-banner";
 import { DocumentCard } from "@/components/documents/document-card";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -33,6 +35,7 @@ function DocumentsContent() {
   const queryClient = useQueryClient();
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["documents", "list"],
@@ -41,6 +44,25 @@ function DocumentsContent() {
 
   const createMutation = useMutation({
     mutationFn: (title: string) => documentsApi.create(title),
+    onMutate: () => setCreateError(null),
+    onError: (err) => {
+      let detail = "";
+      let isAwsError = false;
+      if (isAxiosError(err)) {
+        const body = err.response?.data as
+          | { error?: string; message?: string }
+          | undefined;
+        detail = body?.message ?? "";
+        isAwsError = body?.error === "event_error";
+      }
+      setCreateError(
+        detail
+          ? isAwsError
+            ? `AWS ${detail}`
+            : detail
+          : "The document could not be created.",
+      );
+    },
     onSuccess: (doc) => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
@@ -66,6 +88,14 @@ function DocumentsContent() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+      {createError && (
+        <ChaosErrorBanner
+          title="Document creation failed"
+          message={createError}
+          onDismiss={() => setCreateError(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
