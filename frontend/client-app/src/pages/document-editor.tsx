@@ -105,8 +105,8 @@ function DocumentEditorContent() {
   if (!document) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">Document not found</p>
-        <Link to="/documents" className="text-otter-600 hover:underline mt-2 text-sm">
+        <p className="text-slate-400">Document not found</p>
+        <Link to="/documents" className="text-otter-300 hover:text-otter-200 hover:underline mt-2 text-sm">
           Back to documents
         </Link>
       </div>
@@ -129,7 +129,7 @@ function DocumentEditorContent() {
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
             onClick={() => navigate(-1)}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 flex-shrink-0"
+            className="p-2 rounded-lg hover:bg-surface-raised text-slate-400 hover:text-slate-200 flex-shrink-0"
           >
             <ArrowLeft size={20} />
           </button>
@@ -149,14 +149,14 @@ function DocumentEditorContent() {
                   (e.target as HTMLInputElement).blur();
                 }
               }}
-              className="text-xl font-bold text-gray-900 bg-transparent border-b-2 border-otter-500 outline-none flex-1 min-w-0"
+              className="text-xl font-bold text-slate-100 bg-transparent border-b-2 border-otter-400 outline-none flex-1 min-w-0"
               autoFocus
             />
           ) : (
             <h1 className="text-xl font-bold truncate">
               <button
                 type="button"
-                className="text-gray-900 cursor-pointer hover:text-otter-700 truncate bg-transparent border-0 p-0 text-left"
+                className="text-slate-100 cursor-pointer hover:text-otter-300 truncate bg-transparent border-0 p-0 text-left"
                 onClick={() => {
                   setTitle(document.title);
                   setIsTitleEditing(true);
@@ -184,21 +184,21 @@ function DocumentEditorContent() {
                 }
               }}
               disabled={updateMutation.isPending || !hasContent}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:text-slate-100 disabled:opacity-50 transition"
             >
               <Save size={16} />
               Save
             </button>
             <button
               onClick={() => setShareOpen(!shareOpen)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-300 bg-surface-raised border border-line rounded-lg hover:bg-surface-hover hover:text-slate-100 disabled:opacity-50 transition"
             >
               <Share2 size={16} />
               Share
             </button>
             <button
               onClick={() => deleteMutation.mutate()}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-400 bg-surface-raised border border-red-500/30 rounded-lg hover:bg-red-500/10 transition"
             >
               <Trash2 size={16} />
             </button>
@@ -207,7 +207,7 @@ function DocumentEditorContent() {
       </div>
 
       {/* Meta info */}
-      <div className="flex items-center gap-4 text-xs text-gray-400">
+      <div className="flex items-center gap-4 text-xs text-slate-500">
         <span className="flex items-center gap-1">
           <Clock size={12} />
           Last edited {formatRelativeTime(document.updatedAt)}
@@ -223,10 +223,10 @@ function DocumentEditorContent() {
 
       {/* Share dialog */}
       {shareOpen && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 shadow-sm">
+        <div className="bg-surface rounded-xl border border-line p-5 space-y-4 shadow-sm shadow-black/40">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Share document</h3>
-            <button onClick={() => setShareOpen(false)} className="p-1 rounded hover:bg-gray-100 text-gray-400">
+            <h3 className="text-sm font-semibold text-slate-100">Share document</h3>
+            <button onClick={() => setShareOpen(false)} className="p-1 rounded hover:bg-surface-raised text-slate-500 hover:text-slate-300">
               <X size={16} />
             </button>
           </div>
@@ -236,7 +236,7 @@ function DocumentEditorContent() {
               value={shareEmail}
               onChange={(e) => setShareEmail(e.target.value)}
               placeholder="Enter email address"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500"
+              className="flex-1 px-3 py-2 bg-surface-raised border border-line rounded-lg text-sm text-slate-100 placeholder:text-slate-500 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && shareEmail.trim() && shareStatus !== "sending") {
                   setShareStatus("sending");
@@ -256,25 +256,25 @@ function DocumentEditorContent() {
                 }
               }}
               disabled={shareStatus === "sending"}
-              className="px-4 py-2 bg-otter-600 text-white rounded-lg text-sm hover:bg-otter-700 transition disabled:opacity-50"
+              className="px-4 py-2 bg-otter-500 text-white rounded-lg text-sm hover:bg-otter-400 transition disabled:opacity-50"
             >
               {shareStatus === "sending" ? "Sending..." : "Invite"}
             </button>
           </div>
           {shareStatus === "sent" && (
-            <p className="text-sm text-green-600">Invite sent successfully</p>
+            <p className="text-sm text-green-400">Invite sent successfully</p>
           )}
           {shareStatus === "error" && (
-            <p className="text-sm text-red-600">Failed to send invite. Please try again.</p>
+            <p className="text-sm text-red-400">Failed to send invite. Please try again.</p>
           )}
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-2 pt-2 border-t border-line">
             <button
               onClick={() => {
                 navigator.clipboard.writeText(window.location.href);
                 setShareCopied(true);
                 setTimeout(() => setShareCopied(false), 2000);
               }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm text-slate-300 bg-surface-raised rounded-lg hover:bg-surface-hover hover:text-slate-100 transition"
             >
               {shareCopied ? <Check size={14} /> : <Copy size={14} />}
               {shareCopied ? "Copied!" : "Copy link"}

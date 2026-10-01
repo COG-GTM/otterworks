@@ -23,7 +23,7 @@ export function UserPresenceAvatars({
           <div
             key={collaborator.userId}
             className={cn(
-              "relative w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs font-bold text-white",
+              "relative w-8 h-8 rounded-full border-2 border-surface flex items-center justify-center text-xs font-bold text-white",
               "transition-transform hover:scale-110 hover:z-10"
             )}
             style={{
@@ -33,17 +33,17 @@ export function UserPresenceAvatars({
           >
             {getInitials(collaborator.name)}
             {collaborator.isOnline && (
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-canvas" />
             )}
           </div>
         ))}
         {remaining > 0 && (
-          <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-600">
+          <div className="w-8 h-8 rounded-full border-2 border-canvas bg-surface-raised flex items-center justify-center text-xs font-semibold text-slate-300">
             +{remaining}
           </div>
         )}
       </div>
-      <span className="text-xs text-gray-500">
+      <span className="text-xs text-slate-400">
         {collaborators.filter((c) => c.isOnline).length} online
       </span>
     </div>
