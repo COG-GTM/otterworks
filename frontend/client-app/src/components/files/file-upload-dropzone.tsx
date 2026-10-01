@@ -267,8 +267,8 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         className={cn(
           "border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition",
           isDragActive
-            ? "border-otter-500 bg-otter-50"
-            : "border-gray-300 hover:border-otter-400 hover:bg-gray-50",
+            ? "border-otter-400 bg-otter-500/15"
+            : "border-line-strong hover:border-otter-400 hover:bg-surface-raised",
         )}
       >
         <input {...getInputProps()} />
@@ -276,17 +276,17 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           size={32}
           className={cn(
             "mx-auto mb-3",
-            isDragActive ? "text-otter-600" : "text-gray-400",
+            isDragActive ? "text-otter-300" : "text-slate-500",
           )}
         />
         {isDragActive ? (
-          <p className="text-sm text-otter-600 font-medium">Drop files here</p>
+          <p className="text-sm text-otter-300 font-medium">Drop files here</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600 font-medium">
+            <p className="text-sm text-slate-300 font-medium">
               Drag & drop files here, or click to browse
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Any file type, up to 100MB per file
             </p>
           </>
@@ -296,9 +296,9 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
       {uploadingFiles.length > 0 && (
         <div className="mt-4 space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-700">
+            <p className="text-sm font-medium text-slate-300">
               {dismissing ? (
-                <span className="flex items-center gap-1.5 text-green-600">
+                <span className="flex items-center gap-1.5 text-green-400">
                   <CheckCircle2 size={14} />
                   Upload complete — closing shortly
                 </span>
@@ -309,7 +309,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             {!dismissing && (
               <button
                 onClick={clearCompleted}
-                className="text-xs text-gray-500 hover:text-gray-700"
+                className="text-xs text-slate-400 hover:text-slate-200"
               >
                 Clear completed
               </button>
@@ -318,19 +318,19 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
           {uploadingFiles.map((item) => (
             <div
               key={item.id}
-              className="flex items-center gap-3 p-2 bg-white rounded-lg border border-gray-200"
+              className="flex items-center gap-3 p-2 bg-surface rounded-lg border border-line"
             >
-              <FileIcon size={16} className="text-gray-400 flex-shrink-0" />
+              <FileIcon size={16} className="text-slate-500 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-700 truncate">{item.file.name}</p>
+                <p className="text-sm text-slate-300 truncate">{item.file.name}</p>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-gray-400">{formatFileSize(item.file.size)}</p>
+                  <p className="text-xs text-slate-500">{formatFileSize(item.file.size)}</p>
                   {item.status === "uploading" && (
-                    <p className="text-xs text-otter-600 font-medium">{item.progress}%</p>
+                    <p className="text-xs text-otter-300 font-medium">{item.progress}%</p>
                   )}
                 </div>
                 {item.status === "uploading" && (
-                  <div className="mt-1 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                  <div className="mt-1 h-1.5 w-full bg-surface-raised rounded-full overflow-hidden">
                     <div
                       className="h-full bg-otter-500 rounded-full transition-all duration-300"
                       style={{ width: `${item.progress}%` }}
@@ -338,18 +338,18 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   </div>
                 )}
                 {item.status === "error" && (
-                  <p className="text-xs text-red-500 mt-0.5">{item.error}</p>
+                  <p className="text-xs text-red-400 mt-0.5">{item.error}</p>
                 )}
               </div>
               {item.status === "done" && (
-                <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
+                <CheckCircle2 size={16} className="text-green-400 flex-shrink-0" />
               )}
               {item.status === "error" && (
                 <div className="flex items-center gap-1 flex-shrink-0">
                   {item.tooLarge ? (
                     <button
                       onClick={() => removeUpload(item.id)}
-                      className="p-1 text-gray-400 hover:text-red-500 transition"
+                      className="p-1 text-slate-500 hover:text-red-400 transition"
                       title="Remove file"
                     >
                       <X size={14} />
@@ -357,19 +357,19 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   ) : (
                     <button
                       onClick={() => retryUpload(item.id)}
-                      className="p-1 text-gray-400 hover:text-otter-600 transition"
+                      className="p-1 text-slate-500 hover:text-otter-300 transition"
                       title="Retry upload"
                     >
                       <RotateCcw size={14} />
                     </button>
                   )}
-                  <AlertCircle size={16} className="text-red-500" />
+                  <AlertCircle size={16} className="text-red-400" />
                 </div>
               )}
               {item.status === "uploading" && (
                 <button
                   onClick={() => cancelUpload(item.id)}
-                  className="p-1 text-gray-400 hover:text-red-500 transition flex-shrink-0"
+                  className="p-1 text-slate-500 hover:text-red-400 transition flex-shrink-0"
                   title="Cancel upload"
                 >
                   <X size={14} />

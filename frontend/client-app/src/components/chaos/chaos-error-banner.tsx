@@ -18,16 +18,16 @@ const VARIANT_STYLES: Record<
   { container: string; message: string; action: string; dismiss: string }
 > = {
   error: {
-    container: "bg-red-600 text-white border-red-700",
-    message: "text-red-100",
+    container: "bg-red-500/15 text-red-200 border-red-500/60",
+    message: "text-red-300",
     action: "hover:text-red-100",
-    dismiss: "text-red-100 hover:text-white",
+    dismiss: "text-red-300 hover:text-red-100",
   },
   warning: {
-    container: "bg-amber-400 text-amber-950 border-amber-500",
-    message: "text-amber-900",
-    action: "hover:text-amber-800",
-    dismiss: "text-amber-900 hover:text-amber-950",
+    container: "bg-amber-500/15 text-amber-200 border-amber-500/60",
+    message: "text-amber-300",
+    action: "hover:text-amber-100",
+    dismiss: "text-amber-300 hover:text-amber-100",
   },
 };
 
@@ -48,7 +48,7 @@ export function ChaosErrorBanner({
     <div
       role="alert"
       className={cn(
-        "w-full flex items-start gap-4 p-5 rounded-xl border-2 shadow-lg",
+        "w-full flex items-start gap-4 p-5 rounded-xl border-2 shadow-lg shadow-black/40",
         styles.container,
         className,
       )}

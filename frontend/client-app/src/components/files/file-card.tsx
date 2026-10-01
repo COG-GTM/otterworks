@@ -120,14 +120,14 @@ export function FileCard({
 
   if (view === "list") {
     return (
-      <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
+      <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-surface-raised rounded-lg transition group border-b border-line last:border-0">
         {selectionActive && (
           <div className="flex-shrink-0" onClick={handleCheckboxClick}>
             <input
               type="checkbox"
               checked={selected}
               readOnly
-              className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
+              className="h-4 w-4 rounded border-line-strong bg-surface-raised text-otter-500 focus:ring-otter-400 cursor-pointer"
             />
           </div>
         )}
@@ -135,8 +135,8 @@ export function FileCard({
           to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
-          <div className="w-10 h-10 rounded-lg bg-otter-50 flex items-center justify-center flex-shrink-0">
-            <Icon size={20} className="text-otter-600" />
+          <div className="w-10 h-10 rounded-lg bg-otter-500/15 flex items-center justify-center flex-shrink-0">
+            <Icon size={20} className="text-otter-300" />
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
@@ -151,29 +151,29 @@ export function FileCard({
                     if (e.key === "Escape") { renameDoneRef.current = true; setIsRenaming(false); setRenameValue(file.name); }
                   }}
                   onBlur={submitRename}
-                  className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+                  className="text-sm font-medium text-slate-100 bg-surface-raised px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-400 w-full"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 />
               </div>
             ) : (
-              <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
+              <p className="text-sm font-medium text-slate-100 truncate">{file.name}</p>
             )}
           </div>
-          <span className="text-xs text-gray-500 w-32 hidden sm:block truncate">
+          <span className="text-xs text-slate-400 w-32 hidden sm:block truncate">
             {formatRelativeTime(file.updatedAt)}
           </span>
-          <span className="text-xs text-gray-400 w-20 hidden sm:block text-right">
+          <span className="text-xs text-slate-500 w-20 hidden sm:block text-right">
             {file.isFolder ? "\u2014" : formatFileSize(file.size)}
           </span>
         </Link>
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className="p-1 rounded hover:bg-surface-hover transition flex-shrink-0"
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
             size={16}
-            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+            className={starred ? "text-yellow-400 fill-yellow-400" : "text-slate-500 opacity-0 group-hover:opacity-100"}
           />
         </button>
         <div className="relative w-8">
@@ -183,7 +183,7 @@ export function FileCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            className="p-1 rounded hover:bg-surface-hover text-slate-500 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -203,14 +203,14 @@ export function FileCard({
   }
 
   return (
-    <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
+    <div className="group relative flex flex-col rounded-xl border border-line bg-surface hover:bg-surface-raised hover:border-line-strong hover:shadow-md hover:shadow-black/40 transition p-4">
       {selectionActive && (
         <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
           <input
             type="checkbox"
             checked={selected}
             readOnly
-            className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
+            className="h-4 w-4 rounded border-line-strong bg-surface-raised text-otter-500 focus:ring-otter-400 cursor-pointer"
           />
         </div>
       )}
@@ -219,18 +219,18 @@ export function FileCard({
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">
-          <div className="w-12 h-12 rounded-lg bg-otter-50 flex items-center justify-center">
-            <Icon size={24} className="text-otter-600" />
+          <div className="w-12 h-12 rounded-lg bg-otter-500/15 flex items-center justify-center">
+            <Icon size={24} className="text-otter-300" />
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className="p-1 rounded hover:bg-surface-hover transition"
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
                 size={16}
-                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+                className={starred ? "text-yellow-400 fill-yellow-400" : "text-slate-500 opacity-0 group-hover:opacity-100"}
               />
             </button>
             <div className="relative">
@@ -240,7 +240,7 @@ export function FileCard({
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                className="p-1 rounded hover:bg-surface-hover text-slate-500 opacity-0 group-hover:opacity-100 transition"
               >
                 <MoreVertical size={16} />
               </button>
@@ -269,14 +269,14 @@ export function FileCard({
                 if (e.key === "Escape") { renameDoneRef.current = true; setIsRenaming(false); setRenameValue(file.name); }
               }}
               onBlur={submitRename}
-              className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+              className="text-sm font-medium text-slate-100 bg-surface-raised px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-400 w-full"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             />
           </div>
         ) : (
-          <p className="text-sm font-medium text-gray-900 truncate mb-1">{file.name}</p>
+          <p className="text-sm font-medium text-slate-100 truncate mb-1">{file.name}</p>
         )}
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-slate-400">
           {file.isFolder ? "Folder" : formatFileSize(file.size)}
           {" \u00b7 "}
           {formatRelativeTime(file.updatedAt)}
@@ -304,7 +304,7 @@ function FileMenu({
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+      <div className="absolute right-0 top-full mt-1 w-40 bg-surface rounded-lg shadow-lg shadow-black/40 border border-line py-1 z-20">
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -312,7 +312,7 @@ function FileMenu({
             onRename?.();
             onClose();
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-surface-raised"
         >
           <Pencil size={14} />
           Rename
@@ -325,7 +325,7 @@ function FileMenu({
               onDownload?.(file.id, file.name);
               onClose();
             }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-surface-raised"
           >
             <Download size={14} />
             Download
@@ -338,7 +338,7 @@ function FileMenu({
             onShare?.(file.id);
             onClose();
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-slate-300 hover:bg-surface-raised"
         >
           <Share2 size={14} />
           Share
@@ -350,7 +350,7 @@ function FileMenu({
             onDelete?.(file.id);
             onClose();
           }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10"
         >
           <Trash2 size={14} />
           Delete
