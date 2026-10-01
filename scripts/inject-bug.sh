@@ -125,7 +125,7 @@ if [ "${SCENARIO}" = "document-create-fail" ]; then
   helm upgrade document-service "${REPO_ROOT}/infrastructure/helm/document-service" -n "${NS}" --reuse-values \
     --set-string config.DOC_SVC_CREATE_ALWAYS_FAIL=true
   kubectl -n "${NS}" rollout restart deploy/document-service
-  log "Applied (rollout restarting). The image already bakes this on; turn it off with:"
+  log "Applied (rollout restarting). Turn it off with:"
   log "  helm upgrade document-service infrastructure/helm/document-service -n ${NS} --reuse-values --set-string config.DOC_SVC_CREATE_ALWAYS_FAIL=false && kubectl -n ${NS} rollout restart deploy/document-service"
   exit 0
 fi
