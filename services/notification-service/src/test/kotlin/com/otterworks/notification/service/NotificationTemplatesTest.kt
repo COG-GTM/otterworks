@@ -46,6 +46,27 @@ class NotificationTemplatesTest {
     }
 
     @Test
+    fun `render comment_resolved event`() {
+        val event = SqsNotificationMessage(
+            eventType = "comment_resolved",
+            documentId = "doc-321",
+            commentId = "comment-9",
+            resolvedBy = "resolver-1",
+            authorId = "author-1",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        val rendered = NotificationTemplates.render(event)
+
+        assertEquals("Comment Resolved", rendered.title)
+        assertTrue(rendered.message.contains("resolver-1"))
+        assertTrue(rendered.message.contains("doc-321"))
+        assertEquals("OtterWorks: Your comment was resolved", rendered.emailSubject)
+        assertTrue(rendered.emailBody.contains("comment-9"))
+        assertTrue(rendered.emailBody.contains("resolver-1"))
+    }
+
+    @Test
     fun `render document_edited event`() {
         val event = SqsNotificationMessage(
             eventType = "document_edited",
