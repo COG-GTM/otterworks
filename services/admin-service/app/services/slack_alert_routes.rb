@@ -14,15 +14,6 @@ class SlackAlertRoutes
       channel.is_a?(String) && channel.present? ? channel : FALLBACK_CHANNEL
     end
 
-    def default_channel
-      channel = as_hash(config['default'])['channel']
-      channel.is_a?(String) && channel.present? ? channel : FALLBACK_CHANNEL
-    end
-
-    def slack_listener?(alert_name)
-      route_for(alert_name)['devin_trigger'] == 'slack_listener'
-    end
-
     # Sections left empty in the YAML parse as nil, and entries may be
     # malformed scalars, so every layer is coerced to a Hash before merging.
     def route_for(alert_name)

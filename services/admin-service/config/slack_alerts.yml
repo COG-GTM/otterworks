@@ -11,15 +11,7 @@
 # chat.postMessage). With only a webhook configured, delivery goes to the
 # channel the webhook is bound to, so the webhook must be created for the
 # default channel below.
-#
-# `devin_trigger: slack_listener` hands the Devin session to a Devin Automation
-# listening on the routed channel (slack:message trigger) instead of
-# admin-service creating one through the Devin API, so each alert starts
-# exactly one session.
 default:
   channel: "#automated-alerts"
 alerts:
   FileUploadFailed: {}
-  DocumentCreateFailed:
-    channel: "#eng-otterworks"
-    devin_trigger: slack_listener

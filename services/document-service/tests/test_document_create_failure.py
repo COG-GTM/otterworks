@@ -110,19 +110,50 @@ def test_document_create_failure_payload():
         "Q3 plan", "SNS error: NotFound: Topic does not exist", " preston@example.com "
     )
 
-    alert = payload["alerts"][0]
-    assert payload["status"] == "firing"
-    assert alert["labels"] == {
-        "alertname": "DocumentCreateFailed",
-        "severity": "critical",
-        "affected_service": "document-service",
-        "dedup": "false",
-        "reporter_email": "preston@example.com",
-    }
-    assert alert["annotations"]["summary"] == "Document creation failed: Q3 plan"
-    assert "SNS error: NotFound" in alert["annotations"]["description"]
+    assert payload["alert"] == "DocumentCreateFailed"
+    assert payload["service"] == "document-service"
+    assert payload["repository"] == "COG-GTM/otterworks"
+    assert payload["summary"] == "Document creation failed: Q3 plan"
+    assert payload["error"] == "SNS error: NotFound: Topic does not exist"
+    assert payload["reporter_email"] == "preston@example.com"
+    assert payload["occurred_at"]
 
 
 def test_document_create_failure_payload_omits_blank_reporter():
     payload = alerts.build_document_create_failure_payload("Doc", "boom", "  ")
-    assert "reporter_email" not in payload["alerts"][0]["labels"]
+    assert "reporter_email" not in payload
+
+
+@pytest.mark.asyncio
+async def test_deliver_posts_to_automation_webhook_with_secret(monkeypatch):
+    monkeypatch.setenv("DEVIN_AUTOMATION_WEBHOOK_URL", "https://hooks.example.test/inbox")
+    monkeypatch.setenv("DEVIN_AUTOMATION_WEBHOOK_SECRET", "s3cret")
+    calls = []
+
+    async def fake_post(self, url, json, headers):
+        calls.append((url, json, headers))
+        return MagicMock(status_code=202)
+
+    monkeypatch.setattr(alerts.httpx.AsyncClient, "post", fake_post)
+
+    await alerts._deliver({"alert": "DocumentCreateFailed"})
+
+    assert calls == [
+        (
+            "https://hooks.example.test/inbox",
+            {"alert": "DocumentCreateFailed"},
+            {"X-Webhook-Secret": "s3cret"},
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_deliver_skips_without_webhook_url(monkeypatch):
+    monkeypatch.delenv("DEVIN_AUTOMATION_WEBHOOK_URL", raising=False)
+
+    async def fail_post(*args, **kwargs):
+        raise AssertionError("should not post")
+
+    monkeypatch.setattr(alerts.httpx.AsyncClient, "post", fail_post)
+
+    await alerts._deliver({"alert": "DocumentCreateFailed"})

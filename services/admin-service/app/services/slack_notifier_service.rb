@@ -23,25 +23,13 @@ class SlackNotifierService
   LOOKUP_CACHE_MUTEX = Mutex.new
 
   class << self
-    # With devin_listener: true, posts only via the bot token to the alert's
-    # listener channel and returns whether Slack accepted it (a webhook is
-    # bound to its own channel, so it cannot reach the listener). Otherwise
-    # listener-routed alerts go to the default channel so the listener does
-    # not start a second session.
-    def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil, devin_listener: false)
-      return false unless AdminSettingsService.slack_notifications_enabled?
+    def notify_incident(incident:, session_url: nil, reporter_email: nil, alert_name: nil)
+      return unless AdminSettingsService.slack_notifications_enabled?
 
-      name = alert_name.presence || infer_alert_name(incident)
-      payload = build_payload(incident, session_url, reporter_email, devin_listener)
+      channel = SlackAlertRoutes.channel_for(alert_name.presence || infer_alert_name(incident))
+      payload = build_payload(incident, session_url, reporter_email)
+
       bot_token = resolve_bot_token
-
-      if devin_listener
-        return false unless bot_token
-
-        return post_via_api(bot_token, SlackAlertRoutes.channel_for(name), payload)
-      end
-
-      channel = SlackAlertRoutes.slack_listener?(name) ? SlackAlertRoutes.default_channel : SlackAlertRoutes.channel_for(name)
       return if bot_token && post_via_api(bot_token, channel, payload)
 
       webhook_url = resolve_webhook_url
@@ -162,15 +150,13 @@ class SlackNotifierService
       nil
     end
 
-    def build_payload(incident, session_url, reporter_email, devin_listener = false)
+    def build_payload(incident, session_url, reporter_email)
       raw_service = incident.affected_service.presence || 'unknown-service'
       service = escape_mrkdwn(raw_service)
       title = escape_mrkdwn(incident.title)
       type = escape_mrkdwn(incident.title.to_s.split(':').first.to_s.strip)
       on_call_devin = if session_url.present?
                         ":robot_face: <#{session_url}|Devin AI (auto-investigating)>"
-                      elsif devin_listener
-                        ':robot_face: Devin AI (Slack listener starting a session)'
                       else
                         ':robot_face: No Devin session'
                       end
