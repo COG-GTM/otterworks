@@ -102,6 +102,8 @@ class SQSConsumer:
                 "document_created": "index_document",
                 "document_updated": "index_document",
                 "document_deleted": "delete",
+                "document_restored": "index_document",
+                "document_purged": "delete",
                 "file_created": "index_file",
                 "file_uploaded": "index_file",
                 "file_updated": "index_file",

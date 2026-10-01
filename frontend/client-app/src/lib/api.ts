@@ -49,6 +49,14 @@ interface RawFileListResponse {
   pageSize: number;
 }
 
+interface RawDocumentListResponse {
+  items?: (Document & { deletedAt?: string | null })[];
+  total?: number;
+  page?: number;
+  size?: number;
+  pages?: number;
+}
+
 // Normalize a single file from the file-service format to the frontend FileItem shape
 function mapRawFile(raw: RawFileItem): FileItem {
   return {
@@ -369,8 +377,31 @@ export const documentsApi = {
   share: async (id: string, users: SharedUser[]): Promise<void> => {
     await apiClient.post(`/documents/${id}/share`, { users });
   },
-  restore: async (id: string): Promise<void> => {
-    await apiClient.post(`/documents/${id}/restore`);
+  restore: async (id: string): Promise<Document> => {
+    const { data } = await apiClient.post<Document>(`/documents/${id}/restore`);
+    return data;
+  },
+  getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+    const { data } = await apiClient.get<RawDocumentListResponse>("/documents/trash", {
+      params: { page, size: pageSize },
+    });
+    const items = (data.items ?? []).map((doc) => ({
+      ...doc,
+      trashedAt: doc.trashedAt ?? doc.deletedAt ?? undefined,
+    }));
+    const size = data.size ?? pageSize;
+    const current = data.page ?? page;
+    const total = data.total ?? items.length;
+    return {
+      data: items,
+      total,
+      page: current,
+      pageSize: size,
+      hasMore: current * size < total,
+    };
+  },
+  permanentDelete: async (id: string): Promise<void> => {
+    await apiClient.delete(`/documents/${id}`, { params: { permanent: true } });
   },
   getRecent: async (limit = 10): Promise<Document[]> => {
     const { data } = await apiClient.get<{ items?: Document[] }>("/documents", {
