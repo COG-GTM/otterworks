@@ -27,12 +27,16 @@ Don't rely on the transient Redis chaos flags (`chaos:<service>:<scenario>`, set
 with SETEX + TTL — they expire and Redis has no persistence). Instead add a
 config-level env switch that reuses the same failure mechanism:
 
-- In file-service, `FILE_UPLOAD_ALWAYS_FAIL` (parsed in `src/config.rs`, default
-  off) forces `effective_bucket` in `handlers.rs::upload_file` to the nonexistent
-  bucket `otterworks-files-chaos-nonexistent`, so S3 returns `NoSuchBucket` and the
-  upload 500s. The existing Redis chaos check stays intact for other scenarios.
+- Example shape (file-service): a `<SERVICE>_ALWAYS_FAIL`-style env parsed in
+  `src/config.rs` (default off) that forces `effective_bucket` in
+  `handlers.rs::upload_file` to a nonexistent bucket, so S3 returns `NoSuchBucket`
+  and the upload 500s. The existing Redis chaos check stays intact for other
+  scenarios. file-service currently ships no such switch — only the transient
+  Redis flag `chaos:file-service:upload_s3_error` — so a demo needing a permanent
+  one adds it on its own branch.
 - The switch must default off everywhere (code, docker-compose, chart values) so
-  `main` and other tenants are unaffected.
+  `main` and other tenants are unaffected, and it must never be enabled on a
+  branch that can reach `main` or a shared tenant.
 
 ## Step 2 — Get the switch ON for the tenant (the part everyone gets wrong)
 
@@ -45,8 +49,8 @@ image and only take the **service images** from your branch. So:
 - `helm --set` by hand gets wiped on the next redeploy (every push, idle-wake, reaper).
 - The reliable fork-side mechanism: **bake it into the service image**:
   ```dockerfile
-  # services/file-service/Dockerfile on the demo branch ONLY
-  ENV FILE_UPLOAD_ALWAYS_FAIL=true
+  # services/<service>/Dockerfile on the demo branch ONLY
+  ENV <SERVICE>_ALWAYS_FAIL=true
   ```
   A Dockerfile change also guarantees CD rebuilds that service (CD only rebuilds
   services whose files the push touched).
