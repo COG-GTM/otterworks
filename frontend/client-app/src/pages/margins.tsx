@@ -28,6 +28,12 @@ import type { MarginRow } from "@/lib/api";
 
 const CHART_FROM_DAYS = 180;
 
+const TOOLTIP_STYLE = {
+  backgroundColor: "#18233a",
+  border: "1px solid #24324b",
+  color: "#e2e8f0",
+};
+
 function chartFromDate(): string {
   const d = new Date();
   d.setDate(d.getDate() - CHART_FROM_DAYS);
@@ -156,14 +162,14 @@ function MarginsContent() {
   if (isLoading) {
     return (
       <div className="max-w-7xl mx-auto space-y-6" data-testid="margins-loading">
-        <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
+        <div className="h-8 w-64 bg-surface-raised rounded animate-pulse" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-24 bg-gray-100 border border-gray-200 rounded-xl animate-pulse" />
+            <div key={i} className="h-24 bg-surface-raised border border-line rounded-xl animate-pulse" />
           ))}
         </div>
-        <div className="h-72 bg-gray-100 border border-gray-200 rounded-xl animate-pulse" />
-        <div className="h-96 bg-gray-100 border border-gray-200 rounded-xl animate-pulse" />
+        <div className="h-72 bg-surface-raised border border-line rounded-xl animate-pulse" />
+        <div className="h-96 bg-surface-raised border border-line rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -171,16 +177,16 @@ function MarginsContent() {
   if (isError || !margins) {
     return (
       <div className="max-w-7xl mx-auto" data-testid="margins-error">
-        <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
-          <h1 className="text-lg font-semibold text-gray-900">
+        <div className="bg-surface border border-line rounded-xl p-10 text-center">
+          <h1 className="text-lg font-semibold text-slate-100">
             Margins data is unavailable
           </h1>
-          <p className="text-sm text-gray-500 mt-2">
+          <p className="text-sm text-slate-400 mt-2">
             We couldn&apos;t load the margins dashboard. Please try again.
           </p>
           <button
             onClick={() => refetch()}
-            className="mt-4 px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 transition text-sm font-medium"
+            className="mt-4 px-4 py-2 bg-otter-500 text-white rounded-lg hover:bg-otter-400 transition text-sm font-medium"
           >
             Retry
           </button>
@@ -196,8 +202,8 @@ function MarginsContent() {
       {/* Page header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Margins</h1>
-          <p className="text-sm text-gray-500 mt-1" data-testid="margins-caption">
+          <h1 className="text-2xl font-bold text-slate-100">Margins</h1>
+          <p className="text-sm text-slate-400 mt-1" data-testid="margins-caption">
             Data as of {margins.asOfDate}
             {margins.lastSyncAt ? ` (${margins.lastSyncAt})` : ""} — Source: Trading
             Economics (manual pull)
@@ -208,15 +214,15 @@ function MarginsContent() {
             data-testid="source-badge"
             className={`px-2.5 py-1 rounded-full text-xs font-medium border ${
               sourceLive
-                ? "bg-green-50 text-green-700 border-green-200"
-                : "bg-gray-100 text-gray-600 border-gray-200"
+                ? "bg-green-500/10 text-green-300 border-green-500/30"
+                : "bg-surface-raised text-slate-300 border-line"
             }`}
           >
             {sourceLive ? "live" : "synthetic"}
           </span>
           <button
             onClick={onExportCsv}
-            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-surface-raised text-slate-300 border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong hover:text-slate-100 transition text-sm font-medium"
           >
             <Download size={16} />
             Export CSV
@@ -254,24 +260,24 @@ function MarginsContent() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5" data-testid="commodity-chart">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">
+        <div className="bg-surface rounded-xl border border-line p-5" data-testid="commodity-chart">
+          <h2 className="text-sm font-semibold text-slate-300 mb-3">
             Commodity &amp; freight prices ({CHART_FROM_DAYS}d)
           </h2>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={commodityChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
-              <YAxis yAxisId="salmon" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="freight" orientation="right" tick={{ fontSize: 11 }} />
-              <Tooltip />
-              <Legend />
+              <CartesianGrid strokeDasharray="3 3" stroke="#24324b" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="#94a3b8" minTickGap={40} />
+              <YAxis yAxisId="salmon" tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="#94a3b8" />
+              <YAxis yAxisId="freight" orientation="right" tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="#94a3b8" />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#e2e8f0" }} />
+              <Legend wrapperStyle={{ color: "#cbd5e1" }} />
               <Line
                 yAxisId="salmon"
                 type="monotone"
                 dataKey="salmon"
                 name="Salmon (NOK/kg)"
-                stroke="#ea580c"
+                stroke="#fb923c"
                 dot={false}
                 strokeWidth={1.5}
               />
@@ -280,29 +286,29 @@ function MarginsContent() {
                 type="monotone"
                 dataKey="freight"
                 name="Freight (USD/FEU)"
-                stroke="#7c3aed"
+                stroke="#a78bfa"
                 dot={false}
                 strokeWidth={1.5}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5" data-testid="margin-chart">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">
+        <div className="bg-surface rounded-xl border border-line p-5" data-testid="margin-chart">
+          <h2 className="text-sm font-semibold text-slate-300 mb-3">
             Average margin % ({CHART_FROM_DAYS}d)
           </h2>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={marginChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} minTickGap={40} />
-              <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
-              <Tooltip />
-              <Legend />
+              <CartesianGrid strokeDasharray="3 3" stroke="#24324b" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="#94a3b8" minTickGap={40} />
+              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} stroke="#94a3b8" domain={["auto", "auto"]} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} labelStyle={{ color: "#e2e8f0" }} />
+              <Legend wrapperStyle={{ color: "#cbd5e1" }} />
               <Line
                 type="monotone"
                 dataKey="marginPct"
                 name="Avg margin %"
-                stroke="#16a34a"
+                stroke="#4ade80"
                 dot={false}
                 strokeWidth={1.5}
               />
@@ -312,9 +318,9 @@ function MarginsContent() {
       </div>
 
       {/* SKU margins grid */}
-      <div className="bg-white rounded-xl border border-gray-200">
-        <div className="flex items-center justify-between gap-3 flex-wrap p-4 border-b border-gray-200">
-          <h2 className="text-sm font-semibold text-gray-700">
+      <div className="bg-surface rounded-xl border border-line">
+        <div className="flex items-center justify-between gap-3 flex-wrap p-4 border-b border-line">
+          <h2 className="text-sm font-semibold text-slate-300">
             SKU profitability ({visibleRows.length} of {margins.rows.length})
           </h2>
           <div className="flex items-center gap-2">
@@ -323,13 +329,13 @@ function MarginsContent() {
               placeholder="Filter by SKU, name, supplier…"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm w-64 focus:outline-none focus:ring-2 focus:ring-otter-500"
+              className="px-3 py-1.5 bg-surface-raised text-slate-100 placeholder:text-slate-500 border border-line rounded-lg text-sm w-64 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400"
               data-testid="grid-filter"
             />
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-otter-500"
+              className="px-3 py-1.5 border border-line rounded-lg text-sm bg-surface-raised text-slate-100 hover:border-line-strong focus:outline-none focus:ring-2 focus:ring-otter-400"
               data-testid="category-filter"
             >
               <option value="all">All categories</option>
@@ -344,7 +350,7 @@ function MarginsContent() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="margins-grid">
             <thead>
-              <tr className="text-left text-xs text-gray-500 border-b border-gray-200 bg-gray-50">
+              <tr className="text-left text-xs text-slate-400 border-b border-line bg-surface-raised">
                 <SortableTh label="SKU" active={sortKey === "sku"} asc={sortAsc} onClick={() => onSort("sku")} />
                 <SortableTh label="Product" active={sortKey === "name"} asc={sortAsc} onClick={() => onSort("name")} />
                 <SortableTh label="Category" active={sortKey === "category"} asc={sortAsc} onClick={() => onSort("category")} />
@@ -356,24 +362,24 @@ function MarginsContent() {
             </thead>
             <tbody>
               {visibleRows.map((row) => (
-                <tr key={row.sku} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-900">{row.sku}</td>
-                  <td className="px-4 py-2.5 text-gray-700">{row.name}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{row.category}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{row.supplier}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-700">
+                <tr key={row.sku} className="border-b border-line hover:bg-surface-raised">
+                  <td className="px-4 py-2.5 font-medium text-slate-100">{row.sku}</td>
+                  <td className="px-4 py-2.5 text-slate-300">{row.name}</td>
+                  <td className="px-4 py-2.5 text-slate-400">{row.category}</td>
+                  <td className="px-4 py-2.5 text-slate-400">{row.supplier}</td>
+                  <td className="px-4 py-2.5 text-right text-slate-300">
                     ${row.listPriceUsd.toFixed(2)}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-700">
+                  <td className="px-4 py-2.5 text-right text-slate-300">
                     ${row.cogsUsd.toFixed(2)}
                   </td>
                   <td
                     className={`px-4 py-2.5 text-right font-medium ${
                       row.marginPct < 0
-                        ? "text-red-600"
+                        ? "text-red-400"
                         : row.marginPct < 20
-                          ? "text-orange-600"
-                          : "text-green-700"
+                          ? "text-orange-400"
+                          : "text-green-400"
                     }`}
                   >
                     {row.marginPct.toFixed(1)}%
@@ -382,7 +388,7 @@ function MarginsContent() {
               ))}
               {visibleRows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
                     No SKUs match the current filters.
                   </td>
                 </tr>
@@ -407,21 +413,21 @@ function KpiTile({
   color: "blue" | "purple" | "green" | "orange";
 }>) {
   const colorClasses = {
-    blue: "bg-blue-50 text-blue-600",
-    purple: "bg-purple-50 text-purple-600",
-    green: "bg-green-50 text-green-600",
-    orange: "bg-orange-50 text-orange-600",
+    blue: "bg-blue-500/10 text-blue-400",
+    purple: "bg-purple-500/10 text-purple-400",
+    green: "bg-green-500/10 text-green-400",
+    orange: "bg-orange-500/10 text-orange-400",
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5" data-testid={`kpi-${label}`}>
+    <div className="bg-surface rounded-xl border border-line p-5" data-testid={`kpi-${label}`}>
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorClasses[color]}`}>
           <Icon size={20} />
         </div>
         <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className="text-xs text-gray-500">{label}</p>
+          <p className="text-2xl font-bold text-slate-100">{value}</p>
+          <p className="text-xs text-slate-400">{label}</p>
         </div>
       </div>
     </div>
@@ -447,7 +453,7 @@ function SortableTh({
     <th className={`px-4 py-2.5 font-medium ${right ? "text-right" : ""}`}>
       <button
         onClick={onClick}
-        className={`inline-flex items-center gap-1 hover:text-gray-800 ${active ? "text-gray-800" : ""}`}
+        className={`inline-flex items-center gap-1 hover:text-slate-100 ${active ? "text-slate-100" : ""}`}
       >
         {label}
         <SortIcon size={12} />
