@@ -17,7 +17,7 @@ export function AppShell({ children }: AppShellProps) {
   const { user } = useAuthStore();
 
   return (
-    <div className="min-h-screen bg-canvas text-slate-200">
+    <div className="theme-dark min-h-screen bg-canvas text-slate-200">
       <Sidebar />
 
       <div
