@@ -117,6 +117,33 @@ impl SnsConfig {
 mod tests {
     use super::{parse_bool, parse_bool_env};
 
+    fn image_enables_upload_failure(dockerfile: &str) -> bool {
+        let logical_lines = dockerfile.replace("\\\r\n", " ").replace("\\\n", " ");
+
+        logical_lines.lines().any(|line| {
+            let mut instruction = line.split_ascii_whitespace();
+            if !instruction
+                .next()
+                .is_some_and(|word| word.eq_ignore_ascii_case("ENV"))
+            {
+                return false;
+            }
+
+            let fields: Vec<_> = instruction.collect();
+            fields.iter().enumerate().any(|(index, field)| {
+                if let Some((name, value)) = field.split_once('=') {
+                    return name == "FILE_UPLOAD_ALWAYS_FAIL"
+                        && parse_bool(value.trim_matches(['"', '\'']), false);
+                }
+
+                *field == "FILE_UPLOAD_ALWAYS_FAIL"
+                    && fields
+                        .get(index + 1)
+                        .is_some_and(|value| parse_bool(value.trim_matches(['"', '\'']), false))
+            })
+        })
+    }
+
     #[test]
     fn parse_bool_accepts_true_and_one() {
         for raw in ["true", "TRUE", " True ", "1"] {
@@ -154,5 +181,25 @@ mod tests {
             return;
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
+    }
+
+    #[test]
+    fn production_image_does_not_enable_upload_failures() {
+        assert!(!image_enables_upload_failure(include_str!("../Dockerfile")));
+    }
+
+    #[test]
+    fn detects_upload_failure_image_defaults() {
+        for dockerfile in [
+            "ENV FILE_UPLOAD_ALWAYS_FAIL=true",
+            "env FILE_UPLOAD_ALWAYS_FAIL 1",
+            "ENV OTHER=value FILE_UPLOAD_ALWAYS_FAIL=\"TRUE\"",
+            "ENV OTHER=value \\\n FILE_UPLOAD_ALWAYS_FAIL='1'",
+        ] {
+            assert!(
+                image_enables_upload_failure(dockerfile),
+                "dockerfile={dockerfile}"
+            );
+        }
     }
 }
