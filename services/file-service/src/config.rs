@@ -14,9 +14,6 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
-    /// When true, every upload is routed to a nonexistent S3 bucket so the
-    /// request fails with a 500. Off unless explicitly enabled per tenant.
-    pub upload_always_fail: bool,
     /// When true, owners with no files get a few demo documents seeded on
     /// first listing, so share flows are demoable even when uploads fail.
     pub seed_demo_docs: bool,
@@ -55,17 +52,24 @@ impl AppConfig {
 
 impl ServerConfig {
     pub fn from_env() -> Self {
+        Self::from_vars(
+            env::var("PORT").ok(),
+            env::var("MAX_UPLOAD_BYTES").ok(),
+            parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+        )
+    }
+
+    fn from_vars(
+        port: Option<String>,
+        max_upload_bytes: Option<String>,
+        seed_demo_docs: bool,
+    ) -> Self {
         Self {
-            port: env::var("PORT")
-                .unwrap_or_else(|_| "8082".into())
-                .parse()
-                .unwrap_or(8082),
-            max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
-                .unwrap_or_else(|_| "104857600".into()) // 100 MB
-                .parse()
-                .unwrap_or(104_857_600),
-            upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
-            seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+            port: port.and_then(|v| v.parse().ok()).unwrap_or(8082),
+            max_upload_bytes: max_upload_bytes
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(104_857_600), // 100 MB
+            seed_demo_docs,
         }
     }
 }
@@ -115,7 +119,7 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{parse_bool, ServerConfig};
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
@@ -140,19 +144,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_bool_env_defaults_when_unset() {
-        assert!(!parse_bool_env(
-            "OTTERWORKS_DEFINITELY_UNSET_ENV_VAR",
-            false
-        ));
-        assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
+    fn server_config_falls_back_to_defaults_when_unset_or_unparsable() {
+        for raw in [None, Some("".to_string()), Some("nope".to_string())] {
+            let cfg = ServerConfig::from_vars(raw.clone(), raw, false);
+            assert_eq!(cfg.port, 8082);
+            assert_eq!(cfg.max_upload_bytes, 104_857_600);
+        }
     }
 
     #[test]
-    fn upload_always_fail_is_off_by_default() {
-        if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
-            return;
-        }
-        assert!(!super::ServerConfig::from_env().upload_always_fail);
+    fn server_config_reads_provided_values() {
+        let cfg = ServerConfig::from_vars(Some("9000".into()), Some("2048".into()), false);
+        assert_eq!(cfg.port, 9000);
+        assert_eq!(cfg.max_upload_bytes, 2048);
     }
 }
