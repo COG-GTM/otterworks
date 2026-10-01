@@ -60,22 +60,22 @@ function DashboardContent() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-slate-100">Dashboard</h1>
+          <p className="text-sm text-slate-400 mt-1">
             Welcome back! Here&apos;s your latest activity.
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link
             to="/files"
-            className="flex items-center gap-2 px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 transition text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-otter-500 text-white rounded-lg hover:bg-otter-400 transition text-sm font-medium"
           >
             <Plus size={16} />
             Upload file
           </Link>
           <Link
             to="/documents"
-            className="flex items-center gap-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-surface-raised text-slate-300 border border-line rounded-lg hover:bg-surface-hover hover:border-line-strong transition text-sm font-medium"
           >
             <FileText size={16} />
             New document
@@ -115,16 +115,16 @@ function DashboardContent() {
 
       {/* Storage progress */}
       {storage && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="bg-surface rounded-xl border border-line p-5">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-gray-700">Storage</span>
-            <span className="text-sm text-gray-500">
+            <span className="text-sm font-medium text-slate-300">Storage</span>
+            <span className="text-sm text-slate-400">
               {formatFileSize(storage.used)} of {formatFileSize(storage.total)}
             </span>
           </div>
-          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div className="w-full h-2 bg-surface-raised rounded-full overflow-hidden">
             <div
-              className="h-full bg-otter-600 rounded-full transition-all"
+              className="h-full bg-otter-400 rounded-full transition-all"
               style={{
                 width: `${storage.total > 0 ? Math.min((storage.used / storage.total) * 100, 100) : 0}%`,
               }}
@@ -136,10 +136,10 @@ function DashboardContent() {
       {/* Recent files */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Recent files</h2>
+          <h2 className="text-lg font-semibold text-slate-100">Recent files</h2>
           <Link
             to="/files"
-            className="flex items-center gap-1 text-sm text-otter-600 hover:text-otter-700 font-medium"
+            className="flex items-center gap-1 text-sm text-otter-300 hover:text-otter-200 font-medium"
           >
             View all <ArrowRight size={14} />
           </Link>
@@ -181,10 +181,10 @@ function DashboardContent() {
       {/* Recent documents */}
       <section>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gray-900">Recent documents</h2>
+          <h2 className="text-lg font-semibold text-slate-100">Recent documents</h2>
           <Link
             to="/documents"
-            className="flex items-center gap-1 text-sm text-otter-600 hover:text-otter-700 font-medium"
+            className="flex items-center gap-1 text-sm text-otter-300 hover:text-otter-200 font-medium"
           >
             View all <ArrowRight size={14} />
           </Link>
@@ -206,9 +206,9 @@ function DashboardContent() {
 
       {/* Activity feed */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Activity</h2>
+        <h2 className="text-lg font-semibold text-slate-100 mb-4">Activity</h2>
         {activity && activity.length > 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="bg-surface rounded-xl border border-line divide-y divide-line">
             {activity.map((item) => (
               <ActivityRow key={item.id} item={item} />
             ))}
@@ -239,14 +239,14 @@ function StatCard({
   color: "blue" | "purple" | "green" | "orange";
 }>) {
   const colorClasses = {
-    blue: "bg-blue-50 text-blue-600",
-    purple: "bg-purple-50 text-purple-600",
-    green: "bg-green-50 text-green-600",
-    orange: "bg-orange-50 text-orange-600",
+    blue: "bg-blue-500/10 text-blue-300",
+    purple: "bg-purple-500/10 text-purple-300",
+    green: "bg-green-500/10 text-green-300",
+    orange: "bg-orange-500/10 text-orange-300",
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
+    <div className="bg-surface rounded-xl border border-line p-5">
       <div className="flex items-center gap-3">
         <div
           className={`w-10 h-10 rounded-lg flex items-center justify-center ${colorClasses[color]}`}
@@ -254,8 +254,8 @@ function StatCard({
           <Icon size={20} />
         </div>
         <div>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          <p className="text-xs text-gray-500">
+          <p className="text-2xl font-bold text-slate-100">{value}</p>
+          <p className="text-xs text-slate-400">
             {label}
             {subtitle && ` \u00B7 ${subtitle}`}
           </p>
@@ -267,28 +267,28 @@ function StatCard({
 
 function ActivityRow({ item }: Readonly<{ item: ActivityItem }>) {
   const iconMap: Record<string, string> = {
-    upload: "text-blue-600",
-    edit: "text-green-600",
-    share: "text-purple-600",
-    comment: "text-orange-600",
-    delete: "text-red-600",
-    restore: "text-teal-600",
+    upload: "bg-blue-400",
+    edit: "bg-green-400",
+    share: "bg-purple-400",
+    comment: "bg-orange-400",
+    delete: "bg-red-400",
+    restore: "bg-teal-400",
   };
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <div
         className={`w-2 h-2 rounded-full flex-shrink-0 ${
-          iconMap[item.type]?.replace("text-", "bg-") || "bg-gray-400"
+          iconMap[item.type] || "bg-slate-500"
         }`}
       />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-slate-300">
           <span className="font-medium">{item.actorName}</span>{" "}
           {item.description}
         </p>
       </div>
-      <span className="text-xs text-gray-400 flex-shrink-0">
+      <span className="text-xs text-slate-500 flex-shrink-0">
         {formatRelativeTime(item.createdAt)}
       </span>
     </div>
