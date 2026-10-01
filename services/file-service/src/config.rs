@@ -148,6 +148,29 @@ mod tests {
         assert!(parse_bool_env("OTTERWORKS_DEFINITELY_UNSET_ENV_VAR", true));
     }
 
+    fn source_forces_bool(source: &str, key: &str, separator: char) -> bool {
+        source
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+            .filter_map(|line| line.split_once(separator))
+            .any(|(name, value)| {
+                name.trim().strip_prefix("ENV ").unwrap_or(name.trim()) == key
+                    && parse_bool(value.trim().trim_matches(['"', '\'']), false)
+            })
+    }
+
+    #[test]
+    fn deployment_sources_do_not_force_share_event_failures() {
+        let key = "FILE_SHARE_EVENT_ALWAYS_FAIL";
+        assert!(!source_forces_bool(include_str!("../Dockerfile"), key, '='));
+        assert!(!source_forces_bool(
+            include_str!("../../../infrastructure/helm/file-service/values.yaml"),
+            key,
+            ':'
+        ));
+    }
+
     #[test]
     fn upload_always_fail_is_off_by_default() {
         if std::env::var("FILE_UPLOAD_ALWAYS_FAIL").is_ok() {
