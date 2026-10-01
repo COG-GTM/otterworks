@@ -41,8 +41,8 @@ function SharedContent() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Shared with me</h1>
-        <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+        <h1 className="text-2xl font-bold text-slate-100">Shared with me</h1>
+        <div className="flex items-center border border-line rounded-lg overflow-hidden">
           <ViewBtn
             mode="grid"
             current={viewMode}
@@ -119,8 +119,8 @@ function ViewBtn({
       className={cn(
         "p-2 transition",
         mode === current
-          ? "bg-gray-100 text-gray-900"
-          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+          ? "bg-surface-raised text-slate-100"
+          : "text-slate-500 hover:text-slate-300 hover:bg-surface-raised"
       )}
     >
       <Icon size={16} />
