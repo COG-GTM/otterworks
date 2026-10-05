@@ -54,7 +54,9 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '8'
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: services/report-service/pom.xml
       - run: mvn test -B
 
   legacy-portal-tests:
