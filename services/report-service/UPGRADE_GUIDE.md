@@ -1,5 +1,11 @@
 # Report Service Dependency Upgrade Guide
 
+> **Status:** axes 1–5 and 7 (Java 17, Spring Boot 3.2, `jakarta.*`, JUnit 5,
+> springdoc-openapi, Commons Lang 3) are done — the service now builds on Java 17 /
+> Spring Boot 3.2.12. Axes 6 and 8–10 (iText, Commons IO, Guava, POI) are still open;
+> Mockito (axis 11) is managed by the Spring Boot 3.2 BOM. The "BEFORE" snippets below
+> describe the original Java 8 / Boot 2.5 baseline.
+
 This document describes 11 upgrade axes for migrating the report-service from its
 current legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
