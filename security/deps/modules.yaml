@@ -16,9 +16,10 @@
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
   # report-service targets Java 17 (Spring Boot 3.2), so it can only be built on
-  # JDK 17. legacy-portal pins JDK 11: its recorded transcript includes the
-  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
-  # Nashorn (JDK <= 14), so an absent JDK 11 must read as unmeasured.
+  # JDK 17; its recorded ${script:javascript:...} lookup resolves through the
+  # standalone nashorn-core test dependency. legacy-portal pins JDK 11: the same
+  # lookup there needs the JVM's own Nashorn (JDK <= 14), so an absent JDK 11 must
+  # read as unmeasured.
   - id: report-service
     path: services/report-service
     build: maven

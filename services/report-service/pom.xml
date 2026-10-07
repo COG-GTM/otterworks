@@ -148,6 +148,13 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- JDK 15+ dropped Nashorn; keeps the recorded ${script:javascript:...} dependency transcript reproducible -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
