@@ -56,7 +56,7 @@ make down
 | Audit Service | C# 12 | ASP.NET 8 | 8090 | Immutable audit trail, compliance |
 | Report Service | Java 17 | Spring Boot 3.2 | 8091 | PDF/CSV/Excel report generation |
 
-> **Note:** The Report Service runs on Java 17 / Spring Boot 3.2 (jakarta.\*, JUnit 5, springdoc-openapi). Some third-party libraries (POI 4, iText 5, Commons Lang 2, Guava 28) are still outdated — see `services/report-service/pom.xml`.
+> **Note:** The Report Service runs on Java 17 / Spring Boot 3.2 (jakarta.\*, JUnit 5, springdoc-openapi). Some third-party libraries (POI 4, iText 5, Guava 28, Commons Text 1.9) are still outdated — see `services/report-service/pom.xml`.
 
 ## Frontend Applications
 
