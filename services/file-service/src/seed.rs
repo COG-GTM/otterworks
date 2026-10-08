@@ -70,6 +70,10 @@ pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id
             owner_id,
             version: 1,
             is_trashed: false,
+            trashed_at: None,
+            trashed_by: None,
+            trashed_by_email: None,
+            trashed_from_folder_id: None,
             created_at: now,
             updated_at: now,
         };

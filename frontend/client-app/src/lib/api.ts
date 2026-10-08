@@ -37,6 +37,12 @@ interface RawFileItem {
   ownerId: string;
   version: number;
   isTrashed: boolean;
+  trashedAt?: string | null;
+  trashedBy?: string | null;
+  trashedByEmail?: string | null;
+  trashedFromFolderId?: string | null;
+  originalLocation?: string;
+  originalFolderMissing?: boolean;
   createdAt: string;
   updatedAt: string;
   sharedWith?: RawShareItem[];
@@ -80,6 +86,12 @@ function mapRawFile(raw: RawFileItem): FileItem {
     tags: [],
     createdAt: raw.createdAt ?? "",
     updatedAt: raw.updatedAt ?? "",
+    trashedAt: raw.trashedAt ?? undefined,
+    trashedBy: raw.trashedBy ?? undefined,
+    trashedByEmail: raw.trashedByEmail ?? undefined,
+    trashedFromFolderId: raw.trashedFromFolderId ?? undefined,
+    originalLocation: raw.originalLocation,
+    originalFolderMissing: raw.originalFolderMissing ?? false,
     versions: [],
   };
 }

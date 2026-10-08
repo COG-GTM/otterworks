@@ -19,9 +19,9 @@ use crate::middleware;
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
     FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListTrashedResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    TrashedFileItem, UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
 
@@ -195,6 +195,10 @@ pub async fn upload_file(
         owner_id: owner,
         version: 1,
         is_trashed: false,
+        trashed_at: None,
+        trashed_by: None,
+        trashed_by_email: None,
+        trashed_from_folder_id: None,
         created_at: now,
         updated_at: now,
     };
@@ -364,13 +368,35 @@ pub async fn list_trashed(
         .take(page_size as usize)
         .collect();
 
-    Ok(HttpResponse::Ok().json(ListFilesResponse {
-        files: paged,
+    let mut items = Vec::with_capacity(paged.len());
+    for file in paged {
+        let folder_name = match file.trashed_from_folder_id {
+            Some(fid) => match meta.get_folder(&fid).await {
+                Ok(folder) => Some(folder.name),
+                Err(ServiceError::FolderNotFound(_)) => None,
+                Err(e) => return Err(e),
+            },
+            None => None,
+        };
+        let (original_location, original_folder_missing) = crate::metadata::original_location_label(
+            file.trashed_from_folder_id,
+            folder_name.as_deref(),
+        );
+        items.push(TrashedFileItem {
+            file,
+            original_location,
+            original_folder_missing,
+        });
+    }
+
+    Ok(HttpResponse::Ok().json(ListTrashedResponse {
+        files: items,
         total,
         page,
         page_size,
     }))
 }
+
 pub async fn delete_file(
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
@@ -479,6 +505,7 @@ pub async fn list_versions(
 }
 
 pub async fn trash_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -488,7 +515,20 @@ pub async fn trash_file(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.trash_file(&file_id).await?;
+    // Who performed the deletion, from the headers the api-gateway injects
+    // from the authenticated JWT.
+    let trashed_by = resolve_owner_id(&req, None);
+    let trashed_by_email = req
+        .headers()
+        .get("X-User-Email")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    let file = meta
+        .trash_file(&file_id, trashed_by, trashed_by_email.as_deref())
+        .await?;
 
     let _ = events.file_trashed(&file_id, &file.owner_id).await;
 

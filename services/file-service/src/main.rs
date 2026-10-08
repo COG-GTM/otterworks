@@ -13,6 +13,7 @@ mod middleware;
 mod models;
 mod seed;
 mod storage;
+mod trash;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -40,6 +41,12 @@ async fn main() -> std::io::Result<()> {
     let redis_cm = redis::aio::ConnectionManager::new(redis_client)
         .await
         .expect("failed to connect to Redis");
+
+    actix_web::rt::spawn(trash::run_purge_loop(
+        meta_client.clone(),
+        s3_client.clone(),
+        event_publisher.clone(),
+    ));
 
     let port = app_config.server.port;
     tracing::info!(port = %port, "File Service starting");
