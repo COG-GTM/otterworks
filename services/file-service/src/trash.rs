@@ -23,22 +23,28 @@ pub async fn purge_expired_trash(
     let mut purged = 0;
 
     for file in expired {
-        // Claim the record first: the conditional delete fails when the item was
-        // restored between the scan and now, so a restored file keeps its object.
-        match meta.delete_expired_trashed_file(&file.id, now).await {
+        // Claim before touching S3: a restored item fails the claim and keeps
+        // its object, and a claimed item can no longer be restored. Metadata is
+        // removed last so an interrupted purge is picked up again next sweep.
+        match meta.claim_expired_trashed_file(&file.id, now).await {
             Ok(true) => {}
             Ok(false) => {
                 tracing::info!(file_id = %file.id, "Trash purge: item no longer expired, skipped");
                 continue;
             }
             Err(e) => {
-                tracing::warn!(file_id = %file.id, error = %e, "Trash purge: metadata delete failed");
+                tracing::warn!(file_id = %file.id, error = %e, "Trash purge: claim failed");
                 continue;
             }
         }
 
         if let Err(e) = s3.delete_object(&file.s3_key).await {
-            tracing::warn!(file_id = %file.id, error = %e, "Trash purge: object delete failed");
+            tracing::warn!(file_id = %file.id, error = %e, "Trash purge: object delete failed, will retry");
+            continue;
+        }
+        if let Err(e) = meta.delete_file(&file.id).await {
+            tracing::warn!(file_id = %file.id, error = %e, "Trash purge: metadata delete failed, will retry");
+            continue;
         }
         let _ = events.file_deleted(&file.id, &file.owner_id).await;
         purged += 1;

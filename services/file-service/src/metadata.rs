@@ -209,11 +209,12 @@ impl MetadataClient {
         parse_file_metadata(item)
     }
 
-    /// Delete a file's metadata only while it is still trashed and still past
-    /// the retention window, so a purge sweep cannot remove a record that was
-    /// restored after the sweep selected it. Returns whether the row was
-    /// deleted.
-    pub async fn delete_expired_trashed_file(
+    /// Mark an expired trashed file as claimed for purge. The claim only
+    /// succeeds while the file is still trashed and past the retention window,
+    /// and a claimed file can no longer be restored. Re-claiming a file whose
+    /// earlier purge did not finish succeeds, so a failed sweep is retried.
+    /// Returns whether the claim is held.
+    pub async fn claim_expired_trashed_file(
         &self,
         file_id: &Uuid,
         now: DateTime<Utc>,
@@ -221,14 +222,16 @@ impl MetadataClient {
         let cutoff = trash_retention_cutoff(now);
         let result = self
             .client
-            .delete_item()
+            .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
+            .update_expression("SET purge_claimed_at = :now")
             .condition_expression(
                 "attribute_exists(id) AND is_trashed = :t AND trashed_at <= :cutoff",
             )
             .expression_attribute_values(":t", AttributeValue::Bool(true))
             .expression_attribute_values(":cutoff", AttributeValue::S(cutoff.to_rfc3339()))
+            .expression_attribute_values(":now", AttributeValue::S(now.to_rfc3339()))
             .send()
             .await;
 
@@ -343,7 +346,9 @@ impl MetadataClient {
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
-            .condition_expression("attribute_exists(id) AND is_trashed = :was")
+            .condition_expression(
+                "attribute_exists(id) AND is_trashed = :was AND attribute_not_exists(purge_claimed_at)",
+            )
             .expression_attribute_values(":t", AttributeValue::Bool(false))
             .expression_attribute_values(":was", AttributeValue::Bool(true))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()));
@@ -357,18 +362,25 @@ impl MetadataClient {
             None => remove_parts.push("folder_id".to_string()),
         }
 
-        builder
+        let result = builder
             .update_expression(update_expression(&set_parts, &remove_parts))
             .send()
-            .await
-            .map_err(|e| {
-                if is_conditional_check_failed(&e) {
-                    return ServiceError::FileNotFound(file_id.to_string());
-                }
-                ServiceError::DynamoError(e.to_string())
-            })?;
+            .await;
 
-        self.get_file(file_id).await
+        match result {
+            Ok(_) => self.get_file(file_id).await,
+            Err(e) if is_conditional_check_failed(&e) => {
+                // Lost a race: either a concurrent restore already succeeded, or
+                // the purge sweep claimed the file and it is being deleted.
+                let current = self.get_file(file_id).await?;
+                if current.is_trashed {
+                    Err(ServiceError::FileNotFound(file_id.to_string()))
+                } else {
+                    Ok(current)
+                }
+            }
+            Err(e) => Err(ServiceError::DynamoError(e.to_string())),
+        }
     }
 
     pub async fn rename_file(
