@@ -27,11 +27,19 @@ module Api
           'info'     => 'low',
         }.freeze
 
+        # Grafana groups alerts per notification; real senders stay well below this.
+        MAX_ALERTS_PER_REQUEST = 10
+
         # POST /api/v1/admin/alerts/ingest
         def ingest
           alerts = params[:alerts]
           unless alerts.is_a?(Array)
             return render json: { error: 'Missing alerts array' }, status: :bad_request
+          end
+
+          if alerts.size > MAX_ALERTS_PER_REQUEST
+            return render json: { error: "Too many alerts (max #{MAX_ALERTS_PER_REQUEST} per request)" },
+                          status: :payload_too_large
           end
 
           processed = alerts.map { |alert| process_alert(alert) }.compact
@@ -50,7 +58,9 @@ module Api
           severity         = SEVERITY_MAP.fetch(labels[:severity].to_s, 'medium')
           summary          = annotations[:summary].to_s
           description      = annotations[:description].to_s.presence || summary
-          reporter_email   = labels[:reporter_email].to_s.presence
+          # Routing hints that open extra incidents or @-mention people are only
+          # honoured from senders that authenticated with ALERT_WEBHOOK_SECRET.
+          reporter_email   = trusted_sender? ? labels[:reporter_email].to_s.presence : nil
 
           if status == 'resolved'
             resolve_incident(affected_service, alert_name)
@@ -61,9 +71,9 @@ module Api
           return nil if affected_service.blank?
 
           # Deduplicate: skip if an active incident for this service already
-          # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          # exists — unless a trusted sender opts out with a `dedup=false` label
+          # and the service is still within its incident budget.
+          unless bypass_dedup?(labels, affected_service)
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -85,8 +95,11 @@ module Api
           )
 
           session_result = nil
-          if auto_investigate
+          if auto_investigate && AlertBudget.devin_session_allowed?(affected_service)
             session_result = DevinSessionService.create_session(incident: incident)
+          elsif auto_investigate
+            Rails.logger.warn("Devin session budget exhausted for #{affected_service} — " \
+                              "skipping Devin session for incident #{incident.id}")
           else
             Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
           end
@@ -138,15 +151,35 @@ module Api
           parts.join("\n\n")
         end
 
+        def bypass_dedup?(labels, affected_service)
+          return false unless labels[:dedup].to_s == 'false'
+          return false unless trusted_sender?
+
+          return true if AlertBudget.dedup_bypass_allowed?(affected_service)
+
+          Rails.logger.warn("Incident budget exhausted for #{affected_service} — ignoring dedup=false")
+          false
+        end
+
+        # True only when ALERT_WEBHOOK_SECRET is configured and the request
+        # presented it; unauthenticated (dev-mode) ingest is never trusted.
+        def trusted_sender?
+          @trusted_sender
+        end
+
         def verify_alert_secret
+          @trusted_sender = false
           expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+          return if expected.nil? # not configured → allow, but untrusted (dev/test)
 
           # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
           # (Grafana webhook contact points send the token as a Bearer header)
           provided = request.headers['X-Alert-Secret'].presence ||
                      request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+          if provided && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
+            @trusted_sender = true
+            return
+          end
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
         end

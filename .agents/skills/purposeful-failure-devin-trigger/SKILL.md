@@ -75,7 +75,13 @@ second Devin client:
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+  controller honors by bypassing the skip — but only when `ALERT_WEBHOOK_SECRET`
+  is configured and the sender presented it (unauthenticated ingest ignores
+  `dedup` and `reporter_email`). Ingest also rejects >10 alerts per request and
+  caps, per `affected_service` per hour, dedup-bypassed incidents
+  (`ALERT_MAX_INCIDENTS_PER_SERVICE`, default 10) and Devin sessions
+  (`ALERT_MAX_DEVIN_SESSIONS_PER_SERVICE`, default 5; see `AlertBudget`).
+  Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant
