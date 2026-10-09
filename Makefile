@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help env infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -57,22 +57,29 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # --- Local Development ---
 
+env: ## Create .env with a random JWT_SECRET (keeps an existing one)
+	@touch .env
+	@if grep -Eq '^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production|dev-jwt-secret-otterworks-2024-change-in-production|dev_jwt_secret_key|dev_jwt_secret)?$$' .env; then \
+		sed -i.bak -E '/^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production|dev-jwt-secret-otterworks-2024-change-in-production|dev_jwt_secret_key|dev_jwt_secret)?$$/d' .env && rm -f .env.bak; \
+	fi
+	@grep -q '^JWT_SECRET=' .env || { echo "JWT_SECRET=$$(openssl rand -hex 32)" >> .env && echo "Generated a random JWT_SECRET in .env"; }
+
 infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
 	docker compose -f docker-compose.infra.yml up -d
 
 infra-down: ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
-up: ## Start all services (add seed=1 to seed after start)
+up: env ## Start all services (add seed=1 to seed after start)
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
  ifdef seed
 	@$(MAKE) --no-print-directory wait-for-db seed
  endif
 
-down: ## Stop all application services
+down: env ## Stop all application services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml down
 
-build: ## Build all service images
+build: env ## Build all service images
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml build
 
 seed: ## Seed development data (services must be running)
@@ -85,7 +92,7 @@ wait-for-db: ## Wait for Postgres to accept connections
 		sleep 1; \
 	done; echo "Timed out waiting for Postgres" && exit 1
 
-logs: ## Tail logs for all services
+logs: env ## Tail logs for all services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml logs -f
 
 # --- App Dev Targets ---
@@ -98,7 +105,7 @@ COMPOSE := docker compose -f docker-compose.infra.yml -f docker-compose.yml
 # otherwise default to :8085, which only matches the k8s dev environment.
 COLLAB_WS_URL := ws://localhost:8084
 
-dev-backend: ## Start the Dockerized backend (all services except the frontend containers)
+dev-backend: env ## Start the Dockerized backend (all services except the frontend containers)
 	$(COMPOSE) up -d $$($(COMPOSE) config --services | grep -vE '^(web-app|admin-dashboard)$$')
 	@echo "Backend up - API gateway on http://localhost:8080 (fresh DB? run: make seed)"
 

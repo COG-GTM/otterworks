@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
-import { tap, delay, map } from 'rxjs/operators';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { BehaviorSubject, Observable, throwError } from 'rxjs';
+import { catchError, map, tap } from 'rxjs/operators';
 import { Router } from '@angular/router';
 
 export interface AuthUser {
@@ -13,9 +13,29 @@ export interface AuthUser {
 }
 
 interface LoginResponse {
-  user: AuthUser;
-  token: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
+  user: {
+    id: string;
+    email: string;
+    displayName: string;
+    avatarUrl?: string | null;
+  };
 }
+
+interface TokenClaims {
+  sub?: string;
+  exp?: number;
+  roles?: unknown;
+  role?: unknown;
+}
+
+// auth-service's top roles; admin-service's require_admin! accepts the same set.
+const ADMIN_ROLES = ['owner', 'super_admin', 'admin'];
+
+export const LOGIN_URL = '/api/v1/auth/login';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -35,13 +55,22 @@ export class AuthService {
   }
 
   getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
+    const token = localStorage.getItem(this.TOKEN_KEY);
+    if (!token) {
+      return null;
+    }
+    const claims = decodeClaims(token);
+    if (!claims || isExpired(claims)) {
+      this.clearSession();
+      return null;
+    }
+    return token;
   }
 
   login(email: string, password: string): Observable<AuthUser> {
-    // In production, this would call the real API:
-    // return this.http.post<LoginResponse>('/api/v1/admin/auth/login', { email, password })
-    return this.mockLogin(email, password).pipe(
+    return this.http.post<LoginResponse>(LOGIN_URL, { email, password }).pipe(
+      catchError((error: HttpErrorResponse) => throwError(() => new Error(loginErrorMessage(error)))),
+      map(response => toAdminUser(response)),
       tap(user => {
         localStorage.setItem(this.TOKEN_KEY, user.token);
         localStorage.setItem(this.USER_KEY, JSON.stringify(user));
@@ -51,13 +80,24 @@ export class AuthService {
   }
 
   logout(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.USER_KEY);
-    this.currentUserSubject.next(null);
+    this.clearSession();
     this.router.navigate(['/login']);
   }
 
+  private clearSession(): void {
+    localStorage.removeItem(this.TOKEN_KEY);
+    localStorage.removeItem(this.USER_KEY);
+    if (this.currentUserSubject.value) {
+      this.currentUserSubject.next(null);
+    }
+  }
+
   private getStoredUser(): AuthUser | null {
+    const token = localStorage.getItem(this.TOKEN_KEY);
+    const claims = token ? decodeClaims(token) : null;
+    if (!claims || isExpired(claims)) {
+      return null;
+    }
     const stored = localStorage.getItem(this.USER_KEY);
     if (stored) {
       try {
@@ -68,18 +108,59 @@ export class AuthService {
     }
     return null;
   }
+}
 
-  private mockLogin(email: string, password: string): Observable<AuthUser> {
-    if (password.length < 1) {
-      return throwError(() => new Error('Invalid credentials'));
-    }
-    const user: AuthUser = {
-      id: 'a0000000-0000-0000-0000-000000000001',
-      email,
-      displayName: 'Admin User',
-      role: 'admin',
-      token: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ1c2VyX2lkIjoiYTAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDAxIiwiZW1haWwiOiJhZG1pbkBvdHRlcndvcmtzLmRldiIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxOTI0OTA1NjAwfQ.hD5dwgrPNRTzbXa6lbA83Aru7BvQVIQc0rGVySkF1fA',
-    };
-    return of(user).pipe(delay(800));
+function toAdminUser(response: LoginResponse): AuthUser {
+  const claims = response?.accessToken ? decodeClaims(response.accessToken) : null;
+  if (!claims || isExpired(claims)) {
+    throw new Error('Login failed. Please try again.');
   }
+  const role = adminRole(claims);
+  if (!role) {
+    throw new Error('This account does not have admin access.');
+  }
+  return {
+    id: response.user?.id ?? claims.sub ?? '',
+    email: response.user?.email ?? '',
+    displayName: response.user?.displayName ?? '',
+    role,
+    token: response.accessToken,
+  };
+}
+
+function adminRole(claims: TokenClaims): string | null {
+  const raw = Array.isArray(claims.roles) ? claims.roles : [claims.role];
+  const roles = raw
+    .filter((r): r is string => typeof r === 'string')
+    .map(r => r.toLowerCase());
+  return ADMIN_ROLES.find(r => roles.includes(r)) ?? null;
+}
+
+function isExpired(claims: TokenClaims): boolean {
+  return typeof claims.exp !== 'number' || claims.exp * 1000 <= Date.now();
+}
+
+function decodeClaims(token: string): TokenClaims | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const claims = JSON.parse(atob(padded));
+    return claims && typeof claims === 'object' ? (claims as TokenClaims) : null;
+  } catch {
+    return null;
+  }
+}
+
+function loginErrorMessage(error: HttpErrorResponse): string {
+  if (error.status === 400 || error.status === 401 || error.status === 403) {
+    return 'Invalid email or password.';
+  }
+  if (error.status === 429) {
+    return 'Too many login attempts. Please wait and try again.';
+  }
+  return 'Login failed. Please try again.';
 }

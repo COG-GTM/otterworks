@@ -120,4 +120,18 @@ class JwtTokenProviderTest {
     user.setRoles(Set.of(User.Role.USER));
     return user;
   }
+
+  @Test
+  void constructor_shouldRejectPublishedPlaceholderSecrets() {
+    for (String secret : JwtTokenProvider.KNOWN_INSECURE_SECRETS) {
+      org.junit.jupiter.api.Assertions.assertThrows(
+          IllegalStateException.class, () -> new JwtTokenProvider(secret, 3600, 2592000));
+    }
+  }
+
+  @Test
+  void constructor_shouldRejectBlankSecret() {
+    org.junit.jupiter.api.Assertions.assertThrows(
+        IllegalStateException.class, () -> new JwtTokenProvider(" ", 3600, 2592000));
+  }
 }

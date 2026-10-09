@@ -33,8 +33,18 @@ describe('authGuard', () => {
   });
 
   it('should allow access when authenticated', () => {
-    localStorage.setItem('ow_admin_token', 'test-token');
+    const claims = btoa(JSON.stringify({ sub: 'u-1', roles: ['ADMIN'], exp: Math.floor(Date.now() / 1000) + 3600 }));
+    localStorage.setItem('ow_admin_token', `header.${claims.replace(/=+$/, '')}.sig`);
     const result = TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState));
     expect(result).toBeTrue();
+  });
+
+  it('should deny access when the stored token has expired', () => {
+    spyOn(router, 'navigate');
+    const claims = btoa(JSON.stringify({ sub: 'u-1', roles: ['ADMIN'], exp: 1 }));
+    localStorage.setItem('ow_admin_token', `header.${claims.replace(/=+$/, '')}.sig`);
+    const result = TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState));
+    expect(result).toBeFalse();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 });

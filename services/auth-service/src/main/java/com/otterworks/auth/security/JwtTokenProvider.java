@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.crypto.SecretKey;
@@ -18,6 +19,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtTokenProvider {
 
+  // Placeholder secrets that have been published in this repository.
+  static final List<String> KNOWN_INSECURE_SECRETS =
+      List.of(
+          "otterworks-local-dev-jwt-secret-change-me-in-production",
+          "dev-jwt-secret-otterworks-2024-change-in-production",
+          "dev_jwt_secret_key",
+          "dev_jwt_secret");
+
   private final SecretKey key;
   private final long accessTokenExpiry;
   private final long refreshTokenExpiry;
@@ -26,6 +35,13 @@ public class JwtTokenProvider {
       @Value("${jwt.secret}") String secret,
       @Value("${jwt.access-token-expiry:3600}") long accessTokenExpiry,
       @Value("${jwt.refresh-token-expiry:2592000}") long refreshTokenExpiry) {
+    if (secret == null || secret.isBlank()) {
+      throw new IllegalStateException("JWT_SECRET is required but not set");
+    }
+    if (KNOWN_INSECURE_SECRETS.contains(secret)) {
+      throw new IllegalStateException(
+          "JWT_SECRET is set to a publicly known placeholder; generate one with `openssl rand -hex 32`");
+    }
     this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     this.accessTokenExpiry = accessTokenExpiry;
     this.refreshTokenExpiry = refreshTokenExpiry;
