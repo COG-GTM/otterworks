@@ -140,3 +140,17 @@ def test_fetch_all_files_without_token_sends_no_header(monkeypatch: pytest.Monke
     with patch("app.services.indexer.requests.get", return_value=empty) as mock_get:
         Indexer._fetch_all_files()
     assert mock_get.call_args.kwargs["headers"] == {}
+
+
+def test_reindex_aborts_when_file_service_rejects_token(indexer: Indexer) -> None:
+    from app.services.indexer import FileServiceAuthError
+
+    rejected = MagicMock(status_code=401)
+    with (
+        patch.object(Indexer, "_fetch_all_documents", return_value=[]),
+        patch("app.services.indexer.requests.get", return_value=rejected),
+        patch.object(indexer.search, "reindex") as mock_reindex,
+        pytest.raises(FileServiceAuthError),
+    ):
+        indexer.reindex()
+    mock_reindex.assert_not_called()
