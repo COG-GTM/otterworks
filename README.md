@@ -28,9 +28,15 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+./scripts/local-env.sh   # writes random JWT_SECRET / SECRET_KEY_BASE into .env (once)
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
+
+`docker-compose.yml` has no built-in signing secrets: compose refuses to start until
+`JWT_SECRET` and `SECRET_KEY_BASE` are set, either exported or in the gitignored `.env`
+that `make env` / `make up` generate. Backend service ports (8081-8091) are published on
+`127.0.0.1` only; reach the stack from other machines through the gateway on `:8080`.
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
