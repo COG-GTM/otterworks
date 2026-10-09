@@ -77,21 +77,24 @@ module Api
           return nil unless status == 'firing'
           return nil if affected_service.blank?
 
+          auto_investigate = AdminSettingsService.auto_investigate_enabled? &&
+                             auto_investigate_allowed?(alert_name)
+
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
           if labels[:dedup].to_s != 'false'
+            # An `open` incident never got auto-triage (e.g. its alert was not
+            # allowlisted), so it must not swallow an alert that will.
+            dedup_statuses = auto_investigate ? %w[investigating] : %w[open investigating]
             existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
+                               .where(status: dedup_statuses)
                                .first
             if existing
               Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
               return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
             end
           end
-
-          auto_investigate = AdminSettingsService.auto_investigate_enabled? &&
-                             auto_investigate_allowed?(alert_name)
 
           incident = Incident.create!(
             title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
@@ -166,7 +169,7 @@ module Api
           uri = URI.parse(raw.to_s.strip)
           return nil unless uri.is_a?(URI::HTTPS) && uri.userinfo.nil?
 
-          hosts = env_list('ALERT_RUNBOOK_HOSTS') || DEFAULT_RUNBOOK_HOSTS
+          hosts = (env_list('ALERT_RUNBOOK_HOSTS') || DEFAULT_RUNBOOK_HOSTS).map(&:downcase)
           hosts.include?(uri.host.to_s.downcase) ? uri.to_s : nil
         rescue URI::InvalidURIError
           nil
