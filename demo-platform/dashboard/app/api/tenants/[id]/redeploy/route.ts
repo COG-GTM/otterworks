@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { withSession, json, error } from "@/lib/api";
+import { withSession, json, error, forbidCdDeploy, forbidOtherTenant, isCdSession } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
@@ -17,9 +17,11 @@ export const dynamic = "force-dynamic";
  * the same expiry the tenant already had. A push must never quietly extend an
  * environment's life, or nothing would ever be reaped while anyone was working.
  */
-export const POST = withSession(async (req: NextRequest, { actor, params }) => {
+export const POST = withSession(async (req: NextRequest, { actor, session, params }) => {
   const id = params?.id;
   if (!id) return error(400, "missing id");
+  const notOwn = forbidOtherTenant(session, id);
+  if (notOwn) return notOwn;
 
   const tenant = await getTenant(id);
   if (!tenant) return error(404, "not found");
@@ -41,6 +43,21 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
       409,
       `tenant '${id}' is deployed from '${tenant.branch ?? "(none)"}', not '${requestedBranch}'`,
     );
+  }
+
+  if (isCdSession(session)) {
+    const denied = forbidCdDeploy(session, { branch: requestedBranch, imageTag });
+    if (denied) return denied;
+    // Belt and braces with the branch check above: the tenant must also have
+    // been checked out from this session's branch...
+    if (tenant.branch !== session.branch) {
+      return error(403, `tenant '${id}' is not deployed from '${session.branch}'`);
+    }
+    // ...and, if CD created it, by this repository. Two repositories without
+    // a TENANT_PREFIX map identical branch names to the same tenant id.
+    if (tenant.owner?.startsWith("ci:") && tenant.owner !== actor) {
+      return error(403, `tenant '${id}' belongs to ${tenant.owner}`);
+    }
   }
 
   // Not caught: if the cluster cannot be listed we do not know whether a deploy
@@ -85,7 +102,7 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   });
 
   return json({ ok: true, job: jobName, branch: tenant.branch, imageTag, ttl });
-});
+}, { allowCd: true });
 
 // The tenant's own host, not the current default: the perpetual tenant lives on
 // a different suffix, and a redeploy that changed it would move the URL out

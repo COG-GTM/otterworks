@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { withSession, json, error } from "@/lib/api";
+import { withSession, json, error, forbidCdDeploy, forbidOtherTenant, isCdSession } from "@/lib/api";
 import { appendAudit, checkout } from "@/lib/control";
 import { createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
@@ -9,14 +9,21 @@ import type { CheckoutRequest, TenantTier } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const POST = withSession(async (req: NextRequest, { actor }) => {
+export const POST = withSession(async (req: NextRequest, { actor, session }) => {
   const body = (await req.json().catch(() => ({}))) as CheckoutRequest;
 
   const rawId = typeof body.id === "string" && body.id.trim() ? body.id : `a${randomIdSuffix()}`;
   const id = sanitizeId(rawId);
   if (!isValidId(id)) return error(400, "invalid tenant id");
 
-  const owner = typeof body.owner === "string" && body.owner.trim() ? body.owner.trim() : actor;
+  const cd = isCdSession(session);
+  // A CD session owns exactly the tenant its token's branch maps to, and the
+  // owner it records is its repository -- never a caller-supplied label.
+  const owner = cd
+    ? actor
+    : typeof body.owner === "string" && body.owner.trim()
+      ? body.owner.trim()
+      : actor;
   const branch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : `workshop-${id}`;
   const tier: TenantTier = body.tier === "B" ? "B" : "A";
@@ -26,6 +33,16 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
   // a caller cannot end up with a tenant it believes is perpetual while the
   // reaper still expires it.
   const persistent = body.persistent === true || isNeverTtl(body.ttl ?? "");
+
+  if (cd) {
+    const denied = forbidOtherTenant(session, id) ?? forbidCdDeploy(session, { branch, imageTag });
+    if (denied) return denied;
+    // CD creates ephemeral environments only (as tenant.sh sync already
+    // assumed): a perpetual one is a standing cost an operator decides on.
+    if (persistent || env.perpetualTenantIds.has(id)) {
+      return error(403, `CD may not create the perpetual tenant '${id}'`);
+    }
+  }
   if (persistent && !env.perpetualTenantIds.has(id)) {
     return error(
       403,

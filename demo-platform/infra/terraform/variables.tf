@@ -153,3 +153,25 @@ variable "github_actions_trusted_repos" {
   }
 }
 
+# The ECR repositories (under ecr_repo_prefix) CD pushes service images to --
+# the `services` matrix in .github/workflows/cd-tenant.yml. Keep in step with it.
+variable "github_actions_ecr_repositories" {
+  description = "ECR repository names (without ecr_repo_prefix) the GitHub Actions CD role may push to."
+  type        = list(string)
+  default = [
+    "api-gateway",
+    "auth-service",
+    "file-service",
+    "document-service",
+    "collab-service",
+    "notification-service",
+    "search-service",
+    "analytics-service",
+    "admin-service",
+    "audit-service",
+    "report-service",
+    "web-app",
+    "admin-dashboard",
+  ]
+}
+

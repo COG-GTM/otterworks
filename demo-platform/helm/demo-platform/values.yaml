@@ -33,6 +33,20 @@ hostSuffix: demo.otterworks.app
 perpetualTenantIds: main
 perpetualHostSuffix: otterworks.app
 
+# CD login (POST /api/auth/github-oidc): GitHub Actions OIDC tokens from these
+# repositories/branches get a session bound to the one tenant the branch maps
+# to (tenantPrefix = that repository's TENANT_PREFIX variable, "" if unset).
+# Mirrors var.github_actions_trusted_repos in Terraform. Empty disables CD login.
+cdOidc:
+  audience: otterworks-demo-ops
+  trust:
+    Cognition-Partner-Workshops/otterworks:
+      refs: ["main", "workshop-*", "demo-*"]
+      tenantPrefix: ""
+    COG-GTM/otterworks:
+      refs: ["workshop-*", "demo-*"]
+      tenantPrefix: ""
+
 # Runner image used by dashboard-launched Jobs AND the reaper CronJob (OP=reap).
 # Placeholder — override at deploy: --set runnerImage=<registry>/otterworks/demo-runner:<tag>
 runnerImage: REGISTRY/otterworks/demo-runner:latest

@@ -380,12 +380,11 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
+      # No AWS credentials here: tenant.sh logs in to the dashboard with this
+      # job's GitHub OIDC token (id-token: write, above), and the dashboard
+      # binds the session to the tenant this repository/branch maps to. The
+      # CD role cannot read the facilitator passcode.
+      #
       # Creates the tenant with a 72h TTL if the branch has none, otherwise
       # redeploys it in place. `main` is the perpetual tenant and must already
       # exist -- CD deliberately cannot create a perpetual environment (see

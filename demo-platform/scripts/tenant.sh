@@ -9,8 +9,12 @@
 # See infra/terraform/iam_provisioner.tf for the credential this expects
 # (`de-demo-provisioner`).
 #
-# The passcode comes from Secrets Manager, or from DASHBOARD_PASSCODE if it is
-# already in the environment. It is never passed on a process argv -- not to
+# Inside a GitHub Actions job with `id-token: write` (and no DASHBOARD_PASSCODE),
+# it logs in with the job's OIDC token instead: the dashboard verifies the
+# token's repository/ref and issues a session bound to the one tenant that
+# branch maps to. CD never sees the passcode. Everywhere else, the passcode
+# comes from Secrets Manager, or from DASHBOARD_PASSCODE if it is already in
+# the environment. It is never passed on a process argv -- not to
 # curl, and not to the jq that builds the login body: /proc/<pid>/cmdline is
 # world-readable, so on the shared container an agent platform runs this in, any
 # other local process could read it out of `ps`. It travels by environment and
@@ -41,6 +45,10 @@ OPS_HOST="${OPS_HOST:-https://ops.otterworks.app}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 PASSCODE_SECRET_ID="${PASSCODE_SECRET_ID:-otterworks/dev/dashboard/passcode}"
 DEFAULT_TTL="${DEFAULT_TTL:-8h}"
+# Must match the dashboard's CD_OIDC_AUDIENCE.
+CD_OIDC_AUDIENCE="${CD_OIDC_AUDIENCE:-otterworks-demo-ops}"
+# Set by oidc_login: the tenant the dashboard bound the CD session to.
+CD_TENANT=""
 # What CD gives a tenant it creates for a branch nobody checked out by hand.
 # Long enough to span a few days' work, short enough that an abandoned branch
 # stops costing anything on its own.
@@ -60,7 +68,38 @@ trap cleanup EXIT
 
 # ------------------------------------------------------------------------------
 
+# GitHub Actions OIDC: fetch a token for the dashboard's audience and exchange
+# it for a tenant-scoped session. Neither the request token nor the OIDC token
+# goes on an argv: the Authorization header reaches curl as a config file on
+# stdin, and the OIDC token reaches jq through its environment.
+oidc_login() {
+  local token resp code body
+  token="$(printf 'header = "Authorization: bearer %s"\n' "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?}" |
+             curl -sS --fail -K - \
+                  "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${CD_OIDC_AUDIENCE}" |
+             jq -r '.value // empty')" ||
+    fail "cannot get a GitHub OIDC token -- does the job have 'permissions: id-token: write'?"
+  [ -n "${token}" ] || fail "GitHub returned an empty OIDC token"
+
+  resp="$(OIDC_TOKEN="${token}" jq -nc '{token: env.OIDC_TOKEN}' |
+            curl -sS -w '\n%{http_code}' \
+                 -c "${JAR}" -X POST "${OPS_HOST}/api/auth/github-oidc" \
+                 -H 'content-type: application/json' --data-binary @-)"
+  code="$(printf '%s' "${resp}" | tail -n1)"
+  body="$(printf '%s' "${resp}" | sed '$d')"
+
+  case "${code}" in
+    200) CD_TENANT="$(printf '%s' "${body}" | jq -r '.tenant // empty')" ;;
+    *)   fail "CD login to ${OPS_HOST} returned HTTP ${code}: $(printf '%s' "${body}" | jq -r '.error // .' 2>/dev/null)" ;;
+  esac
+}
+
 login() {
+  if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -z "${DASHBOARD_PASSCODE:-}" ]; then
+    oidc_login
+    return
+  fi
+
   local passcode
   passcode="${DASHBOARD_PASSCODE:-}"
 
@@ -268,6 +307,12 @@ case "${cmd}" in
     [ -n "${id}" ] || fail "cannot derive a tenant id from branch '${branch}'"
 
     login
+    # A CD session is bound to the tenant the dashboard derived from the
+    # token's repository/ref; a different id here means TENANT_PREFIX and the
+    # dashboard's CD_OIDC_TRUST disagree, and every call would be refused.
+    if [ -n "${CD_TENANT}" ] && [ "${CD_TENANT}" != "${id}" ]; then
+      fail "the dashboard bound this run to tenant '${CD_TENANT}', not '${id}' -- check TENANT_PREFIX against CD_OIDC_TRUST"
+    fi
     existing="$(api_get_optional "/api/tenants/${id}")"
 
     if [ -z "${existing}" ] || [ "$(printf '%s' "${existing}" | jq -r '.status // "free"')" = "free" ]; then

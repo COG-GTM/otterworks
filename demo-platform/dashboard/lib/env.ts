@@ -74,6 +74,22 @@ export const env = {
       .filter(Boolean);
     return new Set(list);
   },
+  // Repositories whose GitHub Actions OIDC tokens may open a CD session, the
+  // branch patterns trusted per repository, and the TENANT_PREFIX each uses:
+  //   {"owner/repo": {"refs": ["workshop-*", "demo-*"], "tenantPrefix": ""}}
+  // Unset or malformed -> CD login is refused (see lib/cdauth.ts).
+  get cdOidcTrust(): string | undefined {
+    return process.env.CD_OIDC_TRUST;
+  },
+  get cdOidcAudience(): string {
+    return process.env.CD_OIDC_AUDIENCE || "otterworks-demo-ops";
+  },
+  // A CD session lives for one `tenant.sh sync`, not a working day.
+  get cdSessionTtlSeconds(): number {
+    const raw = process.env.CD_SESSION_TTL_SECONDS;
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 && n <= 3600 ? n : 15 * 60;
+  },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;
     const n = raw ? Number(raw) : NaN;

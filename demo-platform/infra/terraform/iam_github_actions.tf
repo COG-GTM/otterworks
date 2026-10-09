@@ -1,10 +1,13 @@
 # The identity GitHub Actions uses to ship tenant environments.
 #
 # Continuous delivery needs to do two things: push service images to ECR, and
-# tell the Demo Ops dashboard to redeploy the tenant that owns the branch. It
-# deliberately gets no more than that -- no EKS, no RDS, no control-table
-# writes -- because the dashboard's runner Job already holds that authority
-# under its own IRSA role, behind validation and an audit trail.
+# tell the Demo Ops dashboard to redeploy the tenant that owns the branch. Only
+# the first needs AWS: the second authenticates to the dashboard with the job's
+# own GitHub OIDC token (dashboard lib/cdauth.ts), which yields a session bound
+# to that branch's tenant. This role deliberately gets no more than ECR -- no
+# EKS, no RDS, no control-table writes, and no dashboard passcode, because the
+# passcode is a facilitator credential over every tenant and any branch this
+# role trusts runs a workflow its pusher wrote.
 #
 # Federated (OIDC) rather than an IAM user: a workflow exchanges a short-lived
 # GitHub token for equally short-lived AWS credentials, so there is no static
@@ -81,6 +84,12 @@ data "aws_iam_policy_document" "github_actions" {
     resources = ["*"]
   }
 
+  # Only the service repositories CD builds, not everything under the prefix
+  # (which includes the control plane's own images). ECR has no per-tag IAM
+  # condition, so tags are bounded elsewhere: tag immutability plus no
+  # ecr:BatchDeleteImage means this role cannot move an existing tag (`main`,
+  # another tenant's `tenant-<id>`), and the dashboard refuses a CD deploy of
+  # any image tag not built from the session's own branch.
   statement {
     sid    = "EcrPushPull"
     effect = "Allow"
@@ -94,30 +103,10 @@ data "aws_iam_policy_document" "github_actions" {
       "ecr:PutImage",
       "ecr:UploadLayerPart",
     ]
-    resources = ["arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.ecr_repo_prefix}/*"]
-  }
-
-  # The same grant the provisioner user holds: read the dashboard passcode, and
-  # nothing else. Everything CD does to a tenant goes through the dashboard's
-  # HTTPS API, authenticated with that passcode.
-  statement {
-    sid       = "ReadDashboardPasscode"
-    effect    = "Allow"
-    actions   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-    resources = [aws_secretsmanager_secret.dashboard_passcode.arn]
-  }
-
-  statement {
-    sid       = "DecryptDashboardPasscode"
-    effect    = "Allow"
-    actions   = ["kms:Decrypt"]
-    resources = [aws_kms_key.dashboard_passcode.arn]
-
-    condition {
-      test     = "StringEquals"
-      variable = "kms:ViaService"
-      values   = ["secretsmanager.${var.aws_region}.amazonaws.com"]
-    }
+    resources = [
+      for repo in var.github_actions_ecr_repositories :
+      "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.ecr_repo_prefix}/${repo}"
+    ]
   }
 }
 
