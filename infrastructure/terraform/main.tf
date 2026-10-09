@@ -144,6 +144,23 @@ module "monitoring" {
 
 # --- MeiliSearch is deployed via ECS; no domain access policy needed. ---
 
+# --- SES: notification-service may only send as its own From address ---
+
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
+locals {
+  ses_identity_arn_prefix = "arn:${data.aws_partition.current.partition}:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity"
+
+  # SES authorizes a send against the email-address identity when it is
+  # verified, otherwise against its domain identity; allow exactly those two.
+  ses_identity_arns = distinct([
+    "${local.ses_identity_arn_prefix}/${var.ses_from_address}",
+    "${local.ses_identity_arn_prefix}/${coalesce(var.ses_identity_domain, split("@", var.ses_from_address)[1])}",
+  ])
+}
+
 module "irsa" {
   source            = "./modules/irsa"
   environment       = var.environment
@@ -242,7 +259,12 @@ module "irsa" {
         {
           Effect   = "Allow"
           Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-          Resource = ["*"]
+          Resource = local.ses_identity_arns
+          Condition = {
+            StringEquals = {
+              "ses:FromAddress" = var.ses_from_address
+            }
+          }
         },
       ]
     })

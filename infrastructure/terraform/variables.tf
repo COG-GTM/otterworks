@@ -39,3 +39,25 @@ variable "meilisearch_master_key" {
   default     = ""
   sensitive   = true
 }
+
+variable "ses_from_address" {
+  description = "From address notification-service sends as (its SES_FROM_EMAIL). The notification-service IRSA role may only send SES email from this address."
+  type        = string
+  default     = "notifications@otterworks.io"
+
+  validation {
+    condition     = can(regex("^[^@*\\s]+@[^@*\\s]+\\.[^@*\\s]+$", var.ses_from_address))
+    error_message = "ses_from_address must be a single email address (no wildcards)."
+  }
+}
+
+variable "ses_identity_domain" {
+  description = "Verified SES domain identity covering ses_from_address. Defaults to the domain part of ses_from_address."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.ses_identity_domain == "" || can(regex("^[a-z0-9.-]+\\.[a-z]{2,}$", var.ses_identity_domain))
+    error_message = "ses_identity_domain must be a plain domain name (no wildcards)."
+  }
+}
