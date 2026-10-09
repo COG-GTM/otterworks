@@ -10,27 +10,64 @@ import java.util.concurrent.ConcurrentHashMap
 
 private val logger = KotlinLogging.logger {}
 
-class WebSocketManager {
+class WebSocketManager(
+    private val maxConnectionsPerClient: Int = Int.MAX_VALUE,
+    private val maxConnections: Int = Int.MAX_VALUE,
+) {
 
     private val connections = ConcurrentHashMap<String, MutableSet<DefaultWebSocketSession>>()
+
+    // The path userId is unauthenticated, so limits are keyed on the peer
+    // address rather than the user; otherwise anyone could fill a victim's slots.
+    private val clientOfSession = HashMap<DefaultWebSocketSession, String>()
+    private val connectionsPerClient = HashMap<String, Int>()
+    private val lock = Any()
 
     private val json = Json {
         prettyPrint = false
         ignoreUnknownKeys = true
     }
 
-    fun addConnection(userId: String, session: DefaultWebSocketSession) {
-        connections.computeIfAbsent(userId) { ConcurrentHashMap.newKeySet() }.add(session)
-        logger.info { "WebSocket connected for user $userId (total: ${connections[userId]?.size ?: 0})" }
+    /**
+     * Registers [session] for [userId] unless [clientAddress] or the service as
+     * a whole has reached its connection cap. Returns false when rejected.
+     */
+    fun tryAddConnection(userId: String, clientAddress: String, session: DefaultWebSocketSession): Boolean {
+        val added = synchronized(lock) {
+            when {
+                clientOfSession.containsKey(session) -> true
+                clientOfSession.size >= maxConnections -> false
+                (connectionsPerClient[clientAddress] ?: 0) >= maxConnectionsPerClient -> false
+                else -> {
+                    connectionsPerClient.merge(clientAddress, 1, Int::plus)
+                    clientOfSession[session] = clientAddress
+                    connections.computeIfAbsent(userId) { ConcurrentHashMap.newKeySet() }.add(session)
+                    true
+                }
+            }
+        }
+        if (added) {
+            logger.info { "WebSocket connected for user $userId (total: ${connections[userId]?.size ?: 0})" }
+        } else {
+            logger.warn { "WebSocket rejected for user $userId: connection limit reached" }
+        }
+        return added
     }
 
     fun removeConnection(userId: String, session: DefaultWebSocketSession) {
-        connections.computeIfPresent(userId) { _, sessions ->
-            sessions.remove(session)
-            if (sessions.isEmpty()) null else sessions
+        synchronized(lock) {
+            connections.computeIfPresent(userId) { _, sessions ->
+                sessions.remove(session)
+                if (sessions.isEmpty()) null else sessions
+            }
+            clientOfSession.remove(session)?.let { client ->
+                connectionsPerClient.computeIfPresent(client) { _, count -> if (count <= 1) null else count - 1 }
+            }
         }
         logger.info { "WebSocket disconnected for user $userId" }
     }
+
+    fun getConnectionCount(): Int = synchronized(lock) { clientOfSession.size }
 
     suspend fun pushNotification(userId: String, notification: Notification): Int {
         val sessions = connections[userId] ?: return 0
