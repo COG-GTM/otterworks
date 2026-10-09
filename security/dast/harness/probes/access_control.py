@@ -425,6 +425,71 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
     )
 
 
+@probe(
+    finding_id="DAST-BOLA-ANALYTICS",
+    title="Analytics routes disclose other users' activity and the cross-user event log",
+    severity=Severity.MEDIUM,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="analytics-service",
+    remediation=(
+        "Require the gateway-forwarded X-User-ID in analytics-service, answer per-user "
+        "routes only for the caller's own id, and reserve cross-user aggregates and the "
+        "event export for the admin role forwarded from the validated JWT."
+    ),
+)
+def bola_analytics(ctx: ScanContext) -> Result:
+    """Attacker reads the victim's analytics and the all-users export with its own token."""
+    self = bola_analytics.probe
+    victim_id = ctx.victim.user_id
+    attacks: list[tuple[str, dict[str, str]]] = [
+        (f"/api/v1/analytics/users/{victim_id}/activity", {}),
+        ("/api/v1/analytics/storage", {"user_id": victim_id}),
+        ("/api/v1/analytics/storage", {}),
+        ("/api/v1/analytics/export", {"period": "90d"}),
+        ("/api/v1/analytics/dashboard", {}),
+    ]
+    evidence: list[Evidence] = []
+    exposed: list[str] = []
+    unreached: list[str] = []
+    for path, params in attacks:
+        label = f"{path}?{'&'.join(f'{k}={v}' for k, v in params.items())}" if params else path
+        response = ctx.get(path, params=params or None, identity=ctx.attacker)
+        if unavailable(response):
+            unreached.append(f"{label} -> {response.status_code}")
+            continue
+        evidence.append(Evidence.from_response(response, note=label))
+        if response.status_code < 400:
+            exposed.append(label)
+    if exposed:
+        return self.result(
+            Verdict.VULNERABLE,
+            f"a standard user's token was answered by: {', '.join(exposed)}",
+            evidence,
+        )
+    if unreached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"analytics-service did not produce an auth verdict for: {', '.join(unreached)}",
+            evidence,
+        )
+    # Control request: a service that rejects everyone is not evidence of scoping.
+    own = f"/api/v1/analytics/users/{victim_id}/activity"
+    if not ctx.owner_can_read(own, ctx.victim):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the victim cannot read its own activity either, so per-user scoping cannot "
+            "be assessed",
+            evidence,
+        )
+    return self.result(
+        Verdict.SECURE,
+        "the victim reads its own activity; the attacker is refused the victim's data, "
+        "unscoped storage, the dashboard and the export",
+        evidence,
+    )
+
+
 def _forge_share_token(document_id: str, salt: str, length: int) -> str:
     """Derive a share token the way an unkeyed digest lets anyone derive it.
 

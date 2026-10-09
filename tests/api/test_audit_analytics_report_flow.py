@@ -94,7 +94,7 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         headers=user.auth_headers,
         params={"period": "7d"},
     )
-    assert dashboard_response.status_code == 200, dashboard_response.text
+    assert dashboard_response.status_code == 403, dashboard_response.text
 
     activity_response = api_client.client.get(
         f"/api/v1/analytics/users/{user.id}/activity",
@@ -106,21 +106,22 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         f"/api/v1/analytics/documents/{resource_id}/stats",
         headers=user.auth_headers,
     )
-    assert document_stats_response.status_code == 200, document_stats_response.text
+    # Not a document-service document the caller can read, so no stats are disclosed.
+    assert document_stats_response.status_code == 403, document_stats_response.text
 
     top_content_response = api_client.client.get(
         "/api/v1/analytics/top-content",
         headers=user.auth_headers,
         params={"type": "documents", "period": "7d", "limit": 5},
     )
-    assert top_content_response.status_code == 200, top_content_response.text
+    assert top_content_response.status_code == 403, top_content_response.text
 
     active_users_response = api_client.client.get(
         "/api/v1/analytics/active-users",
         headers=user.auth_headers,
         params={"period": "daily"},
     )
-    assert active_users_response.status_code == 200, active_users_response.text
+    assert active_users_response.status_code == 403, active_users_response.text
 
     storage_response = api_client.client.get(
         "/api/v1/analytics/storage",
@@ -134,7 +135,24 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         headers=user.auth_headers,
         params={"format": "json", "period": "7d"},
     )
-    assert export_response.status_code == 200, export_response.text
+    assert export_response.status_code == 403, export_response.text
+
+    other = api_client.register_user("analytics-other")
+    cross_user_activity = api_client.client.get(
+        f"/api/v1/analytics/users/{user.id}/activity",
+        headers=other.auth_headers,
+    )
+    assert cross_user_activity.status_code == 403, cross_user_activity.text
+
+    cross_user_storage = api_client.client.get(
+        "/api/v1/analytics/storage",
+        headers=other.auth_headers,
+        params={"user_id": user.id},
+    )
+    assert cross_user_storage.status_code == 403, cross_user_storage.text
+
+    all_users_storage = api_client.client.get("/api/v1/analytics/storage", headers=user.auth_headers)
+    assert all_users_storage.status_code == 403, all_users_storage.text
 
 
 def test_report_generation_lifecycle_and_gateway_route(api_client):
