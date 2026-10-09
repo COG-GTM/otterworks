@@ -22,14 +22,22 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RoutesTest {
 
     private val notificationService = mockk<NotificationService>(relaxed = true)
+
+    // The Koin Ktor plugin registers a global Koin context that outlives each testApplication.
+    @AfterTest
+    fun tearDown() {
+        stopKoin()
+    }
 
     private fun ApplicationTestBuilder.setUp() {
         application {
