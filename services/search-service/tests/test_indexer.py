@@ -5,9 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from app.config import MeiliSearchConfig
-from app.services.indexer import Indexer
+from app.services.indexer import Indexer, ReindexSourceError
 from app.services.meilisearch_client import MeiliSearchService
 
 
@@ -122,3 +123,19 @@ class TestIndexer:
     def test_process_event_unknown_action(self, indexer: Indexer):
         result = indexer.process_event({"action": "unknown", "data": {}})
         assert result is None
+
+    def test_reindex_aborts_before_clearing_when_file_fetch_rejected(self, indexer: Indexer):
+        with patch("app.services.indexer.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(status_code=401)
+            with pytest.raises(ReindexSourceError):
+                indexer.reindex()
+        indexer.search.client.delete_index.assert_not_called()
+
+    def test_reindex_aborts_before_clearing_when_file_service_unreachable(
+        self, indexer: Indexer
+    ):
+        with patch("app.services.indexer.requests.get") as mock_get:
+            mock_get.side_effect = requests.ConnectionError("unreachable")
+            with pytest.raises(ReindexSourceError):
+                indexer.reindex()
+        indexer.search.client.delete_index.assert_not_called()

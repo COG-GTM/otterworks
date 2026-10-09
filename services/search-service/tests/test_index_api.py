@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+from app.services.indexer import ReindexSourceError
+
 
 class TestIndexDocumentEndpoint:
     """Tests for POST /api/v1/search/index/document."""
@@ -104,7 +108,21 @@ class TestReindexEndpoint:
 
     def test_reindex_success(self, client, mock_meilisearch_client):
         """Reindex returns 200."""
-        response = client.post("/api/v1/search/reindex")
+        with patch(
+            "app.services.indexer.Indexer._fetch_all_documents", return_value=[]
+        ), patch("app.services.indexer.Indexer._fetch_all_files", return_value=[]):
+            response = client.post("/api/v1/search/reindex")
         assert response.status_code == 200
         data = response.get_json()
         assert data["status"] == "reindexed"
+
+    def test_reindex_file_fetch_failure_returns_500(self, client, mock_meilisearch_client):
+        """A failed file-service fetch aborts the reindex instead of wiping the index."""
+        with patch(
+            "app.services.indexer.Indexer._fetch_all_documents", return_value=[]
+        ), patch(
+            "app.services.indexer.Indexer._fetch_all_files",
+            side_effect=ReindexSourceError("file-service returned 401"),
+        ):
+            response = client.post("/api/v1/search/reindex")
+        assert response.status_code == 500

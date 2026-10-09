@@ -16,6 +16,10 @@ FILE_SERVICE_URL = "http://file-service:8082"
 FETCH_TIMEOUT = 30
 
 
+class ReindexSourceError(RuntimeError):
+    """A source-of-truth service could not be fully read during a reindex."""
+
+
 class Indexer:
     """Handles document and file indexing into MeiliSearch."""
 
@@ -89,8 +93,10 @@ class Indexer:
 
         Fetches all documents from the document-service and all files
         from the file-service, then passes them to MeiliSearch for
-        bulk re-indexing.  If a source service is unreachable the
-        corresponding index is still cleared and recreated empty.
+        bulk re-indexing.  If a document source is unreachable the
+        documents index is still cleared and recreated empty.  A failed
+        file fetch raises :class:`ReindexSourceError` before any index is
+        cleared, so the existing file index is never wiped.
         """
         documents = self._fetch_all_documents()
         files = self._fetch_all_files()
@@ -152,7 +158,9 @@ class Indexer:
                 )
                 if resp.status_code != 200:
                     logger.warning("reindex_file_fetch_failed", status=resp.status_code)
-                    break
+                    raise ReindexSourceError(
+                        f"file-service returned {resp.status_code} while listing files"
+                    )
                 data = resp.json()
                 items = data.get("files") or data.get("items") or data.get("data") or []
                 if not items:
@@ -171,9 +179,9 @@ class Indexer:
                         "type": "file",
                     })
                 page += 1
-            except requests.RequestException:
+            except requests.RequestException as exc:
                 logger.exception("reindex_file_fetch_error")
-                break
+                raise ReindexSourceError("file-service unreachable while listing files") from exc
         return files
 
     def process_event(self, event: dict[str, Any]) -> dict[str, Any] | None:

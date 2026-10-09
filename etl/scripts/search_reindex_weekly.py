@@ -39,6 +39,16 @@ def main():
     if meilisearch_api_key:
         meili_headers["Authorization"] = "Bearer %s" % meilisearch_api_key
 
+    # ---- Pre-flight: never clear indices we cannot repopulate ----
+    preflight = requests.get(
+        "%s/api/v1/files" % file_service_url,
+        params={"page": 1, "page_size": 1},
+        timeout=30,
+    )
+    if preflight.status_code != 200:
+        print("[%s] ERROR: file-service returned %d, aborting before clearing indices" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), preflight.status_code))
+        sys.exit(1)
+
     # ---- Clear existing indices ----
     print("[%s] Clearing MeiliSearch indices..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
