@@ -71,7 +71,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			pr.SetURL(target)
 			// Preserve the client's Host header, as the Director did.
 			pr.Out.Host = pr.In.Host
-			pr.SetXForwarded()
+			forwardedHeaders(pr)
 			setIdentityHeaders(pr.Out)
 		},
 	}
@@ -113,6 +113,19 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				"service": route.Prefix,
 				"reason":  "circuit breaker open",
 			})
+		}
+	}
+}
+
+// forwardedHeaders keeps the Director-era forwarding semantics: Rewrite drops
+// inbound Forwarded/X-Forwarded-* headers, so carry them over, append the
+// client IP to X-Forwarded-For, and only fill in Host/Proto when absent.
+func forwardedHeaders(pr *httputil.ProxyRequest) {
+	pr.Out.Header["X-Forwarded-For"] = pr.In.Header["X-Forwarded-For"]
+	pr.SetXForwarded()
+	for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded"} {
+		if v, ok := pr.In.Header[h]; ok {
+			pr.Out.Header[h] = v
 		}
 	}
 }

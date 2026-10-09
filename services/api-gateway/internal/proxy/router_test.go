@@ -179,3 +179,32 @@ func TestProxyPreservesPathQueryHostAndForwardedFor(t *testing.T) {
 	assert.Equal(t, "198.51.100.1, 203.0.113.7", gotXFF)
 	assert.Equal(t, "http", gotProto)
 }
+
+func TestProxyKeepsInboundForwardedProtoAndHost(t *testing.T) {
+	var gotProto, gotHost string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotProto = r.Header.Get("X-Forwarded-Proto")
+		gotHost = r.Header.Get("X-Forwarded-Host")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+	tokenStr := signedRouterToken(t, middleware.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Subject:   "user-123",
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/abc", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "app.otterworks.dev")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "https", gotProto)
+	assert.Equal(t, "app.otterworks.dev", gotHost)
+}
