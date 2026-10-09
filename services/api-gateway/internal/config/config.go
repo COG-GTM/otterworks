@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -28,6 +29,10 @@ type Config struct {
 	// Rate limiting
 	RateLimitRPS int
 
+	// Proxy hops (CIDRs or IPs) whose X-Forwarded-For entries are believed when
+	// deriving the client IP. Empty means only the TCP peer is used.
+	TrustedProxyCIDRs []string
+
 	// JWT
 	JWTSecret string
 
@@ -52,6 +57,11 @@ func (c *Config) Validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
 	}
+	for _, entry := range c.TrustedProxyCIDRs {
+		if !isIPOrCIDR(entry) {
+			return fmt.Errorf("TRUSTED_PROXY_CIDRS: invalid CIDR or IP %q", entry)
+		}
+	}
 	return nil
 }
 
@@ -72,7 +82,8 @@ func Load() *Config {
 		AuditServiceURL:        getEnv("AUDIT_SERVICE_URL", "http://audit-service:8090"),
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
-		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitRPS:      getEnvInt("RATE_LIMIT_RPS", 100),
+		TrustedProxyCIDRs: getEnvList("TRUSTED_PROXY_CIDRS"),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
@@ -141,4 +152,22 @@ func getEnvSlice(key string, fallback []string) []string {
 		return strings.Split(val, ",")
 	}
 	return fallback
+}
+
+func getEnvList(key string) []string {
+	var out []string
+	for _, item := range strings.Split(os.Getenv(key), ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func isIPOrCIDR(s string) bool {
+	if strings.Contains(s, "/") {
+		_, _, err := net.ParseCIDR(s)
+		return err == nil
+	}
+	return net.ParseIP(s) != nil
 }

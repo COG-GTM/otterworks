@@ -102,3 +102,41 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+func TestProxyForwardsOnlyResolvedClientIP(t *testing.T) {
+	var gotXFF, gotRealIP, gotTrueClient string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXFF = r.Header.Get("X-Forwarded-For")
+		gotRealIP = r.Header.Get("X-Real-IP")
+		gotTrueClient = r.Header.Get("True-Client-IP")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	trusted, err := middleware.ParseTrustedProxies([]string{"10.0.0.0/8"})
+	require.NoError(t, err)
+	handler := middleware.ClientIP(trusted)(newTestRouter(t, backend.URL))
+
+	claims := middleware.JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Subject:   "user-123",
+		},
+	}
+	tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+	req.RemoteAddr = "10.0.12.40:5000"
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 203.0.113.9, 10.0.3.15")
+	req.Header.Set("X-Real-IP", "1.2.3.4")
+	req.Header.Set("True-Client-IP", "1.2.3.4")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "203.0.113.9", gotXFF, "backends see only the client IP the gateway resolved")
+	assert.Equal(t, "203.0.113.9", gotRealIP)
+	assert.Empty(t, gotTrueClient)
+}

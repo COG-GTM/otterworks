@@ -57,6 +57,11 @@ env:
   ANALYTICS_SERVICE_URL: "http://analytics-service:8088"
   ADMIN_SERVICE_URL: "http://admin-service:8089"
   AUDIT_SERVICE_URL: "http://audit-service:8090"
+  # Hops whose X-Forwarded-For entries are believed when deriving the client IP
+  # for rate limiting: the ingress-nginx controller and web-app nginx pods. Pod
+  # IPs come from the VPC, so trust the private ranges; a public client address
+  # is never trusted, so it cannot be spoofed past.
+  TRUSTED_PROXY_CIDRS: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
 networkPolicy:
   enabled: true

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// TokenBucket implements a per-IP token bucket rate limiter.
+// TokenBucket implements a per-client token bucket rate limiter.
 type TokenBucket struct {
 	tokens     float64
 	maxTokens  float64
@@ -16,32 +16,47 @@ type TokenBucket struct {
 	lastRefill time.Time
 }
 
-// RateLimiter manages per-IP token buckets.
+// RateLimiter manages per-client token buckets.
 type RateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*TokenBucket
-	rps     int
-	now     func() time.Time // for testing
+	mu        sync.Mutex
+	buckets   map[string]*TokenBucket
+	rps       int
+	jwtSecret string
+	now       func() time.Time // for testing
+}
+
+// RateLimitOption configures a RateLimiter.
+type RateLimitOption func(*RateLimiter)
+
+// KeyBySubject buckets requests carrying a valid JWT by the token's subject
+// instead of the client IP, so callers sharing an address (e.g. behind a NAT or
+// a proxy hop) cannot exhaust each other's allowance. Requests without a valid
+// token are still bucketed by IP.
+func KeyBySubject(secret string) RateLimitOption {
+	return func(rl *RateLimiter) { rl.jwtSecret = secret }
 }
 
 // NewRateLimiter creates a rate limiter with the specified requests per second limit.
-func NewRateLimiter(rps int) *RateLimiter {
+func NewRateLimiter(rps int, opts ...RateLimitOption) *RateLimiter {
 	rl := &RateLimiter{
 		buckets: make(map[string]*TokenBucket),
 		rps:     rps,
 		now:     time.Now,
 	}
+	for _, opt := range opts {
+		opt(rl)
+	}
 	go rl.cleanup()
 	return rl
 }
 
-// Allow checks if a request from the given IP is allowed.
-func (rl *RateLimiter) Allow(ip string) bool {
+// Allow checks if a request for the given bucket key is allowed.
+func (rl *RateLimiter) Allow(key string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
 	now := rl.now()
-	bucket, exists := rl.buckets[ip]
+	bucket, exists := rl.buckets[key]
 	if !exists {
 		bucket = &TokenBucket{
 			tokens:     float64(rl.rps),
@@ -49,7 +64,7 @@ func (rl *RateLimiter) Allow(ip string) bool {
 			refillRate: float64(rl.rps),
 			lastRefill: now,
 		}
-		rl.buckets[ip] = bucket
+		rl.buckets[key] = bucket
 	}
 
 	elapsed := now.Sub(bucket.lastRefill).Seconds()
@@ -66,11 +81,11 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	return false
 }
 
-// Handler returns an HTTP middleware that rate-limits by client IP.
+// Handler returns an HTTP middleware that rate-limits by authenticated subject
+// (with KeyBySubject) or client IP.
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := extractIP(r)
-		if !rl.Allow(ip) {
+		if !rl.Allow(rl.bucketKey(r)) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -83,8 +98,25 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	})
 }
 
+func (rl *RateLimiter) bucketKey(r *http.Request) string {
+	if rl.jwtSecret != "" {
+		if tokenStr := extractBearerToken(r); tokenStr != "" {
+			if claims, err := validateToken(tokenStr, rl.jwtSecret); err == nil {
+				subject := claims.Subject
+				if subject == "" {
+					subject = claims.UserID
+				}
+				if subject != "" {
+					return "sub:" + subject
+				}
+			}
+		}
+	}
+	return "ip:" + extractIP(r)
+}
+
 func extractIP(r *http.Request) string {
-	// chimw.RealIP has already set r.RemoteAddr to the client IP
+	// ClientIP has already set r.RemoteAddr to the client IP
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
@@ -99,9 +131,9 @@ func (rl *RateLimiter) cleanup() {
 	for range ticker.C {
 		rl.mu.Lock()
 		now := rl.now()
-		for ip, bucket := range rl.buckets {
+		for key, bucket := range rl.buckets {
 			if now.Sub(bucket.lastRefill) > 10*time.Minute {
-				delete(rl.buckets, ip)
+				delete(rl.buckets, key)
 			}
 		}
 		rl.mu.Unlock()
