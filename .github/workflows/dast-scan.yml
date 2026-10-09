@@ -64,6 +64,7 @@ jobs:
 
       - name: Start the application stack
         run: |
+          ./scripts/local-env.sh
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
             postgres redis localstack meilisearch \
             auth-service api-gateway document-service search-service file-service
