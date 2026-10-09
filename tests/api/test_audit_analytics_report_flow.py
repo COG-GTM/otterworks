@@ -22,6 +22,37 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     assert create_response.status_code == 201, create_response.text
     event = create_response.json()
     event_id = event["id"]
+    assert event["userId"] == user.id
+
+    victim = api_client.register_user("audit-flow-victim")
+    forged_response = api_client.client.post(
+        "/api/v1/audit/events",
+        headers={**user.auth_headers, "X-User-ID": victim.id},
+        json={
+            "userId": victim.id,
+            "action": "delete",
+            "resourceType": "document",
+            "resourceId": resource_id,
+            "ipAddress": "6.6.6.6",
+        },
+    )
+    assert forged_response.status_code == 403, forged_response.text
+
+    spoofed_metadata = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=user.auth_headers,
+        json={
+            "action": "update",
+            "resourceType": "document",
+            "resourceId": resource_id,
+            "ipAddress": "6.6.6.6",
+            "userAgent": "SpoofedAgent/1.0",
+        },
+    )
+    assert spoofed_metadata.status_code == 201, spoofed_metadata.text
+    assert spoofed_metadata.json()["userId"] == user.id
+    assert spoofed_metadata.json()["ipAddress"] != "6.6.6.6"
+    assert spoofed_metadata.json()["userAgent"] != "SpoofedAgent/1.0"
 
     get_response = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=user.auth_headers)
     assert get_response.status_code == 200, get_response.text
@@ -69,7 +100,13 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     assert invalid_export.status_code == 400
 
     archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    assert archive_response.status_code == 403, archive_response.text
+
+    spoofed_admin = api_client.client.post(
+        "/api/v1/audit/archive",
+        headers={**user.auth_headers, "X-User-Roles": "ADMIN"},
+    )
+    assert spoofed_admin.status_code == 403, spoofed_admin.text
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):

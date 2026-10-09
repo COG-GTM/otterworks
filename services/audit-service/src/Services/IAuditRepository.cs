@@ -8,5 +8,6 @@ public interface IAuditRepository
     Task<List<AuditEvent>> GetAllUserEventsAsync(string userId);
     Task<List<AuditEvent>> GetResourceHistoryAsync(string resourceId);
     Task<List<AuditEvent>> GetEventsByDateRangeAsync(DateTime from, DateTime to);
+    Task<List<AuditEvent>> GetArchivableEventsAsync(DateTime olderThan);
     Task<int> DeleteEventsAsync(IEnumerable<string> eventIds);
 }
