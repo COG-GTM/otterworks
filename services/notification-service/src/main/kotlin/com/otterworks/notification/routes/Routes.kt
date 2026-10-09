@@ -4,10 +4,14 @@ import com.otterworks.notification.model.NotificationPreferenceRequest
 import com.otterworks.notification.model.PaginatedResponse
 import com.otterworks.notification.model.UnreadCountResponse
 import com.otterworks.notification.service.NotificationService
+import com.otterworks.notification.service.UnknownEventTypeException
 import com.otterworks.notification.websocket.WebSocketManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
+import io.ktor.server.plugins.BadRequestException
+import io.ktor.server.request.ContentTransformationException
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -33,6 +37,10 @@ data class ErrorResponse(val error: String)
 
 @Serializable
 data class MarkAllReadResponse(val markedCount: Int)
+
+// X-User-ID is set by the api-gateway from the verified JWT (client-supplied values are stripped).
+private fun ApplicationCall.authenticatedUserId(): String? =
+    request.headers["X-User-ID"]?.trim()?.takeIf { it.isNotEmpty() }
 
 fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
     val notificationService by inject<NotificationService>()
@@ -141,9 +149,13 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
 
         route("/api/v1/preferences") {
             get {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
+                val userId = call.authenticatedUserId() ?: return@get call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ErrorResponse("Authentication required"),
+                )
+                val requestedUserId = call.request.queryParameters["user_id"]
+                if (requestedUserId != null && requestedUserId != userId) {
+                    call.respond(HttpStatusCode.Forbidden, ErrorResponse("Cannot read another user's preferences"))
                     return@get
                 }
 
@@ -152,12 +164,34 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
 
             put {
-                val request = call.receive<NotificationPreferenceRequest>()
-                notificationService.updatePreferences(
-                    userId = request.userId,
-                    eventType = request.eventType,
-                    channels = request.channels,
+                val userId = call.authenticatedUserId() ?: return@put call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ErrorResponse("Authentication required"),
                 )
+                val request = try {
+                    call.receive<NotificationPreferenceRequest>()
+                } catch (e: BadRequestException) {
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid preference request body"))
+                    return@put
+                } catch (e: ContentTransformationException) {
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Invalid preference request body"))
+                    return@put
+                }
+                if (request.userId != null && request.userId != userId) {
+                    call.respond(HttpStatusCode.Forbidden, ErrorResponse("Cannot modify another user's preferences"))
+                    return@put
+                }
+
+                try {
+                    notificationService.updatePreferences(
+                        userId = userId,
+                        eventType = request.eventType,
+                        channels = request.channels,
+                    )
+                } catch (e: UnknownEventTypeException) {
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Unknown eventType"))
+                    return@put
+                }
                 call.respond(HttpStatusCode.NoContent)
             }
         }

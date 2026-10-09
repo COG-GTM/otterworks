@@ -14,6 +14,7 @@ import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class NotificationServiceTest {
@@ -245,5 +246,37 @@ class NotificationServiceTest {
         service.processEvent(event)
 
         coVerify { webSocketManager.pushNotification("user-3", any()) }
+    }
+
+    @Test
+    fun `updatePreferences replaces only the given event type for the given user`() = runTest {
+        val saved = slot<NotificationPreference>()
+        coEvery { repository.getPreferences("user-1") } returns NotificationPreference(userId = "user-1")
+        coEvery { repository.savePreferences(capture(saved)) } returns Unit
+
+        service.updatePreferences("user-1", "file_shared", listOf(DeliveryChannel.IN_APP))
+
+        assertEquals("user-1", saved.captured.userId)
+        assertEquals(listOf(DeliveryChannel.IN_APP), saved.captured.channels["file_shared"])
+        assertEquals(
+            NotificationPreference(userId = "user-1").channels["comment_added"],
+            saved.captured.channels["comment_added"],
+        )
+    }
+
+    @Test
+    fun `updatePreferences rejects unknown event types without saving`() = runTest {
+        assertFailsWith<UnknownEventTypeException> {
+            service.updatePreferences("user-1", "security_alert_override", emptyList())
+        }
+        coVerify(exactly = 0) { repository.savePreferences(any()) }
+    }
+
+    @Test
+    fun `updatePreferences rejects a blank user id`() = runTest {
+        assertFailsWith<IllegalArgumentException> {
+            service.updatePreferences(" ", "file_shared", emptyList())
+        }
+        coVerify(exactly = 0) { repository.savePreferences(any()) }
     }
 }
