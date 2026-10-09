@@ -1,8 +1,9 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, type IncomingMessage } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { WebSocketServer } from 'ws';
-import jwt from 'jsonwebtoken';
+import { WebSocketServer, type WebSocket } from 'ws';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
+import * as Y from 'yjs';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
@@ -14,9 +15,14 @@ import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
+import {
+  YWebsocketGuard,
+  docNameFromUrl,
+  type SharedDocLike,
+} from './services/ywebsocket-guard';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection } = require('y-websocket/bin/utils');
+const { setupWSConnection, docs: yDocs } = require('y-websocket/bin/utils');
 
 const config = loadConfig();
 
@@ -128,11 +134,29 @@ const collabManager = setupCollaborationHandlers(
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
-const wss = new WebSocketServer({ noServer: true });
-wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
-  logger.info({ url: req.url }, 'y-websocket_client_connected');
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: config.yWebsocket.maxPayloadBytes,
 });
+const yWebsocketGuard = new YWebsocketGuard(
+  config.yWebsocket,
+  yDocs as Map<string, SharedDocLike>,
+  (doc) => Y.encodeStateAsUpdate(doc as unknown as Y.Doc).byteLength,
+  logger,
+);
+function handleYWebsocketConnection(
+  conn: WebSocket,
+  req: IncomingMessage,
+  userId: string,
+): void {
+  const docName = docNameFromUrl(req.url);
+  const accepted = yWebsocketGuard.attach(conn, userId, docName, () =>
+    setupWSConnection(conn, req, { docName }),
+  );
+  if (accepted) {
+    logger.info({ docName, userId }, 'y-websocket_client_connected');
+  }
+}
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
 httpServer.on('upgrade', (request, socket, head) => {
@@ -154,8 +178,13 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  let userId: string;
   try {
-    jwt.verify(token, config.jwt.secret);
+    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload | string;
+    if (typeof decoded === 'string' || typeof decoded.sub !== 'string' || !decoded.sub) {
+      throw new Error('token has no subject');
+    }
+    userId = decoded.sub;
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -163,8 +192,24 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  const admission = yWebsocketGuard.admit(userId, docNameFromUrl(request.url));
+  if (!admission.ok) {
+    logger.warn(
+      { userId, reason: admission.reason },
+      'y-websocket_connection_rejected: limit',
+    );
+    const statusText = {
+      400: 'Bad Request',
+      429: 'Too Many Requests',
+      503: 'Service Unavailable',
+    };
+    socket.write(`HTTP/1.1 ${admission.status} ${statusText[admission.status]}\r\n\r\n`);
+    socket.destroy();
+    return;
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
+    handleYWebsocketConnection(ws, request, userId);
   });
 });
 
