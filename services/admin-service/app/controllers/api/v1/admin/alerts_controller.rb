@@ -27,6 +27,22 @@ module Api
           'info'     => 'low',
         }.freeze
 
+        # Alert types allowed to auto-start a Devin session. Others still open
+        # an incident but wait for a human. Override with a comma-separated
+        # DEVIN_AUTO_INVESTIGATE_ALERTNAMES.
+        DEFAULT_AUTO_INVESTIGATE_ALERTNAMES = %w[
+          FileUploadFailed
+          FileUploadHighErrorRate
+          NotificationEventPublishFailure
+          NotificationConsumerProcessingErrors
+          SearchSuggestHighErrorRate
+          DocumentServiceHighLatency
+        ].freeze
+
+        # Headers added by reverse proxies (api-gateway, ingress). Their
+        # presence means the request did not come straight from in-cluster.
+        FORWARDING_HEADERS = %w[X-Forwarded-For Forwarded X-Real-IP X-Forwarded-Host].freeze
+
         # POST /api/v1/admin/alerts/ingest
         def ingest
           alerts = params[:alerts]
@@ -73,7 +89,8 @@ module Api
             end
           end
 
-          auto_investigate = AdminSettingsService.auto_investigate_enabled?
+          auto_investigate = AdminSettingsService.auto_investigate_enabled? &&
+                             auto_investigate_allowed?(alert_name)
 
           incident = Incident.create!(
             title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
@@ -88,7 +105,8 @@ module Api
           if auto_investigate
             session_result = DevinSessionService.create_session(incident: incident)
           else
-            Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
+            Rails.logger.info("Auto-investigate disabled or alert #{alert_name.inspect} not allowlisted — " \
+                              "skipping Devin session for incident #{incident.id}")
           end
 
           if session_result
@@ -131,24 +149,57 @@ module Api
         def build_description(alert_name, base_description, labels, annotations)
           parts = [base_description]
           parts << "**Alert**: #{alert_name}" if alert_name.present?
-          if (runbook = annotations[:runbook_url].to_s).present?
+          if (runbook = trusted_runbook_url(annotations[:runbook_url]))
             parts << "**Runbook**: #{runbook}"
           end
           parts << "**Source**: Grafana Unified Alerting (auto-generated incident)"
           parts.join("\n\n")
         end
 
-        def verify_alert_secret
-          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+        def auto_investigate_allowed?(alert_name)
+          configured = env_list('DEVIN_AUTO_INVESTIGATE_ALERTNAMES')
+          allowed = configured.presence || DEFAULT_AUTO_INVESTIGATE_ALERTNAMES
+          allowed.include?(alert_name)
+        end
 
-          # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
-          # (Grafana webhook contact points send the token as a Bearer header)
-          provided = request.headers['X-Alert-Secret'].presence ||
-                     request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+        # Runbook links are only kept for hosts listed in ALERT_RUNBOOK_URL_HOSTS
+        # (comma-separated); anything else is dropped from the incident.
+        def trusted_runbook_url(raw)
+          hosts = env_list('ALERT_RUNBOOK_URL_HOSTS').map(&:downcase)
+          return nil if hosts.empty? || raw.blank?
+
+          uri = URI.parse(raw.to_s.strip)
+          return nil unless uri.is_a?(URI::HTTPS) && uri.userinfo.nil? && hosts.include?(uri.host.to_s.downcase)
+
+          uri.to_s
+        rescue URI::InvalidURIError
+          nil
+        end
+
+        def env_list(name)
+          ENV.fetch(name, nil).to_s.split(',').map(&:strip).compact_blank
+        end
+
+        def verify_alert_secret
+          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil).presence
+
+          if expected.nil?
+            # No shared secret configured: only accept direct in-cluster callers
+            # (Grafana, file-service), never requests relayed by the gateway.
+            return unless proxied_request?
+          else
+            # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
+            # (Grafana webhook contact points send the token as a Bearer header)
+            provided = request.headers['X-Alert-Secret'].presence ||
+                       request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
+            return if provided && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
+          end
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
+        end
+
+        def proxied_request?
+          FORWARDING_HEADERS.any? { |header| request.headers[header].present? }
         end
       end
     end
