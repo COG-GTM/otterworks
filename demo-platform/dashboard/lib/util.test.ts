@@ -23,6 +23,8 @@ test("isValidImageTag rejects Helm --set syntax and non-tags", () => {
     "a/b",
     "a:b",
     "a\nb",
+    "main-abc1234\n",
+    "main-abc1234\r\n",
     "a".repeat(129),
   ]) {
     assert.equal(isValidImageTag(tag), false, JSON.stringify(tag));
