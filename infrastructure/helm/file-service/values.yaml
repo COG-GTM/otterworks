@@ -80,4 +80,5 @@ config:
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
+#   FILE_SERVICE_INTERNAL_TOKEN: shared service-to-service secret, required for header-less internal callers (listing without X-User-ID, upload with a multipart owner_id).
 secrets: {}

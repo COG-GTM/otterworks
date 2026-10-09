@@ -122,3 +122,21 @@ class TestIndexer:
     def test_process_event_unknown_action(self, indexer: Indexer):
         result = indexer.process_event({"action": "unknown", "data": {}})
         assert result is None
+
+
+def test_fetch_all_files_sends_internal_service_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("FILE_SERVICE_INTERNAL_TOKEN", "s3cret")
+    empty = MagicMock(status_code=200)
+    empty.json.return_value = {"files": []}
+    with patch("app.services.indexer.requests.get", return_value=empty) as mock_get:
+        assert Indexer._fetch_all_files() == []
+    assert mock_get.call_args.kwargs["headers"] == {"X-Internal-Service-Token": "s3cret"}
+
+
+def test_fetch_all_files_without_token_sends_no_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("FILE_SERVICE_INTERNAL_TOKEN", raising=False)
+    empty = MagicMock(status_code=200)
+    empty.json.return_value = {"files": []}
+    with patch("app.services.indexer.requests.get", return_value=empty) as mock_get:
+        Indexer._fetch_all_files()
+    assert mock_get.call_args.kwargs["headers"] == {}

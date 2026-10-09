@@ -11,7 +11,7 @@ async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> boo
 }
 
 use crate::alerts;
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ServerConfig};
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
 use crate::metadata::MetadataClient;
@@ -52,13 +52,9 @@ pub async fn upload_file(
     redis_cm: web::Data<redis::aio::ConnectionManager>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
-    // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
-    // Fall back to the multipart field for direct/internal callers.
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
+    // The owner is the X-User-ID injected by the api-gateway from the JWT. The
+    // multipart owner_id field is only honoured for authenticated internal callers.
+    let caller = resolve_caller(&req, &config.server)?;
 
     // Uploader's email, injected by api-gateway from the JWT; carried on
     // upload-failure alerts so admin-service can attribute the incident.
@@ -134,9 +130,12 @@ pub async fn upload_file(
         }
     }
 
-    let owner = header_owner_id
-        .or(owner_id)
-        .ok_or_else(|| ServiceError::BadRequest("owner_id is required".into()))?;
+    let owner = match caller {
+        Caller::User(user_id) => user_id,
+        Caller::Internal => {
+            owner_id.ok_or_else(|| ServiceError::BadRequest("owner_id is required".into()))?
+        }
+    };
 
     if file_bytes.is_empty() {
         return Err(ServiceError::BadRequest("file field is required".into()));
@@ -243,20 +242,65 @@ pub async fn get_file_metadata(
     }))
 }
 
-/// Resolve the effective owner_id for list operations.
-///
-/// Prefer the `X-User-ID` header injected by the api-gateway from the
-/// authenticated JWT. This prevents a caller from spoofing another user's
-/// `owner_id` via the query string. Fall back to `query.owner_id` only when
-/// no header is present (direct/internal callers).
-fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<Uuid> {
-    let header_owner_id = req
-        .headers()
+pub const INTERNAL_SERVICE_TOKEN_HEADER: &str = "X-Internal-Service-Token";
+
+/// Who is calling: an end user identified by the gateway-injected `X-User-ID`
+/// (derived from the validated JWT), or a direct service-to-service caller
+/// that presented the shared internal token.
+#[derive(Debug, PartialEq, Eq)]
+enum Caller {
+    User(Uuid),
+    Internal,
+}
+
+fn header_user_id(req: &HttpRequest) -> Option<Uuid> {
+    req.headers()
         .get("X-User-ID")
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+}
 
-    header_owner_id.or(query_owner_id)
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+fn is_internal_caller(req: &HttpRequest, server: &ServerConfig) -> bool {
+    let Some(expected) = server.internal_service_token.as_deref() else {
+        return false;
+    };
+    req.headers()
+        .get(INTERNAL_SERVICE_TOKEN_HEADER)
+        .map(|v| constant_time_eq(v.as_bytes(), expected.as_bytes()))
+        .unwrap_or(false)
+}
+
+/// A missing `X-User-ID` is not proof of an internal caller (the header can be
+/// lost or stripped in transit), so header-less requests must present the
+/// internal service token; otherwise they are rejected.
+fn resolve_caller(req: &HttpRequest, server: &ServerConfig) -> Result<Caller, ServiceError> {
+    if let Some(user_id) = header_user_id(req) {
+        return Ok(Caller::User(user_id));
+    }
+    if is_internal_caller(req, server) {
+        return Ok(Caller::Internal);
+    }
+    Err(ServiceError::Unauthorized(
+        "missing X-User-ID header".into(),
+    ))
+}
+
+/// Resolve the effective owner filter for list operations. End users only
+/// ever see their own records; the `owner_id` query parameter (or no owner
+/// filter at all) is reserved for authenticated internal callers.
+fn resolve_owner_id(
+    req: &HttpRequest,
+    server: &ServerConfig,
+    query_owner_id: Option<Uuid>,
+) -> Result<Option<Uuid>, ServiceError> {
+    Ok(match resolve_caller(req, server)? {
+        Caller::User(user_id) => Some(user_id),
+        Caller::Internal => query_owner_id,
+    })
 }
 
 pub async fn list_files(
@@ -267,7 +311,7 @@ pub async fn list_files(
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = resolve_owner_id(&req, &config.server, query.owner_id)?;
     let mut files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
@@ -349,9 +393,10 @@ pub async fn list_shared_files(
 pub async fn list_trashed(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = resolve_owner_id(&req, &config.server, query.owner_id)?;
     let files = meta.list_trashed(owner_id).await?;
 
     let page = query.page.unwrap_or(1).max(1);
@@ -688,9 +733,10 @@ pub async fn remove_share(
 pub async fn list_folders(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
+    config: web::Data<AppConfig>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = resolve_owner_id(&req, &config.server, query.owner_id)?;
     let folders = meta.list_folders(query.parent_id, owner_id).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
@@ -838,5 +884,90 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    const ALICE: &str = "6f1d2c1e-6d54-4a43-9a0e-2a8a1b7c0001";
+    const VICTIM: &str = "6f1d2c1e-6d54-4a43-9a0e-2a8a1b7c0002";
+
+    fn server_config(token: Option<&str>) -> ServerConfig {
+        ServerConfig {
+            port: 8082,
+            max_upload_bytes: 1024,
+            upload_always_fail: false,
+            seed_demo_docs: false,
+            internal_service_token: token.map(String::from),
+        }
+    }
+
+    fn victim() -> Option<Uuid> {
+        Some(VICTIM.parse().unwrap())
+    }
+
+    #[test]
+    fn owner_comes_from_x_user_id_not_query() {
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", ALICE))
+            .to_http_request();
+        let owner = resolve_owner_id(&req, &server_config(Some("s3cret")), victim()).unwrap();
+        assert_eq!(owner, Some(ALICE.parse().unwrap()));
+    }
+
+    #[test]
+    fn missing_x_user_id_does_not_fall_back_to_query_owner() {
+        let req = actix_web::test::TestRequest::default().to_http_request();
+        for cfg in [server_config(None), server_config(Some("s3cret"))] {
+            assert!(matches!(
+                resolve_owner_id(&req, &cfg, victim()),
+                Err(ServiceError::Unauthorized(_))
+            ));
+            assert!(matches!(
+                resolve_owner_id(&req, &cfg, None),
+                Err(ServiceError::Unauthorized(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn invalid_x_user_id_is_rejected() {
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", "not-a-uuid"))
+            .to_http_request();
+        assert!(matches!(
+            resolve_owner_id(&req, &server_config(None), victim()),
+            Err(ServiceError::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn internal_token_must_match_configured_secret() {
+        let wrong = actix_web::test::TestRequest::default()
+            .insert_header((INTERNAL_SERVICE_TOKEN_HEADER, "guess"))
+            .to_http_request();
+        assert!(resolve_caller(&wrong, &server_config(Some("s3cret"))).is_err());
+
+        let unconfigured = actix_web::test::TestRequest::default()
+            .insert_header((INTERNAL_SERVICE_TOKEN_HEADER, ""))
+            .to_http_request();
+        assert!(resolve_caller(&unconfigured, &server_config(None)).is_err());
+
+        let ok = actix_web::test::TestRequest::default()
+            .insert_header((INTERNAL_SERVICE_TOKEN_HEADER, "s3cret"))
+            .to_http_request();
+        let cfg = server_config(Some("s3cret"));
+        assert_eq!(resolve_caller(&ok, &cfg).unwrap(), Caller::Internal);
+        assert_eq!(resolve_owner_id(&ok, &cfg, victim()).unwrap(), victim());
+        assert_eq!(resolve_owner_id(&ok, &cfg, None).unwrap(), None);
+    }
+
+    #[test]
+    fn x_user_id_wins_over_internal_token() {
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", ALICE))
+            .insert_header((INTERNAL_SERVICE_TOKEN_HEADER, "s3cret"))
+            .to_http_request();
+        assert_eq!(
+            resolve_owner_id(&req, &server_config(Some("s3cret")), victim()).unwrap(),
+            Some(ALICE.parse().unwrap())
+        );
     }
 }
