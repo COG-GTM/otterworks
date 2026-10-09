@@ -46,6 +46,12 @@ networkPolicy:
   enabled: true
   ingressNamespace: ingress-nginx
   monitoringNamespace: monitoring
+  # Same-namespace workloads allowed to call search-service. It trusts the
+  # gateway-injected X-User-ID, so only the gateway (user traffic) and
+  # admin-service (health checks, chaos probe) may reach it.
+  allowFromApps:
+    - api-gateway
+    - admin-service
 
 serviceAccount:
   roleArn: ""

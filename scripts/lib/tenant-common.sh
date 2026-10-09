@@ -66,6 +66,9 @@ declare -A CONTAINER_PORT=(
   [analytics-service]=8088 [admin-service]=8089 [audit-service]=8090 [report-service]=8091
 )
 JVM_SERVICES=" auth-service report-service notification-service analytics-service "
+# Services that keep their own (stricter) per-chart NetworkPolicy in a tenant;
+# deploy-tenant.sh excludes them from the namespace-wide tenant-isolation policy.
+TENANT_OWN_NETPOL_SERVICES="search-service"
 
 # Naming ----------------------------------------------------------------------
 # Namespace must be RFC-1123 (lowercase alnum + '-'); DB name uses '_'.
@@ -267,6 +270,7 @@ build_helm_args() {
 
   # replicas=1 (cost control) and disable the per-service NetworkPolicy — the
   # tenant namespace ships ONE NetworkPolicy that allows intra-namespace traffic.
+  # search-service re-enables its own below (see TENANT_OWN_NETPOL_SERVICES).
   EXTRA_ARGS+=(--set replicaCount=1 --set networkPolicy.enabled=false)
   # Force ClusterIP for EVERY service so no tenant gets its own LoadBalancer/ELB
   # (some charts, e.g. api-gateway, default to LoadBalancer). External access is
@@ -344,7 +348,10 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.HOST=0.0.0.0" --set-string "config.PORT=8087")
       EXTRA_ARGS+=(--set-string "config.MEILISEARCH_URL=${T_MEILI_URL}")
-      EXTRA_ARGS+=(--set-string "config.REQUIRE_AUTH=false" --set-string "config.SQS_ENABLED=false") ;;
+      EXTRA_ARGS+=(--set-string "config.SQS_ENABLED=false")
+      # search-service trusts the gateway-injected X-User-ID, so it keeps its own
+      # NetworkPolicy (gateway/admin-service only); tenant-isolation excludes it.
+      EXTRA_ARGS+=(--set networkPolicy.enabled=true --set-string "networkPolicy.ingressNamespace=${INGRESS_NAMESPACE}") ;;
     analytics-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       # Drop the nightly usage-rollup CronJob for ephemeral tenants: it is the

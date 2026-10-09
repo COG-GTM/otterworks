@@ -41,13 +41,28 @@ def _get_service() -> MeiliSearchService:
     return current_app.config["SEARCH_SERVICE"]
 
 
+def _require_owner_id() -> tuple[str | None, tuple | None]:
+    """Return ``(owner_id, error_response)`` for the calling user.
+
+    Search results are always scoped to the gateway-derived ``X-User-ID``.
+    Without it there is no owner to scope to, so the request is refused
+    rather than falling back to an index-wide search. This holds even when
+    ``REQUIRE_AUTH`` is disabled.
+    """
+    owner_id = request.headers.get("X-User-ID", "").strip()
+    if owner_id:
+        return owner_id, None
+    logger.warning("search_rejected_without_identity", path=request.path)
+    return None, (jsonify({"error": "unauthorized"}), 401)
+
+
 @search_bp.route("/", methods=["GET"], strict_slashes=False)
 def search_documents() -> tuple:
     """Full-text search across documents and files.
 
     Query params: q (required), type, page, size
-    Results are automatically scoped to the authenticated user via the
-    ``X-User-ID`` header set by the API gateway.
+    Results are always scoped to the authenticated user via the
+    ``X-User-ID`` header set by the API gateway; requests without it get 401.
     """
     query = request.args.get("q", "")
     try:
@@ -56,7 +71,9 @@ def search_documents() -> tuple:
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
+    owner_id, auth_error = _require_owner_id()
+    if auth_error is not None:
+        return auth_error
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
@@ -121,13 +138,17 @@ def advanced_search() -> tuple:
     """Advanced search with filters: date range, owner, type, tags.
 
     JSON body: {q, type, tags, date_from, date_to, page, size}
-    owner_id is always derived from X-User-ID for tenant isolation.
+    owner_id is always derived from X-User-ID for tenant isolation;
+    requests without it get 401.
     """
+    owner_id, auth_error = _require_owner_id()
+    if auth_error is not None:
+        return auth_error
+
     data = request.get_json() or {}
 
     query = data.get("q")
     doc_type = data.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
     tags = data.get("tags")
     date_from = data.get("date_from")
     date_to = data.get("date_to")

@@ -92,6 +92,14 @@ paths:
                 invalid_page:
                   value:
                     error: "Invalid page or size parameter"
+        "401":
+          description: Missing caller identity (X-User-ID); results are always owner-scoped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
         "500":
           description: Internal server error
           content:
@@ -169,6 +177,14 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Invalid page or size parameter"
+        "401":
+          description: Missing caller identity (X-User-ID); results are always owner-scoped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
         "500":
           description: Internal server error
           content:
