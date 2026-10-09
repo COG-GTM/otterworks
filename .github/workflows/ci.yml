@@ -66,6 +66,7 @@ jobs:
               - 'scripts/**'
             infrastructure:
               - 'infrastructure/**'
+              - 'tests/infra/**'
             report-service:
               - 'services/report-service/**'
             legacy-portal:
@@ -368,6 +369,9 @@ jobs:
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false
       - run: terraform validate
+      - name: IRSA policy checks
+        working-directory: .
+        run: python3 -m unittest discover -s tests/infra -t . -v
 
   # The tenant control plane: dashboard typecheck/lint, plus the shell tests for
   # the reaper and idle-suspend. Those two decide what gets deleted and what gets

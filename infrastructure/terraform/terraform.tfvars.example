@@ -19,3 +19,10 @@ db_password = "your-secure-password-here"
 
 # CloudWatch log retention in days
 log_retention_days = 30
+
+# From address notification-service sends as (must match its SES_FROM_EMAIL).
+# Its IRSA role may only call ses:SendEmail/SendRawEmail as this address, against
+# this address's SES identity or its domain identity (ses_identity_domain, which
+# defaults to the address's domain).
+ses_from_address = "notifications@otterworks.io"
+# ses_identity_domain = "otterworks.io"

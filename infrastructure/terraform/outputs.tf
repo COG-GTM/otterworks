@@ -108,3 +108,10 @@ output "irsa_role_arns" {
   description = "Map of service account name to IAM role ARN"
   value       = module.irsa.role_arns
 }
+
+# --- SES ---
+
+output "ses_from_address" {
+  description = "From address notification-service is allowed to send as (set as its SES_FROM_EMAIL)"
+  value       = var.ses_from_address
+}
