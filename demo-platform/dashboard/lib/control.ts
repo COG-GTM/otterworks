@@ -9,6 +9,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { env } from "@/lib/env";
+import { auditExpiresAt, pushNewest } from "@/lib/audit-policy";
 import type {
   AuditAction,
   AuditEvent,
@@ -352,6 +353,7 @@ export async function appendAudit(evt: Omit<AuditEvent, "ts"> & { ts?: number })
         action: evt.action,
         detail: evt.detail,
         ts,
+        ttl: auditExpiresAt(ts, env.auditRetentionDays),
       },
     }),
   );
@@ -380,28 +382,29 @@ export async function queryAudit(tenantId: string, limit = 100): Promise<AuditEv
   return (res.Items ?? []).map((it) => itemToAudit(tenantId, it));
 }
 
-// Recent audit across all tenants (scan; small N per the schema notes).
+// Recent audit across all tenants. Still a Scan (audit partitions are per
+// tenant), but only the newest `limit` events are ever held in memory and only
+// the rendered attributes are fetched; volume is bounded by the AUDIT# `ttl`.
 export async function scanAudit(limit = 100): Promise<AuditEvent[]> {
-  const items: { tenantId: string; raw: Record<string, unknown> }[] = [];
+  const top: AuditEvent[] = [];
   let lastKey: Record<string, unknown> | undefined;
   do {
     const res = await doc().send(
       new ScanCommand({
         TableName: table(),
         FilterExpression: "begins_with(PK, :p)",
+        ProjectionExpression: "PK, #a, actor, #d, ts",
+        ExpressionAttributeNames: { "#a": "action", "#d": "detail" },
         ExpressionAttributeValues: { ":p": "AUDIT#" },
         ExclusiveStartKey: lastKey,
       }),
     );
     for (const it of res.Items ?? []) {
-      const pk = String((it as Record<string, unknown>).PK ?? "");
-      items.push({ tenantId: pk.replace(/^AUDIT#/, ""), raw: it as Record<string, unknown> });
+      const raw = it as Record<string, unknown>;
+      const tenantId = String(raw.PK ?? "").replace(/^AUDIT#/, "");
+      pushNewest(top, itemToAudit(tenantId, raw), limit);
     }
     lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lastKey);
-
-  return items
-    .map(({ tenantId, raw }) => itemToAudit(tenantId, raw))
-    .sort((a, b) => b.ts - a.ts)
-    .slice(0, limit);
+  return top;
 }

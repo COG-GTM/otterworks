@@ -10,7 +10,10 @@ described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md
 - **Passcode auth, server-side enforced.** `POST /api/auth/login` constant-time compares
   the passcode against `DASHBOARD_PASSCODE`, sets a signed HttpOnly/Secure/SameSite=Strict
   `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 / IP / 15 min with
-  backoff), and audits `login_ok`/`login_fail`. `middleware.ts` gates every non-login route,
+  backoff), and audits `login_ok`. Rejected attempts (bad passcode or 429) never get their
+  own DynamoDB write: they are aggregated in memory and flushed as one `login_fail` item per
+  `LOGIN_AUDIT_FLUSH_SECONDS` (default 300). Every audit item carries a `ttl`
+  (`AUDIT_RETENTION_DAYS`, default 90). `middleware.ts` gates every non-login route,
   and every `/api/*` handler independently calls `requireSession()` (defense in depth).
 - **Tenants.** `GET /api/tenants` joins control-table records with live cluster state
   (namespace phase, ready/total pods, per-service status) cached ~5s. Checkout / check-in /

@@ -74,6 +74,17 @@ export const env = {
       .filter(Boolean);
     return new Set(list);
   },
+  // DynamoDB TTL applied to every AUDIT# item (the control table's TTL attribute
+  // is `ttl`). Keep in sync with AUDIT_RETENTION_DAYS in lib/control-common.sh.
+  get auditRetentionDays(): number {
+    const n = Number(process.env.AUDIT_RETENTION_DAYS);
+    return Number.isFinite(n) && n > 0 ? n : 90;
+  },
+  // Rejected logins are aggregated into at most one audit item per interval.
+  get loginAuditFlushSeconds(): number {
+    const n = Number(process.env.LOGIN_AUDIT_FLUSH_SECONDS);
+    return Number.isFinite(n) && n > 0 ? n : 300;
+  },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;
     const n = raw ? Number(raw) : NaN;

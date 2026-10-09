@@ -69,7 +69,13 @@ updated_by          string
 
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_ok, deploy_fail,
-reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`.
+reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`, `ttl`.
+`ttl` (epoch seconds, `AUDIT_RETENTION_DAYS`, default 90) is the table's TTL attribute, so
+DynamoDB prunes the trail; every writer (dashboard `appendAudit`, shell `ctl_audit`) sets it.
+`login_fail` is never written per request: `POST /api/auth/login` is public, so rejected
+attempts (bad passcode and 429s) are aggregated in memory and flushed as one item under
+`AUDIT#_auth` per `LOGIN_AUDIT_FLUSH_SECONDS` (default 300), with `actor=anonymous` and
+`detail` like `invalid_passcode=3 rate_limited=120 distinct_ips=4 window=300s top=1.2.3.4=90,...`.
 `redeploy` is a deploy into a tenant that was already up (continuous delivery), as distinct
 from the `checkout` that created it.
 `suspend` is written by the idle scan when a tenant is scaled to zero; unlike `reap` it
