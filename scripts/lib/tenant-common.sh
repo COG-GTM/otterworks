@@ -202,6 +202,59 @@ data:
 EOF
 }
 
+# Per-tenant signing keys. JWT_SECRET and SECRET_KEY_BASE are generated once per
+# tenant and kept in a Secret in the tenant's own namespace, so a token minted
+# (or a key read from env) in one tenant is useless against every other tenant.
+# Values inherited from the caller's environment (e.g. the platform runner
+# Secret) are deliberately ignored. Redeploys reuse the stored values so issued
+# tokens survive; teardown deletes the namespace and with it the keys.
+TENANT_APP_SECRET_NAME="tenant-app-secrets"
+# Prints the Secret JSON; exit 1 = NotFound, 2 = any other read failure.
+_get_tenant_app_secret() {
+  local out
+  if out="$(kubectl -n "$1" get secret "${TENANT_APP_SECRET_NAME}" -o json 2>&1)"; then
+    printf '%s' "${out}"; return 0
+  fi
+  grep -q "NotFound" <<<"${out}" && return 1
+  return 2
+}
+ensure_tenant_app_secrets() {
+  local ns="$1" json rc=0 out jwt skb
+  json="$(_get_tenant_app_secret "${ns}")" || rc=$?
+  if [ "${rc}" -eq 1 ]; then
+    # Create-if-absent (never apply/overwrite): if a concurrent deploy wins the
+    # race, its keys are kept and read back below, so every service converges.
+    if ! out="$(kubectl -n "${ns}" create -f - 2>&1 >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${TENANT_APP_SECRET_NAME}
+  labels:
+    app.kubernetes.io/managed-by: otterworks-tenant
+type: Opaque
+data:
+  JWT_SECRET: $(openssl rand -hex 32 | tr -d '\n' | base64 | tr -d '\n')
+  SECRET_KEY_BASE: $(openssl rand -hex 64 | tr -d '\n' | base64 | tr -d '\n')
+EOF
+)"; then
+      grep -q "AlreadyExists" <<<"${out}" || { err "Unable to create ${ns}/${TENANT_APP_SECRET_NAME}."; return 1; }
+    fi
+    rc=0; json="$(_get_tenant_app_secret "${ns}")" || rc=$?
+  fi
+  if [ "${rc}" -ne 0 ]; then
+    err "Unable to read ${ns}/${TENANT_APP_SECRET_NAME}; refusing to rotate tenant signing keys."
+    return 1
+  fi
+  jwt="$(jq -r '.data.JWT_SECRET // empty' <<<"${json}" | base64 -d 2>/dev/null)" || jwt=""
+  skb="$(jq -r '.data.SECRET_KEY_BASE // empty' <<<"${json}" | base64 -d 2>/dev/null)" || skb=""
+  if [ -z "${jwt}" ] || [ -z "${skb}" ]; then
+    err "${ns}/${TENANT_APP_SECRET_NAME} is missing or has malformed keys; refusing to rotate. Fix or delete it, then redeploy."
+    return 1
+  fi
+  JWT_SECRET="${jwt}"
+  SECRET_KEY_BASE="${skb}"
+}
+
 # Drop a per-tenant database via an in-cluster Job in ${run_ns}. Callers MUST
 # delete the tenant namespace first so no application pods are still connected
 # (otherwise DROP DATABASE races the pods' connection-pool reconnects). Requires

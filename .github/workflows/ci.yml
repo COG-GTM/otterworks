@@ -398,6 +398,7 @@ jobs:
       - run: ./demo-platform/reaper/test-idle-suspend.sh
       - run: ./demo-platform/reaper/test-infra-sweep.sh
       - run: ./demo-platform/reaper/test-orphan-sweep.sh
+      - run: ./scripts/lib/test-tenant-app-secrets.sh
 
   # Terraform validation for the demo control plane's own stack
   demo-platform-terraform:
