@@ -122,7 +122,9 @@ export function refMatches(branch: string, pattern: string): boolean {
  * scripts/tenant.sh and branch_tenant_id in scripts/lib/tenant-common.sh.
  */
 export function tenantIdForBranch(branch: string, tenantPrefix: string): string {
-  const stripped = branch.replace(/^(workshop|demo)[-/]/, "");
+  const stripped = sanitizeId(branch.replace(/^(workshop|demo)[-/]/, ""));
+  // A bare `workshop-` must not resolve to the prefix itself (tenant `gtm`).
+  if (!stripped) return "";
   return sanitizeId(tenantPrefix ? `${tenantPrefix}-${stripped}` : stripped);
 }
 

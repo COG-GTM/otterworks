@@ -65,6 +65,7 @@ test("tenantIdForBranch matches tenant.sh / branch_tenant_id", () => {
   assert.equal(tenantIdForBranch("demo/Derek_X", ""), "derek-x");
   assert.equal(tenantIdForBranch("demo-derek", "gtm"), "gtm-derek");
   assert.equal(tenantIdForBranch("main", ""), "main");
+  assert.equal(tenantIdForBranch("workshop-", "gtm"), "");
 });
 
 // ---------------------------------------------------------------- claims -> grant
