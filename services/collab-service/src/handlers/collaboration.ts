@@ -39,6 +39,7 @@ export interface CollaborationLimits {
   userSnapshots: RateLimit;
   documentSnapshots: RateLimit;
   userJoins: RateLimit;
+  userHistory: RateLimit;
 }
 
 export const DEFAULT_COLLABORATION_LIMITS: CollaborationLimits = {
@@ -54,6 +55,7 @@ export const DEFAULT_COLLABORATION_LIMITS: CollaborationLimits = {
   userSnapshots: { limit: 5, windowMs: 60000 },
   documentSnapshots: { limit: 10, windowMs: 60000 },
   userJoins: { limit: 30, windowMs: 60000 },
+  userHistory: { limit: 20, windowMs: 60000 },
 };
 
 const MAX_DOCUMENT_ID_LENGTH = 256;
@@ -88,6 +90,8 @@ export class CollaborationManager {
   private changedSinceSnapshot: Set<string> = new Set();
   private lastModifiedBy: Map<string, string> = new Map();
   private persistTimers: Map<string, NodeJS.Timeout> = new Map();
+  private persistChains: Map<string, Promise<boolean>> = new Map();
+  private revisions: Map<string, number> = new Map();
   private socketDocuments: Map<string, { userId: string; documentId: string }> =
     new Map();
   private userDocuments: Map<string, Map<string, number>> = new Map();
@@ -97,6 +101,7 @@ export class CollaborationManager {
   private userSnapshotLimiter: FixedWindowRateLimiter;
   private documentSnapshotLimiter: FixedWindowRateLimiter;
   private userJoinLimiter: FixedWindowRateLimiter;
+  private userHistoryLimiter: FixedWindowRateLimiter;
 
   constructor(deps: CollaborationDeps) {
     this.deps = deps;
@@ -111,6 +116,7 @@ export class CollaborationManager {
       this.limits.documentSnapshots,
     );
     this.userJoinLimiter = new FixedWindowRateLimiter(this.limits.userJoins);
+    this.userHistoryLimiter = new FixedWindowRateLimiter(this.limits.userHistory);
   }
 
   getDocument(documentId: string): Y.Doc | undefined {
@@ -217,6 +223,8 @@ export class CollaborationManager {
         );
       }
 
+      // Reserve the per-user document slot before any await so concurrent joins see it
+      this.trackSocket(socket.id, user.userId, documentId);
       await socket.join(room);
       logger.info(
         { documentId, userId: user.userId, socketId: socket.id },
@@ -225,7 +233,6 @@ export class CollaborationManager {
 
       // Get or create Yjs document (safe against concurrent joins)
       const doc = await this.getOrCreateDoc(documentId);
-      this.trackSocket(socket.id, user.userId, documentId);
 
       // Register awareness
       const userAwareness = awareness.addUser(
@@ -261,6 +268,9 @@ export class CollaborationManager {
     } catch (err) {
       logger.error({ err, documentId, socketId: socket.id }, 'join_document_failed');
       socket.leave(room);
+      if (this.socketDocuments.get(socket.id)?.documentId === documentId) {
+        this.untrackSocket(socket.id);
+      }
       metrics.connectionErrors.inc({ reason: 'join_failed' });
       const error =
         err instanceof DocumentLimitError ? err.message : 'Failed to join document';
@@ -462,6 +472,7 @@ export class CollaborationManager {
     this.dirty.add(documentId);
     this.changedSinceSnapshot.add(documentId);
     this.lastModifiedBy.set(documentId, userId);
+    this.revisions.set(documentId, (this.revisions.get(documentId) ?? 0) + 1);
     if (this.persistTimers.has(documentId)) return;
 
     const timer = setTimeout(() => {
@@ -472,10 +483,21 @@ export class CollaborationManager {
     this.persistTimers.set(documentId, timer);
   }
 
-  private async persistDocument(documentId: string, operation: string): Promise<void> {
+  /** Writes are chained per document so an older state can never overwrite a newer one. */
+  private persistDocument(documentId: string, operation: string): Promise<boolean> {
+    const previous = this.persistChains.get(documentId) ?? Promise.resolve(true);
+    const next = previous.then(() => this.writeDirtyState(documentId, operation));
+    this.persistChains.set(documentId, next);
+    void next.then(() => {
+      if (this.persistChains.get(documentId) === next) this.persistChains.delete(documentId);
+    });
+    return next;
+  }
+
+  private async writeDirtyState(documentId: string, operation: string): Promise<boolean> {
     const { documentStore, metrics, logger } = this.deps;
     const doc = this.documents.get(documentId);
-    if (!doc || !this.dirty.has(documentId)) return;
+    if (!doc || !this.dirty.has(documentId)) return true;
 
     // Cleared before the await so updates arriving mid-write mark the doc again
     this.dirty.delete(documentId);
@@ -490,10 +512,12 @@ export class CollaborationManager {
       );
       metrics.persistenceDuration.observe({ operation }, (Date.now() - start) / 1000);
       metrics.persistenceOperations.inc({ operation, status: 'success' });
+      return true;
     } catch (err) {
       this.dirty.add(documentId);
       logger.error({ err, documentId }, 'document_persist_failed');
       metrics.persistenceOperations.inc({ operation, status: 'error' });
+      return false;
     }
   }
 
@@ -665,6 +689,10 @@ export class CollaborationManager {
   ): Promise<void> {
     const { documentStore, logger } = this.deps;
     const { documentId } = data;
+    if (!this.userHistoryLimiter.tryConsume(extractUserFromSocket(socket).userId)) {
+      socket.emit('history-error', { documentId, error: 'Too many history requests' });
+      return;
+    }
     const requested = Math.floor(Number(data.limit) || 20);
     const limit = Math.min(Math.max(requested, 1), MAX_HISTORY_LIMIT);
 
@@ -711,42 +739,36 @@ export class CollaborationManager {
     if (this.cleaningUp.has(documentId)) return;
     this.cleaningUp.add(documentId);
 
-    const { documentStore, metrics, logger } = this.deps;
-    const doc = this.documents.get(documentId);
-    if (!doc) {
-      this.cleaningUp.delete(documentId);
-      return;
-    }
-
     const pending = this.persistTimers.get(documentId);
     if (pending) {
       clearTimeout(pending);
       this.persistTimers.delete(documentId);
     }
 
+    const { awareness, metrics, logger } = this.deps;
     try {
-      const state = Y.encodeStateAsUpdate(doc);
-      this.dirty.delete(documentId);
-      await documentStore.saveDocumentState(
-        documentId,
-        Buffer.from(state),
-        this.lastModifiedBy.get(documentId),
-      );
-      logger.info({ documentId }, 'document_persisted_on_cleanup');
-      // Re-check if users have re-joined during the async persistence
-      if (this.deps.awareness.getDocumentUserCount(documentId) === 0) {
+      // Retry while edits land during the save (a user rejoined, edited and left)
+      for (let attempt = 0; attempt < 10; attempt++) {
+        if (!this.documents.has(documentId)) return;
+        const revision = this.revisions.get(documentId) ?? 0;
+        this.dirty.add(documentId);
+        // On failure the document stays in memory so the periodic loop can retry
+        if (!(await this.persistDocument(documentId, 'cleanup_save'))) return;
+        logger.info({ documentId }, 'document_persisted_on_cleanup');
+
+        if (awareness.getDocumentUserCount(documentId) > 0) return;
+        if ((this.revisions.get(documentId) ?? 0) !== revision) continue;
+
         this.documents.delete(documentId);
         this.budget.release(this.budgetKey(documentId));
         this.dirty.delete(documentId);
         this.changedSinceSnapshot.delete(documentId);
         this.lastModifiedBy.delete(documentId);
+        this.revisions.delete(documentId);
         metrics.activeRooms.dec();
         logger.debug({ documentId }, 'document_removed_from_memory');
+        return;
       }
-    } catch (err) {
-      this.dirty.add(documentId);
-      logger.error({ err, documentId }, 'document_persist_on_cleanup_failed');
-      // Keep document in memory so the periodic persistence loop can retry
     } finally {
       this.cleaningUp.delete(documentId);
     }
@@ -788,10 +810,19 @@ export class CollaborationManager {
   }
 
   private startPersistenceLoop(): void {
-    // Safety net for debounced writes that failed; only dirty documents are written
+    // Safety net for debounced writes that failed.
+    // Clean documents only get their Redis TTL renewed instead of a full rewrite
     this.persistTimer = setInterval(async () => {
-      for (const documentId of Array.from(this.dirty)) {
-        await this.persistDocument(documentId, 'periodic_save');
+      for (const documentId of Array.from(this.documents.keys())) {
+        if (this.dirty.has(documentId)) {
+          await this.persistDocument(documentId, 'periodic_save');
+          continue;
+        }
+        try {
+          await this.deps.documentStore.touchDocumentState(documentId);
+        } catch (err) {
+          this.deps.logger.error({ err, documentId }, 'document_ttl_refresh_failed');
+        }
       }
     }, this.deps.persistIntervalMs);
   }

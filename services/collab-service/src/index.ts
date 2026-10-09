@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
+import * as Y from 'yjs';
 import { loadConfig } from './config';
 import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
@@ -22,8 +23,17 @@ import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection, docs: wsDocs } = require('y-websocket/bin/utils') as {
+const {
+  setupWSConnection,
+  setPersistence,
+  docs: wsDocs,
+} = require('y-websocket/bin/utils') as {
   setupWSConnection: (conn: unknown, req: unknown, opts?: { docName?: string }) => void;
+  setPersistence: (persistence: {
+    provider: unknown;
+    bindState: (docName: string, doc: Y.Doc) => Promise<void>;
+    writeState: (docName: string, doc: Y.Doc) => Promise<void>;
+  }) => void;
   docs: Map<string, SharedDoc>;
 };
 
@@ -143,6 +153,30 @@ const collabManager = setupCollaborationHandlers(
   limits,
   memoryBudget,
 );
+
+// y-websocket keeps documents in memory forever unless persistence is configured.
+// With it, a document is saved and freed when its last editor disconnects.
+const wsStateKey = (docName: string) => `ws:${docName}`;
+setPersistence({
+  provider: null,
+  bindState: async (docName, doc) => {
+    try {
+      const state = await documentStore.getDocumentState(wsStateKey(docName));
+      if (state && state.length <= limits.maxDocumentBytes) Y.applyUpdate(doc, state);
+    } catch (err) {
+      logger.error({ err, documentName: docName }, 'y-websocket_state_load_failed');
+    }
+  },
+  writeState: async (docName, doc) => {
+    try {
+      const state = Buffer.from(Y.encodeStateAsUpdate(doc));
+      await documentStore.saveDocumentState(wsStateKey(docName), state);
+    } catch (err) {
+      // Oversized documents are rejected by the store and intentionally dropped
+      logger.warn({ err, documentName: docName }, 'y-websocket_state_save_failed');
+    }
+  },
+});
 
 // y-websocket server for TipTap/Yjs collaborative editing
 const wss = new WebSocketServer({ noServer: true, maxPayload: limits.maxMessageBytes });

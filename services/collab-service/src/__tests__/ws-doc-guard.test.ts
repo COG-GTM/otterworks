@@ -41,58 +41,66 @@ function setup(opts: SetupOptions) {
   return { docs, budget, guard };
 }
 
-const flush = () => new Promise((resolve) => setImmediate(resolve));
-
 describe('WsDocumentGuard', () => {
-  it('evicts and disconnects a document that outgrows the per-document cap', async () => {
+  it('disconnects a document that outgrows the per-document cap', () => {
     const { docs, budget, guard } = setup({ maxDocumentBytes: 1000 });
     const { doc, conn } = makeDoc();
     docs.set('big', doc);
     guard.attach('big');
 
     doc.getText('t').insert(0, 'small');
-    expect(docs.has('big')).toBe(true);
+    expect(conn.close).not.toHaveBeenCalled();
 
     doc.getText('t').insert(0, 'x'.repeat(2000));
-    expect(docs.has('big')).toBe(false);
-    expect(budget.get('ws:big')).toBe(0);
     expect(conn.close).toHaveBeenCalledWith(WS_CLOSE_MESSAGE_TOO_BIG, expect.any(String));
-    await flush();
+    expect(budget.get('ws:big')).toBeGreaterThan(1000);
   });
 
-  it('evicts idle documents before the active one when over budget', async () => {
+  it('disconnects the document that pushes the total over budget', () => {
     const { docs, guard } = setup({ total: 3000 });
-    const idle = makeDoc(false);
-    docs.set('idle', idle.doc);
-    guard.attach('idle');
-    idle.doc.getText('t').insert(0, 'i'.repeat(1500));
+    const first = makeDoc();
+    docs.set('first', first.doc);
+    guard.attach('first');
+    first.doc.getText('t').insert(0, 'i'.repeat(1500));
 
-    const active = makeDoc();
-    docs.set('active', active.doc);
-    guard.attach('active');
-    active.doc.getText('t').insert(0, 'a'.repeat(2000));
+    const second = makeDoc();
+    docs.set('second', second.doc);
+    guard.attach('second');
+    second.doc.getText('t').insert(0, 'a'.repeat(2000));
 
-    expect(docs.has('idle')).toBe(false);
-    expect(docs.has('active')).toBe(true);
-    expect(active.conn.close).not.toHaveBeenCalled();
-    await flush();
+    expect(first.conn.close).not.toHaveBeenCalled();
+    expect(second.conn.close).toHaveBeenCalled();
   });
 
-  it('caps the number of documents, freeing idle ones first', async () => {
+  it('prefers terminate() so no further frames are read', () => {
+    const { docs, guard } = setup({ maxDocumentBytes: 100 });
+    const { doc } = makeDoc(false);
+    const conn = { close: jest.fn(), terminate: jest.fn() };
+    doc.conns.set(conn, new Set());
+    docs.set('t', doc);
+    guard.attach('t');
+    doc.getText('t').insert(0, 'x'.repeat(200));
+    expect(conn.terminate).toHaveBeenCalled();
+    expect(conn.close).not.toHaveBeenCalled();
+  });
+
+  it('releases the budget when y-websocket destroys the document', () => {
+    const { docs, budget, guard } = setup({});
+    const { doc } = makeDoc();
+    docs.set('d', doc);
+    guard.attach('d');
+    doc.getText('t').insert(0, 'hello');
+    expect(budget.total).toBeGreaterThan(0);
+    docs.delete('d');
+    doc.destroy();
+    expect(budget.total).toBe(0);
+  });
+
+  it('caps the number of open documents', () => {
     const { docs, guard } = setup({ maxDocuments: 2 });
-    const a = makeDoc();
-    const b = makeDoc(false);
-    docs.set('a', a.doc);
-    docs.set('b', b.doc);
-    guard.attach('a');
-    guard.attach('b');
-
+    docs.set('a', makeDoc().doc);
+    docs.set('b', makeDoc().doc);
     expect(guard.canOpen('a')).toBe(true);
-    expect(guard.canOpen('c')).toBe(true);
-    expect(docs.has('b')).toBe(false);
-
-    docs.set('c', makeDoc().doc);
-    expect(guard.canOpen('d')).toBe(false);
-    await flush();
+    expect(guard.canOpen('c')).toBe(false);
   });
 });

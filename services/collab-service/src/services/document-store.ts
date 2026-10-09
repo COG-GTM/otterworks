@@ -105,6 +105,11 @@ export class DocumentStore {
     this.logger.debug({ documentId, version }, 'document_state_saved');
   }
 
+  /** Renews the TTL of a stored document state without rewriting it. */
+  async touchDocumentState(documentId: string): Promise<void> {
+    await this.redis.expire(`${DOC_STATE_KEY}${documentId}`, this.documentTtl);
+  }
+
   async deleteDocumentState(documentId: string): Promise<void> {
     await this.redis.del(`${DOC_STATE_KEY}${documentId}`);
     await this.redis.del(`${DOC_META_KEY}${documentId}`);

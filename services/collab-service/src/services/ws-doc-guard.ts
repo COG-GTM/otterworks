@@ -6,6 +6,7 @@ export const WS_CLOSE_MESSAGE_TOO_BIG = 1009;
 
 export interface SharedDocConnection {
   close(code?: number, reason?: string): void;
+  terminate?: () => void;
 }
 
 /** Shape of y-websocket's WSSharedDoc that the guard relies on. */
@@ -22,48 +23,39 @@ export interface WsDocumentGuardOptions {
 }
 
 /**
- * Bounds the y-websocket server's in-memory documents. y-websocket applies
- * updates itself and never frees documents when no persistence is configured,
- * so the guard caps the number of documents, the encoded size of each one and
- * the total across all of them, evicting idle documents first and then the
- * offending document (closing its connections) when a limit is crossed.
+ * Bounds the y-websocket server's in-memory documents: caps how many exist and
+ * tracks each one's encoded size against the shared memory budget. A document
+ * that outgrows its cap (or pushes the total over budget) has its connections
+ * dropped; y-websocket then persists and destroys it once the last one closes.
  */
 export class WsDocumentGuard {
-  private guarded: WeakSet<Y.Doc> = new WeakSet();
+  private owners: Map<string, Y.Doc> = new Map();
 
   constructor(private readonly opts: WsDocumentGuardOptions) {}
 
   canOpen(docName: string): boolean {
     const { docs, maxDocuments } = this.opts;
-    if (docs.has(docName) || docs.size < maxDocuments) return true;
-    this.evictIdle();
-    return docs.size < maxDocuments;
+    return docs.has(docName) || docs.size < maxDocuments;
   }
 
   attach(docName: string): void {
     const doc = this.opts.docs.get(docName);
-    if (!doc || this.guarded.has(doc)) return;
-    this.guarded.add(doc);
+    if (!doc || this.owners.get(docName) === doc) return;
+    this.owners.set(docName, doc);
 
     const key = budgetKey(docName);
     this.opts.budget.set(key, Y.encodeStateAsUpdate(doc).length);
     doc.on('update', (update: Uint8Array) => this.handleUpdate(docName, doc, update));
     doc.on('destroy', () => {
-      if (this.opts.docs.get(docName) !== doc) return;
-      this.opts.docs.delete(docName);
+      if (this.owners.get(docName) !== doc) return;
+      this.owners.delete(docName);
       this.opts.budget.release(key);
     });
   }
 
-  evictIdle(): void {
-    for (const [name, doc] of this.opts.docs) {
-      if (doc.conns.size === 0) this.evict(name, doc, 'idle');
-    }
-  }
-
   private handleUpdate(docName: string, doc: SharedDoc, update: Uint8Array): void {
-    const { docs, budget, maxDocumentBytes } = this.opts;
-    if (docs.get(docName) !== doc) return;
+    const { budget, maxDocumentBytes } = this.opts;
+    if (this.owners.get(docName) !== doc) return;
 
     const key = budgetKey(docName);
     let size = budget.get(key) + update.length;
@@ -72,34 +64,21 @@ export class WsDocumentGuard {
     }
     budget.set(key, size);
 
-    if (size > maxDocumentBytes) {
-      this.evict(docName, doc, 'document_size_limit');
-      return;
-    }
-    if (budget.exceeded()) {
-      this.evictIdle();
-      if (budget.exceeded()) this.evict(docName, doc, 'memory_budget');
-    }
+    if (size > maxDocumentBytes) this.disconnect(docName, doc, 'document_size_limit');
+    else if (budget.exceeded()) this.disconnect(docName, doc, 'memory_budget');
   }
 
-  private evict(docName: string, doc: SharedDoc, reason: string): void {
-    const { docs, budget, logger } = this.opts;
-    if (docs.get(docName) !== doc) return;
-    docs.delete(docName);
-    budget.release(budgetKey(docName));
-
+  private disconnect(docName: string, doc: SharedDoc, reason: string): void {
     const conns = Array.from(doc.conns.keys());
     for (const conn of conns) {
-      conn.close(WS_CLOSE_MESSAGE_TOO_BIG, 'Document limit exceeded');
+      // terminate() stops reading immediately; close() would wait for the handshake
+      if (conn.terminate) conn.terminate();
+      else conn.close(WS_CLOSE_MESSAGE_TOO_BIG, 'Document limit exceeded');
     }
-    if (reason !== 'idle') {
-      logger.warn(
-        { documentName: docName, reason, connections: conns.length },
-        'y-websocket_document_evicted',
-      );
-    }
-    // Destroy outside the Yjs transaction that may have triggered the eviction.
-    setImmediate(() => doc.destroy());
+    this.opts.logger.warn(
+      { documentName: docName, reason, connections: conns.length },
+      'y-websocket_document_disconnected',
+    );
   }
 }
 

@@ -15,6 +15,7 @@ export interface CollaborationLimitsConfig {
   userSnapshots: RateLimit;
   documentSnapshots: RateLimit;
   userJoins: RateLimit;
+  userHistory: RateLimit;
 }
 
 export interface Config {
@@ -80,6 +81,7 @@ export function loadLimits(): CollaborationLimitsConfig {
     userSnapshots: rateLimit('USER_SNAPSHOT_RATE', 5, 60000),
     documentSnapshots: rateLimit('DOCUMENT_SNAPSHOT_RATE', 10, 60000),
     userJoins: rateLimit('USER_JOIN_RATE', 30, 60000),
+    userHistory: rateLimit('USER_HISTORY_RATE', 20, 60000),
   };
 }
 

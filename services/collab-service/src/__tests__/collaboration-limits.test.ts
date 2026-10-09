@@ -58,6 +58,7 @@ const TEST_LIMITS: Partial<CollaborationLimits> = {
   userSnapshots: { limit: 1000, windowMs: 60000 },
   documentSnapshots: { limit: 1000, windowMs: 60000 },
   userJoins: { limit: 1000, windowMs: 60000 },
+  userHistory: { limit: 1, windowMs: 60000 },
 };
 
 function textUpdate(content: string): string {
@@ -221,6 +222,26 @@ describe('CollaborationManager resource limits', () => {
     });
     // Switching an existing socket to a new document frees its previous slot
     expect((await join(b, 'doc-quota-3')).success).toBe(true);
+  });
+
+  it('counts concurrent joins against the per-user document cap', async () => {
+    const sockets = await Promise.all([1, 2, 3].map(() => connect('limit-user-10')));
+    const results = await Promise.all(
+      sockets.map((socket, i) => join(socket, `doc-concurrent-${i}`)),
+    );
+    expect(results.filter((r) => r.success)).toHaveLength(2);
+  });
+
+  it('rate-limits history requests per user', async () => {
+    const client = await connect('limit-user-11');
+    const history = new Promise((resolve) => client.once('document-history', resolve));
+    const rejected = new Promise<{ error: string }>((resolve) =>
+      client.once('history-error', resolve),
+    );
+    client.emit('request-history', { documentId: 'doc-history' });
+    client.emit('request-history', { documentId: 'doc-history' });
+    await history;
+    expect((await rejected).error).toBe('Too many history requests');
   });
 
   it('rejects invalid document ids', async () => {
