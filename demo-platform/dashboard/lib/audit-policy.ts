@@ -23,13 +23,27 @@ export function auditExpiresAt(tsMs: number, retentionDays: number = DEFAULT_AUD
  * scan over every audit item holds at most `limit` events in memory instead of
  * the whole table.
  */
-export function pushNewest(top: AuditEvent[], evt: AuditEvent, limit: number): void {
-  if (limit <= 0) return;
+export function pushNewest(top: AuditEvent[], evt: AuditEvent, rawLimit: number): void {
+  const limit = Math.floor(rawLimit);
+  if (!(limit > 0)) return;
   if (top.length >= limit && evt.ts <= top[top.length - 1]!.ts) return;
   let i = top.length;
   while (i > 0 && top[i - 1]!.ts < evt.ts) i--;
   top.splice(i, 0, evt);
   if (top.length > limit) top.length = limit;
+}
+
+export const MAX_RETAINED_DETAIL_CHARS = 2048;
+
+/**
+ * Combine an aggregate whose write failed with the fresh one, so a transient
+ * DynamoDB error doesn't lose the window. Capped, so repeated failures under
+ * attack traffic can't grow memory: the oldest text is kept, the tail dropped.
+ */
+export function mergeRetainedDetail(retained: string | null, fresh: string | null): string | null {
+  const parts = [retained, fresh].filter((p): p is string => !!p);
+  if (parts.length === 0) return null;
+  return parts.join(" | ").slice(0, MAX_RETAINED_DETAIL_CHARS);
 }
 
 export type LoginRejection = "invalid_passcode" | "rate_limited";

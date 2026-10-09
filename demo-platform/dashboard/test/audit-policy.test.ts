@@ -4,6 +4,8 @@ import {
   auditExpiresAt,
   DEFAULT_AUDIT_RETENTION_DAYS,
   formatLoginRejectionDetail,
+  MAX_RETAINED_DETAIL_CHARS,
+  mergeRetainedDetail,
   LoginRejectionAggregator,
   pushNewest,
 } from "../lib/audit-policy.ts";
@@ -119,4 +121,21 @@ test("formatLoginRejectionDetail summarises counts, window and top sources", () 
     detail,
     "invalid_passcode=3 rate_limited=120 distinct_ips=2 window=300s top=1.2.3.4=100,5.6.7.8=23",
   );
+});
+
+test("pushNewest floors a fractional limit instead of throwing", () => {
+  const top: AuditEvent[] = [];
+  for (const ts of [1, 2, 3]) pushNewest(top, { tenantId: "t", action: "checkout", actor: "a", ts }, 1.5);
+  assert.deepEqual(top.map((e) => e.ts), [3]);
+});
+
+test("mergeRetainedDetail keeps a failed aggregate for the next flush, bounded", () => {
+  assert.equal(mergeRetainedDetail(null, null), null);
+  assert.equal(mergeRetainedDetail(null, "b"), "b");
+  assert.equal(mergeRetainedDetail("a", null), "a");
+  assert.equal(mergeRetainedDetail("a", "b"), "a | b");
+  let retained: string | null = null;
+  for (let i = 0; i < 10_000; i++) retained = mergeRetainedDetail(retained, "invalid_passcode=1 rate_limited=99");
+  assert.ok(retained!.length <= MAX_RETAINED_DETAIL_CHARS);
+  assert.ok(retained!.startsWith("invalid_passcode=1"));
 });

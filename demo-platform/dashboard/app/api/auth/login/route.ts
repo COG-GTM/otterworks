@@ -6,6 +6,7 @@ import { appendAudit } from "@/lib/control";
 import {
   formatLoginRejectionDetail,
   LoginRejectionAggregator,
+  mergeRetainedDetail,
   type LoginRejection,
 } from "@/lib/audit-policy";
 
@@ -19,14 +20,27 @@ const AUTH_AUDIT_ID = "_auth";
 // and written as one aggregate `login_fail` item per flush interval.
 const rejections = new LoginRejectionAggregator(env.loginAuditFlushSeconds * 1000);
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+// Aggregate whose write failed; retried (merged with the next one) each interval.
+let retainedDetail: string | null = null;
 
-async function writeAudit(action: "login_ok" | "login_fail", actor: string, detail?: string) {
+async function writeAudit(
+  action: "login_ok" | "login_fail",
+  actor: string,
+  detail?: string,
+): Promise<boolean> {
   // Best-effort — never let an audit write failure block the auth decision,
   // and never include the passcode in `detail`.
   try {
     await appendAudit({ tenantId: AUTH_AUDIT_ID, action, actor, detail });
+    return true;
   } catch {
-    /* swallow */
+    return false;
+  }
+}
+
+function scheduleFlush(): void {
+  if (!flushTimer) {
+    flushTimer = setTimeout(() => void flushRejections(), rejections.flushIntervalMs);
   }
 }
 
@@ -36,16 +50,20 @@ async function flushRejections(now: number = Date.now()): Promise<void> {
     flushTimer = null;
   }
   const summary = rejections.drain(now);
-  if (summary) await writeAudit("login_fail", "anonymous", formatLoginRejectionDetail(summary));
+  const detail = mergeRetainedDetail(retainedDetail, summary && formatLoginRejectionDetail(summary));
+  if (!detail) return;
+  retainedDetail = null;
+  if (!(await writeAudit("login_fail", "anonymous", detail))) {
+    retainedDetail = mergeRetainedDetail(detail, retainedDetail);
+    scheduleFlush();
+  }
 }
 
 function recordRejection(ip: string, reason: LoginRejection): void {
   const now = Date.now();
   if (rejections.due(now)) void flushRejections(now);
   rejections.record(ip, reason, now);
-  if (!flushTimer) {
-    flushTimer = setTimeout(() => void flushRejections(), rejections.flushIntervalMs);
-  }
+  scheduleFlush();
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

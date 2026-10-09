@@ -78,7 +78,7 @@ export const env = {
   // is `ttl`). Keep in sync with AUDIT_RETENTION_DAYS in lib/control-common.sh.
   get auditRetentionDays(): number {
     const n = Number(process.env.AUDIT_RETENTION_DAYS);
-    return Number.isFinite(n) && n > 0 ? n : 90;
+    return Number.isInteger(n) && n > 0 ? n : 90;
   },
   // Rejected logins are aggregated into at most one audit item per interval.
   get loginAuditFlushSeconds(): number {

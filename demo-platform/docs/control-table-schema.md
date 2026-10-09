@@ -70,8 +70,10 @@ updated_by          string
 ### Audit event — `PK=AUDIT#<id>`, `SK=<epoch_ms>#<action>`
 Append-only. `action` ∈ {checkout, checkin, extend, redeploy, persist, deploy_ok, deploy_fail,
 reap, inject, reset, suspend, login_ok, login_fail}. Attributes: `actor`, `detail`, `ts`, `ttl`.
-`ttl` (epoch seconds, `AUDIT_RETENTION_DAYS`, default 90) is the table's TTL attribute, so
+`ttl` (epoch seconds, `AUDIT_RETENTION_DAYS` whole days, default 90) is the table's TTL attribute, so
 DynamoDB prunes the trail; every writer (dashboard `appendAudit`, shell `ctl_audit`) sets it.
+Items written before `ttl` existed are backfilled once with `scripts/backfill-audit-ttl.sh`
+(`DRY_RUN=1` to count first); the update is conditional on `ttl` being absent.
 `login_fail` is never written per request: `POST /api/auth/login` is public, so rejected
 attempts (bad passcode and 429s) are aggregated in memory and flushed as one item under
 `AUDIT#_auth` per `LOGIN_AUDIT_FLUSH_SECONDS` (default 300), with `actor=anonymous` and

@@ -98,7 +98,9 @@ ctl_audit() {
   local ms; ms="$(ctl_now_ms)"
   # Every AUDIT# item carries the table's TTL attribute (`ttl`, epoch seconds)
   # so DynamoDB prunes the trail; same retention as the dashboard (lib/env.ts).
-  local ttl=$(( ms / 1000 + ${AUDIT_RETENTION_DAYS:-90} * 86400 ))
+  local days="${AUDIT_RETENTION_DAYS:-90}"
+  [[ "$days" =~ ^[1-9][0-9]{0,4}$ ]] || days=90
+  local ttl=$(( ms / 1000 + days * 86400 ))
   aws dynamodb put-item \
     --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
     --item "$(jq -n \
