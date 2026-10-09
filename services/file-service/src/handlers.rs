@@ -243,20 +243,17 @@ pub async fn get_file_metadata(
     }))
 }
 
-/// Resolve the effective owner_id for list operations.
+/// The caller's identity for owner-scoped list operations.
 ///
-/// Prefer the `X-User-ID` header injected by the api-gateway from the
-/// authenticated JWT. This prevents a caller from spoofing another user's
-/// `owner_id` via the query string. Fall back to `query.owner_id` only when
-/// no header is present (direct/internal callers).
-fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<Uuid> {
-    let header_owner_id = req
-        .headers()
+/// Only the `X-User-ID` header injected by the api-gateway from the
+/// authenticated JWT is trusted. Lists never fall back to a caller-chosen
+/// `?owner_id` or to an unscoped scan: a request without the header is 401.
+fn require_owner_id(req: &HttpRequest) -> Result<Uuid, ServiceError> {
+    req.headers()
         .get("X-User-ID")
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
-
-    header_owner_id.or(query_owner_id)
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::Unauthorized("missing or invalid X-User-ID header".into()))
 }
 
 pub async fn list_files(
@@ -266,21 +263,20 @@ pub async fn list_files(
     config: web::Data<AppConfig>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
+    let owner_id = require_owner_id(&req)?;
     let include_trashed = query.include_trashed.unwrap_or(false);
-    let owner_id = resolve_owner_id(&req, query.owner_id);
     let mut files = meta
-        .list_files(query.folder_id, owner_id, include_trashed)
+        .list_files(query.folder_id, &owner_id, include_trashed)
         .await?;
     // Seeding is only considered when the listing comes back empty, so the
     // common non-empty case costs no extra metadata reads.
-    if files.is_empty() && config.server.seed_demo_docs {
-        if let Some(owner) = owner_id {
-            if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
-                files = meta
-                    .list_files(query.folder_id, owner_id, include_trashed)
-                    .await?;
-            }
-        }
+    if files.is_empty()
+        && config.server.seed_demo_docs
+        && crate::seed::maybe_seed_demo_docs(&meta, &s3, owner_id).await
+    {
+        files = meta
+            .list_files(query.folder_id, &owner_id, include_trashed)
+            .await?;
     }
 
     let page = query.page.unwrap_or(1).max(1);
@@ -351,8 +347,8 @@ pub async fn list_trashed(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta.list_trashed(owner_id).await?;
+    let owner_id = require_owner_id(&req)?;
+    let files = meta.list_trashed(&owner_id).await?;
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
@@ -690,8 +686,8 @@ pub async fn list_folders(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let folders = meta.list_folders(query.parent_id, owner_id).await?;
+    let owner_id = require_owner_id(&req)?;
+    let folders = meta.list_folders(query.parent_id, &owner_id).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
 
@@ -774,7 +770,7 @@ pub async fn list_activity(
     let limit = query.limit.unwrap_or(20).min(50) as usize;
 
     let (files, shares) = futures_util::future::join(
-        meta.list_files(None, Some(owner_id), true),
+        meta.list_files(None, &owner_id, true),
         meta.list_shares_by_owner(&owner_id),
     )
     .await;
@@ -827,6 +823,7 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use actix_web::ResponseError;
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
@@ -838,5 +835,127 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    // Unreachable endpoint: these tests must be rejected before any AWS call.
+    const NO_BACKEND: &str = "http://127.0.0.1:9";
+
+    fn offline_meta() -> web::Data<MetadataClient> {
+        let conf = aws_sdk_dynamodb::Config::builder()
+            .behavior_version(aws_sdk_dynamodb::config::BehaviorVersion::latest())
+            .region(aws_sdk_dynamodb::config::Region::new("us-east-1"))
+            .endpoint_url(NO_BACKEND)
+            .build();
+        web::Data::new(MetadataClient {
+            client: aws_sdk_dynamodb::Client::from_conf(conf),
+            files_table: "files".into(),
+            folders_table: "folders".into(),
+            versions_table: "versions".into(),
+            shares_table: "shares".into(),
+        })
+    }
+
+    fn offline_s3() -> web::Data<S3Client> {
+        let conf = aws_sdk_s3::Config::builder()
+            .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
+            .region(aws_sdk_s3::config::Region::new("us-east-1"))
+            .endpoint_url(NO_BACKEND)
+            .build();
+        web::Data::new(S3Client {
+            client: aws_sdk_s3::Client::from_conf(conf),
+            bucket: "files".into(),
+        })
+    }
+
+    fn files_query(raw: &str) -> web::Query<ListFilesQuery> {
+        web::Query::<ListFilesQuery>::from_query(raw).unwrap()
+    }
+
+    fn assert_unauthorized(result: Result<HttpResponse, ServiceError>) {
+        match result {
+            Err(e @ ServiceError::Unauthorized(_)) => {
+                assert_eq!(
+                    e.error_response().status(),
+                    actix_web::http::StatusCode::UNAUTHORIZED
+                );
+            }
+            Err(e) => panic!("expected Unauthorized, got {e:?}"),
+            Ok(resp) => panic!("expected Unauthorized, got {}", resp.status()),
+        }
+    }
+
+    #[test]
+    fn test_require_owner_id_uses_header() {
+        let owner = Uuid::new_v4();
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", format!(" {owner} ")))
+            .to_http_request();
+        assert_eq!(require_owner_id(&req).unwrap(), owner);
+    }
+
+    #[test]
+    fn test_require_owner_id_rejects_missing_or_invalid_header() {
+        let missing = actix_web::test::TestRequest::default().to_http_request();
+        assert!(matches!(
+            require_owner_id(&missing),
+            Err(ServiceError::Unauthorized(_))
+        ));
+
+        let invalid = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", "not-a-uuid"))
+            .to_http_request();
+        assert!(matches!(
+            require_owner_id(&invalid),
+            Err(ServiceError::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn test_require_owner_id_ignores_query_owner_id() {
+        let req = actix_web::test::TestRequest::default()
+            .uri(&format!("/api/v1/files?owner_id={}", Uuid::new_v4()))
+            .to_http_request();
+        assert!(matches!(
+            require_owner_id(&req),
+            Err(ServiceError::Unauthorized(_))
+        ));
+    }
+
+    #[actix_rt::test]
+    async fn test_list_files_without_owner_is_unauthorized() {
+        let raw = format!("owner_id={}", Uuid::new_v4());
+        let req = actix_web::test::TestRequest::default()
+            .uri(&format!("/api/v1/files?{raw}"))
+            .to_http_request();
+        let result = list_files(
+            req,
+            offline_meta(),
+            offline_s3(),
+            web::Data::new(AppConfig::from_env()),
+            files_query(&raw),
+        )
+        .await;
+        assert_unauthorized(result);
+    }
+
+    #[actix_rt::test]
+    async fn test_list_trashed_without_owner_is_unauthorized() {
+        let raw = format!("owner_id={}", Uuid::new_v4());
+        let req = actix_web::test::TestRequest::default()
+            .uri(&format!("/api/v1/files/trash?{raw}"))
+            .to_http_request();
+        let result = list_trashed(req, offline_meta(), files_query(&raw)).await;
+        assert_unauthorized(result);
+    }
+
+    #[actix_rt::test]
+    async fn test_list_folders_without_owner_is_unauthorized() {
+        let raw = format!("owner_id={}", Uuid::new_v4());
+        let req = actix_web::test::TestRequest::default()
+            .uri(&format!("/api/v1/folders?{raw}"))
+            .to_http_request();
+        let query = web::Query::<ListFoldersQuery>::from_query(&raw).unwrap();
+        let result = list_folders(req, offline_meta(), query).await;
+        assert_unauthorized(result);
     }
 }

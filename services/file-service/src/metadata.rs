@@ -1,5 +1,6 @@
 use aws_sdk_dynamodb::types::AttributeValue;
 use chrono::Utc;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::config::AwsConfig;
@@ -12,6 +13,60 @@ fn is_conditional_check_failed<E: std::fmt::Debug>(
 ) -> bool {
     matches!(err, aws_sdk_dynamodb::error::SdkError::ServiceError(se)
         if format!("{:?}", se.err()).contains("ConditionalCheckFailed"))
+}
+
+type ScanFilter = (String, HashMap<String, AttributeValue>);
+
+/// Listing filters always include `owner_id`: an owner is required by the
+/// signature, so a list can never fall back to scanning every owner's rows.
+fn files_scan_filter(
+    folder_id: Option<&Uuid>,
+    owner_id: &Uuid,
+    include_trashed: bool,
+) -> ScanFilter {
+    let mut parts = vec!["owner_id = :owner_id".to_string()];
+    let mut values = HashMap::from([(
+        ":owner_id".to_string(),
+        AttributeValue::S(owner_id.to_string()),
+    )]);
+    if let Some(fid) = folder_id {
+        parts.push("folder_id = :folder_id".to_string());
+        values.insert(":folder_id".into(), AttributeValue::S(fid.to_string()));
+    }
+    if !include_trashed {
+        parts.push("is_trashed = :trashed".to_string());
+        values.insert(":trashed".into(), AttributeValue::Bool(false));
+    }
+    (parts.join(" AND "), values)
+}
+
+fn trashed_scan_filter(owner_id: &Uuid) -> ScanFilter {
+    let values = HashMap::from([
+        (":trashed".to_string(), AttributeValue::Bool(true)),
+        (
+            ":owner_id".to_string(),
+            AttributeValue::S(owner_id.to_string()),
+        ),
+    ]);
+    (
+        "is_trashed = :trashed AND owner_id = :owner_id".to_string(),
+        values,
+    )
+}
+
+fn folders_scan_filter(parent_id: Option<&Uuid>, owner_id: &Uuid) -> ScanFilter {
+    let mut values = HashMap::from([(
+        ":owner_id".to_string(),
+        AttributeValue::S(owner_id.to_string()),
+    )]);
+    let parent_clause = match parent_id {
+        Some(pid) => {
+            values.insert(":parent_id".into(), AttributeValue::S(pid.to_string()));
+            "parent_id = :parent_id"
+        }
+        None => "attribute_not_exists(parent_id)",
+    };
+    (format!("{parent_clause} AND owner_id = :owner_id"), values)
 }
 
 /// Client for DynamoDB metadata operations.
@@ -225,24 +280,14 @@ impl MetadataClient {
         self.get_file(file_id).await
     }
 
-    pub async fn list_trashed(
-        &self,
-        owner_id: Option<Uuid>,
-    ) -> Result<Vec<FileMetadata>, ServiceError> {
-        let mut filter_parts = vec!["is_trashed = :trashed".to_string()];
-        let mut scan_builder = self
+    pub async fn list_trashed(&self, owner_id: &Uuid) -> Result<Vec<FileMetadata>, ServiceError> {
+        let (filter, values) = trashed_scan_filter(owner_id);
+        let scan_builder = self
             .client
             .scan()
             .table_name(&self.files_table)
-            .expression_attribute_values(":trashed", AttributeValue::Bool(true));
-
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
-        }
-
-        scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
+            .filter_expression(filter)
+            .set_expression_attribute_values(Some(values));
 
         let mut paginator = scan_builder.into_paginator().send();
         let mut files = Vec::new();
@@ -262,32 +307,16 @@ impl MetadataClient {
     pub async fn list_files(
         &self,
         folder_id: Option<Uuid>,
-        owner_id: Option<Uuid>,
+        owner_id: &Uuid,
         include_trashed: bool,
     ) -> Result<Vec<FileMetadata>, ServiceError> {
-        let mut scan_builder = self.client.scan().table_name(&self.files_table);
-
-        let mut filter_parts: Vec<String> = Vec::new();
-
-        if let Some(fid) = &folder_id {
-            filter_parts.push("folder_id = :folder_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":folder_id", AttributeValue::S(fid.to_string()));
-        }
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
-        }
-        if !include_trashed {
-            filter_parts.push("is_trashed = :trashed".to_string());
-            scan_builder =
-                scan_builder.expression_attribute_values(":trashed", AttributeValue::Bool(false));
-        }
-
-        if !filter_parts.is_empty() {
-            scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
-        }
+        let (filter, values) = files_scan_filter(folder_id.as_ref(), owner_id, include_trashed);
+        let scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.files_table)
+            .filter_expression(filter)
+            .set_expression_attribute_values(Some(values));
 
         // Use the SDK paginator to handle DynamoDB's 1MB-per-Scan limit automatically
         let mut paginator = scan_builder.into_paginator().send();
@@ -405,31 +434,15 @@ impl MetadataClient {
     pub async fn list_folders(
         &self,
         parent_id: Option<Uuid>,
-        owner_id: Option<Uuid>,
+        owner_id: &Uuid,
     ) -> Result<Vec<Folder>, ServiceError> {
-        let mut scan_builder = self.client.scan().table_name(&self.folders_table);
-
-        let mut filter_parts: Vec<String> = Vec::new();
-
-        match &parent_id {
-            Some(pid) => {
-                filter_parts.push("parent_id = :parent_id".to_string());
-                scan_builder = scan_builder
-                    .expression_attribute_values(":parent_id", AttributeValue::S(pid.to_string()));
-            }
-            None => {
-                filter_parts.push("attribute_not_exists(parent_id)".to_string());
-            }
-        }
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
-        }
-
-        if !filter_parts.is_empty() {
-            scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
-        }
+        let (filter, values) = folders_scan_filter(parent_id.as_ref(), owner_id);
+        let scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.folders_table)
+            .filter_expression(filter)
+            .set_expression_attribute_values(Some(values));
 
         let mut paginator = scan_builder.into_paginator().send();
         let mut folders = Vec::new();
@@ -770,7 +783,6 @@ fn parse_file_share(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn make_file_item() -> HashMap<String, AttributeValue> {
         let now = Utc::now();
@@ -788,6 +800,60 @@ mod tests {
         item.insert("created_at".into(), AttributeValue::S(now.to_rfc3339()));
         item.insert("updated_at".into(), AttributeValue::S(now.to_rfc3339()));
         item
+    }
+
+    fn owner_value(values: &HashMap<String, AttributeValue>) -> Option<&String> {
+        values.get(":owner_id").and_then(|v| v.as_s().ok())
+    }
+
+    #[test]
+    fn test_files_scan_filter_always_scopes_to_owner() {
+        let owner = Uuid::new_v4();
+        let folder = Uuid::new_v4();
+        for (folder_id, include_trashed) in [
+            (None, true),
+            (None, false),
+            (Some(&folder), true),
+            (Some(&folder), false),
+        ] {
+            let (filter, values) = files_scan_filter(folder_id, &owner, include_trashed);
+            assert!(filter.contains("owner_id = :owner_id"), "{filter}");
+            assert_eq!(owner_value(&values), Some(&owner.to_string()));
+            assert_eq!(filter.contains("folder_id"), folder_id.is_some());
+            assert_eq!(filter.contains("is_trashed"), !include_trashed);
+            assert_eq!(values.len(), filter.matches(':').count());
+        }
+    }
+
+    #[test]
+    fn test_trashed_scan_filter_scopes_to_owner() {
+        let owner = Uuid::new_v4();
+        let (filter, values) = trashed_scan_filter(&owner);
+        assert_eq!(filter, "is_trashed = :trashed AND owner_id = :owner_id");
+        assert_eq!(owner_value(&values), Some(&owner.to_string()));
+        assert_eq!(values.get(":trashed"), Some(&AttributeValue::Bool(true)));
+    }
+
+    #[test]
+    fn test_folders_scan_filter_scopes_to_owner() {
+        let owner = Uuid::new_v4();
+        let parent = Uuid::new_v4();
+
+        let (filter, values) = folders_scan_filter(None, &owner);
+        assert_eq!(
+            filter,
+            "attribute_not_exists(parent_id) AND owner_id = :owner_id"
+        );
+        assert_eq!(owner_value(&values), Some(&owner.to_string()));
+        assert_eq!(values.len(), 1);
+
+        let (filter, values) = folders_scan_filter(Some(&parent), &owner);
+        assert_eq!(filter, "parent_id = :parent_id AND owner_id = :owner_id");
+        assert_eq!(owner_value(&values), Some(&owner.to_string()));
+        assert_eq!(
+            values.get(":parent_id"),
+            Some(&AttributeValue::S(parent.to_string()))
+        );
     }
 
     #[test]
