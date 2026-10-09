@@ -21,7 +21,7 @@
 #       [--profile core|full]
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+#   SHARE_LINK_SECRET / SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -67,6 +67,8 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+# Keys document-service share-link HMACs; rotating it revokes every share link.
+SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"

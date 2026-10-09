@@ -21,6 +21,10 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
+# ShareLinkService fails closed without a key; give the suite a fixed one.
+TEST_SHARE_LINK_SECRET = "test-share-link-secret-for-unit-tests"  # noqa: S105
+os.environ.setdefault("SHARE_LINK_SECRET", TEST_SHARE_LINK_SECRET)
+
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestingSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
