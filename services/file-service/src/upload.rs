@@ -92,6 +92,7 @@ impl UploadBudget {
 }
 
 /// Budget held by one upload; released when dropped.
+#[derive(Debug)]
 pub struct UploadReservation {
     permits: Arc<Semaphore>,
     held: Option<OwnedSemaphorePermit>,
