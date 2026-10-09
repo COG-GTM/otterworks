@@ -48,7 +48,9 @@ def bearer_auth(user_id: uuid.UUID) -> Callable[[Request], Request]:
     A request that sets its own ``Authorization`` header keeps it; one passing
     ``auth=None`` is sent unauthenticated.
     """
-    token = jwt.encode({"user_id": str(user_id)}, TEST_JWT_SECRET, algorithm="HS256")
+    token = jwt.encode(
+        {"user_id": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS256"
+    )
 
     def _apply(request: Request) -> Request:
         request.headers.setdefault("Authorization", f"Bearer {token}")
