@@ -97,7 +97,7 @@ class ChaosProbeService
 
       iterations = 0
       loop do
-        break unless redis.exists?(redis_key)
+        break if finished?(service, redis, redis_key)
 
         PROBE_BATCH.times { fire_probe(probe_config) }
         iterations += 1
@@ -109,6 +109,18 @@ class ChaosProbeService
       Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
     ensure
       redis&.close
+    end
+
+    # Checks the flag and gives up the registry slot under the same lock that
+    # `start` takes, so a trigger racing with shutdown either sees this probe
+    # keep running or finds the slot free and starts a replacement.
+    def finished?(service, redis, redis_key)
+      @probes_mutex.synchronize do
+        next false if redis.exists?(redis_key)
+
+        @probes.delete(service) if @probes[service].equal?(Thread.current)
+        true
+      end
     end
 
     def release(service, thread)

@@ -59,6 +59,35 @@ RSpec.describe ChaosProbeService do
     expect(described_class.start(service: 'search-service', redis_key: key)).to eq(:started)
   end
 
+  it 'starts a replacement when a trigger races with a probe that just saw its flag disappear' do
+    key = 'chaos:search-service:suggest_500'
+    observed_missing = Queue.new
+    proceed = Queue.new
+    pause_once = true
+    allow(redis).to receive(:exists?) do
+      present = key_state[:present]
+      if !present && pause_once
+        pause_once = false
+        observed_missing << true
+        proceed.pop
+      end
+      present
+    end
+
+    expect(described_class.start(service: 'search-service', redis_key: key)).to eq(:started)
+    key_state[:present] = false
+    observed_missing.pop
+
+    # The old probe has read "missing" but has not exited yet; the flag is set again.
+    key_state[:present] = true
+    retrigger = Thread.new { described_class.start(service: 'search-service', redis_key: key) }
+    sleep 0.05
+    proceed << true
+
+    expect(retrigger.value).to eq(:started)
+    expect(described_class.running?('search-service')).to be(true)
+  end
+
   it 'refuses new probes once the global cap is reached' do
     stub_const('ChaosProbeService::MAX_CONCURRENT_PROBES', 2)
 

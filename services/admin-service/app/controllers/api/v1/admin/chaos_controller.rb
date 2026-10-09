@@ -85,7 +85,16 @@ module Api
 
         def remaining_ttl(redis_key)
           ttl = redis.ttl(redis_key)
-          ttl.positive? ? ttl : CHAOS_TTL_SECONDS
+          return ttl if ttl.positive?
+
+          if ttl == -1
+            # Flag exists without an expiry (e.g. set by hand): give it the normal window.
+            redis.expire(redis_key, CHAOS_TTL_SECONDS)
+          else
+            # Flag expired or was reset between SET NX and TTL: start a fresh window.
+            redis.set(redis_key, '1', nx: true, ex: CHAOS_TTL_SECONDS)
+          end
+          CHAOS_TTL_SECONDS
         end
 
         def verify_chaos_secret

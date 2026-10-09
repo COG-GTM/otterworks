@@ -39,6 +39,27 @@ RSpec.describe Api::V1::Admin::ChaosController do
       expect(redis).not_to have_received(:expire)
     end
 
+    it 'attaches the normal expiry to an existing flag that has none' do
+      allow(redis).to receive(:set).with(key, '1', nx: true, ex: ttl).and_return(false)
+      allow(redis).to receive(:ttl).with(key).and_return(-1)
+      allow(redis).to receive(:expire)
+
+      post :trigger, params: { service: 'search-service', scenario: 'suggest_500' }
+
+      expect(response.parsed_body['expires_in']).to eq(ttl)
+      expect(redis).to have_received(:expire).with(key, ttl)
+    end
+
+    it 'starts a fresh window when the flag vanished between SET NX and TTL' do
+      allow(redis).to receive(:set).with(key, '1', nx: true, ex: ttl).and_return(false, true)
+      allow(redis).to receive(:ttl).with(key).and_return(-2)
+
+      post :trigger, params: { service: 'search-service', scenario: 'suggest_500' }
+
+      expect(response.parsed_body['expires_in']).to eq(ttl)
+      expect(redis).to have_received(:set).with(key, '1', nx: true, ex: ttl).twice
+    end
+
     it 'rejects unknown service/scenario combinations without touching redis or probes' do
       allow(redis).to receive(:set)
 
