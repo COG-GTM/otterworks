@@ -4,7 +4,6 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives.*
-import akka.pattern.after
 import com.otterworks.analytics.api.Caller
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.concurrent.ScalaFutures
@@ -36,7 +35,7 @@ class DocumentServiceAccessSpec extends AnyFlatSpec with Matchers with ScalaFutu
           case (`ownedDoc`, Some("owner"), Some("Bearer owner-token")) => complete(HttpResponse(StatusCodes.OK))
           case (`otherDoc`, _, _) => complete(HttpResponse(StatusCodes.Forbidden))
           case (`slowDoc`, _, _) =>
-            val delay = after(2.seconds, system.scheduler)(Future.successful(()))(using system.dispatcher)
+            val delay = akka.pattern.after(2.seconds, system.scheduler)(Future.successful(()))(using system.dispatcher)
             onSuccess(delay) { complete(HttpResponse(StatusCodes.OK)) }
           case _ => complete(HttpResponse(StatusCodes.NotFound))
       }
