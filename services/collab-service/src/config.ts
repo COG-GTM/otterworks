@@ -14,6 +14,11 @@ export interface Config {
   cors: {
     origins: string[];
   };
+  documentService: {
+    url: string;
+    timeoutMs: number;
+    accessCacheTtlMs: number;
+  };
   persistence: {
     intervalMs: number;
     snapshotIntervalMs: number;
@@ -47,6 +52,14 @@ export function loadConfig(): Config {
       origins: (
         process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:4200'
       ).split(','),
+    },
+    documentService: {
+      url: (process.env.DOCUMENT_SERVICE_URL || 'http://document-service:8083').replace(
+        /\/+$/,
+        '',
+      ),
+      timeoutMs: parseInt(process.env.DOCUMENT_ACL_TIMEOUT_MS || '3000', 10),
+      accessCacheTtlMs: parseInt(process.env.DOCUMENT_ACL_CACHE_TTL_MS || '30000', 10),
     },
     persistence: {
       intervalMs: parseInt(process.env.PERSIST_INTERVAL_MS || '30000', 10),
