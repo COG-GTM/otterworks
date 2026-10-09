@@ -13,22 +13,19 @@ servers:
   - url: http://localhost:8086
     description: Local development
 
+# Every route except /health and /metrics requires an auth-service access token.
+security:
+  - bearerAuth: []
+
 paths:
   /api/v1/notifications:
     get:
       operationId: listNotifications
       summary: List notifications for a user
       description: |
-        Returns a paginated list of notifications for the specified user.
-        User is identified via X-User-ID header or user_id query parameter.
+        Returns a paginated list of notifications for the authenticated user
+        (the access token's `sub` claim).
       parameters:
-        - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          description: User ID (alternative to X-User-ID header)
-          schema:
-            type: string
         - name: page
           in: query
           required: false
@@ -65,26 +62,13 @@ paths:
                 page: 1
                 pageSize: 20
                 hasMore: true
-        "400":
-          description: Missing user_id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/notifications/unread-count:
     get:
       operationId: getUnreadCount
       summary: Get unread notification count
-      parameters:
-        - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: Unread count
@@ -95,14 +79,8 @@ paths:
               example:
                 userId: "user-001"
                 unreadCount: 7
-        "400":
-          description: Missing user_id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/notifications/{id}:
     get:
@@ -200,13 +178,6 @@ paths:
     put:
       operationId: markAllAsRead
       summary: Mark all notifications as read for a user
-      parameters:
-        - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: All notifications marked as read
@@ -216,26 +187,13 @@ paths:
                 $ref: "#/components/schemas/MarkAllReadResponse"
               example:
                 markedCount: 12
-        "400":
-          description: Missing user_id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/preferences:
     get:
       operationId: getPreferences
       summary: Get notification preferences for a user
-      parameters:
-        - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: User notification preferences
@@ -250,14 +208,8 @@ paths:
                   comment_added: ["IN_APP", "PUSH"]
                   document_edited: ["IN_APP"]
                   user_mentioned: ["EMAIL", "IN_APP", "PUSH"]
-        "400":
-          description: Missing user_id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     put:
       operationId: updatePreferences
       summary: Update notification preferences
@@ -278,6 +230,7 @@ paths:
   /health:
     get:
       operationId: healthCheck
+      security: []
       summary: Health check
       responses:
         "200":
@@ -293,6 +246,7 @@ paths:
   /metrics:
     get:
       operationId: metrics
+      security: []
       summary: Prometheus metrics
       responses:
         "200":
@@ -309,26 +263,39 @@ paths:
       description: |
         Establishes a WebSocket connection for real-time notification delivery.
         Supports ping/pong keepalive. Server pushes notification events as they occur.
+        The access token is sent as `Authorization: Bearer <token>` or, from browsers,
+        as the subprotocol pair `Sec-WebSocket-Protocol: bearer, <token>`.
+        The path userId must equal the token's subject, otherwise the socket is
+        closed with 1008 (policy violation).
       parameters:
         - name: userId
           in: path
           required: true
           schema:
             type: string
-          description: User ID to subscribe to notifications for
+          description: Authenticated user's ID (must match the token subject)
       responses:
         "101":
           description: WebSocket upgrade successful
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
-  parameters:
-    XUserID:
-      name: X-User-ID
-      in: header
-      required: false
-      description: User ID for tenant identification (set by API gateway)
-      schema:
-        type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, expired or refresh token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "missing or invalid bearer token"
 
   schemas:
     ErrorResponse:
