@@ -355,8 +355,22 @@ mod tests {
     }
 
     /// A body that starts with `head` and then never ends: the reader must
-    /// give up on its own rather than buffer until memory runs out.
+    /// give up on its own rather than buffer until memory runs out. Each
+    /// chunk is preceded by a `Pending`, as on a socket, so the parser hands
+    /// out field data between reads.
     fn endless(head: String) -> Body {
+        let filler = Bytes::from(vec![b'a'; 4096]);
+        stream::once(async move { Ok(Bytes::from(head)) })
+            .chain(stream::unfold(filler, |filler| async move {
+                tokio::task::yield_now().await;
+                Some((Ok(filler.clone()), filler))
+            }))
+            .boxed_local()
+    }
+
+    /// Like `endless`, but every poll is immediately ready, so the parser
+    /// keeps reading ahead without yielding any field data.
+    fn endless_ready(head: String) -> Body {
         let filler = Bytes::from(vec![b'a'; 4096]);
         stream::once(async move { Ok(Bytes::from(head)) })
             .chain(stream::repeat_with(move || Ok(filler.clone())))
@@ -461,6 +475,21 @@ mod tests {
             matches!(&err, ServiceError::BadRequest(m) if m.contains("unexpected multipart fields")),
             "{err:?}"
         );
+    }
+
+    #[actix_rt::test]
+    async fn read_ahead_is_stopped_by_the_raw_body_limit() {
+        let err = read(
+            endless_ready(format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"owner_id\"\r\n\r\n"
+            )),
+            limits(1024),
+            None,
+            &big_budget(),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, ServiceError::FileTooLarge { .. }), "{err:?}");
     }
 
     #[actix_rt::test]
