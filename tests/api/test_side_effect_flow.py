@@ -136,7 +136,7 @@ def test_report_generation_reaches_terminal_state(api_client):
     )
     assert create_response.status_code == 202, create_response.text
     report_id = create_response.json()["id"]
-    api_client.created_reports.append(report_id)
+    api_client.created_reports.append((report_id, user.auth_headers))
 
     def report_status():
         response = api_client.client.get(f"/api/v1/reports/{report_id}", headers=user.auth_headers)

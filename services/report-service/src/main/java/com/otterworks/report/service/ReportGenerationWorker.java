@@ -87,6 +87,7 @@ public class ReportGenerationWorker {
             // Fetch data based on category
             List<Map<String, Object>> data = fetchDataForCategory(
                     report.getCategory(), report.getDateFrom(), report.getDateTo(), params);
+            data = restrictToOwnerScope(data, params);
 
             // Cap at max rows
             if (data.size() > appConfig.getMaxRows()) {
@@ -116,6 +117,21 @@ public class ReportGenerationWorker {
             report.setErrorMessage(e.getMessage());
             reportRepository.save(report);
         }
+    }
+
+    /**
+     * Downstream feeds are tenant-wide; reports requested by non-admins keep only the
+     * requester's rows. Rows without a user ID are dropped.
+     */
+    static List<Map<String, Object>> restrictToOwnerScope(List<Map<String, Object>> data, Map<String, String> params) {
+        String owner = params != null ? params.get(ReportService.OWNER_SCOPE_PARAM) : null;
+        if (owner == null) {
+            return data;
+        }
+        return data.stream()
+                .filter(row -> owner.equals(String.valueOf(row.get("userId")))
+                        || owner.equals(String.valueOf(row.get("user_id"))))
+                .collect(java.util.stream.Collectors.toList());
     }
 
     private List<Map<String, Object>> fetchDataForCategory(

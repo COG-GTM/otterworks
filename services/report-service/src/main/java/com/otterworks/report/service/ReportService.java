@@ -7,6 +7,8 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.repository.ReportRepository;
+import com.otterworks.report.security.ReportAccessDeniedException;
+import com.otterworks.report.security.ReportCaller;
 import com.otterworks.report.util.ReportDateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +21,10 @@ import javax.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Core report orchestration service.
@@ -34,6 +39,9 @@ import java.util.Optional;
  */
 @Service
 public class ReportService {
+
+    /** Report parameter holding the user ID whose rows a non-admin report is limited to. */
+    public static final String OWNER_SCOPE_PARAM = "ownerScope";
 
     private static final Logger logger = LoggerFactory.getLogger(ReportService.class);
 
@@ -53,15 +61,22 @@ public class ReportService {
     }
 
     /**
-     * Create a new report request and start async generation.
+     * Create a new report request on behalf of the authenticated caller and start async generation.
      */
     @Transactional
-    public Report createReport(ReportRequest request) {
+    public Report createReport(ReportRequest request, ReportCaller caller) {
+        if (request.getRequestedBy() != null && !caller.owns(request.getRequestedBy())) {
+            throw new ReportAccessDeniedException("requestedBy must match the authenticated user");
+        }
+        if (request.getCategory() != null && request.getCategory().isAdminOnly() && !caller.isAdmin()) {
+            throw new ReportAccessDeniedException(request.getCategory() + " reports require an admin role");
+        }
+
         Report report = new Report();
         report.setReportName(request.getReportName());
         report.setCategory(request.getCategory());
         report.setReportType(request.getReportType());
-        report.setRequestedBy(request.getRequestedBy());
+        report.setRequestedBy(caller.getUserId());
         report.setStatus(ReportStatus.PENDING);
         report.setCreatedAt(new Date()); // LEGACY: new Date() instead of Instant.now()
 
@@ -69,11 +84,21 @@ public class ReportService {
         report.setDateFrom(request.getDateFrom() != null ? request.getDateFrom() : ReportDateUtils.daysAgo(30));
         report.setDateTo(request.getDateTo() != null ? request.getDateTo() : new Date());
 
-        // Serialize parameters
-        if (request.getParameters() != null) {
+        // Serialize parameters. OWNER_SCOPE_PARAM is server-controlled: non-admin reports are
+        // restricted to the requester's own rows by ReportGenerationWorker.
+        Map<String, String> params = request.getParameters() != null
+                ? new HashMap<>(request.getParameters()) : new HashMap<>();
+        params.remove(OWNER_SCOPE_PARAM);
+        if (!caller.isAdmin()) {
+            params.put(OWNER_SCOPE_PARAM, caller.getUserId());
+        }
+        if (!params.isEmpty()) {
             try {
-                report.setParameters(objectMapper.writeValueAsString(request.getParameters()));
+                report.setParameters(objectMapper.writeValueAsString(params));
             } catch (JsonProcessingException e) {
+                if (params.containsKey(OWNER_SCOPE_PARAM)) {
+                    throw new IllegalStateException("Failed to serialize report parameters", e);
+                }
                 logger.warn("Failed to serialize report parameters: {}", e.getMessage());
             }
         }
@@ -97,24 +122,33 @@ public class ReportService {
     }
 
     /**
-     * Get a report by ID.
+     * Get a report by ID. Reports the caller may not see are reported as absent so IDs
+     * belonging to other users cannot be probed.
      */
-    public Optional<Report> getReport(Long id) {
-        return reportRepository.findById(id);
+    public Optional<Report> getReport(Long id, ReportCaller caller) {
+        return reportRepository.findById(id).filter(report -> canAccess(report, caller));
     }
 
     /**
-     * List all reports for a user.
+     * List reports visible to the caller. Non-admins only ever see their own reports;
+     * asking for another user's reports is forbidden.
      */
-    public List<Report> getReportsByUser(String userId) {
-        return reportRepository.findByRequestedByOrderByCreatedAtDesc(userId);
-    }
+    public List<Report> listReports(ReportCaller caller, String userId, ReportStatus status) {
+        if (!caller.isAdmin()) {
+            if (userId != null && !caller.owns(userId)) {
+                throw new ReportAccessDeniedException("Cannot list another user's reports");
+            }
+            List<Report> own = reportRepository.findByRequestedByOrderByCreatedAtDesc(caller.getUserId());
+            if (status == null) {
+                return own;
+            }
+            return own.stream().filter(r -> r.getStatus() == status).collect(Collectors.toList());
+        }
 
-    /**
-     * List reports by status.
-     */
-    public List<Report> getReportsByStatus(ReportStatus status) {
-        return reportRepository.findByStatusOrderByCreatedAtAsc(status);
+        if (userId != null) {
+            return reportRepository.findByRequestedByOrderByCreatedAtDesc(userId);
+        }
+        return reportRepository.findByStatusOrderByCreatedAtAsc(status != null ? status : ReportStatus.COMPLETED);
     }
 
     /**
@@ -122,8 +156,8 @@ public class ReportService {
      * File deletion is deferred to afterCommit to avoid inconsistency on rollback.
      */
     @Transactional
-    public boolean deleteReport(Long id) {
-        Optional<Report> optReport = reportRepository.findById(id);
+    public boolean deleteReport(Long id, ReportCaller caller) {
+        Optional<Report> optReport = getReport(id, caller);
         if (!optReport.isPresent()) {
             return false;
         }
@@ -155,4 +189,7 @@ public class ReportService {
         return true;
     }
 
+    private boolean canAccess(Report report, ReportCaller caller) {
+        return caller.isAdmin() || caller.owns(report.getRequestedBy());
+    }
 }

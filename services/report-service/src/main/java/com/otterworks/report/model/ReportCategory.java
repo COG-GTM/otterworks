@@ -17,5 +17,22 @@ public enum ReportCategory {
     /** System health and performance */
     SYSTEM_HEALTH,
     /** Compliance and regulatory */
-    COMPLIANCE
+    COMPLIANCE;
+
+    /**
+     * Categories generated from tenant-wide audit or user-activity feeds
+     * (see ReportGenerationWorker#fetchDataForCategory). Their exports contain
+     * other users' records, so only admins may request them.
+     */
+    public boolean isAdminOnly() {
+        switch (this) {
+            case AUDIT_LOG:
+            case COMPLIANCE:
+            case USER_ACTIVITY:
+            case STORAGE_SUMMARY:
+                return true;
+            default:
+                return false;
+        }
+    }
 }

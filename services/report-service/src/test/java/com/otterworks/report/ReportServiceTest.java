@@ -16,6 +16,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Date;
 
+import static com.otterworks.report.support.TestTokens.admin;
+import static com.otterworks.report.support.TestTokens.requesterOf;
+import static com.otterworks.report.support.TestTokens.user;
 import static org.hamcrest.Matchers.anyOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
@@ -73,6 +76,7 @@ public class ReportServiceTest {
         request.setDateTo(new Date());
 
         mockMvc.perform(post("/api/v1/reports")
+                        .with(requesterOf(request))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -93,6 +97,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-002");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .with(requesterOf(request))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -108,6 +113,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-003");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .with(requesterOf(request))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -116,14 +122,15 @@ public class ReportServiceTest {
 
     @Test
     public void getReportNotFoundShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999"))
+        mockMvc.perform(get("/api/v1/reports/99999").with(user("test-user")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void listReportsShouldReturnEmptyList() throws Exception {
         mockMvc.perform(get("/api/v1/reports")
-                        .param("userId", "nonexistent-user"))
+                        .param("userId", "nonexistent-user")
+                        .with(user("nonexistent-user")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
                 .andExpect(jsonPath("$.total", is(0)));
@@ -138,6 +145,7 @@ public class ReportServiceTest {
         // Missing reportName — should fail validation
 
         mockMvc.perform(post("/api/v1/reports")
+                        .with(requesterOf(request))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -145,7 +153,7 @@ public class ReportServiceTest {
 
     @Test
     public void downloadNonExistentReportShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999/download"))
+        mockMvc.perform(get("/api/v1/reports/99999/download").with(user("test-user")))
                 .andExpect(status().isNotFound());
     }
 }

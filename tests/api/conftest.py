@@ -34,7 +34,7 @@ class ApiClient:
         self.created_documents: list[str] = []
         self.created_files: list[str] = []
         self.created_folders: list[str] = []
-        self.created_reports: list[str] = []
+        self.created_reports: list[tuple[str, dict[str, str]]] = []
         self.indexed_documents: list[str] = []
         self.indexed_files: list[str] = []
 
@@ -136,8 +136,8 @@ class ApiClient:
         return document
 
     def cleanup(self) -> None:
-        for report_id in reversed(self.created_reports):
-            self.client.delete(f"/api/v1/reports/{report_id}")
+        for report_id, owner_headers in reversed(self.created_reports):
+            self.client.delete(f"/api/v1/reports/{report_id}", headers=owner_headers)
         for document_id in reversed(self.indexed_documents):
             self.client.delete(f"/api/v1/search/index/document/{document_id}")
         for file_id in reversed(self.indexed_files):
