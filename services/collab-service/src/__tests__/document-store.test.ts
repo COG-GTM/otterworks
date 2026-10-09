@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { DocumentStore } from '../services/document-store';
+import { DocumentStore, DocumentTooLargeError } from '../services/document-store';
 import { RedisAdapter } from '../services/redis-adapter';
 
 // Mock RedisAdapter
@@ -237,6 +237,41 @@ describe('DocumentStore', () => {
       await store.createSnapshot('doc-123', state, 'user-1');
 
       expect(mockRedis.ltrim).not.toHaveBeenCalled();
+    });
+
+    it('should trim older snapshots beyond the per-document byte budget', async () => {
+      const bounded = new DocumentStore(mockRedis, mockLogger, {
+        maxSnapshots: 50,
+        maxSnapshotBytes: 250,
+      });
+      mockRedis.lpush.mockResolvedValue(undefined);
+      mockRedis.llen.mockResolvedValue(3);
+      mockRedis.lrange.mockResolvedValue(['a', 'b', 'c'].map((c) => c.repeat(100)));
+      mockRedis.expire.mockResolvedValue(undefined);
+
+      await bounded.createSnapshot('doc-123', Buffer.from([1]), 'user-1');
+
+      expect(mockRedis.ltrim).toHaveBeenCalledWith('doc:snapshots:doc-123', 0, 1);
+    });
+
+    it('should reject snapshots larger than the state size limit', async () => {
+      const bounded = new DocumentStore(mockRedis, mockLogger, { maxStateBytes: 4 });
+
+      await expect(
+        bounded.createSnapshot('doc-123', Buffer.alloc(5), 'user-1'),
+      ).rejects.toBeInstanceOf(DocumentTooLargeError);
+      expect(mockRedis.lpush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('state size limit', () => {
+    it('should refuse to persist a document state over the limit', async () => {
+      const bounded = new DocumentStore(mockRedis, mockLogger, { maxStateBytes: 4 });
+
+      await expect(
+        bounded.saveDocumentState('doc-123', Buffer.alloc(5)),
+      ).rejects.toBeInstanceOf(DocumentTooLargeError);
+      expect(mockRedis.set).not.toHaveBeenCalled();
     });
   });
 

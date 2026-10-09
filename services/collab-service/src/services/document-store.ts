@@ -6,6 +6,17 @@ const DOC_STATE_KEY = 'doc:state:';
 const DOC_SNAPSHOTS_KEY = 'doc:snapshots:';
 const DOC_META_KEY = 'doc:meta:';
 
+export class DocumentTooLargeError extends Error {
+  constructor(
+    readonly documentId: string,
+    readonly bytes: number,
+    readonly maxBytes: number,
+  ) {
+    super(`Document ${documentId} state is ${bytes} bytes (limit ${maxBytes})`);
+    this.name = 'DocumentTooLargeError';
+  }
+}
+
 export interface DocumentSnapshot {
   id: string;
   documentId: string;
@@ -29,6 +40,8 @@ export class DocumentStore {
   private documentTtl: number;
   private snapshotTtl: number;
   private maxSnapshots: number;
+  private maxStateBytes: number | undefined;
+  private maxSnapshotBytes: number | undefined;
 
   constructor(
     redis: RedisAdapter,
@@ -37,6 +50,10 @@ export class DocumentStore {
       documentTtl?: number;
       snapshotTtl?: number;
       maxSnapshots?: number;
+      /** Reject document states / snapshots larger than this many bytes. */
+      maxStateBytes?: number;
+      /** Upper bound on the serialized size of all snapshots kept per document. */
+      maxSnapshotBytes?: number;
     },
   ) {
     this.redis = redis;
@@ -44,6 +61,14 @@ export class DocumentStore {
     this.documentTtl = options?.documentTtl ?? 86400;
     this.snapshotTtl = options?.snapshotTtl ?? 604800;
     this.maxSnapshots = options?.maxSnapshots ?? 50;
+    this.maxStateBytes = options?.maxStateBytes;
+    this.maxSnapshotBytes = options?.maxSnapshotBytes;
+  }
+
+  private assertStateSize(documentId: string, state: Buffer): void {
+    if (this.maxStateBytes !== undefined && state.length > this.maxStateBytes) {
+      throw new DocumentTooLargeError(documentId, state.length, this.maxStateBytes);
+    }
   }
 
   async getDocumentState(documentId: string): Promise<Uint8Array | null> {
@@ -57,6 +82,7 @@ export class DocumentStore {
     state: Buffer,
     userId?: string,
   ): Promise<void> {
+    this.assertStateSize(documentId, state);
     await this.redis.set(`${DOC_STATE_KEY}${documentId}`, state, this.documentTtl);
 
     // Update document metadata
@@ -77,6 +103,11 @@ export class DocumentStore {
     await this.redis.expire(metaKey, this.documentTtl);
 
     this.logger.debug({ documentId, version }, 'document_state_saved');
+  }
+
+  /** Renews the TTL of a stored document state without rewriting it. */
+  async touchDocumentState(documentId: string): Promise<void> {
+    await this.redis.expire(`${DOC_STATE_KEY}${documentId}`, this.documentTtl);
   }
 
   async deleteDocumentState(documentId: string): Promise<void> {
@@ -104,6 +135,7 @@ export class DocumentStore {
     createdBy: string,
     label?: string,
   ): Promise<DocumentSnapshot> {
+    this.assertStateSize(documentId, state);
     const snapshot: DocumentSnapshot = {
       id: uuidv4(),
       documentId,
@@ -116,10 +148,14 @@ export class DocumentStore {
     const key = `${DOC_SNAPSHOTS_KEY}${documentId}`;
     await this.redis.lpush(key, JSON.stringify(snapshot));
 
-    // Trim to max snapshots
+    // Trim to max snapshots, and to the per-document byte budget if one is set
     const count = await this.redis.llen(key);
-    if (count > this.maxSnapshots) {
-      await this.redis.ltrim(key, 0, this.maxSnapshots - 1);
+    let keep = this.maxSnapshots;
+    if (this.maxSnapshotBytes !== undefined && count > 1) {
+      keep = await this.snapshotsWithinBudget(key, this.maxSnapshotBytes);
+    }
+    if (count > keep) {
+      await this.redis.ltrim(key, 0, keep - 1);
     }
 
     await this.redis.expire(key, this.snapshotTtl);
@@ -130,6 +166,19 @@ export class DocumentStore {
     );
 
     return snapshot;
+  }
+
+  private async snapshotsWithinBudget(key: string, maxBytes: number): Promise<number> {
+    const entries = await this.redis.lrange(key, 0, this.maxSnapshots - 1);
+    let total = 0;
+    let keep = 0;
+    for (const entry of entries) {
+      total += Buffer.byteLength(entry);
+      // Always keep the newest snapshot, even if it alone exceeds the budget
+      if (keep > 0 && total > maxBytes) break;
+      keep += 1;
+    }
+    return Math.max(keep, 1);
   }
 
   async getSnapshots(documentId: string, limit = 20): Promise<DocumentSnapshot[]> {
