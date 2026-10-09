@@ -16,6 +16,10 @@ FILE_SERVICE_URL = "http://file-service:8082"
 FETCH_TIMEOUT = 30
 
 
+class ReindexSourceError(RuntimeError):
+    """A source-of-truth service could not be crawled completely."""
+
+
 class Indexer:
     """Handles document and file indexing into MeiliSearch."""
 
@@ -89,8 +93,9 @@ class Indexer:
 
         Fetches all documents from the document-service and all files
         from the file-service, then passes them to MeiliSearch for
-        bulk re-indexing.  If a source service is unreachable the
-        corresponding index is still cleared and recreated empty.
+        bulk re-indexing.  Both crawls finish before any index is touched;
+        if either fails, ``ReindexSourceError`` is raised and the existing
+        indices are left in place.
         """
         documents = self._fetch_all_documents()
         files = self._fetch_all_files()
@@ -116,7 +121,7 @@ class Indexer:
                 )
                 if resp.status_code != 200:
                     logger.warning("reindex_document_fetch_failed", status=resp.status_code)
-                    break
+                    raise ReindexSourceError(f"document-service returned {resp.status_code}")
                 data = resp.json()
                 items = data.get("documents") or data.get("items") or data.get("data") or []
                 if not items:
@@ -133,9 +138,9 @@ class Indexer:
                         "type": "document",
                     })
                 page += 1
-            except requests.RequestException:
+            except (requests.RequestException, ValueError) as exc:
                 logger.exception("reindex_document_fetch_error")
-                break
+                raise ReindexSourceError("document-service could not be crawled") from exc
         return docs
 
     @staticmethod
@@ -152,7 +157,7 @@ class Indexer:
                 )
                 if resp.status_code != 200:
                     logger.warning("reindex_file_fetch_failed", status=resp.status_code)
-                    break
+                    raise ReindexSourceError(f"file-service returned {resp.status_code}")
                 data = resp.json()
                 items = data.get("files") or data.get("items") or data.get("data") or []
                 if not items:
@@ -171,9 +176,9 @@ class Indexer:
                         "type": "file",
                     })
                 page += 1
-            except requests.RequestException:
+            except (requests.RequestException, ValueError) as exc:
                 logger.exception("reindex_file_fetch_error")
-                break
+                raise ReindexSourceError("file-service could not be crawled") from exc
         return files
 
     def process_event(self, event: dict[str, Any]) -> dict[str, Any] | None:

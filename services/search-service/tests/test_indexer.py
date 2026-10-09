@@ -5,9 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from app.config import MeiliSearchConfig
-from app.services.indexer import Indexer
+from app.services.indexer import Indexer, ReindexSourceError
 from app.services.meilisearch_client import MeiliSearchService
 
 
@@ -122,3 +123,59 @@ class TestIndexer:
     def test_process_event_unknown_action(self, indexer: Indexer):
         result = indexer.process_event({"action": "unknown", "data": {}})
         assert result is None
+
+
+class TestReindexFailClosed:
+    """A failed source crawl must not wipe the existing indices."""
+
+    @staticmethod
+    def _response(status: int, payload: dict | None = None) -> MagicMock:
+        resp = MagicMock()
+        resp.status_code = status
+        resp.json.return_value = payload or {}
+        return resp
+
+    def test_document_source_error_aborts_before_delete(self, mock_ms_service):
+        indexer = Indexer(mock_ms_service)
+        with (
+            patch("app.services.indexer.requests.get", return_value=self._response(401)),
+            pytest.raises(ReindexSourceError),
+        ):
+            indexer.reindex()
+        mock_ms_service.client.delete_index.assert_not_called()
+
+    def test_file_source_error_aborts_before_delete(self, mock_ms_service):
+        indexer = Indexer(mock_ms_service)
+        responses = [
+            self._response(200, {"documents": [{"id": "d1", "title": "t", "owner_id": "u"}]}),
+            self._response(200, {"documents": []}),
+            self._response(401),
+        ]
+        with (
+            patch("app.services.indexer.requests.get", side_effect=responses),
+            pytest.raises(ReindexSourceError),
+        ):
+            indexer.reindex()
+        mock_ms_service.client.delete_index.assert_not_called()
+
+    def test_unreachable_source_aborts_before_delete(self, mock_ms_service):
+        indexer = Indexer(mock_ms_service)
+        with (
+            patch("app.services.indexer.requests.get", side_effect=requests.ConnectionError("down")),
+            pytest.raises(ReindexSourceError),
+        ):
+            indexer.reindex()
+        mock_ms_service.client.delete_index.assert_not_called()
+
+    def test_successful_crawl_rebuilds(self, mock_ms_service):
+        indexer = Indexer(mock_ms_service)
+        responses = [
+            self._response(200, {"documents": [{"id": "d1", "title": "t", "owner_id": "u"}]}),
+            self._response(200, {"documents": []}),
+            self._response(200, {"files": [{"id": "f1", "name": "n", "owner_id": "u"}]}),
+            self._response(200, {"files": []}),
+        ]
+        with patch("app.services.indexer.requests.get", side_effect=responses):
+            result = indexer.reindex()
+        assert result["indexed_counts"] == {"documents": 1, "files": 1}
+        assert mock_ms_service.client.delete_index.call_count == 2

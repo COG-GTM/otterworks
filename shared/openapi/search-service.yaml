@@ -184,7 +184,10 @@ paths:
       summary: Index a document
       description: |
         Adds or updates a document in the search index. Called by the
-        document-service or via SQS event processing.
+        document-service or via SQS event processing. A service-token caller
+        may index for any owner; a gateway user may only index entries owned
+        by themselves (owner_id is bound to X-User-ID) and cannot overwrite
+        another user's entry.
       requestBody:
         required: true
         content:
@@ -226,6 +229,22 @@ paths:
                 missing_title:
                   value:
                     error: "Document 'title' is required"
+        "401":
+          description: No service token and no gateway identity (X-User-ID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
+        "403":
+          description: owner_id differs from the caller, or the id belongs to another user's entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "owner_id must match the authenticated user"
         "500":
           description: Internal server error
           content:
@@ -241,7 +260,10 @@ paths:
       summary: Index a file
       description: |
         Adds or updates a file in the search index. Called by the
-        file-service or via SQS event processing.
+        file-service or via SQS event processing. A service-token caller
+        may index for any owner; a gateway user may only index files owned
+        by themselves (owner_id is bound to X-User-ID) and cannot overwrite
+        another user's entry.
       requestBody:
         required: true
         content:
@@ -285,6 +307,22 @@ paths:
                 missing_name:
                   value:
                     error: "File 'name' is required"
+        "401":
+          description: No service token and no gateway identity (X-User-ID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
+        "403":
+          description: owner_id differs from the caller, or the id belongs to another user's entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "owner_id must match the authenticated user"
         "500":
           description: Internal server error
           content:
@@ -324,8 +362,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Invalid type 'invalid'. Must be 'document' or 'file'."
+        "401":
+          description: No service token and no gateway identity (X-User-ID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
         "404":
-          description: Document not found in index
+          description: Document not found in index (or owned by another user; only the service token may remove other users' entries)
           content:
             application/json:
               schema:
@@ -371,8 +417,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: No service token and no gateway identity (X-User-ID)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
         "404":
-          description: File not found in index
+          description: File not found in index (or owned by another user; only the service token may remove other users' entries)
           content:
             application/json:
               schema:
@@ -396,7 +450,9 @@ paths:
       summary: Trigger a full reindex (admin operation)
       description: |
         Crawls the document-service and file-service to re-populate
-        the entire search index. This is an administrative operation.
+        the entire search index. Requires the service token
+        (Authorization: Bearer <SEARCH_SERVICE_TOKEN>); the crawl completes
+        before any index is deleted.
       responses:
         "200":
           description: Reindex triggered successfully
@@ -410,6 +466,30 @@ paths:
                 indexed_counts:
                   documents: 150
                   files: 340
+        "401":
+          description: No service token and no gateway identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "unauthorized"
+        "403":
+          description: Caller did not present the service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "reindex requires the service token"
+        "502":
+          description: A source service could not be crawled; existing indices were left in place
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Reindex aborted: a source service could not be crawled"
         "500":
           description: Internal server error
           content:

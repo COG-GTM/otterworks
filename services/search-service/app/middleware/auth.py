@@ -12,14 +12,19 @@ either of two authentication modes:
 
 If a service token is configured the middleware will accept it on any
 endpoint; if it is not configured (e.g. local dev), only the gateway
-identity path is available and internal endpoints become reachable only
-via the gateway.
+identity path is available.
+
+Index mutation endpoints do not rely on this hook (which ``REQUIRE_AUTH``
+can switch off); they call :func:`get_caller` and authorize every request.
 """
 
 from __future__ import annotations
 
+import hmac
+from dataclasses import dataclass
+
 import structlog
-from flask import jsonify, request
+from flask import current_app, jsonify, request
 
 logger = structlog.get_logger()
 
@@ -48,7 +53,7 @@ def require_auth(app):
         # Accept a valid service token if one is configured.
         if auth_config.service_token:
             token = _extract_bearer_token()
-            if token and token == auth_config.service_token:
+            if _token_matches(token, auth_config.service_token):
                 return None
 
         # Otherwise require gateway-injected user identity.
@@ -66,3 +71,32 @@ def _extract_bearer_token() -> str:
     if auth_header.lower().startswith("bearer "):
         return auth_header[7:].strip()
     return ""
+
+
+def _token_matches(presented: str, expected: str) -> bool:
+    if not presented or not expected:
+        return False
+    return hmac.compare_digest(presented.encode(), expected.encode())
+
+
+@dataclass(frozen=True)
+class Caller:
+    """The authenticated caller of the current request."""
+
+    user_id: str | None = None
+    is_service: bool = False
+
+
+def get_caller() -> Caller | None:
+    """Identify the caller regardless of ``REQUIRE_AUTH``.
+
+    Returns a service caller for a valid service token, a user caller for a
+    gateway-injected ``X-User-ID``, or ``None`` when neither is present.
+    """
+    service_token = current_app.config["APP_CONFIG"].auth.service_token
+    if _token_matches(_extract_bearer_token(), service_token):
+        return Caller(is_service=True)
+    user_id = request.headers.get("X-User-ID", "").strip()
+    if user_id:
+        return Caller(user_id=user_id)
+    return None
