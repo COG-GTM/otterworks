@@ -523,6 +523,26 @@ pub async fn restore_file(
     Ok(HttpResponse::Ok().json(file))
 }
 
+/// Resolve who is creating a share: the authenticated caller from the
+/// `X-User-ID` header injected by the api-gateway. A client-supplied
+/// `shared_by` is never trusted for attribution; it is rejected unless it
+/// names the caller.
+fn resolve_sharer(req: &HttpRequest, claimed: Option<Uuid>) -> Result<Uuid, ServiceError> {
+    let caller = req
+        .headers()
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::Unauthorized("missing X-User-ID header".into()))?;
+
+    match claimed {
+        Some(claimed) if claimed != caller => Err(ServiceError::Forbidden(
+            "shared_by does not match the authenticated user".into(),
+        )),
+        _ => Ok(caller),
+    }
+}
+
 pub async fn share_file(
     req: HttpRequest,
     config: web::Data<AppConfig>,
@@ -540,6 +560,8 @@ pub async fn share_file(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from);
+
+    let shared_by = resolve_sharer(&req, body.shared_by)?;
 
     let file_id: Uuid = path
         .into_inner()
@@ -584,7 +606,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         (share, false, false)
@@ -596,7 +618,7 @@ pub async fn share_file(
                 file_id,
                 shared_with,
                 permission: body.permission.clone(),
-                shared_by: body.shared_by,
+                shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
@@ -612,7 +634,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         meta.put_share(&share).await?;
@@ -827,6 +849,7 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use actix_web::ResponseError;
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
@@ -838,5 +861,56 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[test]
+    fn test_resolve_sharer_uses_authenticated_caller() {
+        let caller = Uuid::new_v4();
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", caller.to_string()))
+            .to_http_request();
+
+        assert_eq!(resolve_sharer(&req, None).unwrap(), caller);
+        assert_eq!(resolve_sharer(&req, Some(caller)).unwrap(), caller);
+    }
+
+    #[test]
+    fn test_resolve_sharer_rejects_forged_shared_by() {
+        let caller = Uuid::new_v4();
+        let victim = Uuid::new_v4();
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", caller.to_string()))
+            .to_http_request();
+
+        let err = resolve_sharer(&req, Some(victim)).unwrap_err();
+        assert!(matches!(err, ServiceError::Forbidden(_)));
+        assert_eq!(
+            err.error_response().status(),
+            actix_web::http::StatusCode::FORBIDDEN
+        );
+    }
+
+    #[test]
+    fn test_resolve_sharer_requires_caller_identity() {
+        let req = actix_web::test::TestRequest::default().to_http_request();
+        let err = resolve_sharer(&req, Some(Uuid::new_v4())).unwrap_err();
+        assert!(matches!(err, ServiceError::Unauthorized(_)));
+
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", "not-a-uuid"))
+            .to_http_request();
+        assert!(matches!(
+            resolve_sharer(&req, None).unwrap_err(),
+            ServiceError::Unauthorized(_)
+        ));
+    }
+
+    #[test]
+    fn test_share_request_shared_by_is_optional() {
+        let body: ShareFileRequest = serde_json::from_str(
+            r#"{"shared_with":"6f1c4c1e-8d43-4f53-9a3c-0c2d6f2f7d11","permission":"viewer"}"#,
+        )
+        .unwrap();
+        assert!(body.shared_by.is_none());
     }
 }
