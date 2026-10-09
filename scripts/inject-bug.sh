@@ -123,10 +123,12 @@ fi
 # --- Variant-image scenario ---
 if [ "${SCENARIO}" = "code-variant" ]; then
   [ -n "${IMAGE_TAG_ARG}" ] || { err "code-variant requires --image-tag <variant-tag>"; exit 1; }
+  valid_image_tag "${IMAGE_TAG_ARG}" || {
+    err "--image-tag must match ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}\$"; exit 1; }
   svc="${VARIANT_SERVICE:-file-service}"
   log "Swapping ${svc} in ${NS} to variant image tag ${IMAGE_TAG_ARG}..."
   helm upgrade "${svc}" "${REPO_ROOT}/infrastructure/helm/${svc}" -n "${NS}" --reuse-values \
-    --set image.tag="${IMAGE_TAG_ARG}"
+    --set-string image.tag="${IMAGE_TAG_ARG}"
   log "Applied. Rollback: re-run deploy-tenant.sh ${ATTENDEE_ID} (golden tag)."
   exit 0
 fi

@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { secondsToTtl } from "@/lib/util";
+import { isPerpetualPinTag, isValidImageTag, secondsToTtl } from "@/lib/util";
 import type { RedeployRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,6 +30,7 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const body = (await req.json().catch(() => ({}))) as RedeployRequest;
   const imageTag =
     typeof body.image_tag === "string" && body.image_tag.trim() ? body.image_tag.trim() : undefined;
+  if (imageTag !== undefined && !isValidImageTag(imageTag)) return error(400, "invalid image_tag");
   const requestedBranch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : undefined;
 
@@ -40,6 +41,15 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     return error(
       409,
       `tenant '${id}' is deployed from '${tenant.branch ?? "(none)"}', not '${requestedBranch}'`,
+    );
+  }
+
+  // CD pins the perpetual tenant to the build it just made of that tenant's
+  // branch; nothing else may replace the image everyone shares.
+  if (tenant.persistent && imageTag !== undefined && !isPerpetualPinTag(imageTag, tenant.branch)) {
+    return error(
+      403,
+      `tenant '${id}' is persistent; only its branch's own CD build (<branch>-<sha7>) may be pinned`,
     );
   }
 
