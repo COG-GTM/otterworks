@@ -100,4 +100,4 @@ export const POST = withSession(async (req: NextRequest, { actor, session }) => 
   }
 
   return json(tenant, 201);
-});
+}, { allowCd: true });

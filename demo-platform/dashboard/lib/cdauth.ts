@@ -249,20 +249,31 @@ export function cachedJwks(
 ): JwksLookup {
   let keys: Jwk[] = [];
   let fetchedAt = 0;
+  let attemptedAt = 0;
 
+  // Only a successful fetch resets the cache clock; a failed one keeps the
+  // last good keys, so a GitHub blip neither wipes them nor delays a retry.
   async function refresh(): Promise<void> {
-    fetchedAt = Date.now();
+    attemptedAt = Date.now();
     const res = await fetchImpl(url, { headers: { accept: "application/json" } });
     if (!res.ok) throw new CdAuthError(`JWKS fetch failed (HTTP ${res.status})`);
     const body = (await res.json()) as { keys?: Jwk[] };
-    keys = Array.isArray(body.keys) ? body.keys : [];
+    if (!Array.isArray(body.keys)) throw new CdAuthError("JWKS response has no keys");
+    keys = body.keys;
+    fetchedAt = Date.now();
   }
 
   return async (kid: string) => {
-    if (fetchedAt === 0 || Date.now() - fetchedAt > ttlMs) await refresh();
+    if (fetchedAt === 0 || Date.now() - fetchedAt > ttlMs) {
+      try {
+        await refresh();
+      } catch (err) {
+        if (keys.length === 0) throw err;
+      }
+    }
     let found = keys.find((k) => k.kid === kid);
-    if (!found && Date.now() - fetchedAt > 60 * 1000) {
-      await refresh();
+    if (!found && Date.now() - attemptedAt > 60 * 1000) {
+      await refresh().catch(() => undefined);
       found = keys.find((k) => k.kid === kid);
     }
     return found;

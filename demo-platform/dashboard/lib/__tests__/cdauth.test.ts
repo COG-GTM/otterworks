@@ -198,3 +198,31 @@ test("cachedJwks surfaces a failed fetch as an auth error", async () => {
   const failing = (async () => new Response("nope", { status: 503 })) as typeof fetch;
   await assert.rejects(cachedJwks("https://jwks.invalid", failing)(KID), CdAuthError);
 });
+
+test("cachedJwks retries after a failed fetch instead of caching the failure", async () => {
+  let calls = 0;
+  const flaky = (async () => {
+    calls++;
+    return calls === 1
+      ? new Response("nope", { status: 503 })
+      : new Response(JSON.stringify({ keys: [JWK] }), { status: 200 });
+  }) as typeof fetch;
+  const lookup = cachedJwks("https://jwks.invalid", flaky);
+  await assert.rejects(lookup(KID), CdAuthError);
+  assert.equal((await lookup(KID))?.kid, KID);
+});
+
+test("cachedJwks keeps the last good keys when a refresh fails", async () => {
+  let calls = 0;
+  const failsLater = (async () => {
+    calls++;
+    return calls === 1
+      ? new Response(JSON.stringify({ keys: [JWK] }), { status: 200 })
+      : new Response("nope", { status: 503 });
+  }) as typeof fetch;
+  const lookup = cachedJwks("https://jwks.invalid", failsLater, 0);
+  assert.equal((await lookup(KID))?.kid, KID);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal((await lookup(KID))?.kid, KID);
+  assert.ok(calls >= 2);
+});

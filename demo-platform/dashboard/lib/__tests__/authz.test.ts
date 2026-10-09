@@ -82,17 +82,20 @@ test("CD sessions cannot check in, persist, inject, reset or extend -- even thei
 });
 
 test("CD checkout is limited to its own tenant, branch, image and an ephemeral TTL", async () => {
-  const cases: Array<[string, Record<string, unknown>]> = [
-    ["other tenant", { id: "alice", branch: "workshop-derek" }],
-    ["no id", { branch: "workshop-derek" }],
-    ["other branch", { id: "derek", branch: "workshop-alice" }],
-    ["other image", { id: "derek", branch: "workshop-derek", image_tag: "tenant-alice" }],
-    ["perpetual", { id: "derek", branch: "workshop-derek", persistent: true }],
-    ["never ttl", { id: "derek", branch: "workshop-derek", ttl: "never" }],
+  const cases: Array<[string, Record<string, unknown>, RegExp]> = [
+    ["other tenant", { id: "alice", branch: "workshop-derek" }, /may only act on tenant 'derek'/],
+    ["no id", { branch: "workshop-derek" }, /may only act on tenant 'derek'/],
+    ["other branch", { id: "derek", branch: "workshop-alice" }, /may only deploy branch/],
+    ["other image", { id: "derek", branch: "workshop-derek", image_tag: "tenant-alice" }, /image tag/],
+    ["perpetual", { id: "derek", branch: "workshop-derek", persistent: true }, /may not create the perpetual/],
+    ["never ttl", { id: "derek", branch: "workshop-derek", ttl: "never" }, /may not create the perpetual/],
   ];
-  for (const [name, body] of cases) {
+  for (const [name, body, message] of cases) {
     const res = await checkoutPost(req("/api/tenants/checkout", cdToken(), "POST", body), noParams());
     assert.equal(res.status, 403, name);
+    // Refused by the handler's own checks, not by withSession: CD must reach
+    // them, or a first push could never create its tenant.
+    assert.match(((await res.json()) as { error: string }).error, message, name);
   }
 });
 
