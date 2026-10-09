@@ -101,10 +101,8 @@ services:
     - --config.file=/etc/prometheus/prometheus.yml
     - --storage.tsdb.path=/prometheus
     - --storage.tsdb.retention.time=15d
-    - --web.enable-lifecycle
-    - --web.enable-admin-api
     ports:
-    - 9090:9090
+    - 127.0.0.1:9090:9090
     volumes:
     - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -129,19 +127,26 @@ services:
   grafana:
     image: grafana/grafana:10.4.0
     container_name: otterworks-grafana
+    # Refuses to start unless GRAFANA_ADMIN_PASSWORD and ALERT_WEBHOOK_SECRET are
+    # set to non-default values (see README.md#observability).
+    entrypoint:
+    - /bin/sh
+    - /usr/local/bin/otterworks-require-secrets.sh
+    - /run.sh
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: otterworks
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
       GF_USERS_ALLOW_SIGN_UP: 'false'
       GF_SERVER_ROOT_URL: http://localhost:3001
       # Unified alerting (Grafana 8+ default; explicit for clarity)
       GF_UNIFIED_ALERTING_ENABLED: 'true'
       GF_ALERTING_ENABLED: 'false'
       # Secret sent to the admin-service alert webhook
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
     ports:
-    - 3001:3000
+    - 127.0.0.1:3001:3000
     volumes:
+    - ./observability/grafana/require-secrets.sh:/usr/local/bin/otterworks-require-secrets.sh:ro
     - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
     - grafana_data:/var/lib/grafana
