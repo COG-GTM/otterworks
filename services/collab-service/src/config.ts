@@ -1,3 +1,22 @@
+import type { RateLimit } from './services/rate-limiter';
+
+export interface CollaborationLimitsConfig {
+  maxMessageBytes: number;
+  maxUpdateBytes: number;
+  maxDocumentBytes: number;
+  maxTotalDocumentBytes: number;
+  maxDocumentsInMemory: number;
+  maxDocumentsPerUser: number;
+  maxSnapshotBytesPerDocument: number;
+  persistDebounceMs: number;
+  socketUpdates: RateLimit;
+  userUpdates: RateLimit;
+  socketSnapshots: RateLimit;
+  userSnapshots: RateLimit;
+  documentSnapshots: RateLimit;
+  userJoins: RateLimit;
+}
+
 export interface Config {
   httpPort: number;
   redis: {
@@ -21,11 +40,46 @@ export interface Config {
     snapshotTtlSeconds: number;
     maxSnapshotsPerDocument: number;
   };
+  limits: CollaborationLimitsConfig;
   logLevel: string;
   otel: {
     enabled: boolean;
     endpoint: string;
     serviceName: string;
+  };
+}
+
+function positiveInt(name: string, fallback: number): number {
+  const parsed = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function rateLimit(name: string, limit: number, windowMs: number): RateLimit {
+  return {
+    limit: positiveInt(`${name}_LIMIT`, limit),
+    windowMs: positiveInt(`${name}_WINDOW_MS`, windowMs),
+  };
+}
+
+export function loadLimits(): CollaborationLimitsConfig {
+  return {
+    maxMessageBytes: positiveInt('MAX_MESSAGE_BYTES', 256 * 1024),
+    maxUpdateBytes: positiveInt('MAX_UPDATE_BYTES', 256 * 1024),
+    maxDocumentBytes: positiveInt('MAX_DOCUMENT_BYTES', 2 * 1024 * 1024),
+    maxTotalDocumentBytes: positiveInt('MAX_TOTAL_DOCUMENT_BYTES', 64 * 1024 * 1024),
+    maxDocumentsInMemory: positiveInt('MAX_DOCUMENTS_IN_MEMORY', 500),
+    maxDocumentsPerUser: positiveInt('MAX_DOCUMENTS_PER_USER', 10),
+    maxSnapshotBytesPerDocument: positiveInt(
+      'MAX_SNAPSHOT_BYTES_PER_DOCUMENT',
+      16 * 1024 * 1024,
+    ),
+    persistDebounceMs: positiveInt('PERSIST_DEBOUNCE_MS', 2000),
+    socketUpdates: rateLimit('SOCKET_UPDATE_RATE', 50, 1000),
+    userUpdates: rateLimit('USER_UPDATE_RATE', 100, 1000),
+    socketSnapshots: rateLimit('SOCKET_SNAPSHOT_RATE', 2, 60000),
+    userSnapshots: rateLimit('USER_SNAPSHOT_RATE', 5, 60000),
+    documentSnapshots: rateLimit('DOCUMENT_SNAPSHOT_RATE', 10, 60000),
+    userJoins: rateLimit('USER_JOIN_RATE', 30, 60000),
   };
 }
 
@@ -55,6 +109,7 @@ export function loadConfig(): Config {
       snapshotTtlSeconds: parseInt(process.env.SNAPSHOT_TTL_SECONDS || '604800', 10),
       maxSnapshotsPerDocument: parseInt(process.env.MAX_SNAPSHOTS || '50', 10),
     },
+    limits: loadLimits(),
     logLevel: process.env.LOG_LEVEL || 'info',
     otel: {
       enabled: process.env.OTEL_ENABLED === 'true',

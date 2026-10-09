@@ -11,14 +11,26 @@ import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
+import { DocumentMemoryBudget } from './services/memory-budget';
+import {
+  SharedDoc,
+  WsDocumentGuard,
+  WS_CLOSE_MESSAGE_TOO_BIG,
+} from './services/ws-doc-guard';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection } = require('y-websocket/bin/utils');
+const { setupWSConnection, docs: wsDocs } = require('y-websocket/bin/utils') as {
+  setupWSConnection: (conn: unknown, req: unknown, opts?: { docName?: string }) => void;
+  docs: Map<string, SharedDoc>;
+};
 
 const config = loadConfig();
+const { limits } = config;
+// Socket.IO and y-websocket documents share one memory budget
+const memoryBudget = new DocumentMemoryBudget(limits.maxTotalDocumentBytes);
 
 const logger = pino({
   level: config.logLevel,
@@ -89,6 +101,7 @@ const io = new SocketIOServer(httpServer, {
   },
   pingInterval: 25000,
   pingTimeout: 20000,
+  maxHttpBufferSize: limits.maxMessageBytes,
 });
 
 // JWT auth middleware for WebSocket
@@ -110,6 +123,8 @@ const documentStore = new DocumentStore(redisAdapter, logger, {
   documentTtl: config.persistence.documentTtlSeconds,
   snapshotTtl: config.persistence.snapshotTtlSeconds,
   maxSnapshots: config.persistence.maxSnapshotsPerDocument,
+  maxStateBytes: limits.maxDocumentBytes,
+  maxSnapshotBytes: limits.maxSnapshotBytesPerDocument,
 });
 
 const awareness = new AwarenessService(logger);
@@ -125,12 +140,28 @@ const collabManager = setupCollaborationHandlers(
   logger,
   config.persistence.intervalMs,
   config.persistence.snapshotIntervalMs,
+  limits,
+  memoryBudget,
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
-const wss = new WebSocketServer({ noServer: true });
+const wss = new WebSocketServer({ noServer: true, maxPayload: limits.maxMessageBytes });
+const wsGuard = new WsDocumentGuard({
+  docs: wsDocs,
+  budget: memoryBudget,
+  maxDocumentBytes: limits.maxDocumentBytes,
+  maxDocuments: limits.maxDocumentsInMemory,
+  logger,
+});
 wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
+  const docName = (req.url || '').slice(1).split('?')[0];
+  if (!docName || docName.length > 256 || !wsGuard.canOpen(docName)) {
+    logger.warn({ documentName: docName }, 'y-websocket_connection_rejected: limit');
+    conn.close(WS_CLOSE_MESSAGE_TOO_BIG, 'Document limit exceeded');
+    return;
+  }
+  setupWSConnection(conn, req, { docName });
+  wsGuard.attach(docName);
   logger.info({ url: req.url }, 'y-websocket_client_connected');
 });
 
