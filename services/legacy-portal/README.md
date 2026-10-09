@@ -26,7 +26,15 @@ and the datasource. That is exactly what makes this a good decomposition candida
 | Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
 
 Shared, non-domain plumbing lives in `com.otterworks.legacyportal.common` (health endpoint,
-exception handling).
+exception handling) and `com.otterworks.legacyportal.security` (authentication).
+
+### Authentication
+
+The portal runs outside the API gateway, so it verifies auth-service access tokens itself
+(HS256/384/512, signed with the shared `JWT_SECRET`). `GET`/`PUT /api/preferences/{userId}`
+require `Authorization: Bearer <access token>` and only act on the caller's own record: no or
+invalid token -> `401`, `{userId}` different from the token's `sub` -> `403`, malformed
+`{userId}` -> `400`. Without `JWT_SECRET` (>= 32 bytes) every preferences request gets `401`.
 
 ### Why it's an obvious decomposition candidate
 

@@ -5,15 +5,17 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.otterworks.legacyportal.security.TestTokens;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 /** Full-context test: the whole modular monolith boots and every module's routes are wired. */
-@SpringBootTest
+@SpringBootTest(properties = "legacyportal.security.jwt-secret=" + TestTokens.SECRET)
 @AutoConfigureMockMvc
 class LegacyPortalApplicationTest {
 
@@ -49,7 +51,11 @@ class LegacyPortalApplicationTest {
 
     @Test
     void preferencesModuleReturnsDefaults() throws Exception {
-        mockMvc.perform(get("/api/preferences/newuser"))
+        mockMvc.perform(
+                        get("/api/preferences/newuser")
+                                .header(
+                                        HttpHeaders.AUTHORIZATION,
+                                        "Bearer " + TestTokens.accessToken("newuser")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.theme").value("light"));
     }
