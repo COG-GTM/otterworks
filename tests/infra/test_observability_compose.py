@@ -74,10 +74,10 @@ def test_contact_point_still_sends_secret_from_env() -> None:
     assert "authorization_credentials: $ALERT_WEBHOOK_SECRET" in text
 
 
-def _run_guard(env: dict[str, str]) -> subprocess.CompletedProcess:
+def _run_guard(env: dict[str, str], path: str = "/usr/bin:/bin") -> subprocess.CompletedProcess:
     return subprocess.run(
         ["sh", str(GUARD), "sh", "-c", "echo started"],
-        env={"PATH": "/usr/bin:/bin", **env},
+        env={"PATH": path, "GF_PATHS_DATA": "/nonexistent-grafana-data", **env},
         capture_output=True,
         text=True,
         check=False,
@@ -126,6 +126,56 @@ def test_guard_refuses_missing_or_weak_secrets(env: dict[str, str], message: str
     for value in env.values():
         if value and value not in {"otterworks", "demo-alert-secret", "short"}:
             assert value not in result.stderr
+
+
+def _fake_grafana_cli(tmp_path: Path, exit_code: int) -> tuple[str, Path]:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls"
+    cli = bin_dir / "grafana"
+    cli.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> "{calls}"\nexit {exit_code}\n')
+    cli.chmod(0o755)
+    return f"{bin_dir}:/usr/bin:/bin", calls
+
+
+def _existing_data_dir(tmp_path: Path) -> Path:
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "grafana.db").write_bytes(b"")
+    return data
+
+
+STRONG_ENV = {"GF_SECURITY_ADMIN_PASSWORD": STRONG_PASSWORD, "ALERT_WEBHOOK_SECRET": STRONG_SECRET}
+
+
+def test_guard_reapplies_password_to_existing_grafana_database(tmp_path: Path) -> None:
+    path, calls = _fake_grafana_cli(tmp_path, exit_code=0)
+    data = _existing_data_dir(tmp_path)
+    result = _run_guard({**STRONG_ENV, "GF_PATHS_DATA": str(data)}, path=path)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "started"
+    assert (
+        calls.read_text().split("\n")[0].endswith(f"admin reset-admin-password {STRONG_PASSWORD}")
+    )
+
+
+def test_guard_refuses_to_start_when_password_reset_fails(tmp_path: Path) -> None:
+    path, _ = _fake_grafana_cli(tmp_path, exit_code=1)
+    data = _existing_data_dir(tmp_path)
+    result = _run_guard({**STRONG_ENV, "GF_PATHS_DATA": str(data)}, path=path)
+    assert result.returncode == 64
+    assert "started" not in result.stdout
+    assert "could not apply GRAFANA_ADMIN_PASSWORD" in result.stderr
+    assert STRONG_PASSWORD not in result.stderr
+
+
+def test_guard_skips_reset_on_fresh_grafana_volume(tmp_path: Path) -> None:
+    path, calls = _fake_grafana_cli(tmp_path, exit_code=1)
+    data = tmp_path / "data"
+    data.mkdir()
+    result = _run_guard({**STRONG_ENV, "GF_PATHS_DATA": str(data)}, path=path)
+    assert result.returncode == 0, result.stderr
+    assert not calls.exists()
 
 
 @pytest.mark.skipif(shutil.which("docker") is None, reason="docker CLI not installed")

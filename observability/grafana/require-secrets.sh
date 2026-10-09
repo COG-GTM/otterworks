@@ -23,4 +23,15 @@ require_secret() {
 require_secret GRAFANA_ADMIN_PASSWORD "${GF_SECURITY_ADMIN_PASSWORD:-}"
 require_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET:-}"
 
+# Grafana only applies GF_SECURITY_ADMIN_PASSWORD when it creates its database, so
+# an existing grafana_data volume would keep the old (e.g. committed) password.
+# Re-apply it on every start and refuse to start if that fails.
+data_dir=${GF_PATHS_DATA:-/var/lib/grafana}
+if [ -f "$data_dir/grafana.db" ]; then
+  grafana cli --homepath "${GF_PATHS_HOME:-/usr/share/grafana}" \
+    --config "${GF_PATHS_CONFIG:-/etc/grafana/grafana.ini}" \
+    admin reset-admin-password "$GF_SECURITY_ADMIN_PASSWORD" >/dev/null 2>&1 ||
+    fail "could not apply GRAFANA_ADMIN_PASSWORD to the existing Grafana database"
+fi
+
 exec "$@"

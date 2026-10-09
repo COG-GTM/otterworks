@@ -127,9 +127,8 @@ export ALERT_WEBHOOK_SECRET="$(openssl rand -hex 32)"   # also used by admin-ser
 make infra-up
 ```
 
-Grafana only applies the admin password when its database is first created; for an
-existing `grafana_data` volume run
-`docker exec otterworks-grafana grafana cli admin reset-admin-password "$GRAFANA_ADMIN_PASSWORD"`.
+The guard re-applies `GRAFANA_ADMIN_PASSWORD` to an existing `grafana_data` volume on
+every start, so a previously stored password (e.g. the old `otterworks`) stops working.
 
 - **Logging**: Structured JSON logs → Fluent Bit → CloudWatch (production) / stdout (local)
 - **Metrics**: Prometheus scraping `/metrics` endpoints + Grafana dashboards in `observability/grafana/dashboards/`
