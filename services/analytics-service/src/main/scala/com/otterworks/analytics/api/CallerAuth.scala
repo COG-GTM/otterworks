@@ -11,7 +11,7 @@ import spray.json.{JsObject, JsString}
  * client-supplied X-User-ID / X-User-Roles and sets them from the validated JWT
  * (`sub` and `roles` claims), so they are the only trusted source of identity.
  */
-final case class Caller(userId: String, roles: Set[String]):
+final case class Caller(userId: String, roles: Set[String], authorization: Option[String] = None):
   def isAdmin: Boolean = roles.exists(CallerAuth.AdminRoles.contains)
   def canAccessUser(otherUserId: String): Boolean = isAdmin || otherUserId == userId
 
@@ -29,10 +29,11 @@ object CallerAuth:
 
   /** Rejects the request with 401 unless the gateway forwarded a caller identity. */
   val caller: Directive1[Caller] =
-    (optionalHeaderValueByName(UserIdHeader) & optionalHeaderValueByName(RolesHeader)).tflatMap {
-      case (userId, roles) =>
+    (optionalHeaderValueByName(UserIdHeader) & optionalHeaderValueByName(RolesHeader) &
+      optionalHeaderValueByName("Authorization")).tflatMap {
+      case (userId, roles, authorization) =>
         userId.map(_.trim).filter(_.nonEmpty) match
-          case Some(id) => provide(Caller(id, parseRoles(roles)))
+          case Some(id) => provide(Caller(id, parseRoles(roles), authorization))
           case None     => unauthorized.toDirective[Tuple1[Caller]]
     }
 

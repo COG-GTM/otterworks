@@ -29,15 +29,16 @@ class DocumentServiceAccessSpec extends AnyFlatSpec with Matchers with ScalaFutu
 
   private val stub =
     path("api" / "v1" / "documents" / Segment) { id =>
-      optionalHeaderValueByName("X-User-ID") { user =>
+      (optionalHeaderValueByName("X-User-ID") & optionalHeaderValueByName("Authorization")) { (user, auth) =>
         seen.add(id -> user)
-        (id, user) match
-          case (`ownedDoc`, Some("owner")) => complete(HttpResponse(StatusCodes.OK))
-          case (`otherDoc`, _)              => complete(HttpResponse(StatusCodes.Forbidden))
-          case (`slowDoc`, _) =>
+        (id, user, auth) match
+          case (_, _, None) => complete(HttpResponse(StatusCodes.Unauthorized))
+          case (`ownedDoc`, Some("owner"), Some("Bearer owner-token")) => complete(HttpResponse(StatusCodes.OK))
+          case (`otherDoc`, _, _) => complete(HttpResponse(StatusCodes.Forbidden))
+          case (`slowDoc`, _, _) =>
             val delay = after(2.seconds, system.scheduler)(Future.successful(()))(using system.dispatcher)
             onSuccess(delay) { complete(HttpResponse(StatusCodes.OK)) }
-          case _                            => complete(HttpResponse(StatusCodes.NotFound))
+          case _ => complete(HttpResponse(StatusCodes.NotFound))
       }
     }
 
@@ -50,32 +51,37 @@ class DocumentServiceAccessSpec extends AnyFlatSpec with Matchers with ScalaFutu
     Await.ready(system.terminate(), 10.seconds)
 
   "DocumentServiceAccess" should "allow a caller document-service lets read the document" in {
-    access.canView(Caller("owner", Set("USER")), ownedDoc).futureValue shouldBe true
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), ownedDoc).futureValue shouldBe true
   }
 
   it should "forward the caller's id to document-service" in {
     seen.clear()
-    access.canView(Caller("someone", Set.empty), ownedDoc).futureValue shouldBe false
+    access.canView(Caller("someone", Set.empty, Some("Bearer someone-token")), ownedDoc).futureValue shouldBe false
     seen.peek() shouldBe (ownedDoc -> Some("someone"))
   }
 
   it should "deny when document-service answers 403 or 404" in {
-    access.canView(Caller("owner", Set("USER")), otherDoc).futureValue shouldBe false
-    access.canView(Caller("owner", Set("USER")), missingDoc).futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), otherDoc).futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), missingDoc).futureValue shouldBe false
   }
 
   it should "deny non-UUID ids without calling document-service" in {
     seen.clear()
-    access.canView(Caller("owner", Set("USER")), "../admin").futureValue shouldBe false
-    access.canView(Caller("owner", Set("USER")), "doc-1").futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), "../admin").futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), "doc-1").futureValue shouldBe false
     seen.isEmpty shouldBe true
   }
 
   it should "fail closed when document-service is slow" in {
-    access.canView(Caller("owner", Set("USER")), slowDoc).futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), slowDoc).futureValue shouldBe false
   }
 
   it should "fail closed when document-service is unreachable" in {
     val down = DocumentServiceAccess("http://127.0.0.1:1", 500.millis)
-    down.canView(Caller("owner", Set("USER")), ownedDoc).futureValue shouldBe false
+    down.canView(Caller("owner", Set("USER"), Some("Bearer owner-token")), ownedDoc).futureValue shouldBe false
+  }
+
+  it should "forward the caller's bearer token so document-service can verify it" in {
+    access.canView(Caller("owner", Set("USER"), None), ownedDoc).futureValue shouldBe false
+    access.canView(Caller("owner", Set("USER"), Some("Bearer forged")), ownedDoc).futureValue shouldBe false
   }
