@@ -1,0 +1,5 @@
+[repositories]
+  local
+  maven-central-mirror: https://maven-central.storage-download.googleapis.com/maven2/
+  maven-central
+  sbt-plugin-releases: https://repo.scala-sbt.org/scalasbt/sbt-plugin-releases/, [organization]/[module]/(scala_[scalaVersion]/)(sbt_[sbtVersion]/)[revision]/[type]s/[artifact](-[classifier]).[ext]

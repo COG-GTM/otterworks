@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- repo.maven.apache.org rate-limits shared CI egress IPs (HTTP 429). Resolve from Google's
+     Maven Central mirror first; Maven still falls back to Central for anything the mirror can't
+     serve. .devin/blueprint.yaml installs a copy as ~/.m2/settings.xml. -->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+  <profiles>
+    <profile>
+      <id>google-maven-central</id>
+      <repositories>
+        <repository>
+          <id>google-maven-central</id>
+          <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>google-maven-central</id>
+          <url>https://maven-central.storage-download.googleapis.com/maven2/</url>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+  <activeProfiles>
+    <activeProfile>google-maven-central</activeProfile>
+  </activeProfiles>
+</settings>

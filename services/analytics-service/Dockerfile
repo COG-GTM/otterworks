@@ -1,6 +1,10 @@
 FROM sbtscala/scala-sbt:eclipse-temurin-jammy-17.0.10_7_1.9.9_3.4.1 AS builder
 
 WORKDIR /app
+# repo1.maven.org rate-limits shared CI egress IPs (HTTP 429); resolve through Google's
+# Maven Central mirror first, falling back to Maven Central itself.
+COPY repositories ./
+ENV SBT_OPTS="-Dsbt.repository.config=/app/repositories -Dsbt.override.build.repos=true"
 COPY build.sbt ./
 COPY project/ ./project/
 RUN sbt update || true

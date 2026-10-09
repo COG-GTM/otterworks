@@ -1,8 +1,28 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
-  # Docker Hub rate-limits anonymous pulls (HTTP 429), so the infra image pull gets the
-  # same backoff loop as the builds below rather than failing the whole setup on one 429.
+  # Docker Hub rate-limits anonymous pulls (HTTP 429) per egress IP, and a shared build IP can
+  # stay limited for longer than the whole backoff budget below. Route Docker Hub pulls (including
+  # BuildKit FROM lookups) through Google's pull-through mirror; the daemon falls back to Docker
+  # Hub itself for anything the mirror can't serve. Merged so existing daemon.json keys survive.
+  sudo python3 - <<'PY'
+  import json, os
+  p = "/etc/docker/daemon.json"
+  d = json.load(open(p)) if os.path.exists(p) and os.path.getsize(p) else {}
+  m = d.setdefault("registry-mirrors", [])
+  if "https://mirror.gcr.io" not in m:
+      m.append("https://mirror.gcr.io")
+  os.makedirs(os.path.dirname(p), exist_ok=True)
+  json.dump(d, open(p, "w"), indent=2)
+  PY
+  sudo systemctl restart docker
+  for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+  # The base image's ~/.docker/config.json carries Docker Hub credentials, which the daemon
+  # forwards to the mirror; mirror.gcr.io rejects them ("unauthorized") and every pull silently
+  # falls back to Docker Hub. Use an empty client config for this build only so the mirror is hit.
+  export DOCKER_CONFIG=$(mktemp -d)
+  # The infra image pull keeps the same backoff loop as the builds below rather than failing
+  # the whole setup on one 429.
   n=0
   until docker compose -f docker-compose.infra.yml pull; do
     n=$((n+1)); [ "$n" -ge 8 ] && { echo "infra image pull failed after $n attempts"; exit 1; }
@@ -161,6 +181,9 @@ initialize: |
   kill $EMU_PID 2>/dev/null || true
   wait $EMU_PID 2>/dev/null || true
 
+  # Same 429 problem for host-side Maven: route Maven Central through Google's mirror.
+  mkdir -p $HOME/.m2
+  cp services/report-service/settings.xml $HOME/.m2/settings.xml
   # Warm ~/.m2 so the Maven services resolve from cache instead of downloading Boot's tree.
   (cd services/report-service && mvn -B -q dependency:go-offline) || echo "WARN: report-service dependency warm-up failed."
   (cd services/legacy-portal && ./mvnw -B -q dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
