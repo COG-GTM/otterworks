@@ -94,7 +94,11 @@ fi
 if [ "${KEEP_DB}" = false ]; then
   [ -n "${S3_FILE_BUCKET:-}" ] || load_infra_outputs
   log "Deleting tenant DynamoDB tables and S3 prefixes..."
-  delete_tenant_data_stores "${ATTENDEE_ID}"
+  delete_tenant_data_stores "${ATTENDEE_ID}" || TEARDOWN_FAILED=true
 fi
 
+if [ "${TEARDOWN_FAILED:-false}" = true ]; then
+  err "Teardown incomplete for tenant ${ATTENDEE_ID}: some tenant tables/objects remain (see warnings)."
+  exit 1
+fi
 log "Teardown complete for tenant ${ATTENDEE_ID} (namespace ${NS})."

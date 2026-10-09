@@ -277,10 +277,10 @@ tenant_service_policy() {
       _tenant_policy_json "${S3_FILE_BUCKET}" "${prefix}" "GetObject,PutObject,DeleteObject,ListBucket" \
         "GetItem,PutItem,UpdateItem,DeleteItem,Query,Scan" "${tables[@]}" ;;
     notification-service)
-      _tenant_policy_json "" "" "" "GetItem,PutItem,Query" "${tables[@]}" ;;
+      _tenant_policy_json "" "" "" "GetItem,PutItem,UpdateItem,DeleteItem,Query" "${tables[@]}" ;;
     audit-service)
       _tenant_policy_json "${S3_AUDIT_BUCKET}" "${prefix}" "PutObject" \
-        "PutItem,GetItem,Query,BatchWriteItem" "${tables[@]}" ;;
+        "PutItem,GetItem,Query,Scan,BatchWriteItem" "${tables[@]}" ;;
     *) return 1 ;;
   esac
 }
@@ -374,22 +374,28 @@ delete_tenant_irsa_roles() {
   done
 }
 
-# <tenant id>: delete the tenant's DynamoDB tables and S3 prefixes.
+# <tenant id>: delete the tenant's DynamoDB tables and S3 prefixes. Returns
+# non-zero if any table that exists could not be deleted.
 delete_tenant_data_stores() {
-  local id=$1 svc t name prefix b
+  local id=$1 svc t name prefix b out rc=0
   for svc in ${TENANT_IRSA_SERVICES}; do
     while IFS= read -r t; do
       [ -n "${t}" ] || continue
       name="$(tenant_table_name "${t}" "${id}")"
-      aws dynamodb delete-table --region "${AWS_REGION}" --table-name "${name}" >/dev/null 2>&1 \
-        && log "  deleted tenant table ${name}" || true
+      if out="$(aws dynamodb delete-table --region "${AWS_REGION}" --table-name "${name}" 2>&1 >/dev/null)"; then
+        log "  deleted tenant table ${name}"
+      elif [[ "${out}" != *ResourceNotFoundException* ]]; then
+        warn "  failed to delete tenant table ${name}: ${out}"; rc=1
+      fi
     done < <(tenant_service_tables "${svc}")
   done
   prefix="$(tenant_s3_prefix "${id}")"
   for b in "${S3_FILE_BUCKET:-}" "${S3_AUDIT_BUCKET:-}"; do
     [ -n "${b}" ] || continue
-    aws s3 rm "s3://${b}/${prefix}" --recursive --only-show-errors >/dev/null 2>&1 || true
+    aws s3 rm "s3://${b}/${prefix}" --recursive --only-show-errors >/dev/null 2>&1 \
+      || { warn "  failed to empty s3://${b}/${prefix}"; rc=1; }
   done
+  return "${rc}"
 }
 
 # <namespace> <oidc issuer host>: strip statements naming this namespace's SAs

@@ -38,6 +38,16 @@ locals {
   # aws_iam_policy.tenant_boundary).
   tenant_role_path    = "/otterworks-tenant/"
   tenant_boundary_arn = "arn:aws:iam::${local.account_id}:policy${local.tenant_role_path}otterworks-tenant-boundary-${var.environment}"
+
+  # Shared per-service roles from infrastructure/terraform/modules/irsa
+  # (<project>-<service account>-<environment>).
+  shared_irsa_role_arns = [
+    for svc in [
+      "file-service", "document-service", "notification-service", "search-service",
+      "analytics-service", "audit-service", "auth-service", "admin-service",
+      "api-gateway", "collab-service",
+    ] : "arn:aws:iam::${local.account_id}:role/otterworks-${svc}-${var.environment}"
+  ]
 }
 
 data "aws_iam_policy_document" "dashboard" {
@@ -208,11 +218,13 @@ data "aws_iam_policy_document" "dashboard" {
 
   # deploy/teardown strip legacy tenant trust (older deploys, the retired
   # wildcard script) from the shared per-service roles; they no longer add any.
+  # Named exactly: an otterworks-* glob would also match this role and the
+  # cluster/CI roles, and a trust rewrite there is a role takeover.
   statement {
     sid       = "TenantIrsaTrust"
     effect    = "Allow"
     actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
-    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-*"]
+    resources = local.shared_irsa_role_arns
   }
 
   # deploy-tenant creates one role per tenant service under the tenant path.
