@@ -132,7 +132,7 @@ fun Application.configureDependencyInjection(
 
                 single {
                     WebSocketManager(
-                        maxConnectionsPerUser = config.wsMaxConnectionsPerUser,
+                        maxConnectionsPerClient = config.wsMaxConnectionsPerClient,
                         maxConnections = config.wsMaxConnections,
                     )
                 }

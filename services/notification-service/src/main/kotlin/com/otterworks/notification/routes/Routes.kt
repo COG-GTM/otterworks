@@ -169,7 +169,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                 return@webSocket
             }
 
-            if (!webSocketManager.tryAddConnection(userId, this)) {
+            if (!webSocketManager.tryAddConnection(userId, call.request.local.remoteHost, this)) {
                 close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Too many connections"))
                 return@webSocket
             }

@@ -25,7 +25,7 @@ data class AppConfig(
     // Clients only ever send "ping", so frames are capped well below the
     // container heap; larger frames close the socket with 1009 (TOO_BIG).
     val wsMaxFrameBytes: Long = DEFAULT_WS_MAX_FRAME_BYTES,
-    val wsMaxConnectionsPerUser: Int = DEFAULT_WS_MAX_CONNECTIONS_PER_USER,
+    val wsMaxConnectionsPerClient: Int = DEFAULT_WS_MAX_CONNECTIONS_PER_CLIENT,
     val wsMaxConnections: Int = DEFAULT_WS_MAX_CONNECTIONS,
 ) {
     // Queue URL the consumer actually polls. When the failure switch is on,
@@ -41,7 +41,7 @@ data class AppConfig(
 
     companion object {
         const val DEFAULT_WS_MAX_FRAME_BYTES: Long = 64L * 1024
-        const val DEFAULT_WS_MAX_CONNECTIONS_PER_USER: Int = 5
+        const val DEFAULT_WS_MAX_CONNECTIONS_PER_CLIENT: Int = 20
         const val DEFAULT_WS_MAX_CONNECTIONS: Int = 1000
 
         fun load(): AppConfig {
@@ -68,8 +68,8 @@ data class AppConfig(
                 alertWebhookSecret = System.getenv("ALERT_WEBHOOK_SECRET")?.takeIf { it.isNotBlank() },
                 wsMaxFrameBytes = System.getenv("WS_MAX_FRAME_BYTES")?.toLongOrNull()
                     ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_FRAME_BYTES,
-                wsMaxConnectionsPerUser = System.getenv("WS_MAX_CONNECTIONS_PER_USER")?.toIntOrNull()
-                    ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_CONNECTIONS_PER_USER,
+                wsMaxConnectionsPerClient = System.getenv("WS_MAX_CONNECTIONS_PER_CLIENT")?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_CONNECTIONS_PER_CLIENT,
                 wsMaxConnections = System.getenv("WS_MAX_CONNECTIONS")?.toIntOrNull()
                     ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_CONNECTIONS,
             )
