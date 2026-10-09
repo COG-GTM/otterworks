@@ -137,6 +137,7 @@ pub async fn upload_file(
     let owner = header_owner_id
         .or(owner_id)
         .ok_or_else(|| ServiceError::BadRequest("owner_id is required".into()))?;
+    ensure_target_folder(&meta, folder_id, &owner).await?;
 
     if file_bytes.is_empty() {
         return Err(ServiceError::BadRequest("file field is required".into()));
@@ -412,6 +413,7 @@ pub async fn download_file(
 }
 
 pub async fn move_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
@@ -421,6 +423,11 @@ pub async fn move_file(
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
+
+    if body.folder_id.is_some() {
+        let caller = caller_id(&req)?;
+        ensure_target_folder(&meta, body.folder_id, &caller).await?;
+    }
 
     let file = meta.move_file(&file_id, body.folder_id).await?;
 
@@ -696,15 +703,22 @@ pub async fn list_folders(
 }
 
 pub async fn create_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = caller_id(&req)?;
+    let owner_id = resolve_create_owner(&caller, body.owner_id)?;
+    if let Some(parent_id) = body.parent_id {
+        validate_parent(None, parent_id, &caller, |id| fetch_folder(&meta, id)).await?;
+    }
+
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
         name: body.name.clone(),
         parent_id: body.parent_id,
-        owner_id: body.owner_id,
+        owner_id,
         created_at: now,
         updated_at: now,
     };
@@ -715,27 +729,33 @@ pub async fn create_folder(
 }
 
 pub async fn get_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
-    let folder_id: Uuid = path
-        .into_inner()
-        .parse()
-        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let caller = caller_id(&req)?;
+    let folder_id = parse_folder_id(path.into_inner())?;
 
-    let folder = meta.get_folder(&folder_id).await?;
+    let folder = owned_folder(&meta, &folder_id, &caller).await?;
     Ok(HttpResponse::Ok().json(folder))
 }
 
 pub async fn update_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
     body: web::Json<UpdateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
-    let folder_id: Uuid = path
-        .into_inner()
-        .parse()
-        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let caller = caller_id(&req)?;
+    let folder_id = parse_folder_id(path.into_inner())?;
+
+    owned_folder(&meta, &folder_id, &caller).await?;
+    if let Some(parent_id) = body.parent_id {
+        validate_parent(Some(folder_id), parent_id, &caller, |id| {
+            fetch_folder(&meta, id)
+        })
+        .await?;
+    }
 
     let folder = meta
         .update_folder(&folder_id, body.name.clone(), body.parent_id)
@@ -744,17 +764,123 @@ pub async fn update_folder(
 }
 
 pub async fn delete_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
-    let folder_id: Uuid = path
-        .into_inner()
-        .parse()
-        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let caller = caller_id(&req)?;
+    let folder_id = parse_folder_id(path.into_inner())?;
 
+    owned_folder(&meta, &folder_id, &caller).await?;
     meta.delete_folder(&folder_id).await?;
     tracing::info!(folder_id = %folder_id, "Folder deleted");
     Ok(HttpResponse::NoContent().finish())
+}
+
+// -- Folder ownership --
+
+/// Deepest folder chain walked when checking a new parent for cycles.
+const MAX_FOLDER_DEPTH: usize = 64;
+
+/// The authenticated caller, from the `X-User-ID` header the api-gateway
+/// derives from the validated JWT (client-supplied values are stripped).
+fn caller_id(req: &HttpRequest) -> Result<Uuid, ServiceError> {
+    req.headers()
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::Unauthorized("missing or invalid X-User-ID header".into()))
+}
+
+/// Folders are always created for the caller; a body `owner_id` naming
+/// anyone else is rejected rather than silently rewritten.
+fn resolve_create_owner(caller: &Uuid, requested: Option<Uuid>) -> Result<Uuid, ServiceError> {
+    match requested {
+        Some(owner) if owner != *caller => Err(ServiceError::Forbidden(
+            "owner_id must match the authenticated user".into(),
+        )),
+        _ => Ok(*caller),
+    }
+}
+
+/// Another user's folder is reported as not found so folder ids cannot be
+/// probed for existence.
+fn ensure_folder_owner(folder: Folder, caller: &Uuid) -> Result<Folder, ServiceError> {
+    if folder.owner_id == *caller {
+        Ok(folder)
+    } else {
+        Err(ServiceError::FolderNotFound(folder.id.to_string()))
+    }
+}
+
+fn parse_folder_id(raw: String) -> Result<Uuid, ServiceError> {
+    raw.parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))
+}
+
+async fn fetch_folder(meta: &MetadataClient, folder_id: Uuid) -> Result<Folder, ServiceError> {
+    meta.get_folder(&folder_id).await
+}
+
+async fn owned_folder(
+    meta: &MetadataClient,
+    folder_id: &Uuid,
+    caller: &Uuid,
+) -> Result<Folder, ServiceError> {
+    ensure_folder_owner(meta.get_folder(folder_id).await?, caller)
+}
+
+/// Check that `parent_id` is a folder owned by `caller` and, when reparenting
+/// `folder_id`, that the move would not make the folder its own ancestor.
+async fn validate_parent<F, Fut>(
+    folder_id: Option<Uuid>,
+    parent_id: Uuid,
+    caller: &Uuid,
+    get_folder: F,
+) -> Result<(), ServiceError>
+where
+    F: Fn(Uuid) -> Fut,
+    Fut: std::future::Future<Output = Result<Folder, ServiceError>>,
+{
+    let parent = ensure_folder_owner(get_folder(parent_id).await?, caller)?;
+    let Some(folder_id) = folder_id else {
+        return Ok(());
+    };
+
+    let mut current = Some(parent);
+    for _ in 0..MAX_FOLDER_DEPTH {
+        let Some(folder) = current else {
+            return Ok(());
+        };
+        if folder.id == folder_id {
+            return Err(ServiceError::BadRequest(
+                "a folder cannot be moved into itself or one of its subfolders".into(),
+            ));
+        }
+        current = match folder.parent_id {
+            Some(next) => match get_folder(next).await {
+                Ok(ancestor) => Some(ancestor),
+                Err(ServiceError::FolderNotFound(_)) => None,
+                Err(e) => return Err(e),
+            },
+            None => None,
+        };
+    }
+    Err(ServiceError::BadRequest(
+        "folder hierarchy is too deep".into(),
+    ))
+}
+
+/// Files may only be placed in folders the uploader/mover owns.
+async fn ensure_target_folder(
+    meta: &MetadataClient,
+    folder_id: Option<Uuid>,
+    owner: &Uuid,
+) -> Result<(), ServiceError> {
+    if let Some(folder_id) = folder_id {
+        owned_folder(meta, &folder_id, owner).await?;
+    }
+    Ok(())
 }
 
 // -- Activity Handler --
@@ -838,5 +964,148 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    fn folder(id: Uuid, parent_id: Option<Uuid>, owner_id: Uuid) -> Folder {
+        let now = Utc::now();
+        Folder {
+            id,
+            name: "f".into(),
+            parent_id,
+            owner_id,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn store(folders: &[Folder]) -> std::collections::HashMap<Uuid, Folder> {
+        folders.iter().map(|f| (f.id, f.clone())).collect()
+    }
+
+    async fn validate(
+        folders: &std::collections::HashMap<Uuid, Folder>,
+        folder_id: Option<Uuid>,
+        parent_id: Uuid,
+        caller: Uuid,
+    ) -> Result<(), ServiceError> {
+        validate_parent(folder_id, parent_id, &caller, |id| async move {
+            folders
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| ServiceError::FolderNotFound(id.to_string()))
+        })
+        .await
+    }
+
+    #[test]
+    fn test_caller_id_requires_valid_header() {
+        let user = Uuid::new_v4();
+        let req = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", user.to_string()))
+            .to_http_request();
+        assert_eq!(caller_id(&req).unwrap(), user);
+
+        let missing = actix_web::test::TestRequest::default().to_http_request();
+        assert!(matches!(
+            caller_id(&missing),
+            Err(ServiceError::Unauthorized(_))
+        ));
+
+        let garbage = actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", "not-a-uuid"))
+            .to_http_request();
+        assert!(matches!(
+            caller_id(&garbage),
+            Err(ServiceError::Unauthorized(_))
+        ));
+    }
+
+    #[test]
+    fn test_create_owner_is_the_caller() {
+        let caller = Uuid::new_v4();
+        assert_eq!(resolve_create_owner(&caller, None).unwrap(), caller);
+        assert_eq!(resolve_create_owner(&caller, Some(caller)).unwrap(), caller);
+        assert!(matches!(
+            resolve_create_owner(&caller, Some(Uuid::new_v4())),
+            Err(ServiceError::Forbidden(_))
+        ));
+    }
+
+    #[test]
+    fn test_create_folder_request_owner_id_optional() {
+        let req: CreateFolderRequest = serde_json::from_str(r#"{"name":"a"}"#).unwrap();
+        assert!(req.owner_id.is_none());
+    }
+
+    #[test]
+    fn test_foreign_folder_reported_not_found() {
+        let owner = Uuid::new_v4();
+        let f = folder(Uuid::new_v4(), None, owner);
+        assert_eq!(ensure_folder_owner(f.clone(), &owner).unwrap().id, f.id);
+        assert!(matches!(
+            ensure_folder_owner(f, &Uuid::new_v4()),
+            Err(ServiceError::FolderNotFound(_))
+        ));
+    }
+
+    #[actix_rt::test]
+    async fn test_parent_must_belong_to_caller() {
+        let caller = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let mine = folder(Uuid::new_v4(), None, caller);
+        let theirs = folder(Uuid::new_v4(), None, other);
+        let folders = store(&[mine.clone(), theirs.clone()]);
+
+        assert!(validate(&folders, None, mine.id, caller).await.is_ok());
+        assert!(matches!(
+            validate(&folders, None, theirs.id, caller).await,
+            Err(ServiceError::FolderNotFound(_))
+        ));
+        assert!(matches!(
+            validate(&folders, None, Uuid::new_v4(), caller).await,
+            Err(ServiceError::FolderNotFound(_))
+        ));
+    }
+
+    #[actix_rt::test]
+    async fn test_reparent_rejects_cycles() {
+        let caller = Uuid::new_v4();
+        let root = folder(Uuid::new_v4(), None, caller);
+        let child = folder(Uuid::new_v4(), Some(root.id), caller);
+        let grandchild = folder(Uuid::new_v4(), Some(child.id), caller);
+        let sibling = folder(Uuid::new_v4(), None, caller);
+        let folders = store(&[
+            root.clone(),
+            child.clone(),
+            grandchild.clone(),
+            sibling.clone(),
+        ]);
+
+        assert!(matches!(
+            validate(&folders, Some(root.id), root.id, caller).await,
+            Err(ServiceError::BadRequest(_))
+        ));
+        assert!(matches!(
+            validate(&folders, Some(root.id), grandchild.id, caller).await,
+            Err(ServiceError::BadRequest(_))
+        ));
+        assert!(validate(&folders, Some(grandchild.id), sibling.id, caller)
+            .await
+            .is_ok());
+        assert!(validate(&folders, Some(sibling.id), grandchild.id, caller)
+            .await
+            .is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_reparent_tolerates_dangling_ancestor() {
+        let caller = Uuid::new_v4();
+        let orphan = folder(Uuid::new_v4(), Some(Uuid::new_v4()), caller);
+        let moving = folder(Uuid::new_v4(), None, caller);
+        let folders = store(&[orphan.clone(), moving.clone()]);
+
+        assert!(validate(&folders, Some(moving.id), orphan.id, caller)
+            .await
+            .is_ok());
     }
 }

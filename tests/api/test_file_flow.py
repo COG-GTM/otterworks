@@ -127,3 +127,58 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_folders_are_scoped_to_the_authenticated_owner(api_client):
+    owner = api_client.register_user("folder-owner")
+    attacker = api_client.register_user("folder-attacker")
+
+    folder_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": f"Owner Folder {api_client.run_id}"},
+    )
+    api_client.assert_gateway_route_available(folder_response, "/api/v1/folders")
+    assert folder_response.status_code == 201, folder_response.text
+    folder = folder_response.json()
+    api_client.created_folders.append(folder["id"])
+    assert folder["owner_id"] == owner.id
+
+    injected = api_client.client.post(
+        "/api/v1/folders",
+        headers=attacker.auth_headers,
+        json={"name": "injected", "owner_id": owner.id},
+    )
+    assert injected.status_code == 403, injected.text
+
+    foreign_child = api_client.client.post(
+        "/api/v1/folders",
+        headers=attacker.auth_headers,
+        json={"name": "foreign child", "parent_id": folder["id"]},
+    )
+    assert foreign_child.status_code == 404, foreign_child.text
+
+    folder_url = f"/api/v1/folders/{folder['id']}"
+    assert api_client.client.get(folder_url, headers=attacker.auth_headers).status_code == 404
+    renamed = api_client.client.put(folder_url, headers=attacker.auth_headers, json={"name": "pwned"})
+    assert renamed.status_code == 404, renamed.text
+    assert api_client.client.delete(folder_url, headers=attacker.auth_headers).status_code == 404
+
+    owner_view = api_client.client.get(folder_url, headers=owner.auth_headers)
+    assert owner_view.status_code == 200, owner_view.text
+    assert owner_view.json()["name"] == folder["name"]
+
+    listing = api_client.client.get("/api/v1/folders", headers=owner.auth_headers)
+    assert listing.status_code == 200, listing.text
+    assert [f["name"] for f in listing.json()["folders"]] == [folder["name"]]
+
+    self_parent = api_client.client.put(folder_url, headers=owner.auth_headers, json={"parent_id": folder["id"]})
+    assert self_parent.status_code == 400, self_parent.text
+
+    upload = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=attacker.auth_headers,
+        files={"file": ("x.txt", b"x", "text/plain")},
+        data={"folder_id": folder["id"]},
+    )
+    assert upload.status_code == 404, upload.text
