@@ -13,6 +13,9 @@
 #     SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5432/legacyportal
 #     SPRING_DATASOURCE_USERNAME=legacyportal
 #     SPRING_DATASOURCE_PASSWORD=... (do not commit real secrets)
+#
+# Required for /api/preferences (bearer-token auth; 401 until set):
+#   JWT_SECRET=... (auth-service's JWT signing secret, >= 32 bytes)
 [Unit]
 Description=OtterWorks Legacy Portal (modular monolith)
 After=network.target
