@@ -112,10 +112,24 @@ All observability services run locally via `docker-compose.infra.yml`.
 
 | Tool | URL | Purpose |
 |------|-----|---------|
-| Grafana | http://localhost:3001 | Dashboards and metrics visualization (admin / otterworks) |
-| Prometheus | http://localhost:9090 | Metrics collection and alerting rules |
+| Grafana | http://localhost:3001 | Dashboards and metrics visualization (user `admin`, password from `GRAFANA_ADMIN_PASSWORD`) |
+| Prometheus | http://localhost:9090 | Metrics collection and alerting rules (admin/lifecycle APIs disabled) |
 | Jaeger | http://localhost:16686 | Distributed tracing UI |
 | MeiliSearch | http://localhost:7700 | Search engine dashboard |
+
+Grafana and Prometheus are published on `127.0.0.1` only. Grafana refuses to start
+unless `GRAFANA_ADMIN_PASSWORD` and `ALERT_WEBHOOK_SECRET` are set (12+ characters, no
+well-known defaults such as `otterworks` or `demo-alert-secret`); nothing is committed:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD="$(openssl rand -hex 16)"
+export ALERT_WEBHOOK_SECRET="$(openssl rand -hex 32)"   # also used by admin-service / file-service
+make infra-up
+```
+
+Grafana only applies the admin password when its database is first created; for an
+existing `grafana_data` volume run
+`docker exec otterworks-grafana grafana cli admin reset-admin-password "$GRAFANA_ADMIN_PASSWORD"`.
 
 - **Logging**: Structured JSON logs → Fluent Bit → CloudWatch (production) / stdout (local)
 - **Metrics**: Prometheus scraping `/metrics` endpoints + Grafana dashboards in `observability/grafana/dashboards/`

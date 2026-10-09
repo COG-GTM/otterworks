@@ -75,6 +75,8 @@ jobs:
               - 'docs/api-route-matrix.md'
               - 'services/api-gateway/internal/config/**'
               - 'docker-compose*.yml'
+              - 'observability/**'
+              - 'tests/infra/**'
               - 'Makefile'
 
   # Go - API Gateway
@@ -429,3 +431,4 @@ jobs:
       - run: python -m pip install -r tests/api/requirements.txt
       - run: python -m py_compile tests/api/*.py
       - run: python -m pytest tests/api --collect-only -q
+      - run: python -m pip install pyyaml && python -m pytest tests/infra -q
