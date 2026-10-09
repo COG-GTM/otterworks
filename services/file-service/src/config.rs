@@ -157,7 +157,10 @@ mod tests {
     #[test]
     fn redis_defaults_to_plain_unauthenticated_localhost() {
         let info = redis_connection_info(env_of(&[]));
-        assert_eq!(info.addr, redis::ConnectionAddr::Tcp("localhost".into(), 6379));
+        assert_eq!(
+            info.addr,
+            redis::ConnectionAddr::Tcp("localhost".into(), 6379)
+        );
         assert_eq!(info.redis.password, None);
     }
 
