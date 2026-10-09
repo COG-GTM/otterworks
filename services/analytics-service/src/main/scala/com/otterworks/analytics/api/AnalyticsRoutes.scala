@@ -1,35 +1,39 @@
 package com.otterworks.analytics.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
-import akka.http.scaladsl.server.Directives.*
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.server.Directives.{authorize as _, *}
 import akka.http.scaladsl.server.Route
+import com.otterworks.analytics.api.CallerAuth.{adminCaller, authorize, caller}
 import com.otterworks.analytics.model.DashboardJsonProtocol.{*, given}
-import com.otterworks.analytics.service.AnalyticsService
+import com.otterworks.analytics.service.{AnalyticsService, DocumentAccess}
 import spray.json.*
 
-import java.time.Instant
+import scala.concurrent.Future
 
 /**
- * Analytics query routes:
- *   GET /api/v1/analytics/dashboard
- *   GET /api/v1/analytics/users/{id}/activity
- *   GET /api/v1/analytics/documents/{id}/stats
- *   GET /api/v1/analytics/top-content
- *   GET /api/v1/analytics/active-users
- *   GET /api/v1/analytics/storage
- *   GET /api/v1/analytics/export
+ * Analytics query routes. Every route requires the gateway-forwarded caller
+ * identity (see [[CallerAuth]]):
+ *   GET /api/v1/analytics/dashboard            admin
+ *   GET /api/v1/analytics/users/{id}/activity  the user themself or admin
+ *   GET /api/v1/analytics/documents/{id}/stats document reader (per document-service) or admin
+ *   GET /api/v1/analytics/top-content          admin
+ *   GET /api/v1/analytics/active-users         admin
+ *   GET /api/v1/analytics/storage              own user_id, or admin (required without user_id)
+ *   GET /api/v1/analytics/export               admin
  */
-class AnalyticsRoutes(analyticsService: AnalyticsService):
+class AnalyticsRoutes(analyticsService: AnalyticsService, documentAccess: DocumentAccess):
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics") {
     concat(
       // Dashboard Summary
       path("dashboard") {
         get {
-          parameters("period".withDefault("7d")) { period =>
-            onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
-              complete(summary)
+          adminCaller { _ =>
+            parameters("period".withDefault("7d")) { period =>
+              onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
+                complete(summary)
+              }
             }
           }
         }
@@ -39,8 +43,12 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("users") {
         path(Segment / "activity") { userId =>
           get {
-            onSuccess(analyticsService.getUserActivity(userId)) { activity =>
-              complete(activity)
+            caller { c =>
+              authorize(c.canAccessUser(userId)) {
+                onSuccess(analyticsService.getUserActivity(userId)) { activity =>
+                  complete(activity)
+                }
+              }
             }
           }
         }
@@ -50,8 +58,16 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("documents") {
         path(Segment / "stats") { documentId =>
           get {
-            onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
-              complete(stats)
+            caller { c =>
+              val allowed =
+                if c.isAdmin then Future.successful(true) else documentAccess.canView(c, documentId)
+              onSuccess(allowed) { ok =>
+                authorize(ok) {
+                  onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
+                    complete(stats)
+                  }
+                }
+              }
             }
           }
         }
@@ -60,13 +76,15 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Top Content
       path("top-content") {
         get {
-          parameters(
-            "type".withDefault("documents"),
-            "period".withDefault("7d"),
-            "limit".as[Int].withDefault(10)
-          ) { (contentType, period, limit) =>
-            onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
-              complete(response)
+          adminCaller { _ =>
+            parameters(
+              "type".withDefault("documents"),
+              "period".withDefault("7d"),
+              "limit".as[Int].withDefault(10)
+            ) { (contentType, period, limit) =>
+              onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -75,9 +93,11 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Active Users
       path("active-users") {
         get {
-          parameters("period".withDefault("daily")) { period =>
-            onSuccess(analyticsService.getActiveUsers(period)) { response =>
-              complete(response)
+          adminCaller { _ =>
+            parameters("period".withDefault("daily")) { period =>
+              onSuccess(analyticsService.getActiveUsers(period)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -86,9 +106,13 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Storage Usage
       path("storage") {
         get {
-          parameters("user_id".optional) { userId =>
-            onSuccess(analyticsService.getStorageUsage(userId)) { response =>
-              complete(response)
+          caller { c =>
+            parameters("user_id".optional) { userId =>
+              authorize(c.isAdmin || userId.contains(c.userId)) {
+                onSuccess(analyticsService.getStorageUsage(userId)) { response =>
+                  complete(response)
+                }
+              }
             }
           }
         }
@@ -97,20 +121,22 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Export Report
       path("export") {
         get {
-          parameters(
-            "format".withDefault("json"),
-            "period".withDefault("7d")
-          ) { (format, period) =>
-            format match
-              case "csv" =>
-                onSuccess(analyticsService.exportReport("csv", period)) { report =>
-                  val csvContent = buildCsvContent(report.data)
-                  complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
-                }
-              case _ =>
-                onSuccess(analyticsService.exportReport("json", period)) { report =>
-                  complete(report)
-                }
+          adminCaller { _ =>
+            parameters(
+              "format".withDefault("json"),
+              "period".withDefault("7d")
+            ) { (format, period) =>
+              format match
+                case "csv" =>
+                  onSuccess(analyticsService.exportReport("csv", period)) { report =>
+                    val csvContent = buildCsvContent(report.data)
+                    complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
+                  }
+                case _ =>
+                  onSuccess(analyticsService.exportReport("json", period)) { report =>
+                    complete(report)
+                  }
+            }
           }
         }
       },
