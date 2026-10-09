@@ -22,6 +22,8 @@ data class AppConfig(
     // Destination for consumer-failure alerts (admin-service ingest webhook).
     val adminServiceUrl: String = "http://admin-service:8089",
     val alertWebhookSecret: String? = null,
+    // HMAC secret shared with auth-service and api-gateway; verifies caller JWTs.
+    val jwtSecret: String? = null,
 ) {
     // Queue URL the consumer actually polls. When the failure switch is on,
     // this points at a queue that does not exist in any account, so SQS
@@ -57,6 +59,7 @@ data class AppConfig(
                 sqsAlwaysFail = System.getenv("NOTIFICATION_SQS_ALWAYS_FAIL")?.toBoolean() ?: false,
                 adminServiceUrl = System.getenv("ADMIN_SERVICE_URL") ?: "http://admin-service:8089",
                 alertWebhookSecret = System.getenv("ALERT_WEBHOOK_SECRET")?.takeIf { it.isNotBlank() },
+                jwtSecret = System.getenv("JWT_SECRET")?.takeIf { it.isNotBlank() },
             )
         }
     }

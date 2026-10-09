@@ -14,6 +14,8 @@ import io.mockk.slot
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class NotificationServiceTest {
@@ -211,10 +213,41 @@ class NotificationServiceTest {
         assertEquals("n-1", result[0].id)
     }
 
+    private fun ownedNotification(id: String, userId: String) = Notification(
+        id = id,
+        userId = userId,
+        type = "file_shared",
+        title = "t",
+        message = "m",
+        createdAt = "2024-01-01T00:00:00Z",
+    )
+
     @Test
-    fun `markAsRead delegates to repository`() = runTest {
+    fun `markAsRead marks the caller's own notification`() = runTest {
+        coEvery { repository.getNotificationById("n-1") } returns ownedNotification("n-1", "user-1")
         coEvery { repository.markAsRead("n-1") } returns true
-        assertTrue(service.markAsRead("n-1"))
+        assertTrue(service.markAsRead("n-1", "user-1"))
+    }
+
+    @Test
+    fun `markAsRead refuses another user's notification`() = runTest {
+        coEvery { repository.getNotificationById("n-1") } returns ownedNotification("n-1", "victim")
+        assertFalse(service.markAsRead("n-1", "attacker"))
+        coVerify(exactly = 0) { repository.markAsRead(any()) }
+    }
+
+    @Test
+    fun `deleteNotification refuses another user's notification`() = runTest {
+        coEvery { repository.getNotificationById("n-1") } returns ownedNotification("n-1", "victim")
+        assertFalse(service.deleteNotification("n-1", "attacker"))
+        coVerify(exactly = 0) { repository.deleteNotification(any()) }
+    }
+
+    @Test
+    fun `getNotificationForUser hides another user's notification`() = runTest {
+        coEvery { repository.getNotificationById("n-1") } returns ownedNotification("n-1", "victim")
+        assertNull(service.getNotificationForUser("n-1", "attacker"))
+        assertEquals("n-1", service.getNotificationForUser("n-1", "victim")?.id)
     }
 
     @Test

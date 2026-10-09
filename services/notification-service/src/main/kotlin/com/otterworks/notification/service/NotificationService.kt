@@ -98,17 +98,18 @@ class NotificationService(
     suspend fun getUnreadCount(userId: String): Int =
         repository.getUnreadCount(userId)
 
-    suspend fun markAsRead(notificationId: String): Boolean =
-        repository.markAsRead(notificationId)
+    suspend fun markAsRead(notificationId: String, userId: String): Boolean =
+        getNotificationForUser(notificationId, userId) != null && repository.markAsRead(notificationId)
 
     suspend fun markAllAsRead(userId: String): Int =
         repository.markAllAsRead(userId)
 
-    suspend fun deleteNotification(notificationId: String): Boolean =
-        repository.deleteNotification(notificationId)
+    suspend fun deleteNotification(notificationId: String, userId: String): Boolean =
+        getNotificationForUser(notificationId, userId) != null && repository.deleteNotification(notificationId)
 
-    suspend fun getNotificationById(id: String): Notification? =
-        repository.getNotificationById(id)
+    /** Returns the notification only to its recipient; anyone else sees it as missing. */
+    suspend fun getNotificationForUser(id: String, userId: String): Notification? =
+        repository.getNotificationById(id)?.takeIf { it.userId == userId }
 
     suspend fun getPreferences(userId: String): NotificationPreference =
         repository.getPreferences(userId)

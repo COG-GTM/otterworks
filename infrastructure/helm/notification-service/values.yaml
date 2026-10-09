@@ -10,8 +10,10 @@ service:
   port: 80
   targetPort: 8086
 
+# Backend: reached only through api-gateway, which validates the caller's JWT.
+# Enabling this publishes the service outside the gateway.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -44,6 +46,10 @@ monitoring:
 
 networkPolicy:
   enabled: true
+  # Pods (same namespace) allowed to call the service; ingress-nginx is added
+  # only when ingress.enabled is true.
+  allowedClients:
+    - api-gateway
   ingressNamespace: ingress-nginx
   monitoringNamespace: monitoring
 
