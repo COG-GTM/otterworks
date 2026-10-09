@@ -8,7 +8,7 @@ ok()   { PASS=$((PASS+1)); echo "  ok   - $1"; }
 nope() { FAIL=$((FAIL+1)); echo "  FAIL - $1"; }
 check() { if [ "$2" = "$3" ]; then ok "$1"; else nope "$1 (expected '$3', got '$2')"; fi; }
 
-# shellcheck source=backfill-audit-ttl.sh
+# shellcheck source=/dev/null
 source "${SCRIPT_DIR}/backfill-audit-ttl.sh"
 set +e
 
