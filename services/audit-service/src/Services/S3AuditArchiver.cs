@@ -27,6 +27,9 @@ public class S3AuditArchiver : IAuditArchiver
         _logger = logger;
     }
 
+    private string TenantKeyPrefix =>
+        string.IsNullOrEmpty(_settings.TenantId) ? string.Empty : $"tenants/{_settings.TenantId}/";
+
     public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
     {
         var events = await _repository.GetEventsByDateRangeAsync(from, to);
@@ -48,7 +51,7 @@ public class S3AuditArchiver : IAuditArchiver
             extension = "json";
         }
 
-        var key = $"audit-exports/{from:yyyy-MM-dd}_{to:yyyy-MM-dd}_{Guid.NewGuid():N}.{extension}";
+        var key = $"{TenantKeyPrefix}audit-exports/{from:yyyy-MM-dd}_{to:yyyy-MM-dd}_{Guid.NewGuid():N}.{extension}";
 
         var putRequest = new PutObjectRequest
         {
@@ -89,7 +92,7 @@ public class S3AuditArchiver : IAuditArchiver
         }
 
         var content = JsonSerializer.Serialize(events, new JsonSerializerOptions { WriteIndented = true });
-        var key = $"audit-archive/{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
+        var key = $"{TenantKeyPrefix}audit-archive/{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
 
         var putRequest = new PutObjectRequest
         {

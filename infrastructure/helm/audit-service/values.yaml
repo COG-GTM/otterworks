@@ -10,8 +10,9 @@ service:
   port: 8090
   targetPort: 8090
 
+# Disabled by default: the audit API must only be reached through the api-gateway.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

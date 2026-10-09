@@ -293,7 +293,7 @@ build_helm_args() {
 
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
+      api-gateway|auth-service|document-service|collab-service|admin-service|audit-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
     esac
   fi
@@ -377,7 +377,9 @@ build_helm_args() {
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")
-      EXTRA_ARGS+=(--set-string "config.Aws__S3ArchiveBucket=${S3_AUDIT_BUCKET}") ;;
+      EXTRA_ARGS+=(--set-string "config.Aws__S3ArchiveBucket=${S3_AUDIT_BUCKET}")
+      # Tenants share one audit table/bucket; the tenant id partitions every read and write.
+      EXTRA_ARGS+=(--set-string "config.Aws__TenantId=${NS}") ;;
     report-service)
       EXTRA_ARGS+=(--set-string "config.DB_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DB_PORT=${DB_ENDPOINT_PORT}")
       EXTRA_ARGS+=(--set-string "config.DB_NAME=${T_DB_NAME}" --set-string "config.DB_USER=${DB_USER}")
