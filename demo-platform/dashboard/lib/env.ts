@@ -52,8 +52,8 @@ export const env = {
         .filter(Boolean),
     );
   },
-  // Ceiling on any non-perpetual tenant's TTL (default 7d). Values at or above
-  // the perpetual threshold are ignored, so this can never grant immortality.
+  // Ceiling on any non-perpetual tenant's TTL (default 7d, clamped to 72h..30d
+  // so it can neither break the built-in defaults nor grant immortality).
   get maxTtlSeconds(): number {
     return parseMaxTtlSeconds(process.env.MAX_TTL_SECONDS);
   },

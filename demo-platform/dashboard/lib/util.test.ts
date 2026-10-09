@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_MAX_TTL_SECONDS,
+  MAX_MAX_TTL_SECONDS,
+  MIN_MAX_TTL_SECONDS,
   NEVER_TTL_SECONDS,
   checkFiniteTtl,
   formatTtl,
@@ -41,19 +43,32 @@ test("rejects unparseable TTLs", () => {
 
 test("a misconfigured max can never reach the perpetual threshold", () => {
   assert.deepEqual(checkFiniteTtl("3649d", NEVER_TTL_SECONDS * 2), { ok: false, reason: "too_long" });
+  assert.deepEqual(checkFiniteTtl("31d", NEVER_TTL_SECONDS - 1), { ok: false, reason: "too_long" });
+  assert.deepEqual(checkFiniteTtl("30d", NEVER_TTL_SECONDS - 1), { ok: true, seconds: MAX_MAX_TTL_SECONDS });
 });
 
-test("parseMaxTtlSeconds honours sane overrides and falls back otherwise", () => {
+test("a tiny max still admits the built-in defaults (8h checkout, 24h un-persist, 72h CD)", () => {
+  for (const ttl of ["8h", "24h", "72h"]) {
+    assert.equal(checkFiniteTtl(ttl, 60).ok, true, ttl);
+  }
+  assert.deepEqual(checkFiniteTtl("73h", 60), { ok: false, reason: "too_long" });
+});
+
+test("parseMaxTtlSeconds clamps overrides and falls back on garbage", () => {
   assert.equal(parseMaxTtlSeconds(undefined), MAX);
-  assert.equal(parseMaxTtlSeconds("86400"), 86400);
   assert.equal(parseMaxTtlSeconds(" 1209600 "), 1209600);
-  for (const raw of ["", "0", "-5", "abc", "1e9", String(NEVER_TTL_SECONDS), String(NEVER_TTL_SECONDS + 1)]) {
+  assert.equal(parseMaxTtlSeconds("86400"), MIN_MAX_TTL_SECONDS);
+  assert.equal(parseMaxTtlSeconds("1"), MIN_MAX_TTL_SECONDS);
+  assert.equal(parseMaxTtlSeconds(String(NEVER_TTL_SECONDS - 1)), MAX_MAX_TTL_SECONDS);
+  assert.equal(parseMaxTtlSeconds(String(NEVER_TTL_SECONDS + 1)), MAX_MAX_TTL_SECONDS);
+  for (const raw of ["", "0", "-5", "abc", "1e9"]) {
     assert.equal(parseMaxTtlSeconds(raw), MAX, raw);
   }
 });
 
-test("formatTtl renders whole days/hours, else minutes", () => {
+test("formatTtl is exact, never rounded up", () => {
   assert.equal(formatTtl(MAX), "7d");
   assert.equal(formatTtl(36 * 3600), "36h");
   assert.equal(formatTtl(90 * 60), "90m");
+  assert.equal(formatTtl(259261), "259261s");
 });

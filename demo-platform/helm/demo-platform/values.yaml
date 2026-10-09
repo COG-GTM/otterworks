@@ -36,6 +36,7 @@ perpetualHostSuffix: otterworks.app
 # Longest TTL (seconds) any other tenant may be given via checkout, extend, or
 # persist=false. Keeps PERPETUAL_TENANT_IDS the only route to a tenant the
 # reaper never collects (a TTL just under `never` would otherwise do it).
+# The dashboard clamps it to 259200 (72h) .. 2592000 (30d).
 maxTtlSeconds: 604800
 
 # Runner image used by dashboard-launched Jobs AND the reaper CronJob (OP=reap).
