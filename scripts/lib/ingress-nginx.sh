@@ -52,16 +52,27 @@ ensure_ingress_nginx() {
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
   # is ever scaled to zero. It costs one port and one ClusterIP Service.
+  #
+  # use-forwarded-headers / compute-full-forwarded-for are pinned off (the chart
+  # defaults) so the controller overwrites X-Forwarded-For with the peer address
+  # instead of appending to a client-supplied one. api-gateway trusts that header
+  # from this controller (TRUSTED_PROXY_CIDRS) to key its per-IP rate limiter.
+  # externalTrafficPolicy=Local keeps the visitor's source IP through the NLB;
+  # with the default (Cluster) cross-node hops SNAT it to a node address and
+  # every visitor behind that node would share one rate-limit bucket.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     "${reuse[@]}" \
     --set controller.service.type=LoadBalancer \
     --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+    --set controller.service.externalTrafficPolicy=Local \
     --set controller.replicaCount=1 \
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \
     --set controller.metrics.enabled=true \
     --set controller.config.proxy-body-size=100m \
+    --set-string controller.config.use-forwarded-headers=false \
+    --set-string controller.config.compute-full-forwarded-for=false \
     --wait --timeout 5m || ing_warn "ingress-nginx install reported an issue; continuing."
 
   kubectl label namespace "${INGRESS_NAMESPACE}" \

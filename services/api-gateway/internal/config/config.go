@@ -26,7 +26,12 @@ type Config struct {
 	ReportServiceURL       string
 
 	// Rate limiting
-	RateLimitRPS int
+	RateLimitRPS        int
+	RateLimitMaxBuckets int
+
+	// TrustedProxyCIDRs are the peers whose X-Forwarded-For is honoured when
+	// resolving the client IP. Empty trusts no proxy: the TCP peer is the client.
+	TrustedProxyCIDRs []string
 
 	// JWT
 	JWTSecret string
@@ -72,7 +77,9 @@ func Load() *Config {
 		AuditServiceURL:        getEnv("AUDIT_SERVICE_URL", "http://audit-service:8090"),
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
-		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitRPS:        getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitMaxBuckets: getEnvInt("RATE_LIMIT_MAX_BUCKETS", 50000),
+		TrustedProxyCIDRs:   getEnvSlice("TRUSTED_PROXY_CIDRS", nil),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
