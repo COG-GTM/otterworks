@@ -27,6 +27,23 @@ module Api
           'info'     => 'low',
         }.freeze
 
+        # Alerts emitted by this repo's own rules and services. Only these may
+        # auto-start a Devin session; others still open an incident for humans.
+        # Override with a comma-separated ALERT_AUTO_INVESTIGATE_ALERTNAMES.
+        DEFAULT_AUTO_INVESTIGATE_ALERTNAMES = %w[
+          FileUploadFailed NotificationEventPublishFailure NotificationConsumerProcessingErrors
+          SearchSuggestHighErrorRate FileUploadHighErrorRate DocumentServiceHighLatency
+          ServiceDown ServiceHighRestartRate HighErrorRate HighClientErrorRate
+          HighLatencyP99 HighLatencyP95 HighMemoryUsage HighMemoryUsageCritical HighCPUUsage
+          LowDiskSpace CriticalDiskSpace SQSQueueDepthHigh SQSQueueDepthCritical SQSDLQNotEmpty
+          DynamoDBThrottling DynamoDBHighLatency DynamoDBSystemErrors
+          WebSocketConnectionsHigh CRDTSyncDelayHigh
+        ].freeze
+
+        # Runbook links are only carried into incidents when they point at a
+        # known docs host. Override with a comma-separated ALERT_RUNBOOK_HOSTS.
+        DEFAULT_RUNBOOK_HOSTS = %w[docs.otterworks.dev].freeze
+
         # POST /api/v1/admin/alerts/ingest
         def ingest
           alerts = params[:alerts]
@@ -60,20 +77,24 @@ module Api
           return nil unless status == 'firing'
           return nil if affected_service.blank?
 
+          auto_investigate = AdminSettingsService.auto_investigate_enabled? &&
+                             auto_investigate_allowed?(alert_name)
+
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
           if labels[:dedup].to_s != 'false'
+            # An `open` incident never got auto-triage (e.g. its alert was not
+            # allowlisted), so it must not swallow an alert that will.
+            dedup_statuses = auto_investigate ? %w[investigating] : %w[open investigating]
             existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
+                               .where(status: dedup_statuses)
                                .first
             if existing
               Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
               return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
             end
           end
-
-          auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
           incident = Incident.create!(
             title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
@@ -88,7 +109,8 @@ module Api
           if auto_investigate
             session_result = DevinSessionService.create_session(incident: incident)
           else
-            Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
+            Rails.logger.info("Auto-investigate disabled or alert not allowlisted — " \
+                              "skipping Devin session for incident #{incident.id}")
           end
 
           if session_result
@@ -131,11 +153,31 @@ module Api
         def build_description(alert_name, base_description, labels, annotations)
           parts = [base_description]
           parts << "**Alert**: #{alert_name}" if alert_name.present?
-          if (runbook = annotations[:runbook_url].to_s).present?
+          if (runbook = trusted_runbook_url(annotations[:runbook_url]))
             parts << "**Runbook**: #{runbook}"
           end
           parts << "**Source**: Grafana Unified Alerting (auto-generated incident)"
           parts.join("\n\n")
+        end
+
+        def auto_investigate_allowed?(alert_name)
+          allowed = env_list('ALERT_AUTO_INVESTIGATE_ALERTNAMES') || DEFAULT_AUTO_INVESTIGATE_ALERTNAMES
+          allowed.include?(alert_name)
+        end
+
+        def trusted_runbook_url(raw)
+          uri = URI.parse(raw.to_s.strip)
+          return nil unless uri.is_a?(URI::HTTPS) && uri.userinfo.nil?
+
+          hosts = (env_list('ALERT_RUNBOOK_HOSTS') || DEFAULT_RUNBOOK_HOSTS).map(&:downcase)
+          hosts.include?(uri.host.to_s.downcase) ? uri.to_s : nil
+        rescue URI::InvalidURIError
+          nil
+        end
+
+        def env_list(name)
+          values = ENV.fetch(name, '').split(',').map(&:strip).reject(&:empty?)
+          values.presence
         end
 
         def verify_alert_secret
