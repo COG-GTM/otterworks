@@ -298,6 +298,15 @@ build_helm_args() {
     esac
   fi
 
+  # Shared secret for admin-service's alert-ingest webhook (the endpoint skips
+  # JWT auth and rejects every alert when this is unset).
+  if [ -n "${ALERT_WEBHOOK_SECRET:-}" ]; then
+    case "$service" in
+      admin-service|file-service|notification-service)
+        add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
+    esac
+  fi
+
   local sns_topic=""; local sqs_notif=""
   if [ "${T_WIRE_EVENTING}" = "true" ]; then
     sns_topic="${SNS_TOPIC:-}"; sqs_notif="${SQS_NOTIF:-}"

@@ -138,15 +138,24 @@ module Api
           parts.join("\n\n")
         end
 
+        # Values that have been committed to this repository; they are public,
+        # so a stack configured with one is treated as unconfigured.
+        PUBLIC_DEFAULT_SECRETS = %w[demo-alert-secret].freeze
+
+        # This endpoint skips JWT auth and every accepted alert can start a
+        # Devin session, so it fails closed when no usable secret is set.
         def verify_alert_secret
-          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil).to_s
+          if expected.strip.empty? || PUBLIC_DEFAULT_SECRETS.include?(expected)
+            Rails.logger.error('Alert ingest rejected: ALERT_WEBHOOK_SECRET is unset or a known public default')
+            return render json: { error: 'Alert ingest is not configured' }, status: :service_unavailable
+          end
 
           # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
           # (Grafana webhook contact points send the token as a Bearer header)
           provided = request.headers['X-Alert-Secret'].presence ||
                      request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+          return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
         end
