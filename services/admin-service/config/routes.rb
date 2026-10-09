@@ -41,6 +41,7 @@ Rails.application.routes.draw do
         resources :incidents, only: %i[index show create update destroy] do
           member do
             post :trigger_session
+            post :refresh_session
           end
         end
 
