@@ -244,10 +244,17 @@ resource "aws_eks_addon" "vpc_cni" {
   # prefixes instead raises the per-node ceiling by roughly an order of
   # magnitude and is the difference between this cluster holding 10 tenants and
   # holding 100.
+  #
+  # ENABLE_POD_ENI turns on security groups for pods, which is how only the
+  # golden-namespace Redis clients get through the ElastiCache security group
+  # (see infrastructure/terraform/modules/cache). Standard enforcing mode keeps
+  # NetworkPolicy and kube-proxy behaviour for those pods.
   configuration_values = jsonencode({
     env = {
-      ENABLE_PREFIX_DELEGATION = "true"
-      WARM_PREFIX_TARGET       = "1"
+      ENABLE_PREFIX_DELEGATION          = "true"
+      WARM_PREFIX_TARGET                = "1"
+      ENABLE_POD_ENI                    = "true"
+      POD_SECURITY_GROUP_ENFORCING_MODE = "standard"
     }
   })
 

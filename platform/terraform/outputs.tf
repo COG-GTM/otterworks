@@ -42,6 +42,11 @@ output "cluster_version" {
   value       = module.eks.cluster_version
 }
 
+output "cluster_security_group_id" {
+  description = "EKS cluster security group (on every node and on pods without a SecurityGroupPolicy)"
+  value       = module.eks.cluster_security_group_id
+}
+
 output "oidc_provider_arn" {
   description = "ARN of the OIDC provider for IRSA"
   value       = module.eks.oidc_provider_arn

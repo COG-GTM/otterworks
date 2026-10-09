@@ -101,6 +101,7 @@ const redisAdapter = new RedisAdapter(
     port: config.redis.port,
     password: config.redis.password,
     db: config.redis.db,
+    tls: config.redis.tls,
     keyPrefix: config.redis.keyPrefix,
   },
   logger,

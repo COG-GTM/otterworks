@@ -20,11 +20,26 @@ import redis.clients.jedis.JedisPoolConfig
 
 private val logger = KotlinLogging.logger {}
 
+internal data class RedisSettings(
+    val host: String,
+    val port: Int,
+    val password: String?,
+    val ssl: Boolean,
+)
+
+// REDIS_PASSWORD (AUTH token) and REDIS_TLS are set for the shared ElastiCache,
+// which rejects unauthenticated and plaintext connections.
+internal fun redisSettingsFrom(env: (String) -> String?): RedisSettings = RedisSettings(
+    host = env("REDIS_HOST") ?: "localhost",
+    port = env("REDIS_PORT")?.toIntOrNull() ?: 6379,
+    password = env("REDIS_PASSWORD")?.takeIf { it.isNotEmpty() },
+    ssl = env("REDIS_TLS")?.trim()?.lowercase() in setOf("1", "true", "yes"),
+)
+
 // Lazy Redis pool for chaos flag checks.
 private val redisPool: JedisPool by lazy {
-    val host = System.getenv("REDIS_HOST") ?: "localhost"
-    val port = System.getenv("REDIS_PORT")?.toIntOrNull() ?: 6379
-    JedisPool(JedisPoolConfig(), host, port, 1000)
+    val settings = redisSettingsFrom(System::getenv)
+    JedisPool(JedisPoolConfig(), settings.host, settings.port, 1000, settings.password, settings.ssl)
 }
 
 private fun chaosActive(flag: String): Boolean {

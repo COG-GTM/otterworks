@@ -95,6 +95,21 @@ output "redis_endpoint" {
   value       = module.cache.redis_endpoint
 }
 
+output "redis_auth_secret_arn" {
+  description = "Secrets Manager ARN of the ElastiCache Redis AUTH token"
+  value       = module.cache.redis_auth_secret_arn
+}
+
+output "redis_clients_security_group_id" {
+  description = "Security group the golden-namespace Redis clients must carry (SecurityGroupPolicy)"
+  value       = module.cache.redis_clients_security_group_id
+}
+
+output "vpc_cidr" {
+  description = "VPC CIDR (tenant egress NetworkPolicy excludes it)"
+  value       = local.vpc_cidr
+}
+
 # --- Monitoring ---
 
 output "cloudwatch_log_groups" {

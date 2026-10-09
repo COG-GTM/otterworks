@@ -31,12 +31,8 @@ async fn main() -> std::io::Result<()> {
     let meta_client = metadata::MetadataClient::new(&app_config.aws).await;
     let event_publisher = events::EventPublisher::new(&app_config.sns, &app_config.aws).await;
 
-    let redis_url = {
-        let host = std::env::var("REDIS_HOST").unwrap_or_else(|_| "localhost".into());
-        let port = std::env::var("REDIS_PORT").unwrap_or_else(|_| "6379".into());
-        format!("redis://{}:{}", host, port)
-    };
-    let redis_client = redis::Client::open(redis_url).expect("invalid Redis URL");
+    let redis_client = redis::Client::open(config::redis_connection_info(|k| std::env::var(k).ok()))
+        .expect("invalid Redis config");
     let redis_cm = redis::aio::ConnectionManager::new(redis_client)
         .await
         .expect("failed to connect to Redis");

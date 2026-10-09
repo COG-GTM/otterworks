@@ -172,6 +172,9 @@ spec:
 ---
 # Tenant isolation: allow traffic only from within this namespace, the shared
 # ingress controller, and monitoring. Cross-tenant pod-to-pod traffic is denied.
+# Egress is limited to this namespace, cluster DNS, the shared PgBouncer, and
+# addresses outside the private ranges (AWS APIs via NAT). Tenants run their
+# own Redis, so the VPC's shared data stores (ElastiCache, RDS) are denied.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -179,7 +182,31 @@ metadata:
   namespace: ${NS}
 spec:
   podSelector: {}
-  policyTypes: [Ingress]
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to:
+        - podSelector: {}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ${PGBOUNCER_NAMESPACE:-otterworks-platform}
+          podSelector:
+            matchLabels:
+              app: pgbouncer
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10]
   ingress:
     - from:
         - namespaceSelector:
