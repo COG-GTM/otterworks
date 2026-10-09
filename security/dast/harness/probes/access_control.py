@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 
 from .base import Evidence, Result, Severity, Verdict, probe, redact, unavailable
 from .context import ScanContext
@@ -90,11 +91,19 @@ def bola_documents(ctx: ScanContext) -> Result:
 def bola_files(ctx: ScanContext) -> Result:
     """Attacker reads, reshares and deletes a victim's file by id with their own token."""
     self = bola_files.probe
-    upload = ctx.client.post(
-        "/api/v1/files/upload",
-        headers=ctx.victim.headers,
-        files={"file": (f"victim-{ctx.run_id}.txt", ctx.victim_marker.encode(), "text/plain")},
-    )
+    # A freshly started stack may still be creating file-service's tables, so
+    # retry a transient 5xx before deciding the file cannot be seeded.
+    for attempt in range(6):
+        upload = ctx.client.post(
+            "/api/v1/files/upload",
+            headers=ctx.victim.headers,
+            files={
+                "file": (f"victim-{ctx.run_id}.txt", ctx.victim_marker.encode(), "text/plain")
+            },
+        )
+        if upload.status_code < 500:
+            break
+        time.sleep(2 + attempt * 2)
     if upload.status_code != 201:
         return self.result(
             Verdict.INCONCLUSIVE,
