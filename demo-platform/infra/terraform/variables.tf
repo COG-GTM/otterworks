@@ -55,6 +55,14 @@ variable "tenant_host_suffix" {
   default = "demo.otterworks.app"
 }
 
+# Lets the reaper read and delete tenant records in the dns_zone_name zone,
+# independently of enable_dns. Turning it off removes those grants; unset
+# reaper.dnsZoneId in the Helm values too, or the sweep will be denied.
+variable "reaper_route53_gc" {
+  type    = bool
+  default = true
+}
+
 # Shared data-plane resources the reaper must be able to GC per-tenant slices of.
 # Prefix match keeps the policy stable as tables/buckets are added.
 variable "shared_dynamodb_table_prefix" {

@@ -275,9 +275,10 @@ data "aws_iam_policy_document" "dashboard" {
   # granted on "*". Only the demo zone, only DELETE, and only the record names a
   # tenant deploy produces (local.tenant_record_names) -- never the platform's
   # own records such as cert-manager's _acme-challenge or the perpetual hosts.
-  # Absent when enable_dns is off: there is no zone, so nothing to delete.
+  # Gated on var.reaper_route53_gc, not enable_dns: the zone and its records
+  # outlive the DNS automation role, and orphans still need reclaiming.
   dynamic "statement" {
-    for_each = var.enable_dns ? [data.aws_route53_zone.demo[0].zone_id] : []
+    for_each = var.reaper_route53_gc ? [data.aws_route53_zone.demo[0].zone_id] : []
     content {
       sid       = "ReaperRoute53ReadZone"
       effect    = "Allow"
@@ -286,7 +287,7 @@ data "aws_iam_policy_document" "dashboard" {
     }
   }
   dynamic "statement" {
-    for_each = var.enable_dns ? [data.aws_route53_zone.demo[0].zone_id] : []
+    for_each = var.reaper_route53_gc ? [data.aws_route53_zone.demo[0].zone_id] : []
     content {
       sid       = "ReaperRoute53DeleteTenantRecords"
       effect    = "Allow"

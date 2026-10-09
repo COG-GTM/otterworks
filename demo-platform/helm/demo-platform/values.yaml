@@ -89,7 +89,8 @@ reaper:
   sweepableClusters: []
   # Hosted zone the infrastructure sweep reconciles tenant records against.
   # Unset, the sweep skips Route53 entirely and records for long-gone tenants
-  # accumulate in the zone. Read from `terraform output dns_zone_id`.
+  # accumulate in the zone. Read from `terraform output dns_zone_id`; the sweep's
+  # IAM grant follows the Terraform variable reaper_route53_gc.
   dnsZoneId: ""
   resources:
     requests:

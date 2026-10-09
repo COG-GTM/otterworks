@@ -114,7 +114,7 @@ run "route53_record_changes_scoped_to_demo_zone_tenant_deletes" {
   }
 }
 
-run "no_route53_record_changes_without_dns" {
+run "reaper_route53_gc_survives_dns_automation_off" {
   command = apply
 
   variables {
@@ -122,10 +122,27 @@ run "no_route53_record_changes_without_dns" {
   }
 
   assert {
+    condition = toset(flatten([
+      for s in data.aws_iam_policy_document.dashboard.statement :
+      s.resources if contains(s.actions, "route53:ChangeResourceRecordSets")
+    ])) == toset(["arn:aws:route53:::hostedzone/Z0DEMOZONE"])
+    error_message = "The reaper must keep its demo-zone record GC when only the DNS automation role is off."
+  }
+}
+
+run "no_route53_record_changes_without_reaper_gc" {
+  command = apply
+
+  variables {
+    enable_dns        = false
+    reaper_route53_gc = false
+  }
+
+  assert {
     condition = alltrue([
       for s in data.aws_iam_policy_document.dashboard.statement :
-      !contains(s.actions, "route53:ChangeResourceRecordSets")
+      !contains(s.actions, "route53:ChangeResourceRecordSets") && !contains(s.actions, "route53:ListResourceRecordSets")
     ])
-    error_message = "With enable_dns off there is no zone, so no record changes may be granted."
+    error_message = "With reaper_route53_gc off, no Route53 record reads or changes may be granted."
   }
 }
