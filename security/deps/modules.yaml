@@ -33,8 +33,8 @@ modules:
     path: services/legacy-portal
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
     # Spring Boot 2.x, and it pins its own Maven (3.9.9) via the wrapper — the same
     # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
     # reach the wrapper's distribution.
