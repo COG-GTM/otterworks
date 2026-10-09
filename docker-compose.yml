@@ -208,6 +208,7 @@ services:
       OTEL_SERVICE_NAME: collab-service
       HTTP_PORT: 8084
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      DOCUMENT_SERVICE_URL: http://document-service:8083
     depends_on:
       redis:
         condition: service_healthy

@@ -14,6 +14,18 @@ import { RedisAdapter } from '../services/redis-adapter';
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
 
+const INTRUDER_PREFIX = 'intruder-';
+const SLOW_DOCS = new Set<string>();
+const REVOKED_USERS = new Set<string>();
+const accessChecks: Array<{ token: string; userId: string; documentId: string }> = [];
+const documentAccess = {
+  canAccess: async (token: string, userId: string, documentId: string) => {
+    accessChecks.push({ token, userId, documentId });
+    if (SLOW_DOCS.has(documentId)) await new Promise((r) => setTimeout(r, 300));
+    return !userId.startsWith(INTRUDER_PREFIX) && !REVOKED_USERS.has(userId);
+  },
+};
+
 function createToken(payload: Record<string, unknown>): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
 }
@@ -74,6 +86,7 @@ describe('CollaborationManager', () => {
 
     manager = new CollaborationManager({
       io,
+      documentAccess,
       documentStore,
       awareness,
       presenceHandler,
@@ -99,16 +112,21 @@ describe('CollaborationManager', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    accessChecks.length = 0;
   });
+
+  function tokenFor(userId: string, displayName: string): string {
+    return createToken({
+      sub: userId,
+      name: displayName,
+      email: `${userId}@test.com`,
+      roles: ['user'],
+    });
+  }
 
   function connectClient(userId: string, displayName: string): Promise<ClientSocket> {
     return new Promise((resolve, reject) => {
-      const token = createToken({
-        sub: userId,
-        name: displayName,
-        email: `${userId}@test.com`,
-        roles: ['user'],
-      });
+      const token = tokenFor(userId, displayName);
 
       const client = clientIO(`http://localhost:${PORT}`, {
         auth: { token },
@@ -163,7 +181,7 @@ describe('CollaborationManager', () => {
       const response = await new Promise<{ success: boolean }>((resolve) => {
         client.emit(
           'join-document',
-          { documentId: 'doc-join-test' },
+          { documentId: '00000000-0000-4000-8000-000000000003' },
           (res: { success: boolean }) => resolve(res),
         );
       });
@@ -181,10 +199,14 @@ describe('CollaborationManager', () => {
         },
       );
 
-      client.emit('join-document', { documentId: 'doc-sync-test' }, () => {});
+      client.emit(
+        'join-document',
+        { documentId: '00000000-0000-4000-8000-000000000006' },
+        () => {},
+      );
 
       const syncData = await syncPromise;
-      expect(syncData.documentId).toBe('doc-sync-test');
+      expect(syncData.documentId).toBe('00000000-0000-4000-8000-000000000006');
       expect(syncData.state).toBeDefined();
 
       client.disconnect();
@@ -196,7 +218,11 @@ describe('CollaborationManager', () => {
 
       // Client 1 joins first
       await new Promise<void>((resolve) => {
-        client1.emit('join-document', { documentId: 'doc-notify-test' }, () => resolve());
+        client1.emit(
+          'join-document',
+          { documentId: '00000000-0000-4000-8000-000000000005' },
+          () => resolve(),
+        );
       });
 
       // Listen for join notification on client 1
@@ -207,7 +233,11 @@ describe('CollaborationManager', () => {
       );
 
       // Client 2 joins
-      client2.emit('join-document', { documentId: 'doc-notify-test' }, () => {});
+      client2.emit(
+        'join-document',
+        { documentId: '00000000-0000-4000-8000-000000000005' },
+        () => {},
+      );
 
       const joinData = await joinPromise;
       expect(joinData.userId).toBe('user-notify-2');
@@ -226,13 +256,17 @@ describe('CollaborationManager', () => {
       // Both join the same document
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: 'doc-update-test' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000007' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: 'doc-update-test' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000007' },
+            () => resolve(),
           );
         }),
       ]);
@@ -256,12 +290,12 @@ describe('CollaborationManager', () => {
       const encodedUpdate = Buffer.from(validUpdate).toString('base64');
 
       client1.emit('document-update', {
-        documentId: 'doc-update-test',
+        documentId: '00000000-0000-4000-8000-000000000007',
         update: encodedUpdate,
       });
 
       const updateData = await updatePromise;
-      expect(updateData.documentId).toBe('doc-update-test');
+      expect(updateData.documentId).toBe('00000000-0000-4000-8000-000000000007');
       expect(updateData.update).toBe(encodedUpdate);
 
       client1.disconnect();
@@ -276,13 +310,17 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: 'doc-cursor-test' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000001' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: 'doc-cursor-test' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000001' },
+            () => resolve(),
           );
         }),
       ]);
@@ -297,7 +335,7 @@ describe('CollaborationManager', () => {
       });
 
       client1.emit('cursor-update', {
-        documentId: 'doc-cursor-test',
+        documentId: '00000000-0000-4000-8000-000000000001',
         cursor: { index: 42, length: 0 },
         selection: null,
       });
@@ -318,10 +356,18 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: 'doc-disc-test' }, () => resolve());
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000002' },
+            () => resolve(),
+          );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: 'doc-disc-test' }, () => resolve());
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000002' },
+            () => resolve(),
+          );
         }),
       ]);
 
@@ -347,13 +393,17 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: 'doc-leave-test' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000004' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: 'doc-leave-test' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000004' },
+            () => resolve(),
           );
         }),
       ]);
@@ -364,13 +414,320 @@ describe('CollaborationManager', () => {
         client1.on('user-left', (data) => resolve(data));
       });
 
-      client2.emit('leave-document', { documentId: 'doc-leave-test' });
+      client2.emit('leave-document', {
+        documentId: '00000000-0000-4000-8000-000000000004',
+      });
 
       const leftData = await leftPromise;
       expect(leftData.socketId).toBeDefined();
 
       client1.disconnect();
       client2.disconnect();
+    });
+  });
+
+  describe('Document Authorization', () => {
+    let docCounter = 0;
+    let OWNED_DOC: string;
+
+    beforeEach(() => {
+      docCounter += 1;
+      OWNED_DOC = `00000000-0000-4000-8000-0000000a${String(docCounter).padStart(4, '0')}`;
+    });
+
+    function join(client: ClientSocket, documentId: unknown) {
+      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+        client.emit('join-document', { documentId }, resolve);
+      });
+    }
+
+    function collect(client: ClientSocket, event: string): unknown[] {
+      const received: unknown[] = [];
+      client.on(event, (data) => received.push(data));
+      return received;
+    }
+
+    const settle = () => new Promise((r) => setTimeout(r, 150));
+
+    it('checks access with the caller token before joining', async () => {
+      const client = await connectClient('user-acl-owner', 'Owner');
+      const response = await join(client, OWNED_DOC);
+
+      expect(response.success).toBe(true);
+      expect(accessChecks).toEqual([
+        {
+          token: tokenFor('user-acl-owner', 'Owner'),
+          userId: 'user-acl-owner',
+          documentId: OWNED_DOC,
+        },
+      ]);
+      client.disconnect();
+    });
+
+    it('rejects a join the document-service denies without syncing state', async () => {
+      const owner = await connectClient('user-acl-owner-2', 'Owner');
+      await join(owner, OWNED_DOC);
+      const ownerJoins = collect(owner, 'user-joined');
+
+      const intruder = await connectClient(`${INTRUDER_PREFIX}join`, 'Mallory');
+      const synced = collect(intruder, 'sync-document');
+      const response = await join(intruder, OWNED_DOC);
+      await settle();
+
+      expect(response).toEqual({ success: false, error: 'Access denied' });
+      expect(synced).toHaveLength(0);
+      expect(ownerJoins).toHaveLength(0);
+      expect(presenceHandler.getDocumentPresence(OWNED_DOC).count).toBe(1);
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('rejects joins for ids that are not document UUIDs', async () => {
+      const client = await connectClient('user-acl-invalid', 'Alice');
+
+      expect(await join(client, '../admin')).toEqual({
+        success: false,
+        error: 'Invalid document id',
+      });
+      expect(await join(client, undefined)).toEqual({
+        success: false,
+        error: 'Invalid document id',
+      });
+      expect(accessChecks).toHaveLength(0);
+      client.disconnect();
+    });
+
+    it('ignores document updates from sockets that did not join the document', async () => {
+      const owner = await connectClient('user-acl-owner-3', 'Owner');
+      await join(owner, OWNED_DOC);
+      const ownerUpdates = collect(owner, 'document-update');
+      const before = Buffer.from(
+        Y.encodeStateAsUpdate(manager.getDocument(OWNED_DOC) as Y.Doc),
+      );
+
+      const intruder = await connectClient(`${INTRUDER_PREFIX}update`, 'Mallory');
+      const errors = collect(intruder, 'document-update-error');
+      await join(intruder, OWNED_DOC);
+
+      const tempDoc = new Y.Doc();
+      tempDoc.getText('content').insert(0, 'tampered');
+      intruder.emit('document-update', {
+        documentId: OWNED_DOC,
+        update: Buffer.from(Y.encodeStateAsUpdate(tempDoc)).toString('base64'),
+      });
+      await settle();
+
+      expect(ownerUpdates).toHaveLength(0);
+      expect(errors).toEqual([
+        { documentId: OWNED_DOC, error: 'Not joined to document' },
+      ]);
+      expect(
+        Buffer.from(Y.encodeStateAsUpdate(manager.getDocument(OWNED_DOC) as Y.Doc)),
+      ).toEqual(before);
+      expect(mockRedis.set).not.toHaveBeenCalled();
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('does not return history or create snapshots for unjoined documents', async () => {
+      const owner = await connectClient('user-acl-owner-4', 'Owner');
+      await join(owner, OWNED_DOC);
+      const ownerSnapshots = collect(owner, 'snapshot-created');
+
+      const intruder = await connectClient(`${INTRUDER_PREFIX}history`, 'Mallory');
+      const history = collect(intruder, 'document-history');
+      const historyErrors = collect(intruder, 'history-error');
+      const snapshotErrors = collect(intruder, 'snapshot-error');
+
+      intruder.emit('request-history', { documentId: OWNED_DOC, limit: 50 });
+      intruder.emit('request-snapshot', { documentId: OWNED_DOC, label: 'x' });
+      await settle();
+
+      expect(history).toHaveLength(0);
+      expect(historyErrors).toEqual([
+        { documentId: OWNED_DOC, error: 'Not joined to document' },
+      ]);
+      expect(snapshotErrors).toEqual([
+        { documentId: OWNED_DOC, error: 'Not joined to document' },
+      ]);
+      expect(ownerSnapshots).toHaveLength(0);
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+      expect(mockRedis.lpush).not.toHaveBeenCalled();
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('caps the history limit for joined members', async () => {
+      const owner = await connectClient('user-acl-owner-5', 'Owner');
+      await join(owner, OWNED_DOC);
+      const history = collect(owner, 'document-history');
+
+      owner.emit('request-history', { documentId: OWNED_DOC, limit: 100000 });
+      await settle();
+
+      expect(history).toHaveLength(1);
+      expect(mockRedis.lrange).toHaveBeenCalledWith(expect.any(String), 0, 49);
+      owner.disconnect();
+    });
+
+    it('does not relay comments, cursors or typing into rooms the sender did not join', async () => {
+      const owner = await connectClient('user-acl-owner-6', 'Owner');
+      await join(owner, OWNED_DOC);
+      const ownerEvents = [
+        collect(owner, 'comment-added'),
+        collect(owner, 'comment-updated'),
+        collect(owner, 'comment-deleted'),
+        collect(owner, 'cursor-update'),
+        collect(owner, 'typing-indicator'),
+      ];
+
+      const intruder = await connectClient(`${INTRUDER_PREFIX}comment`, 'Mallory');
+      const commentErrors = collect(intruder, 'comment-error');
+      intruder.emit('comment-add', {
+        documentId: OWNED_DOC,
+        comment: {
+          id: 'c1',
+          threadId: 't1',
+          content: 'spoof',
+          rangeStart: 0,
+          rangeEnd: 1,
+        },
+      });
+      intruder.emit('comment-update', {
+        documentId: OWNED_DOC,
+        commentId: 'c1',
+        content: 'spoof',
+      });
+      intruder.emit('comment-delete', { documentId: OWNED_DOC, commentId: 'c1' });
+      intruder.emit('cursor-update', {
+        documentId: OWNED_DOC,
+        cursor: { index: 1, length: 0 },
+        selection: null,
+      });
+      intruder.emit('typing-indicator', { documentId: OWNED_DOC, isTyping: true });
+      await settle();
+
+      for (const events of ownerEvents) expect(events).toHaveLength(0);
+      expect(commentErrors).toHaveLength(3);
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('stamps comments with the joined document id, not the client payload', async () => {
+      const owner = await connectClient('user-acl-owner-7', 'Owner');
+      await join(owner, OWNED_DOC);
+      const added = collect(owner, 'comment-added');
+
+      owner.emit('comment-add', {
+        documentId: OWNED_DOC,
+        comment: {
+          id: 'c2',
+          documentId: 'someone-elses-doc',
+          threadId: 't2',
+          content: 'hi',
+          rangeStart: 0,
+          rangeEnd: 2,
+        },
+      });
+      await settle();
+
+      expect(added).toHaveLength(1);
+      expect((added[0] as { documentId: string }).documentId).toBe(OWNED_DOC);
+      owner.disconnect();
+    });
+
+    it('leaving a document the socket never joined does not touch that room', async () => {
+      const owner = await connectClient('user-acl-owner-8', 'Owner');
+      await join(owner, OWNED_DOC);
+      const ownerLeft = collect(owner, 'user-left');
+
+      const intruder = await connectClient(`${INTRUDER_PREFIX}leave`, 'Mallory');
+      intruder.emit('leave-document', { documentId: OWNED_DOC });
+      await settle();
+
+      expect(ownerLeft).toHaveLength(0);
+      expect(manager.getDocument(OWNED_DOC)).toBeDefined();
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('canonicalises mixed-case document ids to one room', async () => {
+      const upper = await connectClient('user-acl-case-1', 'Upper');
+      const lower = await connectClient('user-acl-case-2', 'Lower');
+      expect(await join(upper, OWNED_DOC.toUpperCase())).toEqual({ success: true });
+      expect(await join(lower, OWNED_DOC)).toEqual({ success: true });
+      const lowerUpdates = collect(lower, 'document-update');
+
+      const tempDoc = new Y.Doc();
+      tempDoc.getText('content').insert(0, 'case');
+      upper.emit('document-update', {
+        documentId: OWNED_DOC.toUpperCase(),
+        update: Buffer.from(Y.encodeStateAsUpdate(tempDoc)).toString('base64'),
+      });
+      await settle();
+
+      expect(lowerUpdates).toHaveLength(1);
+      expect(presenceHandler.getDocumentPresence(OWNED_DOC).count).toBe(2);
+      upper.disconnect();
+      lower.disconnect();
+    });
+
+    it('does not let a slow, older join override a newer one', async () => {
+      const slowDoc = `${OWNED_DOC.slice(0, -4)}5105`;
+      SLOW_DOCS.add(slowDoc);
+      const client = await connectClient('user-acl-race', 'Racer');
+
+      const [slow, fast] = await Promise.all([
+        join(client, slowDoc),
+        join(client, OWNED_DOC),
+      ]);
+
+      expect(fast).toEqual({ success: true });
+      expect(slow).toEqual({ success: false, error: 'Superseded by a newer request' });
+      expect(awareness.getUserDocument(client.id as string)).toBe(OWNED_DOC);
+      expect(manager.getDocument(slowDoc)).toBeUndefined();
+      SLOW_DOCS.delete(slowDoc);
+      client.disconnect();
+    });
+
+    it('evicts joined sockets whose access was revoked', async () => {
+      const client = await connectClient('user-acl-revoked', 'Revoked');
+      expect(await join(client, OWNED_DOC)).toEqual({ success: true });
+      const revoked = collect(client, 'access-revoked');
+
+      await manager.revalidateAccess();
+      await settle();
+      expect(revoked).toHaveLength(0);
+      expect(accessChecks[accessChecks.length - 1]).toMatchObject({
+        userId: 'user-acl-revoked',
+      });
+
+      REVOKED_USERS.add('user-acl-revoked');
+      await manager.revalidateAccess();
+      await settle();
+
+      expect(revoked).toEqual([{ documentId: OWNED_DOC }]);
+      expect(awareness.getUserDocument(client.id as string)).toBeNull();
+      REVOKED_USERS.delete('user-acl-revoked');
+      client.disconnect();
+    });
+
+    it('omits emails from presence', async () => {
+      const owner = await connectClient('user-acl-owner-9', 'Owner');
+      const presenceUpdates = collect(owner, 'presence-update');
+      await join(owner, OWNED_DOC);
+      await settle();
+
+      const presence = presenceHandler.getDocumentPresence(OWNED_DOC);
+      expect(presence.users.length).toBeGreaterThan(0);
+      for (const user of presence.users) expect(user).not.toHaveProperty('email');
+      expect(JSON.stringify(presenceUpdates)).not.toContain('@test.com');
+      owner.disconnect();
     });
   });
 });

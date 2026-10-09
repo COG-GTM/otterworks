@@ -2,9 +2,11 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { Logger } from 'pino';
 import { AwarenessService, type UserAwareness } from '../services/awareness';
 
+export type PublicUserPresence = Omit<UserAwareness, 'email'>;
+
 export interface PresenceInfo {
   documentId: string;
-  users: UserAwareness[];
+  users: PublicUserPresence[];
   count: number;
 }
 
@@ -18,7 +20,10 @@ export class PresenceHandler {
   }
 
   getDocumentPresence(documentId: string): PresenceInfo {
-    const users = this.awareness.getDocumentUsers(documentId);
+    const users = this.awareness
+      .getDocumentUsers(documentId)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      .map(({ email: _email, ...publicFields }) => publicFields);
     return {
       documentId,
       users,
