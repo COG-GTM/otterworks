@@ -209,7 +209,7 @@ public class DynamoDbAuditRepositoryTests
         Assert.Equal(2, result.Count);
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "ResourceId = :rid" &&
+            req.FilterExpression == "(ResourceId = :rid) AND attribute_not_exists(#tid)" &&
             req.ExpressionAttributeValues[":rid"].S == "doc-1"),
             default), Times.Once);
     }
@@ -245,7 +245,7 @@ public class DynamoDbAuditRepositoryTests
         await _repository.GetEventsByDateRangeAsync(from, to);
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "#ts >= :fromTs AND #ts <= :toTs" &&
+            req.FilterExpression == "(#ts >= :fromTs AND #ts <= :toTs) AND attribute_not_exists(#tid)" &&
             req.ExpressionAttributeNames["#ts"] == "Timestamp"),
             default), Times.Once);
     }
@@ -300,7 +300,7 @@ public class DynamoDbAuditRepositoryTests
         await RepositoryForTenant("tenant-a").GetArchivableEventsAsync(cutoff);
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression.Contains("#tid = :tid") &&
+            req.FilterExpression == "(#ts <= :toTs) AND #tid = :tid" &&
             req.ExpressionAttributeNames["#tid"] == "TenantId" &&
             req.ExpressionAttributeValues[":tid"].S == "tenant-a" &&
             req.ExpressionAttributeValues[":toTs"].S == cutoff.ToString("O")),
@@ -320,5 +320,48 @@ public class DynamoDbAuditRepositoryTests
             req.FilterExpression.Contains("attribute_not_exists(#tid)") &&
             !req.ExpressionAttributeValues.ContainsKey(":tid")),
             default), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithTenantConfigured_ShouldOnlyReturnTenantEvents()
+    {
+        _mockDynamoDb
+            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
+            .ReturnsAsync(new ScanResponse { Items = new List<Dictionary<string, AttributeValue>>() });
+
+        await RepositoryForTenant("tenant-a").QueryEventsAsync(null, null, null, null, null, null, 1, 10);
+        await RepositoryForTenant("tenant-a").GetAllUserEventsAsync("u1");
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression.EndsWith("#tid = :tid") &&
+            req.ExpressionAttributeNames["#tid"] == "TenantId" &&
+            req.ExpressionAttributeValues[":tid"].S == "tenant-a"),
+            default), Times.Exactly(2));
+    }
+
+    [Theory]
+    [InlineData("tenant-b", false)]
+    [InlineData(null, false)]
+    [InlineData("tenant-a", true)]
+    public async Task GetEventAsync_WithTenantConfigured_ShouldHideOtherTenantsEvents(string? itemTenant, bool visible)
+    {
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["id"] = new AttributeValue { S = "e1" },
+            ["UserId"] = new AttributeValue { S = "u1" },
+            ["Action"] = new AttributeValue { S = "create" },
+            ["ResourceType"] = new AttributeValue { S = "doc" },
+            ["ResourceId"] = new AttributeValue { S = "d1" },
+            ["Timestamp"] = new AttributeValue { S = DateTime.UtcNow.ToString("O") },
+        };
+        if (itemTenant is not null)
+            item["TenantId"] = new AttributeValue { S = itemTenant };
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        var result = await RepositoryForTenant("tenant-a").GetEventAsync("e1");
+
+        Assert.Equal(visible, result is not null);
     }
 }
