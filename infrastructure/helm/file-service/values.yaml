@@ -80,4 +80,7 @@ config:
 
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
+# FILE_SEED_ID_SECRET keys the demo-document ids (see FILE_SEED_DEMO_DOCS) so
+# they cannot be computed from a user id; set it to a random per-tenant value
+# shared by all replicas. Unset, each pod uses a random key of its own.
 secrets: {}

@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -5,11 +7,41 @@ use crate::metadata::MetadataClient;
 use crate::models::FileMetadata;
 use crate::storage::S3Client;
 
-/// Namespace for deriving stable per-owner demo document ids, so seeding is
-/// idempotent even if it runs concurrently for the same owner.
+/// Base namespace for demo document ids. Never used on its own: ids are keyed
+/// by a per-deployment secret (see `seed_namespace`) so they cannot be
+/// computed offline from an owner id and the public demo document names.
 const SEED_NAMESPACE: Uuid = Uuid::from_bytes([
     0x6f, 0x74, 0x74, 0x65, 0x72, 0x77, 0x6f, 0x72, 0x6b, 0x73, 0x2d, 0x73, 0x65, 0x65, 0x64, 0x73,
 ]);
+
+static DEPLOYMENT_SEED_NAMESPACE: OnceLock<Uuid> = OnceLock::new();
+
+/// Namespace for deriving stable per-owner demo document ids, so seeding is
+/// idempotent even if it runs concurrently for the same owner. Keyed by
+/// `FILE_SEED_ID_SECRET` (share it across replicas for cross-replica
+/// idempotency); without it a random per-process key is used.
+fn seed_namespace() -> Uuid {
+    *DEPLOYMENT_SEED_NAMESPACE.get_or_init(|| {
+        let secret = std::env::var("FILE_SEED_ID_SECRET")
+            .ok()
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    "FILE_SEED_ID_SECRET is not set; using a random per-process demo-doc id key"
+                );
+                Uuid::new_v4().to_string()
+            });
+        namespace_for_secret(&secret)
+    })
+}
+
+fn namespace_for_secret(secret: &str) -> Uuid {
+    Uuid::new_v5(&SEED_NAMESPACE, secret.as_bytes())
+}
+
+fn seed_file_id(namespace: &Uuid, owner_id: &Uuid, name: &str) -> Uuid {
+    Uuid::new_v5(namespace, format!("{owner_id}/{name}").as_bytes())
+}
 
 const DEMO_DOCS: &[(&str, &str, &str)] = &[
     (
@@ -48,9 +80,10 @@ pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id
         return false;
     }
 
+    let namespace = seed_namespace();
     let mut seeded = false;
     for (name, mime_type, content) in DEMO_DOCS {
-        let file_id = Uuid::new_v5(&SEED_NAMESPACE, format!("{owner_id}/{name}").as_bytes());
+        let file_id = seed_file_id(&namespace, &owner_id, name);
         let s3_key = format!("files/{owner_id}/{file_id}");
         let bytes = bytes::Bytes::from_static(content.as_bytes());
 
@@ -81,4 +114,37 @@ pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id
         }
     }
     seeded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_ids_are_stable_for_one_deployment_secret() {
+        let ns = namespace_for_secret("deployment-a");
+        let owner = Uuid::new_v4();
+        let name = DEMO_DOCS[0].0;
+        assert_eq!(
+            seed_file_id(&ns, &owner, name),
+            seed_file_id(&ns, &owner, name)
+        );
+        assert_ne!(
+            seed_file_id(&ns, &owner, name),
+            seed_file_id(&ns, &Uuid::new_v4(), name)
+        );
+    }
+
+    #[test]
+    fn seed_ids_cannot_be_derived_from_the_public_namespace() {
+        let owner = Uuid::new_v4();
+        for (name, _, _) in DEMO_DOCS {
+            let offline_guess = Uuid::new_v5(&SEED_NAMESPACE, format!("{owner}/{name}").as_bytes());
+            assert_ne!(seed_file_id(&seed_namespace(), &owner, name), offline_guess);
+            assert_ne!(
+                seed_file_id(&namespace_for_secret("deployment-a"), &owner, name),
+                seed_file_id(&namespace_for_secret("deployment-b"), &owner, name),
+            );
+        }
+    }
 }

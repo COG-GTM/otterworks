@@ -169,7 +169,10 @@ pub struct ShareFileRequest {
     pub shared_with: Option<Uuid>,
     pub shared_with_email: Option<String>,
     pub permission: SharePermission,
-    pub shared_by: Uuid,
+    /// Ignored: the sharer is always the authenticated caller. Still accepted
+    /// so existing clients that send it keep working.
+    #[serde(default)]
+    pub shared_by: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]

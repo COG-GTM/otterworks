@@ -14,6 +14,10 @@ fn is_conditional_check_failed<E: std::fmt::Debug>(
         if format!("{:?}", se.err()).contains("ConditionalCheckFailed"))
 }
 
+/// File writes only apply while the record still belongs to the owner the
+/// caller was authorized against, so a check-then-write cannot race.
+const OWNED_FILE_CONDITION: &str = "attribute_exists(id) AND owner_id = :owner";
+
 /// Client for DynamoDB metadata operations.
 #[derive(Clone)]
 pub struct MetadataClient {
@@ -110,25 +114,37 @@ impl MetadataClient {
         parse_file_metadata(item)
     }
 
-    pub async fn delete_file(&self, file_id: &Uuid) -> Result<(), ServiceError> {
+    pub async fn delete_file(&self, file_id: &Uuid, owner_id: &Uuid) -> Result<(), ServiceError> {
         self.client
             .delete_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
+            .condition_expression(OWNED_FILE_CONDITION)
+            .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
             .send()
             .await
-            .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            .map_err(|e| {
+                if is_conditional_check_failed(&e) {
+                    return ServiceError::FileNotFound(file_id.to_string());
+                }
+                ServiceError::DynamoError(e.to_string())
+            })?;
         Ok(())
     }
 
-    pub async fn trash_file(&self, file_id: &Uuid) -> Result<FileMetadata, ServiceError> {
+    pub async fn trash_file(
+        &self,
+        file_id: &Uuid,
+        owner_id: &Uuid,
+    ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
         self.client
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
             .update_expression("SET is_trashed = :t, updated_at = :u")
-            .condition_expression("attribute_exists(id)")
+            .condition_expression(OWNED_FILE_CONDITION)
+            .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
             .expression_attribute_values(":t", AttributeValue::Bool(true))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
             .send()
@@ -143,14 +159,19 @@ impl MetadataClient {
         self.get_file(file_id).await
     }
 
-    pub async fn restore_file(&self, file_id: &Uuid) -> Result<FileMetadata, ServiceError> {
+    pub async fn restore_file(
+        &self,
+        file_id: &Uuid,
+        owner_id: &Uuid,
+    ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
         self.client
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
             .update_expression("SET is_trashed = :t, updated_at = :u")
-            .condition_expression("attribute_exists(id)")
+            .condition_expression(OWNED_FILE_CONDITION)
+            .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
             .expression_attribute_values(":t", AttributeValue::Bool(false))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
             .send()
@@ -168,6 +189,7 @@ impl MetadataClient {
     pub async fn rename_file(
         &self,
         file_id: &Uuid,
+        owner_id: &Uuid,
         name: &str,
     ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
@@ -176,7 +198,8 @@ impl MetadataClient {
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
             .update_expression("SET #n = :n, updated_at = :u")
-            .condition_expression("attribute_exists(id)")
+            .condition_expression(OWNED_FILE_CONDITION)
+            .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
             .expression_attribute_names("#n", "name")
             .expression_attribute_values(":n", AttributeValue::S(name.to_string()))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()))
@@ -195,6 +218,7 @@ impl MetadataClient {
     pub async fn move_file(
         &self,
         file_id: &Uuid,
+        owner_id: &Uuid,
         folder_id: Option<Uuid>,
     ) -> Result<FileMetadata, ServiceError> {
         let now = Utc::now();
@@ -203,7 +227,8 @@ impl MetadataClient {
             .update_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
-            .condition_expression("attribute_exists(id)")
+            .condition_expression(OWNED_FILE_CONDITION)
+            .expression_attribute_values(":owner", AttributeValue::S(owner_id.to_string()))
             .expression_attribute_values(":u", AttributeValue::S(now.to_rfc3339()));
 
         if let Some(fid) = &folder_id {

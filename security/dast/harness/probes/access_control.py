@@ -76,6 +76,88 @@ def bola_documents(ctx: ScanContext) -> Result:
 
 
 @probe(
+    finding_id="DAST-BOLA-FILES",
+    title="Broken object-level authorization on /api/v1/files/{id}",
+    severity=Severity.CRITICAL,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="file-service",
+    remediation=(
+        "Authorize every per-file handler against the gateway-injected X-User-ID: owner-only "
+        "for management actions, owner or share recipient for reads, and 404 otherwise."
+    ),
+)
+def bola_files(ctx: ScanContext) -> Result:
+    """Attacker reads, reshares and deletes a victim's file by id with their own token."""
+    self = bola_files.probe
+    upload = ctx.client.post(
+        "/api/v1/files/upload",
+        headers=ctx.victim.headers,
+        files={"file": (f"victim-{ctx.run_id}.txt", ctx.victim_marker.encode(), "text/plain")},
+    )
+    if upload.status_code != 201:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"could not seed a victim-owned file (upload returned {upload.status_code})",
+            [Evidence.from_response(upload)],
+        )
+    file_id = upload.json()["file"]["id"]
+    base = f"/api/v1/files/{file_id}"
+    try:
+        if not ctx.owner_can_read(f"{base}/download", ctx.victim):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                "the owner cannot download their own file, so cross-owner access "
+                "cannot be assessed",
+            )
+        # Ordered so a vulnerable target still answers the reads before the delete.
+        attacks = [
+            ("GET", f"{base}/download", None),
+            ("GET", base, None),
+            ("GET", f"{base}/versions", None),
+            (
+                "POST",
+                f"{base}/share",
+                {"shared_with": ctx.attacker.user_id, "permission": "editor"},
+            ),
+            ("PATCH", f"{base}/rename", {"name": "dast-renamed.txt"}),
+            ("POST", f"{base}/trash", None),
+            ("DELETE", base, None),
+        ]
+        evidence: list[Evidence] = []
+        for method, path, body in attacks:
+            response = ctx.request(method, path, identity=ctx.attacker, json=body)
+            evidence.append(Evidence.from_response(response, note=f"attacker {method} {path}"))
+            if response.status_code < 300:
+                return self.result(
+                    Verdict.VULNERABLE,
+                    f"the attacker's token was allowed to {method} {path} "
+                    f"({response.status_code}) on the victim's file",
+                    evidence[-1:],
+                )
+            if response.status_code not in (401, 403, 404):
+                return self.result(
+                    Verdict.INCONCLUSIVE,
+                    f"unexpected status {response.status_code} for {method} {path}",
+                    evidence[-1:],
+                )
+        if not ctx.owner_can_read(f"{base}/download", ctx.victim):
+            return self.result(
+                Verdict.VULNERABLE,
+                "every attacker request was refused, but the owner can no longer read the file",
+                evidence,
+            )
+        return self.result(
+            Verdict.SECURE,
+            "the owner can download the file; every attacker read, share, rename, trash and "
+            "delete was refused",
+            evidence,
+        )
+    finally:
+        ctx.request("DELETE", base, identity=ctx.victim)
+
+
+@probe(
     finding_id="DAST-IDENTITY-HEADER-SPOOF",
     title="Client-supplied X-User-ID is trusted downstream of the gateway",
     severity=Severity.CRITICAL,
