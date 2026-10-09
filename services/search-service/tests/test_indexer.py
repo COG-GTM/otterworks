@@ -167,6 +167,24 @@ class TestReindexFailClosed:
             indexer.reindex()
         mock_ms_service.client.delete_index.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "payloads",
+        [
+            [{"detail": "temporarily unavailable"}],
+            [{"items": None}],
+            [{"documents": []}, {"files": "oops"}],
+        ],
+    )
+    def test_malformed_page_aborts_before_delete(self, mock_ms_service, payloads):
+        indexer = Indexer(mock_ms_service)
+        responses = [self._response(200, p) for p in payloads]
+        with (
+            patch("app.services.indexer.requests.get", side_effect=responses),
+            pytest.raises(ReindexSourceError),
+        ):
+            indexer.reindex()
+        mock_ms_service.client.delete_index.assert_not_called()
+
     def test_successful_crawl_rebuilds(self, mock_ms_service):
         indexer = Indexer(mock_ms_service)
         responses = [

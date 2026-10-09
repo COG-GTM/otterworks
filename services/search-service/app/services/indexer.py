@@ -20,6 +20,17 @@ class ReindexSourceError(RuntimeError):
     """A source-of-truth service could not be crawled completely."""
 
 
+def _page_items(data: Any, keys: tuple[str, ...], source: str) -> list[dict[str, Any]]:
+    """Return the item list of one crawled page, rejecting responses of unexpected shape."""
+    if isinstance(data, dict):
+        for key in keys:
+            if key in data:
+                if isinstance(data[key], list):
+                    return data[key]
+                break
+    raise ReindexSourceError(f"{source} returned an unexpected page shape")
+
+
 class Indexer:
     """Handles document and file indexing into MeiliSearch."""
 
@@ -123,7 +134,7 @@ class Indexer:
                     logger.warning("reindex_document_fetch_failed", status=resp.status_code)
                     raise ReindexSourceError(f"document-service returned {resp.status_code}")
                 data = resp.json()
-                items = data.get("documents") or data.get("items") or data.get("data") or []
+                items = _page_items(data, ("documents", "items", "data"), "document-service")
                 if not items:
                     break
                 for item in items:
@@ -159,7 +170,7 @@ class Indexer:
                     logger.warning("reindex_file_fetch_failed", status=resp.status_code)
                     raise ReindexSourceError(f"file-service returned {resp.status_code}")
                 data = resp.json()
-                items = data.get("files") or data.get("items") or data.get("data") or []
+                items = _page_items(data, ("files", "items", "data"), "file-service")
                 if not items:
                     break
                 for item in items:
