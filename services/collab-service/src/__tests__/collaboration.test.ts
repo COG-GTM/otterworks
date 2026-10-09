@@ -196,7 +196,11 @@ describe('CollaborationManager', () => {
         },
       );
 
-      client.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000006' }, () => {});
+      client.emit(
+        'join-document',
+        { documentId: '00000000-0000-4000-8000-000000000006' },
+        () => {},
+      );
 
       const syncData = await syncPromise;
       expect(syncData.documentId).toBe('00000000-0000-4000-8000-000000000006');
@@ -211,7 +215,11 @@ describe('CollaborationManager', () => {
 
       // Client 1 joins first
       await new Promise<void>((resolve) => {
-        client1.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000005' }, () => resolve());
+        client1.emit(
+          'join-document',
+          { documentId: '00000000-0000-4000-8000-000000000005' },
+          () => resolve(),
+        );
       });
 
       // Listen for join notification on client 1
@@ -222,7 +230,11 @@ describe('CollaborationManager', () => {
       );
 
       // Client 2 joins
-      client2.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000005' }, () => {});
+      client2.emit(
+        'join-document',
+        { documentId: '00000000-0000-4000-8000-000000000005' },
+        () => {},
+      );
 
       const joinData = await joinPromise;
       expect(joinData.userId).toBe('user-notify-2');
@@ -241,13 +253,17 @@ describe('CollaborationManager', () => {
       // Both join the same document
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000007' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000007' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000007' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000007' },
+            () => resolve(),
           );
         }),
       ]);
@@ -291,13 +307,17 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000001' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000001' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000001' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000001' },
+            () => resolve(),
           );
         }),
       ]);
@@ -333,10 +353,18 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000002' }, () => resolve());
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000002' },
+            () => resolve(),
+          );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000002' }, () => resolve());
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000002' },
+            () => resolve(),
+          );
         }),
       ]);
 
@@ -362,13 +390,17 @@ describe('CollaborationManager', () => {
 
       await Promise.all([
         new Promise<void>((resolve) => {
-          client1.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000004' }, () =>
-            resolve(),
+          client1.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000004' },
+            () => resolve(),
           );
         }),
         new Promise<void>((resolve) => {
-          client2.emit('join-document', { documentId: '00000000-0000-4000-8000-000000000004' }, () =>
-            resolve(),
+          client2.emit(
+            'join-document',
+            { documentId: '00000000-0000-4000-8000-000000000004' },
+            () => resolve(),
           );
         }),
       ]);
@@ -379,7 +411,9 @@ describe('CollaborationManager', () => {
         client1.on('user-left', (data) => resolve(data));
       });
 
-      client2.emit('leave-document', { documentId: '00000000-0000-4000-8000-000000000004' });
+      client2.emit('leave-document', {
+        documentId: '00000000-0000-4000-8000-000000000004',
+      });
 
       const leftData = await leftPromise;
       expect(leftData.socketId).toBeDefined();
@@ -482,7 +516,9 @@ describe('CollaborationManager', () => {
       await settle();
 
       expect(ownerUpdates).toHaveLength(0);
-      expect(errors).toEqual([{ documentId: OWNED_DOC, error: 'Not joined to document' }]);
+      expect(errors).toEqual([
+        { documentId: OWNED_DOC, error: 'Not joined to document' },
+      ]);
       expect(
         Buffer.from(Y.encodeStateAsUpdate(manager.getDocument(OWNED_DOC) as Y.Doc)),
       ).toEqual(before);
@@ -549,7 +585,13 @@ describe('CollaborationManager', () => {
       const commentErrors = collect(intruder, 'comment-error');
       intruder.emit('comment-add', {
         documentId: OWNED_DOC,
-        comment: { id: 'c1', threadId: 't1', content: 'spoof', rangeStart: 0, rangeEnd: 1 },
+        comment: {
+          id: 'c1',
+          threadId: 't1',
+          content: 'spoof',
+          rangeStart: 0,
+          rangeEnd: 1,
+        },
       });
       intruder.emit('comment-update', {
         documentId: OWNED_DOC,

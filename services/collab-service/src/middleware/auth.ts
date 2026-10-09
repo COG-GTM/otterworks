@@ -40,7 +40,9 @@ export function userFromToken(token: string, jwtSecret: string): AuthenticatedUs
   };
 }
 
-export function extractBearerToken(authorization: string | undefined): string | undefined {
+export function extractBearerToken(
+  authorization: string | undefined,
+): string | undefined {
   if (!authorization || !authorization.startsWith('Bearer ')) return undefined;
   const token = authorization.slice('Bearer '.length).trim();
   return token || undefined;

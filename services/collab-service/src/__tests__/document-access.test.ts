@@ -55,7 +55,9 @@ describe('DocumentAccessService', () => {
 
   it('asks document-service with the caller token and grants on 200', async () => {
     const fetchImpl = respond(200);
-    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(true);
+    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(
+      true,
+    );
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0];
@@ -65,15 +67,20 @@ describe('DocumentAccessService', () => {
     expect(init.signal).toBeDefined();
   });
 
-  it.each([401, 403, 404, 500, 503])('denies when document-service returns %i', async (status) => {
-    await expect(service(respond(status)).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(
-      false,
-    );
-  });
+  it.each([401, 403, 404, 500, 503])(
+    'denies when document-service returns %i',
+    async (status) => {
+      await expect(
+        service(respond(status)).canAccess('tok', 'user-1', DOC_ID),
+      ).resolves.toBe(false);
+    },
+  );
 
   it('fails closed on network errors', async () => {
     const fetchImpl = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
-    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(false);
+    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(
+      false,
+    );
     expect(logger.error).toHaveBeenCalled();
   });
 
@@ -84,7 +91,9 @@ describe('DocumentAccessService', () => {
           init.signal.addEventListener('abort', () => reject(new Error('aborted')));
         }),
     );
-    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(false);
+    await expect(service(fetchImpl).canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(
+      false,
+    );
   });
 
   it('does not call document-service for invalid input', async () => {
@@ -136,16 +145,20 @@ describe('auth helpers', () => {
 
   it('requires a subject claim', () => {
     expect(() => userFromToken(jwt.sign({ email: 'a@b.c' }, secret), secret)).toThrow();
-    expect(userFromToken(jwt.sign({ sub: 'u1', roles: ['USER'] }, secret), secret).userId).toBe(
-      'u1',
-    );
+    expect(
+      userFromToken(jwt.sign({ sub: 'u1', roles: ['USER'] }, secret), secret).userId,
+    ).toBe('u1');
   });
 
   it('recognises admins only by role', () => {
-    expect(isAdmin({ userId: 'u', email: '', displayName: '', roles: ['ADMIN'] })).toBe(true);
-    expect(isAdmin({ userId: 'u', email: '', displayName: '', roles: ['ROLE_ADMIN'] })).toBe(true);
-    expect(isAdmin({ userId: 'u', email: '', displayName: '', roles: ['USER', 'EDITOR'] })).toBe(
-      false,
+    expect(isAdmin({ userId: 'u', email: '', displayName: '', roles: ['ADMIN'] })).toBe(
+      true,
     );
+    expect(
+      isAdmin({ userId: 'u', email: '', displayName: '', roles: ['ROLE_ADMIN'] }),
+    ).toBe(true);
+    expect(
+      isAdmin({ userId: 'u', email: '', displayName: '', roles: ['USER', 'EDITOR'] }),
+    ).toBe(false);
   });
 });

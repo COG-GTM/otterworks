@@ -14,7 +14,9 @@ export function isValidDocumentId(documentId: unknown): documentId is string {
  * derives its room name from `req.url.slice(1).split('?')[0]`, so the same
  * expression is validated here; anything other than `document-<uuid>` is rejected.
  */
-export function documentIdFromYjsRequestUrl(requestUrl: string | undefined): string | null {
+export function documentIdFromYjsRequestUrl(
+  requestUrl: string | undefined,
+): string | null {
   if (!requestUrl) return null;
   const docName = requestUrl.slice(1).split('?')[0];
   const match = YJS_ROOM_PATTERN.exec(docName);
@@ -49,7 +51,11 @@ export class DocumentAccessService implements DocumentAccessChecker {
     this.now = options.now ?? Date.now;
   }
 
-  async canAccess(accessToken: string, userId: string, documentId: string): Promise<boolean> {
+  async canAccess(
+    accessToken: string,
+    userId: string,
+    documentId: string,
+  ): Promise<boolean> {
     if (!accessToken || !userId || !isValidDocumentId(documentId)) return false;
 
     const cacheKey = `${userId}:${documentId.toLowerCase()}`;
@@ -79,7 +85,10 @@ export class DocumentAccessService implements DocumentAccessChecker {
         this.remember(cacheKey);
         return true;
       }
-      logger.warn({ documentId, userId, status: response.status }, 'document_access_denied');
+      logger.warn(
+        { documentId, userId, status: response.status },
+        'document_access_denied',
+      );
       return false;
     } catch (err) {
       logger.error(
