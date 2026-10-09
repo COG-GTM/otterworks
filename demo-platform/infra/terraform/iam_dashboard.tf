@@ -33,6 +33,13 @@ locals {
   # The platform's own cluster is always sweepable; var.sweepable_clusters adds
   # names it used to run under, whose orphans still need reclaiming.
   sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+
+  # Role names follow infrastructure/terraform/modules/irsa:
+  # <project>-<service account>-<environment>.
+  tenant_irsa_role_arns = [
+    for svc in var.tenant_irsa_services :
+    "arn:aws:iam::${local.account_id}:role/otterworks-${svc}-${var.environment}"
+  ]
 }
 
 data "aws_iam_policy_document" "dashboard" {
@@ -201,13 +208,22 @@ data "aws_iam_policy_document" "dashboard" {
     }
   }
 
-  # Teardown maintains IRSA trust on the shared per-service roles (add/remove the
-  # tenant namespace SA). Scoped to the otterworks-* service roles only.
+  # deploy/teardown maintain IRSA trust on the shared per-service roles (add or
+  # remove the tenant namespace SA). Rewriting a trust policy is a takeover of
+  # the role, so this names each per-service role exactly: an otterworks-* glob
+  # would also match the EKS cluster/node, Karpenter, CI and DNS roles and this
+  # role itself. The tag condition additionally requires the role to have been
+  # created by the irsa module; this role cannot tag roles.
   statement {
     sid       = "TenantIrsaTrust"
     effect    = "Allow"
     actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
-    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-*"]
+    resources = local.tenant_irsa_role_arns
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Module"
+      values   = ["irsa"]
+    }
   }
 
   # deploy/teardown resolve shared RDS/S3/DynamoDB coordinates by reading the

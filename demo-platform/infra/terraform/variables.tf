@@ -124,6 +124,33 @@ variable "sweepable_clusters" {
   default     = []
 }
 
+# The shared per-service IRSA roles (infrastructure/terraform module "irsa")
+# whose trust policy deploy/teardown may edit. Keep in step with that module's
+# service_accounts keys and SERVICES in scripts/enable-tenant-irsa-wildcard.sh.
+# Names are exact: no IAM wildcards, and never a platform role.
+variable "tenant_irsa_services" {
+  description = "Service accounts whose otterworks-<svc>-<environment> IRSA role trust the control plane may edit."
+  type        = list(string)
+  default = [
+    "api-gateway", "auth-service", "file-service", "document-service", "search-service",
+    "collab-service", "notification-service", "audit-service", "analytics-service",
+    "admin-service",
+  ]
+
+  validation {
+    condition     = alltrue([for s in var.tenant_irsa_services : can(regex("^[a-z][a-z0-9-]*[a-z0-9]$", s))])
+    error_message = "tenant_irsa_services entries must be exact service account names (lowercase, digits, hyphens; no IAM wildcards)."
+  }
+
+  validation {
+    condition = alltrue([
+      for s in var.tenant_irsa_services :
+      !can(regex("^(eks-|karpenter|ebs-csi|demo-|github-actions)", s))
+    ])
+    error_message = "tenant_irsa_services must not name platform roles (EKS cluster/nodes, Karpenter, EBS CSI, demo control plane/DNS, GitHub Actions)."
+  }
+}
+
 variable "provisioner_user_name" {
   description = "IAM user who provisions demo tenants through the dashboard (holds only the passcode grant)."
   type        = string

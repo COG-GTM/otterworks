@@ -15,14 +15,16 @@
 #
 # Usage: ENV=dev ./enable-tenant-irsa-wildcard.sh
 # Requires: aws, jq, and IAM perms iam:GetRole + iam:UpdateAssumeRolePolicy on
-# the otterworks-* roles (the dashboard IRSA role has these).
+# the per-service roles below (the dashboard IRSA role has these for exactly the
+# roles in tenant_irsa_services, demo-platform/infra/terraform/variables.tf).
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ENVIRONMENT="${ENV:-dev}"
 CLUSTER="${EKS_CLUSTER:-otterworks-dev}"
 
-# Service roles that back the app (must match the irsa module role names).
+# Service roles that back the app (must match the irsa module role names and
+# tenant_irsa_services in demo-platform/infra/terraform/variables.tf).
 # web-app/admin-dashboard are frontends with no IRSA role, so they're omitted.
 SERVICES=(
   api-gateway auth-service file-service document-service search-service
