@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "incremental": false,
+    "module": "node16",
+    "moduleResolution": "node16",
+    "rootDir": ".",
+    "outDir": ".test-build",
+    "types": ["node"],
+    "plugins": []
+  },
+  "include": ["lib/__tests__/**/*.ts"]
+}

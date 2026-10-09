@@ -49,6 +49,8 @@ spec:
               value: {{ .Values.runnerImage | quote }}
             - name: HOST_SUFFIX
               value: {{ .Values.hostSuffix | quote }}
+            - name: TRUSTED_PROXY_HOPS
+              value: {{ .Values.dashboard.trustedProxyHops | quote }}
             - name: PERPETUAL_TENANT_IDS
               value: {{ .Values.perpetualTenantIds | quote }}
             - name: PERPETUAL_HOST_SUFFIX

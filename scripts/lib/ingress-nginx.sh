@@ -48,6 +48,12 @@ ensure_ingress_nginx() {
   # rejected with a 413 at the edge and never reaches file-service (whose own
   # MAX_UPLOAD_BYTES is 100 MB). Set the cluster-wide default to match.
   #
+  # externalTrafficPolicy=Local keeps the client's source address through the
+  # NLB instead of SNATing it to a node IP. Without it every request reaches
+  # nginx from a handful of node addresses, so per-client limits (the ops
+  # dashboard's login limiter and its limit-rpm edge rule) see all clients as
+  # one and anyone can exhaust them for everyone.
+  #
   # controller.metrics.enabled is off in the chart by default, but the reaper
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
@@ -57,6 +63,7 @@ ensure_ingress_nginx() {
     "${reuse[@]}" \
     --set controller.service.type=LoadBalancer \
     --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+    --set controller.service.externalTrafficPolicy=Local \
     --set controller.replicaCount=1 \
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \

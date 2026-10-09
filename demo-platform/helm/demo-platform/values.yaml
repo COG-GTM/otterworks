@@ -54,6 +54,10 @@ dashboard:
   imagePullPolicy: IfNotPresent
   replicas: 1
   host: ops.otterworks.app
+  # Proxies in front of the pod that append to X-Forwarded-For (ingress-nginx
+  # = 1). The login limiter keys clients on that hop and ignores anything a
+  # client puts further left.
+  trustedProxyHops: 1
   containerPort: 3000
   service:
     port: 80
@@ -73,6 +77,12 @@ ingress:
   # deployments keep serving over HTTP; add a per-ingress ssl-redirect only if
   # you need to override the global behavior.
   annotations: {}
+  # Per-client-address edge limit on POST /api/auth/login (separate Ingress).
+  # Requests over the limit get ingress-nginx's 503 and never reach the pod.
+  loginRateLimit:
+    enabled: true
+    rpm: 10
+    burstMultiplier: 1
 
 reaper:
   enabled: true
