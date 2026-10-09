@@ -83,6 +83,7 @@ login() {
   code="$(PASSCODE="${passcode}" jq -nc '{passcode: env.PASSCODE}' |
             curl -sS -o /dev/null -w '%{http_code}' \
                  -c "${JAR}" -X POST "${OPS_HOST}/api/auth/login" \
+                 -H "Origin: ${OPS_HOST}" \
                  -H 'content-type: application/json' --data-binary @-)"
 
   case "${code}" in
@@ -93,6 +94,8 @@ login() {
   esac
 }
 
+# Mutating calls carry Origin + JSON content-type: the dashboard refuses any
+# state-changing request without them (cross-site request gate, lib/csrf.ts).
 # Fails on any non-2xx so a rejected checkout is an error rather than a silent
 # no-op that leaves the caller believing a tenant exists.
 api() {
@@ -102,9 +105,11 @@ api() {
   if [ -n "${body}" ]; then
     out="$(printf '%s' "${body}" |
              curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}" \
+                  -H "Origin: ${OPS_HOST}" \
                   -H 'content-type: application/json' --data-binary @-)"
   else
-    out="$(curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}")"
+    out="$(curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}" \
+             -H "Origin: ${OPS_HOST}" -H 'content-type: application/json')"
   fi
 
   code="$(printf '%s' "${out}" | tail -n1)"

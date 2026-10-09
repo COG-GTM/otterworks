@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { crossSiteRejection, parseAllowedOrigins } from "@/lib/csrf";
 
 // NOTE: Next.js middleware runs on the Edge runtime, so it cannot use
 // node:crypto. We re-verify the HMAC session token with Web Crypto here. This
@@ -70,6 +71,17 @@ function isPublicPath(pathname: string): boolean {
 
 export async function middleware(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl;
+
+  // Runs before the public-path bypass so login/logout are covered too.
+  if (pathname.startsWith("/api/")) {
+    const reason = crossSiteRejection(
+      req.method,
+      req.headers,
+      parseAllowedOrigins(process.env.DASHBOARD_ALLOWED_ORIGINS),
+    );
+    if (reason) return NextResponse.json({ error: reason }, { status: 403 });
+  }
+
   if (isPublicPath(pathname)) return NextResponse.next();
 
   const secret = process.env.SESSION_SECRET;

@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { constantTimeEqual, signSession, sessionCookie } from "@/lib/session";
 import { checkRateLimit, clientIp, recordFailure, recordSuccess } from "@/lib/ratelimit";
 import { appendAudit } from "@/lib/control";
+import { rejectCrossSite } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,9 @@ async function audit(action: "login_ok" | "login_fail", ip: string, detail?: str
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const crossSite = rejectCrossSite(req);
+  if (crossSite) return crossSite;
+
   const ip = clientIp(req.headers);
 
   const secret = env.sessionSecret;

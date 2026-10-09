@@ -390,6 +390,12 @@ jobs:
         working-directory: demo-platform/dashboard
       - run: npm run lint
         working-directory: demo-platform/dashboard
+      # Unit tests use Node's type stripping (>= 22.6).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - run: npm test
+        working-directory: demo-platform/dashboard
       # Scoped to the control plane. `scripts/` has a backlog of findings that
       # would make this gate permanently red, and so ignored; widen it once
       # that is cleared.

@@ -54,6 +54,11 @@ dashboard:
   imagePullPolicy: IfNotPresent
   replicas: 1
   host: ops.otterworks.app
+  # Exact origin(s), comma-separated, allowed to send state-changing /api
+  # requests (e.g. https://ops.otterworks.app). Empty -> the request's own Host.
+  # Tenant hosts are same-site with the dashboard, so SameSite=Strict alone does
+  # not stop them; see dashboard/lib/csrf.ts.
+  allowedOrigins: ""
   containerPort: 3000
   service:
     port: 80
