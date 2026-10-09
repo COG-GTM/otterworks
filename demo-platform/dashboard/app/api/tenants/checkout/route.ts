@@ -3,7 +3,15 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, checkout } from "@/lib/control";
 import { createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { isNeverTtl, isValidId, randomIdSuffix, sanitizeId, ttlToSeconds } from "@/lib/util";
+import {
+  NEVER_TTL_SECONDS,
+  checkFiniteTtl,
+  isNeverTtl,
+  isValidId,
+  randomIdSuffix,
+  sanitizeId,
+  formatTtl,
+} from "@/lib/util";
 import type { CheckoutRequest, TenantTier } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -33,8 +41,23 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
     );
   }
   const ttlStr = persistent ? "never" : typeof body.ttl === "string" && body.ttl ? body.ttl : "8h";
-  const ttlSeconds = ttlToSeconds(ttlStr);
-  if (ttlSeconds === null) return error(400, "invalid ttl");
+  let ttlSeconds: number;
+  if (persistent) {
+    ttlSeconds = NEVER_TTL_SECONDS;
+  } else {
+    // Without a ceiling, a TTL just under `never` would be an immortal tenant
+    // outside the PERPETUAL_TENANT_IDS allowlist.
+    const check = checkFiniteTtl(ttlStr, env.maxTtlSeconds);
+    if (!check.ok) {
+      return error(
+        400,
+        check.reason === "too_long"
+          ? `ttl '${ttlStr}' exceeds the maximum of ${formatTtl(env.maxTtlSeconds)}`
+          : "invalid ttl",
+      );
+    }
+    ttlSeconds = check.seconds;
+  }
 
   // The perpetual tenant is the environment everyone shares, so it answers on
   // the short host (t-main.otterworks.app) rather than under the per-attendee

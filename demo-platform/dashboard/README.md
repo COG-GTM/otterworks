@@ -27,6 +27,7 @@ npm run build      # production build (output: standalone)
 npm run start      # run the built server
 npm run lint       # next lint
 npm run typecheck  # tsc --noEmit
+npm test           # node:test unit tests (Node >= 22.6)
 ```
 
 ## Configuration

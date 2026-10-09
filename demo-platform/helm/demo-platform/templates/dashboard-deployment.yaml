@@ -53,6 +53,8 @@ spec:
               value: {{ .Values.perpetualTenantIds | quote }}
             - name: PERPETUAL_HOST_SUFFIX
               value: {{ .Values.perpetualHostSuffix | quote }}
+            - name: MAX_TTL_SECONDS
+              value: {{ .Values.maxTtlSeconds | int | quote }}
             {{- if .Values.repoHttpsUrl }}
             - name: REPO_HTTPS_URL
               value: {{ .Values.repoHttpsUrl | quote }}
