@@ -4,7 +4,10 @@ import * as Y from 'yjs';
 import { DocumentStore } from '../services/document-store';
 import { AwarenessService, type CursorPosition } from '../services/awareness';
 import { extractAccessToken, extractUserFromSocket } from '../middleware/auth';
-import { type DocumentAccessChecker, isValidDocumentId } from '../services/document-access';
+import {
+  type DocumentAccessChecker,
+  isValidDocumentId,
+} from '../services/document-access';
 import { MetricsCollector } from '../metrics';
 import { PresenceHandler } from './presence';
 
