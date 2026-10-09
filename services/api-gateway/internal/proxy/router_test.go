@@ -52,6 +52,8 @@ func TestProxyForwardsUserIdentityHeaders(t *testing.T) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Subject:   "user-123",
+			Issuer:    middleware.DefaultJWTIssuer,
+			Audience:  jwt.ClaimStrings{middleware.DefaultJWTAudience},
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -85,6 +87,8 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Subject:   "user-123",
+			Issuer:    middleware.DefaultJWTIssuer,
+			Audience:  jwt.ClaimStrings{middleware.DefaultJWTAudience},
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

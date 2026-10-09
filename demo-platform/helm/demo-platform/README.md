@@ -13,7 +13,7 @@ Deploys the OtterWorks **Demo Platform control plane** into the
 - the **Ops Dashboard** Deployment + Service + Ingress (`ops.otterworks.app`,
   ingress class `nginx`);
 - a templated **Secret** `demo-ops-dashboard` holding `DASHBOARD_PASSCODE` +
-  `SESSION_SECRET` (and optionally `DB_PASSWORD` / `JWT_SECRET` /
+  `SESSION_SECRET` (and optionally `DB_PASSWORD` /
   `SECRET_KEY_BASE`);
 - the **reaper v2 CronJob** (runs the runner image with `OP=reap`).
 
@@ -48,7 +48,6 @@ secret:
   sessionSecret: "<random-32-bytes>"
   # optional — enables per-tenant DB drop/create by the reaper + runner Jobs:
   dbPassword: "<rds-app-password>"
-  jwtSecret: "<jwt-signing-key>"
   secretKeyBase: "<rails-secret-key-base>"
 ```
 

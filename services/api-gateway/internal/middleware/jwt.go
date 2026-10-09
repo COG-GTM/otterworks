@@ -21,9 +21,18 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+// Defaults match auth-service's jwt.issuer / jwt.audience. Each tenant deploy
+// overrides the audience so tokens never validate outside the issuing tenant.
+const (
+	DefaultJWTIssuer   = "otterworks-auth-service"
+	DefaultJWTAudience = "otterworks"
+)
+
 // JWTConfig holds configuration for JWT validation middleware.
 type JWTConfig struct {
 	Secret              string
+	Issuer              string   // required `iss`; empty means DefaultJWTIssuer
+	Audience            string   // required `aud`; empty means DefaultJWTAudience
 	PublicPath          []string // exact paths that skip JWT validation
 	PrefixPath          []string // prefix paths that skip JWT validation (e.g. /health, /metrics)
 	ProtectedPrefixPath []string // route prefixes that require JWT validation; empty means all non-public paths
@@ -48,6 +57,14 @@ func DefaultPrefixPaths() []string {
 
 // JWTAuth returns middleware that validates JWT tokens on protected routes.
 func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
+	issuer := cfg.Issuer
+	if issuer == "" {
+		issuer = DefaultJWTIssuer
+	}
+	audience := cfg.Audience
+	if audience == "" {
+		audience = DefaultJWTAudience
+	}
 	exactPaths := make(map[string]bool, len(cfg.PublicPath))
 	for _, p := range cfg.PublicPath {
 		exactPaths[p] = true
@@ -71,7 +88,7 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(tokenStr, cfg.Secret)
+			claims, err := validateToken(tokenStr, cfg.Secret, issuer, audience)
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
@@ -103,14 +120,14 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-func validateToken(tokenStr, secret string) (*JWTClaims, error) {
+func validateToken(tokenStr, secret, issuer, audience string) (*JWTClaims, error) {
 	claims := &JWTClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithIssuer(issuer), jwt.WithAudience(audience))
 	if err != nil {
 		return nil, err
 	}

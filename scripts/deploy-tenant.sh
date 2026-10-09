@@ -20,8 +20,9 @@
 #       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
 #
-# Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Required env: AWS creds (exported), DB_PASSWORD. Stable SECRET_KEY_BASE
+#   recommended across redeploys (auto-generated if unset). JWT_SECRET is
+#   generated per tenant and kept in the namespace's `tenant-auth` Secret.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -66,7 +67,9 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 [ -n "${AWS_ACCOUNT_ID}" ] || { err "Unable to resolve AWS account (are creds exported?)"; exit 1; }
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
-JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+# JWT_SECRET is per tenant (resolved from the tenant namespace below); never
+# inherit the platform-wide value, which every tenant's runner Job can see.
+unset JWT_SECRET
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
@@ -192,6 +195,13 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
 YAML
+
+# ---------- Per-tenant JWT signing key + token binding ----------
+JWT_SECRET="$(ensure_tenant_jwt_secret "${NS}")"
+[ -n "${JWT_SECRET}" ] || { err "Unable to resolve tenant JWT secret for ${NS}"; exit 1; }
+T_JWT_ISSUER="${JWT_ISSUER_DEFAULT}"
+T_JWT_AUDIENCE="$(tenant_jwt_audience "${ATTENDEE_ID}")"
+log "JWT tokens bound to audience ${T_JWT_AUDIENCE} (key in secret/${TENANT_AUTH_SECRET})"
 
 # ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------
 ensure_irsa_trust() {

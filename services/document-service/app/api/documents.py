@@ -69,6 +69,16 @@ def _get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
 
+def _get_jwt_issuer() -> str:
+    return os.environ.get("JWT_ISSUER") or "otterworks-auth-service"
+
+
+def _get_jwt_audience() -> str:
+    # Each tenant's auth-service stamps its own audience, so a token minted for
+    # one tenant (or with another tenant's key) is not accepted here.
+    return os.environ.get("JWT_AUDIENCE") or "otterworks"
+
+
 def _extract_user_id(request: Request) -> UUID | None:
     """Extract user ID from the Authorization JWT."""
     auth_header = request.headers.get("Authorization")
@@ -77,7 +87,14 @@ def _extract_user_id(request: Request) -> UUID | None:
         secret = _get_jwt_secret()
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                payload = jwt.decode(
+                    token,
+                    secret,
+                    algorithms=["HS256", "HS384", "HS512"],
+                    issuer=_get_jwt_issuer(),
+                    audience=_get_jwt_audience(),
+                    options={"require": ["iss", "aud"]},
+                )
                 user_id_str = payload.get("user_id") or payload.get("sub")
                 if user_id_str:
                     return UUID(str(user_id_str))

@@ -1,6 +1,8 @@
 module JwtHelper
   def jwt_token(user_id: SecureRandom.uuid, email: 'admin@otterworks.com', role: 'super_admin')
     payload = {
+      iss: JwtAuthenticator.issuer,
+      aud: JwtAuthenticator.audience,
       sub: user_id,
       email: email,
       role: role,

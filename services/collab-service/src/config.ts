@@ -10,6 +10,7 @@ export interface Config {
   jwt: {
     secret: string;
     issuer: string;
+    audience: string;
   };
   cors: {
     origins: string[];
@@ -42,6 +43,7 @@ export function loadConfig(): Config {
     jwt: {
       secret: process.env.JWT_SECRET || 'otterworks-dev-secret',
       issuer: process.env.JWT_ISSUER || 'otterworks-auth-service',
+      audience: process.env.JWT_AUDIENCE || 'otterworks',
     },
     cors: {
       origins: (

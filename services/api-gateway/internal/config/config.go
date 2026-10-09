@@ -29,7 +29,9 @@ type Config struct {
 	RateLimitRPS int
 
 	// JWT
-	JWTSecret string
+	JWTSecret   string
+	JWTIssuer   string
+	JWTAudience string
 
 	// CORS
 	CORSAllowedOrigins []string
@@ -41,10 +43,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -74,7 +76,9 @@ func Load() *Config {
 
 		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
 
-		JWTSecret: getEnv("JWT_SECRET", ""),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
+		JWTIssuer:   getEnv("JWT_ISSUER", "otterworks-auth-service"),
+		JWTAudience: getEnv("JWT_AUDIENCE", "otterworks"),
 
 		CORSAllowedOrigins: getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:4200", "https://localhost", "capacitor://localhost"}),
 		CORSAllowedMethods: getEnvSlice("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}),

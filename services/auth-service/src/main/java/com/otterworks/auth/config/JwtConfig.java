@@ -11,6 +11,8 @@ import org.springframework.context.annotation.Configuration;
 @Setter
 public class JwtConfig {
   private String secret;
+  private String issuer = "otterworks-auth-service";
+  private String audience = "otterworks";
   private long accessTokenExpiry = 3600;
   private long refreshTokenExpiry = 2592000;
 }
