@@ -24,7 +24,8 @@ object DocumentAccess:
 /**
  * Delegates the ownership/share decision to document-service, which owns the
  * documents table: the caller may see a document's analytics only if
- * `GET /api/v1/documents/{id}` succeeds for them. Fails closed on any error.
+ * `GET /api/v1/documents/{id}` succeeds for them. The caller's own bearer token
+ * is forwarded so document-service verifies it as usual. Fails closed on any error.
  */
 final class DocumentServiceAccess(baseUrl: String, timeout: FiniteDuration)(using system: ClassicActorSystemProvider)
     extends DocumentAccess:
@@ -37,7 +38,10 @@ final class DocumentServiceAccess(baseUrl: String, timeout: FiniteDuration)(usin
     if !DocumentAccess.isDocumentId(documentId) then Future.successful(false)
     else
       val request = HttpRequest(uri = s"$base/api/v1/documents/$documentId")
-        .withHeaders(RawHeader(CallerAuth.UserIdHeader, caller.userId))
+        .withHeaders(
+          RawHeader(CallerAuth.UserIdHeader, caller.userId) ::
+            caller.authorization.map(RawHeader("Authorization", _)).toList
+        )
       val lookup = Http().singleRequest(request).flatMap { response =>
         response.discardEntityBytes().future.map(_ => response.status == StatusCodes.OK)
       }
