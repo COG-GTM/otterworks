@@ -2,7 +2,7 @@ class JwtAuthenticator
   # Highest privilege first; used to pick one role when a token carries several.
   ROLE_PRECEDENCE = %w[owner super_admin admin editor viewer user].freeze
 
-  EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
+  EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest].freeze
 
   def initialize(app)
     @app = app
