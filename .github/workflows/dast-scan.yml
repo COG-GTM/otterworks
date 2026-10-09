@@ -66,7 +66,8 @@ jobs:
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
             postgres redis localstack meilisearch \
-            auth-service api-gateway document-service search-service file-service
+            auth-service api-gateway document-service search-service file-service \
+            audit-service
 
       - name: Wait for the API gateway
         run: |
@@ -77,6 +78,15 @@ jobs:
           echo "API gateway never became healthy"
           docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50
           exit 1
+
+      - name: Wait for the audit service
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS http://localhost:8090/health >/dev/null; then exit 0; fi
+            sleep 5
+          done
+          echo "::warning::audit-service never became healthy; DAST-BOLA-AUDIT will be skipped"
+          docker compose -f docker-compose.infra.yml -f docker-compose.yml logs --tail=50 audit-service
 
       - name: Run the DAST probe suite
         id: scan
