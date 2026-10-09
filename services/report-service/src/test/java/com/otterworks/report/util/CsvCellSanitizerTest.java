@@ -17,6 +17,7 @@ public class CsvCellSanitizerTest {
         assertEquals("'@SUM(A1:A2)", CsvCellSanitizer.sanitize("@SUM(A1:A2)"));
         assertEquals("'\t=1", CsvCellSanitizer.sanitize("\t=1"));
         assertEquals("'\r=1", CsvCellSanitizer.sanitize("\r=1"));
+        assertEquals("'\n=1", CsvCellSanitizer.sanitize("\n=1"));
     }
 
     @Test

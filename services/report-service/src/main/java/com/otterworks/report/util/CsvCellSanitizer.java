@@ -8,7 +8,7 @@ package com.otterworks.report.util;
  */
 public final class CsvCellSanitizer {
 
-    private static final String FORMULA_TRIGGERS = "=+-@\t\r";
+    private static final String FORMULA_TRIGGERS = "=+-@\t\r\n";
 
     private CsvCellSanitizer() {
     }
