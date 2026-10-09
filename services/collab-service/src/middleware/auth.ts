@@ -24,7 +24,39 @@ interface JwtPayload {
   exp?: number;
 }
 
-export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
+export interface TokenBinding {
+  issuer: string;
+  audience: string;
+}
+
+// Defaults match auth-service's jwt.issuer / jwt.audience; tenant deploys set
+// JWT_AUDIENCE so a token from one tenant is rejected by every other tenant.
+export const DEFAULT_TOKEN_BINDING: TokenBinding = {
+  issuer: 'otterworks-auth-service',
+  audience: 'otterworks',
+};
+
+export function verifyToken(
+  token: string,
+  jwtSecret: string,
+  binding: TokenBinding = DEFAULT_TOKEN_BINDING,
+): JwtPayload {
+  const decoded = jwt.verify(token, jwtSecret, {
+    algorithms: ['HS256', 'HS384', 'HS512'],
+    issuer: binding.issuer,
+    audience: binding.audience,
+  });
+  if (typeof decoded === 'string') {
+    throw new Error('unexpected token payload');
+  }
+  return decoded as JwtPayload;
+}
+
+export function createAuthMiddleware(
+  jwtSecret: string,
+  logger: Logger,
+  binding: TokenBinding = DEFAULT_TOKEN_BINDING,
+) {
   return (socket: Socket, next: (err?: ExtendedError) => void): void => {
     const token =
       socket.handshake.auth?.token ||
@@ -37,7 +69,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = verifyToken(token, jwtSecret, binding);
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,

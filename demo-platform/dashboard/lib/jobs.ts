@@ -20,10 +20,11 @@ export interface RunnerJobInput {
 
 // Secret keys the runner needs at runtime. These are referenced via
 // envFrom/valueFrom (never placed on argv) so the passcode / DB password / AWS
-// creds are not exposed in the Job spec's command line.
+// creds are not exposed in the Job spec's command line. JWT_SECRET is
+// deliberately absent: each tenant gets its own key (see deploy-tenant.sh), so a
+// platform-wide value must never reach a tenant deploy.
 const RUNNER_SECRET_ENV_KEYS = [
   "DB_PASSWORD",
-  "JWT_SECRET",
   "SECRET_KEY_BASE",
   "GITHUB_TOKEN",
 ] as const;

@@ -255,6 +255,32 @@ YAML
 # locked-down temp values file passed to helm via -f, so secret values never
 # appear in the process argument list (ps / /proc/*/cmdline). Mirrors deploy-dev.sh.
 add_secret() { SECRET_KV+=("$1" "$2"); }
+
+# Per-tenant JWT signing key + token binding. Every tenant signs with its own
+# key, kept in the tenant namespace's Secret and reused on redeploy so issued
+# tokens survive a redeploy; the platform-wide JWT_SECRET is never used, so code
+# running in one tenant cannot mint tokens another tenant accepts.
+TENANT_AUTH_SECRET="tenant-auth"
+JWT_ISSUER_DEFAULT="otterworks-auth-service"
+tenant_jwt_audience() { printf 'otterworks-%s' "$(sanitize_id "$1")"; }
+
+# Prints the tenant's JWT signing key for namespace $1, generating and storing
+# it on first deploy. Fails rather than falling back to a shared value.
+ensure_tenant_jwt_secret() {
+  local ns="$1" existing secret
+  existing="$(kubectl -n "$ns" get secret "${TENANT_AUTH_SECRET}" \
+    -o jsonpath='{.data.JWT_SECRET}' 2>/dev/null || true)"
+  if [ -n "$existing" ]; then
+    printf '%s' "$existing" | base64 -d
+    return 0
+  fi
+  secret="$(openssl rand -hex 32)"
+  [ ${#secret} -eq 64 ] || { err "failed to generate tenant JWT secret"; return 1; }
+  kubectl -n "$ns" create secret generic "${TENANT_AUTH_SECRET}" \
+    --from-literal=JWT_SECRET="$secret" >/dev/null \
+    || { err "failed to store tenant JWT secret in ${ns}"; return 1; }
+  printf '%s' "$secret"
+}
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 
 # Build per-service Helm --set flags (EXTRA_ARGS) + secret pairs (SECRET_KV) for
@@ -294,7 +320,12 @@ build_helm_args() {
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in
       api-gateway|auth-service|document-service|collab-service|admin-service)
-        add_secret JWT_SECRET "${JWT_SECRET}" ;;
+        add_secret JWT_SECRET "${JWT_SECRET}"
+        # iss/aud bind tokens to this tenant; every validator rejects others.
+        EXTRA_ARGS+=(--set-string "config.JWT_ISSUER=${T_JWT_ISSUER:-${JWT_ISSUER_DEFAULT}}")
+        if [ -n "${T_JWT_AUDIENCE:-}" ]; then
+          EXTRA_ARGS+=(--set-string "config.JWT_AUDIENCE=${T_JWT_AUDIENCE}")
+        fi ;;
     esac
   fi
 

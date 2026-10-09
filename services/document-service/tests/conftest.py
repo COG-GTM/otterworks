@@ -20,6 +20,15 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 # test module is imported, so token signing does not depend on collection order.
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
+TEST_JWT_ISSUER = "otterworks-auth-service"
+TEST_JWT_AUDIENCE = "otterworks"
+
+
+def sign_test_token(claims: dict, algorithm: str = "HS256", **overrides: object) -> str:
+    """Sign ``claims`` the way auth-service does (with iss/aud unless overridden)."""
+    payload = {"iss": TEST_JWT_ISSUER, "aud": TEST_JWT_AUDIENCE, **claims, **overrides}
+    payload = {k: v for k, v in payload.items() if v is not None}
+    return jwt.encode(payload, TEST_JWT_SECRET, algorithm=algorithm)
 
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestingSessionLocal = async_sessionmaker(
@@ -48,7 +57,7 @@ def bearer_auth(user_id: uuid.UUID) -> Callable[[Request], Request]:
     A request that sets its own ``Authorization`` header keeps it; one passing
     ``auth=None`` is sent unauthenticated.
     """
-    token = jwt.encode({"user_id": str(user_id)}, TEST_JWT_SECRET, algorithm="HS256")
+    token = sign_test_token({"user_id": str(user_id)})
 
     def _apply(request: Request) -> Request:
         request.headers.setdefault("Authorization", f"Bearer {token}")

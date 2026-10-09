@@ -21,19 +21,32 @@ public class JwtTokenProvider {
   private final SecretKey key;
   private final long accessTokenExpiry;
   private final long refreshTokenExpiry;
+  private final String issuer;
+  private final String audience;
 
   public JwtTokenProvider(
       @Value("${jwt.secret}") String secret,
       @Value("${jwt.access-token-expiry:3600}") long accessTokenExpiry,
-      @Value("${jwt.refresh-token-expiry:2592000}") long refreshTokenExpiry) {
+      @Value("${jwt.refresh-token-expiry:2592000}") long refreshTokenExpiry,
+      @Value("${jwt.issuer:otterworks-auth-service}") String issuer,
+      @Value("${jwt.audience:otterworks}") String audience) {
+    if (issuer == null || issuer.isBlank() || audience == null || audience.isBlank()) {
+      throw new IllegalArgumentException("jwt.issuer and jwt.audience must be set");
+    }
     this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     this.accessTokenExpiry = accessTokenExpiry;
     this.refreshTokenExpiry = refreshTokenExpiry;
+    this.issuer = issuer;
+    this.audience = audience;
   }
 
   public String generateAccessToken(User user) {
     Instant now = Instant.now();
     return Jwts.builder()
+        .issuer(issuer)
+        .audience()
+        .add(audience)
+        .and()
         .subject(user.getId().toString())
         .claim("email", user.getEmail())
         .claim("name", user.getDisplayName())
@@ -49,6 +62,10 @@ public class JwtTokenProvider {
     String jti = UUID.randomUUID().toString();
     Instant now = Instant.now();
     return Jwts.builder()
+        .issuer(issuer)
+        .audience()
+        .add(audience)
+        .and()
         .subject(user.getId().toString())
         .id(jti)
         .claim("type", "refresh")
@@ -59,7 +76,13 @@ public class JwtTokenProvider {
   }
 
   public Claims validateAndGetClaims(String token) {
-    return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
+    return Jwts.parser()
+        .verifyWith(key)
+        .requireIssuer(issuer)
+        .requireAudience(audience)
+        .build()
+        .parseSignedClaims(token)
+        .getPayload();
   }
 
   public String validateTokenAndGetUserId(String token) {

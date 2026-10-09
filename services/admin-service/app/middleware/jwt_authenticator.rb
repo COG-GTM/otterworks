@@ -4,6 +4,11 @@ class JwtAuthenticator
 
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
+  # Tokens must name this deployment's issuer and audience (each tenant gets its
+  # own JWT_AUDIENCE), so a token minted by another tenant is never honoured.
+  DEFAULT_ISSUER = 'otterworks-auth-service'.freeze
+  DEFAULT_AUDIENCE = 'otterworks'.freeze
+
   def initialize(app)
     @app = app
   end
@@ -25,6 +30,14 @@ class JwtAuthenticator
     env['jwt.user_role'] = extract_role(payload)
 
     @app.call(env)
+  end
+
+  def self.issuer
+    ENV['JWT_ISSUER'].presence || DEFAULT_ISSUER
+  end
+
+  def self.audience
+    ENV['JWT_AUDIENCE'].presence || DEFAULT_AUDIENCE
   end
 
   private
@@ -55,9 +68,15 @@ class JwtAuthenticator
     secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
-    decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
+    decoded = JWT.decode(
+      token, secret, true,
+      algorithms: %w[HS256 HS384 HS512],
+      iss: self.class.issuer, verify_iss: true,
+      aud: self.class.audience, verify_aud: true,
+      required_claims: %w[iss aud]
+    )
     decoded.first
-  rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
+  rescue JWT::DecodeError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
     nil
   end

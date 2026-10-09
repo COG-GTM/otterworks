@@ -32,7 +32,7 @@
 #   ACTOR         audit actor label                       (default runner)
 #
 # Secrets (from Kubernetes Secret refs in the Job spec — env only, NEVER argv):
-#   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE
+#   DB_PASSWORD, SECRET_KEY_BASE (JWT_SECRET is generated per tenant)
 #
 # This script never echoes secret values and never passes them on a command line;
 # the underlying scripts read them straight from the environment.
@@ -135,8 +135,8 @@ run_deploy() {
   # Prefer images built from this tenant's own branch (see deploy-tenant.sh's
   # tag resolution) over whatever was pushed to a service's repo most recently.
   [ -n "${TENANT_BRANCH:-}" ] && args+=(--branch "${TENANT_BRANCH}")
-  # Secrets (DB_PASSWORD/JWT_SECRET/SECRET_KEY_BASE) are read from the env by the
-  # script; they are NOT placed on this argv.
+  # Secrets (DB_PASSWORD/SECRET_KEY_BASE) are read from the env by the script;
+  # they are NOT placed on this argv. JWT_SECRET is generated per tenant.
   if "${REPO_DIR}/scripts/deploy-tenant.sh" "${TENANT_ID}" "${args[@]}"; then
     ctl_set_active "${TENANT_ID}" "${url}" "${api_url}" "${db}" "${ns}" "${exp}"
     ctl_audit "${TENANT_ID}" deploy_ok "url=${url}"

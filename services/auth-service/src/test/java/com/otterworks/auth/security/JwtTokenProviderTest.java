@@ -12,15 +12,22 @@ import org.junit.jupiter.api.Test;
 
 class JwtTokenProviderTest {
 
+  private static final String SECRET =
+      "test-jwt-secret-otterworks-must-be-at-least-32-bytes-long-for-hmac";
+  private static final String ISSUER = "otterworks-auth-service";
+  private static final String AUDIENCE = "otterworks-tenant-a";
+
   private JwtTokenProvider jwtTokenProvider;
 
   @BeforeEach
   void setUp() {
     jwtTokenProvider =
         new JwtTokenProvider(
-            "test-jwt-secret-otterworks-must-be-at-least-32-bytes-long-for-hmac",
+            SECRET,
             3600,
-            2592000); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
+            2592000,
+            ISSUER,
+            AUDIENCE); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
   }
 
   @Test
@@ -91,13 +98,63 @@ class JwtTokenProviderTest {
   void isTokenValid_shouldReturnFalseForExpiredToken() {
     JwtTokenProvider shortLivedProvider =
         new JwtTokenProvider(
-            "test-jwt-secret-otterworks-must-be-at-least-32-bytes-long-for-hmac",
+            SECRET,
             -1,
-            -1); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
+            -1,
+            ISSUER,
+            AUDIENCE); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
     User user = createTestUser();
     String token = shortLivedProvider.generateAccessToken(user);
 
     assertThat(shortLivedProvider.isTokenValid(token)).isFalse();
+  }
+
+  @Test
+  void generatedTokens_shouldCarryIssuerAndTenantAudience() {
+    User user = createTestUser();
+
+    Claims access = jwtTokenProvider.validateAndGetClaims(jwtTokenProvider.generateAccessToken(user));
+    Claims refresh =
+        jwtTokenProvider.validateAndGetClaims(jwtTokenProvider.generateRefreshToken(user));
+
+    assertThat(access.getIssuer()).isEqualTo(ISSUER);
+    assertThat(access.getAudience()).containsExactly(AUDIENCE);
+    assertThat(refresh.getIssuer()).isEqualTo(ISSUER);
+    assertThat(refresh.getAudience()).containsExactly(AUDIENCE);
+  }
+
+  @Test
+  void tokenFromAnotherTenant_shouldBeRejectedEvenWithSameSecret() {
+    JwtTokenProvider otherTenant =
+        new JwtTokenProvider(SECRET, 3600, 2592000, ISSUER, "otterworks-tenant-b");
+    User user = createTestUser();
+    String foreignAccess = otherTenant.generateAccessToken(user);
+    String foreignRefresh = otherTenant.generateRefreshToken(user);
+
+    assertThat(jwtTokenProvider.isTokenValid(foreignAccess)).isFalse();
+    assertThat(jwtTokenProvider.isTokenValid(foreignRefresh)).isFalse();
+    assertThatThrownBy(() -> jwtTokenProvider.validateTokenAndGetUserId(foreignAccess))
+        .isInstanceOf(io.jsonwebtoken.JwtException.class);
+  }
+
+  @Test
+  void tokenWithoutIssuerOrAudience_shouldBeRejected() {
+    String bare =
+        io.jsonwebtoken.Jwts.builder()
+            .subject(UUID.randomUUID().toString())
+            .claim("roles", List.of("OWNER"))
+            .signWith(
+                io.jsonwebtoken.security.Keys.hmacShaKeyFor(
+                    SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+            .compact();
+
+    assertThat(jwtTokenProvider.isTokenValid(bare)).isFalse();
+  }
+
+  @Test
+  void blankAudience_shouldFailFast() {
+    assertThatThrownBy(() -> new JwtTokenProvider(SECRET, 3600, 2592000, ISSUER, " "))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test

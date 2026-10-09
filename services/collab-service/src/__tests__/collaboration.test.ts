@@ -8,14 +8,18 @@ import { DocumentStore } from '../services/document-store';
 import { AwarenessService } from '../services/awareness';
 import { PresenceHandler } from '../handlers/presence';
 import { MetricsCollector } from '../metrics';
-import { createAuthMiddleware } from '../middleware/auth';
+import { createAuthMiddleware, DEFAULT_TOKEN_BINDING } from '../middleware/auth';
 import { RedisAdapter } from '../services/redis-adapter';
 
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
 
 function createToken(payload: Record<string, unknown>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '1h',
+    issuer: DEFAULT_TOKEN_BINDING.issuer,
+    audience: DEFAULT_TOKEN_BINDING.audience,
+  }); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
 }
 
 const mockRedis = {

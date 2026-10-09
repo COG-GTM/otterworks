@@ -3,16 +3,16 @@
 import os
 import uuid
 
-import jwt
 import pytest
 from httpx import AsyncClient
 
-TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
+from tests.conftest import TEST_JWT_SECRET, sign_test_token
+
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
 
 def _make_jwt(user_id: str) -> str:
-    return jwt.encode({"user_id": user_id}, TEST_JWT_SECRET, algorithm="HS256")
+    return sign_test_token({"user_id": user_id})
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,7 @@ async def test_create_document_via_jwt(client: AsyncClient):
 async def test_create_document_via_jwt_hs384(client: AsyncClient):
     """Create a document using an HS384-signed JWT (matches auth-service algorithm)."""
     user_id = uuid.uuid4()
-    token = jwt.encode({"sub": str(user_id)}, TEST_JWT_SECRET, algorithm="HS384")
+    token = sign_test_token({"sub": str(user_id)}, algorithm="HS384")
     resp = await client.post(
         "/api/v1/documents/",
         json={"title": "HS384 Doc"},
@@ -279,5 +279,27 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         "/api/v1/documents/",
         json={"title": "No Auth Doc"},
         auth=None,  # opt out of the client fixture's default bearer token
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"aud": "otterworks-other-tenant"},
+        {"iss": "someone-else"},
+        {"aud": None},
+        {"iss": None},
+    ],
+    ids=["foreign-audience", "foreign-issuer", "no-audience", "no-issuer"],
+)
+async def test_token_not_bound_to_this_tenant_is_rejected(client: AsyncClient, overrides):
+    """A correctly signed token minted for another tenant/issuer is not accepted."""
+    token = sign_test_token({"sub": str(uuid.uuid4())}, **overrides)
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Cross-tenant Doc"},
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 401
