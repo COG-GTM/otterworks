@@ -126,4 +126,25 @@ class JwtVerifierTest {
         assertThat(weak.isConfigured()).isFalse();
         assertThat(weak.verifySubject(TestTokens.sign("HS256", shortSecret, validClaims()))).isEmpty();
     }
+
+    @Test
+    void rejectsEmptyOrNonObjectSegments() {
+        assertThat(verifier.verifySubject("..")).isEmpty();
+        assertThat(verifier.verifySubject("W10..")).isEmpty();
+        assertThat(verifier.verifySubject("bnVsbA..")).isEmpty();
+        String header = TestTokens.segment(Map.of("alg", "HS256"));
+        assertThat(verifier.verifySubject(TestTokens.signRaw("HS256", TestTokens.SECRET, header, "")))
+                .isEmpty();
+        assertThat(
+                        verifier.verifySubject(
+                                TestTokens.signRaw("HS256", TestTokens.SECRET, header, "W10")))
+                .isEmpty();
+    }
+
+    @Test
+    void rejectsOversizedTokens() {
+        Map<String, Object> claims = new java.util.HashMap<>(validClaims());
+        claims.put("pad", "x".repeat(JwtVerifier.MAX_TOKEN_LENGTH));
+        assertThat(verifier.verifySubject(TestTokens.sign("HS256", TestTokens.SECRET, claims))).isEmpty();
+    }
 }

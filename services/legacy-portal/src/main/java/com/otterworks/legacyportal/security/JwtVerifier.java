@@ -23,6 +23,9 @@ public class JwtVerifier {
 
     static final int MIN_SECRET_BYTES = 32;
 
+    /** Far above any auth-service token; bounds work done on untrusted input before verification. */
+    static final int MAX_TOKEN_LENGTH = 4096;
+
     private static final Map<String, String> HMAC_ALGORITHMS =
             Map.of("HS256", "HmacSHA256", "HS384", "HmacSHA384", "HS512", "HmacSHA512");
 
@@ -43,7 +46,7 @@ public class JwtVerifier {
 
     /** Returns the token's subject (user id) if the token is valid, otherwise empty. */
     public Optional<String> verifySubject(String token) {
-        if (secret == null || token == null) {
+        if (secret == null || token == null || token.length() > MAX_TOKEN_LENGTH) {
             return Optional.empty();
         }
         String[] parts = token.split("\\.", -1);
@@ -52,6 +55,9 @@ public class JwtVerifier {
         }
         try {
             JsonNode header = mapper.readTree(decode(parts[0]));
+            if (header == null || !header.isObject()) {
+                return Optional.empty();
+            }
             String algorithm = HMAC_ALGORITHMS.get(header.path("alg").asText(""));
             if (algorithm == null) {
                 return Optional.empty();
@@ -67,6 +73,9 @@ public class JwtVerifier {
     }
 
     private Optional<String> subjectIfValid(JsonNode claims) {
+        if (claims == null || !claims.isObject()) {
+            return Optional.empty();
+        }
         long now = clock.instant().getEpochSecond();
         JsonNode exp = claims.get("exp");
         if (exp == null || !exp.isNumber() || exp.asLong() <= now) {
