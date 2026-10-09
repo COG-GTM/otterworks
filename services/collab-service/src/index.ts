@@ -22,12 +22,7 @@ import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const {
-  setupWSConnection,
-  setPersistence,
-  docs: wsDocs,
-} = require('y-websocket/bin/utils') as {
+interface YWebsocketUtils {
   setupWSConnection: (conn: unknown, req: unknown, opts?: { docName?: string }) => void;
   setPersistence: (persistence: {
     provider: unknown;
@@ -35,7 +30,10 @@ const {
     writeState: (docName: string, doc: Y.Doc) => Promise<void>;
   }) => void;
   docs: Map<string, SharedDoc>;
-};
+}
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const yWebsocketUtils: YWebsocketUtils = require('y-websocket/bin/utils');
+const { setupWSConnection, setPersistence, docs: wsDocs } = yWebsocketUtils;
 
 const config = loadConfig();
 const { limits } = config;
