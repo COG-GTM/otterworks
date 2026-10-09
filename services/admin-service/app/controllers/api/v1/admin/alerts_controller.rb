@@ -20,9 +20,9 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
-        # One Grafana notification batches a handful of alerts; anything larger
-        # is either misconfiguration or an attempt to fan out incidents.
-        MAX_ALERTS_PER_REQUEST = 20
+        # Generous bound on one Grafana notification group; incident fan-out is
+        # separately bounded by per-service dedup and DevinSessionThrottle.
+        MAX_ALERTS_PER_REQUEST = 100
 
         SEVERITY_MAP = {
           'critical' => 'critical',
@@ -80,21 +80,22 @@ module Api
           end
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
+          start_session    = auto_investigate && DevinSessionThrottle.acquire
 
           incident = Incident.create!(
             title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
-            status:           auto_investigate ? 'investigating' : 'open',
+            status:           start_session ? 'investigating' : 'open',
             affected_service: affected_service,
             reporter_id:      nil, # system-generated
           )
 
           session_result = nil
-          if auto_investigate && !DevinSessionThrottle.acquire
-            Rails.logger.warn("Devin session rate limit reached — incident #{incident.id} left for manual triage")
-          elsif auto_investigate
+          if start_session
             session_result = DevinSessionService.create_session(incident: incident)
+          elsif auto_investigate
+            Rails.logger.warn("Devin session rate limit reached — incident #{incident.id} left open for manual triage")
           else
             Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
           end

@@ -31,4 +31,17 @@ func TestBlockInternalPaths(t *testing.T) {
 		handler.ServeHTTP(rec, req)
 		assert.Equal(t, want, rec.Code, p)
 	}
+
+	encoded := map[string]int{
+		"/api/v1/admin%2Falerts%2Fingest": http.StatusNotFound,
+		"/api/v1/admin%252Falerts/ingest": http.StatusNotFound,
+		"/api/v1/admin/alerts/%69ngest":   http.StatusNotFound,
+		"/api/v1/admin/alerts%2Fother":    http.StatusOK,
+	}
+	for target, want := range encoded {
+		req := httptest.NewRequest(http.MethodPost, target, nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, want, rec.Code, target)
+	}
 }

@@ -103,6 +103,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
 
       expect(response).to have_http_status(:ok)
       expect(Incident.count).to eq(1)
+      expect(Incident.last.status).to eq('open')
       expect(DevinSessionService).not_to have_received(:create_session)
     end
 
