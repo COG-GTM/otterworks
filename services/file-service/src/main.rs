@@ -13,6 +13,7 @@ mod middleware;
 mod models;
 mod seed;
 mod storage;
+mod upload;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -49,6 +50,9 @@ async fn main() -> std::io::Result<()> {
     let meta_data = web::Data::new(meta_client);
     let events_data = web::Data::new(event_publisher);
     let redis_data = web::Data::new(redis_cm);
+    let upload_budget = web::Data::new(upload::UploadBudget::new(
+        config_data.server.upload_memory_budget_bytes,
+    ));
 
     HttpServer::new(move || {
         App::new()
@@ -60,6 +64,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(meta_data.clone())
             .app_data(events_data.clone())
             .app_data(redis_data.clone())
+            .app_data(upload_budget.clone())
             .route("/health", web::get().to(handlers::health))
             .route("/metrics", web::get().to(handlers::metrics))
             .service(
