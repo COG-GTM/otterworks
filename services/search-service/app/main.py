@@ -60,6 +60,7 @@ def create_app(config: AppConfig | None = None) -> Flask:
 
     # Store config on the app
     app.config["APP_CONFIG"] = config
+    app.config["MAX_CONTENT_LENGTH"] = config.max_content_length
 
     # Initialize MeiliSearch service
     search_service = MeiliSearchService(config.meilisearch)

@@ -159,3 +159,67 @@ class TestAnalyticsEndpoint:
         assert "zero_result_queries" in data
         assert "total_searches" in data
         assert "avg_results_per_query" in data
+
+
+class TestSearchInputLimits:
+    """Oversized search input is rejected and never retained in analytics."""
+
+    def test_search_rejects_overlong_query(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        response = client.get("/api/v1/search/", query_string={"q": "a" * 513})
+        assert response.status_code == 400
+        mock_index.search.assert_not_called()
+
+    def test_search_accepts_max_length_query(self, client, mock_meilisearch_client):
+        response = client.get("/api/v1/search/", query_string={"q": "a" * 512})
+        assert response.status_code == 200
+
+    def test_advanced_rejects_overlong_query(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        response = client.post("/api/v1/search/advanced", json={"q": "a" * 513})
+        assert response.status_code == 400
+        mock_index.search.assert_not_called()
+
+    def test_advanced_rejects_non_string_query(self, client):
+        response = client.post("/api/v1/search/advanced", json={"q": ["a", "b"]})
+        assert response.status_code == 400
+
+    def test_advanced_rejects_non_object_body(self, client):
+        response = client.post("/api/v1/search/advanced", json=["q"])
+        assert response.status_code == 400
+
+    def test_advanced_rejects_too_many_tags(self, client):
+        response = client.post("/api/v1/search/advanced", json={"tags": [f"t{i}" for i in range(21)]})
+        assert response.status_code == 400
+
+    def test_advanced_rejects_invalid_tags(self, client):
+        assert client.post("/api/v1/search/advanced", json={"tags": "finance"}).status_code == 400
+        assert client.post("/api/v1/search/advanced", json={"tags": [1]}).status_code == 400
+        assert client.post("/api/v1/search/advanced", json={"tags": ["x" * 129]}).status_code == 400
+
+    def test_advanced_rejects_oversized_body(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        response = client.post("/api/v1/search/advanced", json={"q": "a", "pad": "x" * (64 * 1024)})
+        assert response.status_code == 413
+        mock_index.search.assert_not_called()
+
+    def test_app_sets_max_content_length(self, app):
+        assert app.config["MAX_CONTENT_LENGTH"] == 1024 * 1024
+
+    def test_index_endpoint_not_bound_by_search_body_limit(self, client):
+        response = client.post(
+            "/api/v1/search/index/document",
+            json={"id": "doc-big", "title": "Big", "content": "x" * (100 * 1024), "owner_id": "user-1"},
+        )
+        assert response.status_code == 201
+
+    def test_analytics_stores_truncated_query(self):
+        from app.services.meilisearch_client import (
+            MAX_ANALYTICS_QUERY_LENGTH,
+            _search_analytics,
+            record_search_analytics,
+        )
+
+        record_search_analytics("q" * 10_000, 0)
+        stored = _search_analytics["queries"][-1]["query"]
+        assert stored == "q" * MAX_ANALYTICS_QUERY_LENGTH

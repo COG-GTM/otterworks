@@ -29,6 +29,7 @@ paths:
           schema:
             type: string
             minLength: 1
+            maxLength: 512
           example: "quarterly report"
         - name: type
           in: query
@@ -162,13 +163,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
         "400":
-          description: Invalid page or size parameter
+          description: Invalid q, tags, page or size parameter
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Invalid page or size parameter"
+        "413":
+          description: Request body larger than 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Request body too large"
         "500":
           description: Internal server error
           content:
@@ -644,6 +653,7 @@ components:
       properties:
         q:
           type: string
+          maxLength: 512
           description: Search query (optional for advanced search)
         type:
           type: string
@@ -651,8 +661,10 @@ components:
           description: Filter by item type
         tags:
           type: array
+          maxItems: 20
           items:
             type: string
+            maxLength: 128
           description: Filter by tags
         date_from:
           type: string
