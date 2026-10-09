@@ -59,8 +59,8 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 env: ## Create .env with a random JWT_SECRET (keeps an existing one)
 	@touch .env
-	@if grep -Eq '^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production)?$$' .env; then \
-		sed -i.bak -E '/^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production)?$$/d' .env && rm -f .env.bak; \
+	@if grep -Eq '^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production|dev-jwt-secret-otterworks-2024-change-in-production|dev_jwt_secret_key|dev_jwt_secret)?$$' .env; then \
+		sed -i.bak -E '/^JWT_SECRET=(otterworks-local-dev-jwt-secret-change-me-in-production|dev-jwt-secret-otterworks-2024-change-in-production|dev_jwt_secret_key|dev_jwt_secret)?$$/d' .env && rm -f .env.bak; \
 	fi
 	@grep -q '^JWT_SECRET=' .env || { echo "JWT_SECRET=$$(openssl rand -hex 32)" >> .env && echo "Generated a random JWT_SECRET in .env"; }
 
