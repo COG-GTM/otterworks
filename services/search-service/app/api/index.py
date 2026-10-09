@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hmac
+
 import structlog
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import INDEX_COUNT
 from app.services.indexer import Indexer
@@ -16,10 +18,16 @@ index_bp = Blueprint("index", __name__)
 
 def _get_indexer() -> Indexer:
     """Get an Indexer instance from the current app config."""
-    from flask import current_app
-
     search_service: MeiliSearchService = current_app.config["SEARCH_SERVICE"]
     return Indexer(search_service)
+
+
+def _has_service_token() -> bool:
+    expected = current_app.config["APP_CONFIG"].auth.service_token
+    auth_header = request.headers.get("Authorization", "")
+    if not expected or not auth_header.lower().startswith("bearer "):
+        return False
+    return hmac.compare_digest(auth_header[7:].strip().encode(), expected.encode())
 
 
 @index_bp.route("/index/document", methods=["POST"])
@@ -82,7 +90,14 @@ def remove_from_index(doc_type: str, doc_id: str) -> tuple:
 
 @index_bp.route("/reindex", methods=["POST"])
 def reindex() -> tuple:
-    """Reindex all data (admin operation)."""
+    """Reindex all data (admin operation).
+
+    Reindex drops every user's index entries, so it requires the internal
+    service token; a gateway-forwarded user identity is not enough.
+    """
+    if not _has_service_token():
+        logger.warning("reindex_rejected_without_service_token")
+        return jsonify({"error": "forbidden"}), 403
     try:
         indexer = _get_indexer()
         result = indexer.reindex()
