@@ -33,8 +33,13 @@ public final class TestTokens {
     }
 
     public static String sign(String alg, String secret, Map<String, Object> claims) {
+        return signRaw(alg, secret, segment(Map.of("alg", alg, "typ", "JWT")), segment(claims));
+    }
+
+    /** Signs arbitrary pre-encoded header/payload segments (for malformed-token tests). */
+    public static String signRaw(String alg, String secret, String header, String payload) {
         try {
-            String signingInput = segment(Map.of("alg", alg, "typ", "JWT")) + "." + segment(claims);
+            String signingInput = header + "." + payload;
             String jcaName = "HmacSHA" + alg.substring(2);
             Mac mac = Mac.getInstance(jcaName);
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), jcaName));

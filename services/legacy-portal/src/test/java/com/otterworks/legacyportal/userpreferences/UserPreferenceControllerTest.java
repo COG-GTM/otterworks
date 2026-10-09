@@ -128,6 +128,14 @@ class UserPreferenceControllerTest {
     }
 
     @Test
+    void emptyTokenSegmentsAreUnauthorizedNotServerErrors() throws Exception {
+        mockMvc.perform(get("/api/preferences/" + ALICE).header(HttpHeaders.AUTHORIZATION, "Bearer .."))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/health").header(HttpHeaders.AUTHORIZATION, "Bearer .."))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void otherModulesAndHealthStayPublic() throws Exception {
         mockMvc.perform(get("/health")).andExpect(status().isOk());
         mockMvc.perform(get("/api/announcements")).andExpect(status().isOk());
