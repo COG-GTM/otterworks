@@ -489,7 +489,9 @@ export class CollaborationManager {
     const next = previous.then(() => this.writeDirtyState(documentId, operation));
     this.persistChains.set(documentId, next);
     void next.then(() => {
-      if (this.persistChains.get(documentId) === next) this.persistChains.delete(documentId);
+      if (this.persistChains.get(documentId) === next) {
+        this.persistChains.delete(documentId);
+      }
     });
     return next;
   }
