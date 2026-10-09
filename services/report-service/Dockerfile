@@ -3,12 +3,12 @@
 FROM maven:3.8.7-eclipse-temurin-8 AS builder
 
 WORKDIR /app
-COPY pom.xml .
+COPY pom.xml settings.xml ./
 # Download dependencies first for Docker layer caching
-RUN mvn dependency:go-offline -B
+RUN mvn -s settings.xml dependency:go-offline -B
 
 COPY src/ src/
-RUN mvn package -DskipTests -B
+RUN mvn -s settings.xml package -DskipTests -B
 
 # LEGACY: JRE 8 runtime (target: eclipse-temurin:17-jre or 21-jre)
 FROM eclipse-temurin:8-jre
