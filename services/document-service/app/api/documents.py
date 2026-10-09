@@ -101,6 +101,18 @@ def _require_user_id(request: Request) -> UUID:
     return user_id
 
 
+def _resolve_list_owner(request: Request, owner_id: UUID | None) -> UUID:
+    """Scope a document listing to the authenticated caller.
+
+    ``owner_id`` is accepted only when it names the caller, so a listing can
+    never be widened to another user or, with no identity, to every owner.
+    """
+    user_id = _require_user_id(request)
+    if owner_id is not None and owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return user_id
+
+
 def _ensure_owner(document: object, user_id: UUID) -> None:
     if getattr(document, "owner_id", None) != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -205,7 +217,6 @@ async def _do_list_documents(
     size: int,
     db: AsyncSession,
 ) -> DocumentListResponse:
-    await _maybe_inject_latency()
     service = DocumentService(db)
     items, total = await service.list_documents(
         owner_id=owner_id, folder_id=folder_id, page=page, size=size
@@ -230,7 +241,6 @@ async def _do_filter_documents(
     size: int,
     db: AsyncSession,
 ) -> DocumentListResponse:
-    await _maybe_inject_latency()
     repo = DocumentQueryRepository(db)
     filters = {
         "owner_id": str(owner_id) if owner_id else None,
@@ -288,7 +298,8 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    await _maybe_inject_latency()
+    effective_owner = _resolve_list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -322,7 +333,8 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    await _maybe_inject_latency()
+    effective_owner = _resolve_list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,

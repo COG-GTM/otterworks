@@ -1,8 +1,7 @@
 """Tests for the document list endpoint's metadata filters.
 
-Requests are sent unauthenticated (``auth=None``): the filter path scopes by
-the JWT-derived owner, and these tests exercise the unscoped upstream
-semantics.
+Listings are sent as the documents' owner: the list endpoint always scopes
+by the authenticated caller.
 """
 
 import uuid
@@ -24,7 +23,7 @@ async def test_filter_by_title_fragment(client: AsyncClient, owner_id: uuid.UUID
     await _create(client, owner_id, "Quarterly Report")
     await _create(client, owner_id, "Meeting Notes")
 
-    resp = await client.get("/api/v1/documents/", params={"title": "report"}, auth=None)
+    resp = await client.get("/api/v1/documents/", params={"title": "report"})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -37,9 +36,7 @@ async def test_filter_by_content_type(client: AsyncClient, owner_id: uuid.UUID):
     await _create(client, owner_id, "Plan", content_type="text/markdown")
     await _create(client, owner_id, "Page", content_type="text/html")
 
-    resp = await client.get(
-        "/api/v1/documents/", params={"content_type": "text/html"}, auth=None
-    )
+    resp = await client.get("/api/v1/documents/", params={"content_type": "text/html"})
 
     assert resp.status_code == 200
     assert [item["title"] for item in resp.json()["items"]] == ["Page"]
@@ -53,7 +50,6 @@ async def test_filter_orders_by_title_ascending(client: AsyncClient, owner_id: u
     resp = await client.get(
         "/api/v1/documents/",
         params={"title": "plan", "sort": "title", "direction": "asc"},
-        auth=None,
     )
 
     assert resp.status_code == 200
@@ -65,9 +61,7 @@ async def test_filter_paginates(client: AsyncClient, owner_id: uuid.UUID):
     for index in range(3):
         await _create(client, owner_id, f"Plan {index}")
 
-    resp = await client.get(
-        "/api/v1/documents/", params={"title": "plan", "size": 2, "page": 2}, auth=None
-    )
+    resp = await client.get("/api/v1/documents/", params={"title": "plan", "size": 2, "page": 2})
 
     assert resp.status_code == 200
     body = resp.json()
@@ -80,7 +74,7 @@ async def test_filter_paginates(client: AsyncClient, owner_id: uuid.UUID):
 async def test_filter_no_match_returns_empty(client: AsyncClient, owner_id: uuid.UUID):
     await _create(client, owner_id, "Quarterly Report")
 
-    resp = await client.get("/api/v1/documents/", params={"title": "nothing"}, auth=None)
+    resp = await client.get("/api/v1/documents/", params={"title": "nothing"})
 
     assert resp.status_code == 200
     assert resp.json() == {"items": [], "total": 0, "page": 1, "size": 20, "pages": 1}
@@ -90,9 +84,7 @@ async def test_filter_no_match_returns_empty(client: AsyncClient, owner_id: uuid
 async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.UUID):
     await _create(client, owner_id, "Quarterly Report")
 
-    resp = await client.get(
-        "/api/v1/documents/", params={"owner_id": str(owner_id)}, auth=None
-    )
+    resp = await client.get("/api/v1/documents/", params={"owner_id": str(owner_id)})
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
