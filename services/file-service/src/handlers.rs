@@ -49,7 +49,6 @@ pub async fn upload_file(
     events: web::Data<EventPublisher>,
     config: web::Data<AppConfig>,
     redis_cm: web::Data<redis::aio::ConnectionManager>,
-    budget: web::Data<UploadBudget>,
     payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
     // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
@@ -76,6 +75,9 @@ pub async fn upload_file(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.trim().parse::<u64>().ok());
     // Held until the upload finishes so the buffered body stays accounted for.
+    let budget = req
+        .app_data::<web::Data<UploadBudget>>()
+        .ok_or_else(|| ServiceError::Internal("upload budget not configured".into()))?;
     let mut reservation = budget.reservation();
     let UploadForm {
         file_bytes,
