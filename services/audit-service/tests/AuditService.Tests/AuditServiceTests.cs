@@ -32,6 +32,7 @@ public class AuditServiceTests
             _mockRepository.Object,
             _mockArchiver.Object,
             _options,
+            Options.Create(new AuditLimits { MaxReportEvents = 100, MaxResourceHistoryEvents = 50 }),
             _mockLogger.Object);
     }
 
@@ -142,7 +143,9 @@ public class AuditServiceTests
             CreateSampleEvent("e3", action: "delete", resourceType: "document"),
         };
 
-        _mockRepository.Setup(r => r.GetAllUserEventsAsync("user-1")).ReturnsAsync(events);
+        _mockRepository
+            .Setup(r => r.StreamUserEventsAsync("user-1", It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(events.ToAsyncEnumerable());
 
         var report = await _service.GetUserActivityReportAsync("user-1", "30d");
 
@@ -153,6 +156,33 @@ public class AuditServiceTests
         Assert.Equal(1, report.ActionCounts["delete"]);
         Assert.Equal(2, report.ResourceTypeCounts["document"]);
         Assert.Equal(1, report.ResourceTypeCounts["file"]);
+        Assert.False(report.Truncated);
+    }
+
+    [Fact]
+    public async Task GetUserActivityReportAsync_ShouldCapEventsAndKeepNewestRecent()
+    {
+        var now = DateTime.UtcNow;
+        var events = Enumerable.Range(1, 150)
+            .Select(i =>
+            {
+                var e = CreateSampleEvent($"e{i}");
+                e.Timestamp = now.AddMinutes(-i);
+                return e;
+            })
+            .ToList();
+
+        _mockRepository
+            .Setup(r => r.StreamUserEventsAsync("user-1", It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(events.ToAsyncEnumerable());
+
+        var report = await _service.GetUserActivityReportAsync("user-1", "30d");
+
+        Assert.Equal(100, report.TotalEvents);
+        Assert.True(report.Truncated);
+        Assert.Equal(Enumerable.Range(1, 10).Select(i => $"e{i}"), report.RecentEvents.Select(e => e.Id));
+        Assert.Equal(now.AddMinutes(-1), report.LastActivity);
+        Assert.Equal(now.AddMinutes(-100), report.FirstActivity);
     }
 
     [Fact]
@@ -164,12 +194,14 @@ public class AuditServiceTests
             CreateSampleEvent("e2", resourceId: "doc-1"),
         };
 
-        _mockRepository.Setup(r => r.GetResourceHistoryAsync("doc-1")).ReturnsAsync(events);
+        _mockRepository
+            .Setup(r => r.GetResourceHistoryAsync("doc-1", 50))
+            .ReturnsAsync(new AuditEventPage { Events = events, Total = 7, Page = 1, PageSize = 50 });
 
         var history = await _service.GetResourceHistoryAsync("doc-1");
 
         Assert.Equal("doc-1", history.ResourceId);
-        Assert.Equal(2, history.TotalEvents);
+        Assert.Equal(7, history.TotalEvents);
         Assert.Equal(2, history.Events.Count);
     }
 
@@ -184,8 +216,8 @@ public class AuditServiceTests
         };
 
         _mockRepository
-            .Setup(r => r.GetEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(events);
+            .Setup(r => r.StreamEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(events.ToAsyncEnumerable());
 
         var report = await _service.GetComplianceReportAsync("30d");
 
@@ -195,6 +227,22 @@ public class AuditServiceTests
         Assert.Equal(1, report.ActionBreakdown["create"]);
         Assert.Equal(1, report.ActionBreakdown["read"]);
         Assert.Equal(1, report.ActionBreakdown["update"]);
+        Assert.False(report.Truncated);
+    }
+
+    [Fact]
+    public async Task GetComplianceReportAsync_ShouldCapEventsAndMarkTruncated()
+    {
+        var events = Enumerable.Range(1, 150).Select(i => CreateSampleEvent($"e{i}")).ToList();
+
+        _mockRepository
+            .Setup(r => r.StreamEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .Returns(events.ToAsyncEnumerable());
+
+        var report = await _service.GetComplianceReportAsync("30d");
+
+        Assert.Equal(100, report.TotalEvents);
+        Assert.True(report.Truncated);
     }
 
     [Fact]
