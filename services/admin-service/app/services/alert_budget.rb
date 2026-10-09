@@ -1,21 +1,21 @@
-# Per-service caps on what alert ingest may create within a rolling window,
-# counted from the incidents table so every admin-service process shares them:
-#   - dedup bypass: how many incidents a trusted `dedup=false` alert may open
-#     for one service before alerts collapse onto the open incident again.
-#   - Devin sessions: how many billable sessions alert ingest may start for
-#     one service.
+# Per-service caps on what alert ingest may create within a rolling window.
+# Each slot is an AlertBudgetReservation row claimed under a per-service
+# Postgres advisory lock, so concurrent requests and processes cannot
+# overshoot, and incidents/sessions created outside alert ingest don't count.
+#   - incident: incidents alert ingest may open for one service.
+#   - devin_session: billable Devin sessions alert ingest may start for one service.
 module AlertBudget
   DEFAULT_WINDOW_SECONDS = 3600
   DEFAULT_MAX_INCIDENTS_PER_SERVICE = 10
   DEFAULT_MAX_DEVIN_SESSIONS_PER_SERVICE = 5
 
   class << self
-    def dedup_bypass_allowed?(affected_service)
-      recent_incidents(affected_service).count < max_incidents_per_service
+    def reserve_incident(affected_service)
+      reserve('incident', affected_service, max_incidents_per_service)
     end
 
-    def devin_session_allowed?(affected_service)
-      recent_incidents(affected_service).where.not(devin_session_id: nil).count < max_devin_sessions_per_service
+    def reserve_devin_session(affected_service)
+      reserve('devin_session', affected_service, max_devin_sessions_per_service)
     end
 
     def window_seconds
@@ -32,9 +32,19 @@ module AlertBudget
 
     private
 
-    def recent_incidents(affected_service)
-      Incident.where(affected_service: affected_service)
-              .where(created_at: window_seconds.seconds.ago..)
+    def reserve(kind, affected_service, limit)
+      AlertBudgetReservation.transaction do
+        lock_key = AlertBudgetReservation.connection.quote("alert_budget:#{kind}:#{affected_service}")
+        AlertBudgetReservation.connection.execute("SELECT pg_advisory_xact_lock(hashtext(#{lock_key}))")
+
+        scope = AlertBudgetReservation.where(kind: kind, affected_service: affected_service)
+        cutoff = window_seconds.seconds.ago
+        scope.where(created_at: ...cutoff).delete_all
+        next false if scope.count >= limit
+
+        scope.create!
+        true
+      end
     end
 
     def positive_int_env(name, default)

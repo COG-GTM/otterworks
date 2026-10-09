@@ -179,6 +179,37 @@ RSpec.describe Api::V1::Admin::AlertsController do
         expect(SlackNotifierService).to have_received(:notify_incident).exactly(4).times
       end
 
+      it 'caps incident creation even when resolved alerts leave nothing to dedupe onto' do
+        allow(AlertBudget).to receive(:max_incidents_per_service).and_return(2)
+        resolved = firing_alert.merge(status: 'resolved')
+
+        3.times do
+          post :ingest, params: { alerts: [firing_alert] }
+          post :ingest, params: { alerts: [resolved] }
+        end
+        post :ingest, params: { alerts: [firing_alert] }
+
+        expect(Incident.count).to eq(2)
+        expect(response.parsed_body['incidents'].first).to include('skipped' => true, 'reason' => 'budget_exhausted')
+      end
+
+      it 'does not count Devin sessions started outside alert ingest' do
+        allow(AlertBudget).to receive(:max_devin_sessions_per_service).and_return(1)
+        Incident.create!(title: 'manual', description: 'd', severity: 'high', status: 'resolved',
+                         affected_service: 'file-service', devin_session_id: 'manual-1')
+
+        post :ingest, params: { alerts: [firing_alert] }
+
+        expect(DevinSessionService).to have_received(:create_session).once
+      end
+
+      it 'ignores alerts for unknown services without reserving budget' do
+        post :ingest, params: { alerts: [firing_alert(service: 'not-a-service')] }
+
+        expect(Incident.count).to eq(0)
+        expect(AlertBudgetReservation.count).to eq(0)
+      end
+
       it 'budgets each service separately' do
         allow(AlertBudget).to receive(:max_devin_sessions_per_service).and_return(1)
         allow(DevinSessionService).to receive(:create_session) do |incident:|

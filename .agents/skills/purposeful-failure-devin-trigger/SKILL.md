@@ -78,7 +78,7 @@ second Devin client:
   controller honors by bypassing the skip — but only when `ALERT_WEBHOOK_SECRET`
   is configured and the sender presented it (unauthenticated ingest ignores
   `dedup` and `reporter_email`). Ingest also rejects >10 alerts per request and
-  caps, per `affected_service` per hour, dedup-bypassed incidents
+  caps, per `affected_service` per hour, alert-created incidents
   (`ALERT_MAX_INCIDENTS_PER_SERVICE`, default 10) and Devin sessions
   (`ALERT_MAX_DEVIN_SESSIONS_PER_SERVICE`, default 5; see `AlertBudget`).
   Devin sessions also only fire when

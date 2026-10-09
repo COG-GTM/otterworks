@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
+ActiveRecord::Schema[7.1].define(version: 2024_01_01_000009) do
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
 
@@ -29,6 +29,13 @@ ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
     t.index ["email"], name: "index_admin_users_on_email", unique: true
     t.index ["role"], name: "index_admin_users_on_role"
     t.index ["status"], name: "index_admin_users_on_status"
+  end
+
+  create_table "alert_budget_reservations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "kind", null: false
+    t.string "affected_service", null: false
+    t.datetime "created_at", null: false
+    t.index ["kind", "affected_service", "created_at"], name: "index_alert_budget_reservations_on_kind_service_created"
   end
 
   create_table "announcements", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

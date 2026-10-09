@@ -68,19 +68,19 @@ module Api
           end
 
           return nil unless status == 'firing'
-          return nil if affected_service.blank?
+          return nil unless Incident::AFFECTED_SERVICES.include?(affected_service)
 
           # Deduplicate: skip if an active incident for this service already
-          # exists — unless a trusted sender opts out with a `dedup=false` label
-          # and the service is still within its incident budget.
-          unless bypass_dedup?(labels, affected_service)
-            existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
-                               .first
-            if existing
-              Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
-              return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
-            end
+          # exists — unless a trusted sender opts out with a `dedup=false` label.
+          existing = active_incident(affected_service)
+          if existing && !bypass_dedup?(labels)
+            Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
+            return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
+          end
+
+          unless AlertBudget.reserve_incident(affected_service)
+            Rails.logger.warn("Alert #{alert_name} skipped — incident budget exhausted for #{affected_service}")
+            return { skipped: true, incident_id: existing&.id, reason: existing ? 'duplicate' : 'budget_exhausted' }
           end
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
@@ -95,7 +95,7 @@ module Api
           )
 
           session_result = nil
-          if auto_investigate && AlertBudget.devin_session_allowed?(affected_service)
+          if auto_investigate && AlertBudget.reserve_devin_session(affected_service)
             session_result = DevinSessionService.create_session(incident: incident)
           elsif auto_investigate
             Rails.logger.warn("Devin session budget exhausted for #{affected_service} — " \
@@ -151,14 +151,12 @@ module Api
           parts.join("\n\n")
         end
 
-        def bypass_dedup?(labels, affected_service)
-          return false unless labels[:dedup].to_s == 'false'
-          return false unless trusted_sender?
+        def active_incident(affected_service)
+          Incident.where(affected_service: affected_service).where(status: %w[open investigating]).first
+        end
 
-          return true if AlertBudget.dedup_bypass_allowed?(affected_service)
-
-          Rails.logger.warn("Incident budget exhausted for #{affected_service} — ignoring dedup=false")
-          false
+        def bypass_dedup?(labels)
+          labels[:dedup].to_s == 'false' && trusted_sender?
         end
 
         # True only when ALERT_WEBHOOK_SECRET is configured and the request
