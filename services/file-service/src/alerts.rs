@@ -1,8 +1,7 @@
 //! Fire-and-forget alert delivery to admin-service's Grafana-style webhook
 //! ingest endpoint (`POST /api/v1/admin/alerts/ingest`). Each failed upload
-//! produces one alert; the payload carries `dedup=false` so admin-service
-//! opens a fresh incident (and Devin session) per alert instead of collapsing
-//! repeats onto an existing open incident.
+//! produces one alert. admin-service collapses repeats onto the open incident
+//! for the service; the `dedup` label is informational and no longer honored.
 
 use serde_json::{json, Value};
 use std::sync::OnceLock;
@@ -76,9 +75,8 @@ pub fn build_share_notification_failure_payload(
     dedup: bool,
     share_recorded: bool,
 ) -> Value {
-    // `dedup=false` opens a fresh incident per alert; it is reserved for the
-    // forced-failure demo so a genuine SNS outage collapses onto one open
-    // incident like any other alert.
+    // `dedup` marks forced-failure demo alerts; admin-service ignores it and
+    // always collapses repeats onto the open incident.
     let mut labels = json!({
         "alertname": "NotificationEventPublishFailure",
         "severity": "critical",

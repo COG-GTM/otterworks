@@ -114,9 +114,10 @@ services:
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
       # Failed uploads fire a Grafana-style alert at admin-service's ingest
-      # endpoint so each failure opens its own incident + Devin session.
+      # endpoint, which opens an incident + Devin session (deduped per service).
+      # Set ALERT_WEBHOOK_SECRET (e.g. in .env) — ingest rejects alerts without it.
       ADMIN_SERVICE_URL: http://admin-service:8089
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       # Off locally even on this demo variant branch: the permanent failure is
       # baked into the file-service image (see its Dockerfile) for tenant
       # coggtm, and this explicit false overrides it so a local stack still
@@ -253,7 +254,7 @@ services:
       # Consumer failures fire a Grafana-style alert at admin-service's ingest
       # endpoint so a sustained failure opens an incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       # Off by default (matches the image's Dockerfile default). Set it to true
       # to point the consumer at a nonexistent queue; NOTIFICATION_STRICT_SCHEMA
       # instead reproduces the strict-parser deserialization failure (needs
@@ -397,7 +398,7 @@ services:
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
       SLACK_USER_MAP: ${SLACK_USER_MAP:-}
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       CHAOS_SECRET: ${CHAOS_SECRET:-}
     depends_on:
       postgres:

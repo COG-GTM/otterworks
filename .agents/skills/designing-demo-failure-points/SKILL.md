@@ -72,8 +72,9 @@ switch reaches a live tenant and how incidents spawn Devin sessions — read bot
 - From the failing service, fire-and-forget a Grafana-shaped payload to
   `${ADMIN_SERVICE_URL}/api/v1/admin/alerts/ingest` (see
   `services/file-service/src/alerts.rs`). Distinct `alertname` per failure
-  point, `severity: critical`, `affected_service`, and `"dedup": "false"` so
-  every click creates its own incident + Slack message.
+  point, `severity: critical`, and `affected_service`. admin-service always dedupes
+  against the open incident for the service (client `dedup` labels are ignored),
+  so resolve it to get a fresh incident + Slack message.
 - Attribute the click: pass the acting user's email (api-gateway injects
   `X-User-Email`) as the `reporter_email` label — Slack @-mentions the user via
   `SLACK_USER_MAP`/lookup, falling back to plain email or `SLACK_ONCALL_MEMBER`.

@@ -68,6 +68,10 @@ ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# Shared secret for the internal alert webhook (admin-service /alerts/ingest).
+# admin-service rejects all alerts without it. Derived from SECRET_KEY_BASE so
+# it stays stable whenever that is, unless supplied explicitly.
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(printf '%s' "alert-webhook:${SECRET_KEY_BASE}" | openssl dgst -sha256 -r | cut -d' ' -f1)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"

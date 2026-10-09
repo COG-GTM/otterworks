@@ -20,6 +20,10 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
+        # Generous bound on one Grafana notification group; incident fan-out is
+        # separately bounded by per-service dedup and DevinSessionThrottle.
+        MAX_ALERTS_PER_REQUEST = 100
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -32,6 +36,10 @@ module Api
           alerts = params[:alerts]
           unless alerts.is_a?(Array)
             return render json: { error: 'Missing alerts array' }, status: :bad_request
+          end
+          if alerts.size > MAX_ALERTS_PER_REQUEST
+            return render json: { error: "Too many alerts (max #{MAX_ALERTS_PER_REQUEST})" },
+                          status: 413
           end
 
           processed = alerts.map { |alert| process_alert(alert) }.compact
@@ -61,32 +69,33 @@ module Api
           return nil if affected_service.blank?
 
           # Deduplicate: skip if an active incident for this service already
-          # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
-            existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
-                               .first
-            if existing
-              Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
-              return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
-            end
+          # exists. Client labels (e.g. `dedup=false`) cannot opt out, so one
+          # request cannot fan out into many incidents and Devin sessions.
+          existing = Incident.where(affected_service: affected_service)
+                             .where(status: %w[open investigating])
+                             .first
+          if existing
+            Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
+            return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
           end
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
+          start_session    = auto_investigate && DevinSessionThrottle.acquire
 
           incident = Incident.create!(
             title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
-            status:           auto_investigate ? 'investigating' : 'open',
+            status:           start_session ? 'investigating' : 'open',
             affected_service: affected_service,
             reporter_id:      nil, # system-generated
           )
 
           session_result = nil
-          if auto_investigate
+          if start_session
             session_result = DevinSessionService.create_session(incident: incident)
+          elsif auto_investigate
+            Rails.logger.warn("Devin session rate limit reached — incident #{incident.id} left open for manual triage")
           else
             Rails.logger.info("Auto-investigate disabled — skipping Devin session for incident #{incident.id}")
           end
@@ -138,15 +147,20 @@ module Api
           parts.join("\n\n")
         end
 
+        # Fails closed: without a configured secret the endpoint is unusable,
+        # since it is excluded from JWT auth and feeds autonomous Devin sessions.
         def verify_alert_secret
-          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil).to_s
+          if expected.strip.empty?
+            Rails.logger.error('ALERT_WEBHOOK_SECRET is not configured; rejecting alert ingest')
+            return render json: { error: 'Alert ingest is not configured' }, status: :service_unavailable
+          end
 
           # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
           # (Grafana webhook contact points send the token as a Bearer header)
           provided = request.headers['X-Alert-Secret'].presence ||
                      request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+          return if provided && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
         end

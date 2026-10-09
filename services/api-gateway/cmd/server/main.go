@@ -86,6 +86,9 @@ func main() {
 		MaxAge:           cfg.CORSMaxAge,
 	}))
 
+	// Internal-only endpoints (e.g. the alert webhook) are never proxied
+	r.Use(middleware.BlockInternalPaths(middleware.DefaultInternalOnlyPaths()))
+
 	// JWT validation
 	r.Use(middleware.JWTAuth(middleware.JWTConfig{
 		Secret:              cfg.JWTSecret,
