@@ -200,6 +200,38 @@ async def test_search_documents(client: AsyncClient, owner_id: uuid.UUID):
 
 
 @pytest.mark.asyncio
+async def test_search_documents_requires_auth(client: AsyncClient):
+    resp = await client.get("/api/v1/documents/search", params={"q": "e"}, auth=None)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_documents_excludes_other_users(client: AsyncClient, owner_id: uuid.UUID):
+    other_owner = uuid.uuid4()
+    other_auth = {"Authorization": f"Bearer {_make_jwt(str(other_owner))}"}
+    await client.post(
+        "/api/v1/documents/",
+        json={"title": "My notes", "content": "secret plan", "owner_id": str(owner_id)},
+    )
+    await client.post(
+        "/api/v1/documents/",
+        json={"title": "Other notes", "content": "secret plan", "owner_id": str(other_owner)},
+        headers=other_auth,
+    )
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "e", "size": 100})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert [d["title"] for d in data["items"]] == ["My notes"]
+    assert {d["owner_id"] for d in data["items"]} == {str(owner_id)}
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "secret"}, headers=other_auth)
+    assert resp.status_code == 200
+    assert [d["title"] for d in resp.json()["items"]] == ["Other notes"]
+
+
+@pytest.mark.asyncio
 async def test_export_document_html(client: AsyncClient, owner_id: uuid.UUID):
     create_resp = await client.post(
         "/api/v1/documents/",
