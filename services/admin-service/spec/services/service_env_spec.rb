@@ -34,7 +34,22 @@ RSpec.describe ServiceEnv do
 
   describe '.redis_url' do
     it 'builds a usable URL when Kubernetes shadows REDIS_PORT' do
-      with_env('REDIS_URL' => nil, 'REDIS_HOST' => 'redis', 'REDIS_PORT' => 'tcp://172.20.229.93:6379') do
+      with_env('REDIS_URL' => nil, 'REDIS_HOST' => 'redis', 'REDIS_PORT' => 'tcp://172.20.229.93:6379',
+               'REDIS_PASSWORD' => nil, 'REDIS_TLS' => nil) do
+        expect(described_class.redis_url).to eq('redis://redis:6379/0')
+      end
+    end
+
+    it 'adds the AUTH token and switches to TLS for the shared ElastiCache' do
+      with_env('REDIS_URL' => nil, 'REDIS_HOST' => 'master.redis.cache.amazonaws.com', 'REDIS_PORT' => '6379',
+               'REDIS_PASSWORD' => 'p@ss/w:rd', 'REDIS_TLS' => 'true') do
+        expect(described_class.redis_url).to eq('rediss://:p%40ss%2Fw%3Ard@master.redis.cache.amazonaws.com:6379/0')
+      end
+    end
+
+    it 'stays plaintext and unauthenticated when neither is configured' do
+      with_env('REDIS_URL' => nil, 'REDIS_HOST' => 'redis', 'REDIS_PORT' => '6379',
+               'REDIS_PASSWORD' => '', 'REDIS_TLS' => nil) do
         expect(described_class.redis_url).to eq('redis://redis:6379/0')
       end
     end

@@ -205,6 +205,18 @@ load_infra_outputs() {
   RDS_HOST="${rds%%:*}"; RDS_PORT="${rds##*:}"
   [ "$RDS_PORT" = "$rds" ] && RDS_PORT=5432 || true
   REDIS_HOST="$(terraform -chdir="$d" output -raw redis_endpoint 2>/dev/null || echo "")"
+  REDIS_CLIENTS_SG="$(terraform -chdir="$d" output -raw redis_clients_security_group_id 2>/dev/null || echo "")"
+  local redis_auth_arn; redis_auth_arn="$(terraform -chdir="$d" output -raw redis_auth_secret_arn 2>/dev/null || echo "")"
+  REDIS_PASSWORD=""
+  if [ -n "${redis_auth_arn}" ]; then
+    REDIS_PASSWORD="$(aws secretsmanager get-secret-value --secret-id "${redis_auth_arn}" \
+      --region "${AWS_REGION}" --query SecretString --output text 2>/dev/null || echo "")"
+  fi
+  if [ -n "${REDIS_HOST}" ] && [ -z "${REDIS_PASSWORD}" ]; then
+    warn "Redis AUTH token unavailable from Secrets Manager; Redis-backed services will fail to connect."
+  fi
+  CLUSTER_SG="$(aws eks describe-cluster --name "${EKS_CLUSTER}" --region "${AWS_REGION}" \
+    --query 'cluster.resourcesVpcConfig.clusterSecurityGroupId' --output text 2>/dev/null || echo "")"
   S3_FILE_BUCKET="$(terraform -chdir="$d" output -raw s3_file_bucket 2>/dev/null || echo "")"
   S3_AUDIT_BUCKET="$(terraform -chdir="$d" output -raw s3_audit_archive_bucket 2>/dev/null || echo "")"
   DDB_FILE_META="$(terraform -chdir="$d" output -raw dynamodb_file_metadata_table 2>/dev/null || echo "")"
@@ -256,6 +268,13 @@ irsa_arn() { echo "${IRSA_JSON:-{}}" | jq -r --arg s "$1" '.[$s] // empty' 2>/de
 # --set-string, so secret values never appear in the process argument list
 # (visible via ps / /proc/*/cmdline).
 add_secret() { SECRET_KV+=("$1" "$2"); }
+
+# The shared ElastiCache requires TLS and its AUTH token (from Secrets Manager).
+add_redis_config() {
+  EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+  EXTRA_ARGS+=(--set-string "config.REDIS_TLS=true")
+  if [ -n "${REDIS_PASSWORD}" ]; then add_secret REDIS_PASSWORD "${REDIS_PASSWORD}"; fi
+}
 
 # URL-encode a string for safe use inside a URI (e.g. a DB password that may
 # contain @ : / # % ? in a connection string). Uses jq's @uri filter.
@@ -357,25 +376,25 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_FOLDERS_TABLE=${DDB_FOLDERS}")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=${DDB_VERSIONS}")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=${DDB_SHARES}")
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      add_redis_config
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${SNS_TOPIC}") ;;
     document-service)
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      add_redis_config
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_SNS_TOPIC_ARN=${SNS_TOPIC}")
       add_secret DOC_SVC_DATABASE_URL "postgresql+asyncpg://$(urlencode "${DB_USER}"):$(urlencode "${DB_PASSWORD}")@${DB_ENDPOINT_HOST}:${DB_ENDPOINT_PORT}/${DB_NAME}" ;;
     collab-service)
       EXTRA_ARGS+=(--set-string "config.HTTP_PORT=8084" --set-string "config.NODE_ENV=production")
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379") ;;
+      add_redis_config ;;
     notification-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      add_redis_config
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=${DDB_NOTIF}")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${SNS_TOPIC}")
       EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${SQS_NOTIF}") ;;
     search-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      add_redis_config
       EXTRA_ARGS+=(--set-string "config.HOST=0.0.0.0" --set-string "config.PORT=8087")
       EXTRA_ARGS+=(--set-string "config.MEILISEARCH_URL=${MEILISEARCH_URL}")
       EXTRA_ARGS+=(--set-string "config.REQUIRE_AUTH=false" --set-string "config.SQS_ENABLED=false") ;;
@@ -395,10 +414,15 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DATABASE_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DATABASE_PORT=${DB_SESSION_PORT}")
       EXTRA_ARGS+=(--set-string "config.DATABASE_USER=${DB_USER}")
       EXTRA_ARGS+=(--set-string "config.RAILS_ENV=production" --set-string "config.RAILS_LOG_TO_STDOUT=true")
-      # Settings (auto-investigate, Devin credentials) and chaos flags live in Redis.
-      EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
+      # Settings (auto-investigate, Devin credentials) and chaos flags live in
+      # Redis. Prefer DEVIN_*/SLACK_* env (a Kubernetes Secret) for credentials.
+      add_redis_config
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
-      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
+      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}"
+      local cred
+      for cred in DEVIN_API_KEY DEVIN_ORG_ID SLACK_BOT_TOKEN SLACK_WEBHOOK_URL; do
+        if [ -n "${!cred:-}" ]; then add_secret "${cred}" "${!cred}"; fi
+      done ;;
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")
@@ -434,6 +458,12 @@ deploy_service() {
     secret_args=(-f "${secret_file}")
   fi
 
+  # envFrom secrets are read only at pod start: note the current Redis AUTH token
+  # digest so pods can be restarted if a rotated token leaves the pod template unchanged.
+  local redis_pw_before
+  redis_pw_before="$(kubectl get secret -n "${NAMESPACE}" "${service}-secrets" \
+    -o jsonpath='{.data.REDIS_PASSWORD}' 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+
   log "Deploying ${service} via Helm..."
   helm upgrade --install "${service}" "${chart_dir}" \
     --namespace "${NAMESPACE}" \
@@ -446,6 +476,16 @@ deploy_service() {
     && local rc=0 || local rc=1
   [ -n "${secret_file}" ] && rm -f "${secret_file}"
   if [ "${rc}" -ne 0 ]; then warn "Helm deploy failed for ${service}"; return 1; fi
+
+  local redis_pw_after
+  redis_pw_after="$(kubectl get secret -n "${NAMESPACE}" "${service}-secrets" \
+    -o jsonpath='{.data.REDIS_PASSWORD}' 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+  if [ "${redis_pw_before}" != "${redis_pw_after}" ]; then
+    log "Redis AUTH token changed; restarting ${service} to pick it up..."
+    kubectl rollout restart -n "${NAMESPACE}" "deployment/${service}" && \
+      kubectl rollout status -n "${NAMESPACE}" "deployment/${service}" --timeout=180s || \
+      warn "Restart after Redis token change failed for ${service}"
+  fi
 }
 
 # MeiliSearch is the search-service backend. The IaC provisions it on ECS, but the
@@ -499,6 +539,37 @@ YAML
     warn "MeiliSearch did not become ready in time; search-service may report meilisearch_unavailable."
 }
 
+# The ElastiCache security group only admits the redis-clients security group.
+# Security groups for pods (vpc-cni ENABLE_POD_ENI) attach it to the golden
+# Redis clients only; tenant pods keep just the cluster security group. Pods
+# pick up a policy when they are created, so this must precede the rollout.
+REDIS_CLIENT_SERVICES="file-service document-service collab-service notification-service search-service admin-service"
+deploy_redis_security_group_policy() {
+  if [ -z "${REDIS_CLIENTS_SG}" ] || [ -z "${CLUSTER_SG}" ]; then
+    warn "redis-clients / cluster security group unknown; skipping SecurityGroupPolicy (Redis will be unreachable)."
+    return 0
+  fi
+  if ! kubectl get crd securitygrouppolicies.vpcresources.k8s.aws >/dev/null 2>&1; then
+    warn "SecurityGroupPolicy CRD missing (enable ENABLE_POD_ENI on vpc-cni); Redis will be unreachable."
+    return 0
+  fi
+  log "Applying redis-clients SecurityGroupPolicy..."
+  kubectl apply -n "${NAMESPACE}" -f - <<YAML
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
+metadata:
+  name: redis-clients
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [${REDIS_CLIENT_SERVICES// /, }]
+  securityGroups:
+    groupIds: [${CLUSTER_SG}, ${REDIS_CLIENTS_SG}]
+YAML
+}
+
 log "Loading application-infra Terraform outputs for config wiring..."
 load_infra_outputs
 
@@ -508,6 +579,7 @@ load_infra_outputs
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set (exported or via Terraform run) before deploying services}"
 
 deploy_meilisearch
+deploy_redis_security_group_policy
 
 log "Deploying services to EKS..."
 FAILED=()

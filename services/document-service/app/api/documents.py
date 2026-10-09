@@ -41,10 +41,13 @@ def _get_redis() -> redis_lib.Redis:
     """Return a shared Redis client (lazy-initialised)."""
     global _redis_client
     if _redis_client is None:
-        host = os.getenv("REDIS_HOST", "localhost")
-        port = int(os.getenv("REDIS_PORT", "6379"))
         _redis_client = redis_lib.Redis(
-            host=host, port=port, decode_responses=True, socket_timeout=1,
+            host=os.getenv("REDIS_HOST", "localhost"),
+            port=int(os.getenv("REDIS_PORT", "6379")),
+            password=os.getenv("REDIS_PASSWORD") or None,
+            ssl=os.getenv("REDIS_TLS", "").strip().lower() in ("1", "true", "yes"),
+            decode_responses=True,
+            socket_timeout=1,
         )
     return _redis_client
 

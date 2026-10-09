@@ -7,6 +7,21 @@ export interface RedisConfig {
   password?: string;
   db?: number;
   keyPrefix?: string;
+  tls?: boolean;
+}
+
+export function buildRedisOptions(config: RedisConfig) {
+  return {
+    host: config.host,
+    port: config.port,
+    password: config.password,
+    db: config.db || 0,
+    // The shared ElastiCache only accepts TLS connections.
+    tls: config.tls ? { servername: config.host } : undefined,
+    maxRetriesPerRequest: 3,
+    retryStrategy: (times: number) => Math.min(times * 200, 5000),
+    lazyConnect: true,
+  };
 }
 
 export class RedisAdapter {
@@ -19,15 +34,7 @@ export class RedisAdapter {
     this.logger = logger || null;
     this.keyPrefix = config.keyPrefix || '';
 
-    const redisOptions = {
-      host: config.host,
-      port: config.port,
-      password: config.password,
-      db: config.db || 0,
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times: number) => Math.min(times * 200, 5000),
-      lazyConnect: true,
-    };
+    const redisOptions = buildRedisOptions(config);
 
     this.client = new Redis(redisOptions);
     this.subscriber = new Redis(redisOptions);

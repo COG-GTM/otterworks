@@ -29,8 +29,9 @@ variable "subnet_ids" {
 }
 
 variable "allowed_cidr_blocks" {
-  description = "CIDR blocks allowed to connect to Redis"
+  description = "Extra CIDR blocks allowed to connect to Redis. Leave empty: pods get access through the redis-clients security group. Never pass the VPC CIDR, which includes every tenant pod."
   type        = list(string)
+  default     = []
 }
 
 variable "redis_node_type" {
@@ -39,10 +40,15 @@ variable "redis_node_type" {
   default     = "cache.t3.micro"
 }
 
-variable "redis_transit_encryption_enabled" {
-  description = "Enable in-transit (TLS) encryption. The services connect with plain redis://, so this defaults to false to match the application; enable it only alongside rediss:// client support."
-  type        = bool
-  default     = false
+variable "redis_transit_encryption_mode" {
+  description = "In-transit encryption mode. \"required\" rejects plaintext clients; set \"preferred\" only while migrating an existing plaintext cluster, then return to \"required\"."
+  type        = string
+  default     = "required"
+
+  validation {
+    condition     = contains(["required", "preferred"], var.redis_transit_encryption_mode)
+    error_message = "redis_transit_encryption_mode must be \"required\" or \"preferred\"."
+  }
 }
 
 variable "redis_apply_immediately" {

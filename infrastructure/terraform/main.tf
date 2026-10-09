@@ -20,6 +20,10 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.12"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   backend "s3" {
@@ -126,13 +130,14 @@ module "auth" {
   project     = "otterworks"
 }
 
+# Access is granted per pod through the module's redis-clients security group,
+# not by CIDR: every EKS pod (including every tenant) has a VPC address.
 module "cache" {
-  source              = "./modules/cache"
-  environment         = var.environment
-  project             = "otterworks"
-  vpc_id              = local.vpc_id
-  subnet_ids          = local.private_subnets
-  allowed_cidr_blocks = [local.vpc_cidr]
+  source      = "./modules/cache"
+  environment = var.environment
+  project     = "otterworks"
+  vpc_id      = local.vpc_id
+  subnet_ids  = local.private_subnets
 }
 
 module "monitoring" {

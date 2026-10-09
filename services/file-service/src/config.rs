@@ -113,9 +113,83 @@ impl SnsConfig {
     }
 }
 
+/// Connection info for Redis. REDIS_PASSWORD (AUTH token) and REDIS_TLS are
+/// set for the shared ElastiCache, which rejects unauthenticated and plaintext
+/// connections.
+pub fn redis_connection_info(get: impl Fn(&str) -> Option<String>) -> redis::ConnectionInfo {
+    let host = get("REDIS_HOST").unwrap_or_else(|| "localhost".into());
+    let port = get("REDIS_PORT")
+        .and_then(|p| p.trim().parse().ok())
+        .unwrap_or(6379);
+    let tls = get("REDIS_TLS").is_some_and(|v| parse_bool(&v, false));
+    let addr = if tls {
+        redis::ConnectionAddr::TcpTls {
+            host,
+            port,
+            insecure: false,
+            tls_params: None,
+        }
+    } else {
+        redis::ConnectionAddr::Tcp(host, port)
+    };
+    redis::ConnectionInfo {
+        addr,
+        redis: redis::RedisConnectionInfo {
+            password: get("REDIS_PASSWORD").filter(|p| !p.is_empty()),
+            ..Default::default()
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{parse_bool, parse_bool_env, redis_connection_info};
+    use std::collections::HashMap;
+
+    fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| map.get(k).cloned()
+    }
+
+    #[test]
+    fn redis_defaults_to_plain_unauthenticated_localhost() {
+        let info = redis_connection_info(env_of(&[]));
+        assert_eq!(
+            info.addr,
+            redis::ConnectionAddr::Tcp("localhost".into(), 6379)
+        );
+        assert_eq!(info.redis.password, None);
+    }
+
+    #[test]
+    fn redis_uses_tls_and_auth_token_for_shared_elasticache() {
+        let host = "master.otterworks-redis-dev.cache.amazonaws.com";
+        let info = redis_connection_info(env_of(&[
+            ("REDIS_HOST", host),
+            ("REDIS_PORT", "6379"),
+            ("REDIS_PASSWORD", "s3cret"),
+            ("REDIS_TLS", "true"),
+        ]));
+        assert_eq!(
+            info.addr,
+            redis::ConnectionAddr::TcpTls {
+                host: host.into(),
+                port: 6379,
+                insecure: false,
+                tls_params: None,
+            }
+        );
+        assert_eq!(info.redis.password.as_deref(), Some("s3cret"));
+    }
+
+    #[test]
+    fn redis_ignores_empty_password() {
+        let info = redis_connection_info(env_of(&[("REDIS_PASSWORD", "")]));
+        assert_eq!(info.redis.password, None);
+    }
 
     #[test]
     fn parse_bool_accepts_true_and_one() {

@@ -20,17 +20,53 @@ resource "aws_elasticache_subnet_group" "main" {
   })
 }
 
+# Attached only to the golden-namespace pods that use Redis (via a
+# SecurityGroupPolicy, see scripts/deploy-dev.sh). Nodes and tenant pods carry
+# the cluster security group instead, so they cannot reach 6379.
+resource "aws_security_group" "redis_clients" {
+  name        = "${var.project}-redis-clients-${var.environment}"
+  description = "Pods allowed to connect to OtterWorks ElastiCache Redis"
+  vpc_id      = var.vpc_id
+
+  egress {
+    description = "Redis"
+    from_port   = 6379
+    to_port     = 6379
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.selected.cidr_block]
+  }
+
+  tags = merge(local.common_tags, {
+    Service = "shared-cache"
+  })
+}
+
+data "aws_vpc" "selected" {
+  id = var.vpc_id
+}
+
 resource "aws_security_group" "redis" {
   name        = "${var.project}-redis-${var.environment}"
   description = "Security group for OtterWorks ElastiCache Redis"
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "Redis from EKS workers"
-    from_port   = 6379
-    to_port     = 6379
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_cidr_blocks
+    description     = "Redis from pods holding the redis-clients security group"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.redis_clients.id]
+  }
+
+  dynamic "ingress" {
+    for_each = length(var.allowed_cidr_blocks) > 0 ? [1] : []
+    content {
+      description = "Redis from explicitly allowed CIDR blocks"
+      from_port   = 6379
+      to_port     = 6379
+      protocol    = "tcp"
+      cidr_blocks = var.allowed_cidr_blocks
+    }
   }
 
   egress {
@@ -45,6 +81,28 @@ resource "aws_security_group" "redis" {
   })
 }
 
+# ElastiCache AUTH requires in-transit encryption, so the two are enabled
+# together. ElastiCache rejects "/", "\"", "@" and spaces in the token; an
+# alphanumeric token also needs no escaping in redis:// URLs.
+resource "random_password" "redis_auth" {
+  length  = 64
+  special = false
+}
+
+resource "aws_secretsmanager_secret" "redis_auth" {
+  name        = "${var.project}/${var.environment}/redis/auth-token"
+  description = "AUTH token for the OtterWorks ElastiCache Redis replication group"
+
+  tags = merge(local.common_tags, {
+    Service = "shared-cache"
+  })
+}
+
+resource "aws_secretsmanager_secret_version" "redis_auth" {
+  secret_id     = aws_secretsmanager_secret.redis_auth.id
+  secret_string = random_password.redis_auth.result
+}
+
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id = "${var.project}-redis-${var.environment}"
   description          = "OtterWorks Redis cluster for session and cache"
@@ -57,7 +115,9 @@ resource "aws_elasticache_replication_group" "main" {
   parameter_group_name = "default.redis7"
 
   at_rest_encryption_enabled = true
-  transit_encryption_enabled = var.redis_transit_encryption_enabled
+  transit_encryption_enabled = true
+  transit_encryption_mode    = var.redis_transit_encryption_mode
+  auth_token                 = random_password.redis_auth.result
   automatic_failover_enabled = var.redis_num_cache_clusters > 1
   apply_immediately          = var.redis_apply_immediately
 

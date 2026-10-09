@@ -6,6 +6,7 @@ export interface Config {
     password: string | undefined;
     db: number;
     keyPrefix: string;
+    tls: boolean;
   };
   jwt: {
     secret: string;
@@ -38,6 +39,9 @@ export function loadConfig(): Config {
       password: process.env.REDIS_PASSWORD || undefined,
       db: parseInt(process.env.REDIS_DB || '0', 10),
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'collab:',
+      tls: ['1', 'true', 'yes'].includes(
+        (process.env.REDIS_TLS || '').trim().toLowerCase(),
+      ),
     },
     jwt: {
       secret: process.env.JWT_SECRET || 'otterworks-dev-secret',
