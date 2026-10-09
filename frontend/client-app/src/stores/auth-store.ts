@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { authApi } from "@/lib/api";
+import { clearSession } from "@/lib/auth-tokens";
 import type { User } from "@/types";
 
 interface AuthState {
@@ -19,10 +20,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
   logout: () => {
     authApi.logout().catch(() => {});
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("otter_access_token");
-      localStorage.removeItem("otter_refresh_token");
-    }
+    clearSession();
     set({ user: null, isAuthenticated: false, isLoading: false });
     if (typeof window !== "undefined") {
       window.location.href = "/login";

@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { storeSession } from "@/lib/auth-tokens";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/ui/logo";
 
@@ -43,8 +44,7 @@ export default function RegisterPage() {
     setError("");
     try {
       const tokens = await authApi.register(data);
-      localStorage.setItem("otter_access_token", tokens.accessToken);
-      localStorage.setItem("otter_refresh_token", tokens.refreshToken);
+      storeSession(tokens);
       const user = await authApi.getProfile();
       setUser(user);
       navigate("/dashboard");

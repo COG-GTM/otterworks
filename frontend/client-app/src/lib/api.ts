@@ -1,5 +1,6 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "./api-client";
+import { getAccessToken } from "./auth-tokens";
 import type {
   User,
   AuthTokens,
@@ -126,10 +127,9 @@ export const authApi = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────
-// Extract the user ID from the JWT stored in localStorage.
+// Extract the user ID from the stored access-token JWT.
 function getOwnerIdFromJwt(): string | null {
-  if (typeof window === "undefined") return null;
-  const token = localStorage.getItem("otter_access_token");
+  const token = getAccessToken();
   if (!token) return null;
   try {
     const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, '+').replace(/_/g, '/')));
