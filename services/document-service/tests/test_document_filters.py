@@ -212,3 +212,39 @@ async def test_database_error_text_is_not_echoed(client: AsyncClient, monkeypatc
 
     assert resp.status_code == 400
     assert resp.json() == {"detail": "Invalid filter"}
+
+
+@pytest.mark.asyncio
+async def test_owner_and_folder_filters_bind_as_uuid(
+    client: AsyncClient, owner_id: uuid.UUID, folder_id: uuid.UUID
+):
+    await _create(client, owner_id, "In folder report", folder_id=str(folder_id))
+    await _create(client, owner_id, "Loose report")
+    await _create(client, uuid.uuid4(), "Someone else's report", folder_id=str(folder_id))
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"owner_id": str(owner_id), "folder_id": str(folder_id), "title": "report"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert [item["title"] for item in resp.json()["items"]] == ["In folder report"]
+
+
+def test_uuid_filters_render_as_typed_binds_on_postgres():
+    from sqlalchemy.dialects.postgresql import asyncpg
+
+    from app.services.document_query_repository import DocumentQueryRepository, _statement
+
+    where, params = DocumentQueryRepository(None)._where(
+        str(uuid.uuid4()), "x", "text/html", str(uuid.uuid4())
+    )
+    compiled = str(
+        _statement(f"SELECT 1 FROM documents WHERE {where}", params).compile(
+            dialect=asyncpg.dialect()
+        )
+    )
+
+    assert compiled.count("::UUID") == 2
+    assert "::VARCHAR" in compiled

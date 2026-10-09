@@ -8,9 +8,10 @@ those filters and reads the ``documents`` table directly.
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import structlog
-from sqlalchemy import text
+from sqlalchemy import TextClause, Uuid, bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = structlog.get_logger()
@@ -52,6 +53,14 @@ def resolve_order_by(sort: str, direction: str) -> str:
     return f"{column} {order.upper()}"
 
 
+def _statement(sql: str, params: dict[str, Any]) -> TextClause:
+    uuid_binds = [bindparam(name, type_=Uuid) for name in _UUID_PARAMS if name in params]
+    return text(sql).bindparams(*uuid_binds)
+
+
+_UUID_PARAMS = ("owner_id", "folder_id")
+
+
 def _like_pattern(fragment: str) -> str:
     escaped = fragment.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
@@ -78,10 +87,10 @@ class DocumentQueryRepository:
         params: dict[str, Any] = {}
         if owner_id:
             clauses.append("owner_id = :owner_id")
-            params["owner_id"] = str(owner_id)
+            params["owner_id"] = UUID(str(owner_id))
         if folder_id:
             clauses.append("folder_id = :folder_id")
-            params["folder_id"] = str(folder_id)
+            params["folder_id"] = UUID(str(folder_id))
         if title_contains:
             clauses.append("lower(title) LIKE lower(:title_pattern) ESCAPE '\\'")
             params["title_pattern"] = _like_pattern(title_contains)
@@ -100,9 +109,8 @@ class DocumentQueryRepository:
     ) -> int:
         """Count documents matching the metadata filters."""
         where, params = self._where(owner_id, title_contains, content_type, folder_id)
-        result = await self.db.execute(
-            text(f"SELECT count(*) FROM documents WHERE {where}"), params
-        )
+        sql = f"SELECT count(*) FROM documents WHERE {where}"
+        result = await self.db.execute(_statement(sql, params), params)
         return int(result.scalar_one())
 
     async def search_documents(
@@ -127,5 +135,5 @@ class DocumentQueryRepository:
             f" ORDER BY {order_by} LIMIT :limit OFFSET :offset"
         )
         logger.debug("document_filter_query", sort=sort, direction=direction)
-        result = await self.db.execute(text(sql), params)
+        result = await self.db.execute(_statement(sql, params), params)
         return [dict(row._mapping) for row in result]
