@@ -35,7 +35,8 @@ function req(path: string, token: string, method = "POST", body?: unknown): Next
   });
 }
 
-const params = (id: string) => ({ params: Promise.resolve({ id }) });
+const params = (id: string) => ({ params: Promise.resolve<Record<string, string>>({ id }) });
+const noParams = () => ({ params: Promise.resolve<Record<string, string>>({}) });
 
 test("forbidOtherTenant confines CD sessions and leaves facilitators alone", () => {
   assert.equal(forbidOtherTenant(cdSession(), "derek"), null);
@@ -59,10 +60,10 @@ test("forbidCdDeploy pins the branch, the image tag and the trusted repository",
 
 test("withSession refuses CD sessions unless the route opts in", async () => {
   const handler = async () => json({ ok: true });
-  assert.equal((await withSession(handler)(req("/api/x", cdToken()))).status, 403);
-  assert.equal((await withSession(handler, { allowCd: true })(req("/api/x", cdToken()))).status, 200);
-  assert.equal((await withSession(handler)(req("/api/x", facilitatorToken()))).status, 200);
-  assert.equal((await withSession(handler)(req("/api/x", "bogus"))).status, 401);
+  assert.equal((await withSession(handler)(req("/api/x", cdToken()), noParams())).status, 403);
+  assert.equal((await withSession(handler, { allowCd: true })(req("/api/x", cdToken()), noParams())).status, 200);
+  assert.equal((await withSession(handler)(req("/api/x", facilitatorToken()), noParams())).status, 200);
+  assert.equal((await withSession(handler)(req("/api/x", "bogus"), noParams())).status, 401);
 });
 
 test("CD sessions cannot check in, persist, inject, reset or extend -- even their own tenant", async () => {
@@ -90,7 +91,7 @@ test("CD checkout is limited to its own tenant, branch, image and an ephemeral T
     ["never ttl", { id: "derek", branch: "workshop-derek", ttl: "never" }],
   ];
   for (const [name, body] of cases) {
-    const res = await checkoutPost(req("/api/tenants/checkout", cdToken(), "POST", body), {});
+    const res = await checkoutPost(req("/api/tenants/checkout", cdToken(), "POST", body), noParams());
     assert.equal(res.status, 403, name);
   }
 });
