@@ -8,6 +8,39 @@ mock_provider "aws" {
     }
   }
 
+  # The provider still validates ARN-typed arguments, so computed ARNs that feed
+  # other resources need realistic mock values.
+  mock_resource "aws_kms_key" {
+    defaults = {
+      arn    = "arn:aws:kms:us-east-1:123456789012:key/00000000-0000-0000-0000-000000000000"
+      key_id = "00000000-0000-0000-0000-000000000000"
+    }
+  }
+
+  mock_resource "aws_dynamodb_table" {
+    defaults = {
+      arn = "arn:aws:dynamodb:us-east-1:123456789012:table/otterworks-demo-control"
+    }
+  }
+
+  mock_resource "aws_secretsmanager_secret" {
+    defaults = {
+      arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:dashboard-passcode-AbCdEf"
+    }
+  }
+
+  mock_resource "aws_iam_role" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:role/otterworks-mock"
+    }
+  }
+
+  mock_data "aws_iam_openid_connect_provider" {
+    defaults = {
+      arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    }
+  }
+
   override_data {
     target = data.aws_caller_identity.current
     values = {
