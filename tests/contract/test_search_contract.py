@@ -274,11 +274,24 @@ class TestMetricsEndpoint:
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
-    def test_analytics_response_schema(self, openapi_spec: dict[str, Any]) -> None:
-        """Analytics endpoint returns valid schema."""
+    def test_analytics_rejects_end_user(self, openapi_spec: dict[str, Any]) -> None:
+        """Analytics aggregates every user's queries, so end users get 403."""
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/analytics",
             headers={"X-User-ID": "test-user-001"},
+        )
+        assert resp.status_code == 403
+        body = resp.json()
+        _validate_response(openapi_spec, body, "/api/v1/search/analytics", "get", "403")
+
+    def test_analytics_response_schema(self, openapi_spec: dict[str, Any]) -> None:
+        """Analytics endpoint returns valid schema for the service token."""
+        token = os.environ.get("SEARCH_SERVICE_TOKEN", "")
+        if not token:
+            pytest.skip("SEARCH_SERVICE_TOKEN not set")
+        resp = requests.get(
+            f"{BASE_URL}/api/v1/search/analytics",
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
         body = resp.json()

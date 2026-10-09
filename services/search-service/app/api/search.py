@@ -9,6 +9,7 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import has_service_token
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -159,7 +160,16 @@ def advanced_search() -> tuple:
 
 @search_bp.route("/analytics", methods=["GET"])
 def search_analytics() -> tuple:
-    """Search analytics: popular queries, zero-result queries."""
+    """Search analytics: popular queries, zero-result queries.
+
+    The response aggregates raw query strings from every user, so it is an
+    internal/admin endpoint: callers must present the service token. This is
+    enforced even when ``REQUIRE_AUTH`` is disabled, and a gateway-injected
+    ``X-User-ID`` alone is never sufficient.
+    """
+    if not has_service_token(current_app.config["APP_CONFIG"].auth.service_token):
+        logger.warning("analytics_forbidden", path=request.path)
+        return jsonify({"error": "forbidden"}), 403
     try:
         analytics = get_search_analytics()
         return jsonify(analytics.to_dict()), 200
