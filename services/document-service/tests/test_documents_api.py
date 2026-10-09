@@ -281,3 +281,60 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+async def _create_as(client: AsyncClient, user_id: uuid.UUID, title: str) -> dict:
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": title, "content": "private body"},
+        headers={"Authorization": f"Bearer {_make_jwt(str(user_id))}"},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+@pytest.mark.parametrize("extra", [{}, {"title": "doc"}])
+async def test_list_rejects_owner_id_of_another_user(
+    client: AsyncClient, owner_id: uuid.UUID, path: str, extra: dict
+):
+    """A caller cannot list someone else's documents by passing their owner_id."""
+    victim_id = uuid.uuid4()
+    await _create_as(client, victim_id, "Victim doc")
+
+    resp = await client.get(path, params={"owner_id": str(victim_id), **extra})
+
+    assert resp.status_code == 403
+    assert "Victim doc" not in resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+@pytest.mark.parametrize("extra", [{}, {"title": "doc"}])
+async def test_list_without_identity_returns_401(
+    client: AsyncClient, owner_id: uuid.UUID, path: str, extra: dict
+):
+    """An unauthenticated listing is rejected rather than spanning every owner."""
+    await _create_as(client, owner_id, "Owner doc")
+
+    resp = await client.get(path, params=extra, auth=None)
+
+    assert resp.status_code == 401
+    assert "Owner doc" not in resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("extra", [{}, {"title": "doc"}])
+async def test_list_is_scoped_to_caller(client: AsyncClient, owner_id: uuid.UUID, extra: dict):
+    """Without owner_id, and with owner_id equal to the caller, only own documents return."""
+    await _create_as(client, owner_id, "Own doc")
+    await _create_as(client, uuid.uuid4(), "Other doc")
+
+    for params in (extra, {"owner_id": str(owner_id), **extra}):
+        resp = await client.get("/api/v1/documents/", params=params)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 1
+        assert [item["title"] for item in body["items"]] == ["Own doc"]
+        assert {item["owner_id"] for item in body["items"]} == {str(owner_id)}
