@@ -136,6 +136,19 @@ describe('DocumentAccessService', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('bypasses the grant cache for fresh checks', async () => {
+    const fetchImpl = respond(200);
+    const svc = service(fetchImpl, () => 1000, 60000);
+
+    await svc.canAccess('tok', 'user-1', DOC_ID);
+    fetchImpl.mockResolvedValue({ status: 403 });
+    await expect(svc.canAccess('tok', 'user-1', DOC_ID, { fresh: true })).resolves.toBe(
+      false,
+    );
+    await expect(svc.canAccess('tok', 'user-1', DOC_ID)).resolves.toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
   it('never caches denials', async () => {
     const fetchImpl = respond(403);
     const svc = service(fetchImpl);

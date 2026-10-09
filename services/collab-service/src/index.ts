@@ -1,7 +1,7 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, type IncomingMessage } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
@@ -176,12 +176,45 @@ const collabManager = setupCollaborationHandlers(
   documentAccess,
   config.persistence.intervalMs,
   config.persistence.snapshotIntervalMs,
+  config.documentService.accessRevalidateIntervalMs,
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
 const wss = new WebSocketServer({ noServer: true });
-wss.on('connection', (conn, req) => {
+const YJS_ACCESS_REVOKED = 4403;
+const yjsAuthByRequest = new WeakMap<
+  IncomingMessage,
+  { token: string; userId: string; documentId: string }
+>();
+
+// Open y-websocket connections are re-authorized periodically so revoked access
+// (or an expired token) does not keep a live editor attached to the document.
+function watchYjsAccess(
+  conn: WebSocket,
+  token: string,
+  userId: string,
+  documentId: string,
+): void {
+  const intervalMs = config.documentService.accessRevalidateIntervalMs;
+  if (intervalMs <= 0) return;
+  const timer = setInterval(() => {
+    documentAccess
+      .canAccess(token, userId, documentId, { fresh: true })
+      .then((allowed) => {
+        if (allowed) return;
+        logger.warn({ documentId, userId }, 'y-websocket_access_revoked');
+        conn.close(YJS_ACCESS_REVOKED, 'Access revoked');
+      })
+      .catch((err) => logger.error({ err }, 'y-websocket_access_revalidation_failed'));
+  }, intervalMs);
+  timer.unref?.();
+  conn.on('close', () => clearInterval(timer));
+}
+
+wss.on('connection', (conn: WebSocket, req: IncomingMessage) => {
   setupWSConnection(conn, req);
+  const auth = yjsAuthByRequest.get(req);
+  if (auth) watchYjsAccess(conn, auth.token, auth.userId, auth.documentId);
   logger.info({ url: req.url }, 'y-websocket_client_connected');
 });
 
@@ -232,6 +265,7 @@ httpServer.on('upgrade', (request, socket, head) => {
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws) => {
+        yjsAuthByRequest.set(request, { token, userId: user.userId, documentId });
         wss.emit('connection', ws, request);
       });
     })

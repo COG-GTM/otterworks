@@ -16,12 +16,13 @@ let PORT: number;
 
 const INTRUDER_PREFIX = 'intruder-';
 const SLOW_DOCS = new Set<string>();
+const REVOKED_USERS = new Set<string>();
 const accessChecks: Array<{ token: string; userId: string; documentId: string }> = [];
 const documentAccess = {
   canAccess: async (token: string, userId: string, documentId: string) => {
     accessChecks.push({ token, userId, documentId });
     if (SLOW_DOCS.has(documentId)) await new Promise((r) => setTimeout(r, 300));
-    return !userId.startsWith(INTRUDER_PREFIX);
+    return !userId.startsWith(INTRUDER_PREFIX) && !REVOKED_USERS.has(userId);
   },
 };
 
@@ -691,6 +692,28 @@ describe('CollaborationManager', () => {
       expect(awareness.getUserDocument(client.id as string)).toBe(OWNED_DOC);
       expect(manager.getDocument(slowDoc)).toBeUndefined();
       SLOW_DOCS.delete(slowDoc);
+      client.disconnect();
+    });
+
+    it('evicts joined sockets whose access was revoked', async () => {
+      const client = await connectClient('user-acl-revoked', 'Revoked');
+      expect(await join(client, OWNED_DOC)).toEqual({ success: true });
+      const revoked = collect(client, 'access-revoked');
+
+      await manager.revalidateAccess();
+      await settle();
+      expect(revoked).toHaveLength(0);
+      expect(accessChecks[accessChecks.length - 1]).toMatchObject({
+        userId: 'user-acl-revoked',
+      });
+
+      REVOKED_USERS.add('user-acl-revoked');
+      await manager.revalidateAccess();
+      await settle();
+
+      expect(revoked).toEqual([{ documentId: OWNED_DOC }]);
+      expect(awareness.getUserDocument(client.id as string)).toBeNull();
+      REVOKED_USERS.delete('user-acl-revoked');
       client.disconnect();
     });
 

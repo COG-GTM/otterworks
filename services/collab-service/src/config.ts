@@ -18,6 +18,7 @@ export interface Config {
     url: string;
     timeoutMs: number;
     accessCacheTtlMs: number;
+    accessRevalidateIntervalMs: number;
   };
   persistence: {
     intervalMs: number;
@@ -59,7 +60,12 @@ export function loadConfig(): Config {
         '',
       ),
       timeoutMs: parseInt(process.env.DOCUMENT_ACL_TIMEOUT_MS || '3000', 10),
-      accessCacheTtlMs: parseInt(process.env.DOCUMENT_ACL_CACHE_TTL_MS || '30000', 10),
+      // Grant caching is opt-in so revoked access is never honoured from cache.
+      accessCacheTtlMs: parseInt(process.env.DOCUMENT_ACL_CACHE_TTL_MS || '0', 10),
+      accessRevalidateIntervalMs: parseInt(
+        process.env.DOCUMENT_ACL_REVALIDATE_INTERVAL_MS || '30000',
+        10,
+      ),
     },
     persistence: {
       intervalMs: parseInt(process.env.PERSIST_INTERVAL_MS || '30000', 10),
