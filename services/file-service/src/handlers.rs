@@ -143,7 +143,7 @@ pub async fn upload_file(
     }
 
     let file_id = Uuid::new_v4();
-    let s3_key = format!("files/{}/{}", owner, file_id);
+    let s3_key = s3.file_key(owner, file_id);
     let now = Utc::now();
     let size = file_bytes.len() as u64;
 
@@ -171,6 +171,7 @@ pub async fn upload_file(
     let chaos_s3 = crate::storage::S3Client {
         client: s3.client.clone(),
         bucket: effective_bucket,
+        key_prefix: s3.key_prefix.clone(),
     };
     if let Err(err) = chaos_s3
         .upload_object(&s3_key, file_bytes.freeze(), &content_type)

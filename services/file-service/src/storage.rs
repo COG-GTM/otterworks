@@ -2,6 +2,8 @@ use aws_sdk_s3::presigning::PresigningConfig;
 use bytes::Bytes;
 use std::time::Duration;
 
+use uuid::Uuid;
+
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
 
@@ -10,6 +12,7 @@ use crate::errors::ServiceError;
 pub struct S3Client {
     pub client: aws_sdk_s3::Client,
     pub bucket: String,
+    pub key_prefix: String,
 }
 
 impl S3Client {
@@ -30,7 +33,13 @@ impl S3Client {
         Self {
             client,
             bucket: config.s3_bucket.clone(),
+            key_prefix: config.s3_key_prefix.clone(),
         }
+    }
+
+    /// Object key for a file's content, under this deployment's key prefix.
+    pub fn file_key(&self, owner: Uuid, file_id: Uuid) -> String {
+        file_object_key(&self.key_prefix, owner, file_id)
     }
 
     /// Upload file content to S3.
@@ -123,5 +132,35 @@ impl S3Client {
 
         tracing::info!(source = %source_key, dest = %dest_key, "Copied object in S3");
         Ok(())
+    }
+}
+
+/// `<prefix>files/<owner>/<file_id>`. Tenant roles may only touch keys under
+/// their own `tenants/<tenant-id>/` prefix, so every key must carry it.
+pub fn file_object_key(prefix: &str, owner: Uuid, file_id: Uuid) -> String {
+    format!("{prefix}files/{owner}/{file_id}")
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn file_object_key_without_prefix_keeps_golden_layout() {
+        let owner = Uuid::nil();
+        let id = Uuid::from_u128(1);
+        assert_eq!(
+            file_object_key("", owner, id),
+            format!("files/{owner}/{id}")
+        );
+    }
+
+    #[test]
+    fn file_object_key_is_scoped_under_tenant_prefix() {
+        let owner = Uuid::from_u128(7);
+        let id = Uuid::from_u128(9);
+        let key = file_object_key("tenants/a01/", owner, id);
+        assert_eq!(key, format!("tenants/a01/files/{owner}/{id}"));
+        assert!(key.starts_with("tenants/a01/"));
     }
 }

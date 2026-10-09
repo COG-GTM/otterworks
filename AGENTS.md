@@ -124,7 +124,10 @@ Deploying tenant `<ID>` (namespace `otterworks-<ID>`) creates, **per tenant**:
   concerns and must **not** be duplicated per tenant.
 - The RDS **instance** (isolated only logically, via the per-tenant database), and the
   physical **S3 buckets** / **DynamoDB tables** (Tier-A logical prefixing/partitioning only —
-  see below). IAM/IRSA service roles are shared across `otterworks-*` via a wildcard trust.
+  see below). Tenants never assume the shared IRSA service roles (they trust only the golden
+  `otterworks` namespace): `deploy-tenant.sh` creates per-tenant roles with exact-subject trust,
+  scoped to the tenant's `tenants/<ID>/` S3 prefix and its own `otterworks-tenant-<ID>-*` DynamoDB
+  tables, under a permissions boundary. Cognito/SES/SNS/SQS are not reachable from tenants.
 - SNS/SQS eventing is **disabled** for tenants to avoid cross-tenant queue consumers.
 
 ### Isolation tiers

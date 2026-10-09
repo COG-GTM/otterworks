@@ -108,3 +108,18 @@ output "irsa_role_arns" {
   description = "Map of service account name to IAM role ARN"
   value       = module.irsa.role_arns
 }
+
+output "tenant_permissions_boundary_arn" {
+  description = "Permissions boundary every per-tenant IRSA role must carry"
+  value       = aws_iam_policy.tenant_boundary.arn
+}
+
+output "tenant_role_path" {
+  description = "IAM path under which per-tenant IRSA roles are created"
+  value       = local.tenant_role_path
+}
+
+output "oidc_provider_arn" {
+  description = "EKS OIDC provider ARN that per-tenant IRSA roles federate with"
+  value       = local.oidc_provider_arn
+}

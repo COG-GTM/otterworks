@@ -392,3 +392,61 @@ module "irsa" {
     })
   }
 }
+
+# --- Tenant IRSA permissions boundary ---
+# Tenant workloads (namespace otterworks-<ATTENDEE_ID>) never assume the shared
+# roles above. scripts/deploy-tenant.sh creates one role per tenant service under
+# local.tenant_role_path, trusted by exactly that tenant's service account and
+# scoped to that tenant's own S3 prefix and DynamoDB tables. Every such role
+# must carry this boundary (the control plane can only create roles with it, see
+# demo-platform/infra/terraform/iam_dashboard.tf), so even a mis-scoped tenant
+# policy can never reach shared-table data, untenanted S3 keys, Cognito, SNS/SQS
+# or anything else.
+locals {
+  tenant_role_path     = "/otterworks-tenant/"
+  tenant_table_pattern = "arn:aws:dynamodb:${var.aws_region}:*:table/otterworks-tenant-*"
+}
+
+resource "aws_iam_policy" "tenant_boundary" {
+  name        = "otterworks-tenant-boundary-${var.environment}"
+  path        = local.tenant_role_path
+  description = "Permissions boundary for per-tenant IRSA roles: tenant S3 prefixes and per-tenant DynamoDB tables only."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "TenantObjects"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = [
+          "${module.storage.file_bucket_arn}/tenants/*",
+          "${module.storage.audit_archive_bucket_arn}/tenants/*",
+        ]
+      },
+      {
+        Sid      = "TenantPrefixList"
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = [module.storage.file_bucket_arn, module.storage.audit_archive_bucket_arn]
+        Condition = {
+          StringLike = { "s3:prefix" = ["tenants/*"] }
+        }
+      },
+      {
+        Sid    = "TenantTables"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchWriteItem",
+        ]
+        Resource = [local.tenant_table_pattern, "${local.tenant_table_pattern}/index/*"]
+      },
+    ]
+  })
+}

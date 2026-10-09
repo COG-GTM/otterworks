@@ -33,6 +33,21 @@ locals {
   # The platform's own cluster is always sweepable; var.sweepable_clusters adds
   # names it used to run under, whose orphans still need reclaiming.
   sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+
+  # Must match infrastructure/terraform/main.tf (tenant_role_path,
+  # aws_iam_policy.tenant_boundary).
+  tenant_role_path    = "/otterworks-tenant/"
+  tenant_boundary_arn = "arn:aws:iam::${local.account_id}:policy${local.tenant_role_path}otterworks-tenant-boundary-${var.environment}"
+
+  # Shared per-service roles from infrastructure/terraform/modules/irsa
+  # (<project>-<service account>-<environment>).
+  shared_irsa_role_arns = [
+    for svc in [
+      "file-service", "document-service", "notification-service", "search-service",
+      "analytics-service", "audit-service", "auth-service", "admin-service",
+      "api-gateway", "collab-service",
+    ] : "arn:aws:iam::${local.account_id}:role/otterworks-${svc}-${var.environment}"
+  ]
 }
 
 data "aws_iam_policy_document" "dashboard" {
@@ -201,13 +216,60 @@ data "aws_iam_policy_document" "dashboard" {
     }
   }
 
-  # Teardown maintains IRSA trust on the shared per-service roles (add/remove the
-  # tenant namespace SA). Scoped to the otterworks-* service roles only.
+  # deploy/teardown strip legacy tenant trust (older deploys, the retired
+  # wildcard script) from the shared per-service roles; they no longer add any.
+  # Named exactly: an otterworks-* glob would also match this role and the
+  # cluster/CI roles, and a trust rewrite there is a role takeover.
   statement {
     sid       = "TenantIrsaTrust"
     effect    = "Allow"
     actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
-    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-*"]
+    resources = local.shared_irsa_role_arns
+  }
+
+  # deploy-tenant creates one role per tenant service under the tenant path.
+  # Creating a role or writing its inline policy is only allowed with the
+  # Terraform-managed tenant boundary attached, so whatever the policy says, a
+  # tenant role can reach nothing beyond tenant S3 prefixes and tenant tables.
+  statement {
+    sid       = "TenantRoleCreate"
+    effect    = "Allow"
+    actions   = ["iam:CreateRole", "iam:PutRolePolicy"]
+    resources = ["arn:aws:iam::${local.account_id}:role${local.tenant_role_path}*"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PermissionsBoundary"
+      values   = [local.tenant_boundary_arn]
+    }
+  }
+
+  statement {
+    sid    = "TenantRoleManage"
+    effect = "Allow"
+    actions = [
+      "iam:GetRole", "iam:UpdateAssumeRolePolicy", "iam:TagRole",
+      "iam:DeleteRolePolicy", "iam:DeleteRole",
+    ]
+    resources = ["arn:aws:iam::${local.account_id}:role${local.tenant_role_path}*"]
+  }
+
+  # Per-tenant copies of the app tables (otterworks-tenant-<id>-*).
+  statement {
+    sid    = "TenantTables"
+    effect = "Allow"
+    actions = [
+      "dynamodb:CreateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable",
+      "dynamodb:TagResource", "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive",
+    ]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/otterworks-tenant-*"]
+  }
+
+  # Tenant tables clone the shared tables' schema and TTL.
+  statement {
+    sid       = "SharedTableSchemaRead"
+    effect    = "Allow"
+    actions   = ["dynamodb:DescribeTable", "dynamodb:DescribeTimeToLive"]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/${var.shared_dynamodb_table_prefix}*"]
   }
 
   # deploy/teardown resolve shared RDS/S3/DynamoDB coordinates by reading the
