@@ -23,3 +23,37 @@ spec:
                 name: {{ .Release.Name }}-dashboard
                 port:
                   number: {{ .Values.dashboard.service.port }}
+{{- if .Values.ingress.loginRateLimit.enabled }}
+---
+# Edge rate limit for the passcode endpoint only, keyed by client address at
+# ingress-nginx (needs controller.service.externalTrafficPolicy=Local so that
+# address is the real client; see scripts/lib/ingress-nginx.sh). An Exact path
+# outranks the Prefix "/" rule above, so nothing else on the host is limited.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-dashboard-login
+  namespace: {{ .Values.platformNamespace }}
+  labels:
+    {{- include "demo-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ops-dashboard
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.ingress.loginRateLimit.rpm | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.loginRateLimit.burstMultiplier | quote }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.dashboard.host | default "ops.otterworks.app" | quote }}
+      http:
+        paths:
+          - path: /api/auth/login
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-dashboard
+                port:
+                  number: {{ .Values.dashboard.service.port }}
+{{- end }}

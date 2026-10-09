@@ -74,6 +74,14 @@ export const env = {
       .filter(Boolean);
     return new Set(list);
   },
+  // Proxies in front of the pod that append to X-Forwarded-For (ingress-nginx
+  // = 1). The login limiter keys untrusted clients on the entry this many hops
+  // from the right; everything left of it is client-supplied.
+  get trustedProxyHops(): number {
+    const raw = process.env.TRUSTED_PROXY_HOPS;
+    const n = raw ? Number(raw) : NaN;
+    return Number.isInteger(n) && n >= 0 ? n : 1;
+  },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;
     const n = raw ? Number(raw) : NaN;

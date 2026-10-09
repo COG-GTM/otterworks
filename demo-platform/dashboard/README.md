@@ -9,8 +9,13 @@ described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md
 
 - **Passcode auth, server-side enforced.** `POST /api/auth/login` constant-time compares
   the passcode against `DASHBOARD_PASSCODE`, sets a signed HttpOnly/Secure/SameSite=Strict
-  `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 / IP / 15 min with
-  backoff), and audits `login_ok`/`login_fail`. `middleware.ts` gates every non-login route,
+  `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 / client / 15 min with
+  backoff), and audits `login_ok`/`login_fail`. Clients are keyed on a signed `ow_ops_device`
+  cookie (issued after a correct passcode) or else on the ingress-observed IP
+  (`TRUSTED_PROXY_HOPS` from the right of `X-Forwarded-For`). Past 20 untrusted failures per
+  window the limiter tightens to one attempt per IP instead of refusing everyone, so anonymous
+  traffic cannot lock facilitators out; crossing it logs `login_global_limit_reached` and audits
+  `global_limit_reached` (alert on it). See `lib/ratelimit.ts`. `middleware.ts` gates every non-login route,
   and every `/api/*` handler independently calls `requireSession()` (defense in depth).
 - **Tenants.** `GET /api/tenants` joins control-table records with live cluster state
   (namespace phase, ready/total pods, per-service status) cached ~5s. Checkout / check-in /
@@ -27,6 +32,7 @@ npm run build      # production build (output: standalone)
 npm run start      # run the built server
 npm run lint       # next lint
 npm run typecheck  # tsc --noEmit
+npm test           # node:test unit tests for the login limiter (lib/__tests__)
 ```
 
 ## Configuration
