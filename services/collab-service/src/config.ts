@@ -21,6 +21,17 @@ export interface Config {
     snapshotTtlSeconds: number;
     maxSnapshotsPerDocument: number;
   };
+  yWebsocket: {
+    maxPayloadBytes: number;
+    maxDocBytes: number;
+    maxDocs: number;
+    maxDocNameLength: number;
+    maxConnectionsPerUser: number;
+    maxRoomsPerUser: number;
+    rateWindowMs: number;
+    maxMessagesPerWindow: number;
+    maxBytesPerWindow: number;
+  };
   logLevel: string;
   otel: {
     enabled: boolean;
@@ -54,6 +65,23 @@ export function loadConfig(): Config {
       documentTtlSeconds: parseInt(process.env.DOC_TTL_SECONDS || '86400', 10),
       snapshotTtlSeconds: parseInt(process.env.SNAPSHOT_TTL_SECONDS || '604800', 10),
       maxSnapshotsPerDocument: parseInt(process.env.MAX_SNAPSHOTS || '50', 10),
+    },
+    yWebsocket: {
+      maxPayloadBytes: parseInt(process.env.YWS_MAX_PAYLOAD_BYTES || '1048576', 10),
+      maxDocBytes: parseInt(process.env.YWS_MAX_DOC_BYTES || '8388608', 10),
+      maxDocs: parseInt(process.env.YWS_MAX_DOCS || '200', 10),
+      maxDocNameLength: parseInt(process.env.YWS_MAX_DOC_NAME_LENGTH || '128', 10),
+      maxConnectionsPerUser: parseInt(
+        process.env.YWS_MAX_CONNECTIONS_PER_USER || '20',
+        10,
+      ),
+      maxRoomsPerUser: parseInt(process.env.YWS_MAX_ROOMS_PER_USER || '10', 10),
+      rateWindowMs: parseInt(process.env.YWS_RATE_WINDOW_MS || '10000', 10),
+      maxMessagesPerWindow: parseInt(
+        process.env.YWS_MAX_MESSAGES_PER_WINDOW || '500',
+        10,
+      ),
+      maxBytesPerWindow: parseInt(process.env.YWS_MAX_BYTES_PER_WINDOW || '4194304', 10),
     },
     logLevel: process.env.LOG_LEVEL || 'info',
     otel: {
