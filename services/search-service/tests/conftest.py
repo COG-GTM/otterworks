@@ -2,18 +2,41 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
+import meilisearch
 import pytest
+import requests
 
 from app.config import AppConfig, AuthConfig, MeiliSearchConfig, SQSConfig
 from app.main import create_app
 from app.services.meilisearch_client import MeiliSearchService
 
+SERVICE_TOKEN = "test-service-token"
+SERVICE_HEADERS = {"Authorization": f"Bearer {SERVICE_TOKEN}"}
+USER_ID = "user-1"
+USER_HEADERS = {"X-User-ID": USER_ID}
+
+
+def meilisearch_not_found() -> meilisearch.errors.MeilisearchApiError:
+    """Build the error MeiliSearch raises for a missing document."""
+    response = requests.Response()
+    response.status_code = 404
+    response._content = json.dumps(
+        {
+            "message": "Document not found.",
+            "code": "document_not_found",
+            "type": "invalid_request",
+            "link": "",
+        }
+    ).encode()
+    return meilisearch.errors.MeilisearchApiError("not found", response)
+
 
 @pytest.fixture()
 def app_config() -> AppConfig:
-    """Create a test AppConfig with auth disabled."""
+    """Create a test AppConfig with the auth hook disabled, as deployed."""
     return AppConfig(
         service_name="search-service-test",
         port=8087,
@@ -26,7 +49,7 @@ def app_config() -> AppConfig:
             files_index="test-otterworks-files",
         ),
         sqs=SQSConfig(enabled=False),
-        auth=AuthConfig(service_token="", require_auth=False),
+        auth=AuthConfig(service_token=SERVICE_TOKEN, require_auth=False),
     )
 
 
@@ -47,6 +70,7 @@ def mock_meilisearch_client() -> MagicMock:
     mock_index = MagicMock()
     mock_index.add_documents.return_value = mock_task
     mock_index.delete_document.return_value = mock_task
+    mock_index.get_document.side_effect = meilisearch_not_found()
     mock_index.search.return_value = {"hits": [], "estimatedTotalHits": 0}
     mock.index.return_value = mock_index
 
