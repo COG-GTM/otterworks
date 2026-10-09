@@ -1,3 +1,5 @@
+import { parseMaxTtlSeconds } from "./util";
+
 // Centralised, typed access to runtime configuration. Nothing here reads a
 // secret's value into logs; callers only ever compare/sign with them.
 
@@ -49,6 +51,11 @@ export const env = {
         .map((s) => s.trim())
         .filter(Boolean),
     );
+  },
+  // Ceiling on any non-perpetual tenant's TTL (default 7d, clamped to 72h..30d
+  // so it can neither break the built-in defaults nor grant immortality).
+  get maxTtlSeconds(): number {
+    return parseMaxTtlSeconds(process.env.MAX_TTL_SECONDS);
   },
   // The perpetual tenant is the shared reference environment and gets a shorter
   // URL than the per-attendee ones (t-main.otterworks.app, not

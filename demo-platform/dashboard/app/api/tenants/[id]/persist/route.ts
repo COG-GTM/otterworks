@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant, setPersistent } from "@/lib/control";
 import { env } from "@/lib/env";
 import type { PersistRequest } from "@/lib/types";
-import { NEVER_TTL_SECONDS, ttlToSeconds } from "@/lib/util";
+import { NEVER_TTL_SECONDS, checkFiniteTtl, formatTtl } from "@/lib/util";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,9 +39,16 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
     ttlSeconds = NEVER_TTL_SECONDS;
   } else {
     const ttl = typeof body.ttl === "string" && body.ttl.trim() ? body.ttl.trim() : UNPERSIST_TTL;
-    const seconds = ttlToSeconds(ttl);
-    if (seconds === null || seconds >= NEVER_TTL_SECONDS) return error(400, "invalid ttl");
-    ttlSeconds = seconds;
+    const check = checkFiniteTtl(ttl, env.maxTtlSeconds);
+    if (!check.ok) {
+      return error(
+        400,
+        check.reason === "too_long"
+          ? `ttl '${ttl}' exceeds the maximum of ${formatTtl(env.maxTtlSeconds)}`
+          : "invalid ttl",
+      );
+    }
+    ttlSeconds = check.seconds;
   }
 
   const expiresAt = await setPersistent(id, body.persistent, ttlSeconds);
