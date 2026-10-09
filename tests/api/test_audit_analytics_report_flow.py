@@ -157,7 +157,7 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
     assert create_response.status_code == 202, create_response.text
     report = create_response.json()
     report_id = report["id"]
-    api_client.created_reports.append(report_id)
+    api_client.created_reports.append((report_id, user.auth_headers))
 
     get_response = api_client.client.get(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert get_response.status_code == 200, get_response.text
@@ -175,9 +175,36 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
     )
     assert download_response.status_code in {200, 202, 404, 409}, download_response.text
 
+    other = api_client.register_user("report-intruder")
+    assert api_client.client.get(f"/api/v1/reports/{report_id}", headers=other.auth_headers).status_code == 404
+    assert (
+        api_client.client.get(f"/api/v1/reports/{report_id}/download", headers=other.auth_headers).status_code
+        == 404
+    )
+    assert api_client.client.delete(f"/api/v1/reports/{report_id}", headers=other.auth_headers).status_code == 404
+    other_list = api_client.client.get(
+        "/api/v1/reports", headers=other.auth_headers, params={"userId": user.id}
+    )
+    assert other_list.status_code == 403, other_list.text
+    unfiltered = api_client.client.get("/api/v1/reports", headers=other.auth_headers)
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert all(r["requestedBy"] == other.id for r in unfiltered.json()["reports"])
+    spoofed = api_client.client.post(
+        "/api/v1/reports",
+        headers=other.auth_headers,
+        json={"reportName": "spoof", "category": "USAGE_ANALYTICS", "reportType": "CSV", "requestedBy": user.id},
+    )
+    assert spoofed.status_code == 403, spoofed.text
+    audit_export = api_client.client.post(
+        "/api/v1/reports",
+        headers=other.auth_headers,
+        json={"reportName": "audit", "category": "AUDIT_LOG", "reportType": "CSV"},
+    )
+    assert audit_export.status_code == 403, audit_export.text
+
     delete_response = api_client.client.delete(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert delete_response.status_code == 204, delete_response.text
-    api_client.created_reports.remove(report_id)
+    api_client.created_reports.remove((report_id, user.auth_headers))
 
     invalid_report = api_client.client.post(
         "/api/v1/reports",

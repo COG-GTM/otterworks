@@ -4,6 +4,7 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportResponse;
 import com.otterworks.report.model.ReportStatus;
+import com.otterworks.report.security.ReportCaller;
 import com.otterworks.report.service.ReportService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -66,16 +67,18 @@ public class ReportController {
     @ApiOperation(value = "Create a new report", notes = "Submits a report generation request. The report is generated asynchronously.")
     @ApiResponses({
             @ApiResponse(code = 202, message = "Report request accepted"),
-            @ApiResponse(code = 400, message = "Invalid request")
+            @ApiResponse(code = 400, message = "Invalid request"),
+            @ApiResponse(code = 403, message = "requestedBy is not the caller, or the category requires an admin role")
     })
     public ResponseEntity<ReportResponse> createReport(
             @Valid @RequestBody ReportRequest request) {
 
+        ReportCaller caller = ReportCaller.current();
         logger.info("Report request: name={}, category={}, type={}, by={}",
                 request.getReportName(), request.getCategory(),
-                request.getReportType(), request.getRequestedBy());
+                request.getReportType(), caller.getUserId());
 
-        Report report = reportService.createReport(request);
+        Report report = reportService.createReport(request, caller);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ReportResponse.fromEntity(report));
     }
@@ -90,7 +93,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> report = reportService.getReport(id);
+        Optional<Report> report = reportService.getReport(id, ReportCaller.current());
         if (!report.isPresent()) { // LEGACY: !isPresent() instead of isEmpty()
             return ResponseEntity.notFound().build();
         }
@@ -98,21 +101,14 @@ public class ReportController {
     }
 
     @GetMapping
-    @ApiOperation(value = "List reports", notes = "List reports filtered by user ID or status")
+    @ApiOperation(value = "List reports", notes = "List the caller's reports, optionally filtered by status. Admins may list any user's reports.")
     public ResponseEntity<Map<String, Object>> listReports(
             @ApiParam(value = "Filter by user ID")
             @RequestParam(required = false) String userId,
             @ApiParam(value = "Filter by status")
             @RequestParam(required = false) ReportStatus status) {
 
-        List<Report> reports;
-        if (userId != null) {
-            reports = reportService.getReportsByUser(userId);
-        } else if (status != null) {
-            reports = reportService.getReportsByStatus(status);
-        } else {
-            reports = reportService.getReportsByStatus(ReportStatus.COMPLETED);
-        }
+        List<Report> reports = reportService.listReports(ReportCaller.current(), userId, status);
 
         List<ReportResponse> responses = reports.stream()
                 .map(ReportResponse::fromEntity)
@@ -137,7 +133,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> optReport = reportService.getReport(id);
+        Optional<Report> optReport = reportService.getReport(id, ReportCaller.current());
         if (!optReport.isPresent()) {
             return ResponseEntity.notFound().build();
         }
@@ -189,7 +185,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        boolean deleted = reportService.deleteReport(id);
+        boolean deleted = reportService.deleteReport(id, ReportCaller.current());
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
