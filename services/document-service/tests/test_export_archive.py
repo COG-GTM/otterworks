@@ -147,3 +147,13 @@ async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path,
 
     assert resp.status_code == 404
     assert "leaked" not in resp.text
+
+
+def test_refuses_symlink_swapped_in_after_check(archive_with_outside_file, monkeypatch):
+    archive, tmp_path = archive_with_outside_file
+    link = tmp_path / "archive" / "swapped.md"
+    link.symlink_to(tmp_path / "outside" / "secrets.env")
+    # Simulate the link being swapped in after containment was checked.
+    monkeypatch.setattr(export_archive.os.path, "realpath", lambda p: p)
+    with pytest.raises(OSError):
+        archive.read_export("swapped.md")

@@ -31,12 +31,16 @@ class ExportArchive:
         ``FileNotFoundError`` when the export does not exist or ``name`` resolves
         to a path outside the archive root.
         """
-        path = self._resolve(name)
+        path, resolved = self._resolve(name)
         logger.debug("export_read", name=name)
-        with open(path, encoding="utf-8") as handle:
+        try:
+            fd = os.open(resolved, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        except FileNotFoundError as exc:
+            raise FileNotFoundError(exc.errno, exc.strerror, path) from None
+        with open(fd, encoding="utf-8") as handle:
             return handle.read()
 
-    def _resolve(self, name: str) -> str:
+    def _resolve(self, name: str) -> tuple[str, str]:
         if "\x00" in name or os.path.isabs(name):
             raise self._not_found(name)
         path = os.path.join(self.base_dir, name)
@@ -44,7 +48,7 @@ class ExportArchive:
         resolved = os.path.realpath(path)
         if resolved == root or os.path.commonpath([root, resolved]) != root:
             raise self._not_found(name)
-        return path
+        return path, resolved
 
     def _not_found(self, name: str) -> FileNotFoundError:
         logger.warning("export_read_rejected", name=name)
