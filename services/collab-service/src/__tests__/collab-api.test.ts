@@ -137,6 +137,15 @@ describe('collab REST API', () => {
       expect(documentAccess.check).toHaveBeenCalledWith('doc-a', `Bearer ${bearer}`);
     });
 
+    it('forwards a canonical Bearer header for mixed-case or padded schemes', async () => {
+      const bearer = token({ sub: 'owner-1' });
+      const res = await fetch(`${baseUrl}/documents/doc-a/presence`, {
+        headers: { Authorization: `  bearer   ${bearer} ` },
+      });
+      expect(res.status).toBe(200);
+      expect(documentAccess.check).toHaveBeenCalledWith('doc-a', `Bearer ${bearer}`);
+    });
+
     it('returns 404 without presence data when the caller is not authorized', async () => {
       access = 'denied';
       const res = await get('/documents/doc-a/presence', token({ sub: 'attacker' }));

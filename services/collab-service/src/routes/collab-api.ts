@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Logger } from 'pino';
 import type { PresenceHandler } from '../handlers/presence';
-import { isAdmin } from '../middleware/auth';
+import { extractBearerToken, isAdmin } from '../middleware/auth';
 import { createHttpAuthMiddleware, getRequestUser } from '../middleware/http-auth';
 import type { DocumentAccessChecker } from '../services/document-access';
 
@@ -28,10 +28,8 @@ export function createCollabApiRouter(options: CollabApiOptions): Router {
     const documentId = req.params.id;
 
     if (!isAdmin(user)) {
-      const access = await documentAccess.check(
-        documentId,
-        req.headers.authorization || '',
-      );
+      const bearer = extractBearerToken(req.headers.authorization);
+      const access = await documentAccess.check(documentId, `Bearer ${bearer}`);
       if (access === 'unavailable') {
         res.status(503).json({ error: 'Document authorization unavailable' });
         return;
