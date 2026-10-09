@@ -72,6 +72,39 @@ def test_symlink_pointing_outside_the_archive_is_rejected(jailed_archive):
         archive.read_export("leak.env")
 
 
+
+def test_symlink_swapped_in_after_the_check_is_not_followed(jailed_archive, monkeypatch):
+    archive, root, outside = jailed_archive
+    resolve = ExportArchive._resolve_inside_archive
+
+    def resolve_then_swap(self, name, path):
+        resolved = resolve(self, name, path)
+        (root / "reports" / "q3.md").unlink()
+        (root / "reports" / "q3.md").symlink_to(outside / "tenant-secrets.env")
+        return resolved
+
+    monkeypatch.setattr(ExportArchive, "_resolve_inside_archive", resolve_then_swap)
+    with pytest.raises(OSError):
+        archive.read_export("reports/q3.md")
+
+
+def test_directory_swapped_for_symlink_after_the_check_is_not_followed(
+    jailed_archive, monkeypatch
+):
+    archive, root, outside = jailed_archive
+    (outside / "q3.md").write_text("SUPPLIER_API_KEY=secret\n", encoding="utf-8")
+    resolve = ExportArchive._resolve_inside_archive
+
+    def resolve_then_swap(self, name, path):
+        resolved = resolve(self, name, path)
+        (root / "reports").rename(root / "reports-old")
+        (root / "reports").symlink_to(outside, target_is_directory=True)
+        return resolved
+
+    monkeypatch.setattr(ExportArchive, "_resolve_inside_archive", resolve_then_swap)
+    with pytest.raises(OSError):
+        archive.read_export("reports/q3.md")
+
 def test_symlinked_archive_root_still_serves_exports(jailed_archive, tmp_path):
     _, root, _ = jailed_archive
     link = tmp_path / "archive-link"

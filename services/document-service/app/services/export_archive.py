@@ -35,10 +35,31 @@ class ExportArchive:
         resolved = self._resolve_inside_archive(name, path)
         logger.debug("export_read", name=name)
         try:
-            with open(resolved, encoding="utf-8") as handle:
-                return handle.read()
+            fd = self._open_without_following_links(resolved)
         except FileNotFoundError:
             raise _not_found(path) from None
+        with open(fd, encoding="utf-8") as handle:
+            return handle.read()
+
+    def _open_without_following_links(self, resolved: str) -> int:
+        """Open ``resolved`` one component at a time from the archive root.
+
+        ``O_NOFOLLOW`` on every component means a symlink swapped in after
+        ``_resolve_inside_archive`` ran fails the open instead of escaping the root.
+        """
+        root = os.path.realpath(self.base_dir)
+        parts = os.path.relpath(resolved, root).split(os.sep)
+        dir_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for part in parts[:-1]:
+                next_fd = os.open(
+                    part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd
+                )
+                os.close(dir_fd)
+                dir_fd = next_fd
+            return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+        finally:
+            os.close(dir_fd)
 
     def _resolve_inside_archive(self, name: str, path: str) -> str:
         if "\x00" in name or os.path.isabs(name):
