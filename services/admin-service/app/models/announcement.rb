@@ -14,6 +14,16 @@ class Announcement < ApplicationRecord
              .where('ends_at IS NULL OR ends_at >= ?', Time.current)
   }
   scope :by_severity, ->(severity) { where(severity: severity) }
+  # target_audience is either { "role" => "all" | "admins" | "editors" | "viewers" } (admin dashboard)
+  # or { "roles" => [...] } (seed data); a missing/empty audience means everyone.
+  scope :for_role, lambda { |role|
+    role = role.to_s.downcase
+    audiences = ['all', role, role.pluralize].uniq
+    where("COALESCE(target_audience->>'role', 'all') IN (?)", audiences)
+      .where("CASE WHEN jsonb_typeof(target_audience->'roles') = 'array' " \
+             "AND jsonb_array_length(target_audience->'roles') > 0 " \
+             "THEN jsonb_exists_any(target_audience->'roles', ARRAY[?]::text[]) ELSE TRUE END", audiences)
+  }
 
   def publish!
     update!(status: 'published')

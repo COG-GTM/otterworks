@@ -56,6 +56,17 @@ RSpec.describe Api::V1::Admin::AnnouncementsController do
         expect(ids).to eq([active.id])
       end
 
+      it 'hides active announcements targeted at other roles' do
+        everyone = create(:announcement, :published, target_audience: { 'role' => 'all' })
+        viewers = create(:announcement, :published, target_audience: { 'role' => 'viewers' })
+        create(:announcement, :published, target_audience: { 'role' => 'admins' })
+        seeded = create(:announcement, :published, target_audience: { 'roles' => ['viewer'] })
+        create(:announcement, :published, target_audience: { 'roles' => ['admin'] })
+        get :index
+        ids = JSON.parse(response.body)['announcements'].pluck('id')
+        expect(ids).to contain_exactly(active.id, everyone.id, viewers.id, seeded.id)
+      end
+
       it 'ignores the status filter' do
         get :index, params: { status: 'draft' }
         body = JSON.parse(response.body)
@@ -68,6 +79,12 @@ RSpec.describe Api::V1::Admin::AnnouncementsController do
       it 'returns an active announcement' do
         get :show, params: { id: active.id }
         expect(response).to have_http_status(:ok)
+      end
+
+      it 'returns 404 for an active admin-only announcement' do
+        admins_only = create(:announcement, :published, target_audience: { 'role' => 'admins' })
+        get :show, params: { id: admins_only.id }
+        expect(response).to have_http_status(:not_found)
       end
 
       it 'returns 404 for draft, archived, expired and scheduled announcements' do

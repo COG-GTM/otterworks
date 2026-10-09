@@ -87,9 +87,9 @@ module Api
           @announcement = readable_announcements.find(params[:id])
         end
 
-        # Non-admins only ever see announcements that are published and within their time window.
+        # Non-admins only see published, in-window announcements targeted at their role.
         def readable_announcements
-          admin? ? Announcement.all : Announcement.active
+          admin? ? Announcement.all : Announcement.active.for_role(current_user_role)
         end
 
         def announcement_params
