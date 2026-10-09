@@ -20,6 +20,13 @@ public class ErrorHandlingMiddleware
         {
             await _next(context);
         }
+        catch (BadHttpRequestException ex) when (!context.Response.HasStarted)
+        {
+            _logger.LogWarning(ex, "Rejected bad request {Method} {Path}", context.Request.Method, context.Request.Path);
+            context.Response.StatusCode = ex.StatusCode;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message, traceId = context.TraceIdentifier }));
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception processing {Method} {Path}",

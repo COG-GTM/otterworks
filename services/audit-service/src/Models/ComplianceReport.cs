@@ -9,6 +9,7 @@ public sealed class ComplianceReport
     public Dictionary<string, int> ResourceTypeBreakdown { get; set; } = new();
     public List<SuspiciousActivity> SuspiciousActivities { get; set; } = new();
     public DateTime GeneratedAt { get; set; }
+    public bool Truncated { get; set; }
 }
 
 public sealed class SuspiciousActivity

@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using OtterWorks.AuditService.Config;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -44,23 +46,20 @@ public static class AuditController
             .Produces<ArchiveResult>(StatusCodes.Status200OK);
     }
 
-    private static async Task<IResult> RecordEvent(
+    internal static async Task<IResult> RecordEvent(
         AuditEventRequest request,
-        IAuditService auditService)
+        IAuditService auditService,
+        IOptions<AuditLimits> limits)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId) ||
-            string.IsNullOrWhiteSpace(request.Action) ||
-            string.IsNullOrWhiteSpace(request.ResourceType) ||
-            string.IsNullOrWhiteSpace(request.ResourceId))
-        {
-            return Results.BadRequest(new { error = "UserId, Action, ResourceType, and ResourceId are required." });
-        }
+        var error = AuditEventValidator.Validate(request, limits.Value);
+        if (error is not null)
+            return Results.BadRequest(new { error });
 
         var response = await auditService.RecordEventAsync(request);
         return Results.Created($"/api/v1/audit/events/{response.Id}", response);
     }
 
-    private static async Task<IResult> QueryEvents(
+    internal static async Task<IResult> QueryEvents(
         string? user_id,
         string? action,
         string? resource,
@@ -69,10 +68,16 @@ public static class AuditController
         DateTime? to,
         int? page,
         int? size,
-        IAuditService auditService)
+        IAuditService auditService,
+        IOptions<AuditLimits> limits)
     {
-        var pageNumber = page ?? 1;
+        var pageNumber = Math.Max(page ?? 1, 1);
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
+
+        if ((long)pageNumber * pageSize > limits.Value.MaxQueryWindow)
+        {
+            return Results.BadRequest(new { error = $"page * size must not exceed {limits.Value.MaxQueryWindow}; narrow the query with filters instead." });
+        }
 
         var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
         return Results.Ok(result);
@@ -113,15 +118,25 @@ public static class AuditController
         return Results.Ok(report);
     }
 
-    private static async Task<IResult> ExportAuditLog(
+    internal static async Task<IResult> ExportAuditLog(
         string? format,
         DateTime? from,
         DateTime? to,
-        IAuditService auditService)
+        IAuditService auditService,
+        IOptions<AuditLimits> limits)
     {
         var exportFormat = format ?? "json";
-        var exportFrom = from ?? DateTime.UtcNow.AddDays(-30);
         var exportTo = to ?? DateTime.UtcNow;
+        if (from is null && exportTo < DateTime.MinValue.AddDays(30))
+            return Results.BadRequest(new { error = "'to' is too early; provide 'from' explicitly." });
+        var exportFrom = from ?? exportTo.AddDays(-30);
+        var maxRangeDays = limits.Value.MaxExportRangeDays;
+
+        if (exportFrom > exportTo)
+            return Results.BadRequest(new { error = "'from' must be earlier than 'to'." });
+
+        if (exportTo - exportFrom > TimeSpan.FromDays(maxRangeDays))
+            return Results.BadRequest(new { error = $"Export range must not exceed {maxRangeDays} days." });
 
         if (!string.Equals(exportFormat, "csv", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(exportFormat, "json", StringComparison.OrdinalIgnoreCase))

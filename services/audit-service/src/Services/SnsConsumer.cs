@@ -14,6 +14,7 @@ public class SnsConsumer : BackgroundService
     private readonly IAmazonSQS _sqsClient;
     private readonly IAuditRepository _repository;
     private readonly AwsSettings _settings;
+    private readonly AuditLimits _limits;
     private readonly ILogger<SnsConsumer> _logger;
     private string? _queueUrl;
 
@@ -21,11 +22,13 @@ public class SnsConsumer : BackgroundService
         IAmazonSQS sqsClient,
         IAuditRepository repository,
         IOptions<AwsSettings> settings,
+        IOptions<AuditLimits> limits,
         ILogger<SnsConsumer> logger)
     {
         _sqsClient = sqsClient;
         _repository = repository;
         _settings = settings.Value;
+        _limits = limits.Value;
         _logger = logger;
     }
 
@@ -120,6 +123,7 @@ public class SnsConsumer : BackgroundService
                     Timestamp = fileEvent.Timestamp ?? DateTime.UtcNow,
                 };
 
+                AuditEventValidator.Normalize(fileShareEvent, _limits);
                 await _repository.SaveEventAsync(fileShareEvent);
                 _logger.LogDebug("Processed file share SNS event for {FileId}", fileEvent.FileId);
                 await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
@@ -151,6 +155,7 @@ public class SnsConsumer : BackgroundService
                 Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
             };
 
+            AuditEventValidator.Normalize(entity, _limits);
             await _repository.SaveEventAsync(entity);
             _logger.LogDebug("Processed SNS event: {Action} on {ResourceType}/{ResourceId}",
                 entity.Action, entity.ResourceType, entity.ResourceId);

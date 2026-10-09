@@ -279,6 +279,7 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build
+      - run: dotnet test tests/AuditService.Tests
 
   # React/Next.js - Web App
   web-app:

@@ -6,20 +6,25 @@ namespace OtterWorks.AuditService.Services;
 
 public class AuditService : IAuditService
 {
+    private const int RecentEventCount = 10;
+
     private readonly IAuditRepository _repository;
     private readonly IAuditArchiver _archiver;
     private readonly AwsSettings _settings;
+    private readonly AuditLimits _limits;
     private readonly ILogger<AuditService> _logger;
 
     public AuditService(
         IAuditRepository repository,
         IAuditArchiver archiver,
         IOptions<AwsSettings> settings,
+        IOptions<AuditLimits> limits,
         ILogger<AuditService> logger)
     {
         _repository = repository;
         _archiver = archiver;
         _settings = settings.Value;
+        _limits = limits.Value;
         _logger = logger;
     }
 
@@ -61,26 +66,39 @@ public class AuditService : IAuditService
     public async Task<UserActivityReport> GetUserActivityReportAsync(string userId, string period)
     {
         var (from, to) = ParsePeriod(period);
-        var events = await _repository.GetAllUserEventsAsync(userId);
-        var filtered = events.Where(e => e.Timestamp >= from && e.Timestamp <= to).ToList();
-
         var report = new UserActivityReport
         {
             UserId = userId,
             Period = period,
-            TotalEvents = filtered.Count,
-            ActionCounts = filtered.GroupBy(e => e.Action)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ResourceTypeCounts = filtered.GroupBy(e => e.ResourceType)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            FirstActivity = filtered.MinBy(e => e.Timestamp)?.Timestamp,
-            LastActivity = filtered.MaxBy(e => e.Timestamp)?.Timestamp,
-            RecentEvents = filtered
-                .OrderByDescending(e => e.Timestamp)
-                .Take(10)
-                .Select(AuditEventResponse.FromEntity)
-                .ToList(),
         };
+        var recent = new List<AuditEvent>();
+
+        await foreach (var e in _repository.StreamUserEventsAsync(userId, from, to))
+        {
+            if (report.TotalEvents >= _limits.MaxReportEvents)
+            {
+                report.Truncated = true;
+                break;
+            }
+
+            report.TotalEvents++;
+            Increment(report.ActionCounts, e.Action);
+            Increment(report.ResourceTypeCounts, e.ResourceType);
+            if (report.FirstActivity is null || e.Timestamp < report.FirstActivity)
+                report.FirstActivity = e.Timestamp;
+            if (report.LastActivity is null || e.Timestamp > report.LastActivity)
+                report.LastActivity = e.Timestamp;
+
+            recent.Add(e);
+            if (recent.Count > RecentEventCount * 4)
+                recent = recent.OrderByDescending(r => r.Timestamp).Take(RecentEventCount).ToList();
+        }
+
+        report.RecentEvents = recent
+            .OrderByDescending(e => e.Timestamp)
+            .Take(RecentEventCount)
+            .Select(AuditEventResponse.FromEntity)
+            .ToList();
 
         _logger.LogInformation("Generated user activity report for {UserId} ({Period}): {TotalEvents} events",
             userId, period, report.TotalEvents);
@@ -89,23 +107,35 @@ public class AuditService : IAuditService
 
     public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId)
     {
-        var events = await _repository.GetResourceHistoryAsync(resourceId);
+        var history = await _repository.GetResourceHistoryAsync(resourceId, _limits.MaxResourceHistoryEvents);
 
         return new ResourceHistory
         {
             ResourceId = resourceId,
-            TotalEvents = events.Count,
-            Events = events.Select(AuditEventResponse.FromEntity).ToList(),
+            TotalEvents = history.Total,
+            Events = history.Events.Select(AuditEventResponse.FromEntity).ToList(),
         };
     }
 
     public async Task<ComplianceReport> GetComplianceReportAsync(string period)
     {
         var (from, to) = ParsePeriod(period);
-        var events = await _repository.GetEventsByDateRangeAsync(from, to);
+        var report = new ComplianceReport { Period = period };
+        var userEventCounts = new Dictionary<string, int>();
 
-        var userEventCounts = events.GroupBy(e => e.UserId)
-            .ToDictionary(g => g.Key, g => g.Count());
+        await foreach (var e in _repository.StreamEventsByDateRangeAsync(from, to))
+        {
+            if (report.TotalEvents >= _limits.MaxReportEvents)
+            {
+                report.Truncated = true;
+                break;
+            }
+
+            report.TotalEvents++;
+            Increment(userEventCounts, e.UserId);
+            Increment(report.ActionBreakdown, e.Action);
+            Increment(report.ResourceTypeBreakdown, e.ResourceType);
+        }
 
         var averageEvents = userEventCounts.Count > 0
             ? userEventCounts.Values.Average()
@@ -113,7 +143,7 @@ public class AuditService : IAuditService
 
         var suspiciousThreshold = Math.Max(averageEvents * 3, 100);
 
-        var suspicious = userEventCounts
+        report.SuspiciousActivities = userEventCounts
             .Where(kvp => kvp.Value > suspiciousThreshold)
             .Select(kvp => new SuspiciousActivity
             {
@@ -122,22 +152,11 @@ public class AuditService : IAuditService
                 EventCount = kvp.Value,
             })
             .ToList();
-
-        var report = new ComplianceReport
-        {
-            Period = period,
-            TotalEvents = events.Count,
-            UniqueUsers = userEventCounts.Count,
-            ActionBreakdown = events.GroupBy(e => e.Action)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            ResourceTypeBreakdown = events.GroupBy(e => e.ResourceType)
-                .ToDictionary(g => g.Key, g => g.Count()),
-            SuspiciousActivities = suspicious,
-            GeneratedAt = DateTime.UtcNow,
-        };
+        report.UniqueUsers = userEventCounts.Count;
+        report.GeneratedAt = DateTime.UtcNow;
 
         _logger.LogInformation("Generated compliance report ({Period}): {TotalEvents} events, {UniqueUsers} users, {SuspiciousCount} suspicious",
-            period, report.TotalEvents, report.UniqueUsers, suspicious.Count);
+            period, report.TotalEvents, report.UniqueUsers, report.SuspiciousActivities.Count);
         return report;
     }
 
@@ -151,6 +170,9 @@ public class AuditService : IAuditService
         var cutoff = DateTime.UtcNow.AddDays(-_settings.ArchiveAfterDays);
         return await _archiver.ArchiveOldEventsAsync(cutoff);
     }
+
+    private static void Increment(Dictionary<string, int> counts, string key) =>
+        counts[key] = counts.TryGetValue(key, out var count) ? count + 1 : 1;
 
     private static (DateTime from, DateTime to) ParsePeriod(string period)
     {

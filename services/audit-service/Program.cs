@@ -28,6 +28,10 @@ builder.Host.UseSerilog();
 var awsSection = builder.Configuration.GetSection("Aws");
 builder.Services.Configure<AwsSettings>(awsSection);
 var awsSettings = awsSection.Get<AwsSettings>() ?? new AwsSettings();
+var limitsSection = builder.Configuration.GetSection("AuditLimits");
+builder.Services.Configure<AuditLimits>(limitsSection);
+var auditLimits = limitsSection.Get<AuditLimits>() ?? new AuditLimits();
+builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = auditLimits.MaxRequestBodyBytes);
 
 // AWS SDK clients
 builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>
