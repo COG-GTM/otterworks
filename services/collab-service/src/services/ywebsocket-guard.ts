@@ -11,6 +11,8 @@ export interface YWebsocketLimits {
   rateWindowMs: number;
   maxMessagesPerWindow: number;
   maxBytesPerWindow: number;
+  /** Minimum time a room must be connection-free before it may be evicted. */
+  idleEvictMs: number;
 }
 
 /** Subset of y-websocket's WSSharedDoc that the guard relies on. */
@@ -90,6 +92,7 @@ interface ConnectionState {
 export class YWebsocketGuard {
   private readonly userRooms = new Map<string, Map<string, number>>();
   private readonly docBytes = new WeakMap<SharedDocLike, number>();
+  private readonly docLastActive = new WeakMap<SharedDocLike, number>();
 
   constructor(
     private readonly limits: YWebsocketLimits,
@@ -130,6 +133,11 @@ export class YWebsocketGuard {
    * Returns false (and closes the socket) when the connection is refused.
    */
   attach(conn: WebSocket, userId: string, docName: string, setup: () => void): boolean {
+    // ws emits 'error' (e.g. maxPayload exceeded) before closing; unhandled it crashes the process.
+    conn.on('error', (err: Error) => {
+      this.logger.warn({ docName, error: err.message }, 'y-websocket_connection_error');
+    });
+
     const admission = this.admit(userId, docName);
     if (!admission.ok) {
       this.logger.warn(
@@ -144,10 +152,9 @@ export class YWebsocketGuard {
     }
 
     this.addRoom(userId, docName);
-    conn.once('close', () => this.removeRoom(userId, docName));
-    // ws emits 'error' (e.g. maxPayload exceeded) before closing; unhandled it crashes the process.
-    conn.on('error', (err: Error) => {
-      this.logger.warn({ docName, error: err.message }, 'y-websocket_connection_error');
+    conn.once('close', () => {
+      this.removeRoom(userId, docName);
+      this.touchDoc(docName);
     });
 
     const state: ConnectionState = { windowStart: this.now(), messages: 0, bytes: 0 };
@@ -164,6 +171,7 @@ export class YWebsocketGuard {
 
     setup();
     this.trackDoc(docName);
+    this.touchDoc(docName);
     return true;
   }
 
@@ -196,7 +204,12 @@ export class YWebsocketGuard {
 
     const doc = this.docs.get(docName);
     if (doc && isDocUpdateMessage(data)) {
-      const current = this.docBytes.get(doc) ?? 0;
+      let current = this.docBytes.get(doc) ?? 0;
+      if (current + size > this.limits.maxDocBytes) {
+        // The running total over-counts (edits/deletes compact); re-measure before refusing.
+        current = this.measureDoc(doc);
+        this.docBytes.set(doc, current);
+      }
       if (current + size > this.limits.maxDocBytes) {
         this.logger.warn(
           { docName, docBytes: current, messageBytes: size },
@@ -220,9 +233,18 @@ export class YWebsocketGuard {
     });
   }
 
+  private touchDoc(docName: string): void {
+    const doc = this.docs.get(docName);
+    if (doc) {
+      this.docLastActive.set(doc, this.now());
+    }
+  }
+
   private evictIdleDoc(): boolean {
+    const now = this.now();
     for (const [name, doc] of this.docs) {
-      if (doc.conns.size === 0) {
+      const lastActive = this.docLastActive.get(doc) ?? 0;
+      if (doc.conns.size === 0 && now - lastActive >= this.limits.idleEvictMs) {
         this.docs.delete(name);
         doc.destroy();
         this.logger.info({ docName: name }, 'y-websocket_idle_document_evicted');

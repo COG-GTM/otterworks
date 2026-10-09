@@ -31,6 +31,7 @@ export interface Config {
     rateWindowMs: number;
     maxMessagesPerWindow: number;
     maxBytesPerWindow: number;
+    idleEvictMs: number;
   };
   logLevel: string;
   otel: {
@@ -38,6 +39,12 @@ export interface Config {
     endpoint: string;
     serviceName: string;
   };
+}
+
+/** Reads a positive integer env var; invalid values fall back to the default. */
+export function positiveInt(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
 }
 
 export function loadConfig(): Config {
@@ -67,21 +74,16 @@ export function loadConfig(): Config {
       maxSnapshotsPerDocument: parseInt(process.env.MAX_SNAPSHOTS || '50', 10),
     },
     yWebsocket: {
-      maxPayloadBytes: parseInt(process.env.YWS_MAX_PAYLOAD_BYTES || '1048576', 10),
-      maxDocBytes: parseInt(process.env.YWS_MAX_DOC_BYTES || '8388608', 10),
-      maxDocs: parseInt(process.env.YWS_MAX_DOCS || '200', 10),
-      maxDocNameLength: parseInt(process.env.YWS_MAX_DOC_NAME_LENGTH || '128', 10),
-      maxConnectionsPerUser: parseInt(
-        process.env.YWS_MAX_CONNECTIONS_PER_USER || '20',
-        10,
-      ),
-      maxRoomsPerUser: parseInt(process.env.YWS_MAX_ROOMS_PER_USER || '10', 10),
-      rateWindowMs: parseInt(process.env.YWS_RATE_WINDOW_MS || '10000', 10),
-      maxMessagesPerWindow: parseInt(
-        process.env.YWS_MAX_MESSAGES_PER_WINDOW || '500',
-        10,
-      ),
-      maxBytesPerWindow: parseInt(process.env.YWS_MAX_BYTES_PER_WINDOW || '4194304', 10),
+      maxPayloadBytes: positiveInt('YWS_MAX_PAYLOAD_BYTES', 1048576),
+      maxDocBytes: positiveInt('YWS_MAX_DOC_BYTES', 8388608),
+      maxDocs: positiveInt('YWS_MAX_DOCS', 200),
+      maxDocNameLength: positiveInt('YWS_MAX_DOC_NAME_LENGTH', 128),
+      maxConnectionsPerUser: positiveInt('YWS_MAX_CONNECTIONS_PER_USER', 20),
+      maxRoomsPerUser: positiveInt('YWS_MAX_ROOMS_PER_USER', 10),
+      rateWindowMs: positiveInt('YWS_RATE_WINDOW_MS', 10000),
+      maxMessagesPerWindow: positiveInt('YWS_MAX_MESSAGES_PER_WINDOW', 500),
+      maxBytesPerWindow: positiveInt('YWS_MAX_BYTES_PER_WINDOW', 4194304),
+      idleEvictMs: positiveInt('YWS_IDLE_EVICT_MS', 300000),
     },
     logLevel: process.env.LOG_LEVEL || 'info',
     otel: {

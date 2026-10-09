@@ -40,6 +40,7 @@ const LIMITS: YWebsocketLimits = {
   rateWindowMs: 1000,
   maxMessagesPerWindow: 5,
   maxBytesPerWindow: 4096,
+  idleEvictMs: 5000,
 };
 
 class FakeDoc extends EventEmitter implements SharedDocLike {
@@ -152,6 +153,11 @@ describe('YWebsocketGuard', () => {
 
     const docA = docs.get('doc-a')!;
     a.conn.close();
+    clock += LIMITS.idleEvictMs - 1;
+    expect(guard.admit('u4', 'doc-d')).toMatchObject({ ok: false, status: 503 });
+    expect(docA.destroy).not.toHaveBeenCalled();
+
+    clock += 1;
     expect(connect('u4', 'doc-d').accepted).toBe(true);
     expect(docs.has('doc-a')).toBe(false);
     expect(docA.destroy).toHaveBeenCalled();
@@ -195,8 +201,17 @@ describe('YWebsocketGuard', () => {
   });
 
   it('drops document updates past the per-document size cap', () => {
+    let realSize = 0;
+    guard = new YWebsocketGuard(
+      LIMITS,
+      docs,
+      () => realSize,
+      mockLogger,
+      () => clock,
+    );
     const { conn, onMessage } = connect('u1', 'doc-a');
     const doc = docs.get('doc-a')!;
+    realSize = 1500;
     doc.emit('update', new Uint8Array(1500));
 
     conn.emit('message', awarenessMessage(900), true);
@@ -208,6 +223,45 @@ describe('YWebsocketGuard', () => {
       CLOSE_MESSAGE_TOO_BIG,
       'document size limit exceeded',
     );
+  });
+
+  it('re-measures the real document size before refusing updates', () => {
+    let realSize = 0;
+    guard = new YWebsocketGuard(
+      LIMITS,
+      docs,
+      () => realSize,
+      mockLogger,
+      () => clock,
+    );
+    const { conn, onMessage } = connect('u1', 'doc-a');
+    const doc = docs.get('doc-a')!;
+    doc.emit('update', new Uint8Array(1500));
+    doc.emit('update', new Uint8Array(500));
+    realSize = 100;
+
+    conn.emit('message', updateMessage(100), true);
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(conn.close).not.toHaveBeenCalled();
+
+    realSize = 2000;
+    doc.emit('update', new Uint8Array(1900));
+    conn.emit('message', updateMessage(100), true);
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(conn.close).toHaveBeenCalledWith(
+      CLOSE_MESSAGE_TOO_BIG,
+      'document size limit exceeded',
+    );
+  });
+
+  it('handles socket errors on refused connections', () => {
+    connect('u1', 'doc-a');
+    connect('u1', 'doc-b');
+    const refused = connect('u1', 'doc-c');
+    expect(refused.accepted).toBe(false);
+    expect(() =>
+      refused.conn.emit('error', new RangeError('Max payload size exceeded')),
+    ).not.toThrow();
   });
 
   it('ignores messages after the connection started closing', () => {
