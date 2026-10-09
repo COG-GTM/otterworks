@@ -90,7 +90,7 @@ def _extract_user_id(request: Request) -> UUID | None:
                 payload = jwt.decode(
                     token,
                     secret,
-                    algorithms=["HS256", "HS384"],
+                    algorithms=["HS256", "HS384", "HS512"],
                     issuer=_get_jwt_issuer(),
                     audience=_get_jwt_audience(),
                     options={"require": ["iss", "aud"]},

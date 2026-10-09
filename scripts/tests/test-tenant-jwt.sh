@@ -10,11 +10,11 @@ trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/bin" "${WORK}/store"
 cat > "${WORK}/bin/kubectl" <<'STUB'
 #!/usr/bin/env bash
-# kubectl -n NS get secret NAME -o jsonpath=...  |  kubectl -n NS create secret generic NAME --from-literal=K=V
+# kubectl -n NS get secret NAME -o jsonpath=...  |  kubectl -n NS create secret generic NAME --from-file=K=PATH
 ns="$2"; verb="$3"
 case "$verb" in
   get)    f="${KSTORE}/${ns}.$5"; [ -f "$f" ] || { echo "NotFound" >&2; exit 1; }; base64 < "$f" | tr -d '\n' ;;
-  create) f="${KSTORE}/${ns}.$6"; [ ! -f "$f" ] || { echo "AlreadyExists" >&2; exit 1; }; printf '%s' "${7#--from-literal=JWT_SECRET=}" > "$f" ;;
+  create) f="${KSTORE}/${ns}.$6"; [ ! -f "$f" ] || { echo "AlreadyExists" >&2; exit 1; }; case "$7" in --from-file=JWT_SECRET=*) cat "${7#--from-file=JWT_SECRET=}" > "$f" ;; *) echo "secret must not be on argv: $7" >&2; exit 1 ;; esac ;;
 esac
 STUB
 chmod +x "${WORK}/bin/kubectl"

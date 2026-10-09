@@ -276,8 +276,9 @@ ensure_tenant_jwt_secret() {
   fi
   secret="$(openssl rand -hex 32)"
   [ ${#secret} -eq 64 ] || { err "failed to generate tenant JWT secret"; return 1; }
+  # --from-file via a builtin-fed fd keeps the key off every process's argv.
   kubectl -n "$ns" create secret generic "${TENANT_AUTH_SECRET}" \
-    --from-literal=JWT_SECRET="$secret" >/dev/null \
+    --from-file=JWT_SECRET=<(printf '%s' "$secret") >/dev/null \
     || { err "failed to store tenant JWT secret in ${ns}"; return 1; }
   printf '%s' "$secret"
 }
