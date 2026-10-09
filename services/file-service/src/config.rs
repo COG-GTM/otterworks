@@ -27,6 +27,10 @@ pub struct AwsConfig {
     pub region: String,
     pub endpoint_url: Option<String>,
     pub s3_bucket: String,
+    /// Prefix every object key is written under. Tenant deployments set this to
+    /// `tenants/<tenant-id>/`: the bucket is shared and a tenant's IAM role only
+    /// grants that prefix. Empty for the golden deployment.
+    pub s3_key_prefix: String,
     pub dynamodb_table: String,
     pub dynamodb_folders_table: String,
     pub dynamodb_versions_table: String,
@@ -70,6 +74,17 @@ impl ServerConfig {
     }
 }
 
+/// Trim surrounding slashes and re-append exactly one, so `tenants/a01`,
+/// `/tenants/a01/` and `tenants/a01/` all yield `tenants/a01/`; blank stays blank.
+pub fn normalize_key_prefix(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}/")
+    }
+}
+
 fn parse_bool_env(key: &str, default: bool) -> bool {
     env::var(key)
         .ok()
@@ -90,6 +105,7 @@ impl AwsConfig {
             region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into()),
             endpoint_url: env::var("AWS_ENDPOINT_URL").ok(),
             s3_bucket: env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into()),
+            s3_key_prefix: normalize_key_prefix(&env::var("S3_KEY_PREFIX").unwrap_or_default()),
             dynamodb_table: env::var("DYNAMODB_TABLE")
                 .unwrap_or_else(|_| "otterworks-file-metadata".into()),
             dynamodb_folders_table: env::var("DYNAMODB_FOLDERS_TABLE")

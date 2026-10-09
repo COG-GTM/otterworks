@@ -57,6 +57,33 @@ public class S3AuditArchiverTests
     }
 
     [Fact]
+    public async Task ExportAsync_WithKeyPrefix_ShouldWriteUnderTenantPrefix()
+    {
+        var options = Options.Create(new AwsSettings
+        {
+            S3ArchiveBucket = "test-archive-bucket",
+            S3KeyPrefix = "tenants/a01",
+            Region = "us-east-1",
+        });
+        var archiver = new S3AuditArchiver(_mockS3.Object, _mockRepository.Object, options, _mockLogger.Object);
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var events = new List<AuditEvent>
+        {
+            new() { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow },
+        };
+
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
+
+        await archiver.ExportAsync(from, to, "json");
+
+        _mockS3.Verify(s => s.PutObjectAsync(It.Is<PutObjectRequest>(req =>
+            req.Key.StartsWith("tenants/a01/audit-exports/")),
+            default), Times.Once);
+    }
+
+    [Fact]
     public async Task ExportAsync_WithCsvFormat_ShouldUploadCsvToS3()
     {
         var from = DateTime.UtcNow.AddDays(-7);

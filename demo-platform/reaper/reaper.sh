@@ -19,9 +19,9 @@
 #                                                   (reuses drop_tenant_db)
 #        (c) tenant S3 object prefix in shared buckets
 #        (d) tenant DynamoDB items in shared app tables
-#        (e) legacy exact-match IRSA trust       -> via scripts/teardown-tenant.sh
-#                                                   (PRESERVES the shared
-#                                                    StringLike otterworks-* rule)
+#        (e) per-tenant IRSA roles + tables      -> via scripts/teardown-tenant.sh
+#                                                   (also strips any legacy
+#                                                    tenant trust on shared roles)
 #        (f) tenant Route53 records (best effort; external-dns also GCs these)
 #        (g) delete TENANT#<id> + LOCK#<id> control items and append an AUDIT reap
 #   3. if sweep_orphans: independently list live namespaces / DBs / S3 prefixes /
@@ -165,9 +165,8 @@ gc_tenant() {
   db="$(tenant_db_name "${id}")"
   log "reaping tenant '${id}' (${reason}) -> ns=${ns} db=${db}"
 
-  # (a) namespace, (b) RDS DB, (e) legacy IRSA trust — reuse the existing
-  # teardown script (it is safe when the namespace is already gone and preserves
-  # the shared otterworks-* StringLike trust).
+  # (a) namespace, (b) RDS DB, (e) per-tenant IRSA roles and tables — reuse the
+  # existing teardown script (it is safe when the namespace is already gone).
   "${REPO_ROOT}/scripts/teardown-tenant.sh" "${id}" \
     || warn "  teardown-tenant.sh reported issues for ${id} (continuing GC)"
 

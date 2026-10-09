@@ -71,16 +71,18 @@ through the one shared ingress/NLB.
 | DynamoDB / S3 access | shared per-service **IRSA roles**; `deploy-tenant.sh` extends each role's trust policy to the tenant namespace's service accounts (dev-reuse model; the Terraform `modules/irsa` change makes this the reproducible default) |
 
 **Tier A (default, implemented):** shared physical stores, isolated logically as
-above. Blast radius: the shared S3 bucket and DynamoDB dev tables are physically
-shared (mitigated because listings come from the per-tenant DB and objects use
-UUID keys). Redis, MeiliSearch and the relational DB are fully per-tenant.
+above. The S3 buckets are physically shared, but every tenant object lives under
+`tenants/<ID>/`, and each tenant gets its own DynamoDB tables
+(`otterworks-tenant-<ID>-*`). Redis, MeiliSearch and the relational DB are fully
+per-tenant.
 
-**Tier B (data-isolated):** additionally provision per-tenant DynamoDB tables and
-scoped IRSA. **Not enabled by default** because the shared file-service IAM
-policy is pinned to the `*-dev` table ARNs; enabling Tier B requires broadening
-that policy resource to `otterworks-*` (or minting per-tenant roles) — see
-"Known limitations". The per-tenant RDS database already gives Tier-B-grade
-isolation for all Postgres-backed services today.
+**IRSA:** the shared per-service roles trust only the golden `otterworks`
+namespace. `deploy-tenant.sh` creates one role per AWS-using tenant service
+(`file-service`, `notification-service`, `audit-service`) under
+`/otterworks-tenant/`, trusted by exactly `system:serviceaccount:otterworks-<ID>:<svc>`
+and allowed only that tenant's S3 prefix and tables. Every tenant role carries
+the `otterworks-tenant-boundary-<env>` permissions boundary, and teardown deletes
+the roles, tables and prefix.
 
 ## Bug injection (per tenant, never touches others)
 
@@ -130,7 +132,7 @@ Stood up `a01` + `a02` concurrently on the shared cluster and confirmed:
   (0 running pods), `up` restores them; the reaper kept both live tenants and
   deleted a synthetic expired namespace.
 - **Teardown/cleanup:** both tenants removed — namespaces gone, per-tenant DBs
-  dropped, and tenant subjects removed from the shared IRSA role trust policies.
+  dropped, and per-tenant IRSA roles, DynamoDB tables and S3 prefixes deleted.
 
 Note: the 2-node SPOT group is sized for the golden app; running two extra full
 tenants required scaling the shared node group to 4 (`t3.large` SPOT). Size the

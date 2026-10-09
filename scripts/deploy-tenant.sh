@@ -193,60 +193,28 @@ spec:
               kubernetes.io/metadata.name: monitoring
 YAML
 
-# ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------
-ensure_irsa_trust() {
-  local d="${REPO_ROOT}/infrastructure/terraform"
-  local oidc_url; oidc_url="$(terraform -chdir="${REPO_ROOT}/platform/terraform" output -raw oidc_provider_url 2>/dev/null || echo "")"
+# ---------- Per-tenant IRSA roles + data stores ----------
+# The tenant gets its own roles (exact-subject trust, tenant-prefix/table-scoped
+# policy, permissions boundary) and its own DynamoDB tables; see
+# ensure_tenant_irsa in lib/tenant-common.sh. It never trusts the shared roles.
+resolve_oidc_url() {
+  local url; url="$(terraform -chdir="${REPO_ROOT}/platform/terraform" output -raw oidc_provider_url 2>/dev/null || echo "")"
   # In-cluster the platform/terraform state isn't initialized; fall back to the
   # cluster's OIDC issuer via the EKS API (the runner IRSA role has
-  # eks:DescribeCluster). Without this the per-namespace trust is skipped and
-  # tenant pods can't assume the shared roles (AWS ops fail).
-  if [ -z "${oidc_url}" ]; then
-    oidc_url="$(aws eks describe-cluster --name "${EKS_CLUSTER}" --region "${AWS_REGION}" \
+  # eks:DescribeCluster).
+  if [ -z "${url}" ]; then
+    url="$(aws eks describe-cluster --name "${EKS_CLUSTER}" --region "${AWS_REGION}" \
       --query 'cluster.identity.oidc.issuer' --output text 2>/dev/null || echo "")"
   fi
-  oidc_url="${oidc_url#https://}"
-  [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; skipping IRSA trust update (IRSA may fail for ${NS})"; return 0; }
-  local svc role sub
-  for svc in $(echo "${IRSA_JSON}" | jq -r 'keys[]'); do
-    role="otterworks-${svc}-dev"
-    sub="system:serviceaccount:${NS}:${svc}"
-    local doc; doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "")"
-    [ -n "${doc}" ] || { warn "role ${role} not found; skipping"; continue; }
-    # Skip if the sub is already trusted — either an exact StringEquals entry or
-    # a StringLike wildcard (e.g. the Terraform-managed "otterworks-*" pattern)
-    # that already matches this namespace. Checking only StringEquals would make
-    # us append a redundant statement on every deploy and bloat the trust policy
-    # (IAM trust docs cap at 2048/4096 chars) until deploys start failing.
-    local trusted already=false pat
-    trusted="$(echo "${doc}" | jq -r --arg url "${oidc_url}" '
-      [ .Statement[]?.Condition
-        | (.StringEquals[$url+":sub"], .StringLike[$url+":sub"])
-        | select(. != null)
-        | if type=="array" then .[] else . end ] | .[]' 2>/dev/null)"
-    while IFS= read -r pat; do
-      [ -n "${pat}" ] || continue
-      # shellcheck disable=SC2254  # glob-match the exact sub against trust patterns
-      case "${sub}" in ${pat}) already=true; break ;; esac
-    done <<EOF
-${trusted}
-EOF
-    [ "${already}" = true ] && continue
-    # Append an AssumeRoleWithWebIdentity statement scoped to this namespace SA.
-    local new; new="$(echo "${doc}" | jq --arg sub "${sub}" --arg url "${oidc_url}" '
-      .Statement += [{
-        Effect: "Allow",
-        Action: "sts:AssumeRoleWithWebIdentity",
-        Principal: (.Statement[0].Principal),
-        Condition: { StringEquals: { ($url+":sub"): $sub, ($url+":aud"): "sts.amazonaws.com" } }
-      }]')"
-    aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null \
-      && log "  IRSA trust: ${role} now trusts ${sub}" \
-      || warn "  failed to update trust for ${role}"
-  done
+  printf '%s' "${url#https://}"
 }
-log "Ensuring shared IRSA roles trust the tenant namespace service accounts..."
-ensure_irsa_trust
+OIDC_HOST="$(resolve_oidc_url)"
+if [ -z "${OIDC_PROVIDER_ARN:-}" ] && [ -n "${OIDC_HOST}" ]; then
+  OIDC_PROVIDER_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:oidc-provider/${OIDC_HOST}"
+fi
+log "Provisioning per-tenant IRSA roles and DynamoDB tables..."
+ensure_tenant_irsa "${ATTENDEE_ID}" "${NS}" "${OIDC_PROVIDER_ARN:-}" "${OIDC_HOST}"
+remove_shared_role_tenant_trust "${NS}" "${OIDC_HOST}"
 
 # ---------- Per-tenant RDS database (Postgres data isolation) ----------
 create_tenant_database() {

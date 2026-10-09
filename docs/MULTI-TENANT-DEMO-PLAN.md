@@ -54,7 +54,7 @@ The unit of isolation is a **tenant** = one attendee or one demo run, identified
 | DynamoDB tables | **Shared account, per-tenant table name prefix** | Table names are already env-configurable (see §4). |
 | S3 buckets | **Shared bucket, per-tenant key prefix** | `s3://otterworks-files-dev/<ATTENDEE_ID>/...`. |
 | SNS/SQS | **Shared topic, per-tenant queue or filter** | Per-tenant SQS queue subscribed with a filter policy. |
-| IRSA roles | **Shared per-service role** (dev) → **per-tenant role** (strict) | Dev can reuse; strict isolation scopes policies to the tenant's resource prefixes. |
+| IRSA roles | **Per-tenant role** per AWS-using service | Exact-subject trust; policy scoped to the tenant's S3 prefix and DynamoDB tables, under a permissions boundary. Shared roles trust only the golden namespace. |
 
 **Isolation tiers** (pick per event):
 
@@ -178,8 +178,8 @@ charts don't checksum the ConfigMap, config-only changes need a `rollout restart
 
 - **Shared-store blast radius (Tier A).** Logical prefixes rely on app-level enforcement; a bug
   could cross tenants. Tier B removes this at the cost of per-tenant provisioning time.
-- **IRSA granularity.** Dev reuses one role per service across tenants; strict isolation needs
-  per-tenant roles scoped to per-tenant resource ARNs (more IAM objects).
+- **IRSA granularity.** Every tenant gets its own roles scoped to its own resource ARNs (three
+  IAM roles per tenant); the shared per-service roles are golden-namespace only.
 - **Chart config-reload.** Add `checksum/config` annotations so `helm upgrade` auto-rolls pods on
   config change (today a manual `rollout restart` is needed).
 - **DNS/wildcard cert** must exist for host-based routing; otherwise fall back to path routing.

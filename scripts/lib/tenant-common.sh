@@ -13,7 +13,8 @@
 #       * per-tenant in-cluster Redis      -> isolates chaos flags / sessions / collab
 #       * per-tenant in-cluster MeiliSearch-> isolates search indexes
 #       * per-tenant RDS database          -> isolates all Postgres-backed services
-#       * shared S3 bucket / DynamoDB tables (dev) reused via shared IRSA roles
+#       * shared S3 bucket under a tenants/<ID>/ prefix + per-tenant DynamoDB
+#         tables, reached through per-tenant IRSA roles (never the shared ones)
 #   - frontends go on the SHARED ingress (ClusterIP), not one ELB per tenant
 # ------------------------------------------------------------------------------
 
@@ -119,7 +120,7 @@ require_bins() {
 }
 
 # Load shared application-infra Terraform outputs (RDS/Redis/S3/DynamoDB/SNS/SQS
-# and the per-service IRSA role ARNs). Same source of truth as deploy-dev.sh.
+# and the inputs for per-tenant IRSA roles). Same source of truth as deploy-dev.sh.
 load_infra_outputs() {
   local d="${REPO_ROOT}/infrastructure/terraform"
   terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
@@ -134,7 +135,9 @@ load_infra_outputs() {
   DDB_FOLDERS="$(terraform -chdir="$d" output -raw dynamodb_folders_table 2>/dev/null || echo "")"
   DDB_VERSIONS="$(terraform -chdir="$d" output -raw dynamodb_file_versions_table 2>/dev/null || echo "")"
   DDB_SHARES="$(terraform -chdir="$d" output -raw dynamodb_file_shares_table 2>/dev/null || echo "")"
-  IRSA_JSON="$(terraform -chdir="$d" output -json irsa_role_arns 2>/dev/null || echo "{}")"
+  TENANT_BOUNDARY_ARN="$(terraform -chdir="$d" output -raw tenant_permissions_boundary_arn 2>/dev/null || echo "")"
+  TENANT_ROLE_PATH="$(terraform -chdir="$d" output -raw tenant_role_path 2>/dev/null || echo "/otterworks-tenant/")"
+  OIDC_PROVIDER_ARN="$(terraform -chdir="$d" output -raw oidc_provider_arn 2>/dev/null || echo "")"
   DB_USER="${DB_USER:-otterworks_admin}"
   if [ -z "${RDS_HOST}" ]; then
     warn "Terraform outputs unavailable; services will deploy without wired config."
@@ -175,7 +178,260 @@ resolve_db_endpoint() {
   DB_SESSION_PORT=6433
 }
 
-irsa_arn() { echo "${IRSA_JSON:-{}}" | jq -r --arg s "$1" '.[$s] // empty' 2>/dev/null; }
+# ---------- Per-tenant IRSA + data stores ----------
+# Tenant code is attendee-controlled, so a tenant ServiceAccount must never hold
+# the shared per-service roles (those trust only the golden namespace and grant
+# whole buckets/tables). Instead each tenant gets, for the few services that
+# touch AWS data directly:
+#   * its own IAM role, trusted by exactly system:serviceaccount:<ns>:<svc>
+#     (StringEquals, no wildcard), created under TENANT_ROLE_PATH with the
+#     Terraform-managed permissions boundary;
+#   * an inline policy limited to s3://<bucket>/tenants/<ID>/* (ListBucket only
+#     with an s3:prefix condition) and to its own DynamoDB tables;
+#   * its own copies of the DynamoDB tables (otterworks-tenant-<ID>-<table>).
+# Services not listed get no role at all: in particular nothing tenant-side can
+# reach the Cognito admin APIs, SES, SNS or the shared SQS queues.
+TENANT_IRSA_SERVICES="file-service notification-service audit-service"
+TENANT_ROLE_POLICY_NAME="tenant-scope"
+
+tenant_s3_prefix() { printf 'tenants/%s/' "$(sanitize_id "$1")"; }
+
+# <shared table name> <tenant id>
+tenant_table_name() { printf 'otterworks-tenant-%s-%s' "$(sanitize_id "$2")" "${1#otterworks-}"; }
+
+# <tenant id> <service>. IAM role names cap at 64 chars; long ids fall back to a
+# stable hash so the name stays deterministic for teardown.
+tenant_role_name() {
+  local sid name; sid="$(sanitize_id "$1")"
+  name="otterworks-t-${sid}-$2"
+  if [ "${#name}" -gt 64 ]; then
+    name="otterworks-t-$(printf '%s' "${sid}" | sha256sum | cut -c1-12)-$2"
+  fi
+  printf '%s' "${name}"
+}
+
+# <tenant id> <service>
+tenant_role_arn() {
+  printf 'arn:aws:iam::%s:role%s%s' "${AWS_ACCOUNT_ID}" "${TENANT_ROLE_PATH:-/otterworks-tenant/}" "$(tenant_role_name "$1" "$2")"
+}
+
+is_tenant_irsa_service() { [[ " ${TENANT_IRSA_SERVICES} " == *" $1 "* ]]; }
+
+# Shared tables a tenant service gets a private copy of (one per line).
+tenant_service_tables() {
+  case "$1" in
+    file-service)         printf '%s\n' "${DDB_FILE_META}" "${DDB_FOLDERS}" "${DDB_VERSIONS}" "${DDB_SHARES}" ;;
+    notification-service) printf '%s\n' "${DDB_NOTIF}" ;;
+    audit-service)        printf '%s\n' "${DDB_AUDIT}" ;;
+  esac
+}
+
+# <oidc provider arn> <oidc issuer host> <namespace> <service>
+tenant_trust_policy() {
+  jq -cn --arg arn "$1" --arg url "${2#https://}" --arg sub "system:serviceaccount:$3:$4" '{
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: { Federated: $arn },
+      Action: "sts:AssumeRoleWithWebIdentity",
+      Condition: { StringEquals: { ($url + ":sub"): $sub, ($url + ":aud"): "sts.amazonaws.com" } }
+    }]
+  }'
+}
+
+# <bucket or ""> <s3 prefix> <s3 actions csv> <dynamodb actions csv> <table>...
+_tenant_policy_json() {
+  local bucket=$1 prefix=$2 s3a=$3 ddba=$4; shift 4
+  local tables; tables="$(printf '%s\n' "$@" | sed '/^$/d' | jq -R . | jq -cs .)"
+  jq -cn --arg b "${bucket}" --arg p "${prefix}" --arg s3a "${s3a}" --arg ddba "${ddba}" \
+    --arg tarn "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT_ID}:table/" --argjson t "${tables}" '
+    ($s3a | split(",") | map(select(. != ""))) as $a |
+    { Version: "2012-10-17",
+      Statement: (
+        (if $b == "" or ($a | length) == 0 then [] else
+          [{ Sid: "TenantObjects", Effect: "Allow",
+             Action: ($a - ["ListBucket"] | map("s3:" + .)),
+             Resource: ["arn:aws:s3:::" + $b + "/" + $p + "*"] }]
+          + (if ($a | index("ListBucket")) == null then [] else
+              [{ Sid: "TenantPrefixList", Effect: "Allow", Action: "s3:ListBucket",
+                 Resource: ("arn:aws:s3:::" + $b),
+                 Condition: { StringLike: { "s3:prefix": [$p, $p + "*"] } } }] end)
+        end)
+        + (if ($t | length) == 0 then [] else
+            [{ Sid: "TenantTables", Effect: "Allow",
+               Action: ($ddba | split(",") | map("dynamodb:" + .)),
+               Resource: [$t[] | ($tarn + .), ($tarn + . + "/index/*")] }] end)
+      ) }'
+}
+
+# <service> <tenant id>: the inline policy for that tenant's role. Actions
+# mirror the shared role minus everything not tenant-scopable.
+tenant_service_policy() {
+  local svc=$1 id=$2 prefix t tables=()
+  prefix="$(tenant_s3_prefix "${id}")"
+  while IFS= read -r t; do
+    [ -n "${t}" ] && tables+=("$(tenant_table_name "${t}" "${id}")")
+  done < <(tenant_service_tables "${svc}")
+  case "${svc}" in
+    file-service)
+      _tenant_policy_json "${S3_FILE_BUCKET}" "${prefix}" "GetObject,PutObject,DeleteObject,ListBucket" \
+        "GetItem,PutItem,UpdateItem,DeleteItem,Query,Scan" "${tables[@]}" ;;
+    notification-service)
+      _tenant_policy_json "" "" "" "GetItem,PutItem,Query" "${tables[@]}" ;;
+    audit-service)
+      _tenant_policy_json "${S3_AUDIT_BUCKET}" "${prefix}" "PutObject" \
+        "PutItem,GetItem,Query,BatchWriteItem" "${tables[@]}" ;;
+    *) return 1 ;;
+  esac
+}
+
+# <describe-table json> <new table name> <tenant sid>: create-table input that
+# clones the shared table's keys and indexes, on-demand billing.
+tenant_table_create_input() {
+  printf '%s' "$1" | jq -c --arg n "$2" --arg sid "$3" '.Table | {
+      TableName: $n,
+      BillingMode: "PAY_PER_REQUEST",
+      AttributeDefinitions: .AttributeDefinitions,
+      KeySchema: .KeySchema,
+      Tags: [{Key: "Project", Value: "otterworks"}, {Key: "Tenant", Value: $sid}, {Key: "ManagedBy", Value: "deploy-tenant"}]
+    }
+    + (if (.GlobalSecondaryIndexes // []) | length > 0 then
+        {GlobalSecondaryIndexes: [.GlobalSecondaryIndexes[] | {IndexName, KeySchema, Projection}]} else {} end)
+    + (if (.LocalSecondaryIndexes // []) | length > 0 then
+        {LocalSecondaryIndexes: [.LocalSecondaryIndexes[] | {IndexName, KeySchema, Projection}]} else {} end)'
+}
+
+# <shared table> <tenant id>
+ensure_tenant_table() {
+  local shared=$1 id=$2 name spec ttl
+  name="$(tenant_table_name "${shared}" "${id}")"
+  if aws dynamodb describe-table --region "${AWS_REGION}" --table-name "${name}" >/dev/null 2>&1; then
+    return 0
+  fi
+  spec="$(aws dynamodb describe-table --region "${AWS_REGION}" --table-name "${shared}" --output json 2>/dev/null)" \
+    || { warn "  cannot describe ${shared}; tenant table ${name} not created"; return 1; }
+  aws dynamodb create-table --region "${AWS_REGION}" \
+    --cli-input-json "$(tenant_table_create_input "${spec}" "${name}" "$(sanitize_id "${id}")")" >/dev/null \
+    || { warn "  failed to create ${name}"; return 1; }
+  aws dynamodb wait table-exists --region "${AWS_REGION}" --table-name "${name}" || true
+  ttl="$(aws dynamodb describe-time-to-live --region "${AWS_REGION}" --table-name "${shared}" \
+    --query 'TimeToLiveDescription.[TimeToLiveStatus,AttributeName]' --output text 2>/dev/null || echo "")"
+  if [ "${ttl%%[[:space:]]*}" = "ENABLED" ]; then
+    aws dynamodb update-time-to-live --region "${AWS_REGION}" --table-name "${name}" \
+      --time-to-live-specification "Enabled=true,AttributeName=${ttl##*[[:space:]]}" >/dev/null 2>&1 || true
+  fi
+  log "  created tenant table ${name}"
+}
+
+# <tenant id> <namespace> <oidc provider arn> <oidc issuer host>
+# Creates/refreshes the tenant's tables and roles. Sets TENANT_ROLES_READY to
+# the services whose role is in place; build_helm_args only annotates those.
+ensure_tenant_irsa() {
+  local id=$1 ns=$2 oidc_arn=$3 oidc_host=$4 svc name t trust policy ok
+  TENANT_ROLES_READY=" "
+  if [ -z "${TENANT_BOUNDARY_ARN:-}" ] || [ -z "${oidc_arn}" ] || [ -z "${oidc_host}" ]; then
+    warn "Tenant IRSA inputs unavailable (boundary/OIDC); tenant services get NO AWS role (AWS-backed features will fail)."
+    return 0
+  fi
+  for svc in ${TENANT_IRSA_SERVICES}; do
+    ok=true
+    while IFS= read -r t; do
+      [ -n "${t}" ] || continue
+      ensure_tenant_table "${t}" "${id}" || ok=false
+    done < <(tenant_service_tables "${svc}")
+    name="$(tenant_role_name "${id}" "${svc}")"
+    trust="$(tenant_trust_policy "${oidc_arn}" "${oidc_host}" "${ns}" "${svc}")"
+    policy="$(tenant_service_policy "${svc}" "${id}")"
+    if aws iam get-role --role-name "${name}" >/dev/null 2>&1; then
+      aws iam update-assume-role-policy --role-name "${name}" --policy-document "${trust}" >/dev/null || ok=false
+    else
+      aws iam create-role --role-name "${name}" --path "${TENANT_ROLE_PATH:-/otterworks-tenant/}" \
+        --assume-role-policy-document "${trust}" \
+        --permissions-boundary "${TENANT_BOUNDARY_ARN}" \
+        --tags "Key=Project,Value=otterworks" "Key=Tenant,Value=$(sanitize_id "${id}")" "Key=ManagedBy,Value=deploy-tenant" \
+        >/dev/null || ok=false
+    fi
+    aws iam put-role-policy --role-name "${name}" --policy-name "${TENANT_ROLE_POLICY_NAME}" \
+      --policy-document "${policy}" >/dev/null 2>&1 || ok=false
+    if [ "${ok}" = true ]; then
+      TENANT_ROLES_READY+="${svc} "
+      log "  IRSA: ${name} -> ${ns}:${svc}"
+    else
+      warn "  IRSA: failed to provision ${name}; ${svc} will run without an AWS role"
+    fi
+  done
+}
+
+# <tenant id>: delete the tenant's roles. Safe when they are already gone.
+delete_tenant_irsa_roles() {
+  local id=$1 svc name
+  for svc in ${TENANT_IRSA_SERVICES}; do
+    name="$(tenant_role_name "${id}" "${svc}")"
+    aws iam get-role --role-name "${name}" >/dev/null 2>&1 || continue
+    aws iam delete-role-policy --role-name "${name}" --policy-name "${TENANT_ROLE_POLICY_NAME}" >/dev/null 2>&1 || true
+    aws iam delete-role --role-name "${name}" >/dev/null \
+      && log "  deleted IRSA role ${name}" || warn "  failed to delete IRSA role ${name}"
+  done
+}
+
+# <tenant id>: delete the tenant's DynamoDB tables and S3 prefixes.
+delete_tenant_data_stores() {
+  local id=$1 svc t name prefix b
+  for svc in ${TENANT_IRSA_SERVICES}; do
+    while IFS= read -r t; do
+      [ -n "${t}" ] || continue
+      name="$(tenant_table_name "${t}" "${id}")"
+      aws dynamodb delete-table --region "${AWS_REGION}" --table-name "${name}" >/dev/null 2>&1 \
+        && log "  deleted tenant table ${name}" || true
+    done < <(tenant_service_tables "${svc}")
+  done
+  prefix="$(tenant_s3_prefix "${id}")"
+  for b in "${S3_FILE_BUCKET:-}" "${S3_AUDIT_BUCKET:-}"; do
+    [ -n "${b}" ] || continue
+    aws s3 rm "s3://${b}/${prefix}" --recursive --only-show-errors >/dev/null 2>&1 || true
+  done
+}
+
+# <namespace> <oidc issuer host>: strip statements naming this namespace's SAs
+# from the SHARED per-service roles. Those roles now trust only the golden
+# namespace; this removes trust added by older deploys or by the retired
+# enable-tenant-irsa-wildcard.sh, so a re-deployed or torn-down tenant cannot
+# keep reaching shared data. Statements trusting any other subject are kept.
+remove_shared_role_tenant_trust() {
+  local ns=$1 url=${2#https://} svc role doc new
+  [ -n "${url}" ] || { warn "OIDC URL unavailable; skipping shared-role trust cleanup."; return 0; }
+  for svc in ${TENANT_SHARED_ROLE_SERVICES:-file-service document-service notification-service search-service analytics-service audit-service auth-service admin-service api-gateway collab-service}; do
+    role="otterworks-${svc}-${ENVIRONMENT:-dev}"
+    doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "")"
+    [ -n "${doc}" ] || continue
+    new="$(shared_trust_without_tenant "${doc}" "${url}" "${ns}")"
+    if [ "$(echo "${doc}" | jq -cS .)" != "$(echo "${new}" | jq -cS .)" ]; then
+      aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null \
+        && log "  removed ${ns} trust from shared role ${role}" \
+        || warn "  failed to clean trust for ${role}"
+    fi
+  done
+}
+
+# <trust doc> <oidc host> <namespace>: drop :sub values that match this
+# namespace exactly, or any otterworks-* style wildcard; drop statements left
+# with no :sub. Pure, so it is unit-tested.
+shared_trust_without_tenant() {
+  printf '%s' "$1" | jq --arg url "$2" --arg ns "$3" '
+    def norm: if type == "array" then . else [.] end;
+    def keep: (startswith("system:serviceaccount:" + $ns + ":") or contains("*")) | not;
+    def subs: [("StringEquals", "StringLike") as $op | (.Condition[$op][$url + ":sub"] // empty)];
+    .Statement |= map(
+      (subs | length) as $had
+      | reduce ("StringEquals", "StringLike") as $op (.;
+          if (.Condition[$op][$url + ":sub"] // null) == null then .
+          else (.Condition[$op][$url + ":sub"] | norm | map(select(keep))) as $k
+            | if ($k | length) == 0 then .Condition[$op] |= del(.[$url + ":sub"])
+              else .Condition[$op][$url + ":sub"] = (if ($k | length) == 1 then $k[0] else $k end) end
+          end)
+      | select($had == 0 or (subs | length) > 0)
+      | if (.Condition.StringLike // null) == {} then del(.Condition.StringLike) else . end)'
+}
 
 # Turn a per-tenant DB name (otterworks_a01) into an RFC-1123 fragment usable in
 # Kubernetes resource names (otterworks-a01) so per-tenant Jobs/Secrets are named
@@ -273,8 +529,11 @@ build_helm_args() {
   # only ever through the ONE shared ingress. See docs/MULTI-TENANT-DEMO-PLAN.md §3.
   EXTRA_ARGS+=(--set service.type=ClusterIP)
 
-  local role; role="$(irsa_arn "$service")"
-  if [ -n "$role" ]; then EXTRA_ARGS+=(--set "serviceAccount.roleArn=${role}"); fi
+  # Only the tenant's own role, and only once ensure_tenant_irsa provisioned it.
+  # Never the shared per-service roles: they are not tenant-scoped.
+  if is_tenant_irsa_service "$service" && [[ "${TENANT_ROLES_READY:-}" == *" ${service} "* ]]; then
+    EXTRA_ARGS+=(--set "serviceAccount.roleArn=$(tenant_role_arn "${ATTENDEE_ID}" "${service}")")
+  fi
   if [[ " ${JVM_SERVICES} " == *" ${service} "* ]]; then
     EXTRA_ARGS+=(--set resources.requests.memory=512Mi --set resources.limits.memory=1024Mi --set resources.limits.cpu=1000m)
   fi
@@ -319,10 +578,11 @@ build_helm_args() {
     file-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.S3_BUCKET=${S3_FILE_BUCKET}")
-      EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE=${DDB_FILE_META}")
-      EXTRA_ARGS+=(--set-string "config.DYNAMODB_FOLDERS_TABLE=${DDB_FOLDERS}")
-      EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=${DDB_VERSIONS}")
-      EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=${DDB_SHARES}")
+      EXTRA_ARGS+=(--set-string "config.S3_KEY_PREFIX=$(tenant_s3_prefix "${ATTENDEE_ID}")")
+      EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE=$(tenant_table_name "${DDB_FILE_META}" "${ATTENDEE_ID}")")
+      EXTRA_ARGS+=(--set-string "config.DYNAMODB_FOLDERS_TABLE=$(tenant_table_name "${DDB_FOLDERS}" "${ATTENDEE_ID}")")
+      EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=$(tenant_table_name "${DDB_VERSIONS}" "${ATTENDEE_ID}")")
+      EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=$(tenant_table_name "${DDB_SHARES}" "${ATTENDEE_ID}")")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}") ;;
     document-service)
@@ -336,7 +596,7 @@ build_helm_args() {
     notification-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
-      EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=${DDB_NOTIF}")
+      EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=$(tenant_table_name "${DDB_NOTIF}" "${ATTENDEE_ID}")")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}")
       EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${sqs_notif}") ;;
     search-service)
@@ -376,8 +636,9 @@ build_helm_args() {
       add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
-      EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")
-      EXTRA_ARGS+=(--set-string "config.Aws__S3ArchiveBucket=${S3_AUDIT_BUCKET}") ;;
+      EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=$(tenant_table_name "${DDB_AUDIT}" "${ATTENDEE_ID}")")
+      EXTRA_ARGS+=(--set-string "config.Aws__S3ArchiveBucket=${S3_AUDIT_BUCKET}")
+      EXTRA_ARGS+=(--set-string "config.Aws__S3KeyPrefix=$(tenant_s3_prefix "${ATTENDEE_ID}")") ;;
     report-service)
       EXTRA_ARGS+=(--set-string "config.DB_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DB_PORT=${DB_ENDPOINT_PORT}")
       EXTRA_ARGS+=(--set-string "config.DB_NAME=${T_DB_NAME}" --set-string "config.DB_USER=${DB_USER}")
