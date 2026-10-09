@@ -10,6 +10,8 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    include /etc/nginx/snippets/security-headers.conf;
+
     location = /api/health {
         default_type application/json;
         return 200 '{"status":"healthy","service":"web-app"}';
@@ -32,6 +34,7 @@ server {
     }
 
     location /assets/ {
+        include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 

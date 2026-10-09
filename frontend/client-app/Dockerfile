@@ -12,6 +12,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=3s CMD wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1

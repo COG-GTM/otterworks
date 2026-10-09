@@ -37,7 +37,7 @@ export default defineConfig({
     proxy: { ...apiProxy, ...billingProxy },
   },
   test: {
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "nginx/**/*.test.ts"],
     setupFiles: ["src/test-setup.ts"],
     globals: true,
     environment: "jsdom",
