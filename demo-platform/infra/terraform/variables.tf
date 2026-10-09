@@ -47,6 +47,14 @@ variable "dns_zone_name" {
   default = "otterworks.app"
 }
 
+# Suffix tenant hosts live under (t-<id>.<suffix> / api-t-<id>.<suffix>). Bounds
+# which records the reaper's IAM role may delete in the zone; keep it in step
+# with reaper.hostSuffix in the Helm values.
+variable "tenant_host_suffix" {
+  type    = string
+  default = "demo.otterworks.app"
+}
+
 # Shared data-plane resources the reaper must be able to GC per-tenant slices of.
 # Prefix match keeps the policy stable as tables/buckets are added.
 variable "shared_dynamodb_table_prefix" {
