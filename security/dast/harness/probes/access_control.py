@@ -425,6 +425,84 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
     )
 
 
+@probe(
+    finding_id="DAST-BOLA-AUDIT",
+    title="Audit trail readable by any authenticated user",
+    severity=Severity.HIGH,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="audit-service",
+    remediation=(
+        "Validate the JWT in audit-service, scope non-admin reads to the caller's own "
+        "user id, and restrict tenant-wide reports and export to admin/owner roles."
+    ),
+)
+def bola_audit(ctx: ScanContext) -> Result:
+    """Attacker reads the victim's audit events and the tenant-wide compliance report."""
+    self = bola_audit.probe
+    marker = f"dast-audit-{ctx.victim_marker}"
+    seeded = ctx.request(
+        "POST",
+        "/api/v1/audit/events",
+        identity=ctx.victim,
+        json={
+            "userId": ctx.victim.user_id,
+            "action": "read",
+            "resourceType": "document",
+            "resourceId": marker,
+        },
+    )
+    if seeded.status_code != 201:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"could not seed a victim audit event (status {seeded.status_code})",
+            [Evidence.from_response(seeded)],
+        )
+    try:
+        event_id = str(seeded.json().get("id", ""))
+    except (ValueError, AttributeError):
+        event_id = ""
+    if not event_id:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the seeded audit event response carried no id",
+            [Evidence.from_response(seeded)],
+        )
+    victim_id = ctx.victim.user_id
+
+    attempts = [
+        (f"/api/v1/audit/events/{event_id}", None, lambda r: True),
+        ("/api/v1/audit/events", {"user_id": victim_id}, lambda r: victim_id in r.text),
+        ("/api/v1/audit/events", {"resource": marker, "size": 100}, lambda r: marker in r.text),
+        (f"/api/v1/audit/reports/user/{victim_id}", None, lambda r: True),
+        (f"/api/v1/audit/resources/{marker}/history", None, lambda r: event_id in r.text),
+        ("/api/v1/audit/reports/compliance", None, lambda r: True),
+    ]
+    evidence = []
+    for path, params, leaked in attempts:
+        response = ctx.get(path, params=params, identity=ctx.attacker)
+        if response.status_code == 200 and leaked(response):
+            return self.result(
+                Verdict.VULNERABLE,
+                f"the attacker's token read victim audit data from {path}",
+                [Evidence.from_response(response, note=f"victim event {event_id}")],
+            )
+        evidence.append(Evidence.from_response(response))
+
+    if not ctx.owner_can_read(f"/api/v1/audit/events/{event_id}", ctx.victim):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the victim cannot read their own audit event either, so scoping cannot be assessed",
+            evidence,
+        )
+    return self.result(
+        Verdict.SECURE,
+        "the victim reads their own event; every attacker read of it, their report and "
+        "the compliance report was refused or filtered",
+        evidence[:3],
+    )
+
+
 def _forge_share_token(document_id: str, salt: str, length: int) -> str:
     """Derive a share token the way an unkeyed digest lets anyone derive it.
 
