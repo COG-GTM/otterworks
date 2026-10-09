@@ -61,7 +61,11 @@ admin-service already owns the Devin flow: `DevinSessionService.create_session`
 (reads `DEVIN_API_KEY`/`DEVIN_ORG_ID`, no-ops with a warning if missing) and the
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
 or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
-unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
+unset, only direct in-cluster calls are accepted — anything relayed by the
+gateway/ingress (`X-Forwarded-For` etc.) gets 401). Only allowlisted `alertname`s
+(`DEFAULT_AUTO_INVESTIGATE_ALERTNAMES` in `alerts_controller.rb`, or env
+`DEVIN_AUTO_INVESTIGATE_ALERTNAMES`) auto-start a Devin session, so add a new
+alert type there. Reuse it instead of adding a
 second Devin client:
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
