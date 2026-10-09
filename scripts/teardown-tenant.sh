@@ -13,7 +13,8 @@
 # Usage:
 #   ./scripts/teardown-tenant.sh <ATTENDEE_ID> [--keep-db] [--keep-trust]
 #
-# Required env: AWS creds (exported). DB_PASSWORD needed only to drop the DB.
+# Required env: AWS creds (exported). DB_PASSWORD (RDS master) needed only to
+#   drop the DB and the tenant's login role.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -58,14 +59,14 @@ else
     warn "Namespace deletion timed out; it may still be terminating."
 fi
 
-# --- Step 2: drop the per-tenant database (now that no pods are connected) ---
+# --- Step 2: drop the per-tenant database + role (now that no pods are connected) ---
 # Runs regardless of whether the namespace still existed: the drop Job executes
 # in ${SYSTEM_NAMESPACE}, not the tenant namespace, so it works even after the
 # reaper has removed the tenant namespace (the reaper does NOT drop DBs).
 if [ "${KEEP_DB}" = false ] && [ -n "${DB_PASSWORD:-}" ]; then
   load_infra_outputs
   if [ -n "${RDS_HOST}" ]; then
-    log "Dropping per-tenant database ${T_DB_NAME} (in-cluster job in ${SYSTEM_NAMESPACE})..."
+    log "Dropping per-tenant database ${T_DB_NAME} and role $(tenant_db_role_for_db "${T_DB_NAME}") (in-cluster job in ${SYSTEM_NAMESPACE})..."
     kubectl get ns "${SYSTEM_NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${SYSTEM_NAMESPACE}" >/dev/null 2>&1 || true
     drop_tenant_db "${T_DB_NAME}" "${SYSTEM_NAMESPACE}" || \
       warn "  check RDS manually for ${T_DB_NAME}."

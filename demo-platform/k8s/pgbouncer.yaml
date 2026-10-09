@@ -35,6 +35,13 @@ data:
     unix_socket_dir =
     auth_type = scram-sha-256
     auth_file = /etc/pgbouncer/userlist.txt
+    # Tenant services log in as their own role (otterworks_<id>_app), which
+    # owns only that tenant's database. Those roles are created per deploy, so
+    # they are not in the userlist: PgBouncer looks them up as the master in a
+    # master-only table that scripts/deploy-tenant.sh maintains.
+    auth_user = __DB_USER__
+    auth_dbname = otterworks
+    auth_query = SELECT usename, passwd FROM pgbouncer.tenant_credentials WHERE usename = $1
 
     # Transaction pooling: a server connection is held for the length of a
     # transaction, not a session, which is what lets a few dozen server
@@ -58,13 +65,14 @@ data:
     reserve_pool_size = 2
     reserve_pool_timeout = 3
 
-    # The actual ceiling. Every service connects as the same RDS master user, so
-    # a per-user cap is a global cap: 25 per replica x 2 replicas = 50 server
-    # connections here, plus 30 from the session pooler below = 80, under the
-    # ~112 a db.t3.micro allows and leaving room for psql, deploy jobs and RDS's
-    # own reserved superuser slots. This is the number to revisit when the
-    # instance is resized -- not default_pool_size.
-    max_user_connections = 25
+    # Per-user cap. Each tenant is its own user, so this bounds one tenant
+    # (5 per replica here + 5 on the session port), and the role's server-side
+    # CONNECTION LIMIT (TENANT_DB_CONN_LIMIT) backs it up. The golden app still
+    # uses the master and keeps its previous 25 via [users] below. Total RDS
+    # connections now grow with *active* tenants rather than being one global
+    # number: idle tenants hand connections back after server_idle_timeout and
+    # are scaled to zero by the reaper. Revisit when the instance is resized.
+    max_user_connections = 5
 
     # Idle tenants are the normal state here (the reaper scales them to zero),
     # so hand server connections back quickly rather than holding them open for
@@ -85,7 +93,7 @@ data:
     track_extra_parameters = IntervalStyle,search_path
 
     # require, not prefer: prefer silently falls back to plaintext, and every
-    # tenant's SQL crosses this hop authenticated as the RDS master user. RDS
+    # tenant's SQL and credentials cross this hop. RDS
     # always offers TLS, so there is nothing to fall back for. Not verify-full,
     # which additionally needs the RDS CA bundle mounted here -- worth doing,
     # but it is a separate change with its own rotation story.
@@ -97,6 +105,9 @@ data:
     # noise at this fan-out; the SHOW POOLS/STATS views are the interface.
     log_connections = 0
     log_disconnections = 0
+
+    [users]
+    __DB_USER__ = max_user_connections=25
 
   # A second pooler, in SESSION mode, for the things transaction pooling cannot
   # serve: anything whose state outlives a transaction. Concretely, every schema
@@ -129,11 +140,14 @@ data:
     unix_socket_dir =
     auth_type = scram-sha-256
     auth_file = /etc/pgbouncer/userlist.txt
+    auth_user = __DB_USER__
+    auth_dbname = otterworks
+    auth_query = SELECT usename, passwd FROM pgbouncer.tenant_credentials WHERE usename = $1
     pool_mode = session
     max_client_conn = 500
     default_pool_size = 15
     min_pool_size = 0
-    max_user_connections = 15
+    max_user_connections = 5
     server_idle_timeout = 60
     server_lifetime = 900
     ignore_startup_parameters = extra_float_digits,options
@@ -143,6 +157,9 @@ data:
     stats_users = __DB_USER__
     log_connections = 0
     log_disconnections = 0
+
+    [users]
+    __DB_USER__ = max_user_connections=15
 ---
 apiVersion: apps/v1
 kind: Deployment

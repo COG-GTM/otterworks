@@ -33,6 +33,8 @@
 #
 # Secrets (from Kubernetes Secret refs in the Job spec — env only, NEVER argv):
 #   DB_PASSWORD, JWT_SECRET, SECRET_KEY_BASE
+# DB_PASSWORD is the RDS master: it stays in this runner, used only to create /
+# drop tenant databases and roles. Tenant services get their own role instead.
 #
 # This script never echoes secret values and never passes them on a command line;
 # the underlying scripts read them straight from the environment.
@@ -151,7 +153,8 @@ run_deploy() {
 run_teardown() {
   [ -n "${TENANT_ID:-}" ] || die "OP=teardown requires TENANT_ID"
   ctl_update_status "${TENANT_ID}" draining
-  # teardown-tenant.sh reads DB_PASSWORD from the env to drop the per-tenant DB.
+  # teardown-tenant.sh reads DB_PASSWORD from the env to drop the per-tenant DB
+  # and its login role.
   "${REPO_DIR}/scripts/teardown-tenant.sh" "${TENANT_ID}" \
     || err "teardown-tenant.sh reported issues (continuing to free the id)"
   ctl_update_status "${TENANT_ID}" free
