@@ -27,6 +27,19 @@ _search_analytics: dict[str, Any] = {
 
 MAX_ANALYTICS_ENTRIES = 10000
 
+# MeiliSearch's default ``pagination.maxTotalHits``: hits past this window
+# are never returned, so deeper pages are rejected before querying.
+MAX_TOTAL_HITS = 1000
+
+INVALID_SEARCH_REQUEST = "Invalid search request"
+
+
+class InvalidSearchRequest(ValueError):
+    """A search MeiliSearch rejected; the message is safe to return to clients."""
+
+    def __init__(self) -> None:
+        super().__init__(INVALID_SEARCH_REQUEST)
+
 
 def record_search_analytics(query: str, result_count: int) -> None:
     """Record a search query for analytics purposes."""
@@ -175,8 +188,13 @@ class MeiliSearchService:
             try:
                 result = index.search(query, search_params)
             except meilisearch.errors.MeilisearchApiError as exc:
-                logger.warning("search_filter_error", index=index_name, error=str(exc))
-                raise ValueError(f"Invalid search filter: {exc}") from exc
+                logger.warning(
+                    "search_request_rejected",
+                    index=index_name,
+                    code=getattr(exc, "code", None),
+                    error=str(exc),
+                )
+                raise InvalidSearchRequest() from exc
             total += result["estimatedTotalHits"]
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))
