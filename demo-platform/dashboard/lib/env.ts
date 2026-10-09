@@ -1,3 +1,5 @@
+import { parseAllowedOrigins } from "@/lib/csrf";
+
 // Centralised, typed access to runtime configuration. Nothing here reads a
 // secret's value into logs; callers only ever compare/sign with them.
 
@@ -73,6 +75,12 @@ export const env = {
       .map((s) => s.trim())
       .filter(Boolean);
     return new Set(list);
+  },
+  // Exact origins (comma-separated) allowed to send state-changing /api
+  // requests, e.g. `https://ops.otterworks.app`. Unset -> the request's own
+  // Host. See lib/csrf.ts.
+  get allowedOrigins(): Set<string> {
+    return parseAllowedOrigins(process.env.DASHBOARD_ALLOWED_ORIGINS);
   },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;

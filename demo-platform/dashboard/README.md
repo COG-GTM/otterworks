@@ -12,6 +12,14 @@ described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md
   `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 / IP / 15 min with
   backoff), and audits `login_ok`/`login_fail`. `middleware.ts` gates every non-login route,
   and every `/api/*` handler independently calls `requireSession()` (defense in depth).
+- **Cross-site request gate.** Tenant hosts (`t-<id>.demo.otterworks.app`,
+  `t-main.otterworks.app`) are *same-site* with `ops.otterworks.app` and run participant
+  code, so SameSite=Strict does not stop them. Every non-GET `/api/*` request (login and
+  logout included) must have no `Sec-Fetch-Site` other than `same-origin`, an `Origin`
+  equal to the dashboard's origin (`DASHBOARD_ALLOWED_ORIGINS`, else the request Host),
+  and `Content-Type: application/json`; otherwise 403. Enforced in `middleware.ts` and
+  again in `withSession` (`lib/csrf.ts`). CLI callers must send `Origin` (see
+  `../scripts/tenant.sh`).
 - **Tenants.** `GET /api/tenants` joins control-table records with live cluster state
   (namespace phase, ready/total pods, per-service status) cached ~5s. Checkout / check-in /
   extend / inject / reset drive Kubernetes runner **Jobs** in the platform namespace.
@@ -27,6 +35,7 @@ npm run build      # production build (output: standalone)
 npm run start      # run the built server
 npm run lint       # next lint
 npm run typecheck  # tsc --noEmit
+npm test           # unit tests (Node >= 22.6)
 ```
 
 ## Configuration

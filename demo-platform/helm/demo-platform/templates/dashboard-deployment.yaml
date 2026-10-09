@@ -53,6 +53,10 @@ spec:
               value: {{ .Values.perpetualTenantIds | quote }}
             - name: PERPETUAL_HOST_SUFFIX
               value: {{ .Values.perpetualHostSuffix | quote }}
+            {{- if .Values.dashboard.allowedOrigins }}
+            - name: DASHBOARD_ALLOWED_ORIGINS
+              value: {{ .Values.dashboard.allowedOrigins | quote }}
+            {{- end }}
             {{- if .Values.repoHttpsUrl }}
             - name: REPO_HTTPS_URL
               value: {{ .Values.repoHttpsUrl | quote }}
