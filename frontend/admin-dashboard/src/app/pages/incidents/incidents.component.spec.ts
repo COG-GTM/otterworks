@@ -37,7 +37,7 @@ describe('IncidentsComponent', () => {
 
   beforeEach(async () => {
     apiSpy = jasmine.createSpyObj('AdminApiService', [
-      'getIncidents', 'createIncident', 'triggerDevinSession',
+      'getIncidents', 'createIncident', 'triggerDevinSession', 'refreshDevinSession',
       'updateIncidentStatus', 'deleteIncident',
       'triggerChaos', 'resetChaos', 'getAutoInvestigate', 'setAutoInvestigate',
     ]);
@@ -130,6 +130,43 @@ describe('IncidentsComponent', () => {
       afterClosed: () => of(confirmed),
     } as any);
   }
+
+  describe('pollActiveSessions', () => {
+    it('refreshes active Devin sessions then reloads the list', () => {
+      component.incidents = [
+        makeIncident({ id: 'a', devinSessionId: 'devin-a', devinSessionStatus: 'running' }),
+        makeIncident({ id: 'b', devinSessionId: 'devin-b', status: 'resolved', active: false }),
+        makeIncident({ id: 'c' }),
+      ];
+      apiSpy.refreshDevinSession.and.returnValue(of(makeIncident({ id: 'a' })));
+      apiSpy.getIncidents.calls.reset();
+
+      component.pollActiveSessions();
+
+      expect(apiSpy.refreshDevinSession).toHaveBeenCalledOnceWith('a');
+      expect(apiSpy.getIncidents).toHaveBeenCalledTimes(1);
+    });
+
+    it('still reloads when a refresh fails', () => {
+      component.incidents = [makeIncident({ id: 'a', devinSessionId: 'devin-a' })];
+      apiSpy.refreshDevinSession.and.returnValue(throwError(() => new Error('boom')));
+      apiSpy.getIncidents.calls.reset();
+
+      component.pollActiveSessions();
+
+      expect(apiSpy.getIncidents).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing without active sessions', () => {
+      component.incidents = [makeIncident({ id: 'c' })];
+      apiSpy.getIncidents.calls.reset();
+
+      component.pollActiveSessions();
+
+      expect(apiSpy.refreshDevinSession).not.toHaveBeenCalled();
+      expect(apiSpy.getIncidents).not.toHaveBeenCalled();
+    });
+  });
 
   describe('resolveIncident', () => {
     it('should call updateIncidentStatus with resolved', () => {

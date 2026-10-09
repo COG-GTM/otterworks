@@ -2,8 +2,10 @@ module Api
   module V1
     module Admin
       class IncidentsController < ApplicationController
-        before_action :require_admin!, only: %i[create update destroy trigger_session]
-        before_action :set_incident, only: %i[show update destroy trigger_session]
+        # Incident titles/descriptions carry other users' file names and raw
+        # backend errors, and Devin session fields, so reads are admin-only too.
+        before_action :require_admin!
+        before_action :set_incident, only: %i[show update destroy trigger_session refresh_session]
 
         # GET /api/v1/admin/incidents
         def index
@@ -25,17 +27,6 @@ module Api
 
         # GET /api/v1/admin/incidents/:id
         def show
-          # Refresh Devin session status if session exists and incident is active
-          if @incident.has_devin_session? && @incident.active?
-            session_info = DevinSessionService.get_session(session_id: @incident.devin_session_id)
-            if session_info
-              @incident.update(
-                devin_session_status: session_info[:status],
-                devin_session_url: session_info[:url] || @incident.devin_session_url
-              )
-            end
-          end
-
           render json: @incident, serializer: IncidentSerializer
         end
 
@@ -161,6 +152,21 @@ module Api
           else
             render json: { error: 'Failed to create Devin session' }, status: :service_unavailable
           end
+        end
+
+        # POST /api/v1/admin/incidents/:id/refresh_session
+        def refresh_session
+          if @incident.has_devin_session? && @incident.active?
+            session_info = DevinSessionService.get_session(session_id: @incident.devin_session_id)
+            if session_info
+              @incident.update(
+                devin_session_status: session_info[:status],
+                devin_session_url: session_info[:url] || @incident.devin_session_url
+              )
+            end
+          end
+
+          render json: @incident, serializer: IncidentSerializer
         end
 
         private

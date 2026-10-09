@@ -17,7 +17,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AdminApiService } from '../../core/services/admin-api.service';
 import { Incident, AFFECTED_SERVICES } from '../../core/models/incident.model';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
-import { Subscription, interval } from 'rxjs';
+import { Subscription, catchError, forkJoin, interval, of } from 'rxjs';
 
 const CHAOS_STATE_KEY = 'ow_admin_chaos_state';
 
@@ -455,11 +455,17 @@ export class IncidentsComponent implements OnInit, OnDestroy {
     });
     this.loadIncidents();
     // Poll for status updates every 10 seconds
-    this.pollSub = interval(10000).subscribe(() => {
-      if (this.incidents.some(i => i.active && i.devinSessionId)) {
-        this.loadIncidents();
-      }
-    });
+    this.pollSub = interval(10000).subscribe(() => this.pollActiveSessions());
+  }
+
+  // Reads are side-effect free, so ask admin-service to refresh each active
+  // Devin session from the Devin API before reloading the list.
+  pollActiveSessions(): void {
+    const tracked = this.incidents.filter(i => i.active && i.devinSessionId);
+    if (tracked.length === 0) return;
+    forkJoin(
+      tracked.map(i => this.api.refreshDevinSession(i.id).pipe(catchError(() => of(null)))),
+    ).subscribe(() => this.loadIncidents());
   }
 
   ngOnDestroy(): void {

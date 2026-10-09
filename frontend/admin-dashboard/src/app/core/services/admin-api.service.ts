@@ -209,6 +209,12 @@ export class AdminApiService {
     );
   }
 
+  refreshDevinSession(incidentId: string): Observable<Incident> {
+    return this.http.post<any>(`${this.baseUrl}/admin/incidents/${incidentId}/refresh_session`, {}).pipe(
+      map(res => this.mapIncident(res.incident || res)),
+    );
+  }
+
   updateIncidentStatus(id: string, status: string): Observable<Incident> {
     return this.http.patch<any>(`${this.baseUrl}/admin/incidents/${id}`, { incident: { status } }).pipe(
       map(res => this.mapIncident(res.incident || res)),
