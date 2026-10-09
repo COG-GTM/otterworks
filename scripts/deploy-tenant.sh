@@ -11,7 +11,9 @@
 #   - namespace otterworks-<ID> (TTL-labeled for the reaper)
 #   - ResourceQuota + LimitRange + a namespace NetworkPolicy
 #   - per-tenant in-cluster Redis + MeiliSearch (chaos/session/search isolation)
-#   - a per-tenant RDS database otterworks_<ID> (Postgres data isolation)
+#   - a per-tenant RDS database otterworks_<ID> owned by a per-tenant login
+#     role otterworks_<ID>_app (Postgres data isolation). Services get only that
+#     role; the RDS master credential (DB_PASSWORD) stays in this script.
 #   - all 11 backends + 2 frontends via Helm (replicas=1), frontends on the
 #     SHARED ingress (ClusterIP + one Ingress), NOT one LoadBalancer per tenant
 #
@@ -20,8 +22,13 @@
 #       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
 #
-# Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Required env: AWS creds (exported), DB_PASSWORD (RDS master; used only by the
+#   provisioning Job). Stable JWT_SECRET / SECRET_KEY_BASE recommended across
+#   redeploys (auto-generated if unset). TENANT_DB_PASSWORD optionally pins the
+#   tenant role's password; otherwise the one stored in the namespace is reused
+#   or a new one generated.
+# --skip-db points the tenant at the golden database, which only the master can
+#   open, so it also requires ALLOW_SHARED_DB_CREDENTIAL=true.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -71,6 +78,20 @@ SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
+T_DB_USER="$(tenant_db_role "${ATTENDEE_ID}")"
+T_DB_PASSWORD=""
+# Server-side ceiling on the role's connections, across both pooler ports and
+# replicas: one tenant cannot starve the shared instance.
+T_DB_CONN_LIMIT="${TENANT_DB_CONN_LIMIT:-20}"
+if [ "${#T_DB_USER}" -gt "${PG_IDENTIFIER_MAX}" ]; then
+  err "Tenant DB role '${T_DB_USER}' exceeds ${PG_IDENTIFIER_MAX} characters; use a shorter tenant id."
+  exit 1
+fi
+if [ "${SKIP_DB}" = true ] && [ "${ALLOW_SHARED_DB_CREDENTIAL:-false}" != "true" ]; then
+  err "--skip-db would hand this tenant the RDS master credential (the golden DB has no tenant role)."
+  err "Set ALLOW_SHARED_DB_CREDENTIAL=true to accept that for a trusted, non-workshop tenant."
+  exit 1
+fi
 T_REDIS_HOST="redis"
 T_MEILI_URL="http://meilisearch:7700"
 # Tier A shares SNS/SQS eventing off by default to avoid cross-tenant queue
@@ -248,12 +269,51 @@ EOF
 log "Ensuring shared IRSA roles trust the tenant namespace service accounts..."
 ensure_irsa_trust
 
-# ---------- Per-tenant RDS database (Postgres data isolation) ----------
+# ---------- Per-tenant RDS database + role (Postgres data isolation) ----------
+# The tenant role's password lives in the tenant namespace so redeploys keep it
+# (rotating it would break pods still running until the rollout replaces them).
+TENANT_DB_SECRET="tenant-db-credentials"
+resolve_tenant_db_password() {
+  if [ -n "${TENANT_DB_PASSWORD:-}" ]; then
+    T_DB_PASSWORD="${TENANT_DB_PASSWORD}"
+  else
+    T_DB_PASSWORD="$(kubectl -n "${NS}" get secret "${TENANT_DB_SECRET}" \
+      -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+    [ -n "${T_DB_PASSWORD}" ] || T_DB_PASSWORD="$(openssl rand -hex 32)"
+  fi
+  local b64; b64="$(printf '%s' "${T_DB_PASSWORD}" | base64 | tr -d '\n')"
+  kubectl -n "${NS}" apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${TENANT_DB_SECRET}
+type: Opaque
+data:
+  password: ${b64}
+EOF
+}
+
 create_tenant_database() {
-  [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB (services will share the default DB)"; return 0; }
-  log "Ensuring per-tenant database ${T_DB_NAME} exists on shared RDS (in-cluster job)..."
+  [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB + role"; return 0; }
+  log "Ensuring per-tenant database ${T_DB_NAME} and role ${T_DB_USER} on shared RDS (in-cluster job)..."
   kubectl -n "${NS}" delete job tenant-db-init --ignore-not-found >/dev/null 2>&1 || true
-  apply_db_admin_secret "${NS}"
+  # Master password plus the role password, both on stdin (never an argv);
+  # the SQL reads the latter with \getenv.
+  local mb64 tb64
+  mb64="$(printf '%s' "${DB_PASSWORD}" | base64 | tr -d '\n')"
+  tb64="$(printf '%s' "${T_DB_PASSWORD}" | base64 | tr -d '\n')"
+  kubectl -n "${NS}" apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tenant-db-admin
+type: Opaque
+data:
+  PGPASSWORD: ${mb64}
+  TENANT_DB_PASSWORD: ${tb64}
+EOF
+  tenant_db_provision_sql | kubectl -n "${NS}" create configmap tenant-db-init-sql \
+    --from-file=provision.sql=/dev/stdin --dry-run=client -o yaml | kubectl -n "${NS}" apply -f - >/dev/null
   kubectl apply -n "${NS}" -f - <<YAML
 apiVersion: batch/v1
 kind: Job
@@ -271,42 +331,48 @@ spec:
           env:
             - name: PGPASSWORD
               valueFrom: { secretKeyRef: { name: tenant-db-admin, key: PGPASSWORD } }
+            - name: TENANT_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: tenant-db-admin, key: TENANT_DB_PASSWORD } }
           command: ["/bin/sh","-c"]
           args:
             - |
               set -e
               CONN="host=${RDS_HOST} port=${RDS_PORT} dbname=otterworks user=${DB_USER} sslmode=prefer connect_timeout=10"
-              if psql "\$CONN" -tAc "SELECT 1 FROM pg_database WHERE datname='${T_DB_NAME}'" | grep -q 1; then
-                echo "database ${T_DB_NAME} already exists"
-              else
-                psql "\$CONN" -c "CREATE DATABASE \"${T_DB_NAME}\""
-                echo "created database ${T_DB_NAME}"
-              fi
               # analytics-service keeps its tables in an \`analytics\` schema and
               # asks for it with the JDBC \`currentSchema\` option, which the
               # driver sends as a search_path startup parameter. PgBouncer never
               # forwards that parameter to the server, so through the pooler the
               # service would query \`public\` and find none of its own tables.
               # A database-level default is applied by the server itself and so
-              # survives pooling. public stays first: everything else in this
-              # app, including the other services' migrations, lives there.
-              psql "\$CONN" -c 'ALTER DATABASE "${T_DB_NAME}" SET search_path = public, analytics'
+              # survives pooling -- provision.sql sets it.
+              psql "\$CONN" -X -v db="${T_DB_NAME}" -v role="${T_DB_USER}" -v conn_limit="${T_DB_CONN_LIMIT}" \
+                -f /sql/provision.sql
+              echo "database ${T_DB_NAME} ready for role ${T_DB_USER}"
+          volumeMounts:
+            - { name: sql, mountPath: /sql, readOnly: true }
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 200m, memory: 128Mi }
+      volumes:
+        - name: sql
+          configMap: { name: tenant-db-init-sql }
 YAML
   if kubectl -n "${NS}" wait --for=condition=complete job/tenant-db-init --timeout=120s >/dev/null 2>&1; then
-    log "  per-tenant database ready."
+    log "  per-tenant database and role ready."
   else
     warn "  per-tenant DB init did not complete; check: kubectl -n ${NS} logs job/tenant-db-init"
     kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | tail -5 || true
   fi
   kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n "${NS}" delete configmap tenant-db-init-sql --ignore-not-found >/dev/null 2>&1 || true
 }
 if [ "${SKIP_DB}" = true ]; then
-  warn "--skip-db set: using the shared default database (no Postgres data isolation)."
+  warn "--skip-db set: using the shared default database with the RDS MASTER credential (no Postgres isolation)."
   T_DB_NAME="otterworks"
+  T_DB_USER="${DB_USER}"
+  T_DB_PASSWORD="${DB_PASSWORD}"
 else
+  resolve_tenant_db_password
   create_tenant_database
 fi
 

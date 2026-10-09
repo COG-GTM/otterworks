@@ -84,8 +84,13 @@ nodes or IPs.
 - **Fallback:** if the pooler is not installed the deploy scripts wire straight to RDS and warn
   — a tenant pointed at a Service that does not exist would fail every query, which is worse
   than using more connections than intended.
-- Per-tenant restricted DB users remain future hardening (see `plan-B-consolidation.md`); today
-  every service authenticates as the one master user, so the per-user cap is a global cap.
+- **Per-tenant DB roles:** services authenticate as their tenant's role (`otterworks_<id>_app`),
+  not the RDS master. Those roles are created per deploy, so the pooler does not list them; it
+  looks them up with `auth_query` against `pgbouncer.tenant_credentials` in the golden database
+  (master-only). `max_user_connections` is therefore a per-tenant cap (5 per port per replica),
+  backed by the role's server-side `CONNECTION LIMIT` (`TENANT_DB_CONN_LIMIT`, default 20);
+  the golden app keeps its master-user cap via `[users]`. A pooler installed before `auth_query`
+  is detected by the deploy script, which then wires straight to RDS until it is re-installed.
 
 ## 4. Ingress / DNS — see architecture.md §6
 One ingress-nginx + one NLB handles many Ingress objects fine. Move tenants to **host-based**
