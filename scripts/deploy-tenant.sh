@@ -68,7 +68,6 @@ ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
-ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
@@ -465,10 +464,12 @@ deploy_service() {
 }
 
 log "Deploying services into ${NS} (profile=${PROFILE}, ${#TENANT_SERVICES[@]} services)..."
+resolve_alert_webhook_secret "${NS}"
 FAILED=()
 for service in "${TENANT_SERVICES[@]}"; do
   deploy_service "${service}" || FAILED+=("${service}")
 done
+restart_alert_webhook_consumers "${NS}"
 
 # ---------- Shared ingress (host/path routing, ONE shared ALB/NLB) ----------
 apply_ingress() {

@@ -32,7 +32,7 @@ JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 # Rails (admin-service) session key. Stable value recommended across redeploys.
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 # admin-service alert-ingest webhook secret, shared with the alert senders.
-ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
+# Defaults to the value already in the namespace (see resolve_alert_webhook_secret).
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -258,6 +258,27 @@ irsa_arn() { echo "${IRSA_JSON:-{}}" | jq -r --arg s "$1" '.[$s] // empty' 2>/de
 # --set-string, so secret values never appear in the process argument list
 # (visible via ps / /proc/*/cmdline).
 add_secret() { SECRET_KV+=("$1" "$2"); }
+
+# Reuse the namespace's current alert-webhook secret so a redeploy doesn't
+# rotate it under pods Helm leaves running (an unchanged Deployment is not
+# restarted when its Secret changes). When the value does change, the senders
+# and admin-service are restarted together by restart_alert_webhook_consumers.
+resolve_alert_webhook_secret() {
+  local ns=$1 existing
+  existing="$(kubectl -n "${ns}" get secret admin-service-secrets \
+    -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-${existing:-$(openssl rand -hex 32)}}"
+  ALERT_WEBHOOK_SECRET_CHANGED=false
+  [ "${ALERT_WEBHOOK_SECRET}" = "${existing}" ] || ALERT_WEBHOOK_SECRET_CHANGED=true
+}
+
+restart_alert_webhook_consumers() {
+  local ns=$1 d
+  [ "${ALERT_WEBHOOK_SECRET_CHANGED:-false}" = true ] || return 0
+  for d in admin-service file-service notification-service; do
+    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null 2>&1 || true
+  done
+}
 
 # URL-encode a string for safe use inside a URI (e.g. a DB password that may
 # contain @ : / # % ? in a connection string). Uses jq's @uri filter.
@@ -521,10 +542,12 @@ DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set (exported or via Terr
 deploy_meilisearch
 
 log "Deploying services to EKS..."
+resolve_alert_webhook_secret "${NAMESPACE}"
 FAILED=()
 for service in "${ALL_SERVICES[@]}"; do
   deploy_service "${service}" || FAILED+=("${service}")
 done
+restart_alert_webhook_consumers "${NAMESPACE}"
 
 # ---------- Step 8: Verify ----------
 

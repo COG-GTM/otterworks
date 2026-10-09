@@ -255,6 +255,27 @@ YAML
 # locked-down temp values file passed to helm via -f, so secret values never
 # appear in the process argument list (ps / /proc/*/cmdline). Mirrors deploy-dev.sh.
 add_secret() { SECRET_KV+=("$1" "$2"); }
+
+# Reuse the namespace's current alert-webhook secret so a redeploy doesn't
+# rotate it under pods Helm leaves running (an unchanged Deployment is not
+# restarted when its Secret changes). When the value does change, the senders
+# and admin-service are restarted together by restart_alert_webhook_consumers.
+resolve_alert_webhook_secret() {
+  local ns=$1 existing
+  existing="$(kubectl -n "${ns}" get secret admin-service-secrets \
+    -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-${existing:-$(openssl rand -hex 32)}}"
+  ALERT_WEBHOOK_SECRET_CHANGED=false
+  [ "${ALERT_WEBHOOK_SECRET}" = "${existing}" ] || ALERT_WEBHOOK_SECRET_CHANGED=true
+}
+
+restart_alert_webhook_consumers() {
+  local ns=$1 d
+  [ "${ALERT_WEBHOOK_SECRET_CHANGED:-false}" = true ] || return 0
+  for d in admin-service file-service notification-service; do
+    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null 2>&1 || true
+  done
+}
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 
 # Build per-service Helm --set flags (EXTRA_ARGS) + secret pairs (SECRET_KV) for
