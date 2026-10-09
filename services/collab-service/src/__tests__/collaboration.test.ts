@@ -15,10 +15,12 @@ const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
 
 const INTRUDER_PREFIX = 'intruder-';
+const SLOW_DOCS = new Set<string>();
 const accessChecks: Array<{ token: string; userId: string; documentId: string }> = [];
 const documentAccess = {
   canAccess: async (token: string, userId: string, documentId: string) => {
     accessChecks.push({ token, userId, documentId });
+    if (SLOW_DOCS.has(documentId)) await new Promise((r) => setTimeout(r, 300));
     return !userId.startsWith(INTRUDER_PREFIX);
   },
 };
@@ -651,6 +653,45 @@ describe('CollaborationManager', () => {
 
       owner.disconnect();
       intruder.disconnect();
+    });
+
+    it('canonicalises mixed-case document ids to one room', async () => {
+      const upper = await connectClient('user-acl-case-1', 'Upper');
+      const lower = await connectClient('user-acl-case-2', 'Lower');
+      expect(await join(upper, OWNED_DOC.toUpperCase())).toEqual({ success: true });
+      expect(await join(lower, OWNED_DOC)).toEqual({ success: true });
+      const lowerUpdates = collect(lower, 'document-update');
+
+      const tempDoc = new Y.Doc();
+      tempDoc.getText('content').insert(0, 'case');
+      upper.emit('document-update', {
+        documentId: OWNED_DOC.toUpperCase(),
+        update: Buffer.from(Y.encodeStateAsUpdate(tempDoc)).toString('base64'),
+      });
+      await settle();
+
+      expect(lowerUpdates).toHaveLength(1);
+      expect(presenceHandler.getDocumentPresence(OWNED_DOC).count).toBe(2);
+      upper.disconnect();
+      lower.disconnect();
+    });
+
+    it('does not let a slow, older join override a newer one', async () => {
+      const slowDoc = `${OWNED_DOC.slice(0, -4)}5105`;
+      SLOW_DOCS.add(slowDoc);
+      const client = await connectClient('user-acl-race', 'Racer');
+
+      const [slow, fast] = await Promise.all([
+        join(client, slowDoc),
+        join(client, OWNED_DOC),
+      ]);
+
+      expect(fast).toEqual({ success: true });
+      expect(slow).toEqual({ success: false, error: 'Superseded by a newer request' });
+      expect(awareness.getUserDocument(client.id as string)).toBe(OWNED_DOC);
+      expect(manager.getDocument(slowDoc)).toBeUndefined();
+      SLOW_DOCS.delete(slowDoc);
+      client.disconnect();
     });
 
     it('omits emails from presence', async () => {
