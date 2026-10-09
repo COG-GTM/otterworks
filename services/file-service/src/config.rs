@@ -1,6 +1,7 @@
 use std::env;
 
 use crate::alerts::AlertConfig;
+use crate::upload::BUDGET_UNIT_BYTES;
 
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -88,15 +89,17 @@ impl ServerConfig {
 pub const DEFAULT_UPLOAD_MEMORY_BUDGET_BYTES: u64 = 160 * 1024 * 1024;
 
 /// A single upload can never buffer more than the shared budget, so a larger
-/// per-file limit would only turn into 503s; clamp it instead.
+/// per-file limit would only turn into 503s; clamp it to what the budget can
+/// actually reserve (whole `BUDGET_UNIT_BYTES` units).
 fn effective_max_upload_bytes(max_upload_bytes: u64, budget_bytes: u64) -> u64 {
-    if max_upload_bytes > budget_bytes {
+    let reservable = budget_bytes - budget_bytes % BUDGET_UNIT_BYTES;
+    if max_upload_bytes > reservable {
         tracing::warn!(
             max_upload_bytes,
             budget_bytes,
             "MAX_UPLOAD_BYTES exceeds UPLOAD_MEMORY_BUDGET_BYTES; clamping"
         );
-        budget_bytes
+        reservable
     } else {
         max_upload_bytes
     }
@@ -190,8 +193,22 @@ mod tests {
 
     #[test]
     fn max_upload_is_clamped_to_memory_budget() {
-        assert_eq!(effective_max_upload_bytes(100, 200), 100);
-        assert_eq!(effective_max_upload_bytes(300, 200), 200);
+        assert_eq!(
+            effective_max_upload_bytes(100 * 1024, 200 * 1024),
+            100 * 1024
+        );
+        assert_eq!(
+            effective_max_upload_bytes(300 * 1024, 200 * 1024),
+            200 * 1024
+        );
+    }
+
+    #[test]
+    fn clamped_limit_is_reservable_with_an_unaligned_budget() {
+        let max = effective_max_upload_bytes(10_000, 1536);
+        assert_eq!(max, 1024);
+        let mut reservation = crate::upload::UploadBudget::new(1536).reservation();
+        reservation.ensure(max).unwrap();
     }
 
     #[test]

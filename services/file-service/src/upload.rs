@@ -1,15 +1,20 @@
 //! Bounded reading of the `POST /api/v1/files/upload` multipart body.
 //!
 //! The whole `file` part is buffered before it is sent to S3, so every byte a
-//! request can make file-service hold is capped here: the small id fields, the
-//! file part, the body as a whole, and the bytes buffered across all
-//! in-flight uploads (`UploadBudget`).
+//! request can make file-service hold is capped here: the raw body (part
+//! headers included), the small id fields, discarded fields, the file part,
+//! and the bytes buffered across all in-flight uploads (`UploadBudget`).
 
+use std::cell::Cell;
+use std::fmt::Display;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use actix_multipart::Multipart;
-use bytes::BytesMut;
-use futures_util::StreamExt;
+use actix_web::error::PayloadError;
+use actix_web::http::header::{HeaderMap, CONTENT_LENGTH};
+use bytes::{Bytes, BytesMut};
+use futures_util::{Stream, StreamExt};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
@@ -21,13 +26,14 @@ use crate::errors::ServiceError;
 pub const MAX_ID_FIELD_BYTES: usize = 64;
 
 /// Allowance on top of `max_upload_bytes` for part headers, boundaries and
-/// the small text fields.
+/// the small text fields; also the cap on discarded (unknown) field data.
 pub const MULTIPART_OVERHEAD_BYTES: u64 = 64 * 1024;
 
 /// Upper bound on parts per request.
 pub const MAX_PARTS: usize = 16;
 
-const BUDGET_UNIT_BYTES: u64 = 1024;
+/// Granularity of the shared upload budget.
+pub const BUDGET_UNIT_BYTES: u64 = 1024;
 
 #[derive(Clone, Copy, Debug)]
 pub struct UploadLimits {
@@ -49,11 +55,15 @@ impl UploadLimits {
     /// body limit, before any of it is read.
     pub fn check_content_length(&self, content_length: Option<u64>) -> Result<(), ServiceError> {
         match content_length {
-            Some(len) if len > self.max_body_bytes => Err(ServiceError::FileTooLarge {
-                max_bytes: self.max_file_bytes,
-                actual_bytes: len,
-            }),
+            Some(len) if len > self.max_body_bytes => Err(self.too_large(len)),
             _ => Ok(()),
+        }
+    }
+
+    fn too_large(&self, actual_bytes: u64) -> ServiceError {
+        ServiceError::FileTooLarge {
+            max_bytes: self.max_file_bytes,
+            actual_bytes,
         }
     }
 }
@@ -125,51 +135,77 @@ pub struct UploadForm {
     pub folder_id: Option<Uuid>,
 }
 
-struct BodyCounter {
-    read: u64,
+/// Raw request bytes read so far, counted before the multipart parser sees
+/// them so part headers and boundaries are bounded too.
+struct BodyGuard {
+    read: Rc<Cell<u64>>,
     limits: UploadLimits,
 }
 
-impl BodyCounter {
-    fn add(&mut self, len: usize) -> Result<(), ServiceError> {
-        self.read = self.read.saturating_add(len as u64);
-        if self.read > self.limits.max_body_bytes {
-            return Err(ServiceError::FileTooLarge {
-                max_bytes: self.limits.max_file_bytes,
-                actual_bytes: self.read,
-            });
+impl BodyGuard {
+    /// Maps a parser/stream error, reporting 413 when it was caused by the
+    /// body limit.
+    fn error(&self, e: impl Display) -> ServiceError {
+        let read = self.read.get();
+        if read > self.limits.max_body_bytes {
+            self.limits.too_large(read)
+        } else {
+            ServiceError::BadRequest(e.to_string())
         }
-        Ok(())
     }
 }
 
-pub async fn read_upload_form(
-    mut payload: Multipart,
+pub async fn read_upload_form<S>(
+    headers: &HeaderMap,
+    stream: S,
     limits: UploadLimits,
-    content_length: Option<u64>,
     reservation: &mut UploadReservation,
-) -> Result<UploadForm, ServiceError> {
+) -> Result<UploadForm, ServiceError>
+where
+    S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
+{
+    let content_length = headers
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
     limits.check_content_length(content_length)?;
 
-    // Pre-size the buffer from Content-Length so it never reallocates (a
-    // reallocation briefly holds both the old and the new buffer).
-    let initial_capacity = content_length
-        .map(|len| len.min(limits.max_file_bytes))
-        .unwrap_or(0);
-    reservation.ensure(initial_capacity)?;
+    // The file buffer is allocated once and never grows: a reallocation would
+    // briefly hold both the old and the new buffer outside the budget. Without
+    // a Content-Length the full per-file cap is reserved.
+    let capacity =
+        content_length.map_or(limits.max_file_bytes, |len| len.min(limits.max_file_bytes));
+    reservation.ensure(capacity)?;
+
+    let guard = BodyGuard {
+        read: Rc::new(Cell::new(0)),
+        limits,
+    };
+    let counter = guard.read.clone();
+    let max_body = limits.max_body_bytes;
+    let limited = stream.map(move |chunk| {
+        let chunk = chunk?;
+        let total = counter.get().saturating_add(chunk.len() as u64);
+        counter.set(total);
+        if total > max_body {
+            return Err(PayloadError::Overflow);
+        }
+        Ok(chunk)
+    });
+    let mut payload = Multipart::new(headers, limited);
 
     let mut form = UploadForm {
-        file_bytes: BytesMut::with_capacity(initial_capacity as usize),
+        file_bytes: BytesMut::with_capacity(capacity as usize),
         file_name: String::from("unnamed"),
         content_type: String::from("application/octet-stream"),
         owner_id: None,
         folder_id: None,
     };
-    let mut body = BodyCounter { read: 0, limits };
     let mut parts = 0usize;
+    let mut discarded = 0u64;
 
     while let Some(item) = payload.next().await {
-        let mut field = item.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
+        let mut field = item.map_err(|e| guard.error(e))?;
         parts += 1;
         if parts > MAX_PARTS {
             return Err(ServiceError::BadRequest(format!(
@@ -191,37 +227,28 @@ pub async fn read_upload_form(
                     form.content_type = ct.to_string();
                 }
                 while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    body.add(data.len())?;
+                    let data = chunk.map_err(|e| guard.error(e))?;
                     let new_len = form.file_bytes.len() as u64 + data.len() as u64;
                     if new_len > limits.max_file_bytes {
-                        return Err(ServiceError::FileTooLarge {
-                            max_bytes: limits.max_file_bytes,
-                            actual_bytes: new_len,
-                        });
+                        return Err(limits.too_large(new_len));
                     }
-                    if new_len > form.file_bytes.capacity() as u64 {
-                        // Grow geometrically, but never past the per-file cap,
-                        // and account for the capacity before allocating it.
-                        let target = new_len
-                            .max(form.file_bytes.capacity() as u64 * 2)
-                            .min(limits.max_file_bytes);
-                        reservation.ensure(target)?;
-                        form.file_bytes
-                            .reserve(target as usize - form.file_bytes.len());
+                    if new_len > capacity {
+                        return Err(ServiceError::BadRequest(
+                            "body exceeds declared Content-Length".into(),
+                        ));
                     }
                     form.file_bytes.extend_from_slice(&data);
                 }
             }
             "owner_id" => {
-                let raw = read_small_field(&mut field, "owner_id", &mut body).await?;
+                let raw = read_small_field(&mut field, "owner_id", &guard).await?;
                 form.owner_id = Some(
                     raw.parse::<Uuid>()
                         .map_err(|e| ServiceError::BadRequest(format!("invalid owner_id: {e}")))?,
                 );
             }
             "folder_id" => {
-                let raw = read_small_field(&mut field, "folder_id", &mut body).await?;
+                let raw = read_small_field(&mut field, "folder_id", &guard).await?;
                 if !raw.is_empty() {
                     form.folder_id = Some(raw.parse::<Uuid>().map_err(|e| {
                         ServiceError::BadRequest(format!("invalid folder_id: {e}"))
@@ -229,10 +256,16 @@ pub async fn read_upload_form(
                 }
             }
             _ => {
-                // Unknown parts are discarded, but still count toward the body limit.
+                // Unknown parts are discarded; keep them small so Content-Length
+                // stays a close bound on the file size.
                 while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    body.add(data.len())?;
+                    let data = chunk.map_err(|e| guard.error(e))?;
+                    discarded += data.len() as u64;
+                    if discarded > MULTIPART_OVERHEAD_BYTES {
+                        return Err(ServiceError::BadRequest(format!(
+                            "unexpected multipart fields exceed {MULTIPART_OVERHEAD_BYTES} bytes"
+                        )));
+                    }
                 }
             }
         }
@@ -244,12 +277,11 @@ pub async fn read_upload_form(
 async fn read_small_field(
     field: &mut actix_multipart::Field,
     name: &str,
-    body: &mut BodyCounter,
+    guard: &BodyGuard,
 ) -> Result<String, ServiceError> {
     let mut value = BytesMut::new();
     while let Some(chunk) = field.next().await {
-        let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-        body.add(data.len())?;
+        let data = chunk.map_err(|e| guard.error(e))?;
         if value.len() + data.len() > MAX_ID_FIELD_BYTES {
             return Err(ServiceError::BadRequest(format!(
                 "{name} exceeds {MAX_ID_FIELD_BYTES} bytes"
@@ -264,9 +296,11 @@ async fn read_small_field(
 mod tests {
     use super::*;
     use actix_web::error::PayloadError;
-    use actix_web::http::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+    use actix_web::http::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
     use bytes::Bytes;
-    use futures_util::stream::{self, Stream};
+    use futures_util::stream::{self, LocalBoxStream};
+
+    type Body = LocalBoxStream<'static, Result<Bytes, PayloadError>>;
 
     const BOUNDARY: &str = "otterworks-test-boundary";
     const OWNER: &str = "6f1c2c4e-1f7a-4a52-9d36-0d6a3a3c9b11";
@@ -278,12 +312,15 @@ mod tests {
         }
     }
 
-    fn headers() -> HeaderMap {
+    fn headers(content_length: Option<u64>) -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert(
             CONTENT_TYPE,
             HeaderValue::from_str(&format!("multipart/form-data; boundary={BOUNDARY}")).unwrap(),
         );
+        if let Some(len) = content_length {
+            headers.insert(CONTENT_LENGTH, HeaderValue::from(len));
+        }
         headers
     }
 
@@ -307,43 +344,39 @@ mod tests {
         format!("--{BOUNDARY}--\r\n")
     }
 
-    fn multipart_from_chunks<S>(chunks: S) -> Multipart
-    where
-        S: Stream<Item = Result<Bytes, PayloadError>> + 'static,
-    {
-        Multipart::new(&headers(), chunks)
-    }
-
-    fn multipart_from_body(body: Vec<u8>) -> Multipart {
+    fn multipart_from_body(body: Vec<u8>) -> Body {
         // Small chunks so the field limits are hit mid-stream, as on a socket.
         let chunks: Vec<Result<Bytes, PayloadError>> = body
             .chunks(16)
             .map(|c| Ok(Bytes::copy_from_slice(c)))
             .collect();
-        multipart_from_chunks(stream::iter(chunks))
+        stream::iter(chunks).boxed_local()
     }
 
-    /// A multipart body whose `name` part never ends: the reader must give up
-    /// on its own rather than buffer until memory runs out.
-    fn endless_text_part(name: &str) -> Multipart {
-        let head = Bytes::from(format!(
-            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n"
-        ));
+    /// A body that starts with `head` and then never ends: the reader must
+    /// give up on its own rather than buffer until memory runs out.
+    fn endless(head: String) -> Body {
         let filler = Bytes::from(vec![b'a'; 4096]);
-        multipart_from_chunks(
-            stream::once(async move { Ok(head) })
-                .chain(stream::repeat_with(move || Ok(filler.clone()))),
-        )
+        stream::once(async move { Ok(Bytes::from(head)) })
+            .chain(stream::repeat_with(move || Ok(filler.clone())))
+            .boxed_local()
+    }
+
+    fn endless_text_part(name: &str) -> Body {
+        endless(format!(
+            "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n"
+        ))
     }
 
     async fn read(
-        payload: Multipart,
+        payload: Body,
         limits: UploadLimits,
         content_length: Option<u64>,
         budget: &UploadBudget,
     ) -> Result<(UploadForm, UploadReservation), ServiceError> {
         let mut reservation = budget.reservation();
-        let form = read_upload_form(payload, limits, content_length, &mut reservation).await?;
+        let form =
+            read_upload_form(&headers(content_length), payload, limits, &mut reservation).await?;
         Ok((form, reservation))
     }
 
@@ -358,10 +391,11 @@ mod tests {
         body.extend(file_part(b"hello otterworks"));
         body.extend(closing().into_bytes());
 
-        let (form, _r) = read(multipart_from_body(body), limits(1024), None, &big_budget())
+        let (form, held) = read(multipart_from_body(body), limits(1024), None, &big_budget())
             .await
             .unwrap();
         assert_eq!(&form.file_bytes[..], b"hello otterworks");
+        assert!(form.file_bytes.capacity() as u64 <= held.held_bytes());
         assert_eq!(form.file_name, "notes.txt");
         assert_eq!(form.content_type, "text/plain");
         assert_eq!(form.owner_id, Some(OWNER.parse().unwrap()));
@@ -413,16 +447,78 @@ mod tests {
     }
 
     #[actix_rt::test]
-    async fn unknown_parts_count_toward_the_body_limit() {
+    async fn unknown_parts_are_capped() {
         let err = read(
             endless_text_part("padding"),
+            limits(1024 * 1024),
+            None,
+            &big_budget(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(&err, ServiceError::BadRequest(m) if m.contains("unexpected multipart fields")),
+            "{err:?}"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn part_headers_count_toward_the_body_limit() {
+        // A part header that never terminates is buffered by the parser, not
+        // returned as field data; the raw byte limit must still stop it.
+        let err = read(
+            endless(format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"file\"; x=\""
+            )),
             limits(1024),
             None,
             &big_budget(),
         )
         .await
         .unwrap_err();
-        assert!(matches!(err, ServiceError::FileTooLarge { .. }), "{err:?}");
+        assert!(
+            matches!(
+                err,
+                ServiceError::FileTooLarge { .. } | ServiceError::BadRequest(_)
+            ),
+            "{err:?}"
+        );
+    }
+
+    #[actix_rt::test]
+    async fn reserves_from_content_length_when_declared() {
+        let mut body = text_part("owner_id", OWNER).into_bytes();
+        body.extend(file_part(b"small"));
+        body.extend(closing().into_bytes());
+        let len = body.len() as u64;
+        let (form, held) = read(
+            multipart_from_body(body),
+            limits(1024 * 1024),
+            Some(len),
+            &big_budget(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(&form.file_bytes[..], b"small");
+        assert_eq!(
+            held.held_bytes(),
+            len.div_ceil(BUDGET_UNIT_BYTES) * BUDGET_UNIT_BYTES
+        );
+    }
+
+    #[actix_rt::test]
+    async fn reserves_the_file_cap_without_content_length() {
+        let mut body = file_part(b"small");
+        body.extend(closing().into_bytes());
+        let (_form, held) = read(
+            multipart_from_body(body),
+            limits(1024 * 1024),
+            None,
+            &big_budget(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(held.held_bytes(), 1024 * 1024);
     }
 
     #[actix_rt::test]
@@ -447,9 +543,8 @@ mod tests {
     #[actix_rt::test]
     async fn rejects_declared_content_length_over_the_limit_before_reading() {
         // The stream would fail if polled: the request must be refused first.
-        let payload = multipart_from_chunks(stream::once(async {
-            Err::<Bytes, _>(PayloadError::Incomplete(None))
-        }));
+        let payload =
+            stream::once(async { Err::<Bytes, _>(PayloadError::Incomplete(None)) }).boxed_local();
         let err = read(payload, limits(1024), Some(10 * 1024 * 1024), &big_budget())
             .await
             .unwrap_err();

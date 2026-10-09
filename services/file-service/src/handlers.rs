@@ -1,4 +1,3 @@
-use actix_multipart::Multipart;
 use actix_web::{web, HttpRequest, HttpResponse};
 use chrono::Utc;
 use uuid::Uuid;
@@ -49,7 +48,7 @@ pub async fn upload_file(
     events: web::Data<EventPublisher>,
     config: web::Data<AppConfig>,
     redis_cm: web::Data<redis::aio::ConnectionManager>,
-    payload: Multipart,
+    payload: web::Payload,
 ) -> Result<HttpResponse, ServiceError> {
     // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
     // Fall back to the multipart field for direct/internal callers.
@@ -69,11 +68,6 @@ pub async fn upload_file(
         .filter(|s| !s.is_empty())
         .map(String::from);
 
-    let content_length = req
-        .headers()
-        .get(actix_web::http::header::CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<u64>().ok());
     // Held until the upload finishes so the buffered body stays accounted for.
     let budget = req
         .app_data::<web::Data<UploadBudget>>()
@@ -86,9 +80,9 @@ pub async fn upload_file(
         owner_id,
         folder_id,
     } = read_upload_form(
+        req.headers(),
         payload,
         UploadLimits::from_config(&config.server),
-        content_length,
         &mut reservation,
     )
     .await?;
