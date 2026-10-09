@@ -273,14 +273,15 @@ ensure_irsa_trust
 # The tenant role's password lives in the tenant namespace so redeploys keep it
 # (rotating it would break pods still running until the rollout replaces them).
 TENANT_DB_SECRET="tenant-db-credentials"
+T_DB_PASSWORD_ROTATED=false
 resolve_tenant_db_password() {
-  if [ -n "${TENANT_DB_PASSWORD:-}" ]; then
-    T_DB_PASSWORD="${TENANT_DB_PASSWORD}"
-  else
-    T_DB_PASSWORD="$(kubectl -n "${NS}" get secret "${TENANT_DB_SECRET}" \
-      -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-    [ -n "${T_DB_PASSWORD}" ] || T_DB_PASSWORD="$(openssl rand -hex 32)"
-  fi
+  local stored
+  stored="$(kubectl -n "${NS}" get secret "${TENANT_DB_SECRET}" \
+    -o jsonpath='{.data.password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  T_DB_PASSWORD="${TENANT_DB_PASSWORD:-${stored}}"
+  [ -n "${T_DB_PASSWORD}" ] || T_DB_PASSWORD="$(openssl rand -hex 32)"
+  # Running pods keep the old password in their env; restart them after deploy.
+  if [ -n "${stored}" ] && [ "${stored}" != "${T_DB_PASSWORD}" ]; then T_DB_PASSWORD_ROTATED=true; fi
   local b64; b64="$(printf '%s' "${T_DB_PASSWORD}" | base64 | tr -d '\n')"
   kubectl -n "${NS}" apply -f - >/dev/null <<EOF
 apiVersion: v1
@@ -293,32 +294,38 @@ data:
 EOF
 }
 
+# Runs in ${SYSTEM_NAMESPACE}, like drop_tenant_db: the master password must
+# never sit in a namespace that tenant workloads run in, even briefly.
 create_tenant_database() {
   [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB + role"; return 0; }
-  log "Ensuring per-tenant database ${T_DB_NAME} and role ${T_DB_USER} on shared RDS (in-cluster job)..."
-  kubectl -n "${NS}" delete job tenant-db-init --ignore-not-found >/dev/null 2>&1 || true
+  log "Ensuring per-tenant database ${T_DB_NAME} and role ${T_DB_USER} on shared RDS (in-cluster job in ${SYSTEM_NAMESPACE})..."
+  local run_ns="${SYSTEM_NAMESPACE}" frag job secret cm rc=0
+  frag="$(k8s_name_fragment "${T_DB_NAME}")"
+  job="tenant-db-init-${frag}"; secret="tenant-db-admin-${frag}"; cm="tenant-db-init-sql-${frag}"
+  kubectl get ns "${run_ns}" >/dev/null 2>&1 || kubectl create ns "${run_ns}" >/dev/null 2>&1 || true
+  kubectl -n "${run_ns}" delete job "${job}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
   # Master password plus the role password, both on stdin (never an argv);
   # the SQL reads the latter with \getenv.
   local mb64 tb64
   mb64="$(printf '%s' "${DB_PASSWORD}" | base64 | tr -d '\n')"
   tb64="$(printf '%s' "${T_DB_PASSWORD}" | base64 | tr -d '\n')"
-  kubectl -n "${NS}" apply -f - >/dev/null <<EOF
+  kubectl -n "${run_ns}" apply -f - >/dev/null <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
-  name: tenant-db-admin
+  name: ${secret}
 type: Opaque
 data:
   PGPASSWORD: ${mb64}
   TENANT_DB_PASSWORD: ${tb64}
 EOF
-  tenant_db_provision_sql | kubectl -n "${NS}" create configmap tenant-db-init-sql \
-    --from-file=provision.sql=/dev/stdin --dry-run=client -o yaml | kubectl -n "${NS}" apply -f - >/dev/null
-  kubectl apply -n "${NS}" -f - <<YAML
+  tenant_db_provision_sql | kubectl -n "${run_ns}" create configmap "${cm}" \
+    --from-file=provision.sql=/dev/stdin --dry-run=client -o yaml | kubectl -n "${run_ns}" apply -f - >/dev/null
+  kubectl apply -n "${run_ns}" -f - >/dev/null <<YAML
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: tenant-db-init
+  name: ${job}
 spec:
   backoffLimit: 2
   ttlSecondsAfterFinished: 120
@@ -330,9 +337,9 @@ spec:
           image: postgres:16-alpine
           env:
             - name: PGPASSWORD
-              valueFrom: { secretKeyRef: { name: tenant-db-admin, key: PGPASSWORD } }
+              valueFrom: { secretKeyRef: { name: ${secret}, key: PGPASSWORD } }
             - name: TENANT_DB_PASSWORD
-              valueFrom: { secretKeyRef: { name: tenant-db-admin, key: TENANT_DB_PASSWORD } }
+              valueFrom: { secretKeyRef: { name: ${secret}, key: TENANT_DB_PASSWORD } }
           command: ["/bin/sh","-c"]
           args:
             - |
@@ -355,16 +362,20 @@ spec:
             limits: { cpu: 200m, memory: 128Mi }
       volumes:
         - name: sql
-          configMap: { name: tenant-db-init-sql }
+          configMap: { name: ${cm} }
 YAML
-  if kubectl -n "${NS}" wait --for=condition=complete job/tenant-db-init --timeout=120s >/dev/null 2>&1; then
+  if kubectl -n "${run_ns}" wait --for=condition=complete "job/${job}" --timeout=120s >/dev/null 2>&1; then
     log "  per-tenant database and role ready."
   else
-    warn "  per-tenant DB init did not complete; check: kubectl -n ${NS} logs job/tenant-db-init"
-    kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | tail -5 || true
+    err "  per-tenant DB init did not complete; last log lines:"
+    kubectl -n "${run_ns}" logs "job/${job}" 2>/dev/null | tail -5 >&2 || true
+    rc=1
   fi
-  kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
-  kubectl -n "${NS}" delete configmap tenant-db-init-sql --ignore-not-found >/dev/null 2>&1 || true
+  # Deleting the Job stops any retry still holding the master password.
+  kubectl -n "${run_ns}" delete job "${job}" --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n "${run_ns}" delete secret "${secret}" --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n "${run_ns}" delete configmap "${cm}" --ignore-not-found >/dev/null 2>&1 || true
+  return "${rc}"
 }
 if [ "${SKIP_DB}" = true ]; then
   warn "--skip-db set: using the shared default database with the RDS MASTER credential (no Postgres isolation)."
@@ -373,7 +384,9 @@ if [ "${SKIP_DB}" = true ]; then
   T_DB_PASSWORD="${DB_PASSWORD}"
 else
   resolve_tenant_db_password
-  create_tenant_database
+  # Services cannot authenticate without the role; stop before Helm runs and
+  # before the runner can mark the tenant active.
+  create_tenant_database || { err "Per-tenant database provisioning failed; aborting deploy."; exit 1; }
 fi
 
 # ---------- Per-tenant Redis + MeiliSearch ----------
@@ -534,6 +547,17 @@ FAILED=()
 for service in "${TENANT_SERVICES[@]}"; do
   deploy_service "${service}" || FAILED+=("${service}")
 done
+
+if [ "${T_DB_PASSWORD_ROTATED}" = true ]; then
+  log "Tenant DB password rotated; restarting SQL-backed services so they pick it up..."
+  for service in "${TENANT_SERVICES[@]}"; do
+    case "${service}" in
+      auth-service|document-service|analytics-service|admin-service|report-service)
+        kubectl -n "${NS}" rollout restart "deployment/${service}" >/dev/null 2>&1 || \
+          warn "  could not restart ${service}; restart it manually." ;;
+    esac
+  done
+fi
 
 # ---------- Shared ingress (host/path routing, ONE shared ALB/NLB) ----------
 apply_ingress() {

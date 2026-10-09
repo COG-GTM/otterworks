@@ -82,6 +82,9 @@ else
 CREATE ROLE ${MASTER_USER} LOGIN CREATEDB CREATEROLE PASSWORD '${MASTER_PW}';
 CREATE DATABASE otterworks OWNER ${MASTER_USER};
 CREATE DATABASE otterworks_legacy OWNER ${MASTER_USER};
+CREATE ROLE otterworks_repl_app LOGIN REPLICATION PASSWORD 'old';
+CREATE ROLE otterworks_member_app LOGIN PASSWORD 'old';
+GRANT pg_read_all_data TO otterworks_member_app;
 SQL
   as() {  # as <user> <password> <db> <sql>
     docker exec -e PGPASSWORD="$2" "${PG}" psql -X -qtA -h localhost -U "$1" -d "$3" -v ON_ERROR_STOP=1 -c "$4" 2>&1
@@ -121,6 +124,14 @@ SQL
   check "rotation keeps data" "$(as ${A} "${A2_PW}" otterworks_alice "SELECT x FROM t")" 7
   case "$(as ${A} "${A_PW}" otterworks_alice "SELECT 1")" in *"authentication failed"*) ok "rotation retires the old password" ;; *) nope "rotation retires the old password" ;; esac
 
+  for r in repl member; do
+    provision "otterworks_${r}" "${A_PW}" >/dev/null
+    [ $? -ne 0 ] && ok "refuses a pre-existing ${r} role" || nope "refuses a pre-existing ${r} role"
+    case "$(as "otterworks_${r}_app" "${A_PW}" otterworks "SELECT 1")" in
+      *"authentication failed"*) ok "pre-existing ${r} role did not get the password" ;;
+      *) nope "pre-existing ${r} role did not get the password" ;;
+    esac
+  done
   provision otterworks_legacy "${L_PW}"; check "provision a pre-existing tenant DB" "$?" 0
   check "pre-existing tables handed to the tenant role" \
     "$(as otterworks_legacy_app "${L_PW}" otterworks_legacy "ALTER TABLE docs ADD COLUMN title text; INSERT INTO docs(title) VALUES ('x') RETURNING id")" 1

@@ -253,6 +253,17 @@ SELECT :'pw' <> '' AS has_pw \gset
 -- SUPERUSER/REPLICATION/BYPASSRLS at all in ALTER ROLE, and their defaults are off.
 SELECT format('CREATE ROLE %I LOGIN', :'role')
   WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') \gexec
+-- A role of this name that already carries attributes or memberships we did
+-- not give it (created by hand, or tampered with) must not get the tenant
+-- password. Refuse rather than repair: the master cannot clear SUPERUSER,
+-- REPLICATION or BYPASSRLS.
+SELECT (r.rolsuper OR r.rolreplication OR r.rolbypassrls
+        OR EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid)) AS role_tainted
+  FROM pg_roles r WHERE r.rolname = :'role' \gset
+\if :role_tainted
+  \echo 'tenant role has elevated attributes or role memberships; refusing to provision'
+  SELECT 'abort: tenant role is privileged'::int;
+\endif
 SELECT format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE CONNECTION LIMIT %s PASSWORD %L',
               :'role', :'conn_limit', :'pw') \gexec
 -- The master must be able to act as the role to create/alter objects it owns
