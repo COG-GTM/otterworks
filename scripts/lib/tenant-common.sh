@@ -134,6 +134,7 @@ load_infra_outputs() {
   DDB_FOLDERS="$(terraform -chdir="$d" output -raw dynamodb_folders_table 2>/dev/null || echo "")"
   DDB_VERSIONS="$(terraform -chdir="$d" output -raw dynamodb_file_versions_table 2>/dev/null || echo "")"
   DDB_SHARES="$(terraform -chdir="$d" output -raw dynamodb_file_shares_table 2>/dev/null || echo "")"
+  SES_FROM_ADDRESS="$(terraform -chdir="$d" output -raw ses_from_address 2>/dev/null || echo "")"
   IRSA_JSON="$(terraform -chdir="$d" output -json irsa_role_arns 2>/dev/null || echo "{}")"
   DB_USER="${DB_USER:-otterworks_admin}"
   if [ -z "${RDS_HOST}" ]; then
@@ -338,7 +339,9 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=${DDB_NOTIF}")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}")
-      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${sqs_notif}") ;;
+      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${sqs_notif}")
+      # IRSA only lets notification-service send SES mail as this address.
+      if [ -n "${SES_FROM_ADDRESS:-}" ]; then EXTRA_ARGS+=(--set-string "config.SES_FROM_EMAIL=${SES_FROM_ADDRESS}"); fi ;;
     search-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")

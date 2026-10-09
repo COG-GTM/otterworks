@@ -138,6 +138,25 @@ class IrsaPolicyTests(unittest.TestCase):
         ):
             self.assertIsNone(pattern.fullmatch(bad), bad)
 
+    def test_deploy_scripts_pass_terraform_from_address_to_notification_service(self):
+        for script in ("scripts/deploy-dev.sh", "scripts/lib/tenant-common.sh"):
+            text = (REPO_ROOT / script).read_text()
+            self.assertRegex(
+                text,
+                r'SES_FROM_ADDRESS="\$\(terraform -chdir="\$d" '
+                r"output -raw ses_from_address",
+                script,
+            )
+            notification = re.search(
+                r"^\s*notification-service\)\n(.*?);;", text, re.S | re.M
+            )
+            self.assertIsNotNone(notification, script)
+            self.assertIn(
+                '"config.SES_FROM_EMAIL=${SES_FROM_ADDRESS}"',
+                notification.group(1),
+                script,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
