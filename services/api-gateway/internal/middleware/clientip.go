@@ -37,7 +37,7 @@ func ParseTrustedProxies(entries []string) ([]*net.IPNet, error) {
 	return nets, nil
 }
 
-// ClientIP replaces r.RemoteAddr with the address of the real client.
+// ClientIP replaces the host in r.RemoteAddr with the address of the real client.
 //
 // X-Forwarded-For is only consulted when the immediate peer is a trusted proxy,
 // and is then walked right to left: each hop was appended by the proxy to its
@@ -48,7 +48,14 @@ func ParseTrustedProxies(entries []string) ([]*net.IPNet, error) {
 func ClientIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.RemoteAddr = resolveClientIP(r, trusted)
+			ip := resolveClientIP(r, trusted)
+			// Keep the host:port form so httputil.ReverseProxy still derives
+			// X-Forwarded-For from RemoteAddr.
+			if _, port, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				r.RemoteAddr = net.JoinHostPort(ip, port)
+			} else {
+				r.RemoteAddr = ip
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

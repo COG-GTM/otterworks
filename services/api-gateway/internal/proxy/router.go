@@ -73,8 +73,8 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		req.Header.Del("X-User-ID")
 		req.Header.Del("X-User-Email")
 		// Forward only the client IP resolved by middleware.ClientIP: with the
-		// header removed, ReverseProxy sets X-Forwarded-For to req.RemoteAddr
-		// alone, so client-supplied hops never reach the backends.
+		// header removed, ReverseProxy sets X-Forwarded-For to the host of
+		// req.RemoteAddr alone, so client-supplied hops never reach the backends.
 		req.Header.Del("X-Forwarded-For")
 		req.Header.Del("True-Client-IP")
 		if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
