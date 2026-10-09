@@ -103,6 +103,7 @@ impl MetadataClient {
             .get_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
+            .consistent_read(true)
             .send()
             .await
             .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
@@ -570,6 +571,8 @@ impl MetadataClient {
             .client
             .scan()
             .table_name(&self.shares_table)
+            // Authorization reads this: a revoked share must not linger.
+            .consistent_read(true)
             .filter_expression("file_id = :fid AND shared_with = :uid")
             .expression_attribute_values(":fid", AttributeValue::S(file_id.to_string()))
             .expression_attribute_values(":uid", AttributeValue::S(shared_with.to_string()))
