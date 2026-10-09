@@ -23,10 +23,7 @@ class JwtTokenProviderTest {
   void setUp() {
     jwtTokenProvider =
         new JwtTokenProvider(
-            SECRET,
-            3600,
-            2592000,
-            ISSUER,
+            SECRET, 3600, 2592000, ISSUER,
             AUDIENCE); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
   }
 
@@ -98,10 +95,7 @@ class JwtTokenProviderTest {
   void isTokenValid_shouldReturnFalseForExpiredToken() {
     JwtTokenProvider shortLivedProvider =
         new JwtTokenProvider(
-            SECRET,
-            -1,
-            -1,
-            ISSUER,
+            SECRET, -1, -1, ISSUER,
             AUDIENCE); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
     User user = createTestUser();
     String token = shortLivedProvider.generateAccessToken(user);
@@ -113,7 +107,8 @@ class JwtTokenProviderTest {
   void generatedTokens_shouldCarryIssuerAndTenantAudience() {
     User user = createTestUser();
 
-    Claims access = jwtTokenProvider.validateAndGetClaims(jwtTokenProvider.generateAccessToken(user));
+    Claims access =
+        jwtTokenProvider.validateAndGetClaims(jwtTokenProvider.generateAccessToken(user));
     Claims refresh =
         jwtTokenProvider.validateAndGetClaims(jwtTokenProvider.generateRefreshToken(user));
 
