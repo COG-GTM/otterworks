@@ -75,7 +75,7 @@ class ChaosProbeService
 
     iterations = 0
     loop do
-      break unless redis.exists?(redis_key)
+      break if release_if_inactive(redis, redis_key)
 
       PROBE_BATCH.times { fire_probe(probe_config) }
       iterations += 1
@@ -88,6 +88,17 @@ class ChaosProbeService
   ensure
     redis&.close
     @probes_mutex.synchronize { @probes.delete(redis_key) if @probes[redis_key] == Thread.current }
+  end
+
+  # The final key check and the registry removal happen under the same lock
+  # as `start`, so a retrigger never reuses a probe that is about to exit.
+  def self.release_if_inactive(redis, redis_key)
+    @probes_mutex.synchronize do
+      next false if redis.exists?(redis_key)
+
+      @probes.delete(redis_key) if @probes[redis_key] == Thread.current
+      true
+    end
   end
 
   def self.fire_probe(config)

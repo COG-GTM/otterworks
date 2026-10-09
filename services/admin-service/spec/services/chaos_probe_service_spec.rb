@@ -38,6 +38,18 @@ RSpec.describe ChaosProbeService do
     expect(described_class.running?(redis_key)).to be(true)
   end
 
+  it 'does not reuse a probe that has already seen the key disappear' do
+    first = described_class.start(service: 'search-service', redis_key: redis_key)
+    active.make_false
+    sleep 0.01 while described_class.running?(redis_key)
+
+    active.make_true
+    second = described_class.start(service: 'search-service', redis_key: redis_key)
+
+    expect(second).not_to equal(first)
+    expect(described_class.running?(redis_key)).to be(true)
+  end
+
   it 'ignores unknown services' do
     expect(described_class.start(service: 'auth-service', redis_key: 'chaos:auth-service:x')).to be_nil
   end
