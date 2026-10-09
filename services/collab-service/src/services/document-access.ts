@@ -30,8 +30,18 @@ export function documentIdFromYjsRequestUrl(
   return match ? match[1] : null;
 }
 
+export interface AccessCheckOptions {
+  /** Skip the grant cache, e.g. when revalidating an already-open session. */
+  fresh?: boolean;
+}
+
 export interface DocumentAccessChecker {
-  canAccess(accessToken: string, userId: string, documentId: string): Promise<boolean>;
+  canAccess(
+    accessToken: string,
+    userId: string,
+    documentId: string,
+    options?: AccessCheckOptions,
+  ): Promise<boolean>;
 }
 
 export interface DocumentAccessOptions {
@@ -62,13 +72,14 @@ export class DocumentAccessService implements DocumentAccessChecker {
     accessToken: string,
     userId: string,
     documentId: string,
+    options: AccessCheckOptions = {},
   ): Promise<boolean> {
     if (!accessToken || !userId || !isValidDocumentId(documentId)) return false;
 
     const cacheKey = `${userId}:${documentId.toLowerCase()}`;
     const expiresAt = this.allowed.get(cacheKey);
     if (expiresAt !== undefined) {
-      if (expiresAt > this.now()) return true;
+      if (!options.fresh && expiresAt > this.now()) return true;
       this.allowed.delete(cacheKey);
     }
 

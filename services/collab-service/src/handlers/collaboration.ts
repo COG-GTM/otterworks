@@ -36,6 +36,7 @@ export interface CollaborationDeps {
   logger: Logger;
   persistIntervalMs: number;
   snapshotIntervalMs: number;
+  accessRevalidateIntervalMs?: number;
 }
 
 export class CollaborationManager {
@@ -47,6 +48,7 @@ export class CollaborationManager {
   private deps: CollaborationDeps;
   private persistTimer: NodeJS.Timeout | null = null;
   private snapshotTimer: NodeJS.Timeout | null = null;
+  private revalidateTimer: NodeJS.Timeout | null = null;
 
   constructor(deps: CollaborationDeps) {
     this.deps = deps;
@@ -76,12 +78,14 @@ export class CollaborationManager {
 
     this.startPersistenceLoop();
     this.startSnapshotLoop();
+    this.startAccessRevalidationLoop();
     logger.info('collaboration_manager_started');
   }
 
   async stop(): Promise<void> {
     if (this.persistTimer) clearInterval(this.persistTimer);
     if (this.snapshotTimer) clearInterval(this.snapshotTimer);
+    if (this.revalidateTimer) clearInterval(this.revalidateTimer);
 
     // Final persistence pass: flush all in-memory documents to Redis before shutdown
     const { documentStore, logger } = this.deps;
@@ -633,6 +637,52 @@ export class CollaborationManager {
     return initPromise;
   }
 
+  /**
+   * Re-checks every joined socket against document-service (bypassing the grant
+   * cache) and evicts sockets whose access was revoked or can no longer be verified.
+   */
+  async revalidateAccess(): Promise<void> {
+    const { io, awareness, documentAccess, logger, metrics } = this.deps;
+    const checks = [...io.of('/').sockets.values()].map(async (socket) => {
+      const documentId = awareness.getUserDocument(socket.id);
+      if (!documentId) return;
+      const generation = this.joinGenerations.get(socket.id);
+      const user = extractUserFromSocket(socket);
+      const allowed = await documentAccess.canAccess(
+        extractAccessToken(socket) ?? '',
+        user.userId,
+        documentId,
+        { fresh: true },
+      );
+      if (allowed) return;
+      if (
+        awareness.getUserDocument(socket.id) !== documentId ||
+        this.joinGenerations.get(socket.id) !== generation
+      ) {
+        return;
+      }
+      logger.warn(
+        { documentId, userId: user.userId, socketId: socket.id },
+        'document_access_revoked',
+      );
+      metrics.connectionErrors.inc({ reason: 'access_revoked' });
+      this.handleLeaveDocument(socket, { documentId });
+      socket.emit('access-revoked', { documentId });
+    });
+    await Promise.allSettled(checks);
+  }
+
+  private startAccessRevalidationLoop(): void {
+    const intervalMs = this.deps.accessRevalidateIntervalMs ?? 0;
+    if (intervalMs <= 0) return;
+    this.revalidateTimer = setInterval(() => {
+      this.revalidateAccess().catch((err) => {
+        this.deps.logger.error({ err }, 'access_revalidation_failed');
+      });
+    }, intervalMs);
+    this.revalidateTimer.unref?.();
+  }
+
   private startPersistenceLoop(): void {
     const { documentStore, metrics, logger } = this.deps;
 
@@ -693,6 +743,7 @@ export function setupCollaborationHandlers(
   documentAccess: DocumentAccessChecker,
   persistIntervalMs = 30000,
   snapshotIntervalMs = 300000,
+  accessRevalidateIntervalMs = 30000,
 ): CollaborationManager {
   const manager = new CollaborationManager({
     io,
@@ -704,6 +755,7 @@ export function setupCollaborationHandlers(
     logger,
     persistIntervalMs,
     snapshotIntervalMs,
+    accessRevalidateIntervalMs,
   });
   manager.start();
   return manager;
