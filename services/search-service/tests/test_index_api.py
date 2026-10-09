@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestIndexDocumentEndpoint:
     """Tests for POST /api/v1/search/index/document."""
@@ -102,9 +104,46 @@ class TestDeleteFromIndexEndpoint:
 class TestReindexEndpoint:
     """Tests for POST /api/v1/search/reindex."""
 
-    def test_reindex_success(self, client, mock_meilisearch_client):
-        """Reindex returns 200."""
-        response = client.post("/api/v1/search/reindex")
+    @staticmethod
+    def _client(app_config, mock_meilisearch_client, token):
+        from dataclasses import replace
+        from unittest.mock import patch
+
+        from app.config import AuthConfig
+        from app.main import create_app
+
+        config = replace(app_config, auth=AuthConfig(service_token=token, require_auth=True))
+        with patch("app.services.meilisearch_client.meilisearch.Client") as mock_cls:
+            mock_cls.return_value = mock_meilisearch_client
+            return create_app(config).test_client()
+
+    def test_reindex_success(self, app_config, mock_meilisearch_client):
+        """Reindex with the service token returns 200."""
+        client = self._client(app_config, mock_meilisearch_client, "svc-token")
+        response = client.post(
+            "/api/v1/search/reindex", headers={"Authorization": "Bearer svc-token"}
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert data["status"] == "reindexed"
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {"X-User-ID": "user-1"},
+            {"X-User-ID": "user-1", "Authorization": "Bearer wrong"},
+            {},
+        ],
+    )
+    def test_reindex_requires_service_token(self, app_config, mock_meilisearch_client, headers):
+        """A gateway user identity alone cannot wipe and rebuild the index."""
+        client = self._client(app_config, mock_meilisearch_client, "svc-token")
+        response = client.post("/api/v1/search/reindex", headers=headers)
+        assert response.status_code in (401, 403)
+        mock_meilisearch_client.delete_index.assert_not_called()
+
+    def test_reindex_refused_when_no_token_configured(self, client, mock_meilisearch_client):
+        """With no service token configured (REQUIRE_AUTH off), reindex stays closed."""
+        response = client.post("/api/v1/search/reindex", headers={"X-User-ID": "user-1"})
+        assert response.status_code == 403
+        mock_meilisearch_client.delete_index.assert_not_called()

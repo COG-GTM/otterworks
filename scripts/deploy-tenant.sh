@@ -172,13 +172,19 @@ spec:
 ---
 # Tenant isolation: allow traffic only from within this namespace, the shared
 # ingress controller, and monitoring. Cross-tenant pod-to-pod traffic is denied.
+# Services that ship a stricter per-chart NetworkPolicy (TENANT_OWN_NETPOL_SERVICES)
+# are excluded, since NetworkPolicies are additive and this one would re-open them.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: tenant-isolation
   namespace: ${NS}
 spec:
-  podSelector: {}
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: NotIn
+        values: [${TENANT_OWN_NETPOL_SERVICES// /, }]
   policyTypes: [Ingress]
   ingress:
     - from:
