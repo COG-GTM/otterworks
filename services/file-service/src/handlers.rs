@@ -618,7 +618,7 @@ pub async fn share_file(
                 file_id,
                 shared_with,
                 permission: body.permission.clone(),
-                shared_by,
+                shared_by: existing.shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
