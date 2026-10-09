@@ -1,12 +1,68 @@
+import hmac
 import os
 import uuid
 from datetime import date
 from decimal import Decimal
+from urllib.parse import urlsplit
 
 import psycopg
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import (
+    Flask,
+    abort,
+    current_app,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
+
+DEFAULT_ALLOWED_HOSTS = "localhost,127.0.0.1,legacy-billing"
+REQUEST_HEADER = "X-Legacy-Billing-Request"
+SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+PUBLIC_ENDPOINTS = frozenset({"health"})
+
+
+def allowed_hosts():
+    raw = os.getenv("LEGACY_BILLING_ALLOWED_HOSTS", DEFAULT_ALLOWED_HOSTS).strip()
+    if raw == "*":
+        return None
+    return [host.strip() for host in raw.split(",") if host.strip()]
+
+
+def bearer_token():
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    return token.strip() if scheme.lower() == "bearer" else ""
+
+
+def same_origin(origin):
+    parts = urlsplit(origin)
+    return parts.scheme in ("http", "https") and parts.netloc.lower() == request.host.lower()
+
 
 app = Flask(__name__)
+app.config["TRUSTED_HOSTS"] = allowed_hosts()
+app.config["API_TOKEN"] = os.getenv("LEGACY_BILLING_API_TOKEN", "")
+
+
+@app.before_request
+def enforce_request_guards():
+    expected = current_app.config["API_TOKEN"]
+    if (
+        expected
+        and request.endpoint not in PUBLIC_ENDPOINTS
+        and not hmac.compare_digest(bearer_token().encode(), expected.encode())
+    ):
+        abort(401)
+    if request.method in SAFE_METHODS:
+        return
+    if request.headers.get(REQUEST_HEADER) != "1":
+        abort(403)
+    origin = request.headers.get("Origin")
+    if origin is not None and not same_origin(origin):
+        abort(403)
+    if request.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+        abort(403)
 
 
 def db_connect():
@@ -80,7 +136,7 @@ def change_plan(tenant_id):
 
 @app.post("/api/rating/preview")
 def rating_preview():
-    payload = request.get_json(force=True)
+    payload = request.get_json()
     return jsonify(select(
         "SELECT * FROM billing.fn_usage_rating(%s, %s, %s)",
         (payload["tenant_id"], payload["period_start"], payload["period_end"]),
@@ -89,7 +145,7 @@ def rating_preview():
 
 @app.post("/api/rating/finalize")
 def rating_finalize():
-    payload = request.get_json(force=True)
+    payload = request.get_json()
     execute(
         "CALL billing.sp_finalize_rating(%s, %s, %s)",
         (payload["tenant_id"], payload["period_start"], payload["period_end"]),

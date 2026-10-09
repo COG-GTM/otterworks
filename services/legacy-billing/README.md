@@ -61,6 +61,30 @@ make procs-down NS=dev
 The Compose profile is intentionally separate from the Helm/EKS path. It
 models the legacy application running with its own PostgreSQL database.
 
+## Request guards
+
+The service has no notion of a caller, so it must stay on the local parity
+stack. To keep a browser on a developer machine from driving it cross-site:
+
+- Every `POST` must send `X-Legacy-Billing-Request: 1`; requests with a
+  foreign `Origin` or a `Sec-Fetch-Site` other than `same-origin`/`none` are
+  rejected with `403`.
+- JSON endpoints only accept `Content-Type: application/json` (`415`
+  otherwise).
+- The `Host` header must be in `LEGACY_BILLING_ALLOWED_HOSTS` (default
+  `localhost,127.0.0.1,legacy-billing`; `*` disables the check), which blocks
+  DNS-rebinding reads.
+- When `LEGACY_BILLING_API_TOKEN` is set, every route except `/health` needs
+  `Authorization: Bearer <token>`.
+
+```bash
+curl -X POST http://localhost:8096/api/dunning/schedule \
+  -H 'X-Legacy-Billing-Request: 1' -d as_of=2026-02-28
+```
+
+If the service is ever exposed beyond the parity harness, put it behind the
+gateway's JWT auth and scope `tenant_id` to the caller.
+
 ## Database layout
 
 - `db/schema.sql` — tables and constraints

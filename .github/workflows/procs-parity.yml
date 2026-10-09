@@ -44,6 +44,7 @@ jobs:
       - run: uv run --with ruff==0.9.10 ruff check procs/harness
       - run: cd services/billing-service && uv sync --locked && uv run ruff check app scripts tests && uv run pytest
       - run: uv run --with psycopg[binary]==3.2.9 --with pyyaml==6.0.2 --with pytest==8.3.5 pytest procs/harness/tests
+      - run: uv run --with flask==3.1.1 --with psycopg[binary]==3.2.9 --with pytest==8.3.5 pytest services/legacy-billing/tests
       - run: cd frontend/client-app && npm ci && npm run lint && npm test
       - run: make procs-up NS=ci
       - run: make procs-rules-gate ALL=1
