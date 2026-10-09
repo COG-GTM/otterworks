@@ -96,12 +96,17 @@ ctl_audit() {
   # writer/reader (lib/control.ts, lib/format.ts); a seconds value renders as
   # 1970 and mis-sorts. Compute once so the sort key and ts are identical.
   local ms; ms="$(ctl_now_ms)"
+  # Every AUDIT# item carries the table's TTL attribute (`ttl`, epoch seconds)
+  # so DynamoDB prunes the trail; same retention as the dashboard (lib/env.ts).
+  local days="${AUDIT_RETENTION_DAYS:-90}"
+  [[ "$days" =~ ^[1-9][0-9]{0,4}$ ]] || days=90
+  local ttl=$(( ms / 1000 + days * 86400 ))
   aws dynamodb put-item \
     --table-name "${CONTROL_TABLE}" --region "${AWS_REGION}" \
     --item "$(jq -n \
         --arg pk "AUDIT#${id}" --arg sk "${ms}#${action}" \
-        --arg actor "$actor" --arg detail "$detail" --argjson ts "${ms}" \
-        '{PK:{S:$pk},SK:{S:$sk},action:{S:($sk|split("#")[1])},actor:{S:$actor},detail:{S:$detail},ts:{N:($ts|tostring)}}')" \
+        --arg actor "$actor" --arg detail "$detail" --argjson ts "${ms}" --argjson ttl "${ttl}" \
+        '{PK:{S:$pk},SK:{S:$sk},action:{S:($sk|split("#")[1])},actor:{S:$actor},detail:{S:$detail},ts:{N:($ts|tostring)},ttl:{N:($ttl|tostring)}}')" \
     >/dev/null || true
 }
 

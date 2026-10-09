@@ -73,6 +73,14 @@ ingress:
   # deployments keep serving over HTTP; add a per-ingress ssl-redirect only if
   # you need to override the global behavior.
   annotations: {}
+  # Per-client-IP limit on POST /api/auth/login at ingress-nginx (separate
+  # Ingress, Exact path). The app's own limiter is per pod and keyed on
+  # X-Forwarded-For; this one uses the address nginx sees.
+  loginRateLimit:
+    enabled: true
+    rpm: 10
+    burstMultiplier: 2
+    connections: 5
 
 reaper:
   enabled: true

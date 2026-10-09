@@ -1,0 +1,33 @@
+{{- if .Values.ingress.loginRateLimit.enabled }}
+# Edge throttle for the one public write path. ingress-nginx merges Ingresses on
+# the same host, and this Exact path wins over the dashboard's "/" Prefix, so
+# only POST /api/auth/login is limited; the 5s dashboard poll is unaffected.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-dashboard-login
+  namespace: {{ .Values.platformNamespace }}
+  labels:
+    {{- include "demo-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ops-dashboard
+  annotations:
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    nginx.ingress.kubernetes.io/limit-rpm: {{ .Values.ingress.loginRateLimit.rpm | quote }}
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: {{ .Values.ingress.loginRateLimit.burstMultiplier | quote }}
+    nginx.ingress.kubernetes.io/limit-connections: {{ .Values.ingress.loginRateLimit.connections | quote }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.dashboard.host | default "ops.otterworks.app" | quote }}
+      http:
+        paths:
+          - path: /api/auth/login
+            pathType: Exact
+            backend:
+              service:
+                name: {{ .Release.Name }}-dashboard
+                port:
+                  number: {{ .Values.dashboard.service.port }}
+{{- end }}

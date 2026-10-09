@@ -16,6 +16,9 @@ const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const GLOBAL_MAX_ATTEMPTS = 20;
 const BASE_BACKOFF_MS = 1000;
+// Bounds per-IP state: the client IP comes from X-Forwarded-For, so an attacker
+// can mint a new "IP" per request. The global ceiling still applies to all.
+const MAX_TRACKED_IPS = 10_000;
 
 interface Bucket {
   count: number;
@@ -49,10 +52,11 @@ export function checkRateLimit(ip: string, now: number = Date.now()): RateResult
     };
   }
 
-  let b = buckets.get(ip);
+  // Read-only: a bucket is only created by recordFailure, so requests that
+  // never fail (or are rejected here) cannot grow the map.
+  const b = buckets.get(ip);
   if (!b || now - b.windowStart > WINDOW_MS) {
-    b = { count: 0, windowStart: now, lastAttempt: 0 };
-    buckets.set(ip, b);
+    return { allowed: true, retryAfterMs: 0, remaining: MAX_ATTEMPTS };
   }
 
   if (b.count >= MAX_ATTEMPTS) {
@@ -75,12 +79,30 @@ export function checkRateLimit(ip: string, now: number = Date.now()): RateResult
   return { allowed: true, retryAfterMs: 0, remaining: MAX_ATTEMPTS - b.count };
 }
 
+// Drop expired buckets; if every bucket is still live, drop the oldest
+// (Map iteration is insertion order, and buckets are re-inserted on reset).
+function evictBuckets(now: number): void {
+  for (const [ip, b] of buckets) {
+    if (now - b.windowStart > WINDOW_MS) buckets.delete(ip);
+  }
+  while (buckets.size >= MAX_TRACKED_IPS) {
+    const oldest = buckets.keys().next().value;
+    if (oldest === undefined) break;
+    buckets.delete(oldest);
+  }
+}
+
 /** Record a failed attempt (advances the backoff + count) on both layers. */
 export function recordFailure(ip: string, now: number = Date.now()): void {
-  const b = buckets.get(ip) ?? { count: 0, windowStart: now, lastAttempt: 0 };
+  let b = buckets.get(ip);
+  if (!b || now - b.windowStart > WINDOW_MS) {
+    b = { count: 0, windowStart: now, lastAttempt: 0 };
+    buckets.delete(ip);
+    if (buckets.size >= MAX_TRACKED_IPS) evictBuckets(now);
+    buckets.set(ip, b);
+  }
   b.count += 1;
   b.lastAttempt = now;
-  buckets.set(ip, b);
 
   globalBucket = roll(globalBucket, now);
   if (globalBucket.count === 0) globalBucket.windowStart = now;
@@ -101,4 +123,15 @@ export function clientIp(headers: Headers): string {
     if (first) return first;
   }
   return headers.get("x-real-ip") || "unknown";
+}
+
+/** Number of per-IP buckets currently held (exposed for tests). */
+export function trackedIpCount(): number {
+  return buckets.size;
+}
+
+/** Clear all limiter state (tests only). */
+export function resetRateLimit(): void {
+  buckets.clear();
+  globalBucket = { count: 0, windowStart: 0, lastAttempt: 0 };
 }
