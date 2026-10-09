@@ -8,6 +8,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { useAuthStore } from "@/stores/auth-store";
 import { generateColor } from "@/lib/utils";
+import { collabSubprotocols } from "@/lib/collab-auth";
 import {
   Bold,
   Italic,
@@ -64,7 +65,7 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
       COLLAB_WS_URL,
       `document-${documentId}`,
       ydoc,
-      { params: { token: token || "" } }
+      { protocols: collabSubprotocols(token) }
     );
 
     wsProvider.on("status", (event: { status: string }) => {
