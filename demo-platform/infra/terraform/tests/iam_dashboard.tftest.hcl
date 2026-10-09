@@ -3,6 +3,15 @@
 #   terraform init -backend=false && terraform test
 
 mock_provider "aws" {
+  # The provider still validates policy arguments, so mocked documents must be
+  # real (empty) policies rather than random strings.
+  mock_data "aws_iam_policy_document" {
+    defaults = {
+      json          = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+      minified_json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+    }
+  }
+
   override_data {
     target = data.aws_caller_identity.current
     values = {
