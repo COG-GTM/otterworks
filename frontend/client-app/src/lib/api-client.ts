@@ -1,5 +1,6 @@
 import axios from "axios";
 import { Capacitor } from "@capacitor/core";
+import { clearSession, getAccessToken, purgeLegacyRefreshToken } from "@/lib/auth-tokens";
 
 // ── snake_case → camelCase helpers ────────────────────────────
 function snakeToCamel(s: string): string {
@@ -40,12 +41,12 @@ export const apiClient = axios.create({
   },
 });
 
+purgeLegacyRefreshToken();
+
 apiClient.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("otter_access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
@@ -70,14 +71,13 @@ apiClient.interceptors.response.use(
         try {
           await axios.get(`${API_BASE_URL}/auth/profile`, {
             headers: {
-              Authorization: `Bearer ${localStorage.getItem("otter_access_token")}`,
+              Authorization: `Bearer ${getAccessToken()}`,
             },
           });
         } catch (verifyError: unknown) {
           const status = (verifyError as { response?: { status?: number } })?.response?.status;
           if (status === 401) {
-            localStorage.removeItem("otter_access_token");
-            localStorage.removeItem("otter_refresh_token");
+            clearSession();
             window.location.href = "/login";
           }
         } finally {

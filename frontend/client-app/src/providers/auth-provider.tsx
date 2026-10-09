@@ -1,12 +1,13 @@
 import { useEffect, type ReactNode } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth-tokens";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { setUser, setLoading } = useAuthStore();
 
   useEffect(() => {
-    const token = localStorage.getItem("otter_access_token");
+    const token = getAccessToken();
     if (!token) {
       setUser(null);
       return;
