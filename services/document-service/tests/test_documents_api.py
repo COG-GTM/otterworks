@@ -246,15 +246,16 @@ async def test_create_document_via_jwt(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_create_document_via_jwt_hs384(client: AsyncClient):
-    """Create a document using an HS384-signed JWT (matches auth-service algorithm)."""
+@pytest.mark.parametrize("algorithm", ["HS384", "HS512"])
+async def test_create_document_via_jwt_hs384_hs512(client: AsyncClient, algorithm: str):
+    """auth-service (jjwt) picks HS384/HS512 from key length; 64-byte tenant keys yield HS512."""
     user_id = uuid.uuid4()
     token = jwt.encode(
-        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS384"
+        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm=algorithm
     )
     resp = await client.post(
         "/api/v1/documents/",
-        json={"title": "HS384 Doc"},
+        json={"title": f"{algorithm} Doc"},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201

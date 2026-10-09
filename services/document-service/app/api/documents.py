@@ -82,7 +82,7 @@ def _extract_user_id(request: Request) -> UUID | None:
         secret = _get_jwt_secret()
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384", "HS512"])
                 if payload.get("type") != ACCESS_TOKEN_TYPE:
                     return None
                 user_id_str = payload.get("user_id") or payload.get("sub")
