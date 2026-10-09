@@ -1,12 +1,19 @@
 import type { Logger } from 'pino';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lowercase only: y-websocket keys rooms by the raw URL path, so accepting other
+// casings would split one document's state across several rooms.
 const YJS_ROOM_PATTERN =
-  /^document-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^document-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
 const MAX_CACHE_ENTRIES = 10000;
 
 export function isValidDocumentId(documentId: unknown): documentId is string {
   return typeof documentId === 'string' && UUID_PATTERN.test(documentId);
+}
+
+/** Canonical (lowercase) document id, or null if the value is not a UUID. */
+export function normalizeDocumentId(documentId: unknown): string | null {
+  return isValidDocumentId(documentId) ? documentId.toLowerCase() : null;
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   DocumentAccessService,
   documentIdFromYjsRequestUrl,
   isValidDocumentId,
+  normalizeDocumentId,
 } from '../services/document-access';
 import { extractBearerToken, isAdmin, userFromToken } from '../middleware/auth';
 import jwt from 'jsonwebtoken';
@@ -34,10 +35,22 @@ describe('isValidDocumentId', () => {
   });
 });
 
+describe('normalizeDocumentId', () => {
+  it('lowercases UUIDs and rejects anything else', () => {
+    expect(normalizeDocumentId(DOC_ID.toUpperCase())).toBe(DOC_ID);
+    expect(normalizeDocumentId('doc-1')).toBeNull();
+    expect(normalizeDocumentId(null)).toBeNull();
+  });
+});
+
 describe('documentIdFromYjsRequestUrl', () => {
   it('maps document-<uuid> rooms to the document id', () => {
     expect(documentIdFromYjsRequestUrl(`/document-${DOC_ID}`)).toBe(DOC_ID);
     expect(documentIdFromYjsRequestUrl(`/document-${DOC_ID}?token=abc`)).toBe(DOC_ID);
+  });
+
+  it('rejects non-canonical casing so one document cannot get two rooms', () => {
+    expect(documentIdFromYjsRequestUrl(`/document-${DOC_ID.toUpperCase()}`)).toBeNull();
   });
 
   it('rejects any other room name', () => {

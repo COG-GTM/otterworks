@@ -6,7 +6,7 @@ import { AwarenessService, type CursorPosition } from '../services/awareness';
 import { extractAccessToken, extractUserFromSocket } from '../middleware/auth';
 import {
   type DocumentAccessChecker,
-  isValidDocumentId,
+  normalizeDocumentId,
 } from '../services/document-access';
 import { MetricsCollector } from '../metrics';
 import { PresenceHandler } from './presence';
@@ -42,6 +42,8 @@ export class CollaborationManager {
   private documents: Map<string, Y.Doc> = new Map();
   private documentInitPromises: Map<string, Promise<Y.Doc>> = new Map();
   private cleaningUp: Set<string> = new Set();
+  // Bumped on every join/leave so a slow access check cannot apply a stale join.
+  private joinGenerations: Map<string, number> = new Map();
   private deps: CollaborationDeps;
   private persistTimer: NodeJS.Timeout | null = null;
   private snapshotTimer: NodeJS.Timeout | null = null;
@@ -115,21 +117,27 @@ export class CollaborationManager {
     ack?: (response: { success: boolean; error?: string }) => void,
   ): Promise<void> {
     const reply = typeof ack === 'function' ? ack : undefined;
-    const documentId = data?.documentId;
+    const documentId = normalizeDocumentId(data?.documentId);
     const { io, awareness, presenceHandler, metrics, logger, documentAccess } = this.deps;
     const user = extractUserFromSocket(socket);
 
-    if (!isValidDocumentId(documentId)) {
+    if (!documentId) {
       metrics.connectionErrors.inc({ reason: 'join_invalid_document' });
       if (reply) reply({ success: false, error: 'Invalid document id' });
       return;
     }
+
+    const generation = this.bumpJoinGeneration(socket.id);
 
     const allowed = await documentAccess.canAccess(
       extractAccessToken(socket) ?? '',
       user.userId,
       documentId,
     );
+    if (this.joinGenerations.get(socket.id) !== generation) {
+      if (reply) reply({ success: false, error: 'Superseded by a newer request' });
+      return;
+    }
     if (!allowed) {
       logger.warn(
         { documentId, userId: user.userId, socketId: socket.id },
@@ -171,6 +179,11 @@ export class CollaborationManager {
 
       // Get or create Yjs document (safe against concurrent joins)
       const doc = await this.getOrCreateDoc(documentId);
+      if (this.joinGenerations.get(socket.id) !== generation) {
+        socket.leave(room);
+        if (reply) reply({ success: false, error: 'Superseded by a newer request' });
+        return;
+      }
 
       // Register awareness
       const userAwareness = awareness.addUser(
@@ -216,6 +229,7 @@ export class CollaborationManager {
 
     // Only the server-tracked document is left; a client-supplied id never
     // triggers room broadcasts or cleanup for a document the socket did not join.
+    this.bumpJoinGeneration(socket.id);
     const mapping = awareness.removeUser(socket.id);
     metrics.messagesTotal.inc({ type: 'leave-document' });
     if (!mapping) return;
@@ -517,11 +531,18 @@ export class CollaborationManager {
    * Returns the document id only if this socket was authorized for it at
    * join time and is still in its room; client-supplied ids are never trusted.
    */
-  private joinedDocument(socket: Socket, documentId: unknown): string | null {
-    if (typeof documentId !== 'string') return null;
+  private joinedDocument(socket: Socket, rawDocumentId: unknown): string | null {
+    const documentId = normalizeDocumentId(rawDocumentId);
+    if (!documentId) return null;
     if (this.deps.awareness.getUserDocument(socket.id) !== documentId) return null;
     if (!socket.rooms.has(`doc:${documentId}`)) return null;
     return documentId;
+  }
+
+  private bumpJoinGeneration(socketId: string): number {
+    const next = (this.joinGenerations.get(socketId) ?? 0) + 1;
+    this.joinGenerations.set(socketId, next);
+    return next;
   }
 
   private rejectNotJoined(socket: Socket, event: string, documentId: unknown): void {
@@ -536,6 +557,7 @@ export class CollaborationManager {
 
     metrics.activeConnections.dec();
     logger.info({ socketId: socket.id, reason }, 'client_disconnected');
+    this.joinGenerations.delete(socket.id);
 
     const mapping = awareness.removeUser(socket.id);
     if (mapping) {

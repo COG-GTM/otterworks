@@ -20,7 +20,7 @@ import { AwarenessService } from './services/awareness';
 import {
   DocumentAccessService,
   documentIdFromYjsRequestUrl,
-  isValidDocumentId,
+  normalizeDocumentId,
 } from './services/document-access';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
@@ -104,8 +104,8 @@ app.get('/api/v1/collab/documents/:id/presence', async (req, res) => {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
-  const documentId = req.params.id;
-  if (!isValidDocumentId(documentId)) {
+  const documentId = normalizeDocumentId(req.params.id);
+  if (!documentId) {
     res.status(400).json({ error: 'Invalid document id' });
     return;
   }
