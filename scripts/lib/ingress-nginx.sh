@@ -57,11 +57,15 @@ ensure_ingress_nginx() {
   # defaults) so the controller overwrites X-Forwarded-For with the peer address
   # instead of appending to a client-supplied one. api-gateway trusts that header
   # from this controller (TRUSTED_PROXY_CIDRS) to key its per-IP rate limiter.
+  # externalTrafficPolicy=Local keeps the visitor's source IP through the NLB;
+  # with the default (Cluster) cross-node hops SNAT it to a node address and
+  # every visitor behind that node would share one rate-limit bucket.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     "${reuse[@]}" \
     --set controller.service.type=LoadBalancer \
     --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+    --set controller.service.externalTrafficPolicy=Local \
     --set controller.replicaCount=1 \
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \
