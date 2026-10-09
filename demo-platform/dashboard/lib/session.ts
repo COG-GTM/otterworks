@@ -4,13 +4,23 @@ import { env } from "@/lib/env";
 
 export const SESSION_COOKIE = "ow_ops_session";
 
-interface SessionPayload {
-  // Subject — a stable, non-identifying label for a passcode holder.
+export interface SessionPayload {
+  // Subject — a stable, non-identifying label for a passcode holder, or
+  // `ci:<owner/repo>` for a CD session.
   sub: string;
   // Issued-at / expiry, epoch seconds.
   iat: number;
   exp: number;
+  // Absent for the facilitator. "cd" sessions come from a verified GitHub
+  // OIDC token (app/api/auth/github-oidc) and are bound to one tenant and one
+  // branch; routes reject them unless they opt in (see withSession).
+  scope?: "cd";
+  tenant?: string;
+  branch?: string;
+  repo?: string;
 }
+
+export type SessionClaims = Pick<SessionPayload, "scope" | "tenant" | "branch" | "repo">;
 
 function b64url(buf: Buffer): string {
   return buf.toString("base64url");
@@ -32,10 +42,15 @@ export function constantTimeEqual(a: string, b: string): boolean {
 }
 
 /** Create a signed session token: base64url(payload).base64url(hmac). */
-export function signSession(sub: string, secret: string): { token: string; exp: number } {
+export function signSession(
+  sub: string,
+  secret: string,
+  claims: SessionClaims = {},
+  ttlSeconds: number = env.sessionTtlSeconds,
+): { token: string; exp: number } {
   const now = Math.floor(Date.now() / 1000);
-  const exp = now + env.sessionTtlSeconds;
-  const payload: SessionPayload = { sub, iat: now, exp };
+  const exp = now + ttlSeconds;
+  const payload: SessionPayload = { ...claims, sub, iat: now, exp };
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   const sig = b64url(hmac(secret, body));
   return { token: `${body}.${sig}`, exp };
@@ -62,6 +77,11 @@ export function verifySession(token: string | undefined, secret: string): Sessio
   if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) {
     return null;
   }
+  // A scoped session missing its binding must never fall through to the
+  // unscoped (facilitator) branch of an authorization check.
+  if (payload.scope !== undefined && (payload.scope !== "cd" || !payload.tenant || !payload.branch)) {
+    return null;
+  }
   return payload;
 }
 
@@ -75,7 +95,7 @@ export interface SessionCookieOptions {
   maxAge: number;
 }
 
-export function sessionCookie(token: string): SessionCookieOptions {
+export function sessionCookie(token: string, maxAge: number = env.sessionTtlSeconds): SessionCookieOptions {
   return {
     name: SESSION_COOKIE,
     value: token,
@@ -83,7 +103,7 @@ export function sessionCookie(token: string): SessionCookieOptions {
     secure: true,
     sameSite: "strict",
     path: "/",
-    maxAge: env.sessionTtlSeconds,
+    maxAge,
   };
 }
 

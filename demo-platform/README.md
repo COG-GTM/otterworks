@@ -62,10 +62,15 @@ so shipping to an environment never extends its life. `workshop-derek` and `demo
 map to tenant `derek`, and the dashboard rejects a redeploy from a branch other than the one
 the tenant was checked out from, so the two cannot quietly overwrite each other.
 
-CD holds no cluster credentials. The workflow assumes an OIDC role
-(`infra/terraform/iam_github_actions.tf`) trusted only for `main`, `workshop-*` and `demo-*` on
-this repo, which can push to ECR and read the dashboard passcode — nothing else. Deployment
-itself is `tenant.sh sync <branch>` against the dashboard API, exactly what a human would do.
+CD holds no cluster credentials and never sees the dashboard passcode. The build job assumes an
+OIDC role (`infra/terraform/iam_github_actions.tf`) trusted only for `main`, `workshop-*` and
+`demo-*`, which can push to the service ECR repositories — nothing else. Deployment is
+`tenant.sh sync <branch>` against the dashboard API, logged in with the job's GitHub OIDC token
+(`POST /api/auth/github-oidc`): the dashboard verifies the token's signature, `repository` and
+`ref` against `cdOidc.trust` (Helm values) and issues a short session bound to the one tenant
+that branch maps to. That session can read, create and redeploy its own tenant from its own
+branch with images built from that branch; checkin, persist, inject, reset, extend and every
+other tenant are refused.
 
 Pushes to `main` deploy the perpetual tenant, and deliberately cannot create it: CD makes
 ephemeral environments only, so a missing `t-main` is an error rather than a surprise
@@ -75,7 +80,8 @@ long-lived one.
 A fork ships to the same registry and the same control plane, so it needs three things:
 
 1. Its `owner/repo` added to `github_actions_trusted_repos` (`infra/terraform/variables.tf`),
-   then `terraform apply`. OIDC subjects name the repository, so the role refuses a fork until
+   then `terraform apply`, and to `cdOidc.trust` in the Helm values (with its `TENANT_PREFIX`
+   as `tenantPrefix`), then `helm upgrade`. OIDC subjects name the repository, so the role refuses a fork until
    it is listed. Forks are trusted for `workshop-*` and `demo-*` only: `main` is the golden app
    and the perpetual environment, which this repo owns.
 2. The same two Actions settings this repo has — the `AWS_ROLE_ARN` secret and the
