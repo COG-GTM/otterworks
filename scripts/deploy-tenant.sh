@@ -20,8 +20,10 @@
 #       [--ttl 8h] [--host-suffix demo.example.com] [--skip-db] \
 #       [--profile core|full]
 #
-# Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Required env: AWS creds (exported), DB_PASSWORD. JWT_SECRET / SECRET_KEY_BASE
+#   are per-tenant: generated on first deploy, stored in the namespace Secret
+#   tenant-app-secrets and reused on redeploy. Values in the caller's env are
+#   ignored so tenants never share a signing key.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -66,8 +68,9 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 [ -n "${AWS_ACCOUNT_ID}" ] || { err "Unable to resolve AWS account (are creds exported?)"; exit 1; }
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
-JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
-SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# Never inherit platform-wide signing keys; ensure_tenant_app_secrets sets them.
+JWT_SECRET=""
+SECRET_KEY_BASE=""
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
@@ -303,6 +306,9 @@ YAML
   fi
   kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
 }
+log "Ensuring per-tenant signing keys (${NS}/${TENANT_APP_SECRET_NAME})..."
+ensure_tenant_app_secrets "${NS}"
+
 if [ "${SKIP_DB}" = true ]; then
   warn "--skip-db set: using the shared default database (no Postgres data isolation)."
   T_DB_NAME="otterworks"

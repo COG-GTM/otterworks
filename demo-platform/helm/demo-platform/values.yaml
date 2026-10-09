@@ -99,9 +99,10 @@ reaper:
 
 # Templated Secret `demo-ops-dashboard`. Values are NOT committed — pass them at
 # deploy via -f secrets.yaml or --set-file (see README). dashboardPasscode and
-# sessionSecret are required when create=true. dbPassword/jwtSecret/secretKeyBase
-# are optional; supply them so the reaper (and dashboard-launched runner Jobs)
-# can drop/create per-tenant databases.
+# sessionSecret are required when create=true. dbPassword is optional; supply it
+# so the reaper (and dashboard-launched runner Jobs) can drop/create per-tenant
+# databases. jwtSecret/secretKeyBase are NOT used for tenant deploys: each tenant
+# gets its own keys (namespace Secret tenant-app-secrets, see deploy-tenant.sh).
 secret:
   create: true
   dashboardPasscode: ""

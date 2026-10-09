@@ -202,6 +202,40 @@ data:
 EOF
 }
 
+# Per-tenant signing keys. JWT_SECRET and SECRET_KEY_BASE are generated once per
+# tenant and kept in a Secret in the tenant's own namespace, so a token minted
+# (or a key read from env) in one tenant is useless against every other tenant.
+# Values inherited from the caller's environment (e.g. the platform runner
+# Secret) are deliberately ignored. Redeploys reuse the stored values so issued
+# tokens survive; teardown deletes the namespace and with it the keys.
+TENANT_APP_SECRET_NAME="tenant-app-secrets"
+ensure_tenant_app_secrets() {
+  local ns="$1" out jwt="" skb=""
+  if out="$(kubectl -n "${ns}" get secret "${TENANT_APP_SECRET_NAME}" -o json 2>&1)"; then
+    jwt="$(jq -r '.data.JWT_SECRET // empty' <<<"${out}" | base64 -d 2>/dev/null || true)"
+    skb="$(jq -r '.data.SECRET_KEY_BASE // empty' <<<"${out}" | base64 -d 2>/dev/null || true)"
+  elif ! grep -q "NotFound" <<<"${out}"; then
+    err "Unable to read ${ns}/${TENANT_APP_SECRET_NAME}; refusing to rotate tenant signing keys."
+    return 1
+  fi
+  [ -n "${jwt}" ] || jwt="$(openssl rand -hex 32)"
+  [ -n "${skb}" ] || skb="$(openssl rand -hex 64)"
+  kubectl -n "${ns}" apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ${TENANT_APP_SECRET_NAME}
+  labels:
+    app.kubernetes.io/managed-by: otterworks-tenant
+type: Opaque
+data:
+  JWT_SECRET: $(printf '%s' "${jwt}" | base64 | tr -d '\n')
+  SECRET_KEY_BASE: $(printf '%s' "${skb}" | base64 | tr -d '\n')
+EOF
+  JWT_SECRET="${jwt}"
+  SECRET_KEY_BASE="${skb}"
+}
+
 # Drop a per-tenant database via an in-cluster Job in ${run_ns}. Callers MUST
 # delete the tenant namespace first so no application pods are still connected
 # (otherwise DROP DATABASE races the pods' connection-pool reconnects). Requires
