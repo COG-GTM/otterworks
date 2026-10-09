@@ -59,6 +59,13 @@ routes:
     auth: bearer JWT + admin role
     expect:
       - unauthenticated callers receive 401
+  - prefix: /api/v1/analytics
+    service: analytics-service
+    auth: bearer JWT (+ admin role for cross-user aggregates)
+    expect:
+      - users/{id}/activity and storage?user_id= only answer for the caller's own id
+      - documents/{id}/stats only for callers document-service lets read the document
+      - dashboard, export, top-content, active-users and unscoped storage are admin-only
   - prefix: /api/v1/audit
     service: audit-service
     auth: bearer JWT
