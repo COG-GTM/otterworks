@@ -7,8 +7,8 @@ module Api
 
         # GET /api/v1/admin/announcements
         def index
-          scope = Announcement.all
-          scope = scope.where(status: params[:status]) if params[:status].present?
+          scope = readable_announcements
+          scope = scope.where(status: params[:status]) if admin? && params[:status].present?
           scope = scope.by_severity(params[:severity]) if params[:severity].present?
           scope = scope.active if params[:active] == 'true'
           scope = scope.order(created_at: :desc)
@@ -84,7 +84,12 @@ module Api
         private
 
         def set_announcement
-          @announcement = Announcement.find(params[:id]) # nosemgrep: ruby.rails.security.brakeman.check-unscoped-find.check-unscoped-find
+          @announcement = readable_announcements.find(params[:id])
+        end
+
+        # Non-admins only see published, in-window announcements targeted at their role.
+        def readable_announcements
+          admin? ? Announcement.all : Announcement.active.for_role(current_user_role)
         end
 
         def announcement_params
