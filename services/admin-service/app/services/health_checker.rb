@@ -10,6 +10,8 @@ class HealthChecker
     'analytics-service' => '8088', 'audit-service' => '8090'
   }.freeze
 
+  FAILURE_MESSAGE = 'Health check failed'.freeze
+
   ServiceStatus = Struct.new(:name, :status, :latency_ms, :message, keyword_init: true)
 
   def self.check_all
@@ -46,7 +48,8 @@ class HealthChecker
     end
   rescue StandardError => e
     latency = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(1)
-    ServiceStatus.new(name: name, status: 'unhealthy', latency_ms: latency, message: e.message)
+    log_failure(name, e)
+    ServiceStatus.new(name: name, status: 'unhealthy', latency_ms: latency, message: FAILURE_MESSAGE)
   end
 
   def self.check_database
@@ -55,7 +58,8 @@ class HealthChecker
     latency = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(1)
     { status: 'healthy', latency_ms: latency }
   rescue StandardError => e
-    { status: 'unhealthy', message: e.message }
+    log_failure('database', e)
+    { status: 'unhealthy', message: FAILURE_MESSAGE }
   end
 
   def self.check_redis
@@ -65,8 +69,13 @@ class HealthChecker
     latency = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(1)
     { status: 'healthy', latency_ms: latency }
   rescue StandardError => e
-    { status: 'unhealthy', message: e.message }
+    log_failure('redis', e)
+    { status: 'unhealthy', message: FAILURE_MESSAGE }
   ensure
     redis&.close
+  end
+
+  def self.log_failure(component, error)
+    Rails.logger.warn("Health check failed for #{component}: #{error.class}: #{error.message}")
   end
 end
