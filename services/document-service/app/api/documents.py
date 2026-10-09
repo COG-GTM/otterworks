@@ -106,19 +106,27 @@ def _ensure_owner(document: object, user_id: UUID) -> None:
         raise HTTPException(status_code=403, detail="Access denied")
 
 
+def _resolve_owner_id(requested_owner_id: UUID | None, request: Request) -> UUID:
+    """Owner of a new document: always the authenticated caller.
+
+    A body ``owner_id`` is accepted only when it names the caller, so a client cannot
+    create documents in another user's account.
+    """
+    user_id = _require_user_id(request)
+    if requested_owner_id is not None and requested_owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="owner_id must match the authenticated user",
+        )
+    return user_id
+
+
 async def _do_create_document(
     body: DocumentCreate,
     request: Request,
     db: AsyncSession,
 ) -> DocumentResponse:
-    if not body.owner_id:
-        extracted_id = _extract_user_id(request)
-        if not extracted_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="owner_id is required: provide it in the body or authenticate via JWT",
-            )
-        body.owner_id = extracted_id
+    body.owner_id = _resolve_owner_id(body.owner_id, request)
 
     service = DocumentService(db)
     document = await service.create(body)
@@ -505,9 +513,11 @@ async def export_document(
 async def create_from_template(
     template_id: UUID,
     body: DocumentFromTemplate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Create a document from a template."""
+    body.owner_id = _resolve_owner_id(body.owner_id, request)
     service = DocumentService(db)
     document = await service.create_from_template(template_id, body)
     if not document:
