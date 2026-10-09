@@ -70,37 +70,38 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     private void authenticate(String token) {
-        Claims claims;
+        String userId;
+        List<GrantedAuthority> authorities = new ArrayList<>();
         try {
-            claims = parser.parseClaimsJws(token).getBody();
+            Claims claims = parser.parseClaimsJws(token).getBody();
+
+            // auth-service marks access tokens with type=access; anything else (refresh, untyped) is rejected.
+            if (!"access".equals(claims.get("type", String.class))) {
+                logger.debug("Rejected report API token without type=access");
+                return;
+            }
+
+            userId = claims.getSubject();
+            if (userId == null || userId.trim().isEmpty()) {
+                userId = claims.get("user_id", String.class);
+            }
+
+            Object roles = claims.get("roles");
+            if (roles instanceof Collection) {
+                for (Object role : (Collection<?>) roles) {
+                    if (role != null) {
+                        authorities.add(new SimpleGrantedAuthority(
+                                "ROLE_" + role.toString().trim().toUpperCase(Locale.ROOT)));
+                    }
+                }
+            }
         } catch (JwtException | IllegalArgumentException e) {
             logger.debug("Rejected report API token: {}", e.getClass().getSimpleName());
             return;
         }
 
-        String type = claims.get("type", String.class);
-        if (type != null && !"access".equals(type)) {
-            logger.debug("Rejected non-access token of type {}", type);
-            return;
-        }
-
-        String userId = claims.getSubject();
-        if (userId == null || userId.trim().isEmpty()) {
-            userId = claims.get("user_id", String.class);
-        }
         if (userId == null || userId.trim().isEmpty()) {
             return;
-        }
-
-        List<GrantedAuthority> authorities = new ArrayList<>();
-        Object roles = claims.get("roles");
-        if (roles instanceof Collection) {
-            for (Object role : (Collection<?>) roles) {
-                if (role != null) {
-                    authorities.add(new SimpleGrantedAuthority(
-                            "ROLE_" + role.toString().trim().toUpperCase(Locale.ROOT)));
-                }
-            }
         }
 
         UsernamePasswordAuthenticationToken authentication =

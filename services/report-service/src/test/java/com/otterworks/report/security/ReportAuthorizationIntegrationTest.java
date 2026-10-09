@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.repository.ReportRepository;
+import com.otterworks.report.service.ReportService;
 import com.otterworks.report.support.TestTokens;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,6 +21,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.otterworks.report.support.TestTokens.admin;
@@ -48,6 +52,9 @@ public class ReportAuthorizationIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ReportRepository reportRepository;
 
     // ---- Authentication ----
 
@@ -144,6 +151,47 @@ public class ReportAuthorizationIntegrationTest {
         org.junit.Assert.assertTrue(ReportCategory.USER_ACTIVITY.isAdminOnly());
         org.junit.Assert.assertTrue(ReportCategory.STORAGE_SUMMARY.isAdminOnly());
         org.junit.Assert.assertFalse(ReportCategory.USAGE_ANALYTICS.isAdminOnly());
+    }
+
+    @Test
+    public void nonAdminReportsAreScopedToRequesterRows() throws Exception {
+        String alice = uniqueUser("alice");
+        ReportRequest request = request(ReportCategory.USAGE_ANALYTICS, null);
+        Map<String, String> params = new HashMap<>();
+        params.put(ReportService.OWNER_SCOPE_PARAM, "victim");
+        params.put("source", "authz-test");
+        request.setParameters(params);
+
+        String body = mockMvc.perform(post("/api/v1/reports")
+                        .with(user(alice))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(body).get("id").asLong();
+
+        Map<?, ?> stored = objectMapper.readValue(reportRepository.findById(id).get().getParameters(), Map.class);
+        org.junit.Assert.assertEquals(alice, stored.get(ReportService.OWNER_SCOPE_PARAM));
+        org.junit.Assert.assertEquals("authz-test", stored.get("source"));
+    }
+
+    @Test
+    public void adminReportsAreNotScoped() throws Exception {
+        String admin = uniqueUser("admin");
+        ReportRequest request = request(ReportCategory.USAGE_ANALYTICS, null);
+        Map<String, String> params = new HashMap<>();
+        params.put(ReportService.OWNER_SCOPE_PARAM, "someone");
+        request.setParameters(params);
+
+        String body = mockMvc.perform(post("/api/v1/reports")
+                        .with(admin(admin))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn().getResponse().getContentAsString();
+        long id = objectMapper.readTree(body).get("id").asLong();
+
+        org.junit.Assert.assertNull(reportRepository.findById(id).get().getParameters());
     }
 
     // ---- Read / download / delete ----

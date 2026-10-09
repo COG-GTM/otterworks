@@ -21,6 +21,8 @@ import javax.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -37,6 +39,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ReportService {
+
+    /** Report parameter holding the user ID whose rows a non-admin report is limited to. */
+    public static final String OWNER_SCOPE_PARAM = "ownerScope";
 
     private static final Logger logger = LoggerFactory.getLogger(ReportService.class);
 
@@ -79,11 +84,21 @@ public class ReportService {
         report.setDateFrom(request.getDateFrom() != null ? request.getDateFrom() : ReportDateUtils.daysAgo(30));
         report.setDateTo(request.getDateTo() != null ? request.getDateTo() : new Date());
 
-        // Serialize parameters
-        if (request.getParameters() != null) {
+        // Serialize parameters. OWNER_SCOPE_PARAM is server-controlled: non-admin reports are
+        // restricted to the requester's own rows by ReportGenerationWorker.
+        Map<String, String> params = request.getParameters() != null
+                ? new HashMap<>(request.getParameters()) : new HashMap<>();
+        params.remove(OWNER_SCOPE_PARAM);
+        if (!caller.isAdmin()) {
+            params.put(OWNER_SCOPE_PARAM, caller.getUserId());
+        }
+        if (!params.isEmpty()) {
             try {
-                report.setParameters(objectMapper.writeValueAsString(request.getParameters()));
+                report.setParameters(objectMapper.writeValueAsString(params));
             } catch (JsonProcessingException e) {
+                if (params.containsKey(OWNER_SCOPE_PARAM)) {
+                    throw new IllegalStateException("Failed to serialize report parameters", e);
+                }
                 logger.warn("Failed to serialize report parameters: {}", e.getMessage());
             }
         }
