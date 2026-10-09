@@ -221,6 +221,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Open escalation issue
+        id: issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -246,11 +247,17 @@ jobs:
 
           _Opened automatically by the SAST auto-remediation pipeline._"
 
-          gh api "repos/${REPO}/issues" \
+          # Issues may be disabled on the repo (HTTP 410); fall back to the PR comment alone.
+          if gh api "repos/${REPO}/issues" \
             -f title="[Security] Unresolved SAST findings on PR #${PR_NUM}" \
             -f body="$BODY" \
             -f "labels[]=security" \
-            -f "labels[]=needs-human-review"
+            -f "labels[]=needs-human-review"; then
+            echo "where=A GitHub Issue has been opened for manual review." >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Could not open an escalation issue; escalating via PR comment only."
+            echo "where=Could not open a GitHub Issue (Issues may be disabled), so please review the SAST findings comment on this PR manually." >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Comment on PR about escalation
         env:
@@ -258,10 +265,11 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           FIX_ATTEMPTS: ${{ env.MAX_FIX_ATTEMPTS }}
+          WHERE: ${{ steps.issue.outputs.where }}
         run: |
           gh api \
             "repos/${REPO}/issues/${PR_NUM}/comments" \
-            -f body=":rotating_light: **Escalation:** Automated remediation has been attempted ${FIX_ATTEMPTS} times without resolving all findings. A GitHub Issue has been opened for manual review."
+            -f body=":rotating_light: **Escalation:** Automated remediation has been attempted ${FIX_ATTEMPTS} times without resolving all findings. ${WHERE}"
 
   # ─────────────────────────────────────────────────────────────
   #  Path 2: SonarCloud quality gate (CI-based analysis)
