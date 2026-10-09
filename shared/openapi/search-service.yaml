@@ -425,7 +425,11 @@ paths:
       summary: Search analytics
       description: |
         Returns analytics data including popular queries, zero-result queries,
-        total search count, and average results per query.
+        total search count, and average results per query. The data aggregates
+        raw query strings from all users, so the endpoint is internal/admin
+        only: it requires the service token (`Authorization: Bearer
+        <SEARCH_SERVICE_TOKEN>`) and returns 403 for any other caller,
+        including gateway-authenticated users.
       responses:
         "200":
           description: Analytics data
@@ -444,6 +448,14 @@ paths:
                     count: 5
                 total_searches: 1500
                 avg_results_per_query: 8.3
+        "403":
+          description: Caller did not present the service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "forbidden"
         "500":
           description: Internal server error
           content:

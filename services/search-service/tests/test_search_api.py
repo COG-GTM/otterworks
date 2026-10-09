@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from unittest.mock import patch
+
+import pytest
+
+from app.config import AuthConfig
+from app.main import create_app
+from app.services.meilisearch_client import record_search_analytics
+
+SERVICE_TOKEN = "test-service-token"
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -150,12 +161,75 @@ class TestAdvancedSearchEndpoint:
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
-    def test_analytics_returns_data(self, client):
-        """Analytics endpoint returns analytics data."""
-        response = client.get("/api/v1/search/analytics")
+    @pytest.fixture()
+    def token_client(self, app_config, mock_meilisearch_client):
+        """Client for an app with a service token configured (auth on or off)."""
+
+        def _make(require_auth: bool = True, service_token: str = SERVICE_TOKEN):
+            config = replace(
+                app_config,
+                auth=AuthConfig(service_token=service_token, require_auth=require_auth),
+            )
+            with patch("app.services.meilisearch_client.meilisearch.Client") as mock_cls:
+                mock_cls.return_value = mock_meilisearch_client
+                flask_app = create_app(config)
+            flask_app.config["TESTING"] = True
+            return flask_app.test_client()
+
+        return _make
+
+    @pytest.fixture(autouse=True)
+    def _seed_other_users_queries(self):
+        record_search_analytics("acme acquisition codename", 0)
+        yield
+
+    def _auth(self, token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_analytics_returns_data_with_service_token(self, token_client):
+        """Service-token callers receive analytics data."""
+        client = token_client()
+        response = client.get(
+            "/api/v1/search/analytics", headers=self._auth(SERVICE_TOKEN)
+        )
         assert response.status_code == 200
         data = response.get_json()
         assert "popular_queries" in data
         assert "zero_result_queries" in data
         assert "total_searches" in data
         assert "avg_results_per_query" in data
+
+    @pytest.mark.parametrize("require_auth", [True, False])
+    def test_analytics_rejects_end_user(self, token_client, require_auth):
+        """A gateway-authenticated user cannot read other users' queries."""
+        client = token_client(require_auth=require_auth)
+        response = client.get(
+            "/api/v1/search/analytics", headers={"X-User-ID": "user-attacker"}
+        )
+        assert response.status_code == 403
+        assert b"acme acquisition codename" not in response.data
+
+    @pytest.mark.parametrize("require_auth", [True, False])
+    def test_analytics_rejects_wrong_token(self, token_client, require_auth):
+        client = token_client(require_auth=require_auth)
+        response = client.get(
+            "/api/v1/search/analytics",
+            headers={**self._auth("not-the-token"), "X-User-ID": "user-attacker"},
+        )
+        assert response.status_code == 403
+
+    def test_analytics_rejects_anonymous_when_auth_disabled(self, client):
+        """REQUIRE_AUTH=false does not open the analytics endpoint."""
+        response = client.get("/api/v1/search/analytics")
+        assert response.status_code == 403
+        assert b"acme acquisition codename" not in response.data
+
+    def test_analytics_fails_closed_without_configured_token(self, token_client):
+        """With no service token configured, nobody can read analytics."""
+        client = token_client(require_auth=False, service_token="")
+        response = client.get("/api/v1/search/analytics", headers=self._auth(""))
+        assert response.status_code == 403
+        response = client.get(
+            "/api/v1/search/analytics", headers={"Authorization": "Bearer"}
+        )
+        assert response.status_code == 403
