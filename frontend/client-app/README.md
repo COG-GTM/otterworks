@@ -39,7 +39,11 @@ docker run -p 3000:3000 -e API_GATEWAY_URL=http://api-gateway:8080 otterworks-we
 The image is nginx (unprivileged, uid 101) serving `dist/` on port 3000 with an
 `/api/health` endpoint and the `/api/v1` reverse proxy. When running with a read-only
 root filesystem, mount a writable tmpfs at `/etc/nginx/conf.d` so the entrypoint can
-render the config template (see `docker-compose.yml`).
+render the config template (see `docker-compose.yml`). Every response carries the
+browser security headers (CSP with `frame-ancestors 'none'`, `X-Frame-Options`,
+`nosniff`, `Referrer-Policy`, HSTS) from `nginx/security-headers.conf`; a location that
+sets its own `add_header` must `include` that file again, because nginx drops inherited
+headers in that case.
 
 ## Mobile (Capacitor)
 
