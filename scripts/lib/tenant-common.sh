@@ -298,6 +298,10 @@ build_helm_args() {
     esac
   fi
 
+  if [ "$service" = "document-service" ] && [ -n "${SHARE_LINK_SECRET:-}" ]; then
+    add_secret SHARE_LINK_SECRET "${SHARE_LINK_SECRET}"
+  fi
+
   local sns_topic=""; local sqs_notif=""
   if [ "${T_WIRE_EVENTING}" = "true" ]; then
     sns_topic="${SNS_TOPIC:-}"; sqs_notif="${SQS_NOTIF:-}"

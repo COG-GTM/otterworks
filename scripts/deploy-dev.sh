@@ -129,6 +129,15 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 log "Ensuring namespace ${NAMESPACE} exists..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
 
+# Share-link HMAC key for document-service. Rotating it revokes every share link,
+# so reuse the key already in the namespace and only generate one on first deploy.
+# Rotate explicitly by passing SHARE_LINK_SECRET=... and restarting document-service.
+if [ -z "${SHARE_LINK_SECRET:-}" ]; then
+  SHARE_LINK_SECRET="$(kubectl -n "${NAMESPACE}" get secret document-service-secrets \
+    -o jsonpath='{.data.SHARE_LINK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
+SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
+
 # ---------- Step 4b: Shared ingress controller ----------
 
 # The frontends and the gateway are published as Ingresses (see build_helm_args),
@@ -336,6 +345,10 @@ build_helm_args() {
       api-gateway|auth-service|document-service|collab-service|admin-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
     esac
+  fi
+
+  if [ "$service" = "document-service" ] && [ -n "${SHARE_LINK_SECRET:-}" ]; then
+    add_secret SHARE_LINK_SECRET "${SHARE_LINK_SECRET}"
   fi
 
   case "$service" in

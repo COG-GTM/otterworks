@@ -21,7 +21,7 @@
 #       [--profile core|full]
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
-#   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+#   SHARE_LINK_SECRET / SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -111,6 +111,15 @@ log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> exp
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+
+# Share-link HMAC key for document-service. Rotating it revokes every share link,
+# so reuse the key already in the namespace and only generate one on first deploy.
+# Rotate explicitly by passing SHARE_LINK_SECRET=... and restarting document-service.
+if [ -z "${SHARE_LINK_SECRET:-}" ]; then
+  SHARE_LINK_SECRET="$(kubectl -n "${NS}" get secret document-service-secrets \
+    -o jsonpath='{.data.SHARE_LINK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
+SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 
