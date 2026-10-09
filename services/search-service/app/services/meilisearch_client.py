@@ -247,16 +247,27 @@ class MeiliSearchService:
             query=search_term or "*",
         )
 
-    def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching."""
+    def suggest(self, prefix: str, owner_id: str | None, size: int = 10) -> list[str]:
+        """Autocomplete suggestions using MeiliSearch prefix matching.
+
+        Suggestions are always scoped to ``owner_id``; without an owner no
+        index is queried and an empty list is returned.
+        """
         suggestions: list[str] = []
         seen: set[str] = set()
+
+        owner_id = (owner_id or "").strip()
+        if not owner_id:
+            return suggestions
+
+        owner_filter = f'owner_id = "{self._escape(owner_id)}"'
 
         for index_name in [self.documents_index_name, self.files_index_name]:
             index = self.client.index(index_name)
             result = index.search(prefix, {
                 "limit": size,
                 "attributesToRetrieve": ["title", "name"],
+                "filter": owner_filter,
             })
             for hit in result["hits"]:
                 text = hit.get("title") or hit.get("name", "")
