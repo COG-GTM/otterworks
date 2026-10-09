@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import json
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -203,23 +206,52 @@ class TestSearchInputLimits:
         assert response.status_code == 413
         mock_index.search.assert_not_called()
 
-    def test_app_sets_max_content_length(self, app):
-        assert app.config["MAX_CONTENT_LENGTH"] == 1024 * 1024
+    def test_advanced_caps_chunked_body_at_search_limit(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        body = json.dumps({"q": "a", "pad": "x" * (64 * 1024)}).encode()
+        response = client.post(
+            "/api/v1/search/advanced",
+            input_stream=io.BytesIO(body),
+            content_type="application/json",
+            headers={"Transfer-Encoding": "chunked"},
+            environ_overrides={"wsgi.input_terminated": True},
+        )
+        # Werkzeug stops reading at the 64 KiB cap; the truncated JSON is then rejected.
+        assert response.status_code in (400, 413)
+        mock_index.search.assert_not_called()
 
     def test_index_endpoint_not_bound_by_search_body_limit(self, client):
         response = client.post(
             "/api/v1/search/index/document",
-            json={"id": "doc-big", "title": "Big", "content": "x" * (100 * 1024), "owner_id": "user-1"},
+            json={"id": "doc-big", "title": "Big", "content": "x" * (2 * 1024 * 1024), "owner_id": "user-1"},
         )
         assert response.status_code == 201
 
+    def test_suggest_rejects_overlong_query(self, client, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        response = client.get("/api/v1/search/suggest", query_string={"q": "a" * 513})
+        assert response.status_code == 400
+        mock_index.search.assert_not_called()
+
     def test_analytics_stores_truncated_query(self):
         from app.services.meilisearch_client import (
-            MAX_ANALYTICS_QUERY_LENGTH,
+            MAX_QUERY_LENGTH,
             _search_analytics,
             record_search_analytics,
         )
 
         record_search_analytics("q" * 10_000, 0)
         stored = _search_analytics["queries"][-1]["query"]
-        assert stored == "q" * MAX_ANALYTICS_QUERY_LENGTH
+        assert stored == "q" * MAX_QUERY_LENGTH
+
+    def test_analytics_keeps_distinct_max_length_queries_apart(self):
+        from app.services.meilisearch_client import (
+            MAX_QUERY_LENGTH,
+            record_search_analytics,
+        )
+
+        record_search_analytics("p" * (MAX_QUERY_LENGTH - 1) + "1", 0)
+        record_search_analytics("p" * (MAX_QUERY_LENGTH - 1) + "2", 0)
+        from app.services.meilisearch_client import _search_analytics
+
+        assert [e["query"][-1] for e in _search_analytics["queries"][-2:]] == ["1", "2"]

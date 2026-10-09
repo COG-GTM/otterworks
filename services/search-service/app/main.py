@@ -7,12 +7,12 @@ import sys
 import time
 
 import structlog
-from flask import Flask, g, request as flask_request
+from flask import Flask, Request, g, jsonify, request as flask_request
 from flask_cors import CORS
 
 from app.api.health import REQUEST_COUNT, REQUEST_LATENCY, health_bp
 from app.api.index import index_bp
-from app.api.search import search_bp
+from app.api.search import MAX_SEARCH_BODY_BYTES, search_bp
 from app.config import AppConfig
 from app.middleware.auth import require_auth
 from app.services.meilisearch_client import MeiliSearchService
@@ -48,6 +48,16 @@ def configure_logging(log_level: str) -> None:
     )
 
 
+class SearchRequest(Request):
+    """Request that applies the search body limit, including to chunked bodies."""
+
+    @property
+    def max_content_length(self) -> int | None:  # type: ignore[override]
+        if self.blueprint == search_bp.name:
+            return MAX_SEARCH_BODY_BYTES
+        return super().max_content_length
+
+
 def create_app(config: AppConfig | None = None) -> Flask:
     """Create and configure the Flask application."""
     if config is None:
@@ -56,11 +66,16 @@ def create_app(config: AppConfig | None = None) -> Flask:
     configure_logging(config.log_level)
 
     app = Flask(__name__)
+    app.request_class = SearchRequest
     CORS(app, origins=["http://localhost:3000", "http://localhost:4200"])
 
     # Store config on the app
     app.config["APP_CONFIG"] = config
     app.config["MAX_CONTENT_LENGTH"] = config.max_content_length
+
+    @app.errorhandler(413)
+    def _request_too_large(_error):  # type: ignore[no-untyped-def]
+        return jsonify({"error": "Request body too large"}), 413
 
     # Initialize MeiliSearch service
     search_service = MeiliSearchService(config.meilisearch)

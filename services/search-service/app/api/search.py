@@ -9,13 +9,16 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
-from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
+from app.services.meilisearch_client import (
+    MAX_QUERY_LENGTH,
+    MeiliSearchService,
+    get_search_analytics,
+)
 
 logger = structlog.get_logger()
 
 search_bp = Blueprint("search", __name__)
 
-MAX_QUERY_LENGTH = 512
 MAX_TAGS = 20
 MAX_TAG_LENGTH = 128
 MAX_SEARCH_BODY_BYTES = 64 * 1024
@@ -44,14 +47,6 @@ def _chaos_active(key: str) -> bool:
 def _get_service() -> MeiliSearchService:
     """Get the shared MeiliSearchService from app config."""
     return current_app.config["SEARCH_SERVICE"]
-
-
-@search_bp.before_request
-def _limit_body_size() -> tuple | None:
-    """Reject oversized request bodies on search endpoints."""
-    if request.content_length is not None and request.content_length > MAX_SEARCH_BODY_BYTES:
-        return jsonify({"error": "Request body too large"}), 413
-    return None
 
 
 def _validate_tags(tags: object) -> str | None:
@@ -113,6 +108,8 @@ def suggest() -> tuple:
     Query params: q (required, min 2 chars)
     """
     prefix = request.args.get("q", "")
+    if len(prefix) > MAX_QUERY_LENGTH:
+        return jsonify({"error": f"Query parameter 'q' must be at most {MAX_QUERY_LENGTH} characters"}), 400
     if not prefix or len(prefix) < 2:
         return jsonify({"suggestions": [], "query": prefix}), 200
 

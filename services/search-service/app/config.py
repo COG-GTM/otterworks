@@ -56,8 +56,8 @@ class AppConfig:
         default_factory=lambda: os.getenv("FLASK_DEBUG", "false").lower() == "true"
     )
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
-    max_content_length: int = field(
-        default_factory=lambda: int(os.getenv("MAX_CONTENT_LENGTH", str(1024 * 1024)))
+    max_content_length: int | None = field(
+        default_factory=lambda: int(os.environ["MAX_CONTENT_LENGTH"]) if os.getenv("MAX_CONTENT_LENGTH") else None
     )
     meilisearch: MeiliSearchConfig = field(default_factory=MeiliSearchConfig)
     sqs: SQSConfig = field(default_factory=SQSConfig)

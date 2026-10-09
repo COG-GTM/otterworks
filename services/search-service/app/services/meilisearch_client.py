@@ -26,7 +26,8 @@ _search_analytics: dict[str, Any] = {
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
-MAX_ANALYTICS_QUERY_LENGTH = 256
+# Equal to the longest query the API accepts, so valid queries are never merged.
+MAX_QUERY_LENGTH = 512
 
 
 def record_search_analytics(query: str, result_count: int) -> None:
@@ -34,7 +35,7 @@ def record_search_analytics(query: str, result_count: int) -> None:
 
     Stored queries are truncated so the bounded entry count also bounds memory.
     """
-    query = str(query)[:MAX_ANALYTICS_QUERY_LENGTH]
+    query = str(query)[:MAX_QUERY_LENGTH]
     with _analytics_lock:
         _search_analytics["queries"].append(
             {"query": query, "result_count": result_count, "timestamp": time.time()}
