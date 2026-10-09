@@ -47,6 +47,8 @@ networkPolicy:
   enabled: true
   ingressNamespace: ingress-nginx
   monitoringNamespace: monitoring
+  # With ingress disabled the api-gateway (same namespace) is the only API caller.
+  gatewayAppName: api-gateway
 
 serviceAccount:
   roleArn: ""
