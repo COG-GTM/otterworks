@@ -145,7 +145,8 @@ pub struct ListFoldersResponse {
 pub struct CreateFolderRequest {
     pub name: String,
     pub parent_id: Option<Uuid>,
-    pub owner_id: Uuid,
+    /// Optional and only accepted when it equals the caller's `X-User-ID`.
+    pub owner_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
