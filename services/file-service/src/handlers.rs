@@ -11,6 +11,7 @@ async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> boo
 }
 
 use crate::alerts;
+use crate::authz::{self, FileAccess};
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
@@ -228,15 +229,21 @@ pub async fn upload_file(
 }
 
 pub async fn get_file_metadata(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
-    let file = meta.get_file(&file_id).await?;
-    let shares = meta.list_shares(&file_id).await.unwrap_or_default();
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Read).await?;
+    let mut shares = meta.list_shares(&file_id).await.unwrap_or_default();
+    // Only the owner sees who else the file is shared with.
+    if file.owner_id != caller {
+        shares.retain(|s| s.shared_with == caller);
+    }
     Ok(HttpResponse::Ok().json(FileDetailResponse {
         file,
         shared_with: shares,
@@ -372,18 +379,20 @@ pub async fn list_trashed(
     }))
 }
 pub async fn delete_file(
+    req: HttpRequest,
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.get_file(&file_id).await?;
-    meta.delete_file(&file_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
+    meta.delete_file(&file_id, &file.owner_id).await?;
     s3.delete_object(&file.s3_key).await?;
 
     let _ = events.file_deleted(&file_id, &file.owner_id).await;
@@ -393,16 +402,18 @@ pub async fn delete_file(
 }
 
 pub async fn download_file(
+    req: HttpRequest,
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.get_file(&file_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Read).await?;
     let url = s3.presigned_download_url(&file.s3_key, 3600).await?;
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
@@ -412,17 +423,22 @@ pub async fn download_file(
 }
 
 pub async fn move_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
     body: web::Json<MoveFileRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.move_file(&file_id, body.folder_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
+    let file = meta
+        .move_file(&file_id, &file.owner_id, body.folder_id)
+        .await?;
 
     let _ = events
         .file_moved(&file_id, &file.owner_id, body.folder_id.as_ref())
@@ -433,11 +449,13 @@ pub async fn move_file(
 }
 
 pub async fn rename_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
     body: web::Json<RenameFileRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
@@ -448,7 +466,8 @@ pub async fn rename_file(
         return Err(ServiceError::BadRequest("name cannot be empty".into()));
     }
 
-    let file = meta.rename_file(&file_id, name).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Edit).await?;
+    let file = meta.rename_file(&file_id, &file.owner_id, name).await?;
 
     let _ = events
         .file_updated(
@@ -466,29 +485,35 @@ pub async fn rename_file(
 }
 
 pub async fn list_versions(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
+    authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
     let versions = meta.list_versions(&file_id).await?;
     Ok(HttpResponse::Ok().json(ListVersionsResponse { versions }))
 }
 
 pub async fn trash_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.trash_file(&file_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
+    let file = meta.trash_file(&file_id, &file.owner_id).await?;
 
     let _ = events.file_trashed(&file_id, &file.owner_id).await;
 
@@ -497,16 +522,19 @@ pub async fn trash_file(
 }
 
 pub async fn restore_file(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     events: web::Data<EventPublisher>,
     path: web::Path<String>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    let file = meta.restore_file(&file_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
+    let file = meta.restore_file(&file_id, &file.owner_id).await?;
 
     let _ = events
         .file_restored(
@@ -541,13 +569,15 @@ pub async fn share_file(
         .filter(|s| !s.is_empty())
         .map(String::from);
 
+    let caller = authz::caller_id(&req)?;
     let file_id: Uuid = path
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    // Ensure file exists
-    let file = meta.get_file(&file_id).await?;
+    let file = authz::authorize_file(&meta, &file_id, &caller, FileAccess::Owner).await?;
+    // The sharer is always the authenticated owner, never a body-supplied id.
+    let shared_by = caller;
 
     // Recipient is either a resolved user id, or an email the client could
     // not resolve to an OtterWorks account. Unresolved emails are rejected
@@ -584,7 +614,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         (share, false, false)
@@ -596,7 +626,7 @@ pub async fn share_file(
                 file_id,
                 shared_with,
                 permission: body.permission.clone(),
-                shared_by: body.shared_by,
+                shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
@@ -612,7 +642,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         meta.put_share(&share).await?;
@@ -657,9 +687,11 @@ pub async fn share_file(
 }
 
 pub async fn remove_share(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     path: web::Path<(String, String)>,
 ) -> Result<HttpResponse, ServiceError> {
+    let caller = authz::caller_id(&req)?;
     let (file_id_str, user_id_str) = path.into_inner();
     let file_id: Uuid = file_id_str
         .parse()
@@ -668,14 +700,19 @@ pub async fn remove_share(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid user id: {e}")))?;
 
-    // Ensure file exists
-    let _file = meta.get_file(&file_id).await?;
+    // The owner may remove any share; a recipient may only remove their own.
+    let file = meta.get_file(&file_id).await?;
+    let is_owner = file.owner_id == caller;
+    if !is_owner && caller != user_id {
+        tracing::warn!(file_id = %file_id, caller = %caller, "Share removal denied");
+        return Err(ServiceError::FileNotFound(file_id.to_string()));
+    }
 
-    // Find the existing share
-    let share = meta
-        .find_existing_share(&file_id, &user_id)
-        .await?
-        .ok_or_else(|| ServiceError::ShareNotFound("Share not found".into()))?;
+    let share = match meta.find_existing_share(&file_id, &user_id).await? {
+        Some(share) => share,
+        None if is_owner => return Err(ServiceError::ShareNotFound("Share not found".into())),
+        None => return Err(ServiceError::FileNotFound(file_id.to_string())),
+    };
 
     meta.delete_share(&share.id).await?;
 
@@ -840,3 +877,7 @@ mod tests {
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
     }
 }
+
+#[cfg(test)]
+#[path = "handlers_authz_tests.rs"]
+mod authz_tests;
