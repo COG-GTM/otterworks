@@ -108,7 +108,9 @@ paths:
       description: |
         Returns autocomplete suggestions for a query prefix.
         Requires at least 2 characters. Returns empty suggestions for
-        shorter prefixes without error.
+        shorter prefixes without error. Suggestions are scoped to the
+        caller's own documents and files via the gateway-injected
+        `X-User-ID` header; requests without it get empty suggestions.
       parameters:
         - name: q
           in: query

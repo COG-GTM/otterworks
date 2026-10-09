@@ -93,10 +93,49 @@ class TestSuggestEndpoint:
             ],
         }
 
-        response = client.get("/api/v1/search/suggest?q=te")
+        response = client.get("/api/v1/search/suggest?q=te", headers={"X-User-ID": "user-1"})
         assert response.status_code == 200
         data = response.get_json()
         assert len(data["suggestions"]) >= 1
+
+    def test_suggest_scoped_to_caller(self, client, mock_meilisearch_client):
+        """Suggest filters every index search by the caller's owner_id."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 0, "hits": []}
+
+        response = client.get("/api/v1/search/suggest?q=te", headers={"X-User-ID": "user-1"})
+        assert response.status_code == 200
+        assert mock_index.search.call_count == 2
+        for call in mock_index.search.call_args_list:
+            assert call.args[1]["filter"] == 'owner_id = "user-1"'
+
+    def test_suggest_excludes_other_owners(self, client, mock_meilisearch_client):
+        """Titles owned by other users are not returned to the caller."""
+        docs = [
+            {"title": "Alice Plan", "owner_id": "alice"},
+            {"title": "Bob Secret Plan", "owner_id": "bob"},
+        ]
+
+        def fake_search(prefix, params):
+            owner = params["filter"].split('"')[1]
+            hits = [{"title": d["title"]} for d in docs if d["owner_id"] == owner]
+            return {"estimatedTotalHits": len(hits), "hits": hits}
+
+        mock_meilisearch_client.index.return_value.search.side_effect = fake_search
+
+        response = client.get("/api/v1/search/suggest?q=pl", headers={"X-User-ID": "alice"})
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Alice Plan"]
+
+    def test_suggest_without_identity_returns_empty(self, client, mock_meilisearch_client):
+        """Suggest without X-User-ID returns nothing and never queries the index."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"estimatedTotalHits": 1, "hits": [{"title": "Someone Else"}]}
+
+        response = client.get("/api/v1/search/suggest?q=so")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+        mock_index.search.assert_not_called()
 
     def test_suggest_empty_query(self, client):
         """Suggest with empty query returns empty list."""
@@ -104,6 +143,21 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["suggestions"] == []
+
+
+class TestSuggestService:
+    """Tests for MeiliSearchService.suggest owner scoping."""
+
+    def test_suggest_without_owner_skips_search(self, meilisearch_service, mock_meilisearch_client):
+        assert meilisearch_service.suggest("te", None) == []
+        assert meilisearch_service.suggest("te", "  ") == []
+        mock_meilisearch_client.index.return_value.search.assert_not_called()
+
+    def test_suggest_escapes_owner_filter(self, meilisearch_service, mock_meilisearch_client):
+        mock_index = mock_meilisearch_client.index.return_value
+        meilisearch_service.suggest("te", 'x" OR owner_id != "y')
+        for call in mock_index.search.call_args_list:
+            assert call.args[1]["filter"] == 'owner_id = "x\\" OR owner_id != \\"y"'
 
 
 class TestAdvancedSearchEndpoint:

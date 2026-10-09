@@ -85,9 +85,12 @@ def suggest() -> tuple:
     """Autocomplete suggestions based on prefix.
 
     Query params: q (required, min 2 chars)
+    Suggestions are scoped to the authenticated user via the ``X-User-ID``
+    header set by the API gateway; without it no suggestions are returned.
     """
     prefix = request.args.get("q", "")
-    if not prefix or len(prefix) < 2:
+    owner_id = request.headers.get("X-User-ID", "").strip()
+    if not prefix or len(prefix) < 2 or not owner_id:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
     # CHAOS: when this flag is active the ranking-score enrichment path runs.
@@ -97,7 +100,7 @@ def suggest() -> tuple:
     # KeyError and crashes the handler with a 500.
     if _chaos_active("chaos:search-service:suggest_500"):
         service = _get_service()
-        raw_suggestions = service.suggest(prefix)
+        raw_suggestions = service.suggest(prefix, owner_id)
         if not raw_suggestions:
             # Simulate the same KeyError that fires when results exist but
             # _rankingScore is missing — ensures chaos fires even with an
@@ -109,7 +112,7 @@ def suggest() -> tuple:
 
     try:
         service = _get_service()
-        suggestions = service.suggest(prefix)
+        suggestions = service.suggest(prefix, owner_id)
         return jsonify({"suggestions": suggestions, "query": prefix}), 200
     except Exception:
         logger.exception("suggest_failed", prefix=prefix)
