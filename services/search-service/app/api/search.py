@@ -9,11 +9,19 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
-from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
+from app.services.meilisearch_client import (
+    MAX_QUERY_LENGTH,
+    MeiliSearchService,
+    get_search_analytics,
+)
 
 logger = structlog.get_logger()
 
 search_bp = Blueprint("search", __name__)
+
+MAX_TAGS = 20
+MAX_TAG_LENGTH = 128
+MAX_SEARCH_BODY_BYTES = 64 * 1024
 
 _redis_client: redis_lib.Redis | None = None
 
@@ -41,6 +49,17 @@ def _get_service() -> MeiliSearchService:
     return current_app.config["SEARCH_SERVICE"]
 
 
+def _validate_tags(tags: object) -> str | None:
+    """Return an error message if ``tags`` is not a bounded list of strings."""
+    if tags is None:
+        return None
+    if not isinstance(tags, list) or len(tags) > MAX_TAGS:
+        return f"'tags' must be a list of at most {MAX_TAGS} strings"
+    if any(not isinstance(tag, str) or len(tag) > MAX_TAG_LENGTH for tag in tags):
+        return f"Each tag must be a string of at most {MAX_TAG_LENGTH} characters"
+    return None
+
+
 @search_bp.route("/", methods=["GET"], strict_slashes=False)
 def search_documents() -> tuple:
     """Full-text search across documents and files.
@@ -60,6 +79,8 @@ def search_documents() -> tuple:
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
+    if len(query) > MAX_QUERY_LENGTH:
+        return jsonify({"error": f"Query parameter 'q' must be at most {MAX_QUERY_LENGTH} characters"}), 400
 
     try:
         service = _get_service()
@@ -87,6 +108,8 @@ def suggest() -> tuple:
     Query params: q (required, min 2 chars)
     """
     prefix = request.args.get("q", "")
+    if len(prefix) > MAX_QUERY_LENGTH:
+        return jsonify({"error": f"Query parameter 'q' must be at most {MAX_QUERY_LENGTH} characters"}), 400
     if not prefix or len(prefix) < 2:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
@@ -124,11 +147,20 @@ def advanced_search() -> tuple:
     owner_id is always derived from X-User-ID for tenant isolation.
     """
     data = request.get_json() or {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
 
     query = data.get("q")
+    if query is not None and not isinstance(query, str):
+        return jsonify({"error": "'q' must be a string"}), 400
+    if query and len(query) > MAX_QUERY_LENGTH:
+        return jsonify({"error": f"'q' must be at most {MAX_QUERY_LENGTH} characters"}), 400
     doc_type = data.get("type")
     owner_id = request.headers.get("X-User-ID", "").strip() or None
     tags = data.get("tags")
+    tags_error = _validate_tags(tags)
+    if tags_error:
+        return jsonify({"error": tags_error}), 400
     date_from = data.get("date_from")
     date_to = data.get("date_to")
     try:

@@ -29,6 +29,7 @@ paths:
           schema:
             type: string
             minLength: 1
+            maxLength: 512
           example: "quarterly report"
         - name: type
           in: query
@@ -113,9 +114,10 @@ paths:
         - name: q
           in: query
           required: true
-          description: Query prefix (minimum 2 characters for results)
+          description: Query prefix (minimum 2 characters for results, maximum 512)
           schema:
             type: string
+            maxLength: 512
           example: "qua"
       responses:
         "200":
@@ -129,6 +131,12 @@ paths:
                   - "quarterly report"
                   - "quality assurance"
                 query: "qua"
+        "400":
+          description: Query prefix longer than 512 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/search/advanced:
     post:
@@ -162,13 +170,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
         "400":
-          description: Invalid page or size parameter
+          description: Invalid q, tags, page or size parameter
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Invalid page or size parameter"
+        "413":
+          description: Request body larger than 64 KiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Request body too large"
         "500":
           description: Internal server error
           content:
@@ -644,6 +660,7 @@ components:
       properties:
         q:
           type: string
+          maxLength: 512
           description: Search query (optional for advanced search)
         type:
           type: string
@@ -651,8 +668,10 @@ components:
           description: Filter by item type
         tags:
           type: array
+          maxItems: 20
           items:
             type: string
+            maxLength: 128
           description: Filter by tags
         date_from:
           type: string
