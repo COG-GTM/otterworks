@@ -9,7 +9,12 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
-from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
+from app.services.meilisearch_client import (
+    INVALID_SEARCH_REQUEST,
+    MAX_TOTAL_HITS,
+    MeiliSearchService,
+    get_search_analytics,
+)
 
 logger = structlog.get_logger()
 
@@ -36,6 +41,11 @@ def _chaos_active(key: str) -> bool:
         return False
 
 
+def _within_result_window(page: int, page_size: int) -> bool:
+    """Whether the requested page lies inside MeiliSearch's maxTotalHits window."""
+    return page * page_size <= MAX_TOTAL_HITS
+
+
 def _get_service() -> MeiliSearchService:
     """Get the shared MeiliSearchService from app config."""
     return current_app.config["SEARCH_SERVICE"]
@@ -55,6 +65,8 @@ def search_documents() -> tuple:
         page_size = max(1, min(100, int(request.args.get("size", 20))))
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid page or size parameter"}), 400
+    if not _within_result_window(page, page_size):
+        return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
     owner_id = request.headers.get("X-User-ID", "").strip() or None
 
@@ -73,8 +85,8 @@ def search_documents() -> tuple:
         SEARCH_COUNT.inc()
         logger.info("search_executed", query=query, result_count=results.total)
         return jsonify(results.to_dict()), 200
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+    except ValueError:
+        return jsonify({"error": INVALID_SEARCH_REQUEST}), 400
     except Exception:
         logger.exception("search_failed", query=query)
         return jsonify({"error": "Search failed"}), 500
@@ -135,6 +147,8 @@ def advanced_search() -> tuple:
         page = max(int(data.get("page", 1)), 1)
         page_size = min(max(int(data.get("size", 20)), 1), 100)
     except (ValueError, TypeError):
+        return jsonify({"error": "Invalid page or size parameter"}), 400
+    if not _within_result_window(page, page_size):
         return jsonify({"error": "Invalid page or size parameter"}), 400
 
     try:
