@@ -1,8 +1,6 @@
 use actix_multipart::Multipart;
 use actix_web::{web, HttpRequest, HttpResponse};
-use bytes::BytesMut;
 use chrono::Utc;
-use futures_util::StreamExt;
 use uuid::Uuid;
 
 async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> bool {
@@ -24,6 +22,7 @@ use crate::models::{
     UploadResponse,
 };
 use crate::storage::S3Client;
+use crate::upload::{read_upload_form, UploadBudget, UploadForm, UploadLimits};
 
 // -- Health & Metrics --
 
@@ -50,7 +49,8 @@ pub async fn upload_file(
     events: web::Data<EventPublisher>,
     config: web::Data<AppConfig>,
     redis_cm: web::Data<redis::aio::ConnectionManager>,
-    mut payload: Multipart,
+    budget: web::Data<UploadBudget>,
+    payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
     // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
     // Fall back to the multipart field for direct/internal callers.
@@ -70,69 +70,26 @@ pub async fn upload_file(
         .filter(|s| !s.is_empty())
         .map(String::from);
 
-    let mut file_bytes = BytesMut::new();
-    let mut file_name = String::from("unnamed");
-    let mut content_type = String::from("application/octet-stream");
-    let mut owner_id: Option<Uuid> = None;
-    let mut folder_id: Option<Uuid> = None;
-
-    while let Some(item) = payload.next().await {
-        let mut field = item.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-        let disposition = field.content_disposition().cloned();
-        let field_name = disposition
-            .as_ref()
-            .and_then(|d| d.get_name().map(|s| s.to_string()))
-            .unwrap_or_default();
-
-        match field_name.as_str() {
-            "file" => {
-                if let Some(fname) = disposition.as_ref().and_then(|d| d.get_filename()) {
-                    file_name = fname.to_string();
-                }
-                if let Some(ct) = field.content_type() {
-                    content_type = ct.to_string();
-                }
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    file_bytes.extend_from_slice(&data);
-                    if file_bytes.len() as u64 > config.server.max_upload_bytes {
-                        return Err(ServiceError::FileTooLarge {
-                            max_bytes: config.server.max_upload_bytes,
-                            actual_bytes: file_bytes.len() as u64,
-                        });
-                    }
-                }
-            }
-            "owner_id" => {
-                let mut value = BytesMut::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    value.extend_from_slice(&data);
-                }
-                let s = String::from_utf8_lossy(&value).to_string();
-                owner_id = Some(
-                    s.trim()
-                        .parse::<Uuid>()
-                        .map_err(|e| ServiceError::BadRequest(format!("invalid owner_id: {e}")))?,
-                );
-            }
-            "folder_id" => {
-                let mut value = BytesMut::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    value.extend_from_slice(&data);
-                }
-                let s = String::from_utf8_lossy(&value).to_string();
-                let trimmed = s.trim();
-                if !trimmed.is_empty() {
-                    folder_id = Some(trimmed.parse::<Uuid>().map_err(|e| {
-                        ServiceError::BadRequest(format!("invalid folder_id: {e}"))
-                    })?);
-                }
-            }
-            _ => {}
-        }
-    }
+    let content_length = req
+        .headers()
+        .get(actix_web::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    // Held until the upload finishes so the buffered body stays accounted for.
+    let mut reservation = budget.reservation();
+    let UploadForm {
+        file_bytes,
+        file_name,
+        content_type,
+        owner_id,
+        folder_id,
+    } = read_upload_form(
+        payload,
+        UploadLimits::from_config(&config.server),
+        content_length,
+        &mut reservation,
+    )
+    .await?;
 
     let owner = header_owner_id
         .or(owner_id)

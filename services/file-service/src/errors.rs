@@ -21,6 +21,9 @@ pub enum ServiceError {
     #[error("File too large: max {max_bytes} bytes, got {actual_bytes} bytes")]
     FileTooLarge { max_bytes: u64, actual_bytes: u64 },
 
+    #[error("Upload capacity exhausted; retry later")]
+    UploadCapacityExceeded,
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -61,6 +64,10 @@ impl ResponseError for ServiceError {
             ServiceError::FileTooLarge { .. } => (
                 actix_web::http::StatusCode::PAYLOAD_TOO_LARGE,
                 "file_too_large",
+            ),
+            ServiceError::UploadCapacityExceeded => (
+                actix_web::http::StatusCode::SERVICE_UNAVAILABLE,
+                "upload_capacity_exceeded",
             ),
             ServiceError::Unauthorized(_) => {
                 (actix_web::http::StatusCode::UNAUTHORIZED, "unauthorized")

@@ -14,6 +14,10 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub port: u16,
     pub max_upload_bytes: u64,
+    /// Cap on bytes buffered across all in-flight uploads; keep it well below
+    /// the pod memory limit. Uploads beyond it get 503 instead of OOM-killing
+    /// the pod.
+    pub upload_memory_budget_bytes: u64,
     /// When true, every upload is routed to a nonexistent S3 bucket so the
     /// request fails with a 500. Off unless explicitly enabled per tenant.
     pub upload_always_fail: bool,
@@ -55,18 +59,46 @@ impl AppConfig {
 
 impl ServerConfig {
     pub fn from_env() -> Self {
+        let max_upload_bytes = env::var("MAX_UPLOAD_BYTES")
+            .unwrap_or_else(|_| "104857600".into()) // 100 MB
+            .parse()
+            .unwrap_or(104_857_600);
+        let upload_memory_budget_bytes = env::var("UPLOAD_MEMORY_BUDGET_BYTES")
+            .ok()
+            .and_then(|raw| raw.trim().parse().ok())
+            .unwrap_or(DEFAULT_UPLOAD_MEMORY_BUDGET_BYTES);
         Self {
             port: env::var("PORT")
                 .unwrap_or_else(|_| "8082".into())
                 .parse()
                 .unwrap_or(8082),
-            max_upload_bytes: env::var("MAX_UPLOAD_BYTES")
-                .unwrap_or_else(|_| "104857600".into()) // 100 MB
-                .parse()
-                .unwrap_or(104_857_600),
+            max_upload_bytes: effective_max_upload_bytes(
+                max_upload_bytes,
+                upload_memory_budget_bytes,
+            ),
+            upload_memory_budget_bytes,
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
         }
+    }
+}
+
+/// 160 MiB: one maximum-size (100 MB) upload plus headroom for small ones,
+/// inside the 256Mi pod limit.
+pub const DEFAULT_UPLOAD_MEMORY_BUDGET_BYTES: u64 = 160 * 1024 * 1024;
+
+/// A single upload can never buffer more than the shared budget, so a larger
+/// per-file limit would only turn into 503s; clamp it instead.
+fn effective_max_upload_bytes(max_upload_bytes: u64, budget_bytes: u64) -> u64 {
+    if max_upload_bytes > budget_bytes {
+        tracing::warn!(
+            max_upload_bytes,
+            budget_bytes,
+            "MAX_UPLOAD_BYTES exceeds UPLOAD_MEMORY_BUDGET_BYTES; clamping"
+        );
+        budget_bytes
+    } else {
+        max_upload_bytes
     }
 }
 
@@ -115,7 +147,7 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{effective_max_upload_bytes, parse_bool, parse_bool_env};
 
     #[test]
     fn parse_bool_accepts_true_and_one() {
@@ -154,5 +186,24 @@ mod tests {
             return;
         }
         assert!(!super::ServerConfig::from_env().upload_always_fail);
+    }
+
+    #[test]
+    fn max_upload_is_clamped_to_memory_budget() {
+        assert_eq!(effective_max_upload_bytes(100, 200), 100);
+        assert_eq!(effective_max_upload_bytes(300, 200), 200);
+    }
+
+    #[test]
+    fn default_limits_fit_the_pod_memory_limit() {
+        if std::env::var("MAX_UPLOAD_BYTES").is_ok()
+            || std::env::var("UPLOAD_MEMORY_BUDGET_BYTES").is_ok()
+        {
+            return;
+        }
+        let server = super::ServerConfig::from_env();
+        assert_eq!(server.max_upload_bytes, 104_857_600);
+        assert!(server.upload_memory_budget_bytes >= server.max_upload_bytes);
+        assert!(server.upload_memory_budget_bytes < 256 * 1024 * 1024);
     }
 }
