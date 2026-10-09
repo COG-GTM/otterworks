@@ -110,6 +110,24 @@ class JwtTokenProviderTest {
     assertThat(jwtTokenProvider.getRefreshTokenExpiry()).isEqualTo(2592000);
   }
 
+  @Test
+  void constructor_shouldRejectMissingSecret() {
+    assertThatThrownBy(() -> new JwtTokenProvider(null, 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("   ", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+  }
+
+  @Test
+  void constructor_shouldRejectSecretShorterThan32Bytes() {
+    assertThatThrownBy(() -> new JwtTokenProvider("a".repeat(31), 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("at least 32 bytes");
+    assertThat(new JwtTokenProvider("a".repeat(32), 3600, 2592000)).isNotNull();
+  }
+
   private User createTestUser() {
     User user = new User();
     user.setId(UUID.randomUUID());

@@ -29,6 +29,19 @@ export interface Config {
   };
 }
 
+export const MIN_JWT_SECRET_BYTES = 32;
+
+function requireJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required but not set');
+  }
+  if (Buffer.byteLength(secret, 'utf8') < MIN_JWT_SECRET_BYTES) {
+    throw new Error(`JWT_SECRET must be at least ${MIN_JWT_SECRET_BYTES} bytes`);
+  }
+  return secret;
+}
+
 export function loadConfig(): Config {
   return {
     httpPort: parseInt(process.env.HTTP_PORT || '8084', 10),
@@ -40,7 +53,7 @@ export function loadConfig(): Config {
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'collab:',
     },
     jwt: {
-      secret: process.env.JWT_SECRET || 'otterworks-dev-secret',
+      secret: requireJwtSecret(),
       issuer: process.env.JWT_ISSUER || 'otterworks-auth-service',
     },
     cors: {
