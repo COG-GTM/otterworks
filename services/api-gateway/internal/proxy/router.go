@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -71,6 +72,16 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		// client-supplied values must never reach the backends.
 		req.Header.Del("X-User-ID")
 		req.Header.Del("X-User-Email")
+		// Forward only the client IP resolved by middleware.ClientIP: with the
+		// header removed, ReverseProxy sets X-Forwarded-For to req.RemoteAddr
+		// alone, so client-supplied hops never reach the backends.
+		req.Header.Del("X-Forwarded-For")
+		req.Header.Del("True-Client-IP")
+		if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+			req.Header.Set("X-Real-IP", host)
+		} else {
+			req.Header.Set("X-Real-IP", req.RemoteAddr)
+		}
 		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
 			userID := claims.Subject
 			if userID == "" {

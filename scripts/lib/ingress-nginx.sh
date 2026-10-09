@@ -52,11 +52,17 @@ ensure_ingress_nginx() {
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
   # is ever scaled to zero. It costs one port and one ClusterIP Service.
+  #
+  # externalTrafficPolicy=Local keeps kube-proxy from SNATing NLB traffic to a
+  # node IP, so the controller (and the X-Forwarded-For it sets) sees the real
+  # client address. Without it every browser reaches the api-gateway with the
+  # same private address and shares one rate-limit bucket.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     "${reuse[@]}" \
     --set controller.service.type=LoadBalancer \
     --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
+    --set controller.service.externalTrafficPolicy=Local \
     --set controller.replicaCount=1 \
     --set controller.resources.requests.cpu=100m \
     --set controller.resources.requests.memory=128Mi \

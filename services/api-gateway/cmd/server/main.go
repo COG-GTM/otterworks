@@ -66,14 +66,18 @@ func main() {
 
 	// Global middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	trustedProxies, err := middleware.ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("invalid TRUSTED_PROXY_CIDRS")
+	}
+	r.Use(middleware.ClientIP(trustedProxies))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Compress(5))
 
 	// Rate limiting
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS, middleware.KeyBySubject(cfg.JWTSecret))
 	r.Use(rateLimiter.Handler)
 
 	// CORS

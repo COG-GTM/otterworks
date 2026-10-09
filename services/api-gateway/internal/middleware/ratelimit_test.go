@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +86,7 @@ func TestExtractIP(t *testing.T) {
 			expected:   "10.0.0.1",
 		},
 		{
-			name:       "Uses RemoteAddr set by chimw.RealIP",
+			name:       "Uses RemoteAddr set by ClientIP",
 			remoteAddr: "203.0.113.50:1234",
 			expected:   "203.0.113.50",
 		},
@@ -99,4 +100,47 @@ func TestExtractIP(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestRateLimiter_KeyBySubject(t *testing.T) {
+	rl := NewRateLimiter(2, KeyBySubject(testSecret))
+	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	userToken := generateTestToken(t, testSecret, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+	forged := generateTestToken(t, "wrong-secret", JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-456",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	send := func(token string) int {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+		req.RemoteAddr = "10.0.12.40:5000" // every caller shares one address
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	// An anonymous flood (and one with forged tokens) drains the shared IP bucket...
+	for i := 0; i < 2; i++ {
+		send("")
+	}
+	assert.Equal(t, http.StatusTooManyRequests, send(""))
+	assert.Equal(t, http.StatusTooManyRequests, send(forged), "a forged token must not earn its own bucket")
+
+	// ...but a signed-in user on the same address keeps their own allowance.
+	assert.Equal(t, http.StatusOK, send(userToken))
+	assert.Equal(t, http.StatusOK, send(userToken))
+	assert.Equal(t, http.StatusTooManyRequests, send(userToken), "the subject bucket is still limited")
 }
