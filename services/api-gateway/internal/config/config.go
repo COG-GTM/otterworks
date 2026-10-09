@@ -47,10 +47,24 @@ type Config struct {
 	CBFailureRatio  float64
 }
 
+// knownInsecureJWTSecrets are placeholder secrets that have shipped in this
+// repository. Tokens signed with them are public, so the gateway refuses them.
+var knownInsecureJWTSecrets = []string{
+	"otterworks-local-dev-jwt-secret-change-me-in-production",
+	"dev-jwt-secret-otterworks-2024-change-in-production",
+	"dev_jwt_secret_key",
+	"dev_jwt_secret",
+}
+
 // Validate checks that required security-sensitive configuration is present.
 func (c *Config) Validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
+	}
+	for _, insecure := range knownInsecureJWTSecrets {
+		if c.JWTSecret == insecure {
+			return fmt.Errorf("JWT_SECRET is set to a publicly known placeholder; generate one with `openssl rand -hex 32` (or run `make env`)")
+		}
 	}
 	return nil
 }
