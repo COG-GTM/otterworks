@@ -7,6 +7,7 @@ import com.otterworks.notification.service.NotificationService
 import com.otterworks.notification.websocket.WebSocketManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -34,6 +35,16 @@ data class ErrorResponse(val error: String)
 @Serializable
 data class MarkAllReadResponse(val markedCount: Int)
 
+private const val MISSING_IDENTITY = "missing X-User-ID header"
+
+/**
+ * The caller's identity, as injected by the api-gateway from the validated JWT.
+ * There is deliberately no query-parameter fallback: a request without the
+ * header is unauthenticated, not an internal caller.
+ */
+private fun ApplicationCall.authenticatedUserId(): String? =
+    request.headers["X-User-ID"]?.trim()?.takeIf { it.isNotEmpty() }
+
 fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
     val notificationService by inject<NotificationService>()
     val webSocketManager by inject<WebSocketManager>()
@@ -52,11 +63,8 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
 
         route("/api/v1/notifications") {
             get {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
+                val userId = call.authenticatedUserId()
+                    ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(MISSING_IDENTITY))
 
                 val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
                 val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
@@ -75,11 +83,8 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
 
             get("/unread-count") {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
+                val userId = call.authenticatedUserId()
+                    ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(MISSING_IDENTITY))
 
                 val count = notificationService.getUnreadCount(userId)
                 call.respond(UnreadCountResponse(userId = userId, unreadCount = count))
@@ -114,11 +119,8 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
 
             put("/read-all") {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@put
-                }
+                val userId = call.authenticatedUserId()
+                    ?: return@put call.respond(HttpStatusCode.Unauthorized, ErrorResponse(MISSING_IDENTITY))
 
                 val count = notificationService.markAllAsRead(userId)
                 call.respond(MarkAllReadResponse(markedCount = count))
@@ -141,20 +143,23 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
 
         route("/api/v1/preferences") {
             get {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
+                val userId = call.authenticatedUserId()
+                    ?: return@get call.respond(HttpStatusCode.Unauthorized, ErrorResponse(MISSING_IDENTITY))
 
                 val preferences = notificationService.getPreferences(userId)
                 call.respond(preferences)
             }
 
             put {
+                val userId = call.authenticatedUserId()
+                    ?: return@put call.respond(HttpStatusCode.Unauthorized, ErrorResponse(MISSING_IDENTITY))
                 val request = call.receive<NotificationPreferenceRequest>()
+                if (request.userId.isNotBlank() && request.userId != userId) {
+                    call.respond(HttpStatusCode.Forbidden, ErrorResponse("cannot update another user's preferences"))
+                    return@put
+                }
                 notificationService.updatePreferences(
-                    userId = request.userId,
+                    userId = userId,
                     eventType = request.eventType,
                     channels = request.channels,
                 )

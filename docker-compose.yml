@@ -125,6 +125,9 @@ services:
       FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
       FILE_SEED_DEMO_DOCS: ${FILE_SEED_DEMO_DOCS:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      # Shared secret for direct service-to-service calls to file-service that
+      # carry no gateway-injected X-User-ID (e.g. search-service reindex).
+      FILE_SERVICE_INTERNAL_TOKEN: ${FILE_SERVICE_INTERNAL_TOKEN:-otterworks-local-dev-internal-token}
     depends_on:
       localstack:
         condition: service_healthy
@@ -303,6 +306,9 @@ services:
       SQS_ENABLED: 'true'
       SQS_QUEUE_URL: http://localstack:4566/000000000000/otterworks-search-events
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      # Shared secret for direct service-to-service calls to file-service that
+      # carry no gateway-injected X-User-ID (e.g. search-service reindex).
+      FILE_SERVICE_INTERNAL_TOKEN: ${FILE_SERVICE_INTERNAL_TOKEN:-otterworks-local-dev-internal-token}
     depends_on:
       meilisearch:
         condition: service_healthy

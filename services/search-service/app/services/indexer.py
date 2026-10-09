@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import requests
@@ -14,6 +15,18 @@ logger = structlog.get_logger()
 DOCUMENT_SERVICE_URL = "http://document-service:8083"
 FILE_SERVICE_URL = "http://file-service:8082"
 FETCH_TIMEOUT = 30
+# file-service only serves header-less (no X-User-ID) listings to callers that
+# present this shared secret.
+FILE_SERVICE_INTERNAL_TOKEN_HEADER = "X-Internal-Service-Token"
+
+
+class FileServiceAuthError(RuntimeError):
+    """file-service refused the internal reindex listing."""
+
+
+def _file_service_headers() -> dict[str, str]:
+    token = os.getenv("FILE_SERVICE_INTERNAL_TOKEN", "").strip()
+    return {FILE_SERVICE_INTERNAL_TOKEN_HEADER: token} if token else {}
 
 
 class Indexer:
@@ -90,7 +103,9 @@ class Indexer:
         Fetches all documents from the document-service and all files
         from the file-service, then passes them to MeiliSearch for
         bulk re-indexing.  If a source service is unreachable the
-        corresponding index is still cleared and recreated empty.
+        corresponding index is still cleared and recreated empty. An auth
+        rejection from file-service aborts the reindex instead, so a missing
+        or mismatched internal token cannot wipe the files index.
         """
         documents = self._fetch_all_documents()
         files = self._fetch_all_files()
@@ -148,8 +163,14 @@ class Indexer:
                 resp = requests.get(
                     f"{FILE_SERVICE_URL}/api/v1/files",
                     params={"page": page, "page_size": 100},
+                    headers=_file_service_headers(),
                     timeout=FETCH_TIMEOUT,
                 )
+                if resp.status_code in (401, 403):
+                    raise FileServiceAuthError(
+                        f"file-service rejected reindex listing ({resp.status_code}); "
+                        "check FILE_SERVICE_INTERNAL_TOKEN"
+                    )
                 if resp.status_code != 200:
                     logger.warning("reindex_file_fetch_failed", status=resp.status_code)
                     break

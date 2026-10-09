@@ -13,6 +13,10 @@ import (
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
+// InternalServiceTokenHeader carries the shared secret backends use to
+// recognise direct service-to-service callers.
+const InternalServiceTokenHeader = "X-Internal-Service-Token"
+
 // Route defines a mapping from a URL prefix to a backend service.
 type Route struct {
 	Prefix    string
@@ -21,10 +25,10 @@ type Route struct {
 
 // RouterConfig holds configuration for the reverse proxy router.
 type RouterConfig struct {
-	Routes         []Route
-	CBManager      *CircuitBreakerManager
-	Logger         zerolog.Logger
-	EnableTracing  bool
+	Routes        []Route
+	CBManager     *CircuitBreakerManager
+	Logger        zerolog.Logger
+	EnableTracing bool
 }
 
 // NewRouter creates a chi router with all service routes mounted.
@@ -59,30 +63,17 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		cfg.Logger.Fatal().Err(err).Str("target", route.TargetURL).Msg("invalid proxy target URL")
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
-
-	// Wrap the default director to forward authenticated user identity.
-	// The auth-service issues JWTs with the user ID in the standard "sub" claim
-	// (claims.Subject). Fall back to the custom "user_id" claim for compatibility.
-	defaultDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		defaultDirector(req)
-		// Identity headers are derived from the validated JWT only;
-		// client-supplied values must never reach the backends.
-		req.Header.Del("X-User-ID")
-		req.Header.Del("X-User-Email")
-		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
-			userID := claims.Subject
-			if userID == "" {
-				userID = claims.UserID
-			}
-			if userID != "" {
-				req.Header.Set("X-User-ID", userID)
-			}
-			if claims.Email != "" {
-				req.Header.Set("X-User-Email", claims.Email)
-			}
-		}
+	// Rewrite (not the deprecated Director) runs after hop-by-hop headers are
+	// removed, so a client cannot strip the identity headers set here by
+	// naming them in its Connection header.
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			// Preserve the client's Host header, as the Director did.
+			pr.Out.Host = pr.In.Host
+			forwardedHeaders(pr)
+			setIdentityHeaders(pr.Out)
+		},
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -123,5 +114,43 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				"reason":  "circuit breaker open",
 			})
 		}
+	}
+}
+
+// forwardedHeaders keeps the Director-era forwarding semantics: Rewrite drops
+// inbound Forwarded/X-Forwarded-* headers, so carry them over, append the
+// client IP to X-Forwarded-For, and only fill in Host/Proto when absent.
+func forwardedHeaders(pr *httputil.ProxyRequest) {
+	pr.Out.Header["X-Forwarded-For"] = pr.In.Header["X-Forwarded-For"]
+	pr.SetXForwarded()
+	for _, h := range []string{"X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded"} {
+		if v, ok := pr.In.Header[h]; ok {
+			pr.Out.Header[h] = v
+		}
+	}
+}
+
+// setIdentityHeaders derives X-User-ID / X-User-Email from the validated JWT
+// only; client-supplied values must never reach the backends. The auth-service
+// issues JWTs with the user ID in the standard "sub" claim, with the custom
+// "user_id" claim as a fallback. The internal service token header is only
+// for service-to-service calls and is never accepted from the edge.
+func setIdentityHeaders(out *http.Request) {
+	out.Header.Del("X-User-ID")
+	out.Header.Del("X-User-Email")
+	out.Header.Del(InternalServiceTokenHeader)
+	claims := middleware.GetJWTClaims(out.Context())
+	if claims == nil {
+		return
+	}
+	userID := claims.Subject
+	if userID == "" {
+		userID = claims.UserID
+	}
+	if userID != "" {
+		out.Header.Set("X-User-ID", userID)
+	}
+	if claims.Email != "" {
+		out.Header.Set("X-User-Email", claims.Email)
 	}
 }

@@ -337,6 +337,15 @@ build_helm_args() {
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
     esac
   fi
+  # Shared secret file-service requires from header-less internal callers
+  # (search-service reindex). Derived from JWT_SECRET so it stays stable
+  # across single-service redeploys; FILE_SERVICE_INTERNAL_TOKEN overrides.
+  if [ -n "${FILE_SERVICE_INTERNAL_TOKEN:-}${JWT_SECRET}" ]; then
+    case "$service" in
+      file-service|search-service)
+        add_secret FILE_SERVICE_INTERNAL_TOKEN "${FILE_SERVICE_INTERNAL_TOKEN:-$(printf '%s' otterworks-file-service-internal | openssl dgst -sha256 -hmac "${JWT_SECRET}" -r | cut -d' ' -f1)}" ;;
+    esac
+  fi
 
   case "$service" in
     api-gateway) : ;; # backend service URLs default to the correct in-cluster DNS
