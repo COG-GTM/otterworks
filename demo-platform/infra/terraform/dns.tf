@@ -15,8 +15,11 @@
 # domain would stay dark until the registrar was updated by hand. Route53's
 # refusal to delete a non-empty zone is what stopped that, which is not a control
 # worth relying on.
+#
+# Also looked up for the reaper's record GC (var.reaper_route53_gc), which has to
+# keep working when the DNS automation role is switched off.
 data "aws_route53_zone" "demo" {
-  count = var.enable_dns ? 1 : 0
+  count = var.enable_dns || var.reaper_route53_gc ? 1 : 0
   name  = var.dns_zone_name
 }
 

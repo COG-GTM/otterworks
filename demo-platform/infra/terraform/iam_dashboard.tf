@@ -33,6 +33,15 @@ locals {
   # The platform's own cluster is always sweepable; var.sweepable_clusters adds
   # names it used to run under, whose orphans still need reclaiming.
   sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+
+  # The record names the reaper may delete: t-<id> / api-t-<id> under the tenant
+  # host suffix, plus the cname-/txt- ownership records external-dns writes
+  # alongside them. Same shapes sweep_route53 in reaper/infra-sweep.sh accepts.
+  # Route53 normalizes names to lowercase without the trailing dot.
+  tenant_record_names = [
+    for prefix in ["t-", "api-t-", "cname-t-", "cname-api-t-", "txt-t-", "txt-api-t-"] :
+    "${prefix}*.${lower(trimsuffix(var.tenant_host_suffix, "."))}"
+  ]
 }
 
 data "aws_iam_policy_document" "dashboard" {
@@ -252,16 +261,49 @@ data "aws_iam_policy_document" "dashboard" {
     resources = ["*"]
   }
 
-  # Reaper GC of per-tenant Route53 records (host-based routing). Scoped to
-  # hosted-zone record changes; list actions are account-level.
+  # Reaper GC of per-tenant Route53 records (host-based routing). Finding the
+  # zone by name is account-level by API design (ListHostedZones* take no
+  # resource ARN); everything else is pinned to the demo zone.
   statement {
-    sid    = "ReaperRoute53"
-    effect = "Allow"
-    actions = [
-      "route53:ListHostedZonesByName", "route53:ListHostedZones",
-      "route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets",
-    ]
+    sid       = "ReaperRoute53FindZone"
+    effect    = "Allow"
+    actions   = ["route53:ListHostedZonesByName", "route53:ListHostedZones"]
     resources = ["*"]
+  }
+
+  # The account hosts other workloads' zones, so record changes must not be
+  # granted on "*". Only the demo zone, only DELETE, and only the record names a
+  # tenant deploy produces (local.tenant_record_names) -- never the platform's
+  # own records such as cert-manager's _acme-challenge or the perpetual hosts.
+  # Gated on var.reaper_route53_gc, not enable_dns: the zone and its records
+  # outlive the DNS automation role, and orphans still need reclaiming.
+  dynamic "statement" {
+    for_each = var.reaper_route53_gc ? [data.aws_route53_zone.demo[0].zone_id] : []
+    content {
+      sid       = "ReaperRoute53ReadZone"
+      effect    = "Allow"
+      actions   = ["route53:ListResourceRecordSets"]
+      resources = ["arn:aws:route53:::hostedzone/${statement.value}"]
+    }
+  }
+  dynamic "statement" {
+    for_each = var.reaper_route53_gc ? [data.aws_route53_zone.demo[0].zone_id] : []
+    content {
+      sid       = "ReaperRoute53DeleteTenantRecords"
+      effect    = "Allow"
+      actions   = ["route53:ChangeResourceRecordSets"]
+      resources = ["arn:aws:route53:::hostedzone/${statement.value}"]
+      condition {
+        test     = "ForAllValues:StringEquals"
+        variable = "route53:ChangeResourceRecordSetsActions"
+        values   = ["DELETE"]
+      }
+      condition {
+        test     = "ForAllValues:StringLike"
+        variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+        values   = local.tenant_record_names
+      }
+    }
   }
 }
 
