@@ -127,6 +127,8 @@ public static class AuditController
     {
         var exportFormat = format ?? "json";
         var exportTo = to ?? DateTime.UtcNow;
+        if (from is null && exportTo < DateTime.MinValue.AddDays(30))
+            return Results.BadRequest(new { error = "'to' is too early; provide 'from' explicitly." });
         var exportFrom = from ?? exportTo.AddDays(-30);
         var maxRangeDays = limits.Value.MaxExportRangeDays;
 

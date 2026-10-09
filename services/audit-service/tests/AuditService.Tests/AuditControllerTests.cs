@@ -33,6 +33,14 @@ public class AuditControllerTests
     }
 
     [Fact]
+    public async Task ExportAuditLog_ToNearMinValueWithoutFrom_ReturnsBadRequest()
+    {
+        var result = await AuditController.ExportAuditLog("json", null, new DateTime(1, 1, 1), _mockService.Object, _limits);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, StatusCode(result));
+    }
+
+    [Fact]
     public async Task ExportAuditLog_DefaultRange_IsAllowed()
     {
         _mockService

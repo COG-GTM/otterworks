@@ -274,7 +274,7 @@ public class DynamoDbAuditRepository : IAuditRepository
 
                 newest.Add(MapToEventKey(item));
                 if (newest.Count > keep)
-                    newest.Remove(newest.Max);
+                    newest.Remove(newest.Max!);
             }
         }
         while (response.LastEvaluatedKey?.Count > 0);
@@ -316,8 +316,11 @@ public class DynamoDbAuditRepository : IAuditRepository
                     }
                 }
 
-                if (response.UnprocessedKeys is null || response.UnprocessedKeys.Count == 0 || retryCount >= 5)
+                if (response.UnprocessedKeys is null || response.UnprocessedKeys.Count == 0)
                     break;
+
+                if (retryCount >= 5)
+                    throw new InvalidOperationException("DynamoDB left audit event keys unprocessed after retries; refusing to return a partial page.");
 
                 retryCount++;
                 await Task.Delay((int)Math.Pow(2, retryCount) * 100);
