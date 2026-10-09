@@ -18,6 +18,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtTokenProvider {
 
+  static final int MIN_SECRET_BYTES = 32;
+
   private final SecretKey key;
   private final long accessTokenExpiry;
   private final long refreshTokenExpiry;
@@ -26,7 +28,14 @@ public class JwtTokenProvider {
       @Value("${jwt.secret}") String secret,
       @Value("${jwt.access-token-expiry:3600}") long accessTokenExpiry,
       @Value("${jwt.refresh-token-expiry:2592000}") long refreshTokenExpiry) {
-    this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    if (secret == null || secret.isBlank()) {
+      throw new IllegalStateException("JWT_SECRET environment variable is required but not set");
+    }
+    byte[] secretBytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (secretBytes.length < MIN_SECRET_BYTES) {
+      throw new IllegalStateException("JWT_SECRET must be at least " + MIN_SECRET_BYTES + " bytes");
+    }
+    this.key = Keys.hmacShaKeyFor(secretBytes);
     this.accessTokenExpiry = accessTokenExpiry;
     this.refreshTokenExpiry = refreshTokenExpiry;
   }
