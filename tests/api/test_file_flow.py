@@ -64,7 +64,6 @@ def test_file_folder_upload_lifecycle_share_and_download(api_client):
         json={
             "shared_with": collaborator.id,
             "permission": "viewer",
-            "shared_by": owner.id,
         },
     )
     assert share_response.status_code == 201, share_response.text
@@ -127,3 +126,37 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_share_attribution_comes_from_authenticated_caller(api_client):
+    owner = api_client.register_user("share-attr-owner")
+    victim = api_client.register_user("share-attr-victim")
+    collaborator = api_client.register_user("share-attr-collaborator")
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("attribution.txt", b"who shared this", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    forged_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": collaborator.id, "permission": "viewer", "shared_by": victim.id},
+    )
+    assert forged_response.status_code == 403, forged_response.text
+
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": collaborator.id, "permission": "viewer"},
+    )
+    assert share_response.status_code == 201, share_response.text
+    assert share_response.json()["share"]["shared_by"] == owner.id
+
+    victim_activity = api_client.client.get("/api/v1/files/activity", headers=victim.auth_headers)
+    assert victim_activity.status_code == 200, victim_activity.text
+    assert not any(item["resource_id"] == file_id for item in victim_activity.json()["items"])

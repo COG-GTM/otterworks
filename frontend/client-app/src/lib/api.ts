@@ -268,13 +268,10 @@ export const filesApi = {
             err.response.data.message.includes("User not found")));
       if (!isUserNotFound) throw err;
     }
-    const sharedBy = getOwnerIdFromJwt();
-    if (!sharedBy) throw new Error("Unable to determine current user");
     await apiClient.post(`/files/${id}/share`, {
       shared_with: userId,
       shared_with_email: userId ? undefined : email,
       permission: permission === "view" ? "viewer" : "editor",
-      shared_by: sharedBy,
     });
   },
   removeShare: async (fileId: string, userId: string): Promise<void> => {
@@ -285,12 +282,9 @@ export const filesApi = {
     userId: string,
     permission: "view" | "edit"
   ): Promise<void> => {
-    const sharedBy = getOwnerIdFromJwt();
-    if (!sharedBy) throw new Error("Unable to determine current user");
     await apiClient.post(`/files/${fileId}/share`, {
       shared_with: userId,
       permission: permission === "view" ? "viewer" : "editor",
-      shared_by: sharedBy,
     });
   },
   restore: async (id: string): Promise<void> => {
