@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -18,7 +17,19 @@ type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// AccessTokenType is the `type` claim auth-service puts on access tokens.
+// Refresh tokens share the signing key but carry `type=refresh` and must never
+// be accepted as bearer credentials.
+const AccessTokenType = "access"
+
+var allowedSigningMethods = []string{
+	jwt.SigningMethodHS256.Alg(),
+	jwt.SigningMethodHS384.Alg(),
+	jwt.SigningMethodHS512.Alg(),
 }
 
 // JWTConfig holds configuration for JWT validation middleware.
@@ -110,17 +121,15 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods(allowedSigningMethods), jwt.WithExpirationRequired())
 	if err != nil {
 		return nil, err
 	}
 	if !token.Valid {
 		return nil, fmt.Errorf("token is not valid")
 	}
-
-	// Check expiration
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return nil, fmt.Errorf("token has expired")
+	if claims.Type != AccessTokenType {
+		return nil, fmt.Errorf("token is not an access token")
 	}
 
 	return claims, nil

@@ -48,6 +48,7 @@ func TestProxyForwardsUserIdentityHeaders(t *testing.T) {
 
 	claims := middleware.JWTClaims{
 		UserID: "user-123",
+		Type:   middleware.AccessTokenType,
 		Email:  "test@otterworks.dev",
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -82,6 +83,7 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 
 	claims := middleware.JWTClaims{
 		UserID: "user-123",
+		Type:   middleware.AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Subject:   "user-123",

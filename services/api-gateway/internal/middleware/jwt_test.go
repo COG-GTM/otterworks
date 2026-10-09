@@ -177,6 +177,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 		UserID: "user-123",
 		Email:  "test@otterworks.dev",
 		Roles:  []string{"user"},
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -212,6 +213,7 @@ func TestJWTAuth_ExpiredToken(t *testing.T) {
 
 	claims := JWTClaims{
 		UserID: "user-123",
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
@@ -241,6 +243,7 @@ func TestJWTAuth_WrongSecret(t *testing.T) {
 
 	claims := JWTClaims{
 		UserID: "user-123",
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 		},
@@ -258,6 +261,93 @@ func TestJWTAuth_WrongSecret(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func serveWithToken(t *testing.T, tokenStr string) (int, *JWTClaims) {
+	t.Helper()
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+
+	var capturedClaims *JWTClaims
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedClaims = GetJWTClaims(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec.Code, capturedClaims
+}
+
+func TestJWTAuth_RejectsNonAccessTokenTypes(t *testing.T) {
+	for _, tokenType := range []string{"refresh", "", "ACCESS", "id"} {
+		t.Run("type="+tokenType, func(t *testing.T) {
+			claims := JWTClaims{
+				Type: tokenType,
+				RegisteredClaims: jwt.RegisteredClaims{
+					ID:        "refresh-jti",
+					Subject:   "victim-user-id",
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+				},
+			}
+
+			code, captured := serveWithToken(t, generateTestToken(t, testSecret, claims))
+
+			assert.Equal(t, http.StatusUnauthorized, code)
+			assert.Nil(t, captured, "non-access token must not reach the proxy")
+		})
+	}
+}
+
+func TestJWTAuth_RejectsTokenWithoutExpiry(t *testing.T) {
+	claims := JWTClaims{
+		Type:             AccessTokenType,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"},
+	}
+
+	code, captured := serveWithToken(t, generateTestToken(t, testSecret, claims))
+
+	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Nil(t, captured)
+}
+
+func TestJWTAuth_SigningMethods(t *testing.T) {
+	claims := JWTClaims{
+		Type: AccessTokenType,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	}
+
+	for _, method := range []jwt.SigningMethod{jwt.SigningMethodHS256, jwt.SigningMethodHS384, jwt.SigningMethodHS512} {
+		t.Run("accepts_"+method.Alg(), func(t *testing.T) {
+			tokenStr, err := jwt.NewWithClaims(method, claims).SignedString([]byte(testSecret))
+			require.NoError(t, err)
+
+			code, captured := serveWithToken(t, tokenStr)
+
+			assert.Equal(t, http.StatusOK, code)
+			require.NotNil(t, captured)
+			assert.Equal(t, "user-123", captured.Subject)
+		})
+	}
+
+	t.Run("rejects_none", func(t *testing.T) {
+		tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims).SignedString(jwt.UnsafeAllowNoneSignatureType)
+		require.NoError(t, err)
+
+		code, captured := serveWithToken(t, tokenStr)
+
+		assert.Equal(t, http.StatusUnauthorized, code)
+		assert.Nil(t, captured)
+	})
 }
 
 func TestJWTAuth_MalformedAuthHeader(t *testing.T) {

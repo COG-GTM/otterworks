@@ -12,7 +12,7 @@ os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
 
 def _make_jwt(user_id: str) -> str:
-    return jwt.encode({"user_id": user_id}, TEST_JWT_SECRET, algorithm="HS256")
+    return jwt.encode({"user_id": user_id, "type": "access"}, TEST_JWT_SECRET, algorithm="HS256")
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,9 @@ async def test_create_document_via_jwt(client: AsyncClient):
 async def test_create_document_via_jwt_hs384(client: AsyncClient):
     """Create a document using an HS384-signed JWT (matches auth-service algorithm)."""
     user_id = uuid.uuid4()
-    token = jwt.encode({"sub": str(user_id)}, TEST_JWT_SECRET, algorithm="HS384")
+    token = jwt.encode(
+        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS384"
+    )
     resp = await client.post(
         "/api/v1/documents/",
         json={"title": "HS384 Doc"},
@@ -257,6 +259,45 @@ async def test_create_document_via_jwt_hs384(client: AsyncClient):
     )
     assert resp.status_code == 201
     assert resp.json()["owner_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_create_document_via_jwt_hs512(client: AsyncClient):
+    """auth-service (jjwt) signs HS512 for 64-byte keys, e.g. deploy-tenant.sh secrets."""
+    user_id = uuid.uuid4()
+    token = jwt.encode(
+        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS512"
+    )
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "HS512 Doc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {"type": "refresh", "jti": "refresh-jti"},
+        {},
+        {"type": "ACCESS"},
+    ],
+    ids=["refresh", "missing-type", "wrong-case"],
+)
+async def test_create_document_rejects_non_access_token(client: AsyncClient, claims: dict):
+    """Refresh (or untyped) tokens signed with the shared key must not authenticate."""
+    token = jwt.encode(
+        {"sub": str(uuid.uuid4()), **claims}, TEST_JWT_SECRET, algorithm="HS256"
+    )
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Refresh Doc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
