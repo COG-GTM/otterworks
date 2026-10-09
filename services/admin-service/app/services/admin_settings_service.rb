@@ -17,7 +17,7 @@ class AdminSettingsService
       val.nil? ? true : val == 'true'
     rescue StandardError => e
       Rails.logger.error("Failed to read auto_investigate setting: #{e.message}")
-      true # fail-open to preserve existing behavior
+      false # fail closed: never start autonomous sessions when the setting cannot be read
     ensure
       redis&.close
     end
