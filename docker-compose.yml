@@ -94,7 +94,7 @@ services:
       dockerfile: Dockerfile
     container_name: otterworks-file-service
     ports:
-    - 8082:8082
+    - 127.0.0.1:8082:8082
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
