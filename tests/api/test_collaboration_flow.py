@@ -18,16 +18,21 @@ def test_collaboration_presence_endpoints(api_client):
         "/api/v1/collab/documents",
         headers=user.auth_headers,
     )
-    assert active_documents_response.status_code == 200, active_documents_response.text
-    active_documents = active_documents_response.json()
-    assert "documents" in active_documents
-    assert "count" in active_documents
+    assert active_documents_response.status_code == 403, active_documents_response.text
 
     presence_response = api_client.client.get(
         f"/api/v1/collab/documents/{document_id}/presence",
         headers=user.auth_headers,
     )
     assert presence_response.status_code == 200, presence_response.text
+    assert presence_response.json()["documentId"] == document_id
+
+    other_user = api_client.register_user("collab-other")
+    other_presence_response = api_client.client.get(
+        f"/api/v1/collab/documents/{document_id}/presence",
+        headers=other_user.auth_headers,
+    )
+    assert other_presence_response.status_code == 403, other_presence_response.text
 
 
 def test_collaboration_invalid_document_presence_is_stable(api_client):
@@ -37,4 +42,4 @@ def test_collaboration_invalid_document_presence_is_stable(api_client):
         "/api/v1/collab/documents/not-a-real-document/presence",
         headers=user.auth_headers,
     )
-    assert presence_response.status_code in {200, 400, 404}, presence_response.text
+    assert presence_response.status_code == 400, presence_response.text
