@@ -70,8 +70,8 @@ if ! command -v docker >/dev/null 2>&1 || ! docker info >/dev/null 2>&1; then
   echo "# grants: SKIPPED (docker unavailable)"
 else
   echo "# grants (${PG_IMAGE})"
-  PG="tenant-db-test-$$"
-  trap 'rm -f "${RENDERED}"; docker rm -f "${PG}" >/dev/null 2>&1' EXIT
+  PG="tenant-db-test-$$"; PG_LOG="$(mktemp)"
+  trap 'rm -f "${RENDERED}" "${PG_LOG}"; docker rm -f "${PG}" >/dev/null 2>&1' EXIT
   docker run -d --name "${PG}" -e POSTGRES_PASSWORD=super -e POSTGRES_HOST_AUTH_METHOD=scram-sha-256 \
     -e POSTGRES_INITDB_ARGS=--auth=scram-sha-256 "${PG_IMAGE}" >/dev/null
   for _ in $(seq 60); do docker exec "${PG}" pg_isready -U postgres -h localhost >/dev/null 2>&1 && break; sleep 1; done
@@ -91,7 +91,10 @@ SQL
   provision() {  # provision <db> <password>
     tenant_db_provision_sql | docker exec -i -e PGPASSWORD="${MASTER_PW}" -e TENANT_DB_PASSWORD="$2" "${PG}" \
       psql -X -q -h localhost -U "${MASTER_USER}" -d otterworks -v db="$1" -v role="$(tenant_db_role_for_db "$1")" \
-      -v conn_limit=20 >/dev/null 2>&1
+      -v conn_limit=20 > "${PG_LOG}" 2>&1
+    local rc=$?
+    [ "${rc}" -eq 0 ] || grep -iE 'error|fatal' "${PG_LOG}" | head -3 | sed 's/^/    | /'
+    return "${rc}"
   }
   A_PW="a-$(openssl rand -hex 12)"; B_PW="b-$(openssl rand -hex 12)"; L_PW="l-$(openssl rand -hex 12)"
   provision otterworks_alice "${A_PW}"; check "provision tenant alice" "$?" 0

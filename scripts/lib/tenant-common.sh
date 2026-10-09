@@ -255,10 +255,12 @@ SELECT format('CREATE ROLE %I LOGIN', :'role')
   WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'role') \gexec
 SELECT format('ALTER ROLE %I WITH LOGIN NOCREATEDB NOCREATEROLE CONNECTION LIMIT %s PASSWORD %L',
               :'role', :'conn_limit', :'pw') \gexec
--- The master must be a member to create/alter objects owned by the role and,
--- at teardown, to drop its database.
+-- The master must be able to act as the role to create/alter objects it owns
+-- and, at teardown, to drop its database. Checked with USAGE, not MEMBER: on
+-- PG16+ CREATE ROLE already makes the creator an admin-only member (no
+-- INHERIT/SET), which MEMBER counts but which cannot own-transfer anything.
 SELECT format('GRANT %I TO %I', :'role', current_user)
-  WHERE NOT pg_has_role(current_user, :'role', 'MEMBER') \gexec
+  WHERE NOT pg_has_role(current_user, :'role', 'USAGE') \gexec
 
 SELECT format('CREATE DATABASE %I OWNER %I', :'db', :'role')
   WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db') \gexec
