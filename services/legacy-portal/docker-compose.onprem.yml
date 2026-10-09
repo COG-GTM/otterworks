@@ -40,6 +40,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://legacy-portal-db:5432/legacyportal
       SPRING_DATASOURCE_USERNAME: legacyportal
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-legacyportal}
+      # auth-service's JWT signing secret; /api/preferences returns 401 until it is set.
+      JWT_SECRET: ${JWT_SECRET:-}
     ports:
       - "8095:8095"
     healthcheck:
