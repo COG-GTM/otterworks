@@ -1,6 +1,7 @@
 package com.otterworks.notification.service
 
 import com.otterworks.notification.model.DeliveryChannel
+import com.otterworks.notification.model.EventType
 import com.otterworks.notification.model.Notification
 import com.otterworks.notification.model.NotificationPreference
 import com.otterworks.notification.model.SqsNotificationMessage
@@ -14,6 +15,9 @@ import java.time.Instant
 import java.util.UUID
 
 private val logger = KotlinLogging.logger {}
+
+class UnknownEventTypeException(val eventType: String) :
+    IllegalArgumentException("Unknown eventType: $eventType")
 
 class NotificationService(
     private val repository: NotificationRepository,
@@ -114,6 +118,10 @@ class NotificationService(
         repository.getPreferences(userId)
 
     suspend fun updatePreferences(userId: String, eventType: String, channels: List<DeliveryChannel>) {
+        require(userId.isNotBlank()) { "userId is required" }
+        if (EventType.fromString(eventType) == null) {
+            throw UnknownEventTypeException(eventType)
+        }
         val current = repository.getPreferences(userId)
         val updatedChannels = current.channels.toMutableMap()
         updatedChannels[eventType] = channels
