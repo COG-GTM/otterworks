@@ -1,6 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
+import { isValidImageTag } from "@/lib/util";
 
 export type RunnerAction = "deploy" | "teardown" | "inject";
 
@@ -75,6 +76,11 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
 export function buildRunnerJob(input: RunnerJobInput, epoch: number): k8s.V1Job {
   const image = env.runnerImage;
   if (!image) throw new Error("RUNNER_IMAGE is not configured");
+  // Routes validate first and answer 400; this keeps any future caller from
+  // handing the runner a tag Helm would parse as extra values.
+  if (input.imageTag !== undefined && !isValidImageTag(input.imageTag)) {
+    throw new Error("invalid image tag");
+  }
   const name = jobName(input.action, input.tenantId, epoch);
 
   return {

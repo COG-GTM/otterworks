@@ -14,6 +14,32 @@ export function isValidId(id: string): boolean {
   return /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/.test(id);
 }
 
+// Docker tag grammar. The tag ends up inside `helm --set-string image.tag=...`
+// in deploy-tenant.sh / inject-bug.sh, where `,` `=` `[` `]` `\` are Helm
+// syntax: an unchecked tag could set image.repository, serviceAccount.roleArn
+// or config/secrets on every chart. None of those characters fit this grammar.
+// Keep in sync with valid_image_tag in scripts/lib/tenant-common.sh.
+const IMAGE_TAG_RE = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$/;
+
+export function isValidImageTag(tag: string): boolean {
+  return IMAGE_TAG_RE.test(tag);
+}
+
+// Mirrors branch_tag_slug in scripts/lib/tenant-common.sh.
+export function branchTagSlug(branch: string): string {
+  return branch.toLowerCase().replace(/[^a-z0-9._-]/g, "-");
+}
+
+// A perpetual tenant is everyone's shared environment, so the only tag that
+// may be pinned on it is the immutable `<branch-slug>-<sha7>` build CD
+// publishes for that tenant's own branch -- not a bug variant or another
+// tenant's image.
+export function isPerpetualPinTag(tag: string, branch: string | undefined): boolean {
+  if (!branch || !isValidImageTag(tag)) return false;
+  const slug = branchTagSlug(branch);
+  return tag.length === slug.length + 8 && tag.startsWith(`${slug}-`) && /^[0-9a-f]{7}$/.test(tag.slice(-7));
+}
+
 // A perpetual tenant still carries a real expires_at, ten years out. The
 // reaper skips it on `persistent`, so this is only a second line of defence:
 // if that check ever regresses, the tenant survives rather than being torn

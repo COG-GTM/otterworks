@@ -3,7 +3,15 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, checkout } from "@/lib/control";
 import { createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { isNeverTtl, isValidId, randomIdSuffix, sanitizeId, ttlToSeconds } from "@/lib/util";
+import {
+  isNeverTtl,
+  isPerpetualPinTag,
+  isValidId,
+  isValidImageTag,
+  randomIdSuffix,
+  sanitizeId,
+  ttlToSeconds,
+} from "@/lib/util";
 import type { CheckoutRequest, TenantTier } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -20,7 +28,9 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
   const branch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : `workshop-${id}`;
   const tier: TenantTier = body.tier === "B" ? "B" : "A";
-  const imageTag = typeof body.image_tag === "string" && body.image_tag ? body.image_tag : undefined;
+  const imageTag =
+    typeof body.image_tag === "string" && body.image_tag.trim() ? body.image_tag.trim() : undefined;
+  if (imageTag !== undefined && !isValidImageTag(imageTag)) return error(400, "invalid image_tag");
 
   // "never" and persistent:true are the same request; accept either spelling so
   // a caller cannot end up with a tenant it believes is perpetual while the
@@ -30,6 +40,12 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
     return error(
       403,
       `tenant '${id}' may not be perpetual; a perpetual tenant never expires and is never suspended`,
+    );
+  }
+  if (persistent && imageTag !== undefined && !isPerpetualPinTag(imageTag, branch)) {
+    return error(
+      403,
+      `tenant '${id}' is perpetual; only its branch's own CD build (<branch>-<sha7>) may be pinned`,
     );
   }
   const ttlStr = persistent ? "never" : typeof body.ttl === "string" && body.ttl ? body.ttl : "8h";

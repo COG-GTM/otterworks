@@ -87,6 +87,14 @@ branch_tag_slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g'
 }
 
+# Docker tag grammar. Tags are passed to `helm --set-string image.tag=...`,
+# where `,` `=` `[` `]` `\` are Helm syntax: an unchecked tag could also set
+# image.repository, serviceAccount.roleArn or config/secrets on the chart.
+# Keep in sync with isValidImageTag in demo-platform/dashboard/lib/util.ts.
+valid_image_tag() {
+  [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]
+}
+
 # The tag a tenant's own build is published under. Keyed by tenant id, not by
 # branch: several repositories (this one and its forks) push to one registry and
 # would otherwise both claim `branch-demo-x`, each serving the other's build.
