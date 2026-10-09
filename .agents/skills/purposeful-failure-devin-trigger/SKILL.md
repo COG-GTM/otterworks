@@ -60,8 +60,8 @@ upload `.catch` in `file-upload-dropzone.tsx`).
 admin-service already owns the Devin flow: `DevinSessionService.create_session`
 (reads `DEVIN_API_KEY`/`DEVIN_ORG_ID`, no-ops with a warning if missing) and the
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
-or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
-unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
+or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; the endpoint rejects
+every alert (503) when that env var is unset or the old public `demo-alert-secret`). Reuse it instead of adding a
 second Devin client:
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
@@ -70,7 +70,8 @@ second Devin client:
   `services/file-service/src/alerts.rs`: labels `alertname`, `severity`,
   `affected_service`, annotations summary/description, `startsAt`. Config via env
   `ADMIN_SERVICE_URL` (default `http://admin-service:8089` resolves in-namespace)
-  and optional `ALERT_WEBHOOK_SECRET`. Missing config → warn and skip. Never log
+  and `ALERT_WEBHOOK_SECRET` (must match admin-service's; tenant deploys share one
+  generated value via `build_helm_args`). Missing config → warn and skip. Never log
   secrets.
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one

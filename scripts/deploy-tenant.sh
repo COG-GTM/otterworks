@@ -464,10 +464,12 @@ deploy_service() {
 }
 
 log "Deploying services into ${NS} (profile=${PROFILE}, ${#TENANT_SERVICES[@]} services)..."
+resolve_alert_webhook_secret "${NS}"
 FAILED=()
 for service in "${TENANT_SERVICES[@]}"; do
   deploy_service "${service}" || FAILED+=("${service}")
 done
+restart_alert_webhook_consumers "${NS}"
 
 # ---------- Shared ingress (host/path routing, ONE shared ALB/NLB) ----------
 apply_ingress() {

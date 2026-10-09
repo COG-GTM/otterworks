@@ -30,6 +30,18 @@ RSpec.describe JwtAuthenticator do
     expect(body.first).to eq('admin')
   end
 
+  it 'requires a JWT for the chaos endpoints' do
+    env = Rack::MockRequest.env_for('/api/v1/admin/chaos', method: 'POST')
+    status, _headers, _body = described_class.new(app).call(env)
+    expect(status).to eq(401)
+  end
+
+  it 'lets the alert-ingest webhook through to its own secret check' do
+    env = Rack::MockRequest.env_for('/api/v1/admin/alerts/ingest', method: 'POST')
+    status, _headers, _body = described_class.new(app).call(env)
+    expect(status).to eq(200)
+  end
+
   it 'rejects a token signed with the wrong secret' do
     status, _headers, body = call(JWT.encode(payload, 'not-the-secret', 'HS512'))
     expect(status).to eq(401)
