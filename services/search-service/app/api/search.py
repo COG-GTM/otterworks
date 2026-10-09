@@ -42,8 +42,8 @@ def _chaos_active(key: str) -> bool:
 
 
 def _within_result_window(page: int, page_size: int) -> bool:
-    """Whether the requested page lies inside MeiliSearch's maxTotalHits window."""
-    return page * page_size <= MAX_TOTAL_HITS
+    """Whether the requested page starts inside MeiliSearch's maxTotalHits window."""
+    return (page - 1) * page_size < MAX_TOTAL_HITS
 
 
 def _get_service() -> MeiliSearchService:

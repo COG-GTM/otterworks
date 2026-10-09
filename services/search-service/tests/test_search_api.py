@@ -121,11 +121,15 @@ class TestSearchEndpoint:
         mock_index.search.assert_not_called()
 
     def test_search_last_page_in_result_window_allowed(self, client, mock_meilisearch_client):
-        """The last page inside maxTotalHits is still served."""
+        """Pages starting inside maxTotalHits are still served, including partial last pages."""
         page = MAX_TOTAL_HITS // 100
         response = client.get(f"/api/v1/search/?q=x&page={page}&size=100")
         assert response.status_code == 200
         assert response.get_json()["page"] == page
+
+        response = client.get("/api/v1/search/?q=x&page=11&size=91")
+        assert response.status_code == 200
+        assert response.get_json()["page"] == 11
 
 
 class TestSuggestEndpoint:
