@@ -140,6 +140,22 @@ describe('AdminApiService', () => {
       req.flush(mockResponse);
     });
 
+    it('refreshDevinSession should POST to the refresh_session route', () => {
+      service.refreshDevinSession('inc-1').subscribe(incident => {
+        expect(incident.devinSessionStatus).toBe('finished');
+      });
+
+      const req = httpMock.expectOne('/api/v1/admin/incidents/inc-1/refresh_session');
+      expect(req.request.method).toBe('POST');
+      req.flush({
+        id: 'inc-1', title: 'Test', description: 'Desc', severity: 'high',
+        status: 'investigating', affected_service: null, devin_session_id: 'devin-1',
+        devin_session_url: null, devin_session_status: 'finished', reporter_id: null,
+        resolved_at: null, closed_at: null, active: true,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      });
+    });
+
     it('deleteIncident should make a DELETE request', () => {
       service.deleteIncident('inc-1').subscribe();
 
