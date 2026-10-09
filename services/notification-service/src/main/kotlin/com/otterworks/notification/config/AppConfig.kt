@@ -22,6 +22,11 @@ data class AppConfig(
     // Destination for consumer-failure alerts (admin-service ingest webhook).
     val adminServiceUrl: String = "http://admin-service:8089",
     val alertWebhookSecret: String? = null,
+    // Clients only ever send "ping", so frames are capped well below the
+    // container heap; larger frames close the socket with 1009 (TOO_BIG).
+    val wsMaxFrameBytes: Long = DEFAULT_WS_MAX_FRAME_BYTES,
+    val wsMaxConnectionsPerUser: Int = DEFAULT_WS_MAX_CONNECTIONS_PER_USER,
+    val wsMaxConnections: Int = DEFAULT_WS_MAX_CONNECTIONS,
 ) {
     // Queue URL the consumer actually polls. When the failure switch is on,
     // this points at a queue that does not exist in any account, so SQS
@@ -35,6 +40,10 @@ data class AppConfig(
         }
 
     companion object {
+        const val DEFAULT_WS_MAX_FRAME_BYTES: Long = 64L * 1024
+        const val DEFAULT_WS_MAX_CONNECTIONS_PER_USER: Int = 5
+        const val DEFAULT_WS_MAX_CONNECTIONS: Int = 1000
+
         fun load(): AppConfig {
             return AppConfig(
                 port = System.getenv("PORT")?.toIntOrNull() ?: 8086,
@@ -57,6 +66,12 @@ data class AppConfig(
                 sqsAlwaysFail = System.getenv("NOTIFICATION_SQS_ALWAYS_FAIL")?.toBoolean() ?: false,
                 adminServiceUrl = System.getenv("ADMIN_SERVICE_URL") ?: "http://admin-service:8089",
                 alertWebhookSecret = System.getenv("ALERT_WEBHOOK_SECRET")?.takeIf { it.isNotBlank() },
+                wsMaxFrameBytes = System.getenv("WS_MAX_FRAME_BYTES")?.toLongOrNull()
+                    ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_FRAME_BYTES,
+                wsMaxConnectionsPerUser = System.getenv("WS_MAX_CONNECTIONS_PER_USER")?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_CONNECTIONS_PER_USER,
+                wsMaxConnections = System.getenv("WS_MAX_CONNECTIONS")?.toIntOrNull()
+                    ?.takeIf { it > 0 } ?: DEFAULT_WS_MAX_CONNECTIONS,
             )
         }
     }

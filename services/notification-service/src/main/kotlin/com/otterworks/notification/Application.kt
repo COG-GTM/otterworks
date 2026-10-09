@@ -30,7 +30,6 @@ import io.ktor.server.websocket.WebSockets
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import mu.KotlinLogging
-import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
@@ -74,7 +73,7 @@ fun Application.configurePlugins(config: AppConfig = AppConfig.load()) {
     install(WebSockets) {
         pingPeriodMillis = 30000
         timeoutMillis = 15000
-        maxFrameSize = Long.MAX_VALUE
+        maxFrameSize = config.wsMaxFrameBytes
         masking = false
     }
 
@@ -131,7 +130,12 @@ fun Application.configureDependencyInjection(
                     }
                 }
 
-                singleOf(::WebSocketManager)
+                single {
+                    WebSocketManager(
+                        maxConnectionsPerUser = config.wsMaxConnectionsPerUser,
+                        maxConnections = config.wsMaxConnections,
+                    )
+                }
 
                 single { NotificationRepository(get<DynamoDbClient>(), get<AppConfig>()) }
                 single { EmailSender(get<SesClient>(), get<AppConfig>()) }
