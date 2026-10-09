@@ -68,6 +68,13 @@ def test_admin_health_users_features_and_permissions(api_client):
     users_response = api_client.client.get("/api/v1/admin/users", headers=user.auth_headers)
     assert users_response.status_code in {401, 403}
 
+    features_response = api_client.client.get(
+        "/api/v1/admin/features",
+        headers=user.auth_headers,
+        params={"page": 1, "per_page": 100},
+    )
+    assert features_response.status_code in {401, 403}, features_response.text
+
     metrics_response = api_client.client.get("/api/v1/admin/metrics/summary", headers=user.auth_headers)
     assert metrics_response.status_code in {200, 401, 403}
 
