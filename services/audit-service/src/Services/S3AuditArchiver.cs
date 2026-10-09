@@ -75,7 +75,7 @@ public class S3AuditArchiver : IAuditArchiver
 
     public async Task<ArchiveResult> ArchiveOldEventsAsync(DateTime olderThan)
     {
-        var events = await _repository.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan);
+        var events = await _repository.GetArchivableEventsAsync(olderThan);
 
         if (events.Count == 0)
         {
@@ -89,7 +89,8 @@ public class S3AuditArchiver : IAuditArchiver
         }
 
         var content = JsonSerializer.Serialize(events, new JsonSerializerOptions { WriteIndented = true });
-        var key = $"audit-archive/{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
+        var tenantPrefix = string.IsNullOrWhiteSpace(_settings.TenantId) ? string.Empty : $"{_settings.TenantId}/";
+        var key = $"audit-archive/{tenantPrefix}{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
 
         var putRequest = new PutObjectRequest
         {

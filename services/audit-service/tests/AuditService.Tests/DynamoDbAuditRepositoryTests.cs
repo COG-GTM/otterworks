@@ -263,4 +263,62 @@ public class DynamoDbAuditRepositoryTests
             ["Timestamp"] = new AttributeValue { S = DateTime.UtcNow.ToString("O") },
         };
     }
+
+    private DynamoDbAuditRepository RepositoryForTenant(string? tenantId) =>
+        new(_mockDynamoDb.Object, Options.Create(new AwsSettings
+        {
+            DynamoDbTable = "test-audit-events",
+            Region = "us-east-1",
+            TenantId = tenantId,
+        }), _mockLogger.Object);
+
+    [Fact]
+    public async Task SaveEventAsync_WithTenantConfigured_ShouldStampTenantId()
+    {
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await RepositoryForTenant("tenant-a").SaveEventAsync(new AuditEvent
+        {
+            Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow,
+        });
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            req.Item["TenantId"].S == "tenant-a"),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetArchivableEventsAsync_WithTenantConfigured_ShouldFilterByTenant()
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-90);
+        _mockDynamoDb
+            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
+            .ReturnsAsync(new ScanResponse { Items = new List<Dictionary<string, AttributeValue>>() });
+
+        await RepositoryForTenant("tenant-a").GetArchivableEventsAsync(cutoff);
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression.Contains("#tid = :tid") &&
+            req.ExpressionAttributeNames["#tid"] == "TenantId" &&
+            req.ExpressionAttributeValues[":tid"].S == "tenant-a" &&
+            req.ExpressionAttributeValues[":toTs"].S == cutoff.ToString("O")),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetArchivableEventsAsync_WithoutTenant_ShouldOnlyMatchUntaggedEvents()
+    {
+        _mockDynamoDb
+            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
+            .ReturnsAsync(new ScanResponse { Items = new List<Dictionary<string, AttributeValue>>() });
+
+        await _repository.GetArchivableEventsAsync(DateTime.UtcNow);
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression.Contains("attribute_not_exists(#tid)") &&
+            !req.ExpressionAttributeValues.ContainsKey(":tid")),
+            default), Times.Once);
+    }
 }

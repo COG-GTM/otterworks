@@ -7,6 +7,8 @@ namespace OtterWorks.AuditService.Services;
 
 public class DynamoDbAuditRepository : IAuditRepository
 {
+    private const string TenantIdAttribute = "TenantId";
+
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly AwsSettings _settings;
     private readonly ILogger<DynamoDbAuditRepository> _logger;
@@ -33,6 +35,9 @@ public class DynamoDbAuditRepository : IAuditRepository
             ["ResourceId"] = new AttributeValue { S = auditEvent.ResourceId },
             ["Timestamp"] = new AttributeValue { S = auditEvent.Timestamp.ToString("O") },
         };
+
+        if (!string.IsNullOrWhiteSpace(_settings.TenantId))
+            item[TenantIdAttribute] = new AttributeValue { S = _settings.TenantId };
 
         if (auditEvent.IpAddress is not null)
             item["IpAddress"] = new AttributeValue { S = auditEvent.IpAddress };
@@ -246,6 +251,50 @@ public class DynamoDbAuditRepository : IAuditRepository
                 [":toTs"] = new AttributeValue { S = to.ToString("O") },
             },
         };
+
+        var events = new List<AuditEvent>();
+        ScanResponse? response = null;
+
+        do
+        {
+            if (response?.LastEvaluatedKey?.Count > 0)
+                scanRequest.ExclusiveStartKey = response.LastEvaluatedKey;
+
+            response = await _dynamoDb.ScanAsync(scanRequest);
+            events.AddRange(response.Items.Select(MapToAuditEvent));
+        }
+        while (response.LastEvaluatedKey?.Count > 0);
+
+        return events.OrderByDescending(e => e.Timestamp).ToList();
+    }
+
+    public async Task<List<AuditEvent>> GetArchivableEventsAsync(DateTime olderThan)
+    {
+        var scanRequest = new ScanRequest
+        {
+            TableName = _settings.DynamoDbTable,
+            ExpressionAttributeNames = new Dictionary<string, string>
+            {
+                ["#ts"] = "Timestamp",
+                ["#tid"] = TenantIdAttribute,
+            },
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":toTs"] = new AttributeValue { S = olderThan.ToString("O") },
+            },
+        };
+
+        // Only ever archive this deployment's own events: with a tenant configured,
+        // events stamped with that tenant; without one, only untagged events.
+        if (!string.IsNullOrWhiteSpace(_settings.TenantId))
+        {
+            scanRequest.FilterExpression = "#ts <= :toTs AND #tid = :tid";
+            scanRequest.ExpressionAttributeValues[":tid"] = new AttributeValue { S = _settings.TenantId };
+        }
+        else
+        {
+            scanRequest.FilterExpression = "#ts <= :toTs AND attribute_not_exists(#tid)";
+        }
 
         var events = new List<AuditEvent>();
         ScanResponse? response = null;

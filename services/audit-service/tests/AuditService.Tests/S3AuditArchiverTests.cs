@@ -90,7 +90,7 @@ public class S3AuditArchiverTests
             new() { Id = "old-2", UserId = "u2", Action = "update", ResourceType = "doc", ResourceId = "d2", Timestamp = olderThan.AddDays(-5) },
         };
 
-        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan)).ReturnsAsync(events);
+        _mockRepository.Setup(r => r.GetArchivableEventsAsync(olderThan)).ReturnsAsync(events);
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
         _mockRepository.Setup(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>())).ReturnsAsync(2);
 
@@ -115,7 +115,7 @@ public class S3AuditArchiverTests
         var olderThan = DateTime.UtcNow.AddDays(-90);
 
         _mockRepository
-            .Setup(r => r.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan))
+            .Setup(r => r.GetArchivableEventsAsync(olderThan))
             .ReturnsAsync(new List<AuditEvent>());
 
         var result = await _archiver.ArchiveOldEventsAsync(olderThan);
@@ -125,5 +125,34 @@ public class S3AuditArchiverTests
 
         _mockS3.Verify(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
         _mockRepository.Verify(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ArchiveOldEventsAsync_ShouldOnlyArchiveTenantScopedEventsUnderTenantPrefix()
+    {
+        var archiver = new S3AuditArchiver(_mockS3.Object, _mockRepository.Object, Options.Create(new AwsSettings
+        {
+            S3ArchiveBucket = "test-archive-bucket",
+            Region = "us-east-1",
+            TenantId = "tenant-a",
+        }), _mockLogger.Object);
+        var olderThan = DateTime.UtcNow.AddDays(-90);
+        var events = new List<AuditEvent>
+        {
+            new() { Id = "old-1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = olderThan.AddDays(-1) },
+        };
+
+        _mockRepository.Setup(r => r.GetArchivableEventsAsync(olderThan)).ReturnsAsync(events);
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
+        _mockRepository.Setup(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>())).ReturnsAsync(1);
+
+        await archiver.ArchiveOldEventsAsync(olderThan);
+
+        _mockS3.Verify(s => s.PutObjectAsync(It.Is<PutObjectRequest>(req =>
+            req.Key.StartsWith("audit-archive/tenant-a/")),
+            default), Times.Once);
+        _mockRepository.Verify(r => r.GetEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>()), Times.Never);
+        _mockRepository.Verify(r => r.DeleteEventsAsync(
+            It.Is<IEnumerable<string>>(ids => ids.SequenceEqual(new[] { "old-1" }))), Times.Once);
     }
 }

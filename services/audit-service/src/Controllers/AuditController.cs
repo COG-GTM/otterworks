@@ -1,4 +1,5 @@
 using OtterWorks.AuditService.Models;
+using OtterWorks.AuditService.Security;
 using OtterWorks.AuditService.Services;
 
 namespace OtterWorks.AuditService.Controllers;
@@ -12,7 +13,9 @@ public static class AuditController
         group.MapPost("/events", RecordEvent)
             .WithName("RecordAuditEvent")
             .Produces<AuditEventResponse>(StatusCodes.Status201Created)
-            .Produces(StatusCodes.Status400BadRequest);
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
 
         group.MapGet("/events", QueryEvents)
             .WithName("QueryAuditEvents")
@@ -41,22 +44,48 @@ public static class AuditController
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
-            .Produces<ArchiveResult>(StatusCodes.Status200OK);
+            .Produces<ArchiveResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden);
     }
 
-    private static async Task<IResult> RecordEvent(
+    internal static async Task<IResult> RecordEvent(
         AuditEventRequest request,
+        HttpContext httpContext,
         IAuditService auditService)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId) ||
-            string.IsNullOrWhiteSpace(request.Action) ||
+        var caller = CallerIdentity.FromRequest(httpContext.Request);
+        if (caller is null)
+        {
+            return Results.Json(new { error = "Authentication required." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.UserId) &&
+            !string.Equals(request.UserId.Trim(), caller.UserId, StringComparison.Ordinal))
+        {
+            return Results.Json(new { error = "UserId must match the authenticated caller." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Action) ||
             string.IsNullOrWhiteSpace(request.ResourceType) ||
             string.IsNullOrWhiteSpace(request.ResourceId))
         {
-            return Results.BadRequest(new { error = "UserId, Action, ResourceType, and ResourceId are required." });
+            return Results.BadRequest(new { error = "Action, ResourceType, and ResourceId are required." });
         }
 
-        var response = await auditService.RecordEventAsync(request);
+        var userAgent = httpContext.Request.Headers.UserAgent.ToString();
+        var trusted = new AuditEventRequest
+        {
+            UserId = caller.UserId,
+            Action = request.Action,
+            ResourceType = request.ResourceType,
+            ResourceId = request.ResourceId,
+            Details = request.Details,
+            IpAddress = CallerIdentity.ClientIpAddress(httpContext),
+            UserAgent = string.IsNullOrEmpty(userAgent) ? null : userAgent,
+        };
+
+        var response = await auditService.RecordEventAsync(trusted);
         return Results.Created($"/api/v1/audit/events/{response.Id}", response);
     }
 
@@ -133,9 +162,21 @@ public static class AuditController
         return Results.Ok(result);
     }
 
-    private static async Task<IResult> ArchiveOldEvents(
+    internal static async Task<IResult> ArchiveOldEvents(
+        HttpContext httpContext,
         IAuditService auditService)
     {
+        var caller = CallerIdentity.FromRequest(httpContext.Request);
+        if (caller is null)
+        {
+            return Results.Json(new { error = "Authentication required." }, statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        if (!caller.IsAdmin)
+        {
+            return Results.Json(new { error = "Archiving audit events requires the ADMIN role." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+
         var result = await auditService.ArchiveOldEventsAsync();
         return Results.Ok(result);
     }
