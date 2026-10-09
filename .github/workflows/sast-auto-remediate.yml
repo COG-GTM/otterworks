@@ -67,6 +67,9 @@ jobs:
 
       - name: Run Trivy filesystem scan
         run: |
+          # Trivy fetches parent POMs from repo.maven.apache.org, which 429s shared runner IPs;
+          # it honors ~/.m2/settings.xml mirrors, so route Maven Central through Google's mirror.
+          mkdir -p ~/.m2 && cp services/report-service/settings.xml ~/.m2/settings.xml
           trivy fs . \
             --severity "${{ env.SEVERITY_THRESHOLD }}" \
             --format json \
