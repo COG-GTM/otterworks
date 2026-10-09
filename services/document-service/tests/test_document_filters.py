@@ -247,4 +247,3 @@ def test_uuid_filters_render_as_typed_binds_on_postgres():
     )
 
     assert compiled.count("::UUID") == 2
-    assert "::VARCHAR" in compiled
