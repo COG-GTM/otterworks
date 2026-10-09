@@ -424,10 +424,9 @@ pub async fn move_file(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
-    if body.folder_id.is_some() {
-        let caller = caller_id(&req)?;
-        ensure_target_folder(&meta, body.folder_id, &caller).await?;
-    }
+    let caller = caller_id(&req)?;
+    ensure_file_owner(meta.get_file(&file_id).await?, &caller)?;
+    ensure_target_folder(&meta, body.folder_id, &caller).await?;
 
     let file = meta.move_file(&file_id, body.folder_id).await?;
 
@@ -697,8 +696,8 @@ pub async fn list_folders(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let folders = meta.list_folders(query.parent_id, owner_id).await?;
+    let caller = caller_id(&req)?;
+    let folders = meta.list_folders(query.parent_id, Some(caller)).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
 
@@ -866,9 +865,21 @@ where
             None => None,
         };
     }
+    if current.is_none() {
+        return Ok(());
+    }
     Err(ServiceError::BadRequest(
         "folder hierarchy is too deep".into(),
     ))
+}
+
+/// Another user's file is reported as not found, like foreign folders.
+fn ensure_file_owner(file: FileMetadata, caller: &Uuid) -> Result<FileMetadata, ServiceError> {
+    if file.owner_id == *caller {
+        Ok(file)
+    } else {
+        Err(ServiceError::FileNotFound(file.id.to_string()))
+    }
 }
 
 /// Files may only be placed in folders the uploader/mover owns.
@@ -1095,6 +1106,31 @@ mod tests {
         assert!(validate(&folders, Some(sibling.id), grandchild.id, caller)
             .await
             .is_ok());
+    }
+
+    #[actix_rt::test]
+    async fn test_reparent_accepts_chain_at_max_depth() {
+        let caller = Uuid::new_v4();
+        let mut chain = vec![folder(Uuid::new_v4(), None, caller)];
+        for _ in 1..MAX_FOLDER_DEPTH {
+            let parent = chain.last().unwrap().id;
+            chain.push(folder(Uuid::new_v4(), Some(parent), caller));
+        }
+        let moving = folder(Uuid::new_v4(), None, caller);
+        chain.push(moving.clone());
+        let deepest = chain[MAX_FOLDER_DEPTH - 1].id;
+        let mut folders = store(&chain);
+
+        assert!(validate(&folders, Some(moving.id), deepest, caller)
+            .await
+            .is_ok());
+
+        let too_deep = folder(Uuid::new_v4(), Some(deepest), caller);
+        folders.insert(too_deep.id, too_deep.clone());
+        assert!(matches!(
+            validate(&folders, Some(moving.id), too_deep.id, caller).await,
+            Err(ServiceError::BadRequest(_))
+        ));
     }
 
     #[actix_rt::test]

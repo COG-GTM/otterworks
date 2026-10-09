@@ -182,3 +182,36 @@ def test_folders_are_scoped_to_the_authenticated_owner(api_client):
         data={"folder_id": folder["id"]},
     )
     assert upload.status_code == 404, upload.text
+
+    owner_file = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("mine.txt", b"mine", "text/plain")},
+        data={"folder_id": folder["id"]},
+    )
+    assert owner_file.status_code == 201, owner_file.text
+    owner_file_id = owner_file.json()["file"]["id"]
+    api_client.created_files.append(owner_file_id)
+
+    attacker_folder = api_client.client.post(
+        "/api/v1/folders",
+        headers=attacker.auth_headers,
+        json={"name": f"Attacker Folder {api_client.run_id}"},
+    )
+    assert attacker_folder.status_code == 201, attacker_folder.text
+    api_client.created_folders.append(attacker_folder.json()["id"])
+
+    stolen = api_client.client.put(
+        f"/api/v1/files/{owner_file_id}/move",
+        headers=attacker.auth_headers,
+        json={"folder_id": attacker_folder.json()["id"]},
+    )
+    assert stolen.status_code == 404, stolen.text
+
+    attacker_listing = api_client.client.get(
+        "/api/v1/folders",
+        headers=attacker.auth_headers,
+        params={"owner_id": owner.id},
+    )
+    assert attacker_listing.status_code == 200, attacker_listing.text
+    assert folder["id"] not in [f["id"] for f in attacker_listing.json()["folders"]]
