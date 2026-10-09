@@ -331,12 +331,14 @@ build_helm_args() {
     EXTRA_ARGS+=(--set ingress.enabled=false)
   fi
 
-  if [ -n "${JWT_SECRET}" ]; then
-    case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
-        add_secret JWT_SECRET "${JWT_SECRET}" ;;
-    esac
-  fi
+  case "$service" in
+    api-gateway|auth-service|document-service|collab-service|admin-service)
+      if [ -z "${JWT_SECRET:-}" ]; then
+        echo "ERROR: JWT_SECRET is required for ${service}" >&2
+        return 1
+      fi
+      add_secret JWT_SECRET "${JWT_SECRET}" ;;
+  esac
 
   case "$service" in
     api-gateway) : ;; # backend service URLs default to the correct in-cluster DNS

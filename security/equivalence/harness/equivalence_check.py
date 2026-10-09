@@ -260,7 +260,7 @@ def render(command: str, **paths: Path) -> str:
 
 def run_module(finding: Finding, command: str) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
-    env.pop("JWT_SECRET", None)  # the fixture authenticates via the forwarded header
+    env.pop("JWT_SECRET", None)  # the emitter signs fixture tokens with its own secret
     # The harness itself runs under `uv run`, whose ephemeral environment would
     # otherwise capture the module's own toolchain (poetry honours VIRTUAL_ENV).
     for variable in ("VIRTUAL_ENV", "POETRY_ACTIVE", "PYTHONPATH", "PYTHONHOME"):

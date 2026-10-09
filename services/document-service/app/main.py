@@ -30,6 +30,7 @@ structlog.configure(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
+    documents.require_jwt_secret()
     await init_db()
 
     if settings.otel_enabled:

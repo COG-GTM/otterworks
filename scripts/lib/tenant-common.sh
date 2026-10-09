@@ -291,12 +291,14 @@ build_helm_args() {
   if [ -n "$port" ]; then EXTRA_ARGS+=(--set "service.port=${port}" --set "service.targetPort=${port}"); fi
   EXTRA_ARGS+=(--set ingress.enabled=false)
 
-  if [ -n "${JWT_SECRET}" ]; then
-    case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
-        add_secret JWT_SECRET "${JWT_SECRET}" ;;
-    esac
-  fi
+  case "$service" in
+    api-gateway|auth-service|document-service|collab-service|admin-service)
+      if [ -z "${JWT_SECRET:-}" ]; then
+        echo "ERROR: JWT_SECRET is required for ${service}" >&2
+        return 1
+      fi
+      add_secret JWT_SECRET "${JWT_SECRET}" ;;
+  esac
 
   local sns_topic=""; local sqs_notif=""
   if [ "${T_WIRE_EVENTING}" = "true" ]; then
