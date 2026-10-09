@@ -35,8 +35,12 @@ class ApplicationController < ActionController::API
   # `owner` is auth-service's top role; `super_admin` is admin-service's.
   ADMIN_ROLES = %w[admin super_admin owner].freeze
 
+  def admin?
+    ADMIN_ROLES.include?(current_user_role)
+  end
+
   def require_admin!
-    return if ADMIN_ROLES.include?(current_user_role)
+    return if admin?
 
     render json: { error: 'Admin role required' }, status: :forbidden
   end
