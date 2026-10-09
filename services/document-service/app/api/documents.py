@@ -23,7 +23,7 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
-from app.services.document_query_repository import DocumentQueryRepository
+from app.services.document_query_repository import DocumentQueryRepository, InvalidSortError
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
 from app.services.share_link import ShareLinkService
@@ -247,8 +247,11 @@ async def _do_filter_documents(
             limit=size,
             offset=(page - 1) * size,
         )
+    except InvalidSortError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid sort: {exc}") from exc
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid filter: {exc}") from exc
+        logger.warning("document_filter_failed", error_type=type(exc).__name__)
+        raise HTTPException(status_code=400, detail="Invalid filter") from exc
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(row) for row in rows],
         total=total,
