@@ -458,6 +458,12 @@ deploy_service() {
     secret_args=(-f "${secret_file}")
   fi
 
+  # envFrom secrets are read only at pod start: note the current Redis AUTH token
+  # digest so pods can be restarted if a rotated token leaves the pod template unchanged.
+  local redis_pw_before
+  redis_pw_before="$(kubectl get secret -n "${NAMESPACE}" "${service}-secrets" \
+    -o jsonpath='{.data.REDIS_PASSWORD}' 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+
   log "Deploying ${service} via Helm..."
   helm upgrade --install "${service}" "${chart_dir}" \
     --namespace "${NAMESPACE}" \
@@ -470,6 +476,16 @@ deploy_service() {
     && local rc=0 || local rc=1
   [ -n "${secret_file}" ] && rm -f "${secret_file}"
   if [ "${rc}" -ne 0 ]; then warn "Helm deploy failed for ${service}"; return 1; fi
+
+  local redis_pw_after
+  redis_pw_after="$(kubectl get secret -n "${NAMESPACE}" "${service}-secrets" \
+    -o jsonpath='{.data.REDIS_PASSWORD}' 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+  if [ "${redis_pw_before}" != "${redis_pw_after}" ]; then
+    log "Redis AUTH token changed; restarting ${service} to pick it up..."
+    kubectl rollout restart -n "${NAMESPACE}" "deployment/${service}" && \
+      kubectl rollout status -n "${NAMESPACE}" "deployment/${service}" --timeout=180s || \
+      warn "Restart after Redis token change failed for ${service}"
+  fi
 }
 
 # MeiliSearch is the search-service backend. The IaC provisions it on ECS, but the
