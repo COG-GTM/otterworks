@@ -27,17 +27,24 @@ module Api
           end
 
           redis_key = "chaos:#{svc}:#{scenario}"
-          redis.setex(redis_key, CHAOS_TTL_SECONDS, '1')
+          # NX: a repeat trigger must not extend an active chaos window.
+          newly_set = redis.set(redis_key, '1', nx: true, ex: CHAOS_TTL_SECONDS)
+          expires_in = newly_set ? CHAOS_TTL_SECONDS : remaining_ttl(redis_key)
 
-          # Start background probe to generate traffic → Prometheus metrics → Grafana alert
+          # Start background probe to generate traffic → Prometheus metrics → Grafana alert.
+          # No-op if a probe for this service is already running.
           ChaosProbeService.start(service: svc, redis_key: redis_key)
 
-          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          if newly_set
+            Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          else
+            Rails.logger.info("CHAOS ALREADY ACTIVE: #{redis_key} (#{expires_in}s left)")
+          end
 
           render json: {
             status:     'chaos_active',
             key:        redis_key,
-            expires_in: CHAOS_TTL_SECONDS,
+            expires_in: expires_in,
           }
         end
 
@@ -74,6 +81,11 @@ module Api
             url = ServiceEnv.redis_url
             Redis.new(url: url, timeout: 2)
           end
+        end
+
+        def remaining_ttl(redis_key)
+          ttl = redis.ttl(redis_key)
+          ttl.positive? ? ttl : CHAOS_TTL_SECONDS
         end
 
         def verify_chaos_secret

@@ -42,19 +42,58 @@ class ChaosProbeService
     },
   }.freeze
 
-  # Starts a background probe thread for the given service.
-  # The thread self-terminates when the Redis key no longer exists.
-  def self.start(service:, redis_key:)
-    probe_config = SERVICE_PROBES[service]
-    return unless probe_config
+  # Upper bound on live probe threads across all services. With one probe per
+  # service this is never reached in normal use; it is a backstop.
+  MAX_CONCURRENT_PROBES = SERVICE_PROBES.size
 
-    Thread.new do
-      Thread.current.report_on_exception = true
+  @probes = {}
+  @probes_mutex = Mutex.new
+
+  class << self
+    # Starts a background probe thread for the given service unless one is
+    # already running for it or the global cap is reached. The thread
+    # self-terminates when the Redis key no longer exists.
+    # Returns :started, :already_running, :at_capacity, or nil (unknown service).
+    def start(service:, redis_key:)
+      probe_config = SERVICE_PROBES[service]
+      return unless probe_config
+
+      @probes_mutex.synchronize do
+        @probes.select! { |_, thread| thread.alive? }
+        return :already_running if @probes.key?(service)
+
+        if @probes.size >= MAX_CONCURRENT_PROBES
+          Rails.logger.warn("[ChaosProbe] Not starting #{service}: #{@probes.size} probes already running")
+          return :at_capacity
+        end
+
+        @probes[service] = spawn_probe(service, redis_key, probe_config)
+      end
+      :started
+    end
+
+    def running?(service)
+      @probes_mutex.synchronize { @probes[service]&.alive? || false }
+    end
+
+    def running_count
+      @probes_mutex.synchronize { @probes.count { |_, thread| thread.alive? } }
+    end
+
+    private
+
+    def spawn_probe(service, redis_key, probe_config)
+      Thread.new do
+        Thread.current.report_on_exception = true
+        run_probe(service, redis_key, probe_config)
+      ensure
+        release(service, Thread.current)
+      end
+    end
+
+    def run_probe(service, redis_key, probe_config)
       Rails.logger.info("[ChaosProbe] Started for #{service}")
-      redis = Redis.new(
-        url: ServiceEnv.redis_url,
-        timeout: 2
-      )
+      redis = Redis.new(url: ServiceEnv.redis_url, timeout: 2)
 
       iterations = 0
       loop do
@@ -70,6 +109,10 @@ class ChaosProbeService
       Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
     ensure
       redis&.close
+    end
+
+    def release(service, thread)
+      @probes_mutex.synchronize { @probes.delete(service) if @probes[service].equal?(thread) }
     end
   end
 
