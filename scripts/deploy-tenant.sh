@@ -67,8 +67,6 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
-# Keys document-service share-link HMACs; rotating it revokes every share link.
-SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
@@ -113,6 +111,15 @@ log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> exp
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+
+# Share-link HMAC key for document-service. Rotating it revokes every share link,
+# so reuse the key already in the namespace and only generate one on first deploy.
+# Rotate explicitly by passing SHARE_LINK_SECRET=... and restarting document-service.
+if [ -z "${SHARE_LINK_SECRET:-}" ]; then
+  SHARE_LINK_SECRET="$(kubectl -n "${NS}" get secret document-service-secrets \
+    -o jsonpath='{.data.SHARE_LINK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
+SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 

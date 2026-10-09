@@ -29,8 +29,6 @@ GOLDEN_HOST_SUFFIX="${GOLDEN_HOST_SUFFIX:-otterworks.app}"
 # service that validates tokens. Generated once if not supplied; pass a stable
 # value (JWT_SECRET=...) across redeploys so previously issued tokens stay valid.
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
-# Keys document-service share-link HMACs; rotating it revokes every share link.
-SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 # Rails (admin-service) session key. Stable value recommended across redeploys.
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
@@ -130,6 +128,15 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 
 log "Ensuring namespace ${NAMESPACE} exists..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+
+# Share-link HMAC key for document-service. Rotating it revokes every share link,
+# so reuse the key already in the namespace and only generate one on first deploy.
+# Rotate explicitly by passing SHARE_LINK_SECRET=... and restarting document-service.
+if [ -z "${SHARE_LINK_SECRET:-}" ]; then
+  SHARE_LINK_SECRET="$(kubectl -n "${NAMESPACE}" get secret document-service-secrets \
+    -o jsonpath='{.data.SHARE_LINK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+fi
+SHARE_LINK_SECRET="${SHARE_LINK_SECRET:-$(openssl rand -hex 32)}"
 
 # ---------- Step 4b: Shared ingress controller ----------
 
