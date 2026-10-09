@@ -11,6 +11,7 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -32,7 +33,7 @@ module Api
           # Start background probe to generate traffic → Prometheus metrics → Grafana alert
           ChaosProbeService.start(service: svc, redis_key: redis_key)
 
-          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s) by #{current_user_id}")
 
           render json: {
             status:     'chaos_active',
@@ -62,7 +63,7 @@ module Api
             end
           end
 
-          Rails.logger.warn("CHAOS RESET: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
+          Rails.logger.warn("CHAOS RESET by #{current_user_id}: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
 
           render json: { status: 'reset', cleared: keys, resolved_incidents: resolved_incidents }
         end
@@ -76,9 +77,11 @@ module Api
           end
         end
 
+        # Optional second factor for scripted callers. The admin JWT is always
+        # required; when CHAOS_SECRET is set the header must match it too.
         def verify_chaos_secret
-          expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          expected = ENV.fetch('CHAOS_SECRET', nil).to_s
+          return if expected.empty?
 
           provided = request.headers['X-Chaos-Secret']
           return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
