@@ -83,3 +83,15 @@ def test_local_env_generates_random_secrets_once(tmp_path: Path) -> None:
     other = tmp_path / "other.env"
     run_local_env(other)
     assert read_env(other)["JWT_SECRET"] != first["JWT_SECRET"]
+
+
+def test_local_env_replaces_a_previously_published_default(tmp_path: Path) -> None:
+    published = "otterworks-local-dev-jwt-secret-change-me-in-production"
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"JWT_SECRET={published}\nSECRET_KEY_BASE=kept-local-value\n")
+
+    run_local_env(env_file)
+    values = read_env(env_file)
+    assert re.fullmatch(r"[0-9a-f]{128}", values["JWT_SECRET"])
+    assert values["SECRET_KEY_BASE"] == "kept-local-value"
+    assert env_file.read_text().count("JWT_SECRET=") == 1
