@@ -93,13 +93,25 @@ impl S3Client {
         Ok(body.into_bytes())
     }
 
-    /// Generate a presigned download URL.
+    /// Generate a presigned URL that downloads the object as `file_name`.
     pub async fn presigned_download_url(
         &self,
         key: &str,
         expires_in_secs: u64,
+        file_name: &str,
     ) -> Result<String, ServiceError> {
-        self.presigned_get_url(key, expires_in_secs, None).await
+        let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
+            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+        let presigned = self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .response_content_disposition(crate::preview::attachment_disposition(file_name))
+            .presigned(presigning)
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("presign failed: {e}")))?;
+        Ok(presigned.uri().to_string())
     }
 
     /// Generate a presigned URL that the browser renders inline with the given

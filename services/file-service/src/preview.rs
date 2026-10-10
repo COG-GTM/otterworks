@@ -62,6 +62,32 @@ fn extension(file_name: &str) -> Option<String> {
     }
 }
 
+/// `Content-Disposition` that forces a download under the original file name.
+pub fn attachment_disposition(file_name: &str) -> String {
+    let base = file_name.rsplit('/').next().unwrap_or(file_name);
+    let ascii: String = base
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || "._- ".contains(c) {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let encoded: String = base
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || b"._-".contains(&b) {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}")
+}
+
 /// Bytes of the object needed by [`looks_like_mpeg_ts`].
 pub const SNIFF_LEN: usize = 189;
 
@@ -246,6 +272,18 @@ mod tests {
         assert_eq!(
             resolve_mime_type("video/mp2t", "main.ts", Some(source)),
             "application/typescript"
+        );
+    }
+
+    #[test]
+    fn attachment_disposition_keeps_name_and_escapes_unsafe_chars() {
+        assert_eq!(
+            attachment_disposition("photo.png"),
+            "attachment; filename=\"photo.png\"; filename*=UTF-8''photo.png"
+        );
+        assert_eq!(
+            attachment_disposition("a\"b é.txt"),
+            "attachment; filename=\"a_b _.txt\"; filename*=UTF-8''a%22b%20%C3%A9.txt"
         );
     }
 

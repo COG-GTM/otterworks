@@ -427,7 +427,11 @@ pub async fn download_file(
             .await?;
         (url, Some(content_type))
     } else {
-        (s3.presigned_download_url(&file.s3_key, 3600).await?, None)
+        (
+            s3.presigned_download_url(&file.s3_key, 3600, &file.name)
+                .await?,
+            None,
+        )
     };
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
