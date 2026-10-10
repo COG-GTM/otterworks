@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Star, LayoutGrid, List } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { FileCard } from "@/components/files/file-card";
+import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { DocumentCard } from "@/components/documents/document-card";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -25,6 +26,7 @@ export default function StarredPage() {
 }
 
 function StarredContent() {
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const { viewMode, setViewMode } = useUIStore();
   const { user, isLoading: authLoading } = useAuthStore();
   const queryClient = useQueryClient();
@@ -138,6 +140,7 @@ function StarredContent() {
                   <FileCard
                     key={file.id}
                     file={file}
+                    onPreview={setPreviewFileId}
                     view={viewMode}
                     onStarToggle={handleStarToggle}
                   />
@@ -170,6 +173,13 @@ function StarredContent() {
             </section>
           )}
         </div>
+      )}
+      {previewFileId && (
+        <FilePreviewModal
+          files={files}
+          fileId={previewFileId}
+          onClose={() => setPreviewFileId(null)}
+        />
       )}
     </div>
   );

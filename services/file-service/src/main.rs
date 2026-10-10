@@ -11,6 +11,7 @@ mod handlers;
 mod metadata;
 mod middleware;
 mod models;
+mod preview;
 mod seed;
 mod storage;
 

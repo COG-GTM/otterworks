@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Clock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { FileCard } from "@/components/files/file-card";
+import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { DocumentCard } from "@/components/documents/document-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -54,6 +55,7 @@ export default function RecentPage() {
 }
 
 function RecentContent() {
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const { data: recentFiles, isLoading: filesLoading } = useQuery({
     queryKey: ["files", "recent", "all"],
     queryFn: () => filesApi.getRecent(50),
@@ -128,6 +130,7 @@ function RecentContent() {
                       <FileCard
                         key={`file-${item.data.id}`}
                         file={item.data}
+                        onPreview={setPreviewFileId}
                         view="grid"
                         onDownload={async (id, name) => {
                           try {
@@ -158,6 +161,13 @@ function RecentContent() {
             );
           }
         )}
+      {previewFileId && (
+        <FilePreviewModal
+          files={recentFiles ?? []}
+          fileId={previewFileId}
+          onClose={() => setPreviewFileId(null)}
+        />
+      )}
     </div>
   );
 }

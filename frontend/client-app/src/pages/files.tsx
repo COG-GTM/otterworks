@@ -19,6 +19,7 @@ import {
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/layout/breadcrumb";
 import { FileCard } from "@/components/files/file-card";
+import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { FolderCard } from "@/components/files/folder-card";
 import { FileUploadDropzone } from "@/components/files/file-upload-dropzone";
 import type { FileUploadDropzoneHandle } from "@/components/files/file-upload-dropzone";
@@ -52,6 +53,7 @@ async function runDeletions(
 }
 
 function FileBrowserContent() {
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const folderId = searchParams.get("folder");
   const queryClient = useQueryClient();
@@ -490,6 +492,7 @@ function FileBrowserContent() {
                   <FileCard
                     key={file.id}
                     file={file}
+                    onPreview={setPreviewFileId}
                     view={viewMode}
                     onDelete={(id) => deleteMutation.mutate(id)}
                     onShare={(id) => setShareFileId(id)}
@@ -536,6 +539,13 @@ function FileBrowserContent() {
           />
         );
       })()}
+      {previewFileId && (
+        <FilePreviewModal
+          files={files}
+          fileId={previewFileId}
+          onClose={() => setPreviewFileId(null)}
+        />
+      )}
     </div>
   );
 }

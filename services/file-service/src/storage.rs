@@ -80,14 +80,38 @@ impl S3Client {
         key: &str,
         expires_in_secs: u64,
     ) -> Result<String, ServiceError> {
+        self.presigned_get_url(key, expires_in_secs, None).await
+    }
+
+    /// Generate a presigned URL that the browser renders inline with the given
+    /// Content-Type instead of downloading it.
+    pub async fn presigned_inline_url(
+        &self,
+        key: &str,
+        expires_in_secs: u64,
+        content_type: &str,
+    ) -> Result<String, ServiceError> {
+        self.presigned_get_url(key, expires_in_secs, Some(content_type))
+            .await
+    }
+
+    async fn presigned_get_url(
+        &self,
+        key: &str,
+        expires_in_secs: u64,
+        inline_content_type: Option<&str>,
+    ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
             .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
 
-        let presigned = self
-            .client
-            .get_object()
-            .bucket(&self.bucket)
-            .key(key)
+        let mut request = self.client.get_object().bucket(&self.bucket).key(key);
+        if let Some(content_type) = inline_content_type {
+            request = request
+                .response_content_disposition("inline")
+                .response_content_type(content_type);
+        }
+
+        let presigned = request
             .presigned(presigning)
             .await
             .map_err(|e| ServiceError::S3Error(format!("presign failed: {e}")))?;

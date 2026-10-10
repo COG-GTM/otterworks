@@ -109,6 +109,12 @@ pub struct DownloadResponse {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct DownloadQuery {
+    /// `inline` returns a URL that renders in the browser instead of downloading.
+    pub disposition: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ListFilesQuery {
     pub folder_id: Option<Uuid>,
     pub owner_id: Option<Uuid>,

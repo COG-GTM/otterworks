@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Share2, LayoutGrid, List } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { FileCard } from "@/components/files/file-card";
+import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -22,6 +24,7 @@ export default function SharedPage() {
 }
 
 function SharedContent() {
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const { viewMode, setViewMode } = useUIStore();
 
   const { data, isLoading } = useQuery({
@@ -78,6 +81,7 @@ function SharedContent() {
             <FileCard
               key={file.id}
               file={file}
+              onPreview={setPreviewFileId}
               view={viewMode}
               onDownload={async (id, name) => {
                 try {
@@ -97,6 +101,13 @@ function SharedContent() {
             />
           ))}
         </div>
+      )}
+      {previewFileId && (
+        <FilePreviewModal
+          files={files}
+          fileId={previewFileId}
+          onClose={() => setPreviewFileId(null)}
+        />
       )}
     </div>
   );
