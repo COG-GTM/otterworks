@@ -26,7 +26,7 @@ const TEXT_MIME_TYPES = new Set([
 const EXTENSION_KINDS: Record<string, PreviewKind> = {
   // images
   png: "image", jpg: "image", jpeg: "image", gif: "image", webp: "image",
-  bmp: "image", svg: "image", ico: "image", avif: "image",
+  bmp: "image", ico: "image", avif: "image",
   // documents
   pdf: "pdf",
   // video
@@ -38,7 +38,7 @@ const EXTENSION_KINDS: Record<string, PreviewKind> = {
   txt: "text", log: "text", md: "text", markdown: "text", csv: "text", tsv: "text",
   json: "text", xml: "text", yaml: "text", yml: "text", toml: "text", ini: "text",
   cfg: "text", conf: "text", env: "text", properties: "text", html: "text",
-  htm: "text", css: "text", scss: "text", js: "text", mjs: "text", cjs: "text",
+  htm: "text", svg: "text", css: "text", scss: "text", js: "text", mjs: "text", cjs: "text",
   jsx: "text", ts: "text", tsx: "text", py: "text", rb: "text", go: "text",
   rs: "text", java: "text", kt: "text", c: "text", h: "text", cpp: "text",
   hpp: "text", cs: "text", php: "text", swift: "text", scala: "text", sql: "text",
@@ -55,6 +55,8 @@ function extensionOf(fileName: string): string {
 function kindFromMime(mimeType: string): PreviewKind {
   const mime = mimeType.split(";")[0].trim().toLowerCase();
   if (mime === "application/pdf") return "pdf";
+  // SVG is served as plain text (it can carry script), so show its source.
+  if (mime === "image/svg+xml") return "text";
   if (mime.startsWith("image/")) return "image";
   if (mime.startsWith("video/")) return "video";
   if (mime.startsWith("audio/")) return "audio";

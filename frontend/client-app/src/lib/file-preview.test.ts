@@ -4,7 +4,7 @@ import { getPreviewKind } from "./file-preview";
 describe("getPreviewKind", () => {
   it.each([
     ["image/png", "photo.png", "image"],
-    ["image/svg+xml", "logo.svg", "image"],
+    ["image/svg+xml", "logo.svg", "text"],
     ["application/pdf", "report.pdf", "pdf"],
     ["video/mp4", "clip.mp4", "video"],
     ["audio/mpeg", "song.mp3", "audio"],

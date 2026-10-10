@@ -66,11 +66,14 @@ fn extension(file_name: &str) -> Option<String> {
 /// case infer it from the file name.
 pub fn resolve_mime_type(content_type: &str, file_name: &str) -> String {
     let declared = content_type.trim().to_ascii_lowercase();
-    if !GENERIC_MIME_TYPES.contains(&declared.as_str()) {
+    let ext = extension(file_name);
+    // Browsers report TypeScript source (`.ts`) as an MPEG transport stream.
+    let mislabeled_source =
+        declared == "video/mp2t" && matches!(ext.as_deref(), Some("ts" | "tsx" | "mts" | "cts"));
+    if !GENERIC_MIME_TYPES.contains(&declared.as_str()) && !mislabeled_source {
         return content_type.trim().to_string();
     }
-    extension(file_name)
-        .and_then(|ext| mime_for_extension(&ext))
+    ext.and_then(|ext| mime_for_extension(&ext))
         .unwrap_or("application/octet-stream")
         .to_string()
 }
@@ -82,8 +85,8 @@ pub fn inline_content_type(mime_type: &str, file_name: &str) -> String {
     let mime = resolve_mime_type(mime_type, file_name).to_ascii_lowercase();
     let essence = mime.split(';').next().unwrap_or("").trim();
 
+    // SVG can carry script, so it is served as text like other markup.
     let renders_natively = essence == "application/pdf"
-        || essence == "image/svg+xml"
         || ((essence.starts_with("image/")
             || essence.starts_with("video/")
             || essence.starts_with("audio/"))
@@ -126,6 +129,11 @@ mod tests {
     #[test]
     fn infers_type_for_generic_uploads() {
         assert_eq!(
+            resolve_mime_type("video/mp2t", "main.ts"),
+            "application/typescript"
+        );
+        assert_eq!(resolve_mime_type("video/mp2t", "clip.m2ts"), "video/mp2t");
+        assert_eq!(
             resolve_mime_type("application/octet-stream", "Report.PDF"),
             "application/pdf"
         );
@@ -144,10 +152,6 @@ mod tests {
             "application/pdf"
         );
         assert_eq!(inline_content_type("image/jpeg", "a.jpg"), "image/jpeg");
-        assert_eq!(
-            inline_content_type("image/svg+xml", "a.svg"),
-            "image/svg+xml"
-        );
         assert_eq!(inline_content_type("video/mp4", "a.mp4"), "video/mp4");
         assert_eq!(inline_content_type("audio/mpeg", "a.mp3"), "audio/mpeg");
         assert_eq!(
@@ -158,6 +162,14 @@ mod tests {
 
     #[test]
     fn inline_downgrades_markup_and_code_to_plain_text() {
+        assert_eq!(
+            inline_content_type("image/svg+xml", "logo.svg"),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(
+            inline_content_type("video/mp2t", "main.ts"),
+            "text/plain; charset=utf-8"
+        );
         let plain = "text/plain; charset=utf-8";
         assert_eq!(inline_content_type("text/html", "index.html"), plain);
         assert_eq!(inline_content_type("application/json", "a.json"), plain);

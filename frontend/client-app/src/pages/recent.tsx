@@ -15,6 +15,8 @@ type RecentItem =
   | { kind: "file"; data: FileItem; updatedAt: string }
   | { kind: "document"; data: Document; updatedAt: string };
 
+const TIME_GROUPS = ["Today", "Yesterday", "This week", "Earlier"] as const;
+
 function groupByTime(items: RecentItem[]): Record<string, RecentItem[]> {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -91,6 +93,14 @@ function RecentContent() {
 
   const totalItems = Object.values(grouped).reduce((s, g) => s + g.length, 0);
 
+  const previewFiles = useMemo(
+    () =>
+      TIME_GROUPS.flatMap((label) => grouped[label] ?? []).flatMap((item) =>
+        item.kind === "file" ? [item.data] : []
+      ),
+    [grouped]
+  );
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Page header */}
@@ -115,7 +125,7 @@ function RecentContent() {
 
       {/* Grouped items */}
       {!isLoading &&
-        (["Today", "Yesterday", "This week", "Earlier"] as const).map(
+        TIME_GROUPS.map(
           (label) => {
             const items = grouped[label];
             if (!items || items.length === 0) return null;
@@ -163,7 +173,7 @@ function RecentContent() {
         )}
       {previewFileId && (
         <FilePreviewModal
-          files={recentFiles ?? []}
+          files={previewFiles}
           fileId={previewFileId}
           onClose={() => setPreviewFileId(null)}
         />

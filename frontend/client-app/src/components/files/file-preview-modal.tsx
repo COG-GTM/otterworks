@@ -42,8 +42,19 @@ export function FilePreviewModal({ files, fileId, onClose }: FilePreviewModalPro
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight") step(1);
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      // Let focused media/form controls keep arrow keys (e.g. seeking).
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target?.closest("video, audio, input, textarea, select")
+      ) {
+        return;
+      }
+      if (e.key === "ArrowRight") step(1);
       else if (e.key === "ArrowLeft") step(-1);
     };
     document.addEventListener("keydown", onKeyDown);
