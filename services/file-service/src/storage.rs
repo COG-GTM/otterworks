@@ -1,3 +1,4 @@
+use aws_sdk_s3::config::ResponseChecksumValidation;
 use aws_sdk_s3::presigning::PresigningConfig;
 use bytes::Bytes;
 use std::time::Duration;
@@ -55,6 +56,32 @@ impl S3Client {
     }
 
     /// Download file content from S3.
+    /// First `len` bytes of an object, for content sniffing.
+    pub async fn read_prefix(&self, key: &str, len: usize) -> Result<Bytes, ServiceError> {
+        let resp = self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .range(format!("bytes=0-{}", len.saturating_sub(1)))
+            // Some S3 backends (LocalStack) return the whole-object checksum on
+            // ranged GETs, which would fail validation against the partial body.
+            .customize()
+            .config_override(
+                aws_sdk_s3::config::Builder::default()
+                    .response_checksum_validation(ResponseChecksumValidation::WhenRequired),
+            )
+            .send()
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("download failed: {e}")))?;
+        let body = resp
+            .body
+            .collect()
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("body read failed: {e}")))?;
+        Ok(body.into_bytes())
+    }
+
     pub async fn download_object(&self, key: &str) -> Result<Bytes, ServiceError> {
         let resp = self
             .client
@@ -74,20 +101,56 @@ impl S3Client {
         Ok(body.into_bytes())
     }
 
-    /// Generate a presigned download URL.
+    /// Generate a presigned URL that downloads the object as `file_name`.
     pub async fn presigned_download_url(
         &self,
         key: &str,
         expires_in_secs: u64,
+        file_name: &str,
     ) -> Result<String, ServiceError> {
         let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
             .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
-
         let presigned = self
             .client
             .get_object()
             .bucket(&self.bucket)
             .key(key)
+            .response_content_disposition(crate::preview::attachment_disposition(file_name))
+            .presigned(presigning)
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("presign failed: {e}")))?;
+        Ok(presigned.uri().to_string())
+    }
+
+    /// Generate a presigned URL that the browser renders inline with the given
+    /// Content-Type instead of downloading it.
+    pub async fn presigned_inline_url(
+        &self,
+        key: &str,
+        expires_in_secs: u64,
+        content_type: &str,
+    ) -> Result<String, ServiceError> {
+        self.presigned_get_url(key, expires_in_secs, Some(content_type))
+            .await
+    }
+
+    async fn presigned_get_url(
+        &self,
+        key: &str,
+        expires_in_secs: u64,
+        inline_content_type: Option<&str>,
+    ) -> Result<String, ServiceError> {
+        let presigning = PresigningConfig::expires_in(Duration::from_secs(expires_in_secs))
+            .map_err(|e| ServiceError::S3Error(format!("presign config error: {e}")))?;
+
+        let mut request = self.client.get_object().bucket(&self.bucket).key(key);
+        if let Some(content_type) = inline_content_type {
+            request = request
+                .response_content_disposition("inline")
+                .response_content_type(content_type);
+        }
+
+        let presigned = request
             .presigned(presigning)
             .await
             .map_err(|e| ServiceError::S3Error(format!("presign failed: {e}")))?;

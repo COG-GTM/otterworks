@@ -1,9 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Clock } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { FileCard } from "@/components/files/file-card";
+import { FilePreviewModal } from "@/components/files/file-preview-modal";
 import { DocumentCard } from "@/components/documents/document-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -13,6 +14,8 @@ import type { FileItem, Document } from "@/types";
 type RecentItem =
   | { kind: "file"; data: FileItem; updatedAt: string }
   | { kind: "document"; data: Document; updatedAt: string };
+
+const TIME_GROUPS = ["Today", "Yesterday", "This week", "Earlier"] as const;
 
 function groupByTime(items: RecentItem[]): Record<string, RecentItem[]> {
   const now = new Date();
@@ -54,6 +57,7 @@ export default function RecentPage() {
 }
 
 function RecentContent() {
+  const [previewFileId, setPreviewFileId] = useState<string | null>(null);
   const { data: recentFiles, isLoading: filesLoading } = useQuery({
     queryKey: ["files", "recent", "all"],
     queryFn: () => filesApi.getRecent(50),
@@ -89,6 +93,14 @@ function RecentContent() {
 
   const totalItems = Object.values(grouped).reduce((s, g) => s + g.length, 0);
 
+  const previewFiles = useMemo(
+    () =>
+      TIME_GROUPS.flatMap((label) => grouped[label] ?? []).flatMap((item) =>
+        item.kind === "file" ? [item.data] : []
+      ),
+    [grouped]
+  );
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Page header */}
@@ -113,7 +125,7 @@ function RecentContent() {
 
       {/* Grouped items */}
       {!isLoading &&
-        (["Today", "Yesterday", "This week", "Earlier"] as const).map(
+        TIME_GROUPS.map(
           (label) => {
             const items = grouped[label];
             if (!items || items.length === 0) return null;
@@ -128,6 +140,7 @@ function RecentContent() {
                       <FileCard
                         key={`file-${item.data.id}`}
                         file={item.data}
+                        onPreview={setPreviewFileId}
                         view="grid"
                         onDownload={async (id, name) => {
                           try {
@@ -158,6 +171,13 @@ function RecentContent() {
             );
           }
         )}
+      {previewFileId && (
+        <FilePreviewModal
+          files={previewFiles}
+          fileId={previewFileId}
+          onClose={() => setPreviewFileId(null)}
+        />
+      )}
     </div>
   );
 }

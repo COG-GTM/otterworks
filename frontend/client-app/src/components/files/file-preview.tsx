@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { File, AlertCircle } from "lucide-react";
+import { File, AlertCircle, Download, Music } from "lucide-react";
+import { getPreviewKind } from "@/lib/file-preview";
 
 const MAX_PREVIEW_SIZE = 500_000; // 500 KB — truncate beyond this
 
@@ -198,4 +199,140 @@ export function ImageFilePreview({ presignedUrl, fileName }: ImageFilePreviewPro
       onError={() => setError(true)}
     />
   );
+}
+
+interface MediaFilePreviewProps {
+  presignedUrl?: string;
+  fileName: string;
+}
+
+export function VideoFilePreview({ presignedUrl, fileName }: MediaFilePreviewProps) {
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setError(false);
+  }, [presignedUrl]);
+
+  if (!presignedUrl || error) {
+    return <PreviewUnavailable message="Video preview not available" />;
+  }
+
+  return (
+    <video
+      src={presignedUrl}
+      controls
+      className="max-w-full max-h-[500px] rounded-lg"
+      aria-label={`Preview of ${fileName}`}
+      onError={() => setError(true)}
+    >
+      <track kind="captions" />
+    </video>
+  );
+}
+
+export function AudioFilePreview({ presignedUrl, fileName }: MediaFilePreviewProps) {
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setError(false);
+  }, [presignedUrl]);
+
+  if (!presignedUrl || error) {
+    return <PreviewUnavailable message="Audio preview not available" />;
+  }
+
+  return (
+    <div className="w-full max-w-md text-center">
+      <Music size={56} className="text-otter-500 mx-auto mb-4" />
+      <audio
+        src={presignedUrl}
+        controls
+        className="w-full"
+        aria-label={`Preview of ${fileName}`}
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+}
+
+function PreviewUnavailable({ message }: Readonly<{ message: string }>) {
+  return (
+    <div className="text-center py-8">
+      <File size={64} className="text-gray-300 mx-auto mb-3" />
+      <p className="text-sm text-gray-500">{message}</p>
+    </div>
+  );
+}
+
+interface UnsupportedFilePreviewProps {
+  mimeType: string;
+  onDownload?: () => void;
+}
+
+export function UnsupportedFilePreview({ mimeType, onDownload }: UnsupportedFilePreviewProps) {
+  return (
+    <div className="text-center py-8" data-testid="preview-unsupported">
+      <File size={64} className="text-gray-300 mx-auto mb-3" />
+      <p className="text-sm font-medium text-gray-700">
+        Preview isn&apos;t available for this file type
+      </p>
+      <p className="text-xs text-gray-400 mt-1">{mimeType || "Unknown type"}</p>
+      {onDownload && (
+        <button
+          onClick={onDownload}
+          className="mt-4 inline-flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+        >
+          <Download size={16} />
+          Download to view
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface FilePreviewProps {
+  fileName: string;
+  mimeType: string;
+  presignedUrl?: string;
+  /** Content-Type the preview URL is served with, when the server reports it. */
+  servedType?: string;
+  isUrlLoading?: boolean;
+  onDownload?: () => void;
+}
+
+/** Renders the right inline preview for any stored file, with a fallback for unsupported types. */
+export function FilePreview({
+  fileName,
+  mimeType,
+  presignedUrl,
+  servedType,
+  isUrlLoading = false,
+  onDownload,
+}: FilePreviewProps) {
+  const kind = getPreviewKind(mimeType, fileName, servedType);
+
+  if (kind === "unsupported") {
+    return <UnsupportedFilePreview mimeType={mimeType} onDownload={onDownload} />;
+  }
+
+  if (isUrlLoading) {
+    return (
+      <div className="w-full text-center py-8">
+        <div className="w-6 h-6 border-2 border-otter-600 border-t-transparent rounded-full animate-spin mx-auto" />
+      </div>
+    );
+  }
+
+  switch (kind) {
+    case "image":
+      return <ImageFilePreview presignedUrl={presignedUrl} fileName={fileName} />;
+    case "video":
+      return <VideoFilePreview presignedUrl={presignedUrl} fileName={fileName} />;
+    case "audio":
+      return <AudioFilePreview presignedUrl={presignedUrl} fileName={fileName} />;
+    case "pdf":
+      return <PdfFilePreview presignedUrl={presignedUrl} />;
+    case "text":
+      return <TextFilePreview presignedUrl={presignedUrl} fileName={fileName} />;
+  }
 }

@@ -106,6 +106,15 @@ pub struct UploadResponse {
 pub struct DownloadResponse {
     pub url: String,
     pub expires_in_secs: u64,
+    /// Content-Type the inline URL is served with (inline requests only).
+    #[serde(rename = "contentType", skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DownloadQuery {
+    /// `inline` returns a URL that renders in the browser instead of downloading.
+    pub disposition: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

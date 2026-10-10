@@ -16,6 +16,7 @@ import {
   Check,
   X,
   Star,
+  Eye,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { FileItem } from "@/types";
@@ -50,6 +51,7 @@ interface FileCardProps {
   onShare?: (id: string) => void;
   onRename?: (id: string, name: string) => void;
   onDownload?: (id: string, name: string) => void;
+  onPreview?: (id: string) => void;
   view?: "grid" | "list";
   selected?: boolean;
   onSelect?: (id: string) => void;
@@ -63,6 +65,7 @@ export function FileCard({
   onShare,
   onRename,
   onDownload,
+  onPreview,
   view = "grid",
   selected = false,
   onSelect,
@@ -88,6 +91,12 @@ export function FileCard({
     setStarred(nowStarred);
     onStarToggle?.();
   }, [userId, file.id, file.isFolder, onStarToggle]);
+  const canPreview = !file.isFolder && !!onPreview;
+  const handlePreviewClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onPreview?.(file.id);
+  }, [onPreview, file.id]);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(file.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +175,16 @@ export function FileCard({
             {file.isFolder ? "\u2014" : formatFileSize(file.size)}
           </span>
         </Link>
+        {canPreview && (
+          <button
+            onClick={handlePreviewClick}
+            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition flex-shrink-0"
+            aria-label={`Preview ${file.name}`}
+            title="Preview"
+          >
+            <Eye size={16} />
+          </button>
+        )}
         <button
           onClick={handleStarClick}
           className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
@@ -195,6 +214,7 @@ export function FileCard({
               onShare={onShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
               onDownload={onDownload}
+              onPreview={onPreview}
             />
           )}
         </div>
@@ -223,6 +243,16 @@ export function FileCard({
             <Icon size={24} className="text-otter-600" />
           </div>
           <div className="flex items-center gap-1">
+            {canPreview && (
+              <button
+                onClick={handlePreviewClick}
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+                aria-label={`Preview ${file.name}`}
+                title="Preview"
+              >
+                <Eye size={16} />
+              </button>
+            )}
             <button
               onClick={handleStarClick}
               className="p-1 rounded hover:bg-gray-100 transition"
@@ -251,6 +281,7 @@ export function FileCard({
                   onDelete={onDelete}
                   onShare={onShare}
                   onDownload={onDownload}
+                  onPreview={onPreview}
                   onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
                 />
               )}
@@ -293,6 +324,7 @@ function FileMenu({
   onShare,
   onRename,
   onDownload,
+  onPreview,
 }: {
   file: FileItem;
   onClose: () => void;
@@ -300,11 +332,26 @@ function FileMenu({
   onShare?: (id: string) => void;
   onRename?: () => void;
   onDownload?: (id: string, name: string) => void;
+  onPreview?: (id: string) => void;
 }) {
   return (
     <>
       <div className="fixed inset-0 z-10" onClick={onClose} />
       <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+        {!file.isFolder && onPreview && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onPreview(file.id);
+              onClose();
+            }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <Eye size={14} />
+            Preview
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.preventDefault();

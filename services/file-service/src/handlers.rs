@@ -17,12 +17,13 @@ use crate::events::EventPublisher;
 use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
-    ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
-    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadQuery,
+    DownloadResponse, FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder,
+    HealthResponse, ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse,
+    ListVersionsResponse, MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse,
+    UpdateFolderRequest, UploadResponse,
 };
+use crate::preview;
 use crate::storage::S3Client;
 
 // -- Health & Metrics --
@@ -142,6 +143,11 @@ pub async fn upload_file(
         return Err(ServiceError::BadRequest("file field is required".into()));
     }
 
+    let content_type = preview::resolve_mime_type(
+        &content_type,
+        &file_name,
+        Some(&file_bytes[..file_bytes.len().min(preview::SNIFF_LEN)]),
+    );
     let file_id = Uuid::new_v4();
     let s3_key = format!("files/{}/{}", owner, file_id);
     let now = Utc::now();
@@ -396,6 +402,7 @@ pub async fn download_file(
     s3: web::Data<S3Client>,
     meta: web::Data<MetadataClient>,
     path: web::Path<String>,
+    query: web::Query<DownloadQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let file_id: Uuid = path
         .into_inner()
@@ -403,11 +410,41 @@ pub async fn download_file(
         .map_err(|e| ServiceError::BadRequest(format!("invalid file id: {e}")))?;
 
     let file = meta.get_file(&file_id).await?;
-    let url = s3.presigned_download_url(&file.s3_key, 3600).await?;
+    let inline = query
+        .disposition
+        .as_deref()
+        .is_some_and(|d| d.eq_ignore_ascii_case("inline"));
+    let (url, content_type) = if inline {
+        let content_type = if preview::is_ambiguous_ts(&file.mime_type, &file.name) {
+            match s3.read_prefix(&file.s3_key, preview::SNIFF_LEN).await {
+                Ok(prefix) => {
+                    preview::inline_content_type(&file.mime_type, &file.name, Some(&prefix))
+                }
+                // Without the content we can't tell source from video; keep the stored type.
+                Err(e) => {
+                    tracing::warn!(file_id = %file_id, error = %e, "content sniff failed");
+                    file.mime_type.clone()
+                }
+            }
+        } else {
+            preview::inline_content_type(&file.mime_type, &file.name, None)
+        };
+        let url = s3
+            .presigned_inline_url(&file.s3_key, 3600, &content_type)
+            .await?;
+        (url, Some(content_type))
+    } else {
+        (
+            s3.presigned_download_url(&file.s3_key, 3600, &file.name)
+                .await?,
+            None,
+        )
+    };
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
         url,
         expires_in_secs: 3600,
+        content_type,
     }))
 }
 
