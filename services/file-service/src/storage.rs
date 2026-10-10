@@ -1,3 +1,4 @@
+use aws_sdk_s3::config::ResponseChecksumValidation;
 use aws_sdk_s3::presigning::PresigningConfig;
 use bytes::Bytes;
 use std::time::Duration;
@@ -63,6 +64,13 @@ impl S3Client {
             .bucket(&self.bucket)
             .key(key)
             .range(format!("bytes=0-{}", len.saturating_sub(1)))
+            // Some S3 backends (LocalStack) return the whole-object checksum on
+            // ranged GETs, which would fail validation against the partial body.
+            .customize()
+            .config_override(
+                aws_sdk_s3::config::Builder::default()
+                    .response_checksum_validation(ResponseChecksumValidation::WhenRequired),
+            )
             .send()
             .await
             .map_err(|e| ServiceError::S3Error(format!("download failed: {e}")))?;
