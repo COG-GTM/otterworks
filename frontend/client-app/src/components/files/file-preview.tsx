@@ -294,6 +294,8 @@ interface FilePreviewProps {
   fileName: string;
   mimeType: string;
   presignedUrl?: string;
+  /** Content-Type the preview URL is served with, when the server reports it. */
+  servedType?: string;
   isUrlLoading?: boolean;
   onDownload?: () => void;
 }
@@ -303,10 +305,11 @@ export function FilePreview({
   fileName,
   mimeType,
   presignedUrl,
+  servedType,
   isUrlLoading = false,
   onDownload,
 }: FilePreviewProps) {
-  const kind = getPreviewKind(mimeType, fileName);
+  const kind = getPreviewKind(mimeType, fileName, servedType);
 
   if (kind === "unsupported") {
     return <UnsupportedFilePreview mimeType={mimeType} onDownload={onDownload} />;

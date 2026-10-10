@@ -55,6 +55,25 @@ impl S3Client {
     }
 
     /// Download file content from S3.
+    /// First `len` bytes of an object, for content sniffing.
+    pub async fn read_prefix(&self, key: &str, len: usize) -> Result<Bytes, ServiceError> {
+        let resp = self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .range(format!("bytes=0-{}", len.saturating_sub(1)))
+            .send()
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("download failed: {e}")))?;
+        let body = resp
+            .body
+            .collect()
+            .await
+            .map_err(|e| ServiceError::S3Error(format!("body read failed: {e}")))?;
+        Ok(body.into_bytes())
+    }
+
     pub async fn download_object(&self, key: &str) -> Result<Bytes, ServiceError> {
         let resp = self
             .client

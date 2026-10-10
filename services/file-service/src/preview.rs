@@ -62,14 +62,36 @@ fn extension(file_name: &str) -> Option<String> {
     }
 }
 
+/// Bytes of the object needed by [`looks_like_mpeg_ts`].
+pub const SNIFF_LEN: usize = 189;
+
+/// MPEG transport streams are 188-byte packets that each start with 0x47.
+pub fn looks_like_mpeg_ts(prefix: &[u8]) -> bool {
+    prefix.first() == Some(&0x47) && prefix.get(188).is_none_or(|b| *b == 0x47)
+}
+
+/// Browsers report TypeScript source (`.ts`) as `video/mp2t`, the same type as
+/// a real MPEG transport stream; only the content can tell them apart.
+pub fn is_ambiguous_ts(content_type: &str, file_name: &str) -> bool {
+    content_type.trim().eq_ignore_ascii_case("video/mp2t")
+        && matches!(
+            extension(file_name).as_deref(),
+            Some("ts" | "tsx" | "mts" | "cts")
+        )
+}
+
 /// Keep the client-supplied MIME type unless it is missing/generic, in which
-/// case infer it from the file name.
-pub fn resolve_mime_type(content_type: &str, file_name: &str) -> String {
+/// case infer it from the file name. `content_prefix` (the first
+/// [`SNIFF_LEN`] bytes) disambiguates `.ts` source from MPEG-TS video.
+pub fn resolve_mime_type(
+    content_type: &str,
+    file_name: &str,
+    content_prefix: Option<&[u8]>,
+) -> String {
     let declared = content_type.trim().to_ascii_lowercase();
     let ext = extension(file_name);
-    // Browsers report TypeScript source (`.ts`) as an MPEG transport stream.
     let mislabeled_source =
-        declared == "video/mp2t" && matches!(ext.as_deref(), Some("ts" | "tsx" | "mts" | "cts"));
+        is_ambiguous_ts(content_type, file_name) && !content_prefix.is_some_and(looks_like_mpeg_ts);
     if !GENERIC_MIME_TYPES.contains(&declared.as_str()) && !mislabeled_source {
         return content_type.trim().to_string();
     }
@@ -81,8 +103,12 @@ pub fn resolve_mime_type(content_type: &str, file_name: &str) -> String {
 /// Content-Type to serve when a file is previewed inline. Media types the
 /// browser renders natively pass through; markup and other text-like types
 /// are downgraded to `text/plain` so the object can never execute as a page.
-pub fn inline_content_type(mime_type: &str, file_name: &str) -> String {
-    let mime = resolve_mime_type(mime_type, file_name).to_ascii_lowercase();
+pub fn inline_content_type(
+    mime_type: &str,
+    file_name: &str,
+    content_prefix: Option<&[u8]>,
+) -> String {
+    let mime = resolve_mime_type(mime_type, file_name, content_prefix).to_ascii_lowercase();
     let essence = mime.split(';').next().unwrap_or("").trim();
 
     // SVG can carry script, so it is served as text like other markup.
@@ -123,24 +149,30 @@ mod tests {
 
     #[test]
     fn keeps_specific_declared_type() {
-        assert_eq!(resolve_mime_type("image/png", "photo.bin"), "image/png");
+        assert_eq!(
+            resolve_mime_type("image/png", "photo.bin", None),
+            "image/png"
+        );
     }
 
     #[test]
     fn infers_type_for_generic_uploads() {
         assert_eq!(
-            resolve_mime_type("video/mp2t", "main.ts"),
+            resolve_mime_type("video/mp2t", "main.ts", None),
             "application/typescript"
         );
-        assert_eq!(resolve_mime_type("video/mp2t", "clip.m2ts"), "video/mp2t");
         assert_eq!(
-            resolve_mime_type("application/octet-stream", "Report.PDF"),
+            resolve_mime_type("video/mp2t", "clip.m2ts", None),
+            "video/mp2t"
+        );
+        assert_eq!(
+            resolve_mime_type("application/octet-stream", "Report.PDF", None),
             "application/pdf"
         );
-        assert_eq!(resolve_mime_type("", "main.rs"), "text/plain");
-        assert_eq!(resolve_mime_type("", "Dockerfile"), "text/plain");
+        assert_eq!(resolve_mime_type("", "main.rs", None), "text/plain");
+        assert_eq!(resolve_mime_type("", "Dockerfile", None), "text/plain");
         assert_eq!(
-            resolve_mime_type("application/octet-stream", "archive.unknownext"),
+            resolve_mime_type("application/octet-stream", "archive.unknownext", None),
             "application/octet-stream"
         );
     }
@@ -148,14 +180,20 @@ mod tests {
     #[test]
     fn inline_passes_through_renderable_media() {
         assert_eq!(
-            inline_content_type("application/pdf", "a.pdf"),
+            inline_content_type("application/pdf", "a.pdf", None),
             "application/pdf"
         );
-        assert_eq!(inline_content_type("image/jpeg", "a.jpg"), "image/jpeg");
-        assert_eq!(inline_content_type("video/mp4", "a.mp4"), "video/mp4");
-        assert_eq!(inline_content_type("audio/mpeg", "a.mp3"), "audio/mpeg");
         assert_eq!(
-            inline_content_type("application/octet-stream", "scan.pdf"),
+            inline_content_type("image/jpeg", "a.jpg", None),
+            "image/jpeg"
+        );
+        assert_eq!(inline_content_type("video/mp4", "a.mp4", None), "video/mp4");
+        assert_eq!(
+            inline_content_type("audio/mpeg", "a.mp3", None),
+            "audio/mpeg"
+        );
+        assert_eq!(
+            inline_content_type("application/octet-stream", "scan.pdf", None),
             "application/pdf"
         );
     }
@@ -163,27 +201,52 @@ mod tests {
     #[test]
     fn inline_downgrades_markup_and_code_to_plain_text() {
         assert_eq!(
-            inline_content_type("image/svg+xml", "logo.svg"),
+            inline_content_type("image/svg+xml", "logo.svg", None),
             "text/plain; charset=utf-8"
         );
         assert_eq!(
-            inline_content_type("video/mp2t", "main.ts"),
+            inline_content_type("video/mp2t", "main.ts", None),
             "text/plain; charset=utf-8"
         );
         let plain = "text/plain; charset=utf-8";
-        assert_eq!(inline_content_type("text/html", "index.html"), plain);
-        assert_eq!(inline_content_type("application/json", "a.json"), plain);
+        assert_eq!(inline_content_type("text/html", "index.html", None), plain);
         assert_eq!(
-            inline_content_type("application/xhtml+xml", "a.xhtml"),
+            inline_content_type("application/json", "a.json", None),
             plain
         );
-        assert_eq!(inline_content_type("", "lib.py"), plain);
+        assert_eq!(
+            inline_content_type("application/xhtml+xml", "a.xhtml", None),
+            plain
+        );
+        assert_eq!(inline_content_type("", "lib.py", None), plain);
+    }
+
+    #[test]
+    fn mpeg_ts_video_keeps_video_type() {
+        let mut stream = vec![0u8; 376];
+        stream[0] = 0x47;
+        stream[188] = 0x47;
+        let source = b"export const answer: number = 42;\n";
+        assert!(looks_like_mpeg_ts(&stream));
+        assert!(!looks_like_mpeg_ts(source));
+        assert_eq!(
+            resolve_mime_type("video/mp2t", "clip.ts", Some(&stream)),
+            "video/mp2t"
+        );
+        assert_eq!(
+            inline_content_type("video/mp2t", "clip.ts", Some(&stream)),
+            "video/mp2t"
+        );
+        assert_eq!(
+            resolve_mime_type("video/mp2t", "main.ts", Some(source)),
+            "application/typescript"
+        );
     }
 
     #[test]
     fn inline_leaves_binary_types_opaque() {
         assert_eq!(
-            inline_content_type("application/zip", "a.zip"),
+            inline_content_type("application/zip", "a.zip", None),
             "application/octet-stream"
         );
     }

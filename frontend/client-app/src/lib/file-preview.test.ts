@@ -35,4 +35,9 @@ describe("getPreviewKind", () => {
   ])("reports %s (%s) as unsupported", (mime, name) => {
     expect(getPreviewKind(mime, name)).toBe("unsupported");
   });
+
+  it("treats a .ts file the server serves as an MPEG-TS stream as unsupported", () => {
+    expect(getPreviewKind("video/mp2t", "clip.ts", "video/mp2t")).toBe("unsupported");
+    expect(getPreviewKind("video/mp2t", "main.ts", "text/plain; charset=utf-8")).toBe("text");
+  });
 });

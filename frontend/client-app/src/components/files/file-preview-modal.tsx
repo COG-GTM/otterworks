@@ -24,9 +24,9 @@ export function FilePreviewModal({ files, fileId, onClose }: FilePreviewModalPro
 
   useEffect(() => setCurrentId(fileId), [fileId]);
 
-  const { data: previewUrl, isLoading: isUrlLoading } = useQuery({
+  const { data: preview, isLoading: isUrlLoading } = useQuery({
     queryKey: ["files", currentId, "preview-url"],
-    queryFn: () => filesApi.getPreviewUrl(currentId),
+    queryFn: () => filesApi.getPreview(currentId),
     enabled: !!file,
     staleTime: 30 * 60 * 1000,
   });
@@ -146,7 +146,8 @@ export function FilePreviewModal({ files, fileId, onClose }: FilePreviewModalPro
             key={file.id}
             fileName={file.name}
             mimeType={file.mimeType}
-            presignedUrl={previewUrl}
+            presignedUrl={preview?.url}
+                servedType={preview?.contentType}
             isUrlLoading={isUrlLoading}
             onDownload={handleDownload}
           />

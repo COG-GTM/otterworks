@@ -72,7 +72,16 @@ function kindFromMime(mimeType: string): PreviewKind {
 }
 
 /** Decide how a stored file should be previewed, from its MIME type and name. */
-export function getPreviewKind(mimeType: string | undefined, fileName: string): PreviewKind {
+export function getPreviewKind(
+  mimeType: string | undefined,
+  fileName: string,
+  servedType?: string
+): PreviewKind {
+  // The server sniffs ambiguous `.ts` files; a real MPEG-TS stream has no
+  // native browser player.
+  if (servedType?.split(";")[0].trim().toLowerCase() === "video/mp2t") {
+    return "unsupported";
+  }
   const mime = (mimeType ?? "").split(";")[0].trim().toLowerCase();
   if (!GENERIC_MIME_TYPES.has(mime)) {
     return kindFromMime(mime);

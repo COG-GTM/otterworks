@@ -143,7 +143,11 @@ pub async fn upload_file(
         return Err(ServiceError::BadRequest("file field is required".into()));
     }
 
-    let content_type = preview::resolve_mime_type(&content_type, &file_name);
+    let content_type = preview::resolve_mime_type(
+        &content_type,
+        &file_name,
+        Some(&file_bytes[..file_bytes.len().min(preview::SNIFF_LEN)]),
+    );
     let file_id = Uuid::new_v4();
     let s3_key = format!("files/{}/{}", owner, file_id);
     let now = Utc::now();
@@ -410,17 +414,26 @@ pub async fn download_file(
         .disposition
         .as_deref()
         .is_some_and(|d| d.eq_ignore_ascii_case("inline"));
-    let url = if inline {
-        let content_type = preview::inline_content_type(&file.mime_type, &file.name);
-        s3.presigned_inline_url(&file.s3_key, 3600, &content_type)
-            .await?
+    let (url, content_type) = if inline {
+        let prefix = if preview::is_ambiguous_ts(&file.mime_type, &file.name) {
+            s3.read_prefix(&file.s3_key, preview::SNIFF_LEN).await.ok()
+        } else {
+            None
+        };
+        let content_type =
+            preview::inline_content_type(&file.mime_type, &file.name, prefix.as_deref());
+        let url = s3
+            .presigned_inline_url(&file.s3_key, 3600, &content_type)
+            .await?;
+        (url, Some(content_type))
     } else {
-        s3.presigned_download_url(&file.s3_key, 3600).await?
+        (s3.presigned_download_url(&file.s3_key, 3600).await?, None)
     };
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
         url,
         expires_in_secs: 3600,
+        content_type,
     }))
 }
 

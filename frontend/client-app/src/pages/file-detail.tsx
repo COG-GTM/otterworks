@@ -47,9 +47,9 @@ function FileDetailContent() {
     queryFn: () => filesApi.get(fileId),
   });
 
-  const { data: presignedUrl, isLoading: isUrlLoading } = useQuery({
+  const { data: preview, isLoading: isUrlLoading } = useQuery({
     queryKey: ["files", fileId, "preview-url"],
-    queryFn: () => filesApi.getPreviewUrl(fileId),
+    queryFn: () => filesApi.getPreview(fileId),
     enabled: !!file,
     staleTime: 30 * 60 * 1000,
   });
@@ -201,7 +201,8 @@ function FileDetailContent() {
               <FilePreview
                 fileName={file.name}
                 mimeType={file.mimeType}
-                presignedUrl={presignedUrl}
+                presignedUrl={preview?.url}
+                servedType={preview?.contentType}
                 isUrlLoading={isUrlLoading}
               />
             </div>
