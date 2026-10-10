@@ -65,9 +65,10 @@ fn extension(file_name: &str) -> Option<String> {
 /// Bytes of the object needed by [`looks_like_mpeg_ts`].
 pub const SNIFF_LEN: usize = 189;
 
-/// MPEG transport streams are 188-byte packets that each start with 0x47.
+/// MPEG transport streams are whole 188-byte packets that each start with 0x47,
+/// so anything shorter than one packet is never a stream.
 pub fn looks_like_mpeg_ts(prefix: &[u8]) -> bool {
-    prefix.first() == Some(&0x47) && prefix.get(188).is_none_or(|b| *b == 0x47)
+    prefix.len() >= 188 && prefix[0] == 0x47 && prefix.get(188).is_none_or(|b| *b == 0x47)
 }
 
 /// Browsers report TypeScript source (`.ts`) as `video/mp2t`, the same type as
@@ -229,6 +230,11 @@ mod tests {
         let source = b"export const answer: number = 42;\n";
         assert!(looks_like_mpeg_ts(&stream));
         assert!(!looks_like_mpeg_ts(source));
+        assert!(!looks_like_mpeg_ts(b"GetUser();\n"));
+        assert_eq!(
+            resolve_mime_type("video/mp2t", "main.ts", Some(b"GetUser();\n")),
+            "application/typescript"
+        );
         assert_eq!(
             resolve_mime_type("video/mp2t", "clip.ts", Some(&stream)),
             "video/mp2t"
