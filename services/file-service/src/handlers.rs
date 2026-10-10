@@ -415,13 +415,20 @@ pub async fn download_file(
         .as_deref()
         .is_some_and(|d| d.eq_ignore_ascii_case("inline"));
     let (url, content_type) = if inline {
-        let prefix = if preview::is_ambiguous_ts(&file.mime_type, &file.name) {
-            s3.read_prefix(&file.s3_key, preview::SNIFF_LEN).await.ok()
+        let content_type = if preview::is_ambiguous_ts(&file.mime_type, &file.name) {
+            match s3.read_prefix(&file.s3_key, preview::SNIFF_LEN).await {
+                Ok(prefix) => {
+                    preview::inline_content_type(&file.mime_type, &file.name, Some(&prefix))
+                }
+                // Without the content we can't tell source from video; keep the stored type.
+                Err(e) => {
+                    tracing::warn!(file_id = %file_id, error = %e, "content sniff failed");
+                    file.mime_type.clone()
+                }
+            }
         } else {
-            None
+            preview::inline_content_type(&file.mime_type, &file.name, None)
         };
-        let content_type =
-            preview::inline_content_type(&file.mime_type, &file.name, prefix.as_deref());
         let url = s3
             .presigned_inline_url(&file.s3_key, 3600, &content_type)
             .await?;
