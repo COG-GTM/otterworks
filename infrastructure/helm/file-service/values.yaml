@@ -81,3 +81,16 @@ config:
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
 secrets: {}
+
+# OpenTelemetry export to the shared in-cluster collector (installed once per
+# cluster by demo-platform/scripts/install-observability.sh). Off by default.
+# When enabled the pod gets OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME and
+# OTEL_RESOURCE_ATTRIBUTES (incl. the tenant namespace). ServiceMonitor scraping
+# stays under `monitoring:` and is still gated on the monitoring.coreos.com CRDs.
+observability:
+  otel:
+    enabled: false
+    endpoint: http://otel-collector.monitoring.svc.cluster.local:4318
+    protocol: http/protobuf
+    serviceName: ""          # defaults to the chart name
+    resourceAttributes: {}   # extra key=value pairs appended to OTEL_RESOURCE_ATTRIBUTES

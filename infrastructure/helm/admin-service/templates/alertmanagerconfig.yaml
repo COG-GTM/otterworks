@@ -1,0 +1,33 @@
+{{- $alerting := ((.Values.observability | default dict).alerting | default dict) -}}
+{{- if and $alerting.enabled (.Capabilities.APIVersions.Has "monitoring.coreos.com/v1alpha1") -}}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: {{ .Release.Name }}-incidents
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  route:
+    receiver: admin-service-incidents
+    groupBy: [alertname, affected_service]
+    groupWait: {{ $alerting.groupWait | quote }}
+    groupInterval: {{ $alerting.groupInterval | quote }}
+    repeatInterval: {{ $alerting.repeatInterval | quote }}
+    {{- with $alerting.matchers }}
+    matchers:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  receivers:
+    - name: admin-service-incidents
+      webhookConfigs:
+        - url: {{ printf "http://%s.%s.svc.cluster.local:%v%s" .Release.Name .Release.Namespace .Values.service.port $alerting.path | quote }}
+          sendResolved: {{ $alerting.sendResolved }}
+          {{- $secret := $alerting.webhookSecret | default dict }}
+          httpConfig:
+            authorization:
+              type: Bearer
+              credentials:
+                name: {{ required "observability.alerting.webhookSecret.name is required: the ingest endpoint is unauthenticated without ALERT_WEBHOOK_SECRET" $secret.name }}
+                key: {{ $secret.key | default "ALERT_WEBHOOK_SECRET" }}
+{{- end }}

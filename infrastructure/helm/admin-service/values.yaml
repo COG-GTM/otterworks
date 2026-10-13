@@ -59,3 +59,39 @@ config: {}
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
 secrets: {}
+
+# OpenTelemetry export to the shared in-cluster collector (installed once per
+# cluster by demo-platform/scripts/install-observability.sh). Off by default.
+# When enabled the pod gets OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME and
+# OTEL_RESOURCE_ATTRIBUTES (incl. the tenant namespace). ServiceMonitor scraping
+# stays under `monitoring:` and is still gated on the monitoring.coreos.com CRDs.
+observability:
+  otel:
+    enabled: false
+    endpoint: http://otel-collector.monitoring.svc.cluster.local:4318
+    protocol: http/protobuf
+    serviceName: ""          # defaults to the chart name
+    resourceAttributes: {}   # extra key=value pairs appended to OTEL_RESOURCE_ATTRIBUTES
+  # Route this namespace's alerts (from the shared Alertmanager) to this release's
+  # incident webhook, /api/v1/admin/alerts/ingest, which opens incidents and can
+  # trigger Devin triage. Renders an AlertmanagerConfig only when the
+  # monitoring.coreos.com/v1alpha1 CRD exists (same gating as the ServiceMonitor).
+  alerting:
+    enabled: false
+    path: /api/v1/admin/alerts/ingest
+    # Alertmanager matchers (in addition to namespace=<release namespace>, which
+    # the operator enforces). Empty = every alert from this namespace.
+    matchers:
+      - name: severity
+        matchType: "=~"
+        value: critical|warning
+    sendResolved: true
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    # Existing Secret holding ALERT_WEBHOOK_SECRET (sent as a Bearer token, which
+    # admin-service accepts). Empty = no auth header (admin-service allows that
+    # only when ALERT_WEBHOOK_SECRET is unset).
+    webhookSecret:
+      name: ""
+      key: ALERT_WEBHOOK_SECRET

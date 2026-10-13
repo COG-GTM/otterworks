@@ -108,3 +108,10 @@ output "irsa_role_arns" {
   description = "Map of service account name to IAM role ARN"
   value       = module.irsa.role_arns
 }
+
+# --- Observability ---
+
+output "fluent_bit_role_arn" {
+  description = "IRSA role for the shared Fluent Bit DaemonSet (empty unless enable_observability)"
+  value       = try(module.observability[0].fluent_bit_role_arn, "")
+}

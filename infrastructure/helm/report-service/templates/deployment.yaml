@@ -27,6 +27,10 @@ spec:
           ports:
             - containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
+          {{- with include "otterworks.otelEnv" . }}
+          env:
+            {{- . | nindent 12 }}
+          {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config

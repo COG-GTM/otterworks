@@ -39,3 +39,9 @@ variable "meilisearch_master_key" {
   default     = ""
   sensitive   = true
 }
+
+variable "enable_observability" {
+  description = "Create the Fluent Bit IRSA role and extra log groups for the shared observability stack"
+  type        = bool
+  default     = false
+}

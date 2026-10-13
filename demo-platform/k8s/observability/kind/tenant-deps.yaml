@@ -1,0 +1,55 @@
+# Throwaway backing services for the kind validation tenant (stand-ins for the
+# shared RDS + the per-tenant Redis that deploy-tenant.sh provisions on EKS).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otterworks-kind
+  labels:
+    platform/team: otterworks
+    demo/tenant: kind
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: postgres, namespace: otterworks-kind}
+spec:
+  selector: {matchLabels: {app: postgres}}
+  template:
+    metadata: {labels: {app: postgres}}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - {name: POSTGRES_USER, value: otterworks}
+            - {name: POSTGRES_PASSWORD, value: otterworks_dev}
+            - {name: POSTGRES_DB, value: otterworks}
+          ports: [{containerPort: 5432}]
+          readinessProbe:
+            exec: {command: [pg_isready, -U, otterworks]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: postgres, namespace: otterworks-kind}
+spec:
+  selector: {app: postgres}
+  ports: [{port: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: redis, namespace: otterworks-kind}
+spec:
+  selector: {matchLabels: {app: redis}}
+  template:
+    metadata: {labels: {app: redis}}
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports: [{containerPort: 6379}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: redis, namespace: otterworks-kind}
+spec:
+  selector: {app: redis}
+  ports: [{port: 6379}]

@@ -1,0 +1,122 @@
+name: Observability Validate
+
+# Offline checks for the shared observability platform add-ons
+# (demo-platform/k8s/observability) and the per-service OTel/alerting wiring in
+# the Helm charts. Renders and validates only: nothing is installed or applied.
+
+on:
+  pull_request:
+    paths:
+      - 'demo-platform/k8s/observability/**'
+      - 'demo-platform/scripts/install-observability.sh'
+      - 'observability/**'
+      - 'infrastructure/helm/**'
+      - 'infrastructure/terraform/modules/observability/**'
+      - '.github/workflows/observability-validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'demo-platform/k8s/observability/**'
+      - 'demo-platform/scripts/install-observability.sh'
+      - 'observability/**'
+      - 'infrastructure/helm/**'
+      - 'infrastructure/terraform/modules/observability/**'
+      - '.github/workflows/observability-validate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  HELM_VERSION: v3.16.4
+  KUBECONFORM_VERSION: v0.6.7
+  PROMETHEUS_VERSION: 3.5.0
+  CRDS_CATALOG: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+
+jobs:
+  render-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          pip install --quiet pyyaml
+          mkdir -p "$HOME/bin" && echo "$HOME/bin" >> "$GITHUB_PATH"
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" | tar -xz -C /tmp
+          mv /tmp/linux-amd64/helm "$HOME/bin/helm"
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar -xz -C "$HOME/bin" kubeconform
+          curl -fsSL "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" | tar -xz -C /tmp
+          mv "/tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" "$HOME/bin/promtool"
+
+      - name: Generated PrometheusRules / dashboards are in sync with observability/
+        run: python3 demo-platform/k8s/observability/generate.py --check
+
+      - name: promtool check rules (ported alert + recording rules)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import yaml
+          docs = [d for d in yaml.safe_load_all(open("demo-platform/k8s/observability/generated/prometheus-rules.yaml")) if d]
+          for d in docs:  # one file per CR: Prometheus loads each PrometheusRule as its own rule file
+              yaml.safe_dump({"groups": d["spec"]["groups"]}, open(f"/tmp/rules-{d['metadata']['name']}.yml", "w"))
+          PY
+          promtool check rules /tmp/rules-*.yml
+
+      - name: Render platform add-ons (kind + dev overlays)
+        run: |
+          set -euo pipefail
+          for env in kind dev; do
+            bash demo-platform/scripts/install-observability.sh --env "$env" --template "/tmp/render-$env"
+          done
+
+      - name: kubeconform platform add-ons + generated CRs
+        run: |
+          set -euo pipefail
+          kubeconform -strict -summary -ignore-missing-schemas=false \
+            -schema-location default -schema-location "$CRDS_CATALOG" \
+            -skip CustomResourceDefinition \
+            /tmp/render-kind /tmp/render-dev demo-platform/k8s/observability/generated
+
+      - name: No LoadBalancer Services in the observability stack
+        run: |
+          if grep -rn "type: LoadBalancer" /tmp/render-kind /tmp/render-dev; then
+            echo "::error::observability must be ClusterIP behind the shared ingress-nginx (AGENTS.md)"; exit 1
+          fi
+
+      - name: Service charts render with observability off (default) and on
+        run: |
+          set -euo pipefail
+          for chart in infrastructure/helm/*/; do
+            name=$(basename "$chart")
+            helm lint "$chart" --set image.tag=ci --set observability.otel.enabled=true >/dev/null
+            off=$(helm template "$name" "$chart" --namespace otterworks-ci --set image.tag=ci)
+            if grep -q OTEL_EXPORTER_OTLP_ENDPOINT <<<"$off"; then
+              echo "::error::$name injects OTel env with observability disabled"; exit 1
+            fi
+            helm template "$name" "$chart" --namespace otterworks-ci --set image.tag=ci \
+              --api-versions monitoring.coreos.com/v1 --api-versions monitoring.coreos.com/v1alpha1 \
+              --set observability.otel.enabled=true --set observability.alerting.enabled=true \
+              --set observability.alerting.webhookSecret.name=ci-secrets \
+              > "/tmp/chart-$name.yaml"
+            grep -q 'value: "http://otel-collector.monitoring.svc.cluster.local:4318"' "/tmp/chart-$name.yaml" \
+              || { echo "::error::$name does not inject the collector endpoint when enabled"; exit 1; }
+          done
+          kubeconform -strict -summary -schema-location default -schema-location "$CRDS_CATALOG" /tmp/chart-*.yaml
+
+  terraform-observability-module:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure/terraform/modules/observability
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.7.0
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
