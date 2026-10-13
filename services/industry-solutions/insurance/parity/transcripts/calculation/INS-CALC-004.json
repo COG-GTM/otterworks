@@ -1,0 +1,22 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06",
+    "policy_id": 42
+  },
+  "module": "calculation",
+  "outcome": {
+    "message": "Unknown policy: 42",
+    "ora_code": -20005,
+    "status": "error"
+  },
+  "probes": {},
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-CALC-004",
+  "scenario_sha": "159245e7306e9d476cbb080ae9783d3ac3ff7f447fd1ecdd9e8a9385550ee85c",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

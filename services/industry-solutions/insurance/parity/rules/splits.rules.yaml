@@ -1,0 +1,109 @@
+module: splits
+rules:
+- id: INS-SPLIT-001
+  statement: The policy must exist (-20005).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 203
+    - 217
+  confidence: high
+  scenarios:
+  - INS-SPLIT-007
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-002
+  statement: At least one split allocation is required (-20006).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 218
+    - 221
+  confidence: high
+  scenarios:
+  - INS-SPLIT-004
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-003
+  statement: An agent may appear only once in an allocation (-20006).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 222
+    - 226
+  confidence: high
+  scenarios:
+  - INS-SPLIT-003
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-004
+  statement: Each split must be in (0, 100] (-20006).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 227
+    - 236
+  confidence: high
+  scenarios:
+  - INS-SPLIT-006
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-005
+  statement: Each split agent must exist and be ACTIVE (-20002/-20003).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 227
+    - 236
+  confidence: high
+  scenarios:
+  - INS-SPLIT-005
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-006
+  statement: Raw split values must total exactly 100 (message uses Oracle number text); storage rounds to cents.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 237
+    - 243
+  confidence: high
+  scenarios:
+  - INS-SPLIT-002
+  - INS-SPLIT-008
+  - INS-SPLIT-009
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-SPLIT-007
+  statement: A valid allocation replaces the previous one and is audited.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 244
+    - 257
+  confidence: high
+  scenarios:
+  - INS-SPLIT-001
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.

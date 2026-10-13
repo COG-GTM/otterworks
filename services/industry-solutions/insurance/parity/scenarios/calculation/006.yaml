@@ -1,0 +1,20 @@
+id: INS-CALC-006
+module: calculation
+description: Rate resolved as of the last day of the period.
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 4
+  period_month: 2025-07
+setup:
+- entrypoint: commission_pkg.upsert_commission_rate
+  inputs:
+    product_code: AUTO-STD
+    agent_id: null
+    rate_pct: '9'
+    effective_from: '2025-07-31'
+probes:
+- probe: ledger
+  params:
+    policy_id: 4
+    period_month: 2025-07

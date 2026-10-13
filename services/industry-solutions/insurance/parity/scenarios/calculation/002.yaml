@@ -1,0 +1,26 @@
+id: INS-CALC-002
+module: calculation
+description: Recalculation after a split change replaces rows (legacy T9).
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 4
+  period_month: 2025-06
+setup:
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 4
+    period_month: 2025-06
+- entrypoint: commission_pkg.set_commission_splits
+  inputs:
+    policy_id: 4
+    splits:
+    - agent_id: 2
+      split_pct: '100'
+probes:
+- probe: ledger
+  params:
+    policy_id: 4
+    period_month: 2025-06
+- probe: audit
+  params: {}

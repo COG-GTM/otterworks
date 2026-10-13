@@ -1,0 +1,21 @@
+id: INS-RATES-016
+module: rates
+description: Backdated rate behind a later open rate rejected.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: HOME-PLUS
+  agent_id: null
+  rate_pct: '12'
+  effective_from: '2029-01-01'
+setup:
+- entrypoint: commission_pkg.upsert_commission_rate
+  inputs:
+    product_code: HOME-PLUS
+    agent_id: null
+    rate_pct: '11'
+    effective_from: '2030-01-01'
+probes:
+- probe: rates
+  params:
+    product_code: HOME-PLUS

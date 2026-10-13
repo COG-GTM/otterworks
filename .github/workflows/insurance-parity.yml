@@ -1,0 +1,50 @@
+name: Insurance commission parity
+
+on:
+  push:
+    paths:
+      - "services/industry-solutions/insurance/**"
+      - "docker-compose.commission.yml"
+      - "docker-compose.insurance.yml"
+      - ".github/workflows/insurance-parity.yml"
+  pull_request:
+    paths:
+      - "services/industry-solutions/insurance/**"
+      - "docker-compose.commission.yml"
+      - "docker-compose.insurance.yml"
+      - ".github/workflows/insurance-parity.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    env:
+      NS: ci
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          version: latest
+      - name: Frozen Oracle fixture is unchanged since transcripts were recorded
+        run: make commission-rules-gate
+      - name: commission-service lint, types and unit tests
+        run: make commission-test
+      - name: Parity harness lint and tests
+        working-directory: services/industry-solutions/insurance/parity
+        run: |
+          uv run --with-requirements harness/requirements.txt ruff check harness
+          uv run --with-requirements harness/requirements.txt python -m pytest harness/tests -q
+      - run: make commission-up NS=ci
+      - name: HTTP edge, role and tenant-isolation tests (real Postgres, RLS)
+        run: make commission-integration NS=ci
+      - name: Replay Oracle PL/SQL transcripts against commission-service
+        run: make commission-parity NS=ci
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: insurance-commission-parity-report
+          path: services/industry-solutions/insurance/parity/reports/parity.*
+      - if: always()
+        run: make commission-down NS=ci

@@ -1,0 +1,13 @@
+id: INS-CALC-007
+module: calculation
+description: No rate in force for the period rolls back the whole calculation.
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 4
+  period_month: 2023-06
+probes:
+- probe: ledger
+  params:
+    policy_id: 4
+    period_month: 2023-06

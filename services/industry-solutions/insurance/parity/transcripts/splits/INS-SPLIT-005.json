@@ -1,0 +1,48 @@
+{
+  "actor": "splits-parity@otterworks.test",
+  "entrypoint": "commission_pkg.set_commission_splits",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "policy_id": 2,
+    "splits": [
+      {
+        "agent_id": 1,
+        "split_pct": "50"
+      },
+      {
+        "agent_id": 4,
+        "split_pct": "50"
+      }
+    ]
+  },
+  "module": "splits",
+  "outcome": {
+    "message": "Agent 4 is SUSPENDED",
+    "ora_code": -20003,
+    "status": "error"
+  },
+  "probes": {
+    "splits:0": {
+      "params": {
+        "policy_id": 2
+      },
+      "probe": "splits",
+      "rows": [
+        {
+          "agent_id": 1,
+          "split_pct": "60"
+        },
+        {
+          "agent_id": 2,
+          "split_pct": "40"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-SPLIT-005",
+  "scenario_sha": "b1da27fdadfdf820f15a2dcb385174fe487edc9a28dd7d4415b84b17422763f1",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

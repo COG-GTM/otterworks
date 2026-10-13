@@ -1,0 +1,178 @@
+module: rates
+rules:
+- id: INS-RATE-001
+  statement: Rate must be in (0, 50]; NULL, zero and above-50 raise -20001 with the raw value in the message.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 122
+    - 135
+  confidence: high
+  scenarios:
+  - INS-RATES-003
+  - INS-RATES-004
+  - INS-RATES-005
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-002
+  statement: The product must exist, checked before the agent and rate (-20004).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 99
+    - 106
+  confidence: high
+  scenarios:
+  - INS-RATES-008
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-003
+  statement: An agent-specific rate requires an existing (-20002) ACTIVE (-20003) agent.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 108
+    - 120
+  confidence: high
+  scenarios:
+  - INS-RATES-006
+  - INS-RATES-007
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-004
+  statement: An upsert effective on the open row start date amends that row in place and keeps its rate_id.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 136
+    - 176
+  confidence: high
+  scenarios:
+  - INS-RATES-002
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-005
+  statement: A later-dated upsert closes the open row on the preceding day and inserts a new open row.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 136
+    - 176
+  confidence: high
+  scenarios:
+  - INS-RATES-001
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-006
+  statement: Validation uses the raw rate; storage rounds half-up to cents; audit detail keeps the raw value.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 122
+    - 176
+  confidence: high
+  scenarios:
+  - INS-RATES-009
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-007
+  statement: Ending a rate requires an open row (-20007); the end date must not precede its start (CK_RATES_DATES).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 178
+    - 201
+  confidence: high
+  scenarios:
+  - INS-RATES-013
+  - INS-RATES-014
+  - INS-RATES-015
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-008
+  statement: resolve_rate picks the rate in force on the date, agent override before default, most recent start
+    first; else -20007.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 259
+    - 283
+  confidence: high
+  scenarios:
+  - INS-RATES-010
+  - INS-RATES-011
+  - INS-RATES-012
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-009
+  statement: A key may hold any number of closed historical rates (target corrects legacy UX_RATES_OPEN, which allows
+    only one).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 136
+    - 176
+  confidence: high
+  scenarios:
+  - INS-RATES-017
+  decision:
+    status: divergence-accepted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-010
+  statement: Inserting an open rate behind a later open rate for the same key is rejected (unique open rate per
+    key).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 136
+    - 176
+  confidence: high
+  scenarios:
+  - INS-RATES-016
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-RATE-011
+  statement: Every successful rate change writes an audit row (action, product, agent, detail, actor).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 86
+    - 97
+  confidence: high
+  scenarios:
+  - INS-RATES-001
+  - INS-RATES-013
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.

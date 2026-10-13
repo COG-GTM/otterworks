@@ -1,0 +1,13 @@
+id: INS-SPLIT-003
+module: splits
+description: Duplicate agent rejected (legacy T5).
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 3
+  splits:
+  - agent_id: 1
+    split_pct: '50'
+  - agent_id: 1
+    split_pct: '50'
+probes: []

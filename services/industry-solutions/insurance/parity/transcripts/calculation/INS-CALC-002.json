@@ -1,0 +1,111 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06",
+    "policy_id": 4
+  },
+  "module": "calculation",
+  "outcome": {
+    "fields": {
+      "rows": [
+        {
+          "agent_id": 2,
+          "base_premium": "9600",
+          "commission_amt": "64",
+          "rate_id": 1,
+          "split_pct": "100"
+        }
+      ]
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "audit:1": {
+      "params": {},
+      "probe": "audit",
+      "rows": [
+        {
+          "action": "COMMISSION_CALC",
+          "actor": "calculation-parity@otterworks.test",
+          "agent_id": null,
+          "detail": "2025-06 rows=3",
+          "policy_id": 4,
+          "product_code": "AUTO-STD"
+        },
+        {
+          "action": "SPLIT_SET",
+          "actor": "calculation-parity@otterworks.test",
+          "agent_id": null,
+          "detail": "1 agents",
+          "policy_id": 4,
+          "product_code": null
+        },
+        {
+          "action": "COMMISSION_CALC",
+          "actor": "calculation-parity@otterworks.test",
+          "agent_id": null,
+          "detail": "2025-06 rows=1",
+          "policy_id": 4,
+          "product_code": "AUTO-STD"
+        }
+      ]
+    },
+    "ledger:0": {
+      "params": {
+        "period_month": "2025-06",
+        "policy_id": 4
+      },
+      "probe": "ledger",
+      "rows": [
+        {
+          "agent_id": 2,
+          "base_premium": "9600",
+          "commission_amt": "64",
+          "rate_id": 1,
+          "split_pct": "100"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-CALC-002",
+  "scenario_sha": "bc72aa3958f4253c0188f9f3831606733d850f4d898af82d8c7398f8fb4d0d00",
+  "setup": [
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "9600",
+            "commission_amt": "38",
+            "rate_id": 4,
+            "split_pct": "50"
+          },
+          {
+            "agent_id": 2,
+            "base_premium": "9600",
+            "commission_amt": "19.2",
+            "rate_id": 1,
+            "split_pct": "30"
+          },
+          {
+            "agent_id": 3,
+            "base_premium": "9600",
+            "commission_amt": "12.8",
+            "rate_id": 1,
+            "split_pct": "20"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {},
+      "status": "ok"
+    }
+  ],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

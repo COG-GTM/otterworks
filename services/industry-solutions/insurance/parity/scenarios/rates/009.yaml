@@ -1,0 +1,16 @@
+id: INS-RATES-009
+module: rates
+description: Sub-cent rate stored at cents, audit keeps the raw value.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: TERM-20
+  agent_id: null
+  rate_pct: '12.345'
+  effective_from: '2031-01-01'
+probes:
+- probe: rates
+  params:
+    product_code: TERM-20
+- probe: audit
+  params: {}

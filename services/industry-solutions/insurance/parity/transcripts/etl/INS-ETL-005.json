@@ -1,0 +1,135 @@
+{
+  "actor": "etl-parity@otterworks.test",
+  "entrypoint": "dw_etl_pkg.load_commission_facts",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06"
+  },
+  "module": "etl",
+  "outcome": {
+    "fields": {
+      "rows_merged": 6
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "summary:0": {
+      "params": {
+        "period_month": "2025-06"
+      },
+      "probe": "summary",
+      "rows": [
+        {
+          "agent_code": "AG-100",
+          "full_name": "Maria Alvarez",
+          "line_of_business": "AUTO",
+          "period_month": "2025-06",
+          "policy_rows": 2,
+          "total_commission": "52.25"
+        },
+        {
+          "agent_code": "AG-100",
+          "full_name": "Maria Alvarez",
+          "line_of_business": "HOME",
+          "period_month": "2025-06",
+          "policy_rows": 1,
+          "total_commission": "12"
+        },
+        {
+          "agent_code": "AG-101",
+          "full_name": "James Okafor",
+          "line_of_business": "AUTO",
+          "period_month": "2025-06",
+          "policy_rows": 1,
+          "total_commission": "19.2"
+        },
+        {
+          "agent_code": "AG-101",
+          "full_name": "James Okafor",
+          "line_of_business": "HOME",
+          "period_month": "2025-06",
+          "policy_rows": 1,
+          "total_commission": "8"
+        },
+        {
+          "agent_code": "AG-102",
+          "full_name": "Priya Natarajan",
+          "line_of_business": "AUTO",
+          "period_month": "2025-06",
+          "policy_rows": 1,
+          "total_commission": "12.8"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-ETL-005",
+  "scenario_sha": "4f3c8796df7e615f4609b9fb971e0a404919abdc02acad01e31538e2ccc5d01b",
+  "setup": [
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "1800",
+            "commission_amt": "14.25",
+            "rate_id": 4,
+            "split_pct": "100"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "2400",
+            "commission_amt": "12",
+            "rate_id": 2,
+            "split_pct": "60"
+          },
+          {
+            "agent_id": 2,
+            "base_premium": "2400",
+            "commission_amt": "8",
+            "rate_id": 2,
+            "split_pct": "40"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "9600",
+            "commission_amt": "38",
+            "rate_id": 4,
+            "split_pct": "50"
+          },
+          {
+            "agent_id": 2,
+            "base_premium": "9600",
+            "commission_amt": "19.2",
+            "rate_id": 1,
+            "split_pct": "30"
+          },
+          {
+            "agent_id": 3,
+            "base_premium": "9600",
+            "commission_amt": "12.8",
+            "rate_id": 1,
+            "split_pct": "20"
+          }
+        ]
+      },
+      "status": "ok"
+    }
+  ],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

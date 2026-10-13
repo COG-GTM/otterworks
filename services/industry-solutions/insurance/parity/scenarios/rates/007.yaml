@@ -1,0 +1,11 @@
+id: INS-RATES-007
+module: rates
+description: Unknown agent override rejected.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 99
+  rate_pct: '9'
+  effective_from: '2025-07-01'
+probes: []

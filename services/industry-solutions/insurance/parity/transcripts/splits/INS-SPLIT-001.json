@@ -1,0 +1,61 @@
+{
+  "actor": "splits-parity@otterworks.test",
+  "entrypoint": "commission_pkg.set_commission_splits",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "policy_id": 3,
+    "splits": [
+      {
+        "agent_id": 1,
+        "split_pct": "70"
+      },
+      {
+        "agent_id": 2,
+        "split_pct": "30"
+      }
+    ]
+  },
+  "module": "splits",
+  "outcome": {
+    "fields": {},
+    "status": "ok"
+  },
+  "probes": {
+    "audit:1": {
+      "params": {},
+      "probe": "audit",
+      "rows": [
+        {
+          "action": "SPLIT_SET",
+          "actor": "splits-parity@otterworks.test",
+          "agent_id": null,
+          "detail": "2 agents",
+          "policy_id": 3,
+          "product_code": null
+        }
+      ]
+    },
+    "splits:0": {
+      "params": {
+        "policy_id": 3
+      },
+      "probe": "splits",
+      "rows": [
+        {
+          "agent_id": 1,
+          "split_pct": "70"
+        },
+        {
+          "agent_id": 2,
+          "split_pct": "30"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-SPLIT-001",
+  "scenario_sha": "c669c7859e41e7618c01cc87ce39d6338dea390daf501816f5f8eb92078b37b6",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

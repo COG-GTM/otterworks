@@ -1,0 +1,48 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06",
+    "policy_id": 1
+  },
+  "module": "calculation",
+  "outcome": {
+    "fields": {
+      "rows": [
+        {
+          "agent_id": 1,
+          "base_premium": "1800",
+          "commission_amt": "14.25",
+          "rate_id": 4,
+          "split_pct": "100"
+        }
+      ]
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "ledger:0": {
+      "params": {
+        "period_month": "2025-06",
+        "policy_id": 1
+      },
+      "probe": "ledger",
+      "rows": [
+        {
+          "agent_id": 1,
+          "base_premium": "1800",
+          "commission_amt": "14.25",
+          "rate_id": 4,
+          "split_pct": "100"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-CALC-008",
+  "scenario_sha": "6677d1276b64e99e3d93f567f1f110a339308cab3f36dcad7322d4eaa32a8b4e",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

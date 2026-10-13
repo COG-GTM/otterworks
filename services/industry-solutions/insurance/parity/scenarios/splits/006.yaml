@@ -1,0 +1,11 @@
+id: INS-SPLIT-006
+module: splits
+description: Split percentage out of range rejected.
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 3
+  splits:
+  - agent_id: 2
+    split_pct: '0'
+probes: []

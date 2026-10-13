@@ -1,0 +1,11 @@
+id: INS-RATES-008
+module: rates
+description: Unknown product rejected.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: NOPE
+  agent_id: null
+  rate_pct: '5'
+  effective_from: '2025-07-01'
+probes: []

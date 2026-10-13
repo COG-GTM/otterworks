@@ -1,0 +1,22 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06",
+    "policy_id": 5
+  },
+  "module": "calculation",
+  "outcome": {
+    "message": "Policy 5 is LAPSED",
+    "ora_code": -20008,
+    "status": "error"
+  },
+  "probes": {},
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-CALC-003",
+  "scenario_sha": "41982fffce65cfbe89697f2d83b3acefd3a18b060255a7bc3c4a334b3e8912f4",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

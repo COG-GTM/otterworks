@@ -1,0 +1,14 @@
+id: INS-RATES-006
+module: rates
+description: Suspended agent override rejected (legacy T3).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 4
+  rate_pct: '9'
+  effective_from: '2025-07-01'
+probes:
+- probe: rates
+  params:
+    product_code: AUTO-STD

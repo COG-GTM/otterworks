@@ -1,0 +1,15 @@
+id: INS-RATES-013
+module: rates
+description: End an open agent override.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.end_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 1
+  effective_to: '2025-12-31'
+probes:
+- probe: rates
+  params:
+    product_code: AUTO-STD
+- probe: audit
+  params: {}

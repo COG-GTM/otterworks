@@ -1,0 +1,15 @@
+id: INS-CALC-001
+module: calculation
+description: Three-way split writes three ledger rows 38.00/19.20/12.80 (legacy T8).
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 4
+  period_month: 2025-06
+probes:
+- probe: ledger
+  params:
+    policy_id: 4
+    period_month: 2025-06
+- probe: audit
+  params: {}

@@ -1,0 +1,9 @@
+id: INS-SPLIT-004
+module: splits
+description: Empty allocation rejected (legacy T11).
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 3
+  splits: []
+probes: []

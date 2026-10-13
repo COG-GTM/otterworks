@@ -1,0 +1,27 @@
+{
+  "actor": "splits-parity@otterworks.test",
+  "entrypoint": "commission_pkg.set_commission_splits",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "policy_id": 99,
+    "splits": [
+      {
+        "agent_id": 1,
+        "split_pct": "100"
+      }
+    ]
+  },
+  "module": "splits",
+  "outcome": {
+    "message": "Unknown policy: 99",
+    "ora_code": -20005,
+    "status": "error"
+  },
+  "probes": {},
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-SPLIT-007",
+  "scenario_sha": "4c5d6393f0ad10921d6edff161028981b1991ab4cbd2bf0a0317a6ba8b6f3a8d",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

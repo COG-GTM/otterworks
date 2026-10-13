@@ -1,0 +1,83 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-07",
+    "policy_id": 4
+  },
+  "module": "calculation",
+  "outcome": {
+    "fields": {
+      "rows": [
+        {
+          "agent_id": 1,
+          "base_premium": "9600",
+          "commission_amt": "38",
+          "rate_id": 4,
+          "split_pct": "50"
+        },
+        {
+          "agent_id": 2,
+          "base_premium": "9600",
+          "commission_amt": "21.6",
+          "rate_id": 5,
+          "split_pct": "30"
+        },
+        {
+          "agent_id": 3,
+          "base_premium": "9600",
+          "commission_amt": "14.4",
+          "rate_id": 5,
+          "split_pct": "20"
+        }
+      ]
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "ledger:0": {
+      "params": {
+        "period_month": "2025-07",
+        "policy_id": 4
+      },
+      "probe": "ledger",
+      "rows": [
+        {
+          "agent_id": 1,
+          "base_premium": "9600",
+          "commission_amt": "38",
+          "rate_id": 4,
+          "split_pct": "50"
+        },
+        {
+          "agent_id": 2,
+          "base_premium": "9600",
+          "commission_amt": "21.6",
+          "rate_id": 5,
+          "split_pct": "30"
+        },
+        {
+          "agent_id": 3,
+          "base_premium": "9600",
+          "commission_amt": "14.4",
+          "rate_id": 5,
+          "split_pct": "20"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
+  "scenario": "INS-CALC-006",
+  "scenario_sha": "2a5a9fe5425bf493fc6ab8bbf1c5fd745e1ffdaaf156b2186119c3d8835bfe82",
+  "setup": [
+    {
+      "fields": {
+        "rate_id": 5
+      },
+      "status": "ok"
+    }
+  ],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

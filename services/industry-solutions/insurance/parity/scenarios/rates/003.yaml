@@ -1,0 +1,16 @@
+id: INS-RATES-003
+module: rates
+description: Rate above 50 rejected (legacy T2).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: null
+  rate_pct: '75'
+  effective_from: '2025-07-01'
+probes:
+- probe: rates
+  params:
+    product_code: AUTO-STD
+- probe: audit
+  params: {}

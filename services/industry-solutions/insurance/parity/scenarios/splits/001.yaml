@@ -1,0 +1,18 @@
+id: INS-SPLIT-001
+module: splits
+description: Valid two-way split replaces the allocation (legacy T6).
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 3
+  splits:
+  - agent_id: 1
+    split_pct: '70'
+  - agent_id: 2
+    split_pct: '30'
+probes:
+- probe: splits
+  params:
+    policy_id: 3
+- probe: audit
+  params: {}

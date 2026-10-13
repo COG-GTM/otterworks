@@ -1,0 +1,13 @@
+id: INS-CALC-008
+module: calculation
+description: Single-agent override policy.
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 1
+  period_month: 2025-06
+probes:
+- probe: ledger
+  params:
+    policy_id: 1
+    period_month: 2025-06

@@ -1,0 +1,29 @@
+id: INS-ETL-004
+module: etl
+description: Stale facts survive recalculation (legacy MERGE never deletes).
+actor: etl-parity@otterworks.test
+entrypoint: dw_etl_pkg.load_commission_facts
+inputs:
+  period_month: 2025-06
+setup:
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 2
+    period_month: 2025-06
+- entrypoint: dw_etl_pkg.load_commission_facts
+  inputs:
+    period_month: 2025-06
+- entrypoint: commission_pkg.set_commission_splits
+  inputs:
+    policy_id: 2
+    splits:
+    - agent_id: 1
+      split_pct: '100'
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 2
+    period_month: 2025-06
+probes:
+- probe: facts
+  params:
+    period_month: 2025-06
