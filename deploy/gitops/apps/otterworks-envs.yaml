@@ -6,6 +6,7 @@
 #   annotation otterworks.io/services        service glob, default "*"
 #   annotation otterworks.io/image-registry  e.g. <acct>.dkr.ecr.us-east-1.amazonaws.com
 #   annotation otterworks.io/git-revision    branch/tag the envs are read from
+#   annotation otterworks.io/repo-url        git repo for charts + envs (must be in the AppProject)
 # Promotion = a PR that changes envs/<env>/services/<svc>.yaml (image.tag).
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -23,7 +24,7 @@ spec:
                 matchLabels:
                   otterworks.io/gitops: "true"
           - git:
-              repoURL: https://github.com/COG-GTM/otterworks.git
+              repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
               revision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
               files:
                 - path: 'deploy/gitops/envs/{{ index .metadata.annotations "otterworks.io/envs" }}/services/{{ index .metadata.annotations "otterworks.io/services" }}.yaml'
@@ -36,7 +37,7 @@ spec:
     spec:
       project: otterworks
       sources:
-        - repoURL: https://github.com/COG-GTM/otterworks.git
+        - repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
           targetRevision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
           path: 'infrastructure/helm/{{ trimSuffix ".yaml" .path.filename }}'
           helm:
@@ -46,12 +47,13 @@ spec:
             ignoreMissingValueFiles: true
             valueFiles:
               - $values/deploy/gitops/base/values.yaml
+              - '$values/deploy/gitops/base/services/{{ trimSuffix ".yaml" .path.filename }}.yaml'
               - '$values/deploy/gitops/envs/{{ index .path.segments 3 }}/env-values.yaml'
               - '$values/{{ .path.path }}/{{ .path.filename }}'
             parameters:
               - name: image.repository
                 value: '{{ index .metadata.annotations "otterworks.io/image-registry" }}/otterworks/{{ trimSuffix ".yaml" .path.filename }}'
-        - repoURL: https://github.com/COG-GTM/otterworks.git
+        - repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
           targetRevision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
           ref: values
       destination:

@@ -1,0 +1,6 @@
+# auth-service in every GitOps env. Service port = container port, the same override
+# deploy-dev.sh / tenant-common.sh apply (CONTAINER_PORT), so the gateway's
+# upstream URLs (http://<svc>:<container-port>) resolve.
+service:
+  port: 8081
+  targetPort: 8081

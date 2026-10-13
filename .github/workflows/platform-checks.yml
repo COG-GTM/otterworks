@@ -69,8 +69,10 @@ jobs:
             env="$(basename "${envdir}")"
             for f in "${envdir}"services/*.yaml; do
               svc="$(basename "${f}" .yaml)"
+              svc_base=()
+              [ -f "deploy/gitops/base/services/${svc}.yaml" ] && svc_base=(-f "deploy/gitops/base/services/${svc}.yaml")
               helm template "${svc}" "infrastructure/helm/${svc}" -n "otterworks-${env}" \
-                -f deploy/gitops/base/values.yaml -f "${envdir}env-values.yaml" -f "${f}" \
+                -f deploy/gitops/base/values.yaml "${svc_base[@]}" -f "${envdir}env-values.yaml" -f "${f}" \
                 --set image.repository=123456789012.dkr.ecr.us-east-1.amazonaws.com/otterworks/${svc} \
                 > "rendered/${env}-${svc}.yaml"
             done
@@ -85,7 +87,7 @@ jobs:
           kubeconform -strict -summary -kubernetes-version "${K8S_VERSION}" \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            rendered/*.yaml deploy/gitops/bootstrap deploy/gitops/apps \
+            rendered/*.yaml deploy/gitops/bootstrap deploy/gitops/apps deploy/gitops/baseline \
             demo-platform/k8s/dns-tls/local-ca-issuer.yaml
 
   promote-script:

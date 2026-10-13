@@ -1,0 +1,47 @@
+# One "<env>-baseline" Application per opted-in environment: namespace-wide
+# resources that are not owned by any service chart (today: the env-isolation
+# NetworkPolicy). Uses the same cluster opt-in annotations as otterworks-envs.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: otterworks-env-baseline
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  otterworks.io/gitops: "true"
+          - git:
+              repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
+              revision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
+              files:
+                - path: 'deploy/gitops/envs/{{ index .metadata.annotations "otterworks.io/envs" }}/env-values.yaml'
+  template:
+    metadata:
+      name: '{{ index .path.segments 3 }}-baseline'
+      labels:
+        otterworks.io/environment: '{{ index .path.segments 3 }}'
+    spec:
+      project: otterworks
+      source:
+        repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
+        targetRevision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
+        path: deploy/gitops/baseline
+      destination:
+        server: '{{ .server }}'
+        namespace: 'otterworks-{{ index .path.segments 3 }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+        managedNamespaceMetadata:
+          labels:
+            otterworks.io/environment: '{{ index .path.segments 3 }}'
+            app.kubernetes.io/managed-by: argocd

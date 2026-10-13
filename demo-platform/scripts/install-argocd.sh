@@ -107,6 +107,7 @@ metadata:
     otterworks.io/services: "${SERVICES}"
     otterworks.io/image-registry: "${IMAGE_REGISTRY}"
     otterworks.io/git-revision: "${REVISION}"
+    otterworks.io/repo-url: "${REPO_URL}"
 type: Opaque
 stringData:
   name: in-cluster

@@ -43,12 +43,16 @@ deploy/gitops/
   bootstrap/root-app.yaml          app-of-apps root (applied once per cluster)
   apps/project.yaml                AppProject: repo + 3 env namespaces only
   apps/otterworks-envs.yaml        ApplicationSet: clusters x git-files matrix
+  apps/otterworks-env-baseline.yaml  ApplicationSet: <env>-baseline per env
+  baseline/networkpolicy.yaml      namespace-wide isolation (as deploy-tenant.sh)
   base/values.yaml                 values for every service in every env
+  base/services/<svc>.yaml         service.port = container port (as deploy-dev.sh)
   envs/<env>/env-values.yaml       values for every service in one env
   envs/<env>/services/<svc>.yaml   per-service values; image.tag lives here
 ```
 
 Helm value layering (later wins): chart `values.yaml` → `base/values.yaml` →
+`base/services/<svc>.yaml` →
 `envs/<env>/env-values.yaml` → `envs/<env>/services/<svc>.yaml` →
 `image.repository=<registry>/otterworks/<svc>` (from the cluster annotation).
 `scripts/check-image-drift.sh` fails CI if an environment is missing a chart or
@@ -67,6 +71,7 @@ runs:
 | `otterworks.io/services` | `*`, `{api-gateway,web-app}` | service subset (glob) |
 | `otterworks.io/image-registry` | `<acct>.dkr.ecr.us-east-1.amazonaws.com` | registry prefix |
 | `otterworks.io/git-revision` | `main` | branch/tag the env files are read from |
+| `otterworks.io/repo-url` | `https://github.com/COG-GTM/otterworks.git` | repo for charts + env files; must be listed in `apps/project.yaml` `sourceRepos` |
 
 `demo-platform/scripts/install-argocd.sh --bootstrap` writes that Secret for the
 in-cluster target and applies the root app. Brace globs need
@@ -108,6 +113,15 @@ Merging the promotion PR is the deploy: Argo CD auto-syncs the target
 environment (`prune` + `selfHeal`). Roll back by reverting the PR.
 
 ## Installing on a cluster
+
+**Images first.** Argo CD deploys exactly the `image.tag` in
+`envs/<env>/services/<svc>.yaml` from the registry in
+`otterworks.io/image-registry`. On this fork nothing publishes `main-<sha>`
+tags automatically (`cd-tenant.yml` builds only for the canonical repo's
+`main`, and `docker-build.yml` is dispatch-only), so before bootstrapping an
+environment make sure those tags exist in the registry -- run
+`docker-build.yml` for the commit, or set the env files to tags that do. The
+shipped `main-cc23bf1` values are a starting point, not a published release.
 
 ```bash
 # 1. shared add-ons (pinned in demo-platform/k8s/platform-addons.versions.env)

@@ -9,3 +9,8 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+# Per-service NetworkPolicies only admit ingress-nginx + monitoring, which
+# would block gateway -> backend calls. Like deploy-tenant.sh, each env namespace
+# gets one namespace-wide policy instead (deploy/gitops/baseline).
+networkPolicy:
+  enabled: false
