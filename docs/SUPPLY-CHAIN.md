@@ -72,8 +72,9 @@ The gate follows the same policy as the source scan in `security-scan.yml`:
   an entry there, with a justification, to accept a finding.
 
 SARIF goes to GitHub code scanning (category `trivy-image/<image>/<arch>`) on
-same-repo runs. Fork PRs have a read-only token, so the upload is skipped
-there. The upload is best-effort because code scanning may not be enabled on a
+same-repo runs, from a separate `sarif` job: the jobs that build
+contributor-controlled Dockerfiles only ever hold a read-only token. Fork PRs
+have a read-only token, so the upload is skipped there. The upload is best-effort because code scanning may not be enabled on a
 fork. The JSON reports, SARIF and SBOMs are always in the
 `supply-chain-<image>` artifact.
 
@@ -177,4 +178,7 @@ to accept any workflow from this fork instead of one exact workflow and ref.
 - The ECR lifecycle policy keeps the last 10 images per repository and counts
   signature and attestation artifacts too. A release now adds roughly six
   entries (index, two attestation manifests, `.sig`, two `.att`) next to the
-  two platform images.
+  two platform images, so the 10-image rule can expire a version tag after one
+  or two releases. Changing the policy (keep N tagged releases plus their
+  `sha256-*` cosign tags) is a shared-ECR Terraform change and needs sign-off
+  before the first signed multi-arch release.
