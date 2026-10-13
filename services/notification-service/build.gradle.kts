@@ -1,8 +1,8 @@
 plugins {
+    application
     kotlin("jvm") version "2.4.21"
     kotlin("plugin.serialization") version "2.4.21"
-    id("io.ktor.plugin") version "2.3.9"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 group = "com.otterworks"
