@@ -65,15 +65,37 @@ jobs:
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sh -s -- -b /usr/local/bin v${{ env.TRIVY_VERSION }}
 
+      - name: Trivy DB cache key
+        id: trivy-cache
+        run: echo "key=trivy-fs-db-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/trivy
+          key: ${{ steps.trivy-cache.outputs.key }}
+          restore-keys: trivy-fs-db-
+
+      # Trivy resolves pom.xml parents/BOMs from Maven Central, which rate-limits
+      # shared runner IPs (HTTP 429 + Retry-After). Trivy exits non-zero only on
+      # errors, never on findings, so a failed online scan is retried with
+      # --offline-scan instead of being hidden: findings still reach the parse
+      # step and the auto-fix path, and a second failure fails the job.
       - name: Run Trivy filesystem scan
         run: |
-          trivy fs . \
-            --severity "${{ env.SEVERITY_THRESHOLD }}" \
-            --format json \
-            --output trivy-results.json \
-            --skip-dirs services/report-service \
-            --ignorefile .trivyignore \
-            || true
+          scan() {
+            trivy fs . \
+              --severity "${{ env.SEVERITY_THRESHOLD }}" \
+              --format json \
+              --output trivy-results.json \
+              --skip-dirs services/report-service \
+              --ignorefile .trivyignore \
+              "$@"
+          }
+          if ! scan; then
+            echo "::warning::Online Trivy scan failed (usually a Maven Central rate limit); retrying with --offline-scan. Versions only resolvable from remote parent POMs/BOMs are not scanned in this run."
+            rm -f trivy-results.json
+            scan --offline-scan
+          fi
 
       - name: Parse findings
         id: parse
