@@ -108,7 +108,8 @@ def test_user_activity_waits_for_same_day_analytics(dagbag):
     dag = dagbag.dags["user_activity_daily"]
     sensor = dag.get_task("wait_for_analytics")
     assert sensor.external_dag_id == "analytics_daily"
-    assert sensor.external_task_id in dagbag.dags["analytics_daily"].task_ids
+    assert set(sensor.external_task_ids) == {"load_to_data_lake", "update_postgres_aggregates"}
+    assert set(sensor.external_task_ids) <= set(dagbag.dags["analytics_daily"].task_ids)
     # 05:00 run looks at the 02:00 analytics run of the same day.
     assert sensor.execution_delta == timedelta(hours=3)
     assert sensor.soft_fail and sensor.mode == "reschedule"

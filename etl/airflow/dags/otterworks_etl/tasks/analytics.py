@@ -52,6 +52,7 @@ def extract_from_sqs(ds: str, cfg: dict) -> dict:
     queue_url = sqs.get_queue_url(QueueName=cfg["analytics_queue_name"])["QueueUrl"]
     s3, bucket = _s3(), cfg["data_lake_bucket"]
     received = landed = malformed = 0
+    late: dict[str, int] = {}
 
     while received < int(cfg["sqs_max_messages"]):
         resp = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10,
@@ -80,6 +81,8 @@ def extract_from_sqs(ds: str, cfg: dict) -> dict:
             key = f"{raw_prefix(cfg, event_ds, 'sqs')}/batch-{batch_id}.jsonl.gz"
             s3io.put_bytes(s3, bucket, key, s3io.jsonl_gz_bytes(events))
             landed += len(events)
+            if event_ds < ds:
+                late[event_ds] = late.get(event_ds, 0) + len(events)
         if bad:
             key = f"{cfg['raw_prefix']}/{RAW_DATASET}/_deadletter/ds={ds}/batch-{batch_id}.jsonl.gz"
             s3io.put_bytes(s3, bucket, key, s3io.jsonl_gz_bytes(bad))
@@ -89,7 +92,12 @@ def extract_from_sqs(ds: str, cfg: dict) -> dict:
         sqs.delete_message_batch(QueueUrl=queue_url, Entries=[
             {"Id": str(i), "ReceiptHandle": m["ReceiptHandle"]} for i, m in enumerate(messages)])
 
-    result = {"received": received, "landed": landed, "malformed": malformed}
+    result = {"received": received, "landed": landed, "malformed": malformed,
+              "late_partitions": dict(sorted(late.items()))}
+    if late:
+        # Landed under their own date so a backfill of those days picks them up; they are not
+        # folded into this ds. Re-run with: airflow dags backfill -s <date> -e <date> analytics_daily
+        log_event(logger, "sqs_late_events", logging.WARNING, partitions=result["late_partitions"])
     log_event(logger, "sqs_extract_complete", **result)
     return result
 

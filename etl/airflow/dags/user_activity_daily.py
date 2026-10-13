@@ -5,7 +5,7 @@ analytics_daily, merges a rolling window, and writes the activity report for ``d
 of an older date never overwrites a newer ``latest`` pointer.
 
 Cron only guaranteed ordering by a 3h gap; here ``wait_for_analytics`` waits for the same day's
-analytics_daily load. If it never lands (e.g. analytics was paused) the sensor soft-fails after
+analytics_daily loads (S3 + Postgres). If they never land (e.g. analytics was paused) the sensor soft-fails after
 its timeout and the report is still built, listing the day under ``missing_top_user_days``.
 """
 
@@ -35,7 +35,8 @@ with DAG(
     wait_for_analytics = ExternalTaskSensor(
         task_id="wait_for_analytics",
         external_dag_id="analytics_daily",
-        external_task_id="load_to_data_lake",
+        # S3 top users (load_to_data_lake) and the Postgres summary row are both read here.
+        external_task_ids=["load_to_data_lake", "update_postgres_aggregates"],
         execution_delta=timedelta(hours=3),
         mode="reschedule",
         poke_interval=300,

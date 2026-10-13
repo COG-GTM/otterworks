@@ -25,7 +25,8 @@ def _staging(cfg: dict, ds: str, name: str) -> str:
 def list_s3_objects(ds: str, cfg: dict) -> dict:
     s3 = _s3()
     paginator = s3.get_conn().get_paginator("list_objects_v2")
-    objects = [{"key": o["Key"], "size": o["Size"], "last_modified": o["LastModified"].isoformat()}
+    objects = [{"key": o["Key"], "size": o["Size"], "last_modified": o["LastModified"].isoformat(),
+                "etag": o.get("ETag")}
                for page in paginator.paginate(Bucket=cfg["file_storage_bucket"],
                                               Prefix=cfg["files_prefix"])
                for o in page.get("Contents", [])]
@@ -34,7 +35,7 @@ def list_s3_objects(ds: str, cfg: dict) -> dict:
     return {"total_objects": len(objects), "total_size_bytes": sum(o["size"] for o in objects)}
 
 
-def list_metadata_references(ds: str, cfg: dict) -> int:
+def _scan_references(cfg: dict) -> set[str]:
     from airflow.providers.amazon.aws.hooks.dynamodb import DynamoDBHook
 
     name = cfg["file_metadata_table"]
@@ -46,6 +47,11 @@ def list_metadata_references(ds: str, cfg: dict) -> int:
         if "LastEvaluatedKey" not in resp:
             break
         kwargs["ExclusiveStartKey"] = resp["LastEvaluatedKey"]
+    return refs
+
+
+def list_metadata_references(ds: str, cfg: dict) -> int:
+    refs = _scan_references(cfg)
     s3io.put_json(_s3(), cfg["data_lake_bucket"], _staging(cfg, ds, "references"), sorted(refs))
     log_event(logger, "metadata_references", references=len(refs))
     return len(refs)
@@ -65,15 +71,32 @@ def find_orphaned_objects(ds: str, cfg: dict, now: datetime) -> dict:
 def move_to_quarantine(ds: str, cfg: dict) -> dict:
     s3, dry_run = _s3(), bool(cfg["storage_cleanup_dry_run"])
     found = s3io.get_json(s3, cfg["data_lake_bucket"], _staging(cfg, ds, "orphans")) or {}
-    client, moved, failed = s3.get_conn(), 0, []
-    for obj in found.get("orphans", []):
+    client, moved, failed, skipped = s3.get_conn(), 0, [], []
+    candidates = found.get("orphans", [])
+    # The orphan list is a snapshot; re-read references right before acting on it.
+    current_refs = _scan_references(cfg) if candidates and not dry_run else set()
+    for obj in candidates:
         dest = T.quarantine_key(cfg["quarantine_prefix"], ds, obj["key"])
         if dry_run:
             log_event(logger, "would_quarantine", key=obj["key"], dest=dest)
             continue
+        if obj["key"] in current_refs:
+            skipped.append(obj["key"])
+            log_event(logger, "orphan_now_referenced", key=obj["key"])
+            continue
+        try:
+            head = client.head_object(Bucket=cfg["file_storage_bucket"], Key=obj["key"])
+        except client.exceptions.ClientError:
+            skipped.append(obj["key"])  # already gone (e.g. moved by an earlier try)
+            continue
+        if obj.get("etag") and head.get("ETag") != obj["etag"]:
+            skipped.append(obj["key"])
+            log_event(logger, "orphan_changed_since_inventory", key=obj["key"])
+            continue
         try:
             client.copy_object(Bucket=cfg["quarantine_bucket"], Key=dest, MetadataDirective="COPY",
-                               CopySource={"Bucket": cfg["file_storage_bucket"], "Key": obj["key"]})
+                               CopySource={"Bucket": cfg["file_storage_bucket"], "Key": obj["key"]},
+                               CopySourceIfMatch=head["ETag"])
             client.delete_object(Bucket=cfg["file_storage_bucket"], Key=obj["key"])
             moved += 1
         except client.exceptions.ClientError as exc:
@@ -81,8 +104,8 @@ def move_to_quarantine(ds: str, cfg: dict) -> dict:
             log_event(logger, "quarantine_failed", logging.ERROR, key=obj["key"], error=str(exc))
     if failed:
         raise RuntimeError(f"failed to quarantine {len(failed)} object(s): {failed[:10]}")
-    log_event(logger, "quarantine_complete", moved=moved, dry_run=dry_run)
-    return {"moved": moved, "failed": 0}
+    log_event(logger, "quarantine_complete", moved=moved, skipped=len(skipped), dry_run=dry_run)
+    return {"moved": moved, "failed": 0, "skipped": len(skipped)}
 
 
 def generate_storage_report(ds: str, cfg: dict, inventory: dict, moved: dict,

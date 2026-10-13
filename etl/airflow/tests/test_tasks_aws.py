@@ -71,7 +71,8 @@ def test_analytics_pipeline_end_to_end(aws, cfg, spark, monkeypatch):
                          "timestamp": f"{DS}T09:30:00Z"})
     table.put_item(Item={"event_id": "x2", "event_date": "2026-02-27", "eventType": "login"})
 
-    assert A.extract_from_sqs(DS, cfg) == {"received": 4, "landed": 3, "malformed": 1}
+    assert A.extract_from_sqs(DS, cfg) == {"received": 4, "landed": 3, "malformed": 1,
+                                          "late_partitions": {"2026-02-28": 1}}
     assert int(sqs.get_queue_attributes(QueueUrl=url, AttributeNames=["All"])["Attributes"]
                ["ApproximateNumberOfMessages"]) == 0
     assert A.extract_from_dynamodb(DS, cfg)["items"] == 1
@@ -113,19 +114,22 @@ def test_analytics_pipeline_end_to_end(aws, cfg, spark, monkeypatch):
 
 
 def test_audit_archive_flow_is_safe_and_idempotent(aws, cfg):
-    table = _ddb_table(cfg["audit_events_table"], [("event_id", "HASH"), ("timestamp", "RANGE")])
-    old = [{"event_id": f"o{i}", "timestamp": "2025-01-01T00:00:00Z", "action": "x"}
-           for i in range(30)]
-    for item in old + [{"event_id": "new", "timestamp": "2026-03-01T00:00:00Z"}]:
+    # Same key schema and item shape as audit-service (DynamoDbAuditRepository.SaveEventAsync).
+    table = _ddb_table(cfg["audit_events_table"], [("id", "HASH")])
+    old = [{"id": f"o{i}", "Id": f"o{i}", "Timestamp": "2025-01-01T00:00:00.0000000Z",
+            "Action": "x"} for i in range(30)]
+    # Lowercase `timestamp` alone is not what audit-service writes and must not match.
+    stray = {"id": "legacy", "timestamp": "2025-01-01T00:00:00Z"}
+    for item in old + [stray, {"id": "new", "Timestamp": "2026-03-01T00:00:00.0000000Z"}]:
         table.put_item(Item=item)
 
     scan = AU.scan_audit_events(DS, "2026-03-01T03:00:00+00:00", cfg)
-    assert scan["events_scanned"] == 30 and scan["key_attrs"] == ["event_id", "timestamp"]
+    assert scan["events_scanned"] == 30 and scan["key_attrs"] == ["id"]
     archive = AU.compress_and_upload(DS, cfg, scan["key_attrs"])
     head = aws.head_object(Bucket=cfg["archive_bucket"], Key=archive["archive_key"])
     assert head["StorageClass"] == "GLACIER" and head["Metadata"]["event-count"] == "30"
     assert AU.cleanup_dynamodb(DS, cfg, scan["key_attrs"], archive["archive_key"]) == 30
-    assert [i["event_id"] for i in table.scan()["Items"]] == ["new"]
+    assert sorted(i["id"] for i in table.scan()["Items"]) == ["legacy", "new"]
     report_key = AU.generate_compliance_report(DS, cfg, {**scan, **archive, "events_deleted": 30},
                                                "t")
     report = json.loads(aws.get_object(Bucket=cfg["archive_bucket"], Key=report_key)["Body"].read())
@@ -158,7 +162,7 @@ def test_storage_cleanup_quarantines_orphans_once(aws, cfg):
     assert inv == {"total_objects": 4, "total_size_bytes": 10}
     assert ST.list_metadata_references(DS, cfg) == 3
     assert ST.find_orphaned_objects(DS, cfg, later) == {"orphans": 1, "recent": 0}
-    assert ST.move_to_quarantine(DS, cfg) == {"moved": 1, "failed": 0}
+    assert ST.move_to_quarantine(DS, cfg) == {"moved": 1, "failed": 0, "skipped": 0}
     assert aws.head_object(Bucket=cfg["quarantine_bucket"], Key=f"quarantined/{DS}/files/3.bin")
     key = ST.generate_storage_report(DS, cfg, inv, {"moved": 1, "failed": 0}, "t")
     rep = json.loads(aws.get_object(Bucket=cfg["data_lake_bucket"], Key=key)["Body"].read())
@@ -169,6 +173,21 @@ def test_storage_cleanup_quarantines_orphans_once(aws, cfg):
     ST.list_metadata_references(DS, cfg)
     assert ST.find_orphaned_objects(DS, cfg, later)["orphans"] == 0
     assert ST.move_to_quarantine(DS, cfg)["moved"] == 0
+
+
+def test_storage_cleanup_rechecks_before_moving(aws, cfg):
+    _storage_fixture(aws, cfg)
+    aws.put_object(Bucket=cfg["file_storage_bucket"], Key="files/4.bin", Body=b"orphan")
+    later = datetime.now(timezone.utc) + timedelta(days=2)
+    ST.list_s3_objects(DS, cfg)
+    ST.list_metadata_references(DS, cfg)
+    assert ST.find_orphaned_objects(DS, cfg, later)["orphans"] == 2
+    # Between snapshot and move: 3.bin gains a reference, 4.bin is overwritten.
+    meta = boto3.resource("dynamodb").Table(cfg["file_metadata_table"])
+    meta.put_item(Item={"file_id": "3", "s3_key": "files/3.bin"})
+    aws.put_object(Bucket=cfg["file_storage_bucket"], Key="files/4.bin", Body=b"re-uploaded")
+    assert ST.move_to_quarantine(DS, cfg) == {"moved": 0, "failed": 0, "skipped": 2}
+    assert len(aws.list_objects_v2(Bucket=cfg["file_storage_bucket"])["Contents"]) == 5
 
 
 def test_storage_cleanup_grace_dry_run_and_guard(aws, cfg):

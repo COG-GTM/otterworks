@@ -37,7 +37,7 @@ def scan_audit_events(ds: str, as_of: str, cfg: dict) -> dict:
     # Read the real key schema instead of assuming (event_id, timestamp) like the legacy script.
     key_attrs = [k["AttributeName"] for k in table.key_schema]
     cutoff_ts = T.cutoff(as_of, int(cfg["audit_retention_days"]))
-    kwargs = {"FilterExpression": "#ts < :cutoff", "ExpressionAttributeNames": {"#ts": "timestamp"},
+    kwargs = {"FilterExpression": "#ts < :cutoff", "ExpressionAttributeNames": {"#ts": cfg["audit_timestamp_attr"]},
               "ExpressionAttributeValues": {":cutoff": cutoff_ts}}
     items: list[dict] = []
     while True:

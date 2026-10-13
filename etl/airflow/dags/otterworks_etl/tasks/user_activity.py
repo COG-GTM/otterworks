@@ -65,9 +65,9 @@ def build_and_load_report(ds: str, cfg: dict, missing_days: list[str], generated
                             summaries, users, missing_days)
     report_key = f"{prefix}/{ds}/activity_report.json"
     s3io.put_json(s3, bucket, report_key, report)
-    if users:
-        s3io.put_bytes(s3, bucket, f"{prefix}/{ds}/user_summaries.jsonl",
-                       "".join(s3io.dumps(u) + "\n" for u in users).encode())
+    # Always overwrite (even empty) so a re-run never leaves users from a previous attempt.
+    s3io.put_bytes(s3, bucket, f"{prefix}/{ds}/user_summaries.jsonl",
+                   "".join(s3io.dumps(u) + "\n" for u in users).encode())
     latest_key = f"{prefix}/latest/activity_report.json"
     existing = s3io.get_json(s3, bucket, latest_key) or {}
     if T.should_replace_latest(existing.get("report_date"), ds):

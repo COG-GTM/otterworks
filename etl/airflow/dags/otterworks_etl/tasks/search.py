@@ -18,6 +18,9 @@ from otterworks_etl.transforms import search as T
 
 logger = logging.getLogger(__name__)
 
+# document-service (le=100) and file-service (clamped to 100) both cap page size at 100.
+SOURCE_API_MAX_PAGE_SIZE = 100
+
 SOURCES = {
     "documents": {"conn": settings.DOCUMENT_SERVICE_CONN_ID, "endpoint": "/api/v1/documents",
                   "size_param": "size", "keys": ("documents", "items"), "mapper": T.map_document},
@@ -67,13 +70,17 @@ def _index_name(cfg: dict, kind: str) -> str:
     return cfg[f"search_{kind}_index"]
 
 
-def prepare_staging_index(kind: str, cfg: dict) -> str:
+def prepare_staging_index(kind: str, cfg: dict) -> dict:
+    """Recreate ``<index>_staging``; returns its name and when this attempt started."""
+    from datetime import datetime, timezone
+
+    prepared_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     staging = T.staging_index(_index_name(cfg, kind))
     wait_task(_call("DELETE", f"/indexes/{staging}", ok_404=True))
     wait_task(_call("POST", "/indexes", {"uid": staging, "primaryKey": "id"}))
     wait_task(_call("PATCH", f"/indexes/{staging}/settings", T.INDEX_SETTINGS[kind]))
     log_event(logger, "staging_index_ready", index=staging)
-    return staging
+    return {"staging": staging, "prepared_at": prepared_at}
 
 
 def _fetch_page(kind: str, page: int, size: int) -> list[dict]:
@@ -88,7 +95,8 @@ def _fetch_page(kind: str, page: int, size: int) -> list[dict]:
 
 def index_source(kind: str, cfg: dict) -> int:
     """Extract (paged API) -> transform (map) -> load (bulk add to staging), page by page."""
-    staging, size = T.staging_index(_index_name(cfg, kind)), int(cfg["search_api_page_size"])
+    staging = T.staging_index(_index_name(cfg, kind))
+    size = min(int(cfg["search_api_page_size"]), SOURCE_API_MAX_PAGE_SIZE)
     mapper, page, total = SOURCES[kind]["mapper"], 1, 0
     while True:
         items = _fetch_page(kind, page, size)
@@ -112,12 +120,40 @@ def validate_staging(kind: str, cfg: dict, expected: int) -> int:
     return actual
 
 
-def swap_into_live(kind: str, cfg: dict) -> str:
+def _existing_swap(live: str, staging: str, since: str) -> dict | None:
+    """A swap of this pair enqueued since ``since`` (i.e. by an earlier try of this task)."""
+    tasks = _call("GET", "/tasks?types=indexSwap&statuses=enqueued,processing,succeeded"
+                         f"&afterEnqueuedAt={since}")
+    for t in tasks.get("results", []):
+        for swap in (t.get("details") or {}).get("swaps", []):
+            if set(swap.get("indexes", [])) == {live, staging}:
+                return t
+    return None
+
+
+def swap_into_live(kind: str, cfg: dict, prepared_at: str) -> str:
+    """Swap staging into live exactly once per prepared staging index.
+
+    A swap is its own inverse, so a retry after a successful swap must not swap again; it
+    looks for the earlier swap task instead. Dropping the old index is a separate task.
+    """
     live = _index_name(cfg, kind)
     staging = T.staging_index(live)
+    previous = _existing_swap(live, staging, prepared_at)
+    if previous:
+        wait_task({"taskUid": previous.get("uid")})
+        log_event(logger, "index_swap_already_done", index=live, task_uid=previous.get("uid"))
+        return live
     if not _call("GET", f"/indexes/{live}", ok_404=True):
         wait_task(_call("POST", "/indexes", {"uid": live, "primaryKey": "id"}))
     wait_task(_call("POST", "/swap-indexes", [{"indexes": [live, staging]}]))
-    wait_task(_call("DELETE", f"/indexes/{staging}", ok_404=True))
     log_event(logger, "index_swapped", index=live)
     return live
+
+
+def drop_previous_index(kind: str, cfg: dict) -> str:
+    """After the swap, ``<index>_staging`` holds the previous live data; drop it."""
+    staging = T.staging_index(_index_name(cfg, kind))
+    wait_task(_call("DELETE", f"/indexes/{staging}", ok_404=True))
+    log_event(logger, "previous_index_dropped", index=staging)
+    return staging

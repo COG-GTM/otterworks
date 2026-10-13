@@ -99,8 +99,10 @@ def seed(s3, sqs, ddb, ds: str, n_events: int) -> dict:
     with ddb.Table("otterworks-audit-events").batch_writer() as w:
         for i in range(20):
             ts = f"{old if i < 15 else ds}T12:{i:02d}:00Z"
-            w.put_item(Item={"id": f"audit-{i:03d}", "timestamp": ts,
-                             "action": "document.view", "user_id": f"user-{i % 5:03d}"})
+            # Same item shape as audit-service's DynamoDbAuditRepository.
+            w.put_item(Item={"id": f"audit-{i:03d}", "Id": f"audit-{i:03d}", "Timestamp": ts,
+                             "Action": "document.view", "UserId": f"user-{i % 5:03d}",
+                             "ResourceType": "document", "ResourceId": f"doc-{i:03d}"})
     return {"sqs_events": len(sqs_events), "dynamodb_events": n_events // 2,
             "files": 22, "audit_events": 20}
 

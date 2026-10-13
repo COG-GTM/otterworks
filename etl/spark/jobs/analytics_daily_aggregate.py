@@ -59,7 +59,7 @@ def normalize(df: DataFrame) -> DataFrame:
         F.coalesce(*[_nonempty(df, f) for f in USER_ID_FIELDS], F.lit("unknown")).alias("user_id"),
         _nonempty(df, "documentId").alias("document_id"),
         _nonempty(df, "fileId").alias("file_id"),
-        F.coalesce(_nonempty(df, "sizeBytes").cast("double").cast("long"),
+        F.coalesce(_nonempty(df, "sizeBytes").cast("long"),
                    F.lit(0).cast("long")).alias("size_bytes"),
         F.when(hour == "", F.lit("00")).otherwise(hour).alias("hour"),
     )

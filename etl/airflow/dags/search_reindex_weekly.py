@@ -42,11 +42,16 @@ with DAG(
                 return S.validate_staging(kind, settings.load_config(), expected)
 
             @task
-            def swap_into_live():
-                return S.swap_into_live(kind, settings.load_config())
+            def swap_into_live(prepared: dict):
+                return S.swap_into_live(kind, settings.load_config(), prepared["prepared_at"])
 
+            @task
+            def drop_previous_index():
+                return S.drop_previous_index(kind, settings.load_config())
+
+            prepared = prepare_staging_index()
             indexed = extract_transform_load()
-            prepare_staging_index() >> indexed
-            validate_staging(indexed) >> swap_into_live()
+            prepared >> indexed
+            validate_staging(indexed) >> swap_into_live(prepared) >> drop_previous_index()
 
         reindex()

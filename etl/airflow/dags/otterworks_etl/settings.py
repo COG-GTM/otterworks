@@ -45,6 +45,8 @@ DEFAULTS: dict[str, Any] = {
     "top_users_limit": 100,
     # audit archive
     "audit_retention_days": 90,
+    # audit-service writes `Timestamp` (DynamoDbAuditRepository); the legacy script used `timestamp`.
+    "audit_timestamp_attr": "Timestamp",
     "audit_archive_storage_class": "GLACIER",
     # storage cleanup
     "files_prefix": "files/",
