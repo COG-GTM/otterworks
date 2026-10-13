@@ -22,6 +22,9 @@
 #   --image-registry <host>   registry prefix; images resolve to <host>/otterworks/<svc>
 #   --revision <ref>          git revision the root app + ApplicationSet track (default: main)
 #   --repo-url <url>          git repo (default: https://github.com/COG-GTM/otterworks.git)
+#
+# Env: ARGOCD_EXTRA_VALUES=<file> layers a cluster-specific values file over
+# demo-platform/k8s/argocd/values.yaml (e.g. a registry mirror on kind).
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -76,6 +79,7 @@ helm upgrade --install argocd argo/argo-cd \
   --namespace "${ARGOCD_NAMESPACE}" --create-namespace \
   --version "${version}" \
   -f "${K8S_DIR}/argocd/values.yaml" \
+  ${ARGOCD_EXTRA_VALUES:+-f "${ARGOCD_EXTRA_VALUES}"} \
   --wait --timeout 10m
 
 if [ "${BOOTSTRAP}" != true ]; then
