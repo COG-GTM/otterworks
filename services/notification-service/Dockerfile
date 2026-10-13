@@ -1,4 +1,4 @@
-FROM gradle:8.6-jdk17 AS builder
+FROM gradle:9.8.1-jdk25 AS builder
 
 WORKDIR /app
 COPY build.gradle.kts settings.gradle.kts gradle-init.gradle ./
@@ -7,7 +7,7 @@ RUN gradle dependencies --no-daemon --init-script gradle-init.gradle || true
 COPY src ./src
 RUN gradle shadowJar --no-daemon --init-script gradle-init.gradle
 
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:25-jre-resolute
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/build/libs/*-all.jar app.jar
