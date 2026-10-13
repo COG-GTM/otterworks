@@ -18,17 +18,19 @@
    ```
    kubectl logs -l app=notification-service --tail=100 -n otterworks | grep -i "deseriali\|timestamp\|schema"
    ```
-2. Check whether the chaos flag `chaos:notification-service:consumer_strict_schema` is set in Redis:
-   ```
-   redis-cli EXISTS chaos:notification-service:consumer_strict_schema
-   ```
-
-<!-- TODO: Complete investigation steps -->
+2. Inspect a failing message body (`Failed to parse message body` log line) and compare the
+   `timestamp` field and any extra fields against `SqsNotificationMessage`. Older producers
+   emit Unix epoch numbers for `timestamp`.
 
 ## Resolution Steps
 
-<!-- TODO -->
+- The consumer parses with `ignoreUnknownKeys`/`isLenient` and normalizes `timestamp` via
+  `FlexibleTimestampSerializer`, which accepts RFC 3339 strings and epoch seconds/milliseconds.
+  If a new producer format appears, extend that serializer rather than tightening the parser.
+- Messages that still cannot be parsed are left undeleted and move to
+  `otterworks-notifications-dlq` after 3 receives (`maxReceiveCount`). Once a fix is deployed,
+  redrive them back to the main queue (`aws sqs start-message-move-task --source-arn <dlq-arn>`).
 
 ## Post-Incident
 
-<!-- TODO -->
+- Confirm `notifications_processing_errors_total` returns to zero and the DLQ depth is stable.

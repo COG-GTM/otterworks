@@ -121,7 +121,7 @@ class SqsConsumerTest {
     }
 
     @Test
-    fun `strict schema rejects epoch-int timestamps that the lenient parser accepts`() {
+    fun `parseMessage accepts legacy epoch-second timestamps and normalizes them`() {
         val body = """
             {
                 "eventType": "file_shared",
@@ -130,14 +130,42 @@ class SqsConsumerTest {
             }
         """.trimIndent()
 
-        assertNotNull(consumer.parseMessage(body))
+        val event = consumer.parseMessage(body)
 
-        val strictConsumer = SqsConsumer(
-            sqsClient,
-            notificationService,
-            config.copy(strictSchema = true),
-        )
-        assertNull(strictConsumer.parseMessage(body))
+        assertNotNull(event)
+        assertEquals("file-123", event.fileId)
+        assertEquals("2024-01-01T00:00:00Z", event.timestamp)
+    }
+
+    @Test
+    fun `parseMessage accepts epoch-millisecond and quoted epoch timestamps`() {
+        val millis = consumer.parseMessage("""{"eventType":"file_shared","timestamp":1704067200123}""")
+        assertNotNull(millis)
+        assertEquals("2024-01-01T00:00:00.123Z", millis.timestamp)
+
+        val quoted = consumer.parseMessage("""{"eventType":"file_shared","timestamp":"1704067200"}""")
+        assertNotNull(quoted)
+        assertEquals("2024-01-01T00:00:00Z", quoted.timestamp)
+    }
+
+    @Test
+    fun `parseMessage accepts SNS-wrapped legacy message with unknown fields`() {
+        val inner = """{"eventType":"comment_added","userId":"user-1","documentId":"doc-1","schemaVersion":1,"timestamp":1704067200}"""
+        val body = """{"Type":"Notification","MessageId":"m-1","Message":"${inner.replace("\"", "\\\"")}","Timestamp":"2024-01-01T00:00:00.000Z","SignatureVersion":"1"}"""
+
+        val event = consumer.parseMessage(body)
+
+        assertNotNull(event)
+        assertEquals("comment_added", event.eventType)
+        assertEquals("doc-1", event.documentId)
+        assertEquals("2024-01-01T00:00:00Z", event.timestamp)
+    }
+
+    @Test
+    fun `parseMessage preserves RFC 3339 timestamps unchanged`() {
+        val event = consumer.parseMessage("""{"eventType":"file_shared","timestamp":"2024-06-15T10:30:00.500+02:00"}""")
+        assertNotNull(event)
+        assertEquals("2024-06-15T10:30:00.500+02:00", event.timestamp)
     }
 
     @Test
