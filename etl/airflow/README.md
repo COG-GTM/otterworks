@@ -62,6 +62,19 @@ the archive object is confirmed, and the reindex never touches the live index un
 `catchup=False` and `max_active_runs=1`; backfill explicitly with
 `airflow dags backfill -s 2026-10-01 -e 2026-10-07 analytics_daily`.
 
+### Late-arriving analytics events
+
+`extract_from_sqs` writes an event under its own event date, even when that day's run has
+already finished, and logs a `sqs_late_events` warning (also returned as `late_partitions`).
+Those days are **not** recomputed automatically. To fold late events into a past day, rerun it
+manually; every task is idempotent, so a rerun overwrites that day's outputs:
+
+```bash
+airflow tasks clear -y analytics_daily -s 2026-10-11 -e 2026-10-11   # existing run
+airflow dags backfill -s 2026-10-11 -e 2026-10-11 analytics_daily     # or a backfill run
+```
+Rerun `user_activity_daily` for later dates as well if their reports should reflect the change.
+
 ## Spark
 
 `OTTERWORKS_SPARK_MODE=local` (default): `SparkSubmitOperator` runs the job with `local[*]` inside
