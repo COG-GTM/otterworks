@@ -26,7 +26,7 @@ upstream repo.
                                                                     └──────────────────────────────────────────┘
 ```
 
-| Component | Chart (pinned in `demo-platform/k8s/observability/versions.env`) | Notes |
+| Component | Chart (pinned in `demo-platform/k8s/observability/versions.sh`) | Notes |
 |---|---|---|
 | Prometheus Operator, Prometheus, Alertmanager, Grafana | `prometheus-community/kube-prometheus-stack` 92.3.0 | Selects ServiceMonitors/PodMonitors/PrometheusRules from namespaces labelled `platform/team in (otterworks, platform)`, with any CR label. |
 | OpenTelemetry Collector | `open-telemetry/opentelemetry-collector` 0.175.1 | Deployment, contrib image. Port of `observability/otel/otel-collector-config.yml` + `sampling-config.yml` (keep errors, keep >2s, 10% of the rest). Traces → Jaeger (OTLP gRPC), metrics → Prometheus exporter scraped via ServiceMonitor. |

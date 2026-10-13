@@ -55,7 +55,7 @@ done
 [ -d "${OBS}/env/${ENVIRONMENT}" ] || fail "no overlay directory ${OBS}/env/${ENVIRONMENT}"
 
 # shellcheck disable=SC1091  # pinned chart versions
-source "${OBS}/versions.env"
+source "${OBS}/versions.sh"
 
 command -v helm >/dev/null 2>&1 || fail "helm is required"
 python3 "${OBS}/generate.py" --check >/dev/null || fail "k8s/observability/generated is stale; run generate.py"
