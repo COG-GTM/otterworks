@@ -1,4 +1,4 @@
-FROM gradle:8.6-jdk17 AS builder
+FROM gradle:9.8.1-jdk17 AS builder
 
 WORKDIR /app
 COPY build.gradle settings.gradle gradle-init.gradle ./
@@ -8,7 +8,7 @@ RUN gradle dependencies --no-daemon --init-script gradle-init.gradle || true
 COPY src ./src
 RUN gradle bootJar --no-daemon --init-script gradle-init.gradle
 
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:17-jre-noble
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/build/libs/*.jar app.jar
