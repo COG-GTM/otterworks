@@ -18,12 +18,7 @@
    ```
    kubectl logs -l app=notification-service --tail=100 -n otterworks | grep -i "deseriali\|timestamp\|schema"
    ```
-2. Check whether the chaos flag `chaos:notification-service:consumer_strict_schema` is set in Redis:
-   ```
-   redis-cli EXISTS chaos:notification-service:consumer_strict_schema
-   ```
-
-3. Inspect a failing message body (`Failed to parse message body` log line) and compare the
+2. Inspect a failing message body (`Failed to parse message body` log line) and compare the
    `timestamp` field and any extra fields against `SqsNotificationMessage`. Older producers
    emit Unix epoch numbers for `timestamp`.
 

@@ -21,6 +21,9 @@ awslocal sqs create-queue --queue-name otterworks-notifications
 # a message the consumer cannot process is parked instead of redelivered forever.
 awslocal sqs create-queue --queue-name otterworks-notifications-dlq
 awslocal sqs set-queue-attributes \
+  --queue-url http://localhost:4566/000000000000/otterworks-notifications-dlq \
+  --attributes MessageRetentionPeriod=1209600
+awslocal sqs set-queue-attributes \
   --queue-url http://localhost:4566/000000000000/otterworks-notifications \
   --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:otterworks-notifications-dlq\",\"maxReceiveCount\":\"3\"}"}'
 awslocal sqs create-queue --queue-name otterworks-audit-events-queue
