@@ -1,13 +1,13 @@
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 COPY pyproject.toml .
 RUN pip install --no-cache-dir \
-    "fastapi>=0.110,<1" \
-    "uvicorn[standard]>=0.29,<1" \
-    "pydantic>=2.6,<3" \
-    "pydantic-settings>=2.2,<3" \
-    "psycopg[binary]>=3.2,<4"
+    "fastapi>=0.143,<1" \
+    "uvicorn[standard]>=0.54,<1" \
+    "pydantic>=2.14,<3" \
+    "pydantic-settings>=2.15,<3" \
+    "psycopg[binary]>=3.3,<4"
 COPY app ./app
 COPY db ./db
 COPY scripts ./scripts
