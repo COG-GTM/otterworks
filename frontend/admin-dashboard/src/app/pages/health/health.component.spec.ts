@@ -1,7 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { HealthComponent } from './health.component';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
 
 describe('HealthComponent', () => {
   let component: HealthComponent;
@@ -9,12 +10,10 @@ describe('HealthComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [
-        HealthComponent,
-        HttpClientTestingModule,
-        NoopAnimationsModule,
-      ],
-    }).compileComponents();
+    imports: [HealthComponent,
+        NoopAnimationsModule],
+    providers: [provideHttpClient(withXhr(), withInterceptorsFromDi()), provideHttpClientTesting()]
+}).compileComponents();
 
     fixture = TestBed.createComponent(HealthComponent);
     component = fixture.componentInstance;
