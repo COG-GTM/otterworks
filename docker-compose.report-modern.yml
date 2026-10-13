@@ -1,0 +1,40 @@
+# Opt-in overlay: runs report-service-modern (Java 21 / Spring Boot 3) next to the legacy report-service.
+# The default `report-service` in docker-compose.yml is unchanged.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.report-modern.yml --profile report-modern \
+#     up -d postgres report-service report-service-modern
+#
+# Legacy answers on :8091, modern on :8092 (same REST contract). The modern service uses its own
+# Postgres schema (report_modern) in the same otterworks_reports database so the two never share rows.
+services:
+  report-service-modern:
+    profiles: ["report-modern"]
+    build:
+      context: ./services/report-service-modern
+    ports:
+    - 8092:8091
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: otterworks_reports
+      DB_SCHEMA: report_modern
+      DB_USER: otterworks
+      DB_PASSWORD: otterworks_dev
+      ANALYTICS_SERVICE_URL: http://analytics-service:8088
+      AUDIT_SERVICE_URL: http://audit-service:8090
+      AUTH_SERVICE_URL: http://auth-service:8081
+      REPORT_OUTPUT_DIR: /tmp/reports
+      OTEL_SERVICE_NAME: report-service-modern
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8091/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    security_opt:
+    - no-new-privileges:true
+    read_only: true
+    tmpfs:
+    - /tmp
