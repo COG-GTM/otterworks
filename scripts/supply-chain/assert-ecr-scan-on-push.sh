@@ -46,4 +46,18 @@ if [ -n "${missing}" ]; then
   exit 1
 fi
 
-echo "ECR scan-on-push: ${#passed[@]} repositories pass CKV_AWS_163, covering all ${#images[@]} published images."
+# Instance keys are not repository names: the name is ${var.ecr_prefix}<key>.
+# Pin the prefix to the repository path the release workflow pushes to.
+release_prefix="$(sed -n 's#.*}}/\([A-Za-z0-9._/-]*/\)\${{ matrix\.service\.name }}:.*#\1#p' "${workflow}" | sort -u)"
+tf_prefix="$(awk '/variable "ecr_prefix"/ {f=1} f && /default/ {gsub(/[" ]/, "", $3); print $3; exit}' "${tf_dir}/variables.tf")"
+# shellcheck disable=SC2016 # literal Terraform interpolation
+grep -q 'name *= *"${var.ecr_prefix}${each.value}"' "${tf_dir}/modules/ecr/main.tf" || {
+  echo "::error::modules/ecr no longer names repositories \${var.ecr_prefix}<service>; update this assertion"
+  exit 1
+}
+if [ -z "${release_prefix}" ] || [ "${release_prefix}" != "${tf_prefix}" ]; then
+  echo "::error::ECR repository prefix '${tf_prefix}' (${tf_dir}/variables.tf) does not match the release push path '${release_prefix}' (${workflow})"
+  exit 1
+fi
+
+echo "ECR scan-on-push: ${#passed[@]} repositories (${tf_prefix}<service>) pass CKV_AWS_163, covering all ${#images[@]} published images."

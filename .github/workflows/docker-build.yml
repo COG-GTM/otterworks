@@ -158,11 +158,11 @@ jobs:
           docker buildx imagetools inspect --raw "${IMAGE}@${DIGEST}" |
             jq -r '.manifests[] | select(.platform.os != "unknown") |
               "\(.platform.os)/\(.platform.architecture) \(.digest)"' |
-          while read -r platform digest; do
+          while read -r platform platform_digest; do
             sbom="sbom/${NAME}-${platform#*/}.spdx.json"
             docker buildx imagetools inspect "${IMAGE}@${DIGEST}" \
               --format "{{ json (index .SBOM \"${platform}\").SPDX }}" > "${sbom}"
-            cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${digest}"
+            cosign attest --yes --type spdxjson --predicate "${sbom}" "${IMAGE}@${platform_digest}"
           done
 
       - name: Verify signature and SBOM attestations
@@ -177,8 +177,8 @@ jobs:
           cosign verify "${verify[@]}" "${IMAGE}@${DIGEST}" > /dev/null
           docker buildx imagetools inspect --raw "${IMAGE}@${DIGEST}" |
             jq -r '.manifests[] | select(.platform.os != "unknown") | .digest' |
-          while read -r digest; do
-            cosign verify-attestation "${verify[@]}" --type spdxjson "${IMAGE}@${digest}" > /dev/null
+          while read -r platform_digest; do
+            cosign verify-attestation "${verify[@]}" --type spdxjson "${IMAGE}@${platform_digest}" > /dev/null
           done
           echo "Verified ${IMAGE}@${DIGEST} as signed by ${IDENTITY}"
 

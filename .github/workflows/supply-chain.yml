@@ -22,6 +22,7 @@ on:
       - 'scripts/supply-chain/**'
       - '.trivyignore'
       - '.github/workflows/supply-chain.yml'
+      - '.github/workflows/docker-build.yml'
   push:
     branches: [main]
     paths:
@@ -31,6 +32,7 @@ on:
       - 'scripts/supply-chain/**'
       - '.trivyignore'
       - '.github/workflows/supply-chain.yml'
+      - '.github/workflows/docker-build.yml'
   schedule:
     - cron: '0 7 * * 1' # Weekly Monday 7AM UTC: new CVEs in unchanged images
   workflow_dispatch:
@@ -85,10 +87,6 @@ jobs:
     needs: trivy-db
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions:
-      contents: read
-      actions: read
-      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -156,7 +154,10 @@ jobs:
               --cache-dir .trivy-cache --skip-db-update --skip-java-db-update \
               --scanners vuln --severity CRITICAL,HIGH --ignorefile .trivyignore \
               --format json --output "out/${NAME}-${arch}.trivy.json"
-            trivy convert --format sarif --output "out/${NAME}-${arch}.sarif" "out/${NAME}-${arch}.trivy.json"
+            trivy convert --format sarif --output "out/${NAME}-${arch}.sarif.tmp" "out/${NAME}-${arch}.trivy.json"
+            # Distinct category per image/platform so code scanning keeps them apart.
+            jq --arg id "trivy-image/${NAME}/${arch}/" '.runs[].automationDetails = {id: $id}' \
+              "out/${NAME}-${arch}.sarif.tmp" > "out/${NAME}-${arch}.sarif" && rm "out/${NAME}-${arch}.sarif.tmp"
           done
 
       # PRs gate on findings the change introduces, the same policy
@@ -247,21 +248,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      # Fork PRs get a read-only token, and code scanning may not be enabled on
-      # every fork, so the upload is best-effort; the SARIF is in the artifact
-      # either way.
-      - name: Upload SARIF (amd64)
-        if: always() && hashFiles(format('out/{0}-amd64.sarif', matrix.service.name)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@66e692051da0915b214c5158091a226015d453f4 # v3
+  # The upload runs in its own job so the job that builds contributor-controlled
+  # Dockerfiles never holds a write-scoped token. Fork PRs get a read-only token
+  # and code scanning may not be enabled on every fork, so the upload is
+  # best-effort; the SARIF is in the supply-chain-<image> artifacts either way.
+  sarif:
+    needs: image
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          sarif_file: out/${{ matrix.service.name }}-amd64.sarif
-          category: trivy-image/${{ matrix.service.name }}/amd64
+          pattern: supply-chain-*
+          path: sarif
+          merge-multiple: true
 
-      - name: Upload SARIF (arm64)
-        if: always() && hashFiles(format('out/{0}-arm64.sarif', matrix.service.name)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+      - name: List SARIF files
+        id: files
+        run: |
+          shopt -s nullglob
+          files=(sarif/*.sarif)
+          echo "count=${#files[@]}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${files[@]}"
+
+      - name: Upload SARIF
+        if: steps.files.outputs.count != '0'
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@66e692051da0915b214c5158091a226015d453f4 # v3
         with:
-          sarif_file: out/${{ matrix.service.name }}-arm64.sarif
-          category: trivy-image/${{ matrix.service.name }}/arm64
+          sarif_file: sarif
