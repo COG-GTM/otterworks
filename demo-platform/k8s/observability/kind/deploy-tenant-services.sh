@@ -29,17 +29,22 @@ helm upgrade --install auth-service "${CHARTS}/auth-service" "${common[@]}" \
   --set-string secrets.SPRING_DATASOURCE_PASSWORD=otterworks_dev \
   --set-string secrets.JWT_SECRET="${JWT}" \
   --set resources.requests.memory=512Mi --set resources.limits.memory=1024Mi --set resources.limits.cpu=1000m &
+pids=($!)
 helm upgrade --install document-service "${CHARTS}/document-service" "${common[@]}" \
   --set image.repository=otterworks-document-service --set image.tag=latest \
   --set-string config.DOC_SVC_DATABASE_URL="postgresql+asyncpg://otterworks:otterworks_dev@${PG}:5432/otterworks" \
   --set-string config.DOC_SVC_SNS_ENABLED=false \
   --set-string secrets.JWT_SECRET="${JWT}" &
+pids+=($!)
 helm upgrade --install admin-service "${CHARTS}/admin-service" "${common[@]}" \
   --set image.repository=otterworks-mock-admin --set image.tag=kind \
   --set observability.alerting.enabled=true \
   --set observability.alerting.webhookSecret.name=admin-service-secrets \
   --set-string secrets.ALERT_WEBHOOK_SECRET=kind-alert-secret &
-wait
+pids+=($!)
+failed=0
+for pid in "${pids[@]}"; do wait "${pid}" || failed=1; done
+[ "${failed}" -eq 0 ] || { echo "a helm release failed" >&2; exit 1; }
 helm upgrade --install api-gateway "${CHARTS}/api-gateway" "${common[@]}" \
   --set image.repository=otterworks-api-gateway --set image.tag=latest \
   --set-string secrets.JWT_SECRET="${JWT}" \

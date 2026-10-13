@@ -7,7 +7,12 @@ jaeger:
     ingressClassName: nginx
     hosts: [jaeger.otterworks.app]
     pathType: Prefix
+    tls:
+      - secretName: jaeger-tls
+        hosts: [jaeger.otterworks.app]
     annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
       nginx.ingress.kubernetes.io/auth-type: basic
       nginx.ingress.kubernetes.io/auth-secret: jaeger-basic-auth
       nginx.ingress.kubernetes.io/auth-realm: OtterWorks Jaeger

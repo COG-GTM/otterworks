@@ -23,14 +23,11 @@ spec:
       webhookConfigs:
         - url: {{ printf "http://%s.%s.svc.cluster.local:%v%s" .Release.Name .Release.Namespace .Values.service.port $alerting.path | quote }}
           sendResolved: {{ $alerting.sendResolved }}
-          {{- with $alerting.webhookSecret }}
-          {{- if .name }}
+          {{- $secret := $alerting.webhookSecret | default dict }}
           httpConfig:
             authorization:
               type: Bearer
               credentials:
-                name: {{ .name }}
-                key: {{ .key }}
-          {{- end }}
-          {{- end }}
+                name: {{ required "observability.alerting.webhookSecret.name is required: the ingest endpoint is unauthenticated without ALERT_WEBHOOK_SECRET" $secret.name }}
+                key: {{ $secret.key | default "ALERT_WEBHOOK_SECRET" }}
 {{- end }}

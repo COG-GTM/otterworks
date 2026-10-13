@@ -42,6 +42,12 @@ grafana:
     enabled: true
     ingressClassName: nginx
     hosts: [grafana.otterworks.app]
+    tls:
+      - secretName: grafana-tls
+        hosts: [grafana.otterworks.app]
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
   grafana.ini:
     server:
       root_url: https://grafana.otterworks.app

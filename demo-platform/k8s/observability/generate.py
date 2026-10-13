@@ -36,6 +36,12 @@ SERVICE_OVERRIDES = {
     "CRDTSyncDelayHigh": "collab-service",
 }
 
+# The shared Prometheus also scrapes platform targets (kube-prometheus-stack has its
+# own TargetDown for those); OtterWorks availability alerts cover app namespaces only.
+EXPR_OVERRIDES = {
+    "ServiceDown": 'up{namespace=~"otterworks(-.*)?"} == 0',
+}
+
 BY_RE = re.compile(r"\bby\s*\(([^)]*)\)")
 
 
@@ -50,9 +56,12 @@ def _literal(dumper, data):
 yaml.SafeDumper.add_representer(Literal, _literal)
 
 
-def tenant_aware(expr: str) -> str:
+def tenant_aware(expr: str, keep_job: bool = False) -> str:
+    """Keep `namespace` (and, for alerts labelled from it, `job`) through every by()."""
     def repl(m):
         labels = [l.strip() for l in m.group(1).split(",") if l.strip()]
+        if keep_job and "job" not in labels:
+            labels.insert(0, "job")
         if "namespace" not in labels:
             labels.insert(0, "namespace")
         return "by (" + ", ".join(labels) + ")"
@@ -64,7 +73,10 @@ def port_rules(path: pathlib.Path, alerting: bool):
     groups = yaml.safe_load(path.read_text())["groups"]
     for group in groups:
         for rule in group["rules"]:
-            rule["expr"] = tenant_aware(str(rule["expr"]))
+            if alerting and rule.get("alert") in EXPR_OVERRIDES:
+                rule["expr"] = EXPR_OVERRIDES[rule["alert"]]
+            keep_job = alerting and "alert" in rule and rule["alert"] not in SERVICE_OVERRIDES
+            rule["expr"] = tenant_aware(str(rule["expr"]), keep_job)
             if alerting and "alert" in rule:
                 labels = rule.setdefault("labels", {})
                 labels.setdefault(

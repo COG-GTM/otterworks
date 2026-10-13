@@ -279,10 +279,13 @@ build_helm_args() {
   if [ "${OBSERVABILITY_ENABLED:-false}" = "true" ]; then
     EXTRA_ARGS+=(--set observability.otel.enabled=true)
     if [ "$service" = "admin-service" ]; then
-      EXTRA_ARGS+=(--set observability.alerting.enabled=true)
+      # Without ALERT_WEBHOOK_SECRET the ingest endpoint is unauthenticated: don't route alerts to it.
       if [ -n "${ALERT_WEBHOOK_SECRET:-}" ]; then
         add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}"
-        EXTRA_ARGS+=(--set "observability.alerting.webhookSecret.name=${service}-secrets")
+        EXTRA_ARGS+=(--set observability.alerting.enabled=true
+                     --set "observability.alerting.webhookSecret.name=${service}-secrets")
+      else
+        warn "OBSERVABILITY_ENABLED without ALERT_WEBHOOK_SECRET: admin-service alert routing left off"
       fi
     fi
   fi

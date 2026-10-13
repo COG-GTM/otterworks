@@ -52,7 +52,8 @@ install script both fail if `generated/` is stale.
 ## Installing
 
 Shared-cluster installs are cluster-wide changes: get sign-off first (AGENTS.md). The
-script refuses non-kind contexts without `--yes`.
+script refuses non-kind environments without `--yes`, and `--env kind` only targets `kind-*`
+contexts. Re-running with only some `ALERT_*` variables set keeps the other receiver values.
 
 ```bash
 # Render only (no cluster) -- what CI does
@@ -63,6 +64,7 @@ export ALERT_PLATFORM_WEBHOOK_URL=https://<admin-service>/api/v1/admin/alerts/in
 export ALERT_PLATFORM_WEBHOOK_TOKEN=<admin-service ALERT_WEBHOOK_SECRET>
 export ALERT_SLACK_WEBHOOK_URL=<optional>
 export JAEGER_BASIC_AUTH="$(htpasswd -nb ops '<password>')"
+export AWS_REGION=us-east-1   # Fluent Bit's CloudWatch region; log groups use --env as <env>
 export FLUENT_BIT_ROLE_ARN="$(terraform -chdir=infrastructure/terraform output -raw fluent_bit_role_arn)"
 demo-platform/scripts/install-observability.sh --env dev --context <ctx> --yes
 ```
@@ -96,7 +98,9 @@ OBSERVABILITY_ENABLED=true ALERT_WEBHOOK_SECRET=<secret> scripts/deploy-tenant.s
   `OTEL_RESOURCE_ATTRIBUTES` with `k8s.namespace.name`, `service.namespace`,
   `otterworks.tenant` (the tenant namespace) and `k8s.pod.name`, plus any
   `observability.otel.resourceAttributes`.
-- admin-service only: `observability.alerting.enabled=true` → an `AlertmanagerConfig`
+- admin-service only, and only when `ALERT_WEBHOOK_SECRET` is set (without it the ingest
+  endpoint is unauthenticated, so routing stays off and the chart refuses to render it):
+  `observability.alerting.enabled=true` → an `AlertmanagerConfig`
   that routes this namespace's `critical|warning` alerts to the tenant's own
   `/api/v1/admin/alerts/ingest` with `Authorization: Bearer <ALERT_WEBHOOK_SECRET>`
   (read from the chart's Secret). The operator scopes the route to the namespace, so
@@ -115,7 +119,7 @@ ingress-nginx (AGENTS.md).
 | UI | Port-forward | Shared ingress (`env/dev`) |
 |---|---|---|
 | Grafana | `kubectl -n monitoring port-forward svc/kps-grafana 3000:80` | `https://grafana.otterworks.app` (Grafana login; admin creds in Secret `grafana-admin`) |
-| Jaeger | `kubectl -n monitoring port-forward svc/jaeger 16686:16686` | `https://jaeger.otterworks.app` (nginx basic auth, Secret `jaeger-basic-auth`); also the `Jaeger` datasource in Grafana |
+| Jaeger | `kubectl -n monitoring port-forward svc/jaeger 16686:16686` | `https://jaeger.otterworks.app` (TLS via cert-manager, HTTP redirected; nginx basic auth, Secret `jaeger-basic-auth`); also the `Jaeger` datasource in Grafana |
 | Prometheus | `kubectl -n monitoring port-forward svc/kps-prometheus 9090` | not exposed |
 | Alertmanager | `kubectl -n monitoring port-forward svc/kps-alertmanager 9093` | not exposed |
 

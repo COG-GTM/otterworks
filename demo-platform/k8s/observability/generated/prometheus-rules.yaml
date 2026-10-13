@@ -11,7 +11,7 @@ spec:
   - name: otterworks.service.availability
     rules:
     - alert: ServiceDown
-      expr: up == 0
+      expr: up{namespace=~"otterworks(-.*)?"} == 0
       for: 1m
       labels:
         severity: critical
@@ -167,7 +167,7 @@ spec:
   - name: otterworks.aws.dynamodb
     rules:
     - alert: DynamoDBThrottling
-      expr: sum by (namespace, table_name) ( rate(aws_dynamodb_throttled_requests_total[5m]) ) > 0
+      expr: sum by (namespace, job, table_name) ( rate(aws_dynamodb_throttled_requests_total[5m]) ) > 0
       for: 2m
       labels:
         severity: warning
@@ -188,7 +188,7 @@ spec:
         summary: DynamoDB high latency on {{ $labels.table_name }}
         description: DynamoDB {{ $labels.operation }} on table {{ $labels.table_name }} has average latency above 50ms.
     - alert: DynamoDBSystemErrors
-      expr: sum by (namespace, table_name) ( rate(aws_dynamodb_system_errors_total[5m]) ) > 0
+      expr: sum by (namespace, job, table_name) ( rate(aws_dynamodb_system_errors_total[5m]) ) > 0
       for: 2m
       labels:
         severity: critical

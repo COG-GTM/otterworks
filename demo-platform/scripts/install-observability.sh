@@ -86,6 +86,9 @@ extra_args_for() {  # <release>
   case "$1" in
     fluent-bit)
       printf -- '--set-file\nconfig.customParsers=%s\n' "${REPO_ROOT}/observability/logging/parsers.conf"
+      # Log groups are /otterworks/<env>/<service>; <env> must match Terraform's var.environment.
+      printf -- '--set-string\nenv[0].name=OTTERWORKS_ENVIRONMENT,env[0].value=%s,env[1].name=AWS_REGION,env[1].value=%s\n' \
+        "${ENVIRONMENT}" "${AWS_REGION:-us-east-1}"
       if [ -n "${FLUENT_BIT_ROLE_ARN:-}" ]; then
         printf -- '--set-string\nserviceAccount.annotations.eks\\.amazonaws\\.com/role-arn=%s\n' "${FLUENT_BIT_ROLE_ARN}"
       fi ;;
@@ -113,6 +116,9 @@ command -v kubectl >/dev/null 2>&1 || fail "kubectl is required"
 [ -n "${CONTEXT}" ] || CONTEXT="$(kubectl config current-context)"
 KCTL=(kubectl --context "${CONTEXT}")
 HELM_CTX=(--kube-context "${CONTEXT}")
+if [ "${ENVIRONMENT}" = kind ] && [[ "${CONTEXT}" != kind-* ]]; then
+  fail "--env kind only installs into kind-* contexts (got '${CONTEXT}')"
+fi
 if [ "${ENVIRONMENT}" != kind ] && [ "${ASSUME_YES}" != true ]; then
   fail "refusing to install into '${CONTEXT}' (env ${ENVIRONMENT}) without --yes. This is a SHARED cluster-wide install; get sign-off first (AGENTS.md)."
 fi
@@ -128,7 +134,12 @@ secret_from_env() {  # <secret-name> <key>=<ENV_VAR>... ; values travel via file
   local args=() kv key var
   for kv in "$@"; do
     key="${kv%%=*}"; var="${kv#*=}"
-    printf '%s' "${!var:-}" > "${tmp}/${key}"
+    if [ -n "${!var:-}" ]; then
+      printf '%s' "${!var}" > "${tmp}/${key}"
+    else  # keep the current value so a partial rotation never blanks other receivers
+      "${KCTL[@]}" -n "${NS}" get secret "${name}" -o "go-template={{ index .data \"${key}\" | base64decode }}" \
+        > "${tmp}/${key}" 2>/dev/null || : > "${tmp}/${key}"
+    fi
     args+=("--from-file=${key}=${tmp}/${key}")
   done
   "${KCTL[@]}" -n "${NS}" create secret generic "${name}" "${args[@]}" --dry-run=client -o yaml \
