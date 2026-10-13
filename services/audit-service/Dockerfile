@@ -1,11 +1,11 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS builder
 
 WORKDIR /app
 COPY *.csproj ./
 RUN dotnet restore
 
 COPY . .
-RUN dotnet publish -c Release -o /out
+RUN dotnet publish -c Release -o /out -p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine
 RUN apk --no-cache add curl

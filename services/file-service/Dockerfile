@@ -1,17 +1,40 @@
-FROM rust:latest AS builder
+# Cross-compile on the build host: compiling the dependency tree under QEMU
+# arm64 emulation takes over an hour.
+FROM --platform=$BUILDPLATFORM rust:latest AS builder
+ARG TARGETARCH
+ARG BUILDARCH
 
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && \
+    if [ "$TARGETARCH" != "$BUILDARCH" ]; then \
+      case "$TARGETARCH" in \
+        arm64) apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;; \
+        amd64) apt-get install -y gcc-x86-64-linux-gnu libc6-dev-amd64-cross ;; \
+      esac; \
+    fi && rm -rf /var/lib/apt/lists/*
+RUN case "$TARGETARCH" in \
+      amd64) echo x86_64-unknown-linux-gnu ;; \
+      arm64) echo aarch64-unknown-linux-gnu ;; \
+      *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac > /rust-target && rustup target add "$(cat /rust-target)"
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc \
+    AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+    CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc \
+    AR_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ar
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src
+RUN mkdir src && echo "fn main() {}" > src/main.rs && \
+    cargo build --release --target "$(cat /rust-target)" && rm -rf src
 
 COPY src ./src
-RUN touch src/main.rs && cargo build --release
+RUN touch src/main.rs && cargo build --release --target "$(cat /rust-target)" && \
+    cp "target/$(cat /rust-target)/release/file-service" /app/file-service
 
 FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /app/target/release/file-service /app/file-service
+COPY --from=builder /app/file-service /app/file-service
 
 RUN useradd -r -u 1001 appuser
 USER appuser

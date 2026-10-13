@@ -1,4 +1,4 @@
-FROM gradle:8.6-jdk17 AS builder
+FROM --platform=$BUILDPLATFORM gradle:8.6-jdk17 AS builder
 
 WORKDIR /app
 COPY build.gradle settings.gradle gradle-init.gradle ./
