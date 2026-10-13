@@ -102,3 +102,67 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+func TestProxyPreservesHostPathAndForwardingHeaders(t *testing.T) {
+	var got *http.Request
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Clone(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list?page=2", nil)
+	req.Host = "api.otterworks.test"
+	req.RemoteAddr = "203.0.113.7:4321"
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, "user-123", ""))
+	req.Header.Set("X-Forwarded-For", "198.51.100.1")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "app.otterworks.test")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotNil(t, got)
+	assert.Equal(t, "api.otterworks.test", got.Host, "inbound Host must be preserved")
+	assert.Equal(t, "/api/v1/files/list", got.URL.Path)
+	assert.Equal(t, "page=2", got.URL.RawQuery)
+	assert.Equal(t, "198.51.100.1, 203.0.113.7", got.Header.Get("X-Forwarded-For"))
+	assert.Equal(t, "https", got.Header.Get("X-Forwarded-Proto"))
+	assert.Equal(t, "app.otterworks.test", got.Header.Get("X-Forwarded-Host"))
+}
+
+func TestProxyIdentityHeadersSurviveConnectionHeaderStripping(t *testing.T) {
+	var gotUserID string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserID = r.Header.Get("X-User-ID")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+	req.Header.Set("Authorization", "Bearer "+signedToken(t, "user-123", ""))
+	req.Header.Set("Connection", "X-User-ID")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "user-123", gotUserID)
+}
+
+func signedToken(t *testing.T, subject, email string) string {
+	t.Helper()
+	claims := middleware.JWTClaims{
+		Email: email,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Subject:   subject,
+		},
+	}
+	tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+	require.NoError(t, err)
+	return tokenStr
+}
