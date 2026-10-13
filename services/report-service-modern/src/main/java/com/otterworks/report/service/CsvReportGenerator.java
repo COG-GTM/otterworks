@@ -1,0 +1,92 @@
+package com.otterworks.report.service;
+
+import com.opencsv.CSVWriter;
+import com.otterworks.report.model.Report;
+import com.otterworks.report.util.ReportDateUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+@Component
+public class CsvReportGenerator {
+
+    private static final Logger logger = LoggerFactory.getLogger(CsvReportGenerator.class);
+
+    private final ReportHeaderRenderer headerRenderer;
+
+    public CsvReportGenerator() {
+        this(new ReportHeaderRenderer());
+    }
+
+    public CsvReportGenerator(ReportHeaderRenderer headerRenderer) {
+        this.headerRenderer = headerRenderer;
+    }
+
+    /**
+     * Generate a CSV report file.
+     *
+     * @return the File object for the generated CSV
+     */
+    public File generateCsv(Report report, List<Map<String, Object>> data, String outputDir) throws IOException {
+        String fileName = buildFileName(report, "csv");
+        File outputFile = new File(outputDir, fileName);
+        outputFile.getParentFile().mkdirs();
+
+        try (CSVWriter writer = new CSVWriter(Files.newBufferedWriter(outputFile.toPath(), StandardCharsets.UTF_8))) {
+
+            if (!data.isEmpty()) {
+                // Extract column headers from first row
+                Set<String> columns = new LinkedHashSet<>(data.get(0).keySet());
+                String[] header = columns.toArray(new String[0]);
+
+                // Write metadata comments from the configured banner templates
+                Map<String, String> bannerVars = new LinkedHashMap<String, String>();
+                bannerVars.put("reportName", report.getReportName());
+                bannerVars.put("generated", ReportDateUtils.toDisplayString(Instant.now()));
+                bannerVars.put("periodFrom", ReportDateUtils.toDisplayString(report.getDateFrom()));
+                bannerVars.put("periodTo", ReportDateUtils.toDisplayString(report.getDateTo()));
+                bannerVars.put("rows", String.valueOf(data.size()));
+
+                writer.writeNext(new String[]{headerRenderer.title(bannerVars)});
+                writer.writeNext(new String[]{headerRenderer.generated(bannerVars)});
+                writer.writeNext(new String[]{headerRenderer.period(bannerVars)});
+                writer.writeNext(new String[]{headerRenderer.rows(bannerVars)});
+                writer.writeNext(new String[]{headerRenderer.footer()});
+                writer.writeNext(new String[]{""});
+
+                // Write header row
+                writer.writeNext(header);
+
+                // Write data rows
+                for (Map<String, Object> row : data) {
+                    String[] values = new String[columns.size()];
+                    int i = 0;
+                    for (String col : columns) {
+                        Object value = row.get(col);
+                        values[i++] = value != null ? value.toString() : "";
+                    }
+                    writer.writeNext(values);
+                }
+            }
+        }
+
+        logger.info("Generated CSV report: {} ({} bytes)", outputFile.getAbsolutePath(), outputFile.length());
+        return outputFile;
+    }
+
+    private String buildFileName(Report report, String extension) {
+        String safeName = report.getReportName().replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+        return safeName + "_" + ReportDateUtils.toFileNameString(Instant.now()) + "." + extension;
+    }
+}

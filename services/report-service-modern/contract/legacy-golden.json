@@ -1,0 +1,527 @@
+[
+  {
+    "step": "health",
+    "request": "GET /health",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "service": "report-service",
+      "version": "0.1.0",
+      "status": "healthy"
+    }
+  },
+  {
+    "step": "create-pdf-iso-dates",
+    "request": "POST /api/v1/reports",
+    "status": 202,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity PDF",
+      "category": "USER_ACTIVITY",
+      "reportType": "PDF",
+      "status": "PENDING",
+      "requestedBy": "parity-user",
+      "dateFrom": "2026-01-01T00:00:00.000+00:00",
+      "dateTo": "2026-01-31T23:59:59.500+00:00",
+      "createdAt": "<ts>",
+      "completedAt": null,
+      "fileSizeBytes": null,
+      "rowCount": null,
+      "downloadUrl": null,
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "create-csv-epoch-and-date-only",
+    "request": "POST /api/v1/reports",
+    "status": 202,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity CSV",
+      "category": "STORAGE_SUMMARY",
+      "reportType": "CSV",
+      "status": "PENDING",
+      "requestedBy": "parity-user",
+      "dateFrom": "2026-01-01T00:00:00.000+00:00",
+      "dateTo": "2026-02-01T00:00:00.000+00:00",
+      "createdAt": "<ts>",
+      "completedAt": null,
+      "fileSizeBytes": null,
+      "rowCount": null,
+      "downloadUrl": null,
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "create-excel-default-dates",
+    "request": "POST /api/v1/reports",
+    "status": 202,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity Excel",
+      "category": "USER_ACTIVITY",
+      "reportType": "EXCEL",
+      "status": "PENDING",
+      "requestedBy": "parity-user",
+      "dateFrom": "<ts>",
+      "dateTo": "<ts>",
+      "createdAt": "<ts>",
+      "completedAt": null,
+      "fileSizeBytes": null,
+      "rowCount": null,
+      "downloadUrl": null,
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "await-pdf",
+    "request": "GET /api/v1/reports/{pdf}",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity PDF",
+      "category": "USER_ACTIVITY",
+      "reportType": "PDF",
+      "status": "COMPLETED",
+      "requestedBy": "parity-user",
+      "dateFrom": "2026-01-01T00:00:00.000+00:00",
+      "dateTo": "2026-01-31T23:59:59.500+00:00",
+      "createdAt": "<ts>",
+      "completedAt": "<ts>",
+      "fileSizeBytes": "<size>",
+      "rowCount": 25,
+      "downloadUrl": "/api/v1/reports/<id>/download",
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "await-csv",
+    "request": "GET /api/v1/reports/{csv}",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity CSV",
+      "category": "STORAGE_SUMMARY",
+      "reportType": "CSV",
+      "status": "COMPLETED",
+      "requestedBy": "parity-user",
+      "dateFrom": "2026-01-01T00:00:00.000+00:00",
+      "dateTo": "2026-02-01T00:00:00.000+00:00",
+      "createdAt": "<ts>",
+      "completedAt": "<ts>",
+      "fileSizeBytes": "<size>",
+      "rowCount": 25,
+      "downloadUrl": "/api/v1/reports/<id>/download",
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "await-xlsx",
+    "request": "GET /api/v1/reports/{xlsx}",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "id": "<id>",
+      "reportName": "Parity Excel",
+      "category": "USER_ACTIVITY",
+      "reportType": "EXCEL",
+      "status": "COMPLETED",
+      "requestedBy": "parity-user",
+      "dateFrom": "<ts>",
+      "dateTo": "<ts>",
+      "createdAt": "<ts>",
+      "completedAt": "<ts>",
+      "fileSizeBytes": "<size>",
+      "rowCount": 25,
+      "downloadUrl": "/api/v1/reports/<id>/download",
+      "errorMessage": null
+    }
+  },
+  {
+    "step": "download-pdf",
+    "request": "GET /api/v1/reports/{pdf}/download",
+    "status": 200,
+    "contentType": "application/pdf",
+    "contentDisposition": "attachment; filename=\"parity_pdf_<ts>.pdf\"",
+    "contentLength": "<len>",
+    "body": {
+      "magic": "25504446",
+      "body": "<binary>"
+    }
+  },
+  {
+    "step": "download-csv",
+    "request": "GET /api/v1/reports/{csv}/download",
+    "status": 200,
+    "contentType": "text/csv",
+    "contentDisposition": "attachment; filename=\"parity_csv_<ts>.csv\"",
+    "contentLength": "<len>",
+    "body": [
+      "\"# OtterWorks Report: Parity CSV\"",
+      "\"# Generated: <ts>\"",
+      "\"# Period: Jan 01, 2026 00:00 to Feb 01, 2026 00:00\"",
+      "\"# Rows: 25\"",
+      "\"# Generated by OtterWorks Reporting | INTERNAL USE ONLY\"",
+      "\"\"",
+      "\"storage_used_mb\",\"docs_created\",\"user_id\",\"collaborations\",\"last_login\",\"active\",\"files_uploaded\",\"email\"",
+      "\"100\",\"5\",\"user-000\",\"0\",\"<instant>\",\"false\",\"10\",\"user0@otterworks.example.com\"",
+      "\"150\",\"7\",\"user-001\",\"4\",\"<instant>\",\"true\",\"13\",\"user1@otterworks.example.com\"",
+      "\"200\",\"9\",\"user-002\",\"8\",\"<instant>\",\"true\",\"16\",\"user2@otterworks.example.com\"",
+      "\"250\",\"11\",\"user-003\",\"12\",\"<instant>\",\"true\",\"19\",\"user3@otterworks.example.com\"",
+      "\"300\",\"13\",\"user-004\",\"16\",\"<instant>\",\"true\",\"22\",\"user4@otterworks.example.com\"",
+      "\"350\",\"15\",\"user-005\",\"20\",\"<instant>\",\"false\",\"25\",\"user5@otterworks.example.com\"",
+      "\"400\",\"17\",\"user-006\",\"24\",\"<instant>\",\"true\",\"28\",\"user6@otterworks.example.com\"",
+      "\"450\",\"19\",\"user-007\",\"28\",\"<instant>\",\"true\",\"31\",\"user7@otterworks.example.com\"",
+      "\"500\",\"21\",\"user-008\",\"32\",\"<instant>\",\"true\",\"34\",\"user8@otterworks.example.com\"",
+      "\"550\",\"23\",\"user-009\",\"36\",\"<instant>\",\"true\",\"37\",\"user9@otterworks.example.com\"",
+      "\"600\",\"25\",\"user-010\",\"40\",\"<instant>\",\"false\",\"40\",\"user10@otterworks.example.com\"",
+      "\"650\",\"27\",\"user-011\",\"44\",\"<instant>\",\"true\",\"43\",\"user11@otterworks.example.com\"",
+      "\"700\",\"29\",\"user-012\",\"48\",\"<instant>\",\"true\",\"46\",\"user12@otterworks.example.com\"",
+      "\"750\",\"31\",\"user-013\",\"52\",\"<instant>\",\"true\",\"49\",\"user13@otterworks.example.com\"",
+      "\"800\",\"33\",\"user-014\",\"56\",\"<instant>\",\"true\",\"52\",\"user14@otterworks.example.com\"",
+      "\"850\",\"35\",\"user-015\",\"60\",\"<instant>\",\"false\",\"55\",\"user15@otterworks.example.com\"",
+      "\"900\",\"37\",\"user-016\",\"64\",\"<instant>\",\"true\",\"58\",\"user16@otterworks.example.com\"",
+      "\"950\",\"39\",\"user-017\",\"68\",\"<instant>\",\"true\",\"61\",\"user17@otterworks.example.com\"",
+      "\"1000\",\"41\",\"user-018\",\"72\",\"<instant>\",\"true\",\"64\",\"user18@otterworks.example.com\"",
+      "\"1050\",\"43\",\"user-019\",\"76\",\"<instant>\",\"true\",\"67\",\"user19@otterworks.example.com\"",
+      "\"1100\",\"45\",\"user-020\",\"80\",\"<instant>\",\"false\",\"70\",\"user20@otterworks.example.com\"",
+      "\"1150\",\"47\",\"user-021\",\"84\",\"<instant>\",\"true\",\"73\",\"user21@otterworks.example.com\"",
+      "\"1200\",\"49\",\"user-022\",\"88\",\"<instant>\",\"true\",\"76\",\"user22@otterworks.example.com\"",
+      "\"1250\",\"51\",\"user-023\",\"92\",\"<instant>\",\"true\",\"79\",\"user23@otterworks.example.com\"",
+      "\"1300\",\"53\",\"user-024\",\"96\",\"<instant>\",\"true\",\"82\",\"user24@otterworks.example.com\""
+    ]
+  },
+  {
+    "step": "download-xlsx",
+    "request": "GET /api/v1/reports/{xlsx}/download",
+    "status": 200,
+    "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "contentDisposition": "attachment; filename=\"parity_excel_<ts>.xlsx\"",
+    "contentLength": "<len>",
+    "body": {
+      "magic": "504b0304",
+      "body": "<binary>"
+    }
+  },
+  {
+    "step": "list-by-user",
+    "request": "GET /api/v1/reports?userId=parity-user",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "reports": [
+        {
+          "id": "<id>",
+          "reportName": "Parity Excel",
+          "category": "USER_ACTIVITY",
+          "reportType": "EXCEL",
+          "status": "COMPLETED",
+          "requestedBy": "parity-user",
+          "dateFrom": "<ts>",
+          "dateTo": "<ts>",
+          "createdAt": "<ts>",
+          "completedAt": "<ts>",
+          "fileSizeBytes": "<size>",
+          "rowCount": 25,
+          "downloadUrl": "/api/v1/reports/<id>/download",
+          "errorMessage": null
+        },
+        {
+          "id": "<id>",
+          "reportName": "Parity CSV",
+          "category": "STORAGE_SUMMARY",
+          "reportType": "CSV",
+          "status": "COMPLETED",
+          "requestedBy": "parity-user",
+          "dateFrom": "<ts>",
+          "dateTo": "<ts>",
+          "createdAt": "<ts>",
+          "completedAt": "<ts>",
+          "fileSizeBytes": "<size>",
+          "rowCount": 25,
+          "downloadUrl": "/api/v1/reports/<id>/download",
+          "errorMessage": null
+        },
+        {
+          "id": "<id>",
+          "reportName": "Parity PDF",
+          "category": "USER_ACTIVITY",
+          "reportType": "PDF",
+          "status": "COMPLETED",
+          "requestedBy": "parity-user",
+          "dateFrom": "<ts>",
+          "dateTo": "<ts>",
+          "createdAt": "<ts>",
+          "completedAt": "<ts>",
+          "fileSizeBytes": "<size>",
+          "rowCount": 25,
+          "downloadUrl": "/api/v1/reports/<id>/download",
+          "errorMessage": null
+        }
+      ],
+      "total": 3
+    }
+  },
+  {
+    "step": "list-by-user-unknown",
+    "request": "GET /api/v1/reports?userId=nobody",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "reports": [],
+      "total": 0
+    }
+  },
+  {
+    "step": "list-by-status-pending",
+    "request": "GET /api/v1/reports?status=PENDING",
+    "status": 200,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "reports": [],
+      "total": 0
+    }
+  },
+  {
+    "step": "list-by-status-invalid",
+    "request": "GET /api/v1/reports?status=NOT_A_STATUS",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-missing-name",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-blank-requester",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-missing-category",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-invalid-type",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-invalid-date",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-malformed-json",
+    "request": "POST /api/v1/reports",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "create-wrong-content-type",
+    "request": "POST /api/v1/reports",
+    "status": 415,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 415,
+      "error": "Unsupported Media Type",
+      "path": "/api/v1/reports"
+    }
+  },
+  {
+    "step": "get-missing",
+    "request": "GET /api/v1/reports/999999",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "get-non-numeric-id",
+    "request": "GET /api/v1/reports/abc",
+    "status": 400,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 400,
+      "error": "Bad Request",
+      "path": "/api/v1/reports/abc"
+    }
+  },
+  {
+    "step": "download-missing",
+    "request": "GET /api/v1/reports/999999/download",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "delete-missing",
+    "request": "DELETE /api/v1/reports/999999",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "put-not-allowed",
+    "request": "PUT /api/v1/reports/{pdf}",
+    "status": 405,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 405,
+      "error": "Method Not Allowed",
+      "path": "/api/v1/reports/<id>"
+    }
+  },
+  {
+    "step": "delete-pdf",
+    "request": "DELETE /api/v1/reports/{pdf}",
+    "status": 204,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": null
+  },
+  {
+    "step": "get-deleted",
+    "request": "GET /api/v1/reports/{pdf}",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "download-deleted",
+    "request": "GET /api/v1/reports/{pdf}/download",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "delete-deleted",
+    "request": "DELETE /api/v1/reports/{pdf}",
+    "status": 404,
+    "contentType": null,
+    "contentDisposition": null,
+    "contentLength": "0",
+    "body": null
+  },
+  {
+    "step": "unknown-path",
+    "request": "GET /api/v1/unknown",
+    "status": 404,
+    "contentType": "application/json",
+    "contentDisposition": null,
+    "contentLength": null,
+    "body": {
+      "timestamp": "<ts>",
+      "status": 404,
+      "error": "Not Found",
+      "path": "/api/v1/unknown"
+    }
+  }
+]
