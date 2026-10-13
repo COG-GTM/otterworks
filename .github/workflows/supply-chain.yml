@@ -10,7 +10,8 @@ name: Supply Chain
 #   image (x13)       multi-arch buildx build (linux/amd64 + linux/arm64) with
 #                     BuildKit SBOM + provenance, per-platform SPDX SBOM
 #                     artifacts, Trivy scan of the BUILT image, CRITICAL/HIGH
-#                     gate honouring .trivyignore, SARIF upload
+#                     gate honouring .trivyignore; SARIF upload
+#                     for merged code only (not PRs)
 
 on:
   pull_request:
@@ -248,13 +249,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-  # The upload runs in its own job so the job that builds contributor-controlled
-  # Dockerfiles never holds a write-scoped token. Fork PRs get a read-only token
-  # and code scanning may not be enabled on every fork, so the upload is
-  # best-effort; the SARIF is in the supply-chain-<image> artifacts either way.
+  # SARIF built from pull-request code is untrusted input, so it is never handed
+  # to a write-scoped token: the upload runs only for merged code (push to main,
+  # the weekly schedule, manual dispatch). On PRs the SARIF stays in the
+  # supply-chain-<image> artifacts and the gate above still applies. Code
+  # scanning may not be enabled on every fork, so the upload is best-effort.
   sarif:
     needs: image
-    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: always() && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read

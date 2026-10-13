@@ -76,11 +76,13 @@ The gate follows the same policy as the source scan in `security-scan.yml`:
 - Anything listed in `.trivyignore` is suppressed by Trivy and never gates. Add
   an entry there, with a justification, to accept a finding.
 
-SARIF goes to GitHub code scanning (category `trivy-image/<image>/<arch>`) on
-same-repo runs, from a separate `sarif` job: the jobs that build
-contributor-controlled Dockerfiles only ever hold a read-only token. Fork PRs
-have a read-only token, so the upload is skipped there. The upload is best-effort because code scanning may not be enabled on a
-fork. The JSON reports, SARIF and SBOMs are always in the
+SARIF goes to GitHub code scanning (category `trivy-image/<image>/<arch>`)
+only for merged code (push to `main`, the weekly schedule, manual dispatch),
+from a separate `sarif` job. SARIF built from a pull request is untrusted
+input, so it never reaches a job holding `security-events: write`. On PRs the
+gate above still applies and findings are in the job log. The upload is
+best-effort because code scanning may not be enabled on a fork. The JSON
+reports, SARIF and SBOMs are always in the
 `supply-chain-<image>` artifact.
 
 Run the same scan locally against the layout built above:
