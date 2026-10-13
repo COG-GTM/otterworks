@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import boto3
 import pandas as pd
-import psycopg2
+import psycopg
 
 
 def main():
@@ -340,68 +340,57 @@ def main():
     # ---- Upsert PostgreSQL aggregates ----
     print("[%s] Connecting to PostgreSQL at %s:%d/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), db_host, db_port, db_name))
 
-    conn = None
-    cursor = None
+    # psycopg 3: leaving the connection block commits on success, rolls back on error, then closes
     try:
-        conn = psycopg2.connect(
+        with psycopg.connect(
             host=db_host,
             port=db_port,
             dbname=db_name,
             user=db_user,
             password=db_password,
-        )
-        cursor = conn.cursor()
+        ) as conn, conn.cursor() as cursor:
+            upsert_sql = """
+                INSERT INTO analytics_daily_summary (
+                    report_date, active_users, active_documents, active_files,
+                    total_events, documents_created, documents_edited,
+                    comments_added, files_uploaded, files_shared,
+                    files_deleted, bytes_uploaded, updated_at
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                )
+                ON CONFLICT (report_date) DO UPDATE SET
+                    active_users = EXCLUDED.active_users,
+                    active_documents = EXCLUDED.active_documents,
+                    active_files = EXCLUDED.active_files,
+                    total_events = EXCLUDED.total_events,
+                    documents_created = EXCLUDED.documents_created,
+                    documents_edited = EXCLUDED.documents_edited,
+                    comments_added = EXCLUDED.comments_added,
+                    files_uploaded = EXCLUDED.files_uploaded,
+                    files_shared = EXCLUDED.files_shared,
+                    files_deleted = EXCLUDED.files_deleted,
+                    bytes_uploaded = EXCLUDED.bytes_uploaded,
+                    updated_at = NOW();
+            """
 
-        upsert_sql = """
-            INSERT INTO analytics_daily_summary (
-                report_date, active_users, active_documents, active_files,
-                total_events, documents_created, documents_edited,
-                comments_added, files_uploaded, files_shared,
-                files_deleted, bytes_uploaded, updated_at
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
-            )
-            ON CONFLICT (report_date) DO UPDATE SET
-                active_users = EXCLUDED.active_users,
-                active_documents = EXCLUDED.active_documents,
-                active_files = EXCLUDED.active_files,
-                total_events = EXCLUDED.total_events,
-                documents_created = EXCLUDED.documents_created,
-                documents_edited = EXCLUDED.documents_edited,
-                comments_added = EXCLUDED.comments_added,
-                files_uploaded = EXCLUDED.files_uploaded,
-                files_shared = EXCLUDED.files_shared,
-                files_deleted = EXCLUDED.files_deleted,
-                bytes_uploaded = EXCLUDED.bytes_uploaded,
-                updated_at = NOW();
-        """
-
-        cursor.execute(upsert_sql, (
-            ds,
-            summary["active_users"],
-            summary["active_documents"],
-            summary["active_files"],
-            summary["total_events"],
-            summary["documents_created"],
-            summary["documents_edited"],
-            summary["comments_added"],
-            summary["files_uploaded"],
-            summary["files_shared"],
-            summary["files_deleted"],
-            summary["bytes_uploaded"],
-        ))
-        conn.commit()
+            cursor.execute(upsert_sql, (
+                ds,
+                summary["active_users"],
+                summary["active_documents"],
+                summary["active_files"],
+                summary["total_events"],
+                summary["documents_created"],
+                summary["documents_edited"],
+                summary["comments_added"],
+                summary["files_uploaded"],
+                summary["files_shared"],
+                summary["files_deleted"],
+                summary["bytes_uploaded"],
+            ))
         print("[%s] Updated PostgreSQL daily aggregates for %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ds))
     except Exception as e:
         print("[%s] ERROR: PostgreSQL update failed: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(e)))
-        if conn:
-            conn.rollback()
         # don't exit -- still try to generate report
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
     # ---- Generate daily report ----
     # Find peak hour

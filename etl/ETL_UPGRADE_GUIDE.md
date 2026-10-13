@@ -13,7 +13,7 @@ The OtterWorks ETL pipeline consists of five Python scripts executed via system 
 | **No retry logic** | Transient AWS/network failures cause silent data loss |
 | **`print()` logging** | No structured logging, no log levels, no correlation IDs; logs go to flat files on disk |
 | **Silent `except: pass` blocks** | Errors are swallowed; data quality issues go undetected for days |
-| **No connection reuse** | Each script creates fresh boto3 clients and psycopg2 connections inline |
+| **No connection reuse** | Each script creates fresh boto3 clients and psycopg (v3) connections inline |
 | **Monolithic `main()` functions** | No separation of extract/transform/load; impossible to test individual stages |
 | **No tests** | Zero test coverage; changes are deployed by prayer |
 | **Pandas for aggregation** | Loads entire datasets into memory; will not scale beyond a few GB |
@@ -42,7 +42,7 @@ The OtterWorks ETL pipeline consists of five Python scripts executed via system 
 | Orchestration | System cron | **Apache Airflow 2.8+** |
 | Configuration | `config.ini` with plaintext secrets | **Airflow Variables + Connections** |
 | AWS Access | Raw `boto3` with inline credentials | **Airflow Amazon Provider Hooks** (S3Hook, SqsHook, DynamoDBHook) |
-| Database Access | Raw `psycopg2` with manual connect/close | **Airflow PostgresHook** with connection pooling |
+| Database Access | Raw `psycopg` (v3) with per-script connect | **Airflow PostgresHook** with connection pooling |
 | Aggregation | `pandas` in-memory | **PySpark** on EMR/Spark cluster |
 | Logging | `print()` statements | **Python `logging` module** with structured output |
 | Error Handling | `try: except: pass` | **Airflow retry policies** with exponential backoff |
@@ -113,9 +113,9 @@ The OtterWorks ETL pipeline consists of five Python scripts executed via system 
 - `DynamoDBHook(aws_conn_id="aws_default")` for DynamoDB scans
 - Hooks manage credential injection, connection reuse, and region configuration automatically
 
-### 4. Raw `psycopg2` to PostgresHook
+### 4. Raw `psycopg` (v3) to PostgresHook
 
-**Current:** Manual `psycopg2.connect()` / `cursor()` / `close()` with no connection pooling, no context managers, and error-prone manual cleanup.
+**Current:** Each script opens its own `psycopg.connect()` (psycopg 3) inside a `with` block, with no connection pooling or shared connection management.
 
 **Target:**
 - `PostgresHook(postgres_conn_id="otterworks_postgres")` with built-in connection pooling
