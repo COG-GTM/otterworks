@@ -98,6 +98,31 @@ class TestSuggestEndpoint:
         data = response.get_json()
         assert len(data["suggestions"]) >= 1
 
+    def test_suggest_returns_ordered_titles(self, client, mock_meilisearch_client):
+        """Suggest returns plain title strings in MeiliSearch relevance order."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {
+            "estimatedTotalHits": 2,
+            "hits": [{"title": "Quarterly Report"}, {"name": "quarterly.xlsx"}],
+        }
+
+        response = client.get("/api/v1/search/suggest?q=qu")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Quarterly Report", "quarterly.xlsx"]
+
+    def test_suggest_no_hits_returns_empty(self, client, mock_meilisearch_client):
+        """Suggest with no matching hits returns an empty list, not a 500."""
+        response = client.get("/api/v1/search/suggest?q=zz")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
+    def test_suggest_backend_error_degrades_gracefully(self, client, mock_meilisearch_client):
+        """A MeiliSearch failure yields an empty suggestion list instead of a 5xx."""
+        mock_meilisearch_client.index.return_value.search.side_effect = RuntimeError("boom")
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
     def test_suggest_empty_query(self, client):
         """Suggest with empty query returns empty list."""
         response = client.get("/api/v1/search/suggest?q=")
