@@ -1,0 +1,71 @@
+# One Application per (environment, service) on every cluster registered for
+# OtterWorks GitOps. A cluster opts in through its Argo CD cluster Secret
+# (written by demo-platform/scripts/install-argocd.sh --bootstrap):
+#   label      otterworks.io/gitops: "true"
+#   annotation otterworks.io/envs            env glob, e.g. dev or "{staging,prod}"
+#   annotation otterworks.io/services        service glob, default "*"
+#   annotation otterworks.io/image-registry  e.g. <acct>.dkr.ecr.us-east-1.amazonaws.com
+#   annotation otterworks.io/git-revision    branch/tag the envs are read from
+#   annotation otterworks.io/repo-url        git repo for charts + envs (must be in the AppProject)
+# Promotion = a PR that changes envs/<env>/services/<svc>.yaml (image.tag).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: otterworks-envs
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  otterworks.io/gitops: "true"
+          - git:
+              repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
+              revision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
+              files:
+                - path: 'deploy/gitops/envs/{{ index .metadata.annotations "otterworks.io/envs" }}/services/{{ index .metadata.annotations "otterworks.io/services" }}.yaml'
+  template:
+    metadata:
+      name: '{{ index .path.segments 3 }}-{{ trimSuffix ".yaml" .path.filename }}'
+      labels:
+        otterworks.io/environment: '{{ index .path.segments 3 }}'
+        otterworks.io/service: '{{ trimSuffix ".yaml" .path.filename }}'
+    spec:
+      project: otterworks
+      sources:
+        - repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
+          targetRevision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
+          path: 'infrastructure/helm/{{ trimSuffix ".yaml" .path.filename }}'
+          helm:
+            # Same release names as deploy-dev.sh / deploy-tenant.sh, so the
+            # <service>-config / <service>-secrets conventions carry over.
+            releaseName: '{{ trimSuffix ".yaml" .path.filename }}'
+            ignoreMissingValueFiles: true
+            valueFiles:
+              - $values/deploy/gitops/base/values.yaml
+              - '$values/deploy/gitops/base/services/{{ trimSuffix ".yaml" .path.filename }}.yaml'
+              - '$values/deploy/gitops/envs/{{ index .path.segments 3 }}/env-values.yaml'
+              - '$values/{{ .path.path }}/{{ .path.filename }}'
+            parameters:
+              - name: image.repository
+                value: '{{ index .metadata.annotations "otterworks.io/image-registry" }}/otterworks/{{ trimSuffix ".yaml" .path.filename }}'
+        - repoURL: '{{ index .metadata.annotations "otterworks.io/repo-url" }}'
+          targetRevision: '{{ index .metadata.annotations "otterworks.io/git-revision" }}'
+          ref: values
+      destination:
+        server: '{{ .server }}'
+        namespace: 'otterworks-{{ index .path.segments 3 }}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+        managedNamespaceMetadata:
+          labels:
+            otterworks.io/environment: '{{ index .path.segments 3 }}'
+            app.kubernetes.io/managed-by: argocd

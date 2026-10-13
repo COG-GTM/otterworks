@@ -1,0 +1,4 @@
+# staging/notification-service. Bumped only by promotion PRs: scripts/gitops-promote.sh dev staging
+# (or the gitops-promote workflow). Do not edit image.tag by hand.
+image:
+  tag: main-cc23bf1

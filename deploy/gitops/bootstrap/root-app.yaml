@@ -1,0 +1,23 @@
+# App-of-apps root. Applied once per cluster by
+# demo-platform/scripts/install-argocd.sh --bootstrap; everything below
+# deploy/gitops/apps is then reconciled from git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otterworks-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/COG-GTM/otterworks.git
+    targetRevision: main
+    path: deploy/gitops/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

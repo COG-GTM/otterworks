@@ -1,0 +1,22 @@
+# cert-manager (shared, cluster-wide). CRDs are managed by the chart so a
+# version bump upgrades the API with the controller.
+# Used by demo-platform/scripts/install-cert-manager.sh and
+# platform/terraform/modules/platform-addons. The Route53 IRSA annotation on the
+# ServiceAccount is added by scripts/enable-dns-tls.sh (EKS only).
+crds:
+  enabled: true
+  keep: true
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi

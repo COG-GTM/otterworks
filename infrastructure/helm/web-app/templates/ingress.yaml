@@ -1,4 +1,21 @@
 {{- if .Values.ingress.enabled -}}
+{{- /*
+TLS is optional per ingress. The shared ingress-nginx controller serves the
+cluster-wide wildcard certificate (demo-platform/k8s/dns-tls) as its default,
+so a tls entry without secretName is served by that wildcard and needs no
+per-ingress certificate. A tls entry WITH secretName gets its own certificate:
+the cert-manager.io/cluster-issuer annotation is added automatically from
+ingress.certManager.clusterIssuer (unless ingress.annotations already sets an
+issuer). A tls entry without hosts covers every host in ingress.hosts.
+*/ -}}
+{{- $annotations := deepCopy (.Values.ingress.annotations | default dict) }}
+{{- $issuer := "" }}
+{{- with .Values.ingress.certManager }}{{ $issuer = .clusterIssuer | default "" }}{{ end }}
+{{- $wantsCert := false }}
+{{- range .Values.ingress.tls }}{{ if .secretName }}{{ $wantsCert = true }}{{ end }}{{ end }}
+{{- if and $wantsCert $issuer (not (hasKey $annotations "cert-manager.io/cluster-issuer")) (not (hasKey $annotations "cert-manager.io/issuer")) }}
+{{- $_ := set $annotations "cert-manager.io/cluster-issuer" $issuer }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -6,7 +23,7 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Chart.Name }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-  {{- with .Values.ingress.annotations }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
@@ -16,10 +33,16 @@ spec:
   tls:
     {{- range .Values.ingress.tls }}
     - hosts:
-        {{- range .hosts }}
+        {{- range (.hosts | default (list)) }}
         - {{ . | quote }}
+        {{- else }}
+        {{- range $.Values.ingress.hosts }}
+        - {{ .host | quote }}
         {{- end }}
-      secretName: {{ .secretName }}
+        {{- end }}
+      {{- with .secretName }}
+      secretName: {{ . }}
+      {{- end }}
     {{- end }}
   {{- end }}
   rules:

@@ -1,0 +1,15 @@
+# dev/admin-dashboard. Bumped by hand (or by CI after a build) -- dev is the entry point of promotion.
+image:
+  tag: main-cc23bf1
+ingress:
+  enabled: true
+  hosts:
+    - host: admin-dev.otterworks.app
+      paths:
+        - path: /
+          pathType: Prefix
+  # No secretName: served by the shared wildcard certificate on ingress-nginx
+  # (demo-platform/k8s/dns-tls/wildcard-certificate.yaml).
+  tls:
+    - hosts:
+        - admin-dev.otterworks.app

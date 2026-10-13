@@ -1,0 +1,16 @@
+# Helm values shared by every service in every GitOps-managed environment.
+# Layering (later wins): this file -> envs/<env>/env-values.yaml ->
+# envs/<env>/services/<service>.yaml -> image.repository parameter set by the
+# ApplicationSet from the cluster's otterworks.io/image-registry annotation.
+service:
+  # Shared ingress-nginx is the only LoadBalancer (AGENTS.md).
+  type: ClusterIP
+ingress:
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+# Per-service NetworkPolicies only admit ingress-nginx + monitoring, which
+# would block gateway -> backend calls. Like deploy-tenant.sh, each env namespace
+# gets one namespace-wide policy instead (deploy/gitops/baseline).
+networkPolicy:
+  enabled: false

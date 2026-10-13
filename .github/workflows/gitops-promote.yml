@@ -1,0 +1,87 @@
+# Opens a PR that promotes image tags one step (dev -> staging or
+# staging -> prod) in deploy/gitops/envs. It only edits files; Argo CD applies
+# the change after the PR is reviewed and merged.
+#
+# OFF by default. To use it, a repo admin must:
+#   1. set the repository variable GITOPS_PROMOTION_ENABLED=true
+#   2. create the GitHub Environment "gitops-promotion" with required reviewers
+#   3. allow GitHub Actions to create pull requests (Settings -> Actions)
+name: GitOps promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: Source environment (promotes to the next one)
+        type: choice
+        options: [dev, staging]
+        default: dev
+      services:
+        description: Space-separated services to promote (empty = all)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitops-promote-${{ inputs.from }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: vars.GITOPS_PROMOTION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: gitops-promotion
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Always promote on the default branch (what Argo CD tracks), never on
+      # the branch the workflow happened to be dispatched from.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Bump image tags in the next environment
+        id: bump
+        env:
+          FROM: ${{ inputs.from }}
+          SERVICES: ${{ inputs.services }}
+        run: |
+          set -euo pipefail
+          case "${FROM}" in dev) TO=staging ;; staging) TO=prod ;; *) echo "bad from: ${FROM}"; exit 1 ;; esac
+          [[ "${SERVICES}" =~ ^[a-z0-9\ -]*$ ]] || { echo "invalid services input"; exit 1; }
+          # shellcheck disable=SC2086
+          scripts/gitops-promote.sh "${FROM}" "${TO}" ${SERVICES} | tee changes.txt
+          echo "to=${TO}" >> "$GITHUB_OUTPUT"
+          echo "changed=$([ -s changes.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Open promotion PR
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ steps.bump.outputs.to }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          branch="gitops/promote-${TO}-${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "${branch}"
+          git add deploy/gitops/envs
+          git commit -m "gitops: promote ${FROM} -> ${TO}"
+          git push origin "${branch}"
+          {
+            echo "Promotes image tags from \`${FROM}\` to \`${TO}\` (requested by @${GITHUB_ACTOR})."
+            echo
+            echo '```'
+            cat changes.txt
+            echo '```'
+            echo
+            echo "Argo CD syncs \`otterworks-${TO}\` after merge. See docs/GITOPS.md."
+          } > body.md
+          gh pr create --base "${BASE_BRANCH}" --head "${branch}" \
+            --title "gitops: promote ${FROM} -> ${TO}" --body-file body.md
+      - name: Nothing to promote
+        if: steps.bump.outputs.changed != 'true'
+        run: echo "${{ inputs.from }} and ${{ steps.bump.outputs.to }} already match."

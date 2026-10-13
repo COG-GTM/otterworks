@@ -1,0 +1,25 @@
+# Scopes the GitOps-managed environments: only this repo's charts, only the
+# long-lived otterworks-{dev,staging,prod} namespaces. Tenant namespaces
+# (otterworks-<id>, script-driven by scripts/deploy-tenant.sh) are deliberately
+# NOT destinations, so Argo CD can never touch or prune a tenant.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: otterworks
+  namespace: argocd
+spec:
+  description: OtterWorks long-lived environments (dev -> staging -> prod)
+  sourceRepos:
+    - https://github.com/COG-GTM/otterworks.git
+    - https://github.com/Cognition-Partner-Workshops/otterworks.git
+  destinations:
+    - server: "*"
+      namespace: otterworks-dev
+    - server: "*"
+      namespace: otterworks-staging
+    - server: "*"
+      namespace: otterworks-prod
+  # Only Namespaces (CreateNamespace=true); the charts are namespaced.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace

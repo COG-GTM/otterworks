@@ -1,0 +1,42 @@
+# Argo CD (shared, cluster-wide GitOps controller for the long-lived
+# environments; ephemeral tenants stay script-driven). See docs/GITOPS.md.
+# Used by demo-platform/scripts/install-argocd.sh and
+# platform/terraform/modules/platform-addons.
+global:
+  domain: argocd.otterworks.app
+configs:
+  params:
+    # TLS terminates at the shared ingress-nginx controller (wildcard cert).
+    server.insecure: true
+    # Enables doublestar globbing in the ApplicationSet git files generator, so
+    # a cluster can opt into a service subset with e.g. "{api-gateway,web-app}".
+    applicationsetcontroller.enable.new.git.file.globbing: true
+  cm:
+    # Anonymous read-only access stays off; use the admin secret or SSO.
+    users.anonymous.enabled: false
+server:
+  # ClusterIP only -- reach the UI through the shared ingress or port-forward.
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
+    ingressClassName: nginx
+dex:
+  enabled: false
+notifications:
+  enabled: false
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi

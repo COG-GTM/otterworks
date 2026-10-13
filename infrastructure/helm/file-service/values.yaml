@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/workshop/otterworks-file-service
+  repository: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/otterworks/file-service
   tag: ""  # Set at deploy time (ECR uses IMMUTABLE tags)
   pullPolicy: IfNotPresent
 
@@ -13,8 +13,12 @@ service:
 ingress:
   enabled: true
   className: nginx
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+  # Rendered as cert-manager.io/cluster-issuer only when a tls entry sets
+  # secretName (per-ingress cert). tls entries without secretName use the shared
+  # wildcard cert served by ingress-nginx, so no issuer is needed.
+  certManager:
+    clusterIssuer: letsencrypt-prod
+  annotations: {}
   hosts:
     - host: file-service.otterworks.workshop.example.com
       paths:

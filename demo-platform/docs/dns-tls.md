@@ -83,7 +83,8 @@ the domain exists.
    If the domain was registered *outside* Route53, point its registrar
    nameservers at `terraform output dns_zone_name_servers`.
 
-3. **Turn on external-dns + cert-manager + wildcard TLS** (idempotent):
+3. **Turn on external-dns + cert-manager + wildcard TLS** (idempotent; versions
+   are pinned, see [Pinned, reproducible add-on installs](#pinned-reproducible-add-on-installs)):
 
    ```bash
    DOMAIN_ROOT=otterworks.app ACME_EMAIL=<platform-contact-email> \
@@ -107,3 +108,62 @@ kubectl -n ingress-nginx get certificate otterworks-wildcard      # READY=True
 dig +short t-<id>.demo.otterworks.app                             # -> NLB
 curl -sI https://t-<id>.demo.otterworks.app | head -1            # HTTP/2 200
 ```
+
+## Pinned, reproducible add-on installs
+
+Every shared add-on on this path is installed at a pinned version from one file,
+[`demo-platform/k8s/platform-addons.versions.env`](../k8s/platform-addons.versions.env).
+Bump a version there, in a PR; nothing upgrades implicitly.
+
+| Add-on | Pin | Installed by | Values |
+|---|---|---|---|
+| ingress-nginx (the only `LoadBalancer` Service) | `INGRESS_NGINX_CHART_VERSION` | `scripts/lib/ingress-nginx.sh` (`deploy-dev.sh`, `tenant-platform-baseline.sh`) | `demo-platform/k8s/ingress-nginx/values.yaml` |
+| cert-manager | `CERT_MANAGER_CHART_VERSION` | `demo-platform/scripts/install-cert-manager.sh` (called by `enable-dns-tls.sh` when missing) | `demo-platform/k8s/cert-manager/values.yaml` |
+| external-dns | `EXTERNAL_DNS_VERSION` (image) / `EXTERNAL_DNS_CHART_VERSION` | `enable-dns-tls.sh` applies `k8s/dns-tls/external-dns.yaml`; `check-image-drift.sh` fails CI if its image tag drifts from the pin | flags in the manifest |
+| Argo CD (GitOps, see [docs/GITOPS.md](../../docs/GITOPS.md)) | `ARGOCD_CHART_VERSION` | `demo-platform/scripts/install-argocd.sh` | `demo-platform/k8s/argocd/values.yaml` |
+
+On a cluster that already runs ingress-nginx, cert-manager or Argo CD at a
+different chart version, the scripts **keep the deployed version** and warn,
+unless `INGRESS_NGINX_ALLOW_UPGRADE=true` / `CERT_MANAGER_ALLOW_UPGRADE=true` /
+`ARGOCD_ALLOW_UPGRADE=true` is set, so a routine `deploy-dev.sh` never moves
+the controller in front of every tenant.
+
+`platform/terraform/modules/platform-addons` is the Terraform equivalent
+(`helm_release` per add-on, each `enable_* = false` by default, versions and
+values parsed from the same files). It is intentionally **not** wired into the
+root `platform/terraform` stack; doing so is a separate, reviewed change.
+
+## Per-ingress TLS in the service charts
+
+The wildcard certificate is served by ingress-nginx as its **default**
+certificate, so per-ingress certificates are optional. The chart
+`templates/ingress.yaml` (all 13 charts) supports both:
+
+```yaml
+ingress:
+  certManager:
+    clusterIssuer: letsencrypt-prod   # used only for tls entries with secretName
+  tls:
+    - hosts: [dev.otterworks.app]     # no secretName -> shared wildcard cert
+    - secretName: my-own-cert         # secretName -> cert-manager.io/cluster-issuer
+      hosts: [custom.example.com]     #   annotation is added automatically
+```
+
+- A `tls` entry without `secretName` is served by the wildcard; no
+  `Certificate` is created.
+- A `tls` entry with `secretName` gets `cert-manager.io/cluster-issuer:
+  <certManager.clusterIssuer>` unless `ingress.annotations` already sets
+  `cert-manager.io/cluster-issuer` or `cert-manager.io/issuer`.
+- A `tls` entry without `hosts` covers every host in `ingress.hosts`.
+- `deploy-dev.sh` keeps passing `ingress.tls=null` (wildcard only), and
+  `deploy-tenant.sh` keeps host-based routing on the shared controller;
+  neither needed to change.
+
+## Local (kind) rehearsal
+
+`demo-platform/k8s/dns-tls/local-ca-issuer.yaml` replaces the ACME issuers on a
+cluster with no public DNS: a self-signed root CA backs a `CA` ClusterIssuer,
+and the unmodified `wildcard-certificate.yaml` is applied with
+`__ISSUER__=otterworks-local-ca`. The end-to-end recipe is in
+[docs/GITOPS.md](../../docs/GITOPS.md#local-validation-kind). Never apply the
+local issuer to EKS.

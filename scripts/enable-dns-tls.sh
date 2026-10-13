@@ -66,15 +66,12 @@ render "${MANIFEST_DIR}/external-dns.yaml" | kubectl apply -f -
 
 # cert-manager is a platform prerequisite rather than something this script owns,
 # but assuming it is present makes a blank-slate cluster fail here, halfway
-# through, with external-dns already applied. Install it when missing so the
-# rebuild is one command; an existing release is left at its current version.
+# through, with external-dns already applied. Install it (pinned, see
+# demo-platform/k8s/platform-addons.versions.env) when missing so the rebuild is
+# one command; an existing release is left at its current version.
 if ! kubectl get namespace cert-manager >/dev/null 2>&1; then
   echo "==> Installing cert-manager (not present)"
-  helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
-  helm repo update jetstack >/dev/null 2>&1 || true
-  helm upgrade --install cert-manager jetstack/cert-manager \
-    --namespace cert-manager --create-namespace \
-    --set crds.enabled=true --wait --timeout 5m
+  "$(cd "$(dirname "$0")/.." && pwd)/demo-platform/scripts/install-cert-manager.sh"
 fi
 
 echo "==> Annotating cert-manager ServiceAccount for Route53 IRSA + restarting"
