@@ -10,6 +10,9 @@
 #   ./scripts/deploy-dev.sh --skip-platform    # Skip platform provisioning
 #   ./scripts/deploy-dev.sh --skip-terraform   # Skip all Terraform, just build+deploy
 #   ./scripts/deploy-dev.sh --skip-build       # Reuse existing ECR images (set IMAGE_TAG)
+#   USE_EXTERNAL_SECRETS=true ./scripts/deploy-dev.sh
+#                                              # Secrets via External Secrets Operator
+#                                              # (docs/SECRETS.md) instead of Helm values
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -104,6 +107,9 @@ fi
 
 # ---------- Step 2: Provision Application Infrastructure ----------
 
+# shellcheck source=lib/external-secrets.sh
+source "${SCRIPT_DIR}/lib/external-secrets.sh"
+
 if [ "${SKIP_TERRAFORM}" = false ]; then
   DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set when running Terraform}"
   log "Provisioning application infrastructure (RDS, DynamoDB, S3, SQS, etc.)..."
@@ -112,7 +118,11 @@ if [ "${SKIP_TERRAFORM}" = false ]; then
   # Pass the DB password via TF_VAR_ env, not -var on the command line, so it is
   # not visible in the process argument list (ps / /proc/*/cmdline). Consistent
   # with the Helm secret handling below.
-  TF_VAR_db_password="${DB_PASSWORD}" terraform apply -auto-approve -input=false
+  # USE_EXTERNAL_SECRETS=true also vaults app secrets/config for ESO
+  # (infrastructure/terraform/secrets.tf). Sticky once enabled, so a later
+  # plain deploy never deletes keys running pods depend on.
+  TF_VAR_db_password="${DB_PASSWORD}" TF_VAR_enable_external_secrets="$(eso_tf_enabled .)" \
+    terraform apply -auto-approve -input=false
   cd "${REPO_ROOT}"
   log "Application infrastructure provisioned."
 else
@@ -422,6 +432,16 @@ deploy_service() {
   local image="${ECR_REGISTRY}/${ECR_PREFIX}${service}"
   build_helm_args "${service}"
 
+  # Opt-in: secrets come from AWS via External Secrets Operator, so stop
+  # rendering them from this script and enable the chart's ExternalSecret.
+  local eso_file="" eso_args=()
+  if eso_enabled; then
+    eso_filter_secret_kv golden
+    eso_file="$(mktemp)"
+    eso_values "${service}" golden "${DB_USER:-}" "${DB_ENDPOINT_HOST:-}" "${DB_ENDPOINT_PORT:-}" "${DB_NAME:-}" > "${eso_file}"
+    eso_args=(-f "${eso_file}")
+  fi
+
   # Write secrets to a locked-down temp values file passed via -f, so the values
   # are never exposed in the process argument list (ps / /proc/*/cmdline).
   local secret_file="" secret_args=()
@@ -441,10 +461,12 @@ deploy_service() {
     --set image.tag="${IMAGE_TAG}" \
     "${EXTRA_ARGS[@]}" \
     "${secret_args[@]}" \
+    "${eso_args[@]}" \
     --wait \
     --timeout 3m \
     && local rc=0 || local rc=1
   [ -n "${secret_file}" ] && rm -f "${secret_file}"
+  [ -n "${eso_file}" ] && rm -f "${eso_file}"
   if [ "${rc}" -ne 0 ]; then warn "Helm deploy failed for ${service}"; return 1; fi
 }
 
@@ -509,6 +531,10 @@ DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set (exported or via Terr
 
 deploy_meilisearch
 
+if eso_enabled; then
+  log "USE_EXTERNAL_SECRETS=true: app secrets sync from ${EXTERNAL_SECRETS_KEY_PREFIX}/* via External Secrets Operator"
+  eso_preflight || { err "External Secrets Operator is not ready; unset USE_EXTERNAL_SECRETS to use Helm-rendered secrets"; exit 1; }
+fi
 log "Deploying services to EKS..."
 FAILED=()
 for service in "${ALL_SERVICES[@]}"; do

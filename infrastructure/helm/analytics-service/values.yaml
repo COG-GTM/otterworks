@@ -81,3 +81,30 @@ cronjob:
     requests:
       cpu: 100m
       memory: 128Mi
+
+# External Secrets Operator (docs/SECRETS.md). Off by default; when enabled the
+# chart renders an ExternalSecret that syncs the keys below into the Secret
+# <release>-external-secrets, envFrom'd after <release>-config/-secrets (so it
+# wins on conflicts). The ClusterSecretStores come from the shared platform
+# add-on demo-platform/scripts/install-external-secrets.sh.
+#   secrets:    ENV_VAR -> Secrets Manager  <keyPrefix>/<service>/<KEY>
+#   parameters: ENV_VAR -> SSM Parameter   /<keyPrefix>/<service>/<KEY>
+#   templates:  ENV_VAR -> ESO v2 template over the synced keys (set at deploy)
+# Set an entry to null to drop it (e.g. tenants keep their own JWT secret).
+externalSecrets:
+  enabled: false
+  keyPrefix: otterworks/dev
+  service: analytics-service
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: otterworks-secretsmanager
+  parameterStoreRef:
+    kind: ClusterSecretStore
+    name: otterworks-parameterstore
+  secrets:
+    DATABASE_PASSWORD: DB_PASSWORD
+  parameters:
+    AWS_REGION: AWS_REGION
+    S3_DATA_LAKE_BUCKET: S3_DATA_LAKE_BUCKET
+  templates: {}

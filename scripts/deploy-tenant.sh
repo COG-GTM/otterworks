@@ -22,6 +22,9 @@
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+# Optional: USE_EXTERNAL_SECRETS=true syncs the shared-RDS credential from
+#   AWS via External Secrets Operator (docs/SECRETS.md) instead of rendering it
+#   into each release's Helm values; per-tenant JWT/session keys are unchanged.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -29,6 +32,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=lib/tenant-common.sh
 source "${SCRIPT_DIR}/lib/tenant-common.sh"
+# shellcheck source=lib/external-secrets.sh
+source "${SCRIPT_DIR}/lib/external-secrets.sh"
 
 # ---------- Args ----------
 ATTENDEE_ID=""
@@ -437,6 +442,13 @@ deploy_service() {
   fi
 
   build_helm_args "${service}"
+  local eso_file="" eso_args=()
+  if eso_enabled; then
+    eso_filter_secret_kv tenant
+    eso_file="$(mktemp)"
+    eso_values "${service}" tenant "${DB_USER}" "${DB_ENDPOINT_HOST}" "${DB_ENDPOINT_PORT}" "${T_DB_NAME}" > "${eso_file}"
+    eso_args=(-f "${eso_file}")
+  fi
   local secret_file="" secret_args=()
   if [ "${#SECRET_KV[@]}" -gt 0 ]; then
     secret_file="$(mktemp)"; chmod 600 "${secret_file}"
@@ -453,9 +465,11 @@ deploy_service() {
     --set image.tag="${tag}" \
     "${EXTRA_ARGS[@]}" \
     "${secret_args[@]}" \
+    "${eso_args[@]}" \
     --timeout 4m \
     && local rc=0 || local rc=1
   [ -n "${secret_file}" ] && rm -f "${secret_file}"
+  [ -n "${eso_file}" ] && rm -f "${eso_file}"
   if [ "${rc}" -ne 0 ]; then
     warn "Helm deploy failed for ${service}"
     return 1
@@ -463,6 +477,9 @@ deploy_service() {
   return 0
 }
 
+if eso_enabled; then
+  eso_preflight tenant || { err "External Secrets Operator is not ready; unset USE_EXTERNAL_SECRETS to use Helm-rendered secrets"; exit 1; }
+fi
 log "Deploying services into ${NS} (profile=${PROFILE}, ${#TENANT_SERVICES[@]} services)..."
 FAILED=()
 for service in "${TENANT_SERVICES[@]}"; do

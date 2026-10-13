@@ -66,3 +66,32 @@ config:
 # Sensitive configuration rendered into {{ .Release.Name }}-secrets (Opaque,
 # stringData) and injected via envFrom. Populate at deploy time; never commit values.
 secrets: {}
+
+# External Secrets Operator (docs/SECRETS.md). Off by default; when enabled the
+# chart renders an ExternalSecret that syncs the keys below into the Secret
+# <release>-external-secrets, envFrom'd after <release>-config/-secrets (so it
+# wins on conflicts). The ClusterSecretStores come from the shared platform
+# add-on demo-platform/scripts/install-external-secrets.sh.
+#   secrets:    ENV_VAR -> Secrets Manager  <keyPrefix>/<service>/<KEY>
+#   parameters: ENV_VAR -> SSM Parameter   /<keyPrefix>/<service>/<KEY>
+#   templates:  ENV_VAR -> ESO v2 template over the synced keys (set at deploy)
+# Set an entry to null to drop it (e.g. tenants keep their own JWT secret).
+externalSecrets:
+  enabled: false
+  keyPrefix: otterworks/dev
+  service: notification-service
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: otterworks-secretsmanager
+  parameterStoreRef:
+    kind: ClusterSecretStore
+    name: otterworks-parameterstore
+  secrets:
+    ALERT_WEBHOOK_SECRET: ALERT_WEBHOOK_SECRET
+  parameters:
+    AWS_REGION: AWS_REGION
+    DYNAMODB_TABLE_NOTIFICATIONS: DYNAMODB_TABLE_NOTIFICATIONS
+    SNS_TOPIC_ARN: SNS_TOPIC_ARN
+    SQS_QUEUE_URL: SQS_QUEUE_URL
+  templates: {}

@@ -40,6 +40,21 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses", "networkpolicies"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # USE_EXTERNAL_SECRETS=true tenant deploys (scripts/deploy-tenant.sh): the
+  # preflight reads the ESO CRD + tenant store, and Helm manages each release's
+  # ExternalSecret. No escalation: the SA can already read Secrets, and the
+  # tenant store's AWS role only reaches DB_PASSWORD keys.
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    resourceNames: ["externalsecrets.external-secrets.io"]
+    verbs: ["get"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["clustersecretstores"]
+    resourceNames: ["otterworks-tenant-secretsmanager"]
+    verbs: ["get"]
+  - apiGroups: ["external-secrets.io"]
+    resources: ["externalsecrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

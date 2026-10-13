@@ -70,8 +70,12 @@ if [ "${SKIP_INFRA}" = false ]; then
   DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set (or pass --skip-infra)}"
   log "Applying application infra layer (refreshes IRSA trust; resets RDS password)..."
   terraform -chdir="${REPO_ROOT}/infrastructure/terraform" init -input=false
+  # shellcheck source=lib/external-secrets.sh
+  source "${SCRIPT_DIR}/lib/external-secrets.sh"
   terraform -chdir="${REPO_ROOT}/infrastructure/terraform" apply \
-    -var="db_password=${DB_PASSWORD}" -auto-approve -input=false
+    -var="db_password=${DB_PASSWORD}" \
+    -var="enable_external_secrets=$(eso_tf_enabled "${REPO_ROOT}/infrastructure/terraform")" \
+    -auto-approve -input=false
 else
   warn "Skipping app infra apply (--skip-infra); IRSA may be stale if OIDC changed."
 fi

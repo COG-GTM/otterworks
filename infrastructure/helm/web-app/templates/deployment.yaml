@@ -58,3 +58,13 @@ spec:
             - secretRef:
                 name: {{ .Release.Name }}-secrets
                 optional: true
+            {{- /* Same condition as templates/externalsecret.yaml: at least one non-empty key. */}}
+            {{- $esKeys := 0 }}
+            {{- with .Values.externalSecrets }}{{ if .enabled }}
+            {{- range $_, $k := .secrets }}{{ if $k }}{{ $esKeys = add1 $esKeys }}{{ end }}{{ end }}
+            {{- range $_, $k := .parameters }}{{ if $k }}{{ $esKeys = add1 $esKeys }}{{ end }}{{ end }}
+            {{- end }}{{ end }}
+            {{- if gt $esKeys 0 }}
+            - secretRef:
+                name: {{ $.Release.Name }}-external-secrets
+            {{- end }}
