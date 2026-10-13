@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -97,6 +99,26 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert len(data["suggestions"]) >= 1
+
+    def test_suggest_ignores_redis_ranking_flag(self, client, mock_meilisearch_client):
+        """Suggest never 500s, even when the ranking-score Redis flag is set."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {
+            "estimatedTotalHits": 2,
+            "hits": [{"title": "Test Doc 1"}, {"title": "Test Doc 2"}],
+        }
+        with patch("redis.Redis.exists", return_value=1):
+            response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Test Doc 1", "Test Doc 2"]
+
+    def test_suggest_backend_failure_degrades(self, client, mock_meilisearch_client):
+        """A MeiliSearch failure degrades to an empty suggestion list."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = RuntimeError("down")
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
 
     def test_suggest_empty_query(self, client):
         """Suggest with empty query returns empty list."""
