@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -151,6 +151,7 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
       }
     </div>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .page-container { padding: 0; }
     .page-header { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; }

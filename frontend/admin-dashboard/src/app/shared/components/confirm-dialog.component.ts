@@ -1,4 +1,4 @@
-import { Component, Inject } from '@angular/core';
+import { Component, Inject, ChangeDetectionStrategy } from '@angular/core';
 
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -25,6 +25,7 @@ export interface ConfirmDialogData {
       </button>
     </mat-dialog-actions>
   `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     p { margin: 0; color: #666; line-height: 1.6; }
   `]

@@ -7,7 +7,7 @@ import { Incident } from '../../core/models/incident.model';
 import { of, throwError } from 'rxjs';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
 
 function makeIncident(overrides: Partial<Incident> = {}): Incident {
   return {
@@ -53,7 +53,7 @@ describe('IncidentsComponent', () => {
         OverlayModule],
     providers: [
         { provide: AdminApiService, useValue: apiSpy },
-        provideHttpClient(withInterceptorsFromDi()),
+        provideHttpClient(withXhr(), withInterceptorsFromDi()),
         provideHttpClientTesting(),
     ]
 }).compileComponents();

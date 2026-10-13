@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from './layout/sidebar/sidebar.component';
@@ -23,6 +23,7 @@ import { AuthService } from './core/services/auth.service';
       <router-outlet></router-outlet>
     }
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .app-layout {
       display: flex;

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatIconModule } from '@angular/material/icon';
@@ -30,6 +30,7 @@ import { AuthService } from '../../core/services/auth.service';
       </mat-menu>
     </mat-toolbar>
     `,
+    changeDetection: ChangeDetectionStrategy.Eager,
     styles: [`
     .app-toolbar {
       background: #ffffff;
