@@ -34,7 +34,6 @@ func NewRouter(cfg RouterConfig) chi.Router {
 	r := chi.NewRouter()
 
 	for _, route := range cfg.Routes {
-		route := route // capture loop var
 		r.Route(route.Prefix, func(sub chi.Router) {
 			handler := newProxyHandler(route, cfg)
 			sub.HandleFunc("/*", handler)
