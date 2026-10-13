@@ -31,8 +31,13 @@ runtime stage is emulated:
 | `web-app`, `admin-dashboard` | static JS/CSS bundle | — |
 | `auth-service`, `notification-service`, `analytics-service` | JVM fat jar | — |
 | `audit-service` | portable .NET assembly (`UseAppHost=false`) | — |
+| `file-service` | native Rust binary | `cargo --target <arch>-unknown-linux-gnu` with the Debian cross gcc (same-arch builds use the native toolchain) |
 
-The rest (`file-service`, `document-service`, `collab-service`,
+Compiling `file-service`'s dependency tree under QEMU took over an hour and
+hit the 60-minute job timeout. Cross-compiled, it builds both platforms in a
+few minutes.
+
+The rest (`document-service`, `collab-service`,
 `search-service`, `admin-service`, `report-service`) install native
 dependencies in the runtime image and build fully under emulation. With
 BuildKit, a single-platform build on an amd64 host (`cd-tenant.yml`,
