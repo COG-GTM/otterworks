@@ -1,0 +1,9 @@
+id: INS-CALC-003
+module: calculation
+description: Lapsed policy rejected (legacy T10).
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 5
+  period_month: 2025-06
+probes: []

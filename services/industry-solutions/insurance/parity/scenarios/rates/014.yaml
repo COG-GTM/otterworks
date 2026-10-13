@@ -1,0 +1,10 @@
+id: INS-RATES-014
+module: rates
+description: End with no open rate rejected.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.end_commission_rate
+inputs:
+  product_code: HOME-PLUS
+  agent_id: 2
+  effective_to: '2025-12-31'
+probes: []

@@ -1,0 +1,13 @@
+id: INS-RATES-015
+module: rates
+description: End date before the rate start violates the date check.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.end_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 1
+  effective_to: '2024-05-31'
+probes:
+- probe: rates
+  params:
+    product_code: AUTO-STD

@@ -1,0 +1,23 @@
+id: INS-RATES-002
+module: rates
+description: Same-day upsert amends the open row in place (legacy T1b).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: TERM-20
+  agent_id: null
+  rate_pct: '17'
+  effective_from: '2025-07-01'
+setup:
+- entrypoint: commission_pkg.upsert_commission_rate
+  inputs:
+    product_code: TERM-20
+    agent_id: null
+    rate_pct: '16'
+    effective_from: '2025-07-01'
+probes:
+- probe: rates
+  params:
+    product_code: TERM-20
+- probe: audit
+  params: {}

@@ -1,0 +1,11 @@
+id: INS-SPLIT-007
+module: splits
+description: Unknown policy rejected.
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 99
+  splits:
+  - agent_id: 1
+    split_pct: '100'
+probes: []

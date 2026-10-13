@@ -1,0 +1,20 @@
+id: INS-ETL-006
+module: etl
+description: Load with no period loads every month.
+actor: etl-parity@otterworks.test
+entrypoint: dw_etl_pkg.load_commission_facts
+inputs:
+  period_month: null
+setup:
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 1
+    period_month: 2025-06
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 1
+    period_month: 2025-07
+probes:
+- probe: facts
+  params:
+    period_month: 2025-07

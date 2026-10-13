@@ -1,0 +1,9 @@
+id: INS-CALC-009
+module: calculation
+description: Invalid month rejected.
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 1
+  period_month: 2025-13
+probes: []

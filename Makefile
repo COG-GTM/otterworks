@@ -55,6 +55,8 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 	$(INSURANCE_SQLPLUS) commission_pay/commission_pay@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_tests.sql
 	$(INSURANCE_SQLPLUS) commission_dw/commission_dw@localhost:1521/FREEPDB1 @/opt/oracle/scripts/insurance/tests/run_olap_tests.sql
 
+include services/industry-solutions/insurance/commission.mk
+
 # --- Local Development ---
 
 infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)

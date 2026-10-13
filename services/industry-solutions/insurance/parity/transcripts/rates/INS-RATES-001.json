@@ -1,0 +1,70 @@
+{
+  "actor": "rates-parity@otterworks.test",
+  "entrypoint": "commission_pkg.upsert_commission_rate",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "agent_id": null,
+    "effective_from": "2025-07-01",
+    "product_code": "AUTO-STD",
+    "rate_pct": "8.25"
+  },
+  "module": "rates",
+  "outcome": {
+    "fields": {
+      "rate_id": 5
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "audit:1": {
+      "params": {},
+      "probe": "audit",
+      "rows": [
+        {
+          "action": "RATE_UPSERT",
+          "actor": "rates-parity@otterworks.test",
+          "agent_id": null,
+          "detail": "rate_id=5 pct=8.25 from=2025-07-01",
+          "policy_id": null,
+          "product_code": "AUTO-STD"
+        }
+      ]
+    },
+    "rates:0": {
+      "params": {
+        "product_code": "AUTO-STD"
+      },
+      "probe": "rates",
+      "rows": [
+        {
+          "agent_id": null,
+          "created_by": "seed",
+          "effective_from": "2024-01-01",
+          "effective_to": "2025-06-30",
+          "rate_id": 1,
+          "rate_pct": "8"
+        },
+        {
+          "agent_id": 1,
+          "created_by": "seed",
+          "effective_from": "2024-06-01",
+          "effective_to": null,
+          "rate_id": 4,
+          "rate_pct": "9.5"
+        },
+        {
+          "agent_id": null,
+          "created_by": "rates-parity@otterworks.test",
+          "effective_from": "2025-07-01",
+          "effective_to": null,
+          "rate_id": 5,
+          "rate_pct": "8.25"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "scenario": "INS-RATES-001",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

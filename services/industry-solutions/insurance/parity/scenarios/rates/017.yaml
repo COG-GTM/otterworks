@@ -1,0 +1,32 @@
+id: INS-RATES-017
+module: rates
+description: 'Second supersede of the same key: legacy UX_RATES_OPEN collides on closed
+  rows.'
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: TERM-20
+  agent_id: null
+  rate_pct: '17'
+  effective_from: '2031-01-01'
+setup:
+- entrypoint: commission_pkg.upsert_commission_rate
+  inputs:
+    product_code: TERM-20
+    agent_id: null
+    rate_pct: '16'
+    effective_from: '2030-01-01'
+probes:
+- probe: rates
+  params:
+    product_code: TERM-20
+divergence:
+  rule: INS-RATE-009
+  reason: Legacy UX_RATES_OPEN indexes closed rows as (product, agent, NULL), so a key can only ever hold one closed rate. The service keeps full rate history.
+  target:
+    outcome: {status: ok, fields: {rate_id: 6}}
+    probes:
+      "rates:0":
+        - {rate_id: 3, agent_id: null, rate_pct: "15", effective_from: "2024-01-01", effective_to: "2029-12-31", created_by: seed}
+        - {rate_id: 5, agent_id: null, rate_pct: "16", effective_from: "2030-01-01", effective_to: "2030-12-31", created_by: rates-parity@otterworks.test}
+        - {rate_id: 6, agent_id: null, rate_pct: "17", effective_from: "2031-01-01", effective_to: null, created_by: rates-parity@otterworks.test}

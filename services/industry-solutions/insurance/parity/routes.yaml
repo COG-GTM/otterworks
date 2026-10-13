@@ -1,0 +1,96 @@
+# Contract: legacy PL/SQL entrypoint -> commission-service endpoint, plus the
+# probes that observe state on both sides. The replay harness is driven by this file.
+base_path: /api/v1/commission
+parity_tenant: northwind-mutual
+modules:
+  rates: {status: extracted}
+  splits: {status: extracted}
+  calculation: {status: extracted}
+  etl: {status: extracted}
+entrypoints:
+  commission_pkg.upsert_commission_rate:
+    method: PUT
+    path: /rates
+    body: [product_code, agent_id, rate_pct, effective_from]
+    fields: {rate_id: integer}
+  commission_pkg.end_commission_rate:
+    method: POST
+    path: /rates/end
+    body: [product_code, agent_id, effective_to]
+    fields: {}
+  commission_pkg.resolve_rate:
+    method: GET
+    path: /rates/resolve
+    query: [product_code, agent_id, as_of]
+    fields: {rate_id: integer, rate_pct: decimal}
+  commission_pkg.set_commission_splits:
+    method: PUT
+    path: /policies/{policy_id}/splits
+    body: [splits]
+    fields: {}
+  commission_pkg.calculate_policy_commission:
+    method: POST
+    path: /policies/{policy_id}/calculations
+    body: [period_month]
+    rows:
+      json_path: rows
+      columns: {agent_id: integer, rate_id: integer, split_pct: decimal, base_premium: decimal, commission_amt: decimal}
+  dw_etl_pkg.load_commission_facts:
+    method: POST
+    path: /etl/loads
+    body: [period_month]
+    fields: {rows_merged: integer}
+probes:
+  rates:
+    oracle:
+      schema: oltp
+      sql: >-
+        SELECT rate_id, agent_id, rate_pct, TO_CHAR(effective_from, 'YYYY-MM-DD') AS effective_from,
+               TO_CHAR(effective_to, 'YYYY-MM-DD') AS effective_to, created_by
+          FROM commission_rates WHERE product_code = :product_code ORDER BY rate_id
+    target: {path: /rates, query: [product_code]}
+    columns: {rate_id: integer, agent_id: integer, rate_pct: decimal, effective_from: text, effective_to: text, created_by: text}
+  splits:
+    oracle:
+      schema: oltp
+      sql: SELECT agent_id, split_pct FROM commission_splits WHERE policy_id = :policy_id ORDER BY agent_id
+    target: {path: "/policies/{policy_id}/splits", json_path: splits}
+    columns: {agent_id: integer, split_pct: decimal}
+  ledger:
+    oracle:
+      schema: oltp
+      sql: >-
+        SELECT agent_id, rate_id, split_pct, base_premium, commission_amt FROM commission_ledger
+         WHERE policy_id = :policy_id AND period_month = :period_month ORDER BY agent_id
+    target: {path: /ledger, query: [policy_id, period_month]}
+    columns: {agent_id: integer, rate_id: integer, split_pct: decimal, base_premium: decimal, commission_amt: decimal}
+  audit:
+    oracle:
+      schema: oltp
+      sql: SELECT action, product_code, agent_id, policy_id, detail, actor FROM rate_audit_log ORDER BY audit_id
+    target: {path: /audit}
+    columns: {action: text, product_code: text, agent_id: integer, policy_id: integer, detail: text, actor: text}
+  facts:
+    oracle:
+      schema: dw
+      sql: >-
+        SELECT da.agent_id, dp.product_code, dd.period_month, f.policy_id, f.split_pct,
+               f.base_premium, f.commission_amt
+          FROM fact_commission f
+          JOIN dim_agent da ON da.agent_key = f.agent_key
+          JOIN dim_product dp ON dp.product_key = f.product_key
+          JOIN dim_period dd ON dd.period_key = f.period_key
+         WHERE dd.period_month = :period_month
+         ORDER BY dd.period_month, f.policy_id, da.agent_id
+    target: {path: /facts, query: [period_month]}
+    columns: {agent_id: integer, product_code: text, period_month: text, policy_id: integer, split_pct: decimal, base_premium: decimal, commission_amt: decimal}
+  summary:
+    oracle:
+      schema: dw
+      refresh_mv: MV_AGENT_COMMISSION_SUMMARY
+      sql: >-
+        SELECT agent_code, full_name, period_month, line_of_business, policy_rows, total_commission
+          FROM mv_agent_commission_summary WHERE period_month = :period_month
+         ORDER BY agent_code, period_month, line_of_business
+    target: {path: /summary, query: [period_month]}
+    columns: {agent_code: text, full_name: text, period_month: text, line_of_business: text, policy_rows: integer, total_commission: decimal}

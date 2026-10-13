@@ -1,0 +1,140 @@
+module: calculation
+rules:
+- id: INS-CALC-001
+  statement: The policy must exist (-20005).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 285
+    - 302
+  confidence: high
+  scenarios:
+  - INS-CALC-004
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-002
+  statement: Only IN_FORCE policies are calculated; others raise -20008 before the period is parsed.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 303
+    - 306
+  confidence: high
+  scenarios:
+  - INS-CALC-003
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-003
+  statement: Commission = annual premium / 12 x rate% x split%, rounded half-up to cents per row.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 307
+    - 345
+  confidence: high
+  scenarios:
+  - INS-CALC-001
+  - INS-CALC-008
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-004
+  statement: The rate is resolved as of the last day of the period month.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 285
+    - 345
+  confidence: high
+  scenarios:
+  - INS-CALC-006
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-005
+  statement: Recalculation deletes and rewrites the ledger rows for the policy and period.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 307
+    - 345
+  confidence: high
+  scenarios:
+  - INS-CALC-002
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-006
+  statement: A policy with no split allocation raises -20006 and leaves no ledger rows.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 330
+    - 336
+  confidence: high
+  scenarios:
+  - INS-CALC-005
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-007
+  statement: A missing rate for any split agent rolls back the whole calculation (-20007).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 259
+    - 283
+  confidence: high
+  scenarios:
+  - INS-CALC-007
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-008
+  statement: A successful calculation is audited.
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 337
+    - 345
+  confidence: high
+  scenarios:
+  - INS-CALC-001
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-CALC-009
+  statement: The period must be a valid month; the target requires canonical YYYY-MM (legacy TO_DATE also accepts
+    2025-6).
+  source:
+    file: services/industry-solutions/insurance/db/oltp/03_commission_pkg.sql
+    lines:
+    - 285
+    - 300
+  confidence: high
+  scenarios:
+  - INS-CALC-009
+  - INS-CALC-010
+  decision:
+    status: divergence-accepted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.

@@ -1,0 +1,20 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-13",
+    "policy_id": 1
+  },
+  "module": "calculation",
+  "outcome": {
+    "message": "An invalid month was specified.",
+    "ora_code": -1843,
+    "status": "error"
+  },
+  "probes": {},
+  "recorded_against": "oracle-free",
+  "scenario": "INS-CALC-009",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

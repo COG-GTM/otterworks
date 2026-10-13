@@ -1,0 +1,16 @@
+id: INS-SPLIT-005
+module: splits
+description: Suspended agent in allocation rejected.
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 2
+  splits:
+  - agent_id: 1
+    split_pct: '50'
+  - agent_id: 4
+    split_pct: '50'
+probes:
+- probe: splits
+  params:
+    policy_id: 2

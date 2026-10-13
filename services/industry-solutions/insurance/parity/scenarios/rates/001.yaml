@@ -1,0 +1,16 @@
+id: INS-RATES-001
+module: rates
+description: Later effective rate supersedes the prior open default (legacy T1).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.upsert_commission_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: null
+  rate_pct: '8.25'
+  effective_from: '2025-07-01'
+probes:
+- probe: rates
+  params:
+    product_code: AUTO-STD
+- probe: audit
+  params: {}

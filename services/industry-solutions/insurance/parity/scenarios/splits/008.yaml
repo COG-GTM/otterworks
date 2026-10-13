@@ -1,0 +1,16 @@
+id: INS-SPLIT-008
+module: splits
+description: Raw values total 100; storage rounds to cents.
+actor: splits-parity@otterworks.test
+entrypoint: commission_pkg.set_commission_splits
+inputs:
+  policy_id: 3
+  splits:
+  - agent_id: 1
+    split_pct: '33.333'
+  - agent_id: 2
+    split_pct: '66.667'
+probes:
+- probe: splits
+  params:
+    policy_id: 3

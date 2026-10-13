@@ -1,0 +1,34 @@
+{
+  "actor": "calculation-parity@otterworks.test",
+  "entrypoint": "commission_pkg.calculate_policy_commission",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06",
+    "policy_id": 3
+  },
+  "module": "calculation",
+  "outcome": {
+    "message": "Policy 3 has no split allocation",
+    "ora_code": -20006,
+    "status": "error"
+  },
+  "probes": {
+    "audit:1": {
+      "params": {},
+      "probe": "audit",
+      "rows": []
+    },
+    "ledger:0": {
+      "params": {
+        "period_month": "2025-06",
+        "policy_id": 3
+      },
+      "probe": "ledger",
+      "rows": []
+    }
+  },
+  "recorded_against": "oracle-free",
+  "scenario": "INS-CALC-005",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

@@ -1,0 +1,10 @@
+id: INS-RATES-011
+module: rates
+description: Default rate used when the agent has no override (legacy T7b).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.resolve_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 2
+  as_of: '2025-06-30'
+probes: []

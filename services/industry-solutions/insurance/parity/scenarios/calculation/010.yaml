@@ -1,0 +1,14 @@
+id: INS-CALC-010
+module: calculation
+description: 'Non-canonical period: legacy TO_DATE accepts 2025-6.'
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 1
+  period_month: 2025-6
+probes: []
+divergence:
+  rule: INS-CALC-009
+  reason: Legacy TO_DATE('2025-6','YYYY-MM') succeeds and writes ledger rows under a non-canonical period key that never matches '2025-06'. The service requires canonical YYYY-MM.
+  target:
+    outcome: {status: error, ora_code: -1861, message: literal does not match format string}

@@ -1,0 +1,44 @@
+# Insurance Commission Pay target stack: commission-service + its own PostgreSQL.
+# Runs alongside (never instead of) the frozen Oracle fixture in docker-compose.insurance.yml.
+# Every credential comes from the environment; `make commission-up` generates throwaway
+# local values into services/industry-solutions/insurance/parity/.local.env (gitignored).
+services:
+  commission-db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: commission_${NS:-dev}
+      POSTGRES_USER: commission_owner
+      POSTGRES_PASSWORD: ${COMMISSION_DB_ADMIN_PASSWORD:?COMMISSION_DB_ADMIN_PASSWORD is required}
+      COMMISSION_SVC_DB_PASSWORD: ${COMMISSION_SVC_DB_PASSWORD:?COMMISSION_SVC_DB_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${COMMISSION_DB_PORT:-56544}:5432"
+    volumes:
+      - ./services/industry-solutions/insurance/commission-service/db/init/01_app_role.sh:/docker-entrypoint-initdb.d/01_app_role.sh:ro
+      - commission-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commission_owner -d commission_${NS:-dev}"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  commission-service:
+    build:
+      context: ./services/industry-solutions/insurance/commission-service
+      dockerfile: Dockerfile
+    depends_on:
+      commission-db:
+        condition: service_healthy
+    environment:
+      COMMISSION_SVC_DATABASE_URL: postgresql://commission_svc:${COMMISSION_SVC_DB_PASSWORD}@commission-db:5432/commission_${NS:-dev}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      COMMISSION_SVC_ENABLE_RESET: ${COMMISSION_SVC_ENABLE_RESET:-false}
+    ports:
+      - "127.0.0.1:${COMMISSION_SVC_PORT:-8098}:8098"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8098/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  commission-db-data:

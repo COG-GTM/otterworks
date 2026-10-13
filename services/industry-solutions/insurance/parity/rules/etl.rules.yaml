@@ -1,0 +1,79 @@
+module: etl
+rules:
+- id: INS-ETL-001
+  statement: Agent and product dimensions are upserted from OLTP and missing periods created.
+  source:
+    file: services/industry-solutions/insurance/db/olap/02_etl_pkg.sql
+    lines:
+    - 17
+    - 57
+  confidence: high
+  scenarios:
+  - INS-ETL-001
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-ETL-002
+  statement: Ledger rows are merged into fact_commission idempotently; the merged-row count is returned.
+  source:
+    file: services/industry-solutions/insurance/db/olap/02_etl_pkg.sql
+    lines:
+    - 58
+    - 92
+  confidence: high
+  scenarios:
+  - INS-ETL-001
+  - INS-ETL-002
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-ETL-003
+  statement: An optional period filter limits the load; no filter loads every month.
+  source:
+    file: services/industry-solutions/insurance/db/olap/02_etl_pkg.sql
+    lines:
+    - 17
+    - 92
+  confidence: high
+  scenarios:
+  - INS-ETL-003
+  - INS-ETL-006
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-ETL-004
+  statement: The merge never deletes facts whose ledger rows disappeared.
+  source:
+    file: services/industry-solutions/insurance/db/olap/02_etl_pkg.sql
+    lines:
+    - 58
+    - 92
+  confidence: high
+  scenarios:
+  - INS-ETL-004
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.
+- id: INS-ETL-005
+  statement: The summary rolls facts up by agent, period month and line of business.
+  source:
+    file: services/industry-solutions/insurance/db/olap/02_etl_pkg.sql
+    lines:
+    - 98
+    - 114
+  confidence: high
+  scenarios:
+  - INS-ETL-005
+  decision:
+    status: extracted
+    reviewer: workstream-h-extraction
+    date: '2026-10-13'
+    note: Recorded by the extraction; business-owner sign-off is still required before cutover.

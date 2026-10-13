@@ -1,0 +1,9 @@
+id: INS-CALC-004
+module: calculation
+description: Unknown policy rejected.
+actor: calculation-parity@otterworks.test
+entrypoint: commission_pkg.calculate_policy_commission
+inputs:
+  policy_id: 42
+  period_month: 2025-06
+probes: []

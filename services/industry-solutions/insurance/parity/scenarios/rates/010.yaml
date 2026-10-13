@@ -1,0 +1,10 @@
+id: INS-RATES-010
+module: rates
+description: Agent-specific override beats the product default (legacy T7).
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.resolve_rate
+inputs:
+  product_code: AUTO-STD
+  agent_id: 1
+  as_of: '2025-06-30'
+probes: []

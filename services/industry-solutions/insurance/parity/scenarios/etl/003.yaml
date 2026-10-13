@@ -1,0 +1,23 @@
+id: INS-ETL-003
+module: etl
+description: Period filter loads only the requested month.
+actor: etl-parity@otterworks.test
+entrypoint: dw_etl_pkg.load_commission_facts
+inputs:
+  period_month: 2025-07
+setup:
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 1
+    period_month: 2025-06
+- entrypoint: commission_pkg.calculate_policy_commission
+  inputs:
+    policy_id: 1
+    period_month: 2025-07
+probes:
+- probe: facts
+  params:
+    period_month: 2025-07
+- probe: facts
+  params:
+    period_month: 2025-06

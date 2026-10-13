@@ -1,0 +1,153 @@
+{
+  "actor": "etl-parity@otterworks.test",
+  "entrypoint": "dw_etl_pkg.load_commission_facts",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "period_month": "2025-06"
+  },
+  "module": "etl",
+  "outcome": {
+    "fields": {
+      "rows_merged": 6
+    },
+    "status": "ok"
+  },
+  "probes": {
+    "facts:0": {
+      "params": {
+        "period_month": "2025-06"
+      },
+      "probe": "facts",
+      "rows": [
+        {
+          "agent_id": 1,
+          "base_premium": "1800",
+          "commission_amt": "14.25",
+          "period_month": "2025-06",
+          "policy_id": 1,
+          "product_code": "AUTO-STD",
+          "split_pct": "100"
+        },
+        {
+          "agent_id": 1,
+          "base_premium": "2400",
+          "commission_amt": "12",
+          "period_month": "2025-06",
+          "policy_id": 2,
+          "product_code": "HOME-PLUS",
+          "split_pct": "60"
+        },
+        {
+          "agent_id": 2,
+          "base_premium": "2400",
+          "commission_amt": "8",
+          "period_month": "2025-06",
+          "policy_id": 2,
+          "product_code": "HOME-PLUS",
+          "split_pct": "40"
+        },
+        {
+          "agent_id": 1,
+          "base_premium": "9600",
+          "commission_amt": "38",
+          "period_month": "2025-06",
+          "policy_id": 4,
+          "product_code": "AUTO-STD",
+          "split_pct": "50"
+        },
+        {
+          "agent_id": 2,
+          "base_premium": "9600",
+          "commission_amt": "19.2",
+          "period_month": "2025-06",
+          "policy_id": 4,
+          "product_code": "AUTO-STD",
+          "split_pct": "30"
+        },
+        {
+          "agent_id": 3,
+          "base_premium": "9600",
+          "commission_amt": "12.8",
+          "period_month": "2025-06",
+          "policy_id": 4,
+          "product_code": "AUTO-STD",
+          "split_pct": "20"
+        }
+      ]
+    }
+  },
+  "recorded_against": "oracle-free",
+  "scenario": "INS-ETL-002",
+  "setup": [
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "1800",
+            "commission_amt": "14.25",
+            "rate_id": 4,
+            "split_pct": "100"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "2400",
+            "commission_amt": "12",
+            "rate_id": 2,
+            "split_pct": "60"
+          },
+          {
+            "agent_id": 2,
+            "base_premium": "2400",
+            "commission_amt": "8",
+            "rate_id": 2,
+            "split_pct": "40"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {
+        "rows": [
+          {
+            "agent_id": 1,
+            "base_premium": "9600",
+            "commission_amt": "38",
+            "rate_id": 4,
+            "split_pct": "50"
+          },
+          {
+            "agent_id": 2,
+            "base_premium": "9600",
+            "commission_amt": "19.2",
+            "rate_id": 1,
+            "split_pct": "30"
+          },
+          {
+            "agent_id": 3,
+            "base_premium": "9600",
+            "commission_amt": "12.8",
+            "rate_id": 1,
+            "split_pct": "20"
+          }
+        ]
+      },
+      "status": "ok"
+    },
+    {
+      "fields": {
+        "rows_merged": 6
+      },
+      "status": "ok"
+    }
+  ],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

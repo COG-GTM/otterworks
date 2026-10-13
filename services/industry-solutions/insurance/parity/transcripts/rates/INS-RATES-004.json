@@ -1,0 +1,22 @@
+{
+  "actor": "rates-parity@otterworks.test",
+  "entrypoint": "commission_pkg.upsert_commission_rate",
+  "fixture_sha": "e1eff935fb04d72e0bafb466d6c3c572c63554515250f2e541978a7a6a60499c",
+  "inputs": {
+    "agent_id": null,
+    "effective_from": "2025-07-01",
+    "product_code": "AUTO-STD",
+    "rate_pct": "0"
+  },
+  "module": "rates",
+  "outcome": {
+    "message": "Rate must be in (0, 50]: 0",
+    "ora_code": -20001,
+    "status": "error"
+  },
+  "probes": {},
+  "recorded_against": "oracle-free",
+  "scenario": "INS-RATES-004",
+  "setup": [],
+  "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
+}

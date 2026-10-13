@@ -1,0 +1,10 @@
+id: INS-RATES-012
+module: rates
+description: No rate in force before any rate starts.
+actor: rates-parity@otterworks.test
+entrypoint: commission_pkg.resolve_rate
+inputs:
+  product_code: TERM-20
+  agent_id: 2
+  as_of: '2023-12-31'
+probes: []

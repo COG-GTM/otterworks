@@ -1,0 +1,25 @@
+-- Parity tenant: row-for-row copy of services/industry-solutions/insurance/db/oltp/02_seed.sql.
+SELECT set_config('app.tenant_id', 'northwind-mutual', false);
+INSERT INTO commission.tenants (tenant_id, name) VALUES ('northwind-mutual', 'Northwind Mutual');
+INSERT INTO commission.agents (tenant_id, agent_id, agent_code, full_name, license_no, status, hired_date) VALUES ('northwind-mutual', 1, 'AG-100', 'Maria Alvarez', 'LIC-TX-55001', 'ACTIVE', DATE '2018-03-12');
+INSERT INTO commission.agents (tenant_id, agent_id, agent_code, full_name, license_no, status, hired_date) VALUES ('northwind-mutual', 2, 'AG-101', 'James Okafor', 'LIC-TX-55002', 'ACTIVE', DATE '2019-07-01');
+INSERT INTO commission.agents (tenant_id, agent_id, agent_code, full_name, license_no, status, hired_date) VALUES ('northwind-mutual', 3, 'AG-102', 'Priya Natarajan', 'LIC-TX-55003', 'ACTIVE', DATE '2020-01-15');
+INSERT INTO commission.agents (tenant_id, agent_id, agent_code, full_name, license_no, status, hired_date) VALUES ('northwind-mutual', 4, 'AG-103', 'Dale Whitfield', 'LIC-TX-55004', 'SUSPENDED', DATE '2017-11-30');
+INSERT INTO commission.products (tenant_id, product_code, product_name, line_of_business) VALUES ('northwind-mutual', 'AUTO-STD', 'Standard Auto', 'AUTO');
+INSERT INTO commission.products (tenant_id, product_code, product_name, line_of_business) VALUES ('northwind-mutual', 'HOME-PLUS', 'HomeOwners Plus', 'HOME');
+INSERT INTO commission.products (tenant_id, product_code, product_name, line_of_business) VALUES ('northwind-mutual', 'TERM-20', '20-Year Term Life', 'LIFE');
+INSERT INTO commission.commission_rates (tenant_id, rate_id, product_code, agent_id, rate_pct, effective_from, effective_to, created_by) VALUES ('northwind-mutual', 1, 'AUTO-STD', NULL, 8.00, DATE '2024-01-01', NULL, 'seed');
+INSERT INTO commission.commission_rates (tenant_id, rate_id, product_code, agent_id, rate_pct, effective_from, effective_to, created_by) VALUES ('northwind-mutual', 2, 'HOME-PLUS', NULL, 10.00, DATE '2024-01-01', NULL, 'seed');
+INSERT INTO commission.commission_rates (tenant_id, rate_id, product_code, agent_id, rate_pct, effective_from, effective_to, created_by) VALUES ('northwind-mutual', 3, 'TERM-20', NULL, 15.00, DATE '2024-01-01', NULL, 'seed');
+INSERT INTO commission.commission_rates (tenant_id, rate_id, product_code, agent_id, rate_pct, effective_from, effective_to, created_by) VALUES ('northwind-mutual', 4, 'AUTO-STD', 1, 9.50, DATE '2024-06-01', NULL, 'seed');
+INSERT INTO commission.policies (tenant_id, policy_id, policy_no, product_code, holder_name, annual_premium, issued_date, status) VALUES ('northwind-mutual', 1, 'POL-2025-0001', 'AUTO-STD', 'Chen Household', 1800.00, DATE '2025-02-10', 'IN_FORCE');
+INSERT INTO commission.policies (tenant_id, policy_id, policy_no, product_code, holder_name, annual_premium, issued_date, status) VALUES ('northwind-mutual', 2, 'POL-2025-0002', 'HOME-PLUS', 'Robinson Family', 2400.00, DATE '2025-03-05', 'IN_FORCE');
+INSERT INTO commission.policies (tenant_id, policy_id, policy_no, product_code, holder_name, annual_premium, issued_date, status) VALUES ('northwind-mutual', 3, 'POL-2025-0003', 'TERM-20', 'S. Gutierrez', 1200.00, DATE '2025-04-20', 'IN_FORCE');
+INSERT INTO commission.policies (tenant_id, policy_id, policy_no, product_code, holder_name, annual_premium, issued_date, status) VALUES ('northwind-mutual', 4, 'POL-2025-0004', 'AUTO-STD', 'Kowalski LLC Fleet', 9600.00, DATE '2025-05-01', 'IN_FORCE');
+INSERT INTO commission.policies (tenant_id, policy_id, policy_no, product_code, holder_name, annual_premium, issued_date, status) VALUES ('northwind-mutual', 5, 'POL-2025-0005', 'HOME-PLUS', 'Ncube Residence', 2000.00, DATE '2025-05-15', 'LAPSED');
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 1, 1, 100.00);
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 2, 1, 60.00);
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 2, 2, 40.00);
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 4, 1, 50.00);
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 4, 2, 30.00);
+INSERT INTO commission.commission_splits (tenant_id, policy_id, agent_id, split_pct) VALUES ('northwind-mutual', 4, 3, 20.00);
