@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import type { Logger } from 'pino';
 import { RedisAdapter } from './redis-adapter';
 
@@ -105,7 +105,7 @@ export class DocumentStore {
     label?: string,
   ): Promise<DocumentSnapshot> {
     const snapshot: DocumentSnapshot = {
-      id: uuidv4(),
+      id: randomUUID(),
       documentId,
       state: state.toString('base64'),
       createdAt: new Date().toISOString(),
