@@ -140,11 +140,24 @@ jobs:
             -var-file="environments/${ENV_NAME}.tfvars" -out=tfplan > plan.log 2>&1
           rc=$?
           set -e
-          cat plan.log
-          if [[ $rc -eq 1 ]]; then echo "outcome=error" >> "$GITHUB_OUTPUT"; exit 1; fi
+          # Job logs and PR comments are public on this repo; full output goes only to the
+          # short-lived artifact. Logs and comments get resource addresses and actions only.
+          if [[ $rc -eq 1 ]]; then
+            echo "outcome=error" >> "$GITHUB_OUTPUT"
+            echo "terraform plan failed; diagnostics are in the run artifact" > summary.txt
+            echo "::error::terraform plan failed; see the plan artifact"
+            exit 1
+          fi
           [[ $rc -eq 2 ]] && echo "outcome=changes" >> "$GITHUB_OUTPUT" || echo "outcome=no-changes" >> "$GITHUB_OUTPUT"
           # The rendered plan masks sensitive values; the binary tfplan is never uploaded.
           terraform -chdir="$ROOT" show -no-color tfplan > plan.txt
+          {
+            grep -E '^(Plan:|No changes\.)' plan.txt || true
+            terraform -chdir="$ROOT" show -json tfplan | jq -r '
+              .resource_changes[]? | select(.change.actions != ["no-op"])
+              | "\(.change.actions | join("/"))\t\(.address)"'
+          } > summary.txt
+          cat summary.txt
 
       - name: Upload rendered plan
         if: always()
@@ -155,7 +168,7 @@ jobs:
             plan.txt
             plan.log
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3
 
       - name: Comment plan on PR
         if: always() && github.event_name == 'pull_request'
@@ -167,13 +180,12 @@ jobs:
             const fs = require('fs');
             const root = process.env.ROOT, envName = process.env.ENV_NAME;
             const marker = `<!-- terraform-plan:${root}:${envName} -->`;
-            const file = fs.existsSync('plan.txt') ? 'plan.txt' : 'plan.log';
-            let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : 'no output';
+            let body = fs.existsSync('summary.txt') ? fs.readFileSync('summary.txt', 'utf8') : 'no output';
             const max = 60000;
             if (body.length > max) body = body.slice(0, max) + '\n... truncated, see the run artifact';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const text = `${marker}\n### Terraform plan: \`${root}\` (${envName}) — ${process.env.OUTCOME}\n` +
-              `<details><summary>Show plan</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>\n\n[Run](${runUrl})`;
+              `<details><summary>Changed resources (full plan in the run artifact)</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>\n\n[Run](${runUrl})`;
             const { data: comments } = await github.rest.issues.listComments({
               ...context.repo, issue_number: context.issue.number, per_page: 100 });
             const existing = comments.find(c => c.body && c.body.startsWith(marker));

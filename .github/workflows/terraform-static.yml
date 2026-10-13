@@ -104,10 +104,10 @@ jobs:
 
       - name: checkov
         run: |
-          mkdir -p sarif/checkov
+          mkdir -p sarif
           checkov -d "$ROOT" --config-file .checkov.yaml --compact \
-            --output cli --output sarif --output-file-path console,sarif/checkov
-          mv sarif/checkov/results_sarif.sarif "sarif/checkov-${{ steps.names.outputs.slug }}.sarif"
+            --output cli --output sarif \
+            --output-file-path "console,sarif/checkov-${{ steps.names.outputs.slug }}.sarif"
 
       - name: Mocked plan per environment (terraform test)
         run: |

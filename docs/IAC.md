@@ -79,7 +79,7 @@ All three are **off by default** and report why in the run summary when they ski
 
 | Workflow | Trigger | Does | Enabled by |
 |---|---|---|---|
-| `terraform-plan.yml` | PR touching a root | `plan -lock=false` for each env of each changed root (platform changes also plan `infrastructure`), comment per root/env on the PR, rendered plan as artifact | `TF_PLAN_ENABLED=true`, `TF_PLAN_ROLE_ARN`; same-repo PRs only |
+| `terraform-plan.yml` | PR touching a root | `plan -lock=false` for each env of each changed root (platform changes also plan `infrastructure`), comment per root/env on the PR listing changed resources only (logs and comments are public), full rendered plan as a 3-day artifact | `TF_PLAN_ENABLED=true`, `TF_PLAN_ROLE_ARN`; same-repo PRs only |
 | `terraform-drift.yml` | weekdays 06:17 UTC, manual | `plan -detailed-exitcode` per root/env; opens/updates an issue labelled `terraform-drift`, closes it when clean | `TF_DRIFT_ENABLED=true`, `TF_PLAN_ROLE_ARN` |
 | `terraform-apply.yml` | `workflow_dispatch` on `main` only | plan -> encrypted saved plan + sha256 -> **waits for environment `terraform-<env>` approval** -> applies that exact plan | `TF_APPLY_ENABLED=true`, `TF_PLAN_ROLE_ARN`, `TF_APPLY_ROLE_ARN`, secret `TF_PLAN_PASSPHRASE`, environment reviewers |
 
@@ -105,15 +105,22 @@ reuse it.
    `terraform_ci_trusted_repos = ["COG-GTM/otterworks"]` (`iam_terraform_ci.tf`)
    in a PR of its own and apply it through the normal control-plane process. This
    creates:
-   - `otterworks-terraform-plan` -- `ReadOnlyAccess` minus data-plane reads
-     (DynamoDB items, secrets, SSM, KMS decrypt, S3 objects outside the state
+   - `otterworks-terraform-plan` -- `ReadOnlyAccess` minus data-plane reads of
+     anything Terraform does not manage (DynamoDB items outside the control table,
+     secrets outside `otterworks/*`, SSM parameters, S3 objects outside the state
      bucket); trusts `repo:<repo>:pull_request` and `repo:<repo>:ref:refs/heads/main`.
-     Fork PRs never receive OIDC tokens.
+     Fork PRs never receive OIDC tokens. The role reads state, and state holds every
+     managed secret, so anyone who can push a branch to the repo can read them via
+     a PR plan. Enable plan only if that matches who has write access.
    - `otterworks-terraform-apply` -- `AdministratorAccess`; trusts only
      `repo:<repo>:environment:terraform-*`, so it can be assumed only by a job
      that already passed the environment's reviewers.
 2. Create GitHub Environments `terraform-dev`, `terraform-staging`,
    `terraform-prod` with required reviewers and "deployment branches: main".
+   The apply gate refuses to run if `terraform-<env>` is missing or has no
+   required reviewers, because GitHub would otherwise create it unprotected.
+   The apply role trusts any job bound to a `terraform-*` environment, so the
+   environment's reviewers and branch policy are the control: keep both set.
 3. Set repo variables `TF_PLAN_ROLE_ARN` / `TF_APPLY_ROLE_ARN` (outputs
    `terraform_plan_role_arn` / `terraform_apply_role_arn`) and secrets
    `TF_VAR_DB_PASSWORD`, `TF_VAR_MEILISEARCH_MASTER_KEY`, `TF_PLAN_PASSPHRASE`.

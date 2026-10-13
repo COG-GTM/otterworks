@@ -15,6 +15,9 @@ mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = { account_id = "123456789012" }
   }
+  mock_data "aws_region" {
+    defaults = { name = "us-east-1" }
+  }
 }
 
 mock_provider "tls" {}
@@ -28,7 +31,7 @@ run "plan" {
   }
 
   assert {
-    condition     = var.create_ecr_repositories ? length(module.ecr.repository_urls) > 0 : length(module.ecr.repository_urls) == 0
-    error_message = "ECR repositories are not gated by create_ecr_repositories"
+    condition     = length(module.ecr.repository_urls) > 0
+    error_message = "ecr_repository_urls must list every service, whether or not this environment creates the repositories"
   }
 }

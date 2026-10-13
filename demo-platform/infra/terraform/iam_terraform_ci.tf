@@ -79,19 +79,30 @@ resource "aws_iam_role_policy_attachment" "terraform_plan_readonly" {
   policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
 }
 
-# ReadOnlyAccess reads every bucket and table. A plan only needs the state
-# bucket and resource metadata, so data-plane reads of tenant data are denied.
+# ReadOnlyAccess reads every bucket and table. A plan needs the state bucket,
+# resource metadata, and the data of resources Terraform itself manages (it
+# refreshes them), so data-plane reads are denied everywhere else.
+#
+# The state objects already hold every managed secret, so this role is a state
+# reader by design. Its trust is limited to same-repo PRs and main, i.e. people
+# with write access to the repository. See docs/IAC.md.
 data "aws_iam_policy_document" "terraform_plan_guard" {
   count = local.terraform_ci_enabled ? 1 : 0
 
   statement {
-    sid    = "DenyTenantDataReads"
+    sid    = "DenyUnmanagedTableReads"
     effect = "Deny"
     actions = [
       "dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:Scan",
-      "secretsmanager:GetSecretValue", "ssm:GetParameter*", "kms:Decrypt",
     ]
-    resources = ["*"]
+    not_resources = ["arn:aws:dynamodb:*:*:table/${var.control_table_name}"]
+  }
+
+  statement {
+    sid           = "DenyUnmanagedSecretReads"
+    effect        = "Deny"
+    actions       = ["secretsmanager:GetSecretValue", "ssm:GetParameter*"]
+    not_resources = ["arn:aws:secretsmanager:*:*:secret:otterworks/*"]
   }
 
   statement {

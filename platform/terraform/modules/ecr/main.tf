@@ -12,6 +12,8 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_region" "current" {}
+
 resource "aws_ecr_repository" "services" {
   for_each = var.create_repositories ? toset(var.service_names) : toset([])
   #checkov:skip=CKV_AWS_136:AES-256 at rest is the ECR default; switching to a KMS CMK forces replacement of every repository and its images.

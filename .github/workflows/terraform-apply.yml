@@ -49,6 +49,9 @@ env:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       enabled: ${{ steps.gate.outputs.enabled }}
     steps:
@@ -63,6 +66,8 @@ jobs:
           HAS_PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE != '' }}
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
           reasons=()
           [[ "$APPLY_ENABLED" == "true" ]] || reasons+=("repo variable TF_APPLY_ENABLED is not 'true' (apply is off by default)")
@@ -73,6 +78,13 @@ jobs:
           [[ "$REF" == "refs/heads/main" ]] || reasons+=("ref is $REF; apply only runs from main")
           if [[ -n "$ROOT" && ! -f "$ROOT/environments/${ENV_NAME}.tfvars" ]]; then
             reasons+=("$ROOT has no '${ENV_NAME}' environment")
+          fi
+          # A missing environment would be auto-created unprotected by the apply job,
+          # so refuse unless terraform-<env> already exists with required reviewers.
+          if [[ -n "$ENV_NAME" ]]; then
+            reviewers=$(gh api "repos/${REPO}/environments/terraform-${ENV_NAME}" \
+              --jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length' 2>/dev/null || echo 0)
+            (( reviewers > 0 )) || reasons+=("GitHub Environment terraform-${ENV_NAME} does not exist or has no required reviewers")
           fi
           if (( ${#reasons[@]} )); then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
@@ -128,10 +140,11 @@ jobs:
           set -e
           [[ $rc -eq 1 ]] && exit 1
           echo "changes=$([[ $rc -eq 2 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          terraform -chdir="$ROOT" show -no-color tfplan > plan.txt
           {
             echo "#### Plan to be applied (review before approving the environment)"
             echo '```'
-            terraform -chdir="$ROOT" show -no-color tfplan | head -c 60000
+            head -c 60000 plan.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
