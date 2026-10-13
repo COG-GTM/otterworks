@@ -98,6 +98,24 @@ class TestSuggestEndpoint:
         data = response.get_json()
         assert len(data["suggestions"]) >= 1
 
+    def test_suggest_returns_ranked_strings_across_indexes(self, client, mock_meilisearch_client):
+        """Suggest returns plain title strings in MeiliSearch relevance order without crashing."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {
+            "hits": [{"title": "Team Plan"}, {"name": "team-notes.txt"}],
+        }
+
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["suggestions"] == ["Team Plan", "team-notes.txt"]
+
+    def test_suggest_no_results_returns_empty_list(self, client, mock_meilisearch_client):
+        """Suggest with no matching hits returns 200 with an empty list."""
+        response = client.get("/api/v1/search/suggest?q=zz")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
     def test_suggest_empty_query(self, client):
         """Suggest with empty query returns empty list."""
         response = client.get("/api/v1/search/suggest?q=")
