@@ -1,0 +1,68 @@
+name: ETL (Airflow + PySpark)
+
+on:
+  push:
+    branches: [main]
+    paths: ["etl/**", ".github/workflows/etl.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["etl/**", ".github/workflows/etl.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: etl-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AIRFLOW_VERSION: "2.10.5"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  test:
+    name: DAG integrity, transforms, PySpark (local mode)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: etl/airflow/requirements-dev.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install
+        run: |
+          pip install -r etl/airflow/requirements-dev.txt \
+            -c "https://raw.githubusercontent.com/apache/airflow/constraints-${AIRFLOW_VERSION}/constraints-${PYTHON_VERSION}.txt"
+      - name: Compile
+        run: python -m compileall -q etl/airflow etl/spark
+      - name: Pytest
+        working-directory: etl
+        run: pytest -v
+
+  runner:
+    name: Local runner image + compose config
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose
+        working-directory: etl/airflow
+        run: |
+          cp .env.example .env
+          docker network create otterworks-network
+          docker compose config --quiet
+      - name: Build Airflow image and import DAGs inside it
+        working-directory: etl/airflow
+        run: |
+          docker compose build airflow-scheduler
+          docker run --rm -e AIRFLOW__CORE__LOAD_EXAMPLES=false \
+            -v "$PWD/dags:/opt/airflow/dags:ro" -v "$PWD/../spark:/opt/airflow/spark:ro" \
+            -e OTTERWORKS_SPARK_JOBS_DIR=/opt/airflow/spark/jobs \
+            otterworks-airflow:local bash -c \
+            "airflow db migrate >/dev/null && airflow dags list-import-errors && airflow dags list | tee /tmp/dags.txt && test \$(grep -cE 'analytics_daily|audit_archive_weekly|search_reindex_weekly|storage_cleanup_daily|user_activity_daily' /tmp/dags.txt) -eq 5"
