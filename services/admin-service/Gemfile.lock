@@ -89,8 +89,8 @@ GEM
     base64 (0.3.0)
     benchmark (0.5.0)
     bigdecimal (4.1.2)
-    bootsnap (1.24.0)
-      msgpack (~> 1.2)
+    bootsnap (1.26.0)
+      msgpack (~> 1.5)
     builder (3.3.0)
     case_transform (0.2)
       activesupport
