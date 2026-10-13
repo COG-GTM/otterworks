@@ -13,7 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -114,13 +114,14 @@ public class ReportController {
             return ResponseEntity.notFound().build();
         }
         try {
-            long size = Files.size(file);
+            // Read eagerly (as legacy did) so a concurrent delete cannot truncate an already-started 200 response.
+            byte[] content = Files.readAllBytes(file);
             return ResponseEntity.ok()
                     .contentType(MediaType.parseMediaType(contentType(report.getReportType())))
                     .header(HttpHeaders.CONTENT_DISPOSITION,
                             "attachment; filename=\"" + file.getFileName() + "\"")
-                    .contentLength(size)
-                    .body(new FileSystemResource(file));
+                    .contentLength(content.length)
+                    .body(new ByteArrayResource(content));
         } catch (IOException e) {
             logger.error("Failed to read report file {}: {}", report.getFilePath(), e.getMessage());
             return ResponseEntity.notFound().build();

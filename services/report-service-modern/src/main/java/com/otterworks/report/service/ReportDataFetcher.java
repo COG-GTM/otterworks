@@ -10,6 +10,7 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -47,10 +48,8 @@ public class ReportDataFetcher {
         String metric = parameters != null ? parameters.get("metric") : null;
         String cacheKey = "analytics:" + ReportDateUtils.toIsoString(dateFrom) + ":" + ReportDateUtils.toIsoString(dateTo)
                 + (metric != null ? ":metric=" + metric : "");
-        String url = properties.analyticsServiceUrl() + "/api/v1/analytics/events"
-                + "?from=" + ReportDateUtils.toIsoString(dateFrom)
-                + "&to=" + ReportDateUtils.toIsoString(dateTo)
-                + (metric != null && !metric.isBlank() ? "&metric=" + metric : "");
+        String url = upstreamUrl(properties.analyticsServiceUrl(), "/api/v1/analytics/events", dateFrom, dateTo,
+                metric != null && !metric.isBlank() ? metric : null);
         return cachedOrFallback(cacheKey, () -> {
             logger.info("Fetching analytics data from: {}", url);
             return listField(url, "events");
@@ -59,9 +58,7 @@ public class ReportDataFetcher {
 
     public List<Map<String, Object>> fetchAuditData(Instant dateFrom, Instant dateTo, Map<String, String> parameters) {
         String cacheKey = "audit:" + ReportDateUtils.toIsoString(dateFrom) + ":" + ReportDateUtils.toIsoString(dateTo);
-        String url = properties.auditServiceUrl() + "/api/v1/audit/events"
-                + "?from=" + ReportDateUtils.toIsoString(dateFrom)
-                + "&to=" + ReportDateUtils.toIsoString(dateTo);
+        String url = upstreamUrl(properties.auditServiceUrl(), "/api/v1/audit/events", dateFrom, dateTo, null);
         return cachedOrFallback(cacheKey, () -> {
             logger.info("Fetching audit data from: {}", url);
             return listField(url, "events");
@@ -69,9 +66,7 @@ public class ReportDataFetcher {
     }
 
     public List<Map<String, Object>> fetchUserActivityData(Instant dateFrom, Instant dateTo, Map<String, String> parameters) {
-        String url = properties.authServiceUrl() + "/api/v1/users/activity"
-                + "?from=" + ReportDateUtils.toIsoString(dateFrom)
-                + "&to=" + ReportDateUtils.toIsoString(dateTo);
+        String url = upstreamUrl(properties.authServiceUrl(), "/api/v1/users/activity", dateFrom, dateTo, null);
         logger.info("Fetching user activity from: {}", url);
         try {
             return listField(url, "activities");
@@ -94,8 +89,23 @@ public class ReportDataFetcher {
     }
 
     @SuppressWarnings("unchecked")
+    /** Query values are percent-encoded so caller input (e.g. "metric") cannot add or override parameters. */
+    static String upstreamUrl(String baseUrl, String path, Instant dateFrom, Instant dateTo, String metric) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl).path(path)
+                .queryParam("from", "{from}")
+                .queryParam("to", "{to}");
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("from", ReportDateUtils.toIsoString(dateFrom));
+        vars.put("to", ReportDateUtils.toIsoString(dateTo));
+        if (metric != null) {
+            builder.queryParam("metric", "{metric}");
+            vars.put("metric", metric);
+        }
+        return builder.encode().buildAndExpand(vars).toUriString();
+    }
+
     private List<Map<String, Object>> listField(String url, String field) {
-        Map<String, Object> body = restClient.get().uri(url).retrieve().body(JSON_OBJECT);
+        Map<String, Object> body = restClient.get().uri(java.net.URI.create(url)).retrieve().body(JSON_OBJECT);
         if (body != null && body.get(field) instanceof List<?> rows) {
             return (List<Map<String, Object>>) rows;
         }
