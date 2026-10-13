@@ -4,7 +4,11 @@
 # no cluster and no cloud account.
 #   - helm lint + template every chart with externalSecrets off and on
 #   - off: no ExternalSecret rendered; on: one per chart that maps keys
-#   - kubeconform (strict) against Kubernetes + the pinned ESO CRD schemas
+#   - "on" is rendered twice: with chart defaults exactly as shipped (empty
+#     template values must not leave null fields) and with a DB URL template
+#   - the ExternalSecret and the Deployment's envFrom must agree
+#   - kubeconform against Kubernetes + the pinned ESO CRD schemas (strict), and
+#     again against the datreeio/CRDs-catalog schemas
 # Needs: helm, kubeconform, python3 + PyYAML.
 # ------------------------------------------------------------------------------
 set -euo pipefail
@@ -46,11 +50,11 @@ for d in yaml.safe_load_all(open(f"{work}/crds.yaml")):
         json.dump(sch, open(f"{work}/schemas/{kind}_{v['name']}.json", "w"))
 PY
 
-mkdir -p "${WORK}/out"
+mkdir -p "${WORK}/out" "${WORK}/stores"
 sed -e "s|\${AWS_REGION}|us-east-1|g" -e "s|\${GOLDEN_NAMESPACE}|otterworks|g" \
   -e "s|\${ESO_TENANT_ROLE_ARN}|arn:aws:iam::000000000000:role/otterworks-external-secrets-tenant-dev|g" \
   "${REPO_ROOT}/demo-platform/k8s/external-secrets/cluster-secret-stores.yaml" \
-  > "${WORK}/out/cluster-secret-stores.yaml"
+  > "${WORK}/stores/cluster-secret-stores.yaml"
 
 fail=0
 # shellcheck disable=SC2016
@@ -62,6 +66,8 @@ for chart in "${REPO_ROOT}"/infrastructure/helm/*/; do
     || { echo "FAIL lint (on) ${c}"; fail=1; }
   helm template "${c}" "${chart}" --set image.tag=ci > "${WORK}/out/${c}.off.yaml"
   helm template "${c}" "${chart}" --set image.tag=ci --set externalSecrets.enabled=true \
+    > "${WORK}/out/${c}.on-defaults.yaml"
+  helm template "${c}" "${chart}" --set image.tag=ci --set externalSecrets.enabled=true \
     --set-string "externalSecrets.templates.DOC_SVC_DATABASE_URL=${doc_tpl}" > "${WORK}/out/${c}.on.yaml"
   off="$(grep -c '^kind: ExternalSecret$' "${WORK}/out/${c}.off.yaml" || true)"
   on="$(grep -c '^kind: ExternalSecret$' "${WORK}/out/${c}.on.yaml" || true)"
@@ -69,11 +75,29 @@ for chart in "${REPO_ROOT}"/infrastructure/helm/*/; do
   printf '%-22s off: ExternalSecret=%s   on: ExternalSecret=%s keys=%s\n' "${c}" "${off}" "${on}" "${keys}"
   [ "${off}" = 0 ] || { echo "FAIL ${c}: ExternalSecret rendered while disabled"; fail=1; }
   if [ "${keys}" -gt 0 ] && [ "${on}" != 1 ]; then echo "FAIL ${c}: expected 1 ExternalSecret"; fail=1; fi
+  for f in "${WORK}/out/${c}.on-defaults.yaml" "${WORK}/out/${c}.on.yaml"; do
+    es="$(grep -c '^kind: ExternalSecret$' "${f}" || true)"
+    ref="$(grep -c "name: ${c}-external-secrets$" "${f}" || true)"
+    # envFrom references the Secret iff the ExternalSecret exists (which itself
+    # names the target, so ref = es * 2 when present, 0 when absent).
+    if { [ "${es}" = 0 ] && [ "${ref}" != 0 ]; } || { [ "${es}" != 0 ] && [ "${ref}" -lt 2 ]; }; then
+      echo "FAIL ${c}: envFrom and ExternalSecret disagree in $(basename "${f}")"; fail=1
+    fi
+  done
 done
 
 kubeconform -strict -summary -kubernetes-version "${K8S_VERSION}" \
   -schema-location default \
   -schema-location "${WORK}/schemas/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+  -skip ServiceMonitor,PrometheusRule \
+  "${WORK}/out" "${WORK}/stores" || fail=1
+
+# The catalog's ClusterSecretStore schema does not compile in kubeconform, so
+# the stores are covered by the pinned-chart pass above only.
+echo "kubeconform against datreeio/CRDs-catalog:"
+kubeconform -summary -kubernetes-version "${K8S_VERSION}" \
+  -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
   -skip ServiceMonitor,PrometheusRule \
   "${WORK}/out" || fail=1
 
