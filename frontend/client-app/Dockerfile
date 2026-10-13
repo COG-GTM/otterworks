@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 ARG VITE_COLLAB_WS_URL=ws://localhost:8084
 ENV VITE_COLLAB_WS_URL=$VITE_COLLAB_WS_URL

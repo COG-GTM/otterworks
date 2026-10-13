@@ -1,0 +1,267 @@
+name: Supply Chain
+
+# Build-only supply-chain checks for every deployable image. Nothing here
+# pushes, assumes an AWS role, or needs an OIDC token, so it behaves the same on
+# fork pull requests as on this repository's own branches. Publishing, signing
+# and registry attestations live in docker-build.yml (release) -- see
+# docs/SUPPLY-CHAIN.md.
+#
+#   ecr-scan-on-push  static: every ECR repository in Terraform scans on push
+#   image (x13)       multi-arch buildx build (linux/amd64 + linux/arm64) with
+#                     BuildKit SBOM + provenance, per-platform SPDX SBOM
+#                     artifacts, Trivy scan of the BUILT image, CRITICAL/HIGH
+#                     gate honouring .trivyignore, SARIF upload
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+      - 'platform/terraform/**'
+      - 'scripts/supply-chain/**'
+      - '.trivyignore'
+      - '.github/workflows/supply-chain.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'frontend/**'
+      - 'platform/terraform/**'
+      - 'scripts/supply-chain/**'
+      - '.trivyignore'
+      - '.github/workflows/supply-chain.yml'
+  schedule:
+    - cron: '0 7 * * 1' # Weekly Monday 7AM UTC: new CVEs in unchanged images
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRIVY_VERSION: 0.71.0
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  ecr-scan-on-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install checkov
+        run: pip install checkov==3.2.469
+
+      - name: Assert ECR scan-on-push in Terraform
+        run: scripts/supply-chain/assert-ecr-scan-on-push.sh platform/terraform .github/workflows/docker-build.yml
+
+  # One vulnerability DB download per run, shared by all 13 image jobs, so every
+  # image (and the merge-base comparison) is judged against the same data and
+  # the matrix does not hammer the DB registry.
+  trivy-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Trivy
+        run: |
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          sudo tar xz -C /usr/local/bin -f /tmp/trivy.tar.gz trivy
+
+      - name: Download vulnerability databases
+        run: |
+          trivy image --cache-dir .trivy-cache --download-db-only
+          trivy image --cache-dir .trivy-cache --download-java-db-only
+
+      - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ github.run_id }}-${{ github.run_attempt }}
+
+  image:
+    name: image (${{ matrix.service.name }})
+    needs: trivy-db
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: api-gateway, context: services/api-gateway }
+          - { name: auth-service, context: services/auth-service }
+          - { name: file-service, context: services/file-service }
+          - { name: document-service, context: services/document-service }
+          - { name: collab-service, context: services/collab-service }
+          - { name: notification-service, context: services/notification-service }
+          - { name: search-service, context: services/search-service }
+          - { name: analytics-service, context: services/analytics-service }
+          - { name: admin-service, context: services/admin-service }
+          - { name: audit-service, context: services/audit-service }
+          - { name: report-service, context: services/report-service }
+          - { name: web-app, context: frontend/client-app }
+          - { name: admin-dashboard, context: frontend/admin-dashboard }
+    env:
+      NAME: ${{ matrix.service.name }}
+      CONTEXT: ${{ matrix.service.context }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Install Trivy
+        run: |
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            -o /tmp/trivy.tar.gz
+          sudo tar xz -C /usr/local/bin -f /tmp/trivy.tar.gz trivy
+
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ github.run_id }}-${{ github.run_attempt }}
+          fail-on-cache-miss: true
+
+      - name: Build multi-arch image (no push)
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: ${{ matrix.service.context }}
+          platforms: ${{ env.PLATFORMS }}
+          push: false
+          sbom: true
+          provenance: mode=max
+          outputs: type=oci,dest=${{ runner.temp }}/oci/head,tar=false
+          cache-from: type=gha,scope=supply-chain-${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,ignore-error=true,scope=supply-chain-${{ matrix.service.name }}
+
+      - name: Extract SBOMs and scan each platform
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for platform in ${PLATFORMS//,/ }; do
+            arch="${platform#*/}"
+            scripts/supply-chain/extract-sbom.sh "$RUNNER_TEMP/oci/head" "$platform" "out/${NAME}-${arch}.spdx.json"
+            scripts/supply-chain/oci-select-platform.sh "$RUNNER_TEMP/oci/head" "$platform" "$RUNNER_TEMP/oci/head-${arch}" > /dev/null
+            trivy image --input "$RUNNER_TEMP/oci/head-${arch}" \
+              --cache-dir .trivy-cache --skip-db-update --skip-java-db-update \
+              --scanners vuln --severity CRITICAL,HIGH --ignorefile .trivyignore \
+              --format json --output "out/${NAME}-${arch}.trivy.json"
+            trivy convert --format sarif --output "out/${NAME}-${arch}.sarif" "out/${NAME}-${arch}.trivy.json"
+          done
+
+      # PRs gate on findings the change introduces, the same policy
+      # security-scan.yml applies to the source tree, so a PR is not blocked by
+      # CVEs main already ships. The base image is built amd64-only to keep the
+      # comparison cheap; a finding is keyed on (target, package, CVE), which
+      # does not depend on the architecture.
+      - name: Check out merge base
+        id: base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF:refs/remotes/origin/$BASE_REF"
+          git worktree add --detach "$RUNNER_TEMP/base" "$(git merge-base "origin/$BASE_REF" HEAD)"
+          if [ -f "$RUNNER_TEMP/base/$CONTEXT/Dockerfile" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::$CONTEXT has no Dockerfile on $BASE_REF; gating on every finding"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build merge-base image (amd64)
+        id: base-build
+        if: steps.base.outputs.exists == 'true'
+        continue-on-error: true
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: ${{ runner.temp }}/base/${{ matrix.service.context }}
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          outputs: type=oci,dest=${{ runner.temp }}/oci/base,tar=false
+          cache-from: type=gha,scope=supply-chain-${{ matrix.service.name }}
+
+      - name: Scan merge-base image
+        if: steps.base-build.outcome == 'success'
+        run: |
+          trivy image --input "$RUNNER_TEMP/oci/base" \
+            --cache-dir .trivy-cache --skip-db-update --skip-java-db-update \
+            --scanners vuln --severity CRITICAL,HIGH --ignorefile .trivyignore \
+            --format json --output "out/${NAME}-base.trivy.json"
+
+      - name: CRITICAL/HIGH gate
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          args=()
+          for report in out/"${NAME}"-*.trivy.json; do
+            case "$report" in
+              *-base.trivy.json) args+=(--base "$report") ;;
+              *) args+=(--head "$report") ;;
+            esac
+          done
+          if [ "$EVENT" = pull_request ]; then
+            if [ ! -f "out/${NAME}-base.trivy.json" ] && [ -f "$RUNNER_TEMP/base/$CONTEXT/Dockerfile" ]; then
+              echo "::warning::merge-base image did not build; gating on every finding"
+            fi
+            scripts/supply-chain/trivy-gate.sh "${args[@]}" | tee gate.txt
+          else
+            # main/schedule: report the full CRITICAL/HIGH backlog without failing,
+            # like security-scan.yml's full-scan-baseline job.
+            if ! scripts/supply-chain/trivy-gate.sh "${args[@]}" | tee gate.txt; then
+              echo "::warning::${NAME}: $(head -1 gate.txt)"
+            fi
+          fi
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### ${NAME}"
+            echo '```'
+            cat gate.txt 2>/dev/null || echo "gate did not run"
+            echo '```'
+            for sbom in out/*.spdx.json; do
+              [ -f "$sbom" ] && echo "- \`$(basename "$sbom")\`: $(jq '.packages | length' "$sbom") packages"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: supply-chain-${{ matrix.service.name }}
+          path: out/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Fork PRs get a read-only token, and code scanning may not be enabled on
+      # every fork, so the upload is best-effort; the SARIF is in the artifact
+      # either way.
+      - name: Upload SARIF (amd64)
+        if: always() && hashFiles(format('out/{0}-amd64.sarif', matrix.service.name)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@66e692051da0915b214c5158091a226015d453f4 # v3
+        with:
+          sarif_file: out/${{ matrix.service.name }}-amd64.sarif
+          category: trivy-image/${{ matrix.service.name }}/amd64
+
+      - name: Upload SARIF (arm64)
+        if: always() && hashFiles(format('out/{0}-arm64.sarif', matrix.service.name)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@66e692051da0915b214c5158091a226015d453f4 # v3
+        with:
+          sarif_file: out/${{ matrix.service.name }}-arm64.sarif
+          category: trivy-image/${{ matrix.service.name }}/arm64
