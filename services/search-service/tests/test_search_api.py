@@ -105,6 +105,36 @@ class TestSuggestEndpoint:
         data = response.get_json()
         assert data["suggestions"] == []
 
+    def test_suggest_returns_titles_in_relevance_order(self, client, mock_meilisearch_client):
+        """Suggestions are plain strings in MeiliSearch relevance order (no _rankingScore lookup)."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {
+            "estimatedTotalHits": 3,
+            "hits": [
+                {"title": "Team Roadmap"},
+                {"name": "team-notes.txt"},
+                {"title": "Testing Plan"},
+            ],
+        }
+
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["suggestions"] == ["Team Roadmap", "team-notes.txt", "Testing Plan"]
+
+    def test_suggest_no_results_returns_empty_list(self, client):
+        """Suggest with a valid prefix but no hits returns 200 with an empty list."""
+        response = client.get("/api/v1/search/suggest?q=zz")
+        assert response.status_code == 200
+        assert response.get_json() == {"suggestions": [], "query": "zz"}
+
+    def test_suggest_backend_error_degrades_gracefully(self, client, mock_meilisearch_client):
+        """A MeiliSearch failure never surfaces as a 5xx from /suggest."""
+        mock_meilisearch_client.index.return_value.search.side_effect = RuntimeError("meili down")
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
 
 class TestAdvancedSearchEndpoint:
     """Tests for POST /api/v1/search/advanced."""
