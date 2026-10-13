@@ -12,10 +12,6 @@ data class AppConfig(
     val sqsPollIntervalMs: Long,
     val sqsMaxMessages: Int,
     val sqsWaitTimeSeconds: Int,
-    // Force the strict JSON parser normally gated behind the
-    // chaos:notification-service:consumer_strict_schema Redis flag, so legacy
-    // messages with epoch-int timestamps fail deserialization permanently.
-    val strictSchema: Boolean = false,
     // Redirect the consumer at a nonexistent SQS queue so every poll fails
     // with a real AWS SQS error (QueueDoesNotExist / NonExistentQueue).
     val sqsAlwaysFail: Boolean = false,
@@ -53,7 +49,6 @@ data class AppConfig(
                 sqsPollIntervalMs = System.getenv("SQS_POLL_INTERVAL_MS")?.toLongOrNull() ?: 5000L,
                 sqsMaxMessages = System.getenv("SQS_MAX_MESSAGES")?.toIntOrNull() ?: 10,
                 sqsWaitTimeSeconds = System.getenv("SQS_WAIT_TIME_SECONDS")?.toIntOrNull() ?: 20,
-                strictSchema = System.getenv("NOTIFICATION_STRICT_SCHEMA")?.toBoolean() ?: false,
                 sqsAlwaysFail = System.getenv("NOTIFICATION_SQS_ALWAYS_FAIL")?.toBoolean() ?: false,
                 adminServiceUrl = System.getenv("ADMIN_SERVICE_URL") ?: "http://admin-service:8089",
                 alertWebhookSecret = System.getenv("ALERT_WEBHOOK_SECRET")?.takeIf { it.isNotBlank() },

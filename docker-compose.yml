@@ -255,11 +255,8 @@ services:
       ADMIN_SERVICE_URL: http://admin-service:8089
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
       # Off by default (matches the image's Dockerfile default). Set it to true
-      # to point the consumer at a nonexistent queue; NOTIFICATION_STRICT_SCHEMA
-      # instead reproduces the strict-parser deserialization failure (needs
-      # message traffic, e.g. sharing a file).
+      # to point the consumer at a nonexistent queue.
       NOTIFICATION_SQS_ALWAYS_FAIL: ${NOTIFICATION_SQS_ALWAYS_FAIL:-false}
-      NOTIFICATION_STRICT_SCHEMA: ${NOTIFICATION_STRICT_SCHEMA:-false}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
