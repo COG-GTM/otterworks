@@ -1,6 +1,6 @@
 # OtterWorks Demo Ops Dashboard
 
-A self-contained **Next.js 14 (App Router, TypeScript strict)** control-plane UI + API
+A self-contained **Next.js 15 / React 19 (App Router, TypeScript strict)** control-plane UI + API
 for the OtterWorks ephemeral demo platform. It implements the API contract in
 [`../docs/api-contract.md`](../docs/api-contract.md) against the DynamoDB control table
 described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md).
@@ -25,7 +25,7 @@ described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md
 npm run dev        # local dev server
 npm run build      # production build (output: standalone)
 npm run start      # run the built server
-npm run lint       # next lint
+npm run lint       # eslint (flat config, eslint.config.mjs)
 npm run typecheck  # tsc --noEmit
 ```
 
@@ -46,5 +46,5 @@ are referenced via `secretKeyRef` (never placed on argv).
 
 ## Docker
 
-Multi-stage `Dockerfile` (node:20-alpine, `output: 'standalone'`) builds a minimal runnable
+Multi-stage `Dockerfile` (node:24-alpine, `output: 'standalone'`) builds a minimal runnable
 image serving on port 3000.

@@ -128,15 +128,11 @@ export async function activeRunnerJob(
   tenantId: string,
   action: RunnerAction,
 ): Promise<string | null> {
-  const res = await batch().listNamespacedJob(
-    env.platformNamespace,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    `demo/tenant-id=${tenantId},demo/action=${action}`,
-  );
-  const running = res.body.items.find(
+  const jobList = await batch().listNamespacedJob({
+    namespace: env.platformNamespace,
+    labelSelector: `demo/tenant-id=${tenantId},demo/action=${action}`,
+  });
+  const running = jobList.items.find(
     (j) => (j.status?.active ?? 0) > 0 || (!j.status?.succeeded && !j.status?.failed),
   );
   return running?.metadata?.name ?? null;
@@ -146,6 +142,6 @@ export async function activeRunnerJob(
 export async function createRunnerJob(input: RunnerJobInput): Promise<string> {
   const epoch = Math.floor(Date.now() / 1000);
   const job = buildRunnerJob(input, epoch);
-  await batch().createNamespacedJob(env.platformNamespace, job);
+  await batch().createNamespacedJob({ namespace: env.platformNamespace, body: job });
   return job.metadata?.name ?? jobName(input.action, input.tenantId, epoch);
 }

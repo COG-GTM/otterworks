@@ -94,18 +94,12 @@ async function loadTenantPods(): Promise<Map<string, k8s.V1Pod[]>> {
 
   const byNamespace = new Map<string, k8s.V1Pod[]>();
   // Namespaces labeled demo/tenant are the ephemeral tenant slices.
-  const nsRes = await core().listNamespace(
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    TENANT_LABEL,
-  );
-  for (const ns of nsRes.body.items) {
+  const nsList = await core().listNamespace({ labelSelector: TENANT_LABEL });
+  for (const ns of nsList.items) {
     const name = ns.metadata?.name;
     if (!name) continue;
-    const podsRes = await core().listNamespacedPod(name);
-    byNamespace.set(name, podsRes.body.items);
+    const pods = await core().listNamespacedPod({ namespace: name });
+    byNamespace.set(name, pods.items);
   }
   _cache = { at: Date.now(), byNamespace };
   return byNamespace;
@@ -121,8 +115,8 @@ export async function liveStateByNamespace(): Promise<Map<string, TenantLiveStat
 
 export async function liveStateForNamespace(ns: string): Promise<TenantLiveState | null> {
   try {
-    const podsRes = await core().listNamespacedPod(ns);
-    return computeLive(podsRes.body.items);
+    const pods = await core().listNamespacedPod({ namespace: ns });
+    return computeLive(pods.items);
   } catch {
     return null;
   }
@@ -130,8 +124,8 @@ export async function liveStateForNamespace(ns: string): Promise<TenantLiveState
 
 export async function podsForNamespace(ns: string): Promise<PodInfo[]> {
   try {
-    const podsRes = await core().listNamespacedPod(ns);
-    return podsRes.body.items.map(toPodInfo);
+    const pods = await core().listNamespacedPod({ namespace: ns });
+    return pods.items.map(toPodInfo);
   } catch {
     return [];
   }
@@ -154,8 +148,8 @@ export async function latestJobLogs(
   tailLines = 200,
 ): Promise<string | undefined> {
   try {
-    const jobsRes = await batch().listNamespacedJob(platformNamespace);
-    const jobs = jobsRes.body.items
+    const jobList = await batch().listNamespacedJob({ namespace: platformNamespace });
+    const jobs = jobList.items
       .filter((j) => (j.metadata?.name ?? "").startsWith(jobNamePrefix))
       .sort(
         (a, b) =>
@@ -166,30 +160,18 @@ export async function latestJobLogs(
     if (!job?.metadata?.name) return undefined;
 
     const sel = `job-name=${job.metadata.name}`;
-    const podsRes = await core().listNamespacedPod(
-      platformNamespace,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      sel,
-    );
-    const pod = podsRes.body.items[0];
+    const pods = await core().listNamespacedPod({
+      namespace: platformNamespace,
+      labelSelector: sel,
+    });
+    const pod = pods.items[0];
     if (!pod?.metadata?.name) return undefined;
 
-    const logsRes = await core().readNamespacedPodLog(
-      pod.metadata.name,
-      platformNamespace,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
+    return await core().readNamespacedPodLog({
+      name: pod.metadata.name,
+      namespace: platformNamespace,
       tailLines,
-    );
-    return logsRes.body;
+    });
   } catch {
     return undefined;
   }
