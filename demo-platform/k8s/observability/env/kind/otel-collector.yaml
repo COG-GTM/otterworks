@@ -1,0 +1,17 @@
+# Local kind validation: keep every trace so a single api-gateway request shows up.
+config:
+  processors:
+    attributes/service:
+      actions:
+        - key: environment
+          value: kind
+          action: upsert
+    tail_sampling:
+      decision_wait: 5s
+      num_traces: 10000
+      expected_new_traces_per_sec: 10
+      policies:
+        - name: keep-all
+          type: always_sample
+resources:
+  requests: {cpu: 50m, memory: 128Mi}

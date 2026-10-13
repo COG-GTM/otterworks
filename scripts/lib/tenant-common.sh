@@ -273,6 +273,20 @@ build_helm_args() {
   # only ever through the ONE shared ingress. See docs/MULTI-TENANT-DEMO-PLAN.md §3.
   EXTRA_ARGS+=(--set service.type=ClusterIP)
 
+  # Opt-in wiring to the SHARED observability stack (installed once per cluster by
+  # demo-platform/scripts/install-observability.sh): OTLP export to the in-cluster
+  # collector, and admin-service receives this tenant's alerts as incidents.
+  if [ "${OBSERVABILITY_ENABLED:-false}" = "true" ]; then
+    EXTRA_ARGS+=(--set observability.otel.enabled=true)
+    if [ "$service" = "admin-service" ]; then
+      EXTRA_ARGS+=(--set observability.alerting.enabled=true)
+      if [ -n "${ALERT_WEBHOOK_SECRET:-}" ]; then
+        add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}"
+        EXTRA_ARGS+=(--set "observability.alerting.webhookSecret.name=${service}-secrets")
+      fi
+    fi
+  fi
+
   local role; role="$(irsa_arn "$service")"
   if [ -n "$role" ]; then EXTRA_ARGS+=(--set "serviceAccount.roleArn=${role}"); fi
   if [[ " ${JVM_SERVICES} " == *" ${service} "* ]]; then

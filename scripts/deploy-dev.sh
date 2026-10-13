@@ -128,6 +128,9 @@ aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --ali
 
 log "Ensuring namespace ${NAMESPACE} exists..."
 kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+# Shared Prometheus/Alertmanager select namespaces labelled platform/team=otterworks
+# (tenant namespaces get it from deploy-tenant.sh).
+kubectl label namespace "${NAMESPACE}" platform/team=otterworks --overwrite
 
 # ---------- Step 4b: Shared ingress controller ----------
 

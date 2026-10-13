@@ -1,0 +1,22 @@
+# Local kind validation: no AWS, so print the enriched records (what CloudWatch
+# would receive, incl. the computed log group) to stdout.
+env:
+  - name: OTTERWORKS_ENVIRONMENT
+    value: kind
+  - name: AWS_REGION
+    value: us-east-1
+config:
+  outputs: |
+    [FILTER]
+        Name    modify
+        Match   kube.*
+        Add     cloudwatch_log_group /otterworks/${OTTERWORKS_ENVIRONMENT}/unset
+    [FILTER]
+        Name    lua
+        Match   kube.*
+        call    set_group
+        code    function set_group(tag, ts, r) if r["service"] then r["cloudwatch_log_group"] = "/otterworks/" .. os.getenv("OTTERWORKS_ENVIRONMENT") .. "/" .. r["service"] end return 2, ts, r end
+    [OUTPUT]
+        Name    stdout
+        Match   kube.*
+        Format  json_lines

@@ -1,0 +1,13 @@
+# otterworks-dev overrides for Jaeger. Jaeger has no auth of its own, so the UI is
+# only exposed through the shared ingress with nginx basic auth (Secret
+# jaeger-basic-auth, created by install-observability.sh from JAEGER_BASIC_AUTH).
+jaeger:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [jaeger.otterworks.app]
+    pathType: Prefix
+    annotations:
+      nginx.ingress.kubernetes.io/auth-type: basic
+      nginx.ingress.kubernetes.io/auth-secret: jaeger-basic-auth
+      nginx.ingress.kubernetes.io/auth-realm: OtterWorks Jaeger

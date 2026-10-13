@@ -1,0 +1,22 @@
+# kind-only synthetic alert: proves Prometheus -> Alertmanager -> the tenant's
+# AlertmanagerConfig (admin-service chart) -> /api/v1/admin/alerts/ingest.
+# Labels mirror what the ported rules carry (generate.py adds affected_service/tenant).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kind-pipeline-test
+  namespace: otterworks-kind
+spec:
+  groups:
+    - name: kind.pipeline-test
+      rules:
+        - alert: KindPipelineTest
+          expr: vector(1)
+          labels:
+            severity: critical
+            namespace: otterworks-kind
+            affected_service: api-gateway
+            tenant: otterworks-kind
+          annotations:
+            summary: Synthetic alert from the kind observability validation
+            description: Fired by demo-platform/k8s/observability/kind/test-alert.yaml

@@ -1,0 +1,129 @@
+# kube-prometheus-stack -- SHARED platform add-on (one per cluster, namespace `monitoring`).
+# Installed by demo-platform/scripts/install-observability.sh. Environment-specific
+# settings (receivers, ingress hosts, retention) live in env/<env>/kube-prometheus-stack.yaml.
+fullnameOverride: kps
+
+# EKS hides the control plane; these scrape jobs would only ever be DOWN.
+kubeControllerManager: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeEtcd: {enabled: false}
+kubeProxy: {enabled: false}
+
+# The stack's own rules are kept; OtterWorks rules come from generated/prometheus-rules.yaml.
+defaultRules:
+  create: true
+
+prometheus:
+  service:
+    type: ClusterIP
+  prometheusSpec:
+    # Select ServiceMonitors / PodMonitors / PrometheusRules from every OtterWorks
+    # namespace -- tenants (`otterworks-<id>`, labelled platform/team=otterworks by
+    # scripts/deploy-tenant.sh), the dev namespace and `monitoring` itself (labelled
+    # platform/team=platform by the installer) -- regardless of Helm release labels.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    podMonitorSelector: {}
+    ruleSelector: {}
+    serviceMonitorNamespaceSelector: &otterworksNamespaces
+      matchExpressions:
+        - key: platform/team
+          operator: In
+          values: [otterworks, platform]
+    podMonitorNamespaceSelector: *otterworksNamespaces
+    ruleNamespaceSelector: *otterworksNamespaces
+    retention: 7d
+    retentionSize: 8GB
+    # No PVC by default: a PVC on EKS provisions an EBS volume from inside the
+    # cluster, which AGENTS.md asks us not to do. Metrics survive pod restarts only
+    # if an environment overlay opts into storageSpec.
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits: {memory: 2Gi}
+
+alertmanager:
+  service:
+    type: ClusterIP
+  alertmanagerSpec:
+    # Receiver credentials (webhook URLs, Slack URL, bearer tokens) are NEVER in git:
+    # the installer creates this Secret from environment variables and Alertmanager
+    # mounts it at /etc/alertmanager/secrets/alertmanager-otterworks-receivers/.
+    secrets:
+      - alertmanager-otterworks-receivers
+    # Per-tenant routing: the admin-service chart ships an AlertmanagerConfig
+    # (observability.alerting.enabled) that sends alerts from its own namespace to
+    # that tenant's /api/v1/admin/alerts/ingest. OnNamespace scopes each one to
+    # alerts carrying namespace=<its namespace>.
+    alertmanagerConfigSelector: {}
+    alertmanagerConfigNamespaceSelector: *otterworksNamespaces
+    alertmanagerConfigMatcherStrategy:
+      type: OnNamespace
+    resources:
+      requests: {cpu: 20m, memory: 64Mi}
+  # Platform-level routing tree. Environments replace `receivers` and `route.routes`
+  # in env/<env>/kube-prometheus-stack.yaml (lists are replaced, not merged).
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: [namespace, alertname, affected_service]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+    receivers:
+      - name: "null"
+    inhibit_rules:
+      - source_matchers: ['severity = "critical"']
+        target_matchers: ['severity =~ "warning|info"']
+        equal: [namespace, alertname]
+      - source_matchers: ['alertname = "InfoInhibitor"']
+        target_matchers: ['severity = "info"']
+        equal: [namespace]
+
+grafana:
+  service:
+    type: ClusterIP
+  # Admin credentials come from a Secret the installer creates (random password
+  # unless GRAFANA_ADMIN_PASSWORD is exported); never from values.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: monitoring
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+  # Mirrors observability/grafana/provisioning/datasources/datasources.yml, pointed
+  # at the in-cluster services. Prometheus itself is provisioned by the chart (uid
+  # `prometheus`, which the ported dashboards reference).
+  additionalDataSources:
+    - name: Jaeger
+      uid: jaeger
+      type: jaeger
+      access: proxy
+      url: http://jaeger.monitoring.svc.cluster.local:16686
+      editable: false
+  # Reached through the shared ingress-nginx (env overlay sets the host); never a LoadBalancer.
+  ingress:
+    enabled: false
+    ingressClassName: nginx
+  grafana.ini:
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+    users:
+      allow_sign_up: false

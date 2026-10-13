@@ -392,3 +392,19 @@ module "irsa" {
     })
   }
 }
+
+# --- Observability (shared Fluent Bit -> CloudWatch); off by default ---
+# Enable together with demo-platform/scripts/install-observability.sh and pass the
+# output as FLUENT_BIT_ROLE_ARN. See docs/OBSERVABILITY.md.
+
+module "observability" {
+  source = "./modules/observability"
+  count  = var.enable_observability ? 1 : 0
+
+  environment        = var.environment
+  project            = "otterworks"
+  oidc_provider_arn  = local.oidc_provider_arn
+  oidc_provider_url  = local.oidc_provider_url
+  log_group_arns     = module.monitoring.log_group_arns
+  log_retention_days = var.log_retention_days
+}

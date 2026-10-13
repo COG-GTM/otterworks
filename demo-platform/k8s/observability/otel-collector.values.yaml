@@ -1,0 +1,106 @@
+# OpenTelemetry Collector -- SHARED platform add-on (namespace `monitoring`).
+# Pipeline ported from observability/otel/otel-collector-config.yml (docker-compose):
+#   * same OTLP receivers, memory_limiter, batch, attributes/service, tail_sampling
+#     (errors / >2s latency / 10% probabilistic, from observability/otel/sampling-config.yml)
+#   * traces -> Jaeger over OTLP, metrics -> Prometheus exporter (scraped via ServiceMonitor)
+#   * `logging` exporter -> `debug` (renamed upstream; same verbosity/sampling)
+# Service charts point at http://otel-collector.monitoring.svc.cluster.local:4318
+# when observability.otel.enabled=true.
+fullnameOverride: otel-collector
+mode: deployment
+replicaCount: 1
+image:
+  repository: otel/opentelemetry-collector-contrib  # contrib build: tail_sampling
+command:
+  name: otelcol-contrib
+ports:
+  otlp: {enabled: true}
+  otlp-http: {enabled: true}
+  jaeger-compact: {enabled: false}
+  jaeger-thrift: {enabled: false}
+  jaeger-grpc: {enabled: false}
+  zipkin: {enabled: false}
+  metrics: {enabled: true}
+  prom-exporter:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+service:
+  type: ClusterIP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+      interval: 30s
+    - port: prom-exporter
+      interval: 30s
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {memory: 640Mi}
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+    otlp:
+      protocols:
+        grpc: {endpoint: "${env:MY_POD_IP}:4317"}
+        http: {endpoint: "${env:MY_POD_IP}:4318"}
+  processors:
+    batch:
+      timeout: 5s
+      send_batch_size: 1024
+      send_batch_max_size: 2048
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 512
+      spike_limit_mib: 128
+    attributes/service:
+      actions:
+        - key: environment
+          value: dev
+          action: upsert
+    tail_sampling:
+      decision_wait: 10s
+      num_traces: 100000
+      expected_new_traces_per_sec: 100
+      policies:
+        - name: errors-policy
+          type: status_code
+          status_code: {status_codes: [ERROR]}
+        - name: latency-policy
+          type: latency
+          latency: {threshold_ms: 2000}
+        - name: probabilistic-policy
+          type: probabilistic
+          probabilistic: {sampling_percentage: 10}
+  exporters:
+    otlp_grpc/jaeger:
+      endpoint: jaeger.monitoring.svc.cluster.local:4317
+      tls: {insecure: true}
+    prometheus:
+      endpoint: "${env:MY_POD_IP}:8889"
+      namespace: otel
+      resource_to_telemetry_conversion: {enabled: true}
+    debug:
+      verbosity: normal
+      sampling_initial: 5
+      sampling_thereafter: 200
+  extensions:
+    health_check:
+      endpoint: "${env:MY_POD_IP}:13133"
+  service:
+    extensions: [health_check]
+    telemetry:
+      logs: {level: info}
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, attributes/service, tail_sampling, batch]
+        exporters: [otlp_grpc/jaeger, debug]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, attributes/service, batch]
+        exporters: [prometheus, debug]
+      logs: null

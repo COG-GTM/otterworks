@@ -1,0 +1,108 @@
+# Fluent Bit DaemonSet -- SHARED platform add-on (namespace `monitoring`).
+# Port of observability/logging/fluentbit-config.yml for Kubernetes:
+#   * tail every OtterWorks container (dev namespace `otterworks` + tenants
+#     `otterworks-*`) instead of one input per service; containerd writes CRI
+#     lines, so the built-in `cri` multiline parser replaces `docker_json`
+#   * the existing `otterworks_json` parser (observability/logging/parsers.conf,
+#     injected verbatim by the installer via --set-file config.customParsers)
+#     still lifts the structured JSON body, exactly like the compose filter
+#   * the per-service `modify` filters become the kubernetes filter: `service` is
+#     the pod's app.kubernetes.io/name label, plus namespace/pod metadata
+#   * output: CloudWatch Logs, group /otterworks/<env>/<service> (the groups and
+#     their retention are created by infrastructure/terraform/modules/monitoring;
+#     auto_create_group is Off so Fluent Bit never creates unmanaged groups), one
+#     stream per tenant pod. Credentials: IRSA role from
+#     infrastructure/terraform/modules/observability (annotation set by installer).
+fullnameOverride: fluent-bit
+kind: DaemonSet
+serviceAccount:
+  create: true
+  name: fluent-bit
+service:
+  type: ClusterIP
+serviceMonitor:
+  enabled: true
+tolerations:
+  - operator: Exists
+    effect: NoSchedule
+resources:
+  requests: {cpu: 20m, memory: 64Mi}
+  limits: {memory: 256Mi}
+env:
+  - name: OTTERWORKS_ENVIRONMENT
+    value: dev
+  - name: AWS_REGION
+    value: us-east-1
+config:
+  service: |
+    [SERVICE]
+        Daemon Off
+        Flush 5
+        Log_Level info
+        Parsers_File /fluent-bit/etc/parsers.conf
+        Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
+        HTTP_Server On
+        HTTP_Listen 0.0.0.0
+        HTTP_Port {{ .Values.metricsPort }}
+        Health_Check On
+  inputs: |
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/containers/*_otterworks*_*.log
+        multiline.parser  cri
+        Refresh_Interval  5
+        Mem_Buf_Limit     10MB
+        Skip_Long_Lines   On
+        DB                /var/log/fluent-bit-otterworks.db
+  filters: |
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Merge_Log           Off
+        Keep_Log            On
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+        Labels              On
+        Annotations         Off
+
+    [FILTER]
+        Name          parser
+        Match         kube.*
+        Key_Name      log
+        Parser        otterworks_json
+        Reserve_Data  On
+        Preserve_Key  On
+
+    [FILTER]
+        Name          nest
+        Match         kube.*
+        Operation     lift
+        Nested_under  kubernetes
+        Add_prefix    k8s_
+
+    [FILTER]
+        Name          nest
+        Match         kube.*
+        Operation     lift
+        Nested_under  k8s_labels
+        Add_prefix    label_
+
+    [FILTER]
+        Name          modify
+        Match         kube.*
+        Rename        label_app.kubernetes.io/name service
+        Rename        k8s_namespace_name namespace
+        Add           environment ${OTTERWORKS_ENVIRONMENT}
+        Remove_wildcard label_
+  outputs: |
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               kube.*
+        region              ${AWS_REGION}
+        log_group_name      /otterworks/${OTTERWORKS_ENVIRONMENT}/unlabelled
+        log_group_template  /otterworks/${OTTERWORKS_ENVIRONMENT}/$service
+        log_stream_prefix   fluent-bit-
+        log_stream_template $namespace.$k8s_pod_name
+        auto_create_group   Off
+        retry_limit         5

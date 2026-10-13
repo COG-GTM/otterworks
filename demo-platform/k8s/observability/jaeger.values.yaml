@@ -1,0 +1,59 @@
+# Jaeger v2 -- SHARED platform add-on (namespace `monitoring`).
+#
+# Mode: single all-in-one replica with the in-memory store (max 100k traces).
+# Why: the collector already tail-samples (errors, >2s, 10% of the rest), so trace
+# volume on a demo cluster is small; traces are a debugging aid, not a record of
+# truth, and losing them on a pod restart is acceptable. Production mode would mean
+# running Elasticsearch/OpenSearch or Cassandra in-cluster (PVCs => EBS volumes
+# created from Kubernetes, which AGENTS.md rules out) or a managed OpenSearch domain
+# in Terraform -- revisit if traces must outlive the pod. See docs/OBSERVABILITY.md.
+fullnameOverride: jaeger
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+jaeger:
+  replicas: 1
+  # Jaeger 2.21 removed the internal /api/* HTTP endpoints that Grafana's Jaeger
+  # datasource still uses for search (only service/operation/trace-ID lookups
+  # can move to api_v3 behind the experimental jaegerEnableGrpcEndpoint flag).
+  # Hold 2.20.x until Grafana's datasource is fully on api_v3.
+  image:
+    tag: "2.20.0"
+  service:
+    type: ClusterIP
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  ingress:
+    enabled: false
+userconfig:
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: memstore
+    jaeger_storage:
+      backends:
+        memstore:
+          memory:
+            max_traces: 100000
+  receivers:
+    otlp:
+      protocols:
+        grpc: {endpoint: 0.0.0.0:4317}
+        http: {endpoint: 0.0.0.0:4318}
+  processors:
+    batch: {}
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: memstore
