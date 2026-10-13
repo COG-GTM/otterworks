@@ -30,6 +30,44 @@
 | 13 | Data / ETL | **Partial** | Cron + Python ETL scripts present; README-advertised Airflow/Spark are **absent** |
 | 14 | Documentation | **Present** | README, ARCHITECTURE, runbooks, CI/security strategy docs, API route matrix |
 
+
+> **Modernization update (October 2026, fork PRs).** Each gap below was re-verified against the
+> live manifests before work started, then closed (or narrowed) by one PR per workstream against
+> this fork's `main`. **None of these PRs has been applied to AWS/EKS.** Everything that touches
+> shared infrastructure is off by default (`externalSecrets.enabled`, `observability.otel.enabled`,
+> `enable_external_secrets`, `enable_observability`, gated Terraform plan/apply/drift workflows) and
+> was validated on a local kind cluster, LocalStack, docker-compose, or `terraform validate` only.
+> The per-section text further down is the original "before" assessment; this table is the delta.
+
+## Modernization workstreams (fork PRs)
+
+| WS | PR | Closes / narrows | Validated (locally / CI) | Still open |
+|----|----|------------------|--------------------------|------------|
+| A — Secrets delivery | [#444](https://github.com/COG-GTM/otterworks/pull/444) | §12, §3: Terraform `modules/secrets` writes per-service secrets to Secrets Manager (`otterworks/<env>/<svc>/<KEY>`) and config to SSM; External Secrets Operator 2.10.0 add-on (`demo-platform/scripts/install-external-secrets.sh`), golden + tenant `ClusterSecretStore`s, `ExternalSecret` in all 13 charts, `USE_EXTERNAL_SECRETS=true` opt-in in `deploy-dev.sh`/`deploy-tenant.sh`; `docs/SECRETS.md` | kind + LocalStack: secret synced, rotation picked up, tenant store isolation; kubeconform against pinned + CRDs-catalog schemas; Terraform module applied to LocalStack | Real IRSA / IAM enforcement (LocalStack does not enforce IAM); real `deploy-*.sh` run on EKS; per-service DB users; rotation + pod reload |
+| B — Observability on EKS | [#452](https://github.com/COG-GTM/otterworks/pull/452) | §8–§11: kube-prometheus-stack 92.3.0 (Prometheus Operator, Alertmanager, Grafana), OTel Collector, Jaeger, Fluent Bit → CloudWatch (`demo-platform/k8s/observability`, `install-observability.sh`); existing rules → `PrometheusRule`, 6 dashboards → Grafana sidecar; Alertmanager → admin-service `/api/v1/admin/alerts/ingest` with bearer auth; opt-in `observability.otel` in all 13 charts; Terraform Fluent Bit IRSA + log groups behind `enable_observability`; `docs/OBSERVABILITY.md` | kind: ServiceMonitor targets UP, api-gateway trace in Jaeger with tenant attributes, dashboards loaded, Fluent Bit parsing JSON, synthetic alert delivered to a mock admin webhook | Real CloudWatch delivery + IRSA; real Rails admin-service as receiver; only api-gateway emits traces today (other services need OTel instrumentation) |
+| C — Ingress / DNS / TLS / GitOps | [#455](https://github.com/COG-GTM/otterworks/pull/455) | §3: pinned shared add-ons in `demo-platform/k8s/platform-addons.versions.env` (ingress-nginx 4.15.1, cert-manager v1.21.2, external-dns 1.15.0 / v0.15.0, Argo CD 10.10.3) with install scripts and a default-off `platform/terraform/modules/platform-addons`; TLS-aware ingress in all 13 charts (shared wildcard by default, per-ingress cert-manager cert when `secretName` is set); image names reconciled to `otterworks/<svc>` with `scripts/check-image-drift.sh` in CI; Argo CD GitOps under `deploy/gitops` (AppProject limited to `otterworks-{dev,staging,prod}`, app-of-apps, ApplicationSets, env-isolation baseline); dev → staging → prod promotion via `scripts/gitops-promote.sh` + gated `gitops-promote.yml`; `docs/GITOPS.md` | kind: Argo CD synced dev apps Healthy, HTTPS through ingress-nginx with a cert-manager cert, env isolation enforced; drift check fails on a reverted chart; promotion script tests; kubeconform | Real Route53 / Let's Encrypt DNS-01, add-ons module on a real cluster, Argo CD pulling real ECR tags (the pinned `main-*` tags are not published from the fork), promotion workflow never run (needs `GITOPS_PROMOTION_ENABLED` + `gitops-promotion` Environment) |
+| D — IaC hardening | [#443](https://github.com/COG-GTM/otterworks/pull/443) | §4: tflint (AWS ruleset) + checkov on all 3 Terraform roots (`platform/terraform` previously had no CI), plan / apply / drift workflows, dev / staging / prod layout via `.github/terraform-environments.json`, pre-commit hooks, `docs/IAC.md` | terraform fmt / validate, TFLint 0.53, Checkov 3.2, actionlint, shellcheck | Plan/apply/drift are disabled until an upstream trust change (`terraform_ci_trusted_repos`). **Enabling the plan role lets PR authors read secrets in Terraform state** — needs an explicit decision |
+| E — Container supply chain | [#447](https://github.com/COG-GTM/otterworks/pull/447) | §5, §7: _in progress at the time of writing_ | _pending_ | _pending_ |
+| F — ETL → Airflow / PySpark | [#451](https://github.com/COG-GTM/otterworks/pull/451) | §13: `etl/airflow/` (5 Airflow 2.10 DAGs on the legacy cron schedules, provider Hooks, Connections/Variables instead of `config.ini`, retries, SLAs, JSON logs, optional Slack/email alerts) and `etl/spark/` (PySpark analytics rollup, local or EMR); README reconciled. Legacy `etl/scripts`, `config.ini`, `crontab`, `run.sh` unchanged | 58 pytest tests; 4 of 5 DAGs run in local Airflow against LocalStack + Postgres; idempotent re-run checked through the Airflow UI | `search_reindex_weekly` against live services, live quarantine move, EMR mode, real Slack/SMTP. Late events go to the correct partition with a warning; recompute is manual |
+| G — report-service (Java) | [#446](https://github.com/COG-GTM/otterworks/pull/446) | Legacy "before" state: new `services/report-service-modern/` on Java 21, Spring Boot 3.3, Jakarta, `RestClient`, Caffeine, `java.time`, Commons Lang 3. Legacy `services/report-service/` unchanged | 66 unit tests; 31 live request-parity checks legacy vs modern container | Reports are still readable/deletable without auth (kept for parity); real upstream analytics/audit/auth not exercised |
+| H — Insurance PL/SQL → service | [#445](https://github.com/COG-GTM/otterworks/pull/445) | Legacy "before" state: `services/industry-solutions/insurance/commission-service` (FastAPI + Postgres 16) with JWT auth, viewer/manager/admin roles, forced row-level security per signed `tenant_id`. Oracle fixture unchanged | 42 Oracle-recorded parity scenarios (40 exact, 2 documented Oracle quirks); 87 unit + 19 integration tests incl. concurrency | No Helm chart / gateway route yet; auth-service tokens do not carry `tenant_id` (real logins get 403); CI replays Oracle transcripts |
+| I — Testing & governance | [#449](https://github.com/COG-GTM/otterworks/pull/449) | §1, §6, §14: buf-managed protobuf contracts in `shared/proto`; OpenAPI for all 12 backends + Redocly; coverage gates (gateway 58%, document 80%, search 74%, collab 64/63/48/37); k6 perf tests + `perf.yml`; `api-flows-live.yml` runs `make test-api-flows` against a live core stack; `CODEOWNERS`, PR template, `docs/adr/` ADR-0001..0008; README drift fixed | buf lint/breaking, Redocly (valid, 77 warnings), coverage gates, core API flows on Actions (6 passed), k6 thresholds locally | Non-core API flows still collect-only; coverage gates for the other 8 services; `perf.yml` not yet run on Actions; CODEOWNERS uses a single owner |
+
+**Combined A + B + C integration check (lead, local kind).** With #444, #452, #443, #455, #451,
+#446, #445 and #449 merged on one integration branch (the only manual resolutions: A and B both
+append to the 13 chart `values.yaml` files, and B and D both append to
+`infrastructure/terraform/variables.tf`, kept as the union): all 13 charts lint and render with
+`externalSecrets`, `observability.otel`, `monitoring` and TLS ingress enabled (89/89 resources valid
+under kubeconform with the ESO CRD schemas; 11 ExternalSecrets, 13 ServiceMonitors, 13 Ingresses,
+no `LoadBalancer` Services); `scripts/check-image-drift.sh`, `scripts/validate-external-secrets.sh`,
+actionlint on all workflows and `terraform validate` on all 3 roots pass. On kind with ESO +
+LocalStack, the observability stack, the pinned ingress-nginx and cert-manager (local CA issuer):
+api-gateway's `ExternalSecret` synced `JWT_SECRET`; HTTPS through ingress-nginx returned 200 with a
+verified cert-manager certificate; unauthenticated API calls got 401; a request signed with the
+ESO-delivered secret was proxied and produced a Jaeger trace tagged `k8s.namespace.name`; Prometheus
+reported the gateway `up`. This check found one schema bug in #444 (empty `template.data` on
+document-service), fixed in that PR.
+
 ---
 
 ## 1. Source control & branching / PR workflow — Partial
@@ -355,13 +393,21 @@ shared-services EKS + Airflow/Spark; actual is standalone `platform/terraform` +
 
 ## Top gaps to fix before OtterWorks is a clean all-around reference
 
-1. **Finish the CD wiring.** This PR made charts installable (CRD-safe ServiceMonitor) and added
-   optional ConfigMap/Secret templates, proving api-gateway + auth-service reachable. Still the
-   biggest single gap: populate config/secrets for **all** services from Terraform outputs (ideally
-   External Secrets Operator, not `helm --set`) so the whole app starts end-to-end (§3, §12).
-2. **Deploy the observability stack to EKS** — Prometheus Operator, OTel Collector, Jaeger, Fluent
-   Bit / Alertmanager — so metrics/traces/logs/alerts are real in AWS, not just local (§8–§11).
-3. **Install ingress-nginx + cert-manager + real DNS/TLS** (ideally shared-services) to make the
-   ingress path work, and reconcile the `workshop/otterworks-*` vs `otterworks/*` image-name drift (§3).
-4. **Add governance & polish** — `CODEOWNERS`, PR template, ADRs, image scanning/SBOM, DAST, and
-   README reconciliation (Airflow/Spark, shared-services claims) (§1, §5, §7, §13, §14).
+Original ordering, with the October 2026 status. Items are "code-complete" only on this fork; they
+reach the shared cluster only after an upstream PR and an operator-run apply.
+
+1. **Finish the CD wiring** (§3, §12) — **code-complete (A, #444)**: ESO delivers every service's
+   secrets/config from Terraform-managed Secrets Manager/SSM. Remaining: upstream it, apply with
+   `enable_external_secrets=true`, verify IRSA on EKS.
+2. **Deploy the observability stack to EKS** (§8–§11) — **code-complete (B, #452)**. Remaining:
+   upstream + install on `otterworks-dev`, verify CloudWatch and the real admin-service receiver,
+   instrument services other than api-gateway.
+3. **Ingress-nginx + cert-manager + real DNS/TLS, image-name drift, GitOps** (§3) — **code-complete
+   (C, #455)**. Remaining: upstream, publish the pinned image tags, enable the promotion workflow,
+   verify Route53 / Let's Encrypt on the real zone.
+4. **Governance & polish** (§1, §5, §7, §13, §14) — CODEOWNERS, PR template, ADRs, README drift
+   **done (I, #449)**; Airflow/Spark **done (F, #451)**; image scanning / SBOM / signing **in progress
+   (E, #447)**; **DAST** is still not in scope of these workstreams.
+5. **New since the original list:** decide the Terraform plan-role trust (D, #443) before enabling
+   plan/apply in CI; add JWT auth to report-service-modern (G); issue `tenant_id` in auth-service
+   tokens and add a chart/route for the commission service (H).
