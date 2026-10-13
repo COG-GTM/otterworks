@@ -1,0 +1,13 @@
+# Buf module for OtterWorks internal service contracts.
+# Lint:     buf lint shared/proto
+# Breaking: buf breaking shared/proto --against '.git#branch=main,subdir=shared/proto'
+version: v2
+modules:
+  - path: .
+    name: buf.build/otterworks/internal
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

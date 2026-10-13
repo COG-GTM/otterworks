@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package otterworks.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "otterworks/common/v1/common.proto";
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/events/v1;eventsv1";
+
+// Typed equivalents of the JSON Schemas in shared/events/schemas/*.json that
+// flow over SNS/SQS between services. The JSON schemas stay authoritative for
+// the wire format today; these messages give buf-checked field stability.
+
+// file-events.json#FileUploadedEvent (producer: file-service).
+message FileUploadedEvent {
+  string file_id = 1;
+  string file_name = 2;
+  string owner_id = 3;
+  string folder_id = 4;
+  string mime_type = 5;
+  int64 size_bytes = 6;
+  string s3_key = 7;
+  google.protobuf.Timestamp timestamp = 8;
+}
+
+// file-events.json#FileSharedEvent (producer: file-service).
+message FileSharedEvent {
+  string file_id = 1;
+  string owner_id = 2;
+  string shared_with_user_id = 3;
+  otterworks.common.v1.SharePermission permission = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+// file-events.json#FileDeletedEvent (producer: file-service).
+message FileDeletedEvent {
+  string file_id = 1;
+  string deleted_by = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+// document-events.json#DocumentCreatedEvent (producer: document-service).
+message DocumentCreatedEvent {
+  string document_id = 1;
+  string title = 2;
+  string owner_id = 3;
+  string folder_id = 4;
+  string content_type = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+// document-events.json#DocumentEditedEvent (producer: document-service).
+message DocumentEditedEvent {
+  string document_id = 1;
+  string edited_by = 2;
+  int32 version_number = 3;
+  int32 word_count = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+// document-events.json#CommentAddedEvent (producer: document-service).
+message CommentAddedEvent {
+  string document_id = 1;
+  string comment_id = 2;
+  string author_id = 3;
+  string content = 4;
+  repeated string mentioned_user_ids = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+// Envelope for topic fan-out; exactly one payload is set.
+message DomainEvent {
+  string event_id = 1;
+  string source_service = 2;
+  google.protobuf.Timestamp occurred_at = 3;
+  oneof payload {
+    FileUploadedEvent file_uploaded = 10;
+    FileSharedEvent file_shared = 11;
+    FileDeletedEvent file_deleted = 12;
+    DocumentCreatedEvent document_created = 13;
+    DocumentEditedEvent document_edited = 14;
+    CommentAddedEvent comment_added = 15;
+  }
+}

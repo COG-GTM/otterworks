@@ -1,0 +1,730 @@
+# Derived from the routes in services/file-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks File Service
+  description: 'Rust/Actix-Web file storage: S3 objects, DynamoDB metadata, folders, versions, trash and
+    sharing.
+
+    Derived from `services/file-service/src/main.rs` and `models.rs`.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8082
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: files
+- name: folders
+- name: sharing
+- name: ops
+paths:
+  /api/v1/files/upload:
+    post:
+      tags:
+      - files
+      operationId: uploadFile
+      summary: Upload a file (multipart) to S3 + metadata to DynamoDB
+      description: Owner is taken from the gateway-injected `X-User-ID` header, falling back to the `owner_id`
+        form field.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                folder_id: &id001
+                  type: string
+                  format: uuid
+                owner_id: *id001
+              required:
+              - file
+      responses:
+        '201':
+          description: Uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file: &id004
+                    $ref: '#/components/schemas/FileMetadata'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: &id002
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing identity (X-User-ID) or invalid token
+          content:
+            application/json:
+              schema: *id002
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema: *id002
+        '500':
+          description: Storage/metadata error
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files:
+    get:
+      tags:
+      - files
+      operationId: listFiles
+      summary: List files for the caller
+      parameters:
+      - name: folder_id
+        in: query
+        required: false
+        schema: *id001
+      - name: owner_id
+        in: query
+        required: false
+        schema: *id001
+      - name: page
+        in: query
+        required: false
+        schema: &id003
+          type: integer
+      - name: page_size
+        in: query
+        required: false
+        schema: *id003
+      - name: include_trashed
+        in: query
+        required: false
+        schema: &id008
+          type: boolean
+      responses:
+        '200':
+          description: Files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListFilesResponse'
+        '401':
+          description: Missing identity (X-User-ID) or invalid token
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/shared:
+    get:
+      tags:
+      - files
+      operationId: listSharedFiles
+      summary: List files shared with the caller
+      parameters:
+      - name: owner_id
+        in: query
+        required: false
+        schema: *id001
+      - name: page
+        in: query
+        required: false
+        schema: *id003
+      - name: page_size
+        in: query
+        required: false
+        schema: *id003
+      responses:
+        '200':
+          description: Files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListFilesResponse'
+        '401':
+          description: Missing identity (X-User-ID) or invalid token
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/trash:
+    get:
+      tags:
+      - files
+      operationId: listTrashedFiles
+      summary: List the caller's trashed files
+      parameters:
+      - name: owner_id
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Files
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListFilesResponse'
+        '401':
+          description: Missing identity (X-User-ID) or invalid token
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/activity:
+    get:
+      tags:
+      - files
+      operationId: listActivity
+      summary: Recent file activity feed
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema: *id003
+      responses:
+        '200':
+          description: Activity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityItem'
+        '401':
+          description: Missing identity (X-User-ID) or invalid token
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}:
+    parameters:
+    - &id005
+      name: file_id
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - files
+      operationId: getFileMetadata
+      summary: Get file metadata and shares
+      responses:
+        '200':
+          description: File
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file: *id004
+                  shared_with:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FileShare'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+    delete:
+      tags:
+      - files
+      operationId: deleteFile
+      summary: Permanently delete a file
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Not the owner
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/download:
+    parameters:
+    - *id005
+    get:
+      tags:
+      - files
+      operationId: downloadFile
+      summary: Get a presigned S3 download URL
+      responses:
+        '200':
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: &id006
+                    type: string
+                  expires_in_secs: *id003
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/move:
+    parameters:
+    - *id005
+    put:
+      tags:
+      - files
+      operationId: moveFile
+      summary: Move a file to another folder (null = root)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folder_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: Moved
+          content:
+            application/json:
+              schema: *id004
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/rename:
+    parameters:
+    - *id005
+    patch:
+      tags:
+      - files
+      operationId: renameFile
+      summary: Rename a file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: *id006
+              required:
+              - name
+      responses:
+        '200':
+          description: Renamed
+          content:
+            application/json:
+              schema: *id004
+        '400':
+          description: Invalid name
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/versions:
+    parameters:
+    - *id005
+    get:
+      tags:
+      - files
+      operationId: listFileVersions
+      summary: List file versions
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FileVersion'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/trash:
+    parameters:
+    - *id005
+    post:
+      tags:
+      - files
+      operationId: trashFile
+      summary: Move a file to trash
+      responses:
+        '200':
+          description: Trashed
+          content:
+            application/json:
+              schema: *id004
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/restore:
+    parameters:
+    - *id005
+    post:
+      tags:
+      - files
+      operationId: restoreFile
+      summary: Restore a trashed file
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema: *id004
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/share:
+    parameters:
+    - *id005
+    post:
+      tags:
+      - sharing
+      operationId: shareFile
+      summary: Share a file by user id or email
+      description: '`shared_with_email` is resolved via auth-service `GET /api/v1/auth/users/lookup`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shared_with: *id001
+                shared_with_email:
+                  type: string
+                  format: email
+                permission:
+                  $ref: '#/components/schemas/SharePermission'
+                shared_by: *id001
+              required:
+              - permission
+              - shared_by
+      responses:
+        '200':
+          description: Existing share updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share:
+                    $ref: '#/components/schemas/FileShare'
+        '201':
+          description: Share created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share:
+                    $ref: '#/components/schemas/FileShare'
+        '400':
+          description: Neither shared_with nor shared_with_email given
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/files/{file_id}/share/{user_id}:
+    parameters:
+    - *id005
+    - name: user_id
+      in: path
+      required: true
+      schema: *id001
+    delete:
+      tags:
+      - sharing
+      operationId: removeShare
+      summary: Revoke a share
+      responses:
+        '204':
+          description: Revoked
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/folders:
+    get:
+      tags:
+      - folders
+      operationId: listFolders
+      summary: List folders
+      parameters:
+      - name: parent_id
+        in: query
+        required: false
+        schema: *id001
+      - name: owner_id
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Folders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items: &id007
+                      $ref: '#/components/schemas/Folder'
+    post:
+      tags:
+      - folders
+      operationId: createFolder
+      summary: Create a folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: *id006
+                parent_id: *id001
+                owner_id: *id001
+              required:
+              - name
+              - owner_id
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: *id007
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/folders/{folder_id}:
+    parameters:
+    - name: folder_id
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - folders
+      operationId: getFolder
+      summary: Get a folder
+      responses:
+        '200':
+          description: Folder
+          content:
+            application/json:
+              schema: *id007
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+    put:
+      tags:
+      - folders
+      operationId: updateFolder
+      summary: Rename / re-parent a folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: *id006
+                parent_id: *id001
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id007
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+    delete:
+      tags:
+      - folders
+      operationId: deleteFolder
+      summary: Delete a folder
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id002
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id006
+                  service: *id006
+        '503':
+          description: Unhealthy or degraded
+  /metrics:
+    get:
+      tags:
+      - ops
+      operationId: metrics
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema: *id006
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id006
+        message: *id006
+    FileMetadata:
+      type: object
+      properties:
+        id: *id001
+        name: *id006
+        mime_type: *id006
+        size_bytes:
+          type: integer
+          format: int64
+        s3_key: *id006
+        folder_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_id: *id001
+        version: *id003
+        is_trashed: *id008
+        created_at: &id009
+          type: string
+          format: date-time
+        updated_at: *id009
+      required:
+      - id
+      - name
+      - mime_type
+      - size_bytes
+      - owner_id
+      - version
+      - is_trashed
+      - created_at
+      - updated_at
+    Folder:
+      type: object
+      properties:
+        id: *id001
+        name: *id006
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+        owner_id: *id001
+        created_at: *id009
+        updated_at: *id009
+      required:
+      - id
+      - name
+      - owner_id
+    FileVersion:
+      type: object
+      properties:
+        file_id: *id001
+        version: *id003
+        s3_key: *id006
+        size_bytes:
+          type: integer
+          format: int64
+        created_by: *id001
+        created_at: *id009
+    SharePermission:
+      type: string
+      enum:
+      - viewer
+      - editor
+    FileShare:
+      type: object
+      properties:
+        id: *id001
+        file_id: *id001
+        shared_with: *id001
+        permission:
+          $ref: '#/components/schemas/SharePermission'
+        shared_by: *id001
+        created_at: *id009
+    ListFilesResponse:
+      type: object
+      properties:
+        files:
+          type: array
+          items: *id004
+        total: *id003
+        page: *id003
+        page_size: *id003
+    ActivityItem:
+      type: object
+      properties:
+        id: *id006
+        type: *id006
+        description: *id006
+        actor_name: *id006
+        resource_name: *id006
+        resource_type: *id006
+        resource_id: *id006
+        created_at: *id006
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

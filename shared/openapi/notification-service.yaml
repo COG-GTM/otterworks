@@ -13,6 +13,9 @@ servers:
   - url: http://localhost:8086
     description: Local development
 
+security:
+  - bearerAuth: []
+
 paths:
   /api/v1/notifications:
     get:
@@ -277,6 +280,7 @@ paths:
 
   /health:
     get:
+      security: []
       operationId: healthCheck
       summary: Health check
       responses:
@@ -321,6 +325,11 @@ paths:
           description: WebSocket upgrade successful
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     XUserID:
       name: X-User-ID

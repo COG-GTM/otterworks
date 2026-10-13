@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package otterworks.search.v1;
+
+import "google/protobuf/timestamp.proto";
+import "otterworks/common/v1/common.proto";
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/search/v1;searchv1";
+
+// SearchIndexService is search-service's indexing + query surface.
+//
+// Producers (document-service, file-service) currently feed it via SNS -> SQS
+// events consumed by `app/services/sqs_consumer.py`, and via the REST
+// `/api/v1/search/index/*` endpoints. This contract pins the request shapes.
+service SearchIndexService {
+  // IndexDocument upserts a document into the MeiliSearch index.
+  rpc IndexDocument(IndexDocumentRequest) returns (IndexDocumentResponse);
+  // IndexFile upserts file metadata into the MeiliSearch index.
+  rpc IndexFile(IndexFileRequest) returns (IndexFileResponse);
+  // RemoveFromIndex deletes a document or file from the index.
+  rpc RemoveFromIndex(RemoveFromIndexRequest) returns (RemoveFromIndexResponse);
+  // Search runs a full-text query scoped to the caller.
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message IndexDocumentRequest {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string owner_id = 4;
+  string folder_id = 5;
+  repeated string tags = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message IndexDocumentResponse {
+  string id = 1;
+}
+
+message IndexFileRequest {
+  string id = 1;
+  string name = 2;
+  string mime_type = 3;
+  int64 size_bytes = 4;
+  string owner_id = 5;
+  string folder_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+message IndexFileResponse {
+  string id = 1;
+}
+
+message RemoveFromIndexRequest {
+  otterworks.common.v1.ResourceType resource_type = 1;
+  string id = 2;
+}
+
+message RemoveFromIndexResponse {
+  bool removed = 1;
+}
+
+message SearchRequest {
+  string query = 1;
+  // Restricts results to resources the user owns or can access.
+  string user_id = 2;
+  otterworks.common.v1.ResourceType resource_type = 3;
+  otterworks.common.v1.PageRequest page = 4;
+}
+
+message SearchHit {
+  string id = 1;
+  otterworks.common.v1.ResourceType resource_type = 2;
+  string title = 3;
+  string snippet = 4;
+  double score = 5;
+}
+
+message SearchResponse {
+  repeated SearchHit hits = 1;
+  otterworks.common.v1.PageInfo page_info = 2;
+}

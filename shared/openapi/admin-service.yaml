@@ -1,0 +1,914 @@
+# Derived from the routes in services/admin-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Admin Service
+  description: 'Ruby on Rails admin API (users, features, config, quotas, incidents, chaos, integrations
+    settings).
+
+    Derived from `services/admin-service/config/routes.rb`. Bodies are loosely typed; see the controllers
+    for field-level detail.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8089
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: users
+- name: features
+- name: config
+- name: audit
+- name: quotas
+- name: announcements
+- name: incidents
+- name: chaos
+- name: settings
+- name: ops
+paths:
+  /api/v1/admin/users:
+    get:
+      tags:
+      - users
+      operationId: listUsers
+      summary: List users
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema: &id002
+                type: object
+                additionalProperties: true
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: &id001
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/users/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: &id003
+        type: string
+    get:
+      tags:
+      - users
+      operationId: getUser
+      summary: Get user
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+    put:
+      tags:
+      - users
+      operationId: updateUser
+      summary: Update user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+    delete:
+      tags:
+      - users
+      operationId: deleteUser
+      summary: Delete user
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/users/{id}/suspend:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    put:
+      tags:
+      - users
+      operationId: suspendUser
+      summary: Suspend a user
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/users/{id}/activate:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    put:
+      tags:
+      - users
+      operationId: activateUser
+      summary: Activate a user
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/health/services:
+    get:
+      tags:
+      - ops
+      operationId: getServicesHealth
+      summary: Aggregate health of backend services
+      responses:
+        '200':
+          description: Per-service health
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/features:
+    get:
+      tags:
+      - features
+      operationId: listFeatures
+      summary: List features
+      responses:
+        '200':
+          description: Feature list
+          content:
+            application/json:
+              schema: *id002
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: *id001
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+    post:
+      tags:
+      - features
+      operationId: createFeature
+      summary: Create feature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/features/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - features
+      operationId: getFeature
+      summary: Get feature
+      responses:
+        '200':
+          description: Feature
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+    put:
+      tags:
+      - features
+      operationId: updateFeature
+      summary: Update feature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+    delete:
+      tags:
+      - features
+      operationId: deleteFeature
+      summary: Delete feature
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/config:
+    get:
+      tags:
+      - config
+      operationId: listConfigEntrys
+      summary: List configEntrys
+      responses:
+        '200':
+          description: ConfigEntry list
+          content:
+            application/json:
+              schema: *id002
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: *id001
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/config/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - config
+      operationId: getConfigEntry
+      summary: Get configEntry
+      responses:
+        '200':
+          description: ConfigEntry
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+    put:
+      tags:
+      - config
+      operationId: updateConfigEntry
+      summary: Update configEntry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/audit-logs:
+    get:
+      tags:
+      - audit
+      operationId: listAuditLogs
+      summary: List auditLogs
+      responses:
+        '200':
+          description: AuditLog list
+          content:
+            application/json:
+              schema: *id002
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: *id001
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/audit-logs/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - audit
+      operationId: getAuditLog
+      summary: Get auditLog
+      responses:
+        '200':
+          description: AuditLog
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/quotas/{user_id}:
+    parameters:
+    - name: user_id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - quotas
+      operationId: getQuota
+      summary: Get a user's storage quota
+      responses:
+        '200':
+          description: Quota
+          content:
+            application/json:
+              schema: *id002
+    put:
+      tags:
+      - quotas
+      operationId: updateQuota
+      summary: Update a user's storage quota
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Quota
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/metrics/summary:
+    get:
+      tags:
+      - ops
+      operationId: getMetricsSummary
+      summary: Platform metrics summary
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/announcements:
+    get:
+      tags:
+      - announcements
+      operationId: listAnnouncements
+      summary: List announcements
+      responses:
+        '200':
+          description: Announcement list
+          content:
+            application/json:
+              schema: *id002
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: *id001
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+    post:
+      tags:
+      - announcements
+      operationId: createAnnouncement
+      summary: Create announcement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/announcements/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - announcements
+      operationId: getAnnouncement
+      summary: Get announcement
+      responses:
+        '200':
+          description: Announcement
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+    put:
+      tags:
+      - announcements
+      operationId: updateAnnouncement
+      summary: Update announcement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+    delete:
+      tags:
+      - announcements
+      operationId: deleteAnnouncement
+      summary: Delete announcement
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/incidents:
+    get:
+      tags:
+      - incidents
+      operationId: listIncidents
+      summary: List incidents
+      responses:
+        '200':
+          description: Incident list
+          content:
+            application/json:
+              schema: *id002
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema: *id001
+        '403':
+          description: Admin role required
+          content:
+            application/json:
+              schema: *id001
+    post:
+      tags:
+      - incidents
+      operationId: createIncident
+      summary: Create incident
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/incidents/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    get:
+      tags:
+      - incidents
+      operationId: getIncident
+      summary: Get incident
+      responses:
+        '200':
+          description: Incident
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+    put:
+      tags:
+      - incidents
+      operationId: updateIncident
+      summary: Update incident
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+    delete:
+      tags:
+      - incidents
+      operationId: deleteIncident
+      summary: Delete incident
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/incidents/{id}/trigger_session:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id003
+    post:
+      tags:
+      - incidents
+      operationId: triggerIncidentSession
+      summary: Start a Devin triage session for an incident
+      responses:
+        '200':
+          description: Session info
+          content:
+            application/json:
+              schema: *id002
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Devin not configured
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/bulk/users:
+    post:
+      tags:
+      - users
+      operationId: bulkUsers
+      summary: Bulk user operation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Result
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/v1/admin/chaos:
+    post:
+      tags:
+      - chaos
+      operationId: triggerChaos
+      summary: Enable a tenant-scoped chaos/failure flag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Flag set
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Unknown scenario
+          content:
+            application/json:
+              schema: *id001
+    delete:
+      tags:
+      - chaos
+      operationId: resetChaos
+      summary: Clear chaos flags
+      responses:
+        '200':
+          description: Flags cleared
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/settings/auto_investigate:
+    get:
+      tags:
+      - settings
+      operationId: getAutoInvestigate
+      summary: Get auto investigate setting
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+    put:
+      tags:
+      - settings
+      operationId: updateAutoInvestigate
+      summary: Update auto investigate setting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/settings/devin_credentials:
+    get:
+      tags:
+      - settings
+      operationId: getDevinCredentials
+      summary: Get devin credentials setting
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+    put:
+      tags:
+      - settings
+      operationId: updateDevinCredentials
+      summary: Update devin credentials setting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+    delete:
+      tags:
+      - settings
+      operationId: deleteDevinCredentials
+      summary: Delete devin credentials setting
+      responses:
+        '204':
+          description: Cleared
+        '200':
+          description: Cleared
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/settings/slack_notifications:
+    get:
+      tags:
+      - settings
+      operationId: getSlackNotifications
+      summary: Get slack notifications setting
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+    put:
+      tags:
+      - settings
+      operationId: updateSlackNotifications
+      summary: Update slack notifications setting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Setting
+          content:
+            application/json:
+              schema: *id002
+    delete:
+      tags:
+      - settings
+      operationId: deleteSlackNotifications
+      summary: Delete slack notifications setting
+      responses:
+        '204':
+          description: Cleared
+        '200':
+          description: Cleared
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/admin/alerts/ingest:
+    post:
+      tags:
+      - incidents
+      operationId: ingestAlert
+      summary: Ingest an alert (e.g. failed upload) and open/update an incident
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: *id002
+      responses:
+        '200':
+          description: Incident
+          content:
+            application/json:
+              schema: *id002
+        '201':
+          description: Incident created
+          content:
+            application/json:
+              schema: *id002
+        '422':
+          description: Invalid alert
+          content:
+            application/json:
+              schema: *id001
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id003
+                  service: *id003
+        '503':
+          description: Unhealthy or degraded
+  /metrics:
+    get:
+      tags:
+      - ops
+      operationId: metrics
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema: *id003
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id003
+        message: *id003
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

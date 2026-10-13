@@ -1,0 +1,284 @@
+# Derived from the routes in services/report-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Report Service
+  description: 'Java/Spring report generation (PDF/CSV/XLSX). This documents the existing (legacy Java
+    8 "before state") service contract.
+
+    Derived from `services/report-service/src/main/java/com/otterworks/report/controller/ReportController.java`
+    and `model/`.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8091
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: reports
+- name: ops
+paths:
+  /api/v1/reports:
+    post:
+      tags:
+      - reports
+      operationId: createReport
+      summary: Request asynchronous report generation
+      parameters:
+      - &id001
+        name: X-User-ID
+        in: header
+        required: false
+        schema: &id002
+          type: string
+        description: Injected by the API gateway from the JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequest'
+      responses:
+        '202':
+          description: Accepted; generation queued
+          content:
+            application/json:
+              schema: &id004
+                $ref: '#/components/schemas/ReportResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: &id005
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+      - reports
+      operationId: listReports
+      summary: List reports
+      parameters:
+      - *id001
+      - name: userId
+        in: query
+        required: false
+        schema: *id002
+      - name: category
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ReportCategory'
+      - name: status
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ReportStatus'
+      - name: page
+        in: query
+        required: false
+        schema: &id003
+          type: integer
+      - name: size
+        in: query
+        required: false
+        schema: *id003
+      responses:
+        '200':
+          description: Page of reports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items: *id004
+                  totalElements: *id003
+                  totalPages: *id003
+                  number: *id003
+                  size: *id003
+                additionalProperties: true
+  /api/v1/reports/{id}:
+    parameters:
+    - &id006
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    get:
+      tags:
+      - reports
+      operationId: getReport
+      summary: Get report status/metadata
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema: *id004
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id005
+    delete:
+      tags:
+      - reports
+      operationId: deleteReport
+      summary: Delete a report
+      parameters:
+      - *id001
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id005
+  /api/v1/reports/{id}/download:
+    parameters:
+    - *id006
+    get:
+      tags:
+      - reports
+      operationId: downloadReport
+      summary: Download a completed report
+      parameters:
+      - *id001
+      responses:
+        '200':
+          description: Report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema: *id002
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id005
+        '409':
+          description: Report not yet completed
+          content:
+            application/json:
+              schema: *id005
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id002
+                  service: *id002
+        '503':
+          description: Unhealthy or degraded
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id002
+        message: *id002
+    ReportCategory:
+      type: string
+      enum:
+      - USAGE_ANALYTICS
+      - AUDIT_LOG
+      - STORAGE_SUMMARY
+      - USER_ACTIVITY
+      - COLLABORATION_METRICS
+      - SYSTEM_HEALTH
+    ReportType:
+      type: string
+      enum:
+      - PDF
+      - CSV
+      - EXCEL
+    ReportStatus:
+      type: string
+      enum:
+      - PENDING
+      - GENERATING
+      - COMPLETED
+      - FAILED
+    ReportRequest:
+      type: object
+      properties:
+        reportName: *id002
+        category:
+          $ref: '#/components/schemas/ReportCategory'
+        reportType:
+          $ref: '#/components/schemas/ReportType'
+        requestedBy: *id002
+        dateFrom: &id007
+          type: string
+          format: date-time
+        dateTo: *id007
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - reportName
+      - category
+      - reportType
+    ReportResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        reportName: *id002
+        category: *id002
+        reportType: *id002
+        status: *id002
+        requestedBy: *id002
+        dateFrom: *id007
+        dateTo: *id007
+        createdAt: *id007
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        fileSizeBytes:
+          type: integer
+          format: int64
+          nullable: true
+        rowCount:
+          type: integer
+          nullable: true
+        downloadUrl:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

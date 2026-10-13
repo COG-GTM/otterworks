@@ -11,12 +11,13 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'clover'],
+  // Enforced by `npm test` in CI. See docs/testing/coverage-thresholds.md to ratchet.
   coverageThreshold: {
     global: {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
+      branches: 37,
+      functions: 48,
+      lines: 64,
+      statements: 63,
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],

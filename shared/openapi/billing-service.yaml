@@ -1,0 +1,191 @@
+# Derived from the routes in services/billing-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Billing Service
+  description: "Python/FastAPI billing service \u2014 the modernized implementation extracted alongside\
+    \ the legacy stored procedures\n(`services/legacy-billing/`). Derived from `services/billing-service/app/main.py`.\
+    \ Not routed through the API gateway."
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8095
+  description: Local development (direct)
+tags:
+- name: plans
+- name: tenants
+- name: ops
+paths:
+  /api/plans:
+    get:
+      tags:
+      - plans
+      operationId: listPlans
+      summary: List billing plans
+      security: []
+      responses:
+        '200':
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Plan'
+  /api/tenants/{tenant_id}/entitlement:
+    parameters:
+    - &id002
+      name: tenant_id
+      in: path
+      required: true
+      schema: &id003
+        type: string
+        format: uuid
+    get:
+      tags:
+      - tenants
+      operationId: getEntitlement
+      summary: Tenant entitlement effective on a date
+      security: []
+      parameters:
+      - name: 'on'
+        in: query
+        required: true
+        schema: &id004
+          type: string
+          format: date
+      responses:
+        '200':
+          description: Entitlement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entitlement'
+        '404':
+          description: Entitlement not found
+          content:
+            application/json:
+              schema: &id001
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /api/tenants/{tenant_id}/plan-change:
+    parameters:
+    - *id002
+    post:
+      tags:
+      - tenants
+      operationId: changeTenantPlan
+      summary: Schedule a plan change
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan_id: *id003
+                effective_on: *id004
+              required:
+              - plan_id
+              - effective_on
+      responses:
+        '200':
+          description: Plan change result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  latest_plan: *id003
+                  latest_start: *id004
+                additionalProperties: true
+        '400':
+          description: Invalid plan change
+          content:
+            application/json:
+              schema: *id001
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema: *id001
+  /internal/reset:
+    post:
+      tags:
+      - ops
+      operationId: internalReset
+      summary: Reset fixture data (test-only; disabled unless ALLOW_INTERNAL_RESET)
+      security: []
+      responses:
+        '204':
+          description: Reset
+        '404':
+          description: Reset disabled
+          content:
+            application/json:
+              schema: *id001
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe (checks Postgres)
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: &id005
+                    type: string
+                  service: *id005
+        '503':
+          description: Database unavailable
+          content:
+            application/json:
+              schema: *id001
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id005
+        message: *id005
+    Plan:
+      type: object
+      properties:
+        plan_id: *id003
+        code: *id005
+        tier: *id005
+        monthly_fee: &id006
+          type: string
+          pattern: ^[0-9]+\.[0-9]+$
+        included_units: &id007
+          type: integer
+        overage_rate: *id006
+    Entitlement:
+      type: object
+      properties:
+        tenant_id: *id003
+        plan_code: *id005
+        tier: *id005
+        monthly_fee: *id006
+        included_units: *id007
+        subscription_status: *id005
+        effective_on: *id004
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

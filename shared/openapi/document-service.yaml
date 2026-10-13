@@ -13,6 +13,9 @@ servers:
   - url: http://localhost:8083
     description: Local development
 
+security:
+  - bearerAuth: []
+
 paths:
   /api/v1/documents/:
     get:
@@ -633,6 +636,7 @@ paths:
 
   /health:
     get:
+      security: []
       operationId: healthCheck
       summary: Health check with DB connectivity
       responses:

@@ -1,0 +1,361 @@
+# Derived from the routes in services/audit-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Audit Service
+  description: 'C#/ASP.NET Core minimal-API audit log (DynamoDB + S3 archive).
+
+    Derived from `services/audit-service/src/Controllers/AuditController.cs` and `Models/`.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8090
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: events
+- name: reports
+- name: export
+- name: ops
+paths:
+  /api/v1/audit/events:
+    post:
+      tags:
+      - events
+      operationId: recordAuditEvent
+      summary: Record an audit event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditEventRequest'
+      responses:
+        '201':
+          description: Recorded
+          content:
+            application/json:
+              schema: &id004
+                $ref: '#/components/schemas/AuditEvent'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: &id005
+                $ref: '#/components/schemas/ErrorResponse'
+    get:
+      tags:
+      - events
+      operationId: queryAuditEvents
+      summary: Query audit events
+      parameters:
+      - name: user_id
+        in: query
+        required: false
+        schema: &id001
+          type: string
+      - name: action
+        in: query
+        required: false
+        schema: *id001
+      - name: resource
+        in: query
+        required: false
+        schema: *id001
+      - name: resource_type
+        in: query
+        required: false
+        schema: *id001
+      - name: from
+        in: query
+        required: false
+        schema: &id002
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        schema: *id002
+      - name: page
+        in: query
+        required: false
+        schema: &id003
+          type: integer
+      - name: size
+        in: query
+        required: false
+        schema: *id003
+      responses:
+        '200':
+          description: Page of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: *id004
+                  total: *id003
+                  page: *id003
+                  size: *id003
+                additionalProperties: true
+  /api/v1/audit/events/{id}:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - events
+      operationId: getAuditEvent
+      summary: Get an audit event
+      responses:
+        '200':
+          description: Event
+          content:
+            application/json:
+              schema: *id004
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: *id005
+  /api/v1/audit/reports/user/{userId}:
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - reports
+      operationId: getUserActivityReport
+      summary: User activity report
+      parameters:
+      - name: period
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserActivityReport'
+  /api/v1/audit/resources/{resourceId}/history:
+    parameters:
+    - name: resourceId
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - reports
+      operationId: getResourceHistory
+      summary: Audit history of a resource
+      responses:
+        '200':
+          description: History
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resourceId: *id001
+                  totalEvents: *id003
+                  events:
+                    type: array
+                    items: *id004
+  /api/v1/audit/reports/compliance:
+    get:
+      tags:
+      - reports
+      operationId: getComplianceReport
+      summary: Compliance summary report
+      parameters:
+      - name: period
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceReport'
+  /api/v1/audit/export:
+    get:
+      tags:
+      - export
+      operationId: exportAuditLog
+      summary: Export audit log to S3 and return a download URL
+      parameters:
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - json
+          - csv
+      - name: from
+        in: query
+        required: false
+        schema: *id002
+      - name: to
+        in: query
+        required: false
+        schema: *id002
+      responses:
+        '200':
+          description: Export
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  format: *id001
+                  eventCount: *id003
+                  downloadUrl: *id001
+                  from: *id002
+                  to: *id002
+  /api/v1/audit/archive:
+    post:
+      tags:
+      - export
+      operationId: archiveOldEvents
+      summary: Archive old events to S3 Glacier
+      responses:
+        '200':
+          description: Archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  archivedCount: *id003
+                  archivedBefore: *id002
+                  storageClass: *id001
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id001
+                  service: *id001
+        '503':
+          description: Unhealthy or degraded
+  /metrics:
+    get:
+      tags:
+      - ops
+      operationId: metrics
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema: *id001
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id001
+        message: *id001
+    AuditEventRequest:
+      type: object
+      properties:
+        userId: *id001
+        action: *id001
+        resourceType: *id001
+        resourceId: *id001
+        details: &id006
+          type: object
+          additionalProperties:
+            type: string
+        ipAddress: *id001
+        userAgent: *id001
+      required:
+      - userId
+      - action
+      - resourceType
+      - resourceId
+    AuditEvent:
+      type: object
+      properties:
+        id: *id001
+        userId: *id001
+        action: *id001
+        resourceType: *id001
+        resourceId: *id001
+        details: *id006
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        timestamp: *id002
+    UserActivityReport:
+      type: object
+      properties:
+        userId: *id001
+        period: *id001
+        totalEvents: *id003
+        actionBreakdown: &id007
+          type: object
+          additionalProperties:
+            type: integer
+        firstActivity:
+          type: string
+          format: date-time
+          nullable: true
+        lastActivity:
+          type: string
+          format: date-time
+          nullable: true
+        recentEvents:
+          type: array
+          items: *id004
+    ComplianceReport:
+      type: object
+      properties:
+        period: *id001
+        totalEvents: *id003
+        uniqueUsers: *id003
+        eventsByAction: *id007
+        suspiciousActivities:
+          type: array
+          items:
+            type: object
+            properties:
+              userId: *id001
+              reason: *id001
+              eventCount: *id003
+        generatedAt: *id002
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

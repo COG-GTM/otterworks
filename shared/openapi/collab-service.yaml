@@ -1,0 +1,151 @@
+# Derived from the routes in services/collab-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Collaboration Service
+  description: 'Node.js/TypeScript real-time collaboration (Express + Socket.IO + Yjs).
+
+    Derived from `services/collab-service/src/index.ts`.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8084
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: presence
+- name: realtime
+- name: ops
+paths:
+  /api/v1/collab/documents:
+    get:
+      tags:
+      - presence
+      operationId: listActiveDocuments
+      summary: List documents with active collaborators
+      responses:
+        '200':
+          description: Active documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DocumentPresence'
+                  count:
+                    type: integer
+  /api/v1/collab/documents/{id}/presence:
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema: &id001
+        type: string
+    get:
+      tags:
+      - presence
+      operationId: getDocumentPresence
+      summary: Users currently present in a document
+      responses:
+        '200':
+          description: Presence
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPresence'
+  /socket.io:
+    get:
+      tags:
+      - realtime
+      operationId: socketIoHandshake
+      summary: Socket.IO (Engine.IO) handshake / long-poll transport
+      description: Real-time Yjs CRDT sync and presence. The JWT is passed in the Socket.IO `auth.token`
+        handshake payload and verified by `createAuthMiddleware`. Event payloads are described in `shared/events/schemas/collaboration-events.json`.
+      parameters:
+      - name: EIO
+        in: query
+        required: true
+        schema: *id001
+      - name: transport
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - polling
+          - websocket
+      responses:
+        '101':
+          description: Switching protocols to WebSocket
+        '200':
+          description: Long-poll payload
+          content:
+            text/plain:
+              schema: *id001
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id001
+                  service: *id001
+        '503':
+          description: Unhealthy or degraded
+  /metrics:
+    get:
+      tags:
+      - ops
+      operationId: metrics
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema: *id001
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id001
+        message: *id001
+    DocumentPresence:
+      type: object
+      properties:
+        documentId: *id001
+        users:
+          type: array
+          items:
+            type: object
+            properties:
+              userId: *id001
+              displayName: *id001
+              color: *id001
+              cursor:
+                type: object
+                additionalProperties: true
+      additionalProperties: true
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

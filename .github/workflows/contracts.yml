@@ -1,0 +1,67 @@
+name: Contracts
+
+# Lints the shared API contracts: protobuf (buf lint + buf breaking) and OpenAPI (Redocly).
+on:
+  pull_request:
+    paths:
+      - "shared/proto/**"
+      - "shared/openapi/**"
+      - "redocly.yaml"
+      - ".github/workflows/contracts.yml"
+  push:
+    branches: [main]
+    paths:
+      - "shared/proto/**"
+      - "shared/openapi/**"
+      - "redocly.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BUF_VERSION: "1.47.2"
+
+jobs:
+  protobuf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install buf
+        run: |
+          curl -sSL -o /usr/local/bin/buf \
+            "https://github.com/bufbuild/buf/releases/download/v${BUF_VERSION}/buf-Linux-x86_64"
+          chmod +x /usr/local/bin/buf
+          buf --version
+      - name: buf format
+        run: buf format --diff --exit-code shared/proto
+      - name: buf lint
+        run: buf lint shared/proto
+      - name: buf breaking
+        run: |
+          # PRs compare against the base branch; pushes compare against the previous head (event.before).
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            against="$(git merge-base HEAD "origin/${{ github.event.pull_request.base.ref }}")"
+          else
+            against="${{ github.event.before }}"
+          fi
+          if [ -z "$against" ] || [ "$against" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${against}^{commit}" 2>/dev/null; then
+            echo "::notice::No previous commit to compare against; skipping buf breaking."
+          elif git ls-tree -r --name-only "$against" -- shared/proto | grep -q '\.proto$'; then
+            buf breaking shared/proto --against ".git#ref=${against},subdir=shared/proto"
+          else
+            echo "::notice::No .proto files at ${against} yet; skipping buf breaking (first contract commit)."
+          fi
+
+  openapi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Redocly lint (all specs in redocly.yaml)
+        run: npx --yes @redocly/cli@1.34.3 lint

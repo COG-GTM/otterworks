@@ -1,0 +1,419 @@
+# Derived from the routes in services/analytics-service; keep in sync when routes change.
+openapi: 3.0.3
+info:
+  title: OtterWorks Analytics Service
+  description: 'Scala/Akka HTTP analytics, margin and market-data endpoints.
+
+    Derived from `services/analytics-service/src/main/scala/com/otterworks/analytics/api/*Routes.scala`.'
+  version: 1.0.0
+  contact:
+    name: OtterWorks Platform Team
+  license:
+    name: Proprietary
+    url: https://github.com/COG-GTM/otterworks
+servers:
+- url: http://localhost:8088
+  description: Local development (direct)
+security:
+- bearerAuth: []
+tags:
+- name: events
+- name: analytics
+- name: margins
+- name: market
+- name: ops
+paths:
+  /api/v1/analytics/events:
+    post:
+      tags:
+      - events
+      operationId: trackEvent
+      summary: Track an analytics event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrackEventRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: &id001
+                    type: string
+                  eventId: *id001
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: &id004
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/analytics/dashboard:
+    get:
+      tags:
+      - analytics
+      operationId: getDashboard
+      summary: Dashboard summary
+      parameters:
+      - &id003
+        name: period
+        in: query
+        required: false
+        schema: *id001
+        description: e.g. 24h, 7d, 30d, daily
+      responses:
+        '200':
+          description: Summary
+          content:
+            application/json:
+              schema: &id002
+                type: object
+                additionalProperties: true
+  /api/v1/analytics/users/{userId}/activity:
+    parameters:
+    - name: userId
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - analytics
+      operationId: getUserActivity
+      summary: Per-user activity
+      responses:
+        '200':
+          description: Activity
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/documents/{documentId}/stats:
+    parameters:
+    - name: documentId
+      in: path
+      required: true
+      schema: *id001
+    get:
+      tags:
+      - analytics
+      operationId: getDocumentStats
+      summary: Per-document stats
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/top-content:
+    get:
+      tags:
+      - analytics
+      operationId: getTopContent
+      summary: Top content
+      parameters:
+      - name: type
+        in: query
+        required: false
+        schema:
+          type: string
+          default: documents
+      - *id003
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 10
+      responses:
+        '200':
+          description: Top content
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/active-users:
+    get:
+      tags:
+      - analytics
+      operationId: getActiveUsers
+      summary: Active users
+      parameters:
+      - *id003
+      responses:
+        '200':
+          description: Active users
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/storage:
+    get:
+      tags:
+      - analytics
+      operationId: getStorageUsage
+      summary: Storage usage
+      parameters:
+      - name: user_id
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Storage usage
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/export:
+    get:
+      tags:
+      - analytics
+      operationId: exportAnalytics
+      summary: Export analytics report
+      parameters:
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - json
+          - csv
+          default: json
+      - *id003
+      responses:
+        '200':
+          description: Report (JSON or CSV text)
+          content:
+            application/json:
+              schema: *id002
+            text/plain:
+              schema: *id001
+  /api/v1/analytics/margins:
+    get:
+      tags:
+      - margins
+      operationId: getMargins
+      summary: Margin summary
+      responses:
+        '200':
+          description: Margins
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/margins/series:
+    get:
+      tags:
+      - margins
+      operationId: getMarginSeries
+      summary: Margin time series
+      parameters:
+      - name: sku
+        in: query
+        required: false
+        schema: *id001
+      - name: category
+        in: query
+        required: false
+        schema: *id001
+      - name: from
+        in: query
+        required: false
+        schema: *id001
+      - name: to
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Series
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/margins/export:
+    get:
+      tags:
+      - margins
+      operationId: exportMargins
+      summary: Export margins
+      parameters:
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - json
+          - csv
+          default: json
+      responses:
+        '200':
+          description: Margins (JSON or CSV text)
+          content:
+            application/json:
+              schema: *id002
+            text/plain:
+              schema: *id001
+  /api/v1/analytics/market/series:
+    get:
+      tags:
+      - market
+      operationId: listMarketSeries
+      summary: List market price series
+      responses:
+        '200':
+          description: Series
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  series:
+                    type: array
+                    items: *id002
+  /api/v1/analytics/market/prices:
+    get:
+      tags:
+      - market
+      operationId: getMarketPrices
+      summary: Prices for a series
+      parameters:
+      - name: series_code
+        in: query
+        required: true
+        schema: *id001
+      - name: from
+        in: query
+        required: false
+        schema: *id001
+      - name: to
+        in: query
+        required: false
+        schema: *id001
+      responses:
+        '200':
+          description: Prices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prices:
+                    type: array
+                    items: *id002
+  /api/v1/analytics/market/status:
+    get:
+      tags:
+      - market
+      operationId: getMarketIngestStatus
+      summary: Market ingest status
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema: *id002
+  /api/v1/analytics/market/observations:
+    post:
+      tags:
+      - market
+      operationId: ingestMarketObservations
+      summary: Ingest market observations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationsRequest'
+      responses:
+        '200':
+          description: Ingest result
+          content:
+            application/json:
+              schema: *id002
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema: *id004
+  /health:
+    get:
+      tags:
+      - ops
+      operationId: health
+      summary: Liveness/readiness probe
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: *id001
+                  service: *id001
+        '503':
+          description: Unhealthy or degraded
+  /metrics:
+    get:
+      tags:
+      - ops
+      operationId: metrics
+      summary: Prometheus metrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus exposition
+          content:
+            text/plain:
+              schema: *id001
+components:
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error: *id001
+        message: *id001
+    TrackEventRequest:
+      type: object
+      properties:
+        eventType: *id001
+        userId: *id001
+        resourceId: *id001
+        resourceType: *id001
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+      required:
+      - eventType
+      - userId
+      - resourceId
+      - resourceType
+    ObservationsRequest:
+      type: object
+      properties:
+        observations:
+          type: array
+          items:
+            type: object
+            properties:
+              seriesCode: *id001
+              priceDate:
+                type: string
+                format: date
+              value:
+                type: number
+            required:
+            - seriesCode
+            - priceDate
+            - value
+        sourceNote: *id001
+      required:
+      - observations
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

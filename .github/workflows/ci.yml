@@ -92,6 +92,7 @@ jobs:
           go-version: '1.22'
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
+      - run: ../../scripts/ci/check-go-coverage.sh coverage.out 58
       - run: go build -o /dev/null ./cmd/server
 
   # Java - Auth Service
