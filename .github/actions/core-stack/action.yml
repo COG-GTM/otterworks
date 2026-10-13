@@ -33,13 +33,16 @@ runs:
       run: $OTTERWORKS_COMPOSE build $OTTERWORKS_APP_SERVICES
     - name: Start core profile
       shell: bash
-      run: $OTTERWORKS_COMPOSE up -d --no-build postgres redis localstack meilisearch $OTTERWORKS_APP_SERVICES
-    - name: Wait for gateway
+      # --wait blocks until every started container with a healthcheck reports healthy.
+      run: $OTTERWORKS_COMPOSE up -d --no-build --wait --wait-timeout 420 postgres redis localstack meilisearch $OTTERWORKS_APP_SERVICES
+    - name: Wait for gateway and auth upstream
       shell: bash
       run: |
+        # Gateway /health does not cover upstreams; also require auth-service to answer through it.
         for _ in $(seq 1 90); do
-          if curl -sf http://localhost:8080/health >/dev/null; then
-            echo "gateway healthy"; $OTTERWORKS_COMPOSE ps; exit 0
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:8080/api/v1/auth/login || true)"
+          if curl -sf http://localhost:8080/health >/dev/null && [ "$code" != "000" ] && [ "$code" -lt 500 ]; then
+            echo "gateway healthy, auth upstream answered $code"; $OTTERWORKS_COMPOSE ps; exit 0
           fi
           sleep 2
         done
