@@ -1,0 +1,142 @@
+name: Terraform Static Analysis
+
+# fmt / validate / tflint / checkov / mocked per-environment plan tests for
+# every Terraform root. Needs no cloud credentials. Mirrors
+# scripts/terraform-check.sh.
+
+on:
+  pull_request:
+    paths:
+      - "platform/terraform/**"
+      - "infrastructure/terraform/**"
+      - "demo-platform/infra/terraform/**"
+      - ".tflint.hcl"
+      - ".checkov.yaml"
+      - "scripts/terraform-check.sh"
+      - ".github/workflows/terraform-static.yml"
+  push:
+    branches: [main]
+    paths:
+      - "platform/terraform/**"
+      - "infrastructure/terraform/**"
+      - "demo-platform/infra/terraform/**"
+      - ".tflint.hcl"
+      - ".checkov.yaml"
+      - "scripts/terraform-check.sh"
+      - ".github/workflows/terraform-static.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-static-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: 1.9.8
+  TFLINT_VERSION: v0.53.0
+  CHECKOV_VERSION: 3.2.469
+
+jobs:
+  static:
+    name: ${{ matrix.root }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        root:
+          - platform/terraform
+          - infrastructure/terraform
+          - demo-platform/infra/terraform
+    env:
+      ROOT: ${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: terraform-linters/setup-tflint@90f302c255ef959cbfb4bd10581afecdb7ece3e6 # v4
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install checkov
+        run: pip install --quiet "checkov==${CHECKOV_VERSION}"
+
+      - name: SARIF file names
+        id: names
+        run: echo "slug=${ROOT//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: terraform fmt -check
+        run: terraform -chdir="$ROOT" fmt -check -recursive -diff
+
+      - name: terraform init -backend=false
+        run: terraform -chdir="$ROOT" init -backend=false -input=false
+
+      - name: terraform validate
+        run: terraform -chdir="$ROOT" validate
+
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
+          mkdir -p sarif
+          set +e
+          tflint --chdir="$ROOT" --config="$GITHUB_WORKSPACE/.tflint.hcl" --format=sarif \
+            > "sarif/tflint-${{ steps.names.outputs.slug }}.sarif"
+          sarif_rc=$?
+          tflint --chdir="$ROOT" --config="$GITHUB_WORKSPACE/.tflint.hcl" --format=compact
+          rc=$?
+          set -e
+          echo "tflint exit codes: sarif=$sarif_rc compact=$rc"
+          exit "$rc"
+
+      - name: checkov
+        run: |
+          mkdir -p sarif
+          checkov -d "$ROOT" --config-file .checkov.yaml --compact \
+            --output cli --output sarif \
+            --output-file-path "console,sarif/checkov-${{ steps.names.outputs.slug }}.sarif"
+
+      - name: Mocked plan per environment (terraform test)
+        run: |
+          for tfvars in "$ROOT"/environments/*.tfvars; do
+            env_name="$(basename "$tfvars" .tfvars)"
+            echo "::group::terraform test env=${env_name}"
+            terraform -chdir="$ROOT" test -var-file="environments/${env_name}.tfvars"
+            echo "::endgroup::"
+          done
+
+      - name: Upload tflint SARIF
+        if: always() && hashFiles(format('sarif/tflint-{0}.sarif', steps.names.outputs.slug)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9f759ee644a3e7c15c1390abf49868036c00067b # v3
+        with:
+          sarif_file: sarif/tflint-${{ steps.names.outputs.slug }}.sarif
+          category: tflint-${{ steps.names.outputs.slug }}
+
+      - name: Upload checkov SARIF
+        if: always() && hashFiles(format('sarif/checkov-{0}.sarif', steps.names.outputs.slug)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@9f759ee644a3e7c15c1390abf49868036c00067b # v3
+        with:
+          sarif_file: sarif/checkov-${{ steps.names.outputs.slug }}.sarif
+          category: checkov-${{ steps.names.outputs.slug }}
+
+      - name: Keep SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sarif-${{ steps.names.outputs.slug }}
+          path: sarif/*.sarif
+          if-no-files-found: ignore
+          retention-days: 14

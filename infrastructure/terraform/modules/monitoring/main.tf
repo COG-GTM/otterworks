@@ -27,6 +27,8 @@ locals {
 
 resource "aws_cloudwatch_log_group" "services" {
   for_each = toset(local.services)
+  #checkov:skip=CKV_AWS_338:Retention is var.log_retention_days per environment (prod 365); a year of logs in dev is pure cost.
+  #checkov:skip=CKV_AWS_158:kms_key_arn is an optional input; the AWS-managed CloudWatch Logs encryption applies when it is unset.
 
   name              = "/otterworks/${var.environment}/${each.value}"
   retention_in_days = var.log_retention_days

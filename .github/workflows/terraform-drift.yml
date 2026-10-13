@@ -1,0 +1,149 @@
+name: Terraform Drift Detection
+
+# Weekday `terraform plan -detailed-exitcode` for every root/environment in
+# .github/terraform-environments.json. Drift (exit 2) or a failed plan opens or
+# updates one issue per root/env labelled `terraform-drift`; a clean plan
+# closes it. Read-only: -lock=false, nothing is applied.
+#
+# No-op unless vars.TF_DRIFT_ENABLED == 'true' and vars.TF_PLAN_ROLE_ARN is set.
+# The pull_request trigger only runs the gate, as a self-check that it skips.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1-5"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/terraform-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-drift-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.9.8
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+      matrix: ${{ steps.gate.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Opt-in and credential gate
+        id: gate
+        env:
+          DRIFT_ENABLED: ${{ vars.TF_DRIFT_ENABLED }}
+          ROLE_ARN: ${{ vars.TF_PLAN_ROLE_ARN }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          echo "matrix=$(jq -c . .github/terraform-environments.json)" >> "$GITHUB_OUTPUT"
+          reasons=()
+          [[ "$DRIFT_ENABLED" == "true" ]] || reasons+=("repo variable TF_DRIFT_ENABLED is not 'true'")
+          [[ -n "$ROLE_ARN" ]] || reasons+=("repo variable TF_PLAN_ROLE_ARN is not set")
+          [[ "$EVENT" != "pull_request" ]] || reasons+=("pull_request runs are a gate self-check only")
+          [[ "$REF" == "refs/heads/main" ]] || reasons+=("ref is $REF; drift is checked against main only")
+          if (( ${#reasons[@]} )); then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Terraform drift detection skipped"
+              printf -- '- %s\n' "${reasons[@]}"
+              echo
+              echo "See docs/IAC.md to enable."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Terraform drift detection skipped::${reasons[*]}"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  drift:
+    name: drift ${{ matrix.root }} (${{ matrix.env }})
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      issues: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.gate.outputs.matrix) }}
+    env:
+      ROOT: ${{ matrix.root }}
+      ENV_NAME: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_meilisearch_master_key: ${{ secrets.TF_VAR_MEILISEARCH_MASTER_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          role-session-name: tf-drift-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: terraform plan -detailed-exitcode
+        id: plan
+        run: |
+          set +e
+          terraform -chdir="$ROOT" init -no-color -backend-config="environments/backend-${ENV_NAME}.hcl" -reconfigure > plan.log 2>&1 \
+            && terraform -chdir="$ROOT" plan -no-color -lock=false -detailed-exitcode \
+                 -var-file="environments/${ENV_NAME}.tfvars" >> plan.log 2>&1
+          rc=$?
+          set -e
+          cat plan.log
+          case $rc in
+            0) echo "status=clean" >> "$GITHUB_OUTPUT" ;;
+            2) echo "status=drift" >> "$GITHUB_OUTPUT" ;;
+            *) echo "status=error" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Open, update or close the drift issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          STATUS: ${{ steps.plan.outputs.status }}
+        with:
+          script: |
+            const fs = require('fs');
+            const { ROOT: root, ENV_NAME: envName, STATUS: status } = process.env;
+            const label = 'terraform-drift';
+            const title = `Terraform drift: ${root} (${envName})`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            try {
+              await github.rest.issues.createLabel({ ...context.repo, name: label, color: 'd93f0b',
+                description: 'Opened by terraform-drift.yml' });
+            } catch (e) { if (e.status !== 422) throw e; }
+            const open = await github.paginate(github.rest.issues.listForRepo,
+              { ...context.repo, state: 'open', labels: label, per_page: 100 });
+            const issue = open.find(i => i.title === title);
+            if (status === 'clean') {
+              if (issue) {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number,
+                  body: `No drift as of ${runUrl}. Closing.` });
+                await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'closed' });
+              }
+              return;
+            }
+            let log = fs.readFileSync('plan.log', 'utf8');
+            if (log.length > 60000) log = '... (truncated)\n' + log.slice(-60000);
+            const body = `**${status === 'drift' ? 'Drift detected' : 'Plan failed'}** for \`${root}\` (${envName}) in ${runUrl}\n\n` +
+              `<details><summary>plan output</summary>\n\n\`\`\`\n${log}\n\`\`\`\n</details>`;
+            if (issue) {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body });
+            } else {
+              await github.rest.issues.create({ ...context.repo, title, labels: [label], body });
+            }
+            if (status === 'error') core.setFailed('terraform plan failed');

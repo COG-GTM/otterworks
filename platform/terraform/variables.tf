@@ -80,3 +80,9 @@ variable "ecr_prefix" {
   type        = string
   default     = "otterworks/"
 }
+
+variable "create_ecr_repositories" {
+  description = "Create the service ECR repositories. Repository names carry no environment suffix, so only one environment per account may own them; the others pull from it."
+  type        = bool
+  default     = true
+}

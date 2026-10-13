@@ -1,6 +1,7 @@
 # Customer-managed KMS key for the control table (SSE). Rotation on; the table
 # holds durable tenant/lock/audit state so a managed key is worth the ~$1/mo.
 resource "aws_kms_key" "control" {
+  #checkov:skip=CKV2_AWS_64:The default key policy (account root + IAM) is intended; access is granted through the IRSA role policy, and an explicit policy risks key lockout.
   description             = "SSE for the ${var.control_table_name} DynamoDB control table"
   enable_key_rotation     = true
   deletion_window_in_days = 7

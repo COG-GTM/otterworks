@@ -1,0 +1,11 @@
+{
+  "include": [
+    { "root": "platform/terraform", "env": "dev" },
+    { "root": "platform/terraform", "env": "staging" },
+    { "root": "platform/terraform", "env": "prod" },
+    { "root": "infrastructure/terraform", "env": "dev" },
+    { "root": "infrastructure/terraform", "env": "staging" },
+    { "root": "infrastructure/terraform", "env": "prod" },
+    { "root": "demo-platform/infra/terraform", "env": "dev" }
+  ]
+}

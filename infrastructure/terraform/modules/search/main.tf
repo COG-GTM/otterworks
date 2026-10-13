@@ -13,6 +13,7 @@ locals {
 # --- MeiliSearch Security Group ---
 
 resource "aws_security_group" "meilisearch" {
+  #checkov:skip=CKV_AWS_382:The Fargate task pulls its image from a public registry and has no NAT to scope egress to.
   name        = "${var.project}-meilisearch-${var.environment}"
   description = "Security group for OtterWorks MeiliSearch"
   vpc_id      = var.vpc_id
@@ -26,6 +27,7 @@ resource "aws_security_group" "meilisearch" {
   }
 
   egress {
+    description = "All outbound (AWS APIs, package mirrors)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -81,6 +83,8 @@ resource "aws_iam_role_policy" "ecs_secrets_access" {
 # --- Secrets Manager ---
 
 resource "aws_secretsmanager_secret" "meilisearch_master_key" {
+  #checkov:skip=CKV2_AWS_57:MeiliSearch has no rotation hook; the key is rotated by re-applying with a new value.
+  #checkov:skip=CKV_AWS_149:Encrypted with the AWS-managed Secrets Manager key; only the ECS execution role reads it.
   count       = var.meilisearch_master_key != "" ? 1 : 0
   name        = "${var.project}/${var.environment}/meilisearch-master-key"
   description = "MeiliSearch master key for ${var.environment}"
@@ -99,6 +103,7 @@ resource "aws_secretsmanager_secret_version" "meilisearch_master_key" {
 # --- ECS Cluster ---
 
 resource "aws_ecs_cluster" "meilisearch" {
+  #checkov:skip=CKV_AWS_65:Container Insights bills per metric for a single-task cluster; service logs go to CloudWatch.
   name = "${var.project}-meilisearch-${var.environment}"
 
   tags = merge(local.common_tags, {
@@ -109,6 +114,8 @@ resource "aws_ecs_cluster" "meilisearch" {
 # --- CloudWatch Log Group ---
 
 resource "aws_cloudwatch_log_group" "meilisearch" {
+  #checkov:skip=CKV_AWS_338:30-day retention matches the service log groups in dev.
+  #checkov:skip=CKV_AWS_158:Uses the AWS-managed CloudWatch Logs encryption.
   name              = "/ecs/${var.project}-meilisearch-${var.environment}"
   retention_in_days = 30
 

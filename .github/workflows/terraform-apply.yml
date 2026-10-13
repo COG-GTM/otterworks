@@ -1,0 +1,208 @@
+name: Terraform Apply
+
+# Manual, reviewed apply of ONE root/environment from main:
+#   1. plan   -> saved plan, encrypted, uploaded with its sha256; rendered plan
+#                in the run summary for the reviewer
+#   2. apply  -> waits on the GitHub Environment "terraform-<env>" (configure
+#                required reviewers there), verifies the checksum and applies
+#                exactly that saved plan. A stale plan is refused by Terraform.
+#
+# OFF by default. Nothing runs unless ALL of these are set (see docs/IAC.md):
+#   vars.TF_APPLY_ENABLED == 'true', vars.TF_PLAN_ROLE_ARN, vars.TF_APPLY_ROLE_ARN,
+#   secrets.TF_PLAN_PASSPHRASE, and the run is a workflow_dispatch on main.
+# Merging this file applies nothing. The pull_request trigger only runs the
+# gate, as a self-check that it skips.
+
+on:
+  workflow_dispatch:
+    inputs:
+      root:
+        description: Terraform root to apply
+        type: choice
+        options:
+          - platform/terraform
+          - infrastructure/terraform
+          - demo-platform/infra/terraform
+      environment:
+        description: Environment
+        type: choice
+        options: [dev, staging, prod]
+  pull_request:
+    paths:
+      - ".github/workflows/terraform-apply.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  # One apply per root/environment at a time; never cancel one mid-flight.
+  group: terraform-apply-${{ inputs.root || 'self-check' }}-${{ inputs.environment || github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: 1.9.8
+  ROOT: ${{ inputs.root }}
+  ENV_NAME: ${{ inputs.environment }}
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Opt-in and credential gate
+        id: gate
+        env:
+          APPLY_ENABLED: ${{ vars.TF_APPLY_ENABLED }}
+          PLAN_ROLE: ${{ vars.TF_PLAN_ROLE_ARN }}
+          APPLY_ROLE: ${{ vars.TF_APPLY_ROLE_ARN }}
+          HAS_PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE != '' }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          reasons=()
+          [[ "$APPLY_ENABLED" == "true" ]] || reasons+=("repo variable TF_APPLY_ENABLED is not 'true' (apply is off by default)")
+          [[ -n "$PLAN_ROLE" ]] || reasons+=("repo variable TF_PLAN_ROLE_ARN is not set")
+          [[ -n "$APPLY_ROLE" ]] || reasons+=("repo variable TF_APPLY_ROLE_ARN is not set")
+          [[ "$HAS_PASSPHRASE" == "true" ]] || reasons+=("secret TF_PLAN_PASSPHRASE is not set")
+          [[ "$EVENT" == "workflow_dispatch" ]] || reasons+=("event is $EVENT; apply only runs from workflow_dispatch")
+          [[ "$REF" == "refs/heads/main" ]] || reasons+=("ref is $REF; apply only runs from main")
+          if [[ -n "$ROOT" && ! -f "$ROOT/environments/${ENV_NAME}.tfvars" ]]; then
+            reasons+=("$ROOT has no '${ENV_NAME}' environment")
+          fi
+          # A missing environment would be auto-created unprotected by the apply job,
+          # so refuse unless terraform-<env> already exists with required reviewers.
+          if [[ -n "$ENV_NAME" ]]; then
+            reviewers=$(gh api "repos/${REPO}/environments/terraform-${ENV_NAME}" \
+              --jq '[.protection_rules[]? | select(.type == "required_reviewers") | .reviewers[]?] | length' 2>/dev/null || echo 0)
+            (( reviewers > 0 )) || reasons+=("GitHub Environment terraform-${ENV_NAME} does not exist or has no required reviewers")
+          fi
+          if (( ${#reasons[@]} )); then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Terraform apply skipped"
+              printf -- '- %s\n' "${reasons[@]}"
+              echo
+              echo "Nothing was planned or applied. See docs/IAC.md to enable."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Terraform apply skipped::${reasons[*]}"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "### Terraform apply: ${ROOT} (${ENV_NAME})" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  plan:
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      changes: ${{ steps.plan.outputs.changes }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    env:
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_meilisearch_master_key: ${{ secrets.TF_VAR_MEILISEARCH_MASTER_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          role-session-name: tf-apply-plan-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: terraform init
+        run: terraform -chdir="$ROOT" init -backend-config="environments/backend-${ENV_NAME}.hcl" -reconfigure
+
+      - name: terraform plan (saved)
+        id: plan
+        run: |
+          set +e
+          terraform -chdir="$ROOT" plan -no-color -detailed-exitcode \
+            -var-file="environments/${ENV_NAME}.tfvars" -out=tfplan
+          rc=$?
+          set -e
+          [[ $rc -eq 1 ]] && exit 1
+          echo "changes=$([[ $rc -eq 2 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          terraform -chdir="$ROOT" show -no-color tfplan > plan.txt
+          {
+            echo "#### Plan to be applied (review before approving the environment)"
+            echo '```'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Encrypt and checksum the saved plan
+        id: pack
+        if: steps.plan.outputs.changes == 'true'
+        env:
+          PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE }}
+        run: |
+          # A saved plan embeds variable values, including secrets; never upload it in clear.
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --symmetric \
+            --cipher-algo AES256 -o tfplan.gpg "$ROOT/tfplan" 3<<<"$PASSPHRASE"
+          echo "sha256=$(sha256sum tfplan.gpg | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.plan.outputs.changes == 'true'
+        with:
+          name: tfplan
+          path: tfplan.gpg
+          retention-days: 3
+
+  apply:
+    needs: plan
+    if: needs.plan.outputs.changes == 'true'
+    runs-on: ubuntu-latest
+    environment: terraform-${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: tfplan
+
+      - name: Verify and decrypt the reviewed plan
+        env:
+          EXPECTED: ${{ needs.plan.outputs.sha256 }}
+          PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE }}
+        run: |
+          echo "${EXPECTED}  tfplan.gpg" | sha256sum -c -
+          gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --decrypt \
+            -o "$ROOT/tfplan" tfplan.gpg 3<<<"$PASSPHRASE"
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.TF_APPLY_ROLE_ARN }}
+          role-session-name: tf-apply-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: terraform init
+        run: terraform -chdir="$ROOT" init -backend-config="environments/backend-${ENV_NAME}.hcl" -reconfigure
+
+      - name: terraform apply (saved plan only)
+        run: terraform -chdir="$ROOT" apply -no-color tfplan

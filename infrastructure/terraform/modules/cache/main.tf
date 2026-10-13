@@ -21,6 +21,7 @@ resource "aws_elasticache_subnet_group" "main" {
 }
 
 resource "aws_security_group" "redis" {
+  #checkov:skip=CKV_AWS_382:Open egress is the AWS default; ElastiCache initiates no outbound traffic and ingress is VPC-only.
   name        = "${var.project}-redis-${var.environment}"
   description = "Security group for OtterWorks ElastiCache Redis"
   vpc_id      = var.vpc_id
@@ -34,6 +35,7 @@ resource "aws_security_group" "redis" {
   }
 
   egress {
+    description = "All outbound (AWS APIs, package mirrors)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -46,6 +48,10 @@ resource "aws_security_group" "redis" {
 }
 
 resource "aws_elasticache_replication_group" "main" {
+  #checkov:skip=CKV_AWS_30:Clients connect with plain redis://; transit encryption is a variable (redis_transit_encryption_enabled) to flip together with rediss:// support.
+  #checkov:skip=CKV_AWS_31:An AUTH token requires transit encryption (see CKV_AWS_30); access is restricted to the VPC CIDR by security group.
+  #checkov:skip=CKV_AWS_191:At-rest encryption uses the AWS-managed key; a CMK would force replacement of the replication group.
+  #checkov:skip=CKV2_AWS_50:Automatic failover follows redis_num_cache_clusters > 1 (prod runs 2 nodes).
   replication_group_id = "${var.project}-redis-${var.environment}"
   description          = "OtterWorks Redis cluster for session and cache"
 
