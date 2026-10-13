@@ -44,7 +44,10 @@ jobs:
           python-version: "3.12"
       - uses: ./.github/actions/core-stack
       - name: Install API test deps
-        run: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r tests/api/requirements.txt
+        # setup-uv with python-version already creates and activates .venv
+        run: |
+          [ -d .venv ] || uv venv .venv
+          VIRTUAL_ENV=.venv uv pip install -r tests/api/requirements.txt
       - name: make test-api-flows
         run: make test-api-flows
       - name: Upload JUnit report
