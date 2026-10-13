@@ -160,7 +160,8 @@ def main():
         df["eventType"] = "unknown"
 
     # Resolve user ID from whichever field is populated
-    df["resolved_user_id"] = "unknown"
+    # object dtype: ids may be non-strings, which pandas 3's default str dtype rejects
+    df["resolved_user_id"] = pd.Series("unknown", index=df.index, dtype=object)
     for col in ["ownerId", "editedBy", "authorId", "deletedBy", "userId"]:
         if col in df.columns:
             mask = (df["resolved_user_id"] == "unknown") & df[col].notna() & (df[col] != "")

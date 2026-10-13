@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.27'
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
       - run: go build -o /dev/null ./cmd/server
@@ -107,10 +107,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
       - uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.6'
+          gradle-version: '9.8.1'
       - run: gradle check --no-daemon
 
   # Rust - File Service
@@ -123,7 +123,7 @@ jobs:
         working-directory: services/file-service
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99
         with:
           components: clippy, rustfmt
       - run: cargo fmt --check
@@ -143,8 +143,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - run: pip install poetry==1.8.2
+          python-version: '3.14'
+      - run: pip install poetry==2.5.1
       - run: poetry install
       - run: poetry run ruff check .
       - run: poetry run pytest --cov=app
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm ci
       - run: npm run lint
       - run: npm test
@@ -180,10 +180,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
       - uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.6'
+          gradle-version: '9.8.1'
       - run: gradle check --no-daemon
 
   # Python - Search Service
@@ -198,7 +198,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest --cov=app
 
@@ -215,7 +215,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '25'
       - name: Install sbt
         run: |
           echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | sudo tee /etc/apt/sources.list.d/sbt.list
@@ -257,7 +257,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.3'
+          ruby-version: '4.0'
           bundler-cache: true
           working-directory: services/admin-service
       - run: bundle exec rails db:schema:load
@@ -275,7 +275,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - run: dotnet restore
       - run: dotnet build --no-restore
       - run: dotnet test --no-build
@@ -292,7 +292,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm ci
       - run: npm run lint
       - run: npm test
@@ -310,7 +310,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
       - run: npm ci
       - run: npm run lint || true
       - run: npm test || true
@@ -381,7 +381,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: demo-platform/dashboard/package-lock.json
       - run: npm ci

@@ -1,29 +1,30 @@
-import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
+
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from './layout/sidebar/sidebar.component';
 import { ToolbarComponent } from './layout/toolbar/toolbar.component';
 import { AuthService } from './core/services/auth.service';
 
 @Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [CommonModule, RouterOutlet, SidebarComponent, ToolbarComponent],
-  template: `
-    <div class="app-layout" *ngIf="authService.isAuthenticated; else loginView">
-      <app-sidebar [(collapsed)]="sidebarCollapsed"></app-sidebar>
-      <div class="main-area">
-        <app-toolbar></app-toolbar>
-        <main class="content" [class.sidebar-collapsed]="sidebarCollapsed">
-          <router-outlet></router-outlet>
-        </main>
+    selector: 'app-root',
+    imports: [RouterOutlet, SidebarComponent, ToolbarComponent],
+    template: `
+    @if (authService.isAuthenticated) {
+      <div class="app-layout">
+        <app-sidebar [(collapsed)]="sidebarCollapsed"></app-sidebar>
+        <div class="main-area">
+          <app-toolbar></app-toolbar>
+          <main class="content" [class.sidebar-collapsed]="sidebarCollapsed">
+            <router-outlet></router-outlet>
+          </main>
+        </div>
       </div>
-    </div>
-    <ng-template #loginView>
+    } @else {
       <router-outlet></router-outlet>
-    </ng-template>
-  `,
-  styles: [`
+    }
+    `,
+    changeDetection: ChangeDetectionStrategy.Eager,
+    styles: [`
     .app-layout {
       display: flex;
       min-height: 100vh;
@@ -42,7 +43,7 @@ import { AuthService } from './core/services/auth.service';
       background: #f5f5f5;
       overflow-y: auto;
     }
-  `],
+  `]
 })
 export class AppComponent {
   sidebarCollapsed = false;

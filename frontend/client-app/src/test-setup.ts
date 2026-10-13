@@ -4,6 +4,6 @@ import { setupServer } from "msw/node";
 
 export const billingServer = setupServer();
 
-beforeAll(() => billingServer.listen({ onUnhandledRequest: "error" }));
+beforeAll(() => billingServer.listen({ onUnhandledFrame: "error" }));
 afterEach(() => billingServer.resetHandlers());
 afterAll(() => billingServer.close());
