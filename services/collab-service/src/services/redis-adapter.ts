@@ -27,6 +27,8 @@ export class RedisAdapter {
       maxRetriesPerRequest: 3,
       retryStrategy: (times: number) => Math.min(times * 200, 5000),
       lazyConnect: true,
+      // ioredis 6 defaults to RESP3; keep the RESP2 wire protocol used before the upgrade.
+      protocol: 2 as const,
     };
 
     this.client = new Redis(redisOptions);
