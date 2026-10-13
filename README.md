@@ -87,7 +87,7 @@ Managed via Terraform in `infrastructure/terraform/`:
 ### Kubernetes
 - Helm charts per service in `infrastructure/helm/`
 - Base namespace resources (ResourceQuota, LimitRange) in `infrastructure/k8s/`
-- Deploys to EKS cluster managed by [platform-engineering-shared-services](https://github.com/Cognition-Partner-Workshops/platform-engineering-shared-services)
+- Deploys to the `otterworks-dev` EKS cluster, which is provisioned in this repo by `demo-platform/infra/terraform/` (the app Terraform in `infrastructure/terraform/` only looks the cluster up via a data source); demo tenants get one namespace each (see `docs/adr/0006-namespace-per-tenant.md`)
 
 ### Deploy to AWS
 
@@ -159,7 +159,7 @@ Per-service build targets are also available (e.g., `make build-gateway`, `make 
 
 ```
 otterworks/
-├── services/              # Backend microservices (11 services, 8 languages)
+├── services/              # Backend microservices (12 modern services, 9 languages) + legacy fixtures
 │   ├── api-gateway/       #   Go / Chi
 │   ├── auth-service/      #   Java / Spring Boot
 │   ├── file-service/      #   Rust / Actix-Web
@@ -170,15 +170,19 @@ otterworks/
 │   ├── analytics-service/ #   Scala / Akka HTTP
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
-│   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   ├── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   ├── billing-service/   #   Python / FastAPI (modernized from legacy-billing procs)
+│   ├── legacy-billing/    #   Legacy stored-procedure billing (before-state fixture)
+│   ├── legacy-portal/     #   Legacy portal (before-state fixture)
+│   └── industry-solutions/ #  Industry vertical fixtures (e.g. insurance)
 ├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)
 │   ├── helm/              #   Per-service Helm charts
 │   └── k8s/               #   Base Kubernetes resources (namespace, quotas, limits)
 ├── shared/
-│   ├── proto/             #   Protobuf / gRPC service definitions
-│   ├── openapi/           #   OpenAPI specs per service
+│   ├── proto/             #   Protobuf contracts (buf lint/breaking in contracts.yml)
+│   ├── openapi/           #   OpenAPI 3 specs per service (Redocly lint in contracts.yml)
 │   └── events/            #   Event schema definitions (JSON Schema)
 ├── observability/
 │   ├── grafana/           #   Dashboards and provisioning
@@ -193,7 +197,9 @@ otterworks/
 │   ├── airflow/           #   Airflow DAGs, plugins, and tests
 │   └── spark/             #   Scala Spark processing jobs
 ├── scripts/               # Deploy and teardown scripts
-└── .github/workflows/     # CI/CD pipelines (ci, docker-build, security-scan)
+├── tests/                 # Black-box API flows (tests/api) and k6 load tests (tests/perf)
+├── docs/adr/              # Architecture Decision Records
+└── .github/workflows/     # CI/CD (ci, contracts, api-flows-live, perf, docker-build, security-scan, cd-tenant, ...)
 ```
 
 ## Contributing

@@ -1,0 +1,61 @@
+name: API Flows (live stack)
+
+# Runs the black-box API flow suite (`make test-api-flows`) against a real docker-compose
+# core stack, replacing the collection-only check in ci.yml for the core flows.
+on:
+  pull_request:
+    paths:
+      - "services/api-gateway/**"
+      - "services/auth-service/**"
+      - "services/file-service/**"
+      - "services/document-service/**"
+      - "tests/api/**"
+      - "docker-compose*.yml"
+      - ".github/actions/core-stack/**"
+      - ".github/workflows/api-flows-live.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: api-flows-live-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OTTERWORKS_API_BASE_URL: http://localhost:8080
+      OTTERWORKS_API_READY_TIMEOUT: "60"
+      # Flows whose services are all in the core profile. Flows for services outside the core
+      # profile (search, notification, admin, audit, analytics, report, collab) need the full
+      # 13-service stack; see docs/testing/README.md.
+      PYTEST_ADDOPTS: >-
+        -k "test_auth_flow or test_file_flow or test_document_flow"
+        -m "not degradation" -rA --junitxml=api-flows-junit.xml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/core-stack
+      - name: Install API test deps
+        run: uv venv .venv && VIRTUAL_ENV=.venv uv pip install -r tests/api/requirements.txt
+      - name: make test-api-flows
+        run: make test-api-flows
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-flows-junit
+          path: api-flows-junit.xml
+      - name: Service logs on failure
+        if: failure()
+        run: $OTTERWORKS_COMPOSE logs --tail=200
+      - name: Tear down
+        if: always()
+        run: $OTTERWORKS_COMPOSE down -v

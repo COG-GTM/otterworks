@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package otterworks.audit.v1;
+
+import "google/protobuf/timestamp.proto";
+import "otterworks/common/v1/common.proto";
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/audit/v1;auditv1";
+
+// AuditService records and queries audit events. Mirrors audit-service
+// `POST/GET /api/v1/audit/events` (AuditEventRequest / AuditEventResponse).
+service AuditService {
+  // RecordEvent appends an audit event.
+  rpc RecordEvent(RecordEventRequest) returns (RecordEventResponse);
+  // GetEvent fetches one audit event by id.
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+  // QueryEvents filters audit events.
+  rpc QueryEvents(QueryEventsRequest) returns (QueryEventsResponse);
+}
+
+message AuditEvent {
+  string id = 1;
+  string user_id = 2;
+  string action = 3;
+  string resource_type = 4;
+  string resource_id = 5;
+  map<string, string> details = 6;
+  string ip_address = 7;
+  string user_agent = 8;
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+message RecordEventRequest {
+  string user_id = 1;
+  string action = 2;
+  string resource_type = 3;
+  string resource_id = 4;
+  map<string, string> details = 5;
+  string ip_address = 6;
+  string user_agent = 7;
+}
+
+message RecordEventResponse {
+  AuditEvent event = 1;
+}
+
+message GetEventRequest {
+  string id = 1;
+}
+
+message GetEventResponse {
+  AuditEvent event = 1;
+}
+
+message QueryEventsRequest {
+  string user_id = 1;
+  string action = 2;
+  string resource_id = 3;
+  string resource_type = 4;
+  google.protobuf.Timestamp from = 5;
+  google.protobuf.Timestamp to = 6;
+  otterworks.common.v1.PageRequest page = 7;
+}
+
+message QueryEventsResponse {
+  repeated AuditEvent events = 1;
+  otterworks.common.v1.PageInfo page_info = 2;
+}

@@ -12,6 +12,9 @@ servers:
   - url: http://localhost:8087
     description: Local development
 
+security:
+  - bearerAuth: []
+
 paths:
   /api/v1/search/:
     get:
@@ -455,6 +458,7 @@ paths:
 
   /health:
     get:
+      security: []
       operationId: healthCheck
       summary: Liveness check
       description: Returns 200 if the process is running.
@@ -511,6 +515,11 @@ paths:
                 search_service_requests_total{method="GET",endpoint="/api/v1/search/",status="200"} 100
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     XUserID:
       name: X-User-ID

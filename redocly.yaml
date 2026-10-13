@@ -1,0 +1,25 @@
+# OpenAPI lint config for shared/openapi/*.yaml (run: npx @redocly/cli@1 lint)
+extends:
+  - recommended
+apis:
+  admin-service: { root: shared/openapi/admin-service.yaml }
+  analytics-service: { root: shared/openapi/analytics-service.yaml }
+  api-gateway: { root: shared/openapi/api-gateway.yaml }
+  audit-service: { root: shared/openapi/audit-service.yaml }
+  auth-service: { root: shared/openapi/auth-service.yaml }
+  billing-service: { root: shared/openapi/billing-service.yaml }
+  collab-service: { root: shared/openapi/collab-service.yaml }
+  document-service: { root: shared/openapi/document-service.yaml }
+  file-service: { root: shared/openapi/file-service.yaml }
+  notification-service: { root: shared/openapi/notification-service.yaml }
+  report-service: { root: shared/openapi/report-service.yaml }
+  search-service: { root: shared/openapi/search-service.yaml }
+rules:
+  # Local dev servers are intentionally http://localhost.
+  no-server-example.com: off
+  # Health/metrics probes legitimately have no 4xx response.
+  operation-4xx-response: warn
+  # Tags are self-explanatory service areas.
+  tag-description: off
+  # Flask/FastAPI collection routes (e.g. /api/v1/search/) really are served with a trailing slash.
+  no-path-trailing-slash: warn

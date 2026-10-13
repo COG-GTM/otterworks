@@ -1,0 +1,49 @@
+name: OtterWorks core stack
+description: >-
+  Build (with GitHub Actions layer cache) and start the OtterWorks core docker-compose profile
+  (postgres, redis, localstack, meilisearch, api-gateway, auth, file, document, web-app),
+  plus any extra services, then wait for the gateway to be healthy.
+inputs:
+  extra-services:
+    description: Space-separated extra compose services to build and start (e.g. search-service)
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+    - uses: crazy-max/ghaction-github-runtime@v3
+    - name: Write CI compose override (GHA build cache, no host port clash)
+      shell: bash
+      run: |
+        services="api-gateway auth-service file-service document-service web-app ${{ inputs.extra-services }}"
+        {
+          echo "services:"
+          for s in $services; do
+            echo "  $s:"
+            echo "    build:"
+            echo "      cache_from: [\"type=gha,scope=$s\"]"
+            echo "      cache_to: [\"type=gha,scope=$s,mode=max\"]"
+          done
+        } > "$RUNNER_TEMP/compose.ci.yml"
+        echo "OTTERWORKS_COMPOSE=docker compose -f docker-compose.infra.yml -f docker-compose.yml -f $RUNNER_TEMP/compose.ci.yml" >> "$GITHUB_ENV"
+        echo "OTTERWORKS_APP_SERVICES=$services" >> "$GITHUB_ENV"
+    - name: Build service images
+      shell: bash
+      run: $OTTERWORKS_COMPOSE build $OTTERWORKS_APP_SERVICES
+    - name: Start core profile
+      shell: bash
+      run: $OTTERWORKS_COMPOSE up -d --no-build postgres redis localstack meilisearch $OTTERWORKS_APP_SERVICES
+    - name: Wait for gateway
+      shell: bash
+      run: |
+        for _ in $(seq 1 90); do
+          if curl -sf http://localhost:8080/health >/dev/null; then
+            echo "gateway healthy"; $OTTERWORKS_COMPOSE ps; exit 0
+          fi
+          sleep 2
+        done
+        echo "::error::gateway did not become healthy"
+        $OTTERWORKS_COMPOSE ps
+        $OTTERWORKS_COMPOSE logs --tail=100
+        exit 1

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package otterworks.notification.v1;
+
+import "otterworks/common/v1/common.proto";
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/notification/v1;notificationv1";
+
+// NotificationService delivers user notifications. Producers (file-service
+// shares, document-service comments/mentions) currently publish events that
+// notification-service consumes from SQS; this pins the direct-call shape.
+service NotificationService {
+  // SendNotification enqueues a notification for one user.
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+}
+
+// Mirrors `NotificationSentEvent.type` in notification-events.json.
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  NOTIFICATION_TYPE_MENTION = 1;
+  NOTIFICATION_TYPE_SHARE = 2;
+  NOTIFICATION_TYPE_COMMENT = 3;
+  NOTIFICATION_TYPE_SYSTEM = 4;
+}
+
+// Mirrors `NotificationSentEvent.channel` in notification-events.json.
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  CHANNEL_EMAIL = 1;
+  CHANNEL_IN_APP = 2;
+  CHANNEL_PUSH = 3;
+}
+
+message SendNotificationRequest {
+  string user_id = 1;
+  NotificationType type = 2;
+  string title = 3;
+  string message = 4;
+  otterworks.common.v1.ResourceType resource_type = 5;
+  string resource_id = 6;
+  string actor_id = 7;
+  // Empty means "use the user's preferences".
+  repeated Channel channels = 8;
+}
+
+message SendNotificationResponse {
+  string notification_id = 1;
+}

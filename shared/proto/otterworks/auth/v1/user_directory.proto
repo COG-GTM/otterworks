@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package otterworks.auth.v1;
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/auth/v1;authv1";
+
+// UserDirectoryService is auth-service's internal user lookup surface.
+//
+// Today it is served over REST (`GET /api/v1/auth/users/lookup?email=` and
+// `GET /api/v1/auth/users/by-id/{id}`), called by file-service when sharing a
+// file by email and by notification/admin for display names. This contract
+// pins the shape for a future gRPC transport.
+service UserDirectoryService {
+  // LookupUserByEmail resolves a user by email address.
+  rpc LookupUserByEmail(LookupUserByEmailRequest) returns (LookupUserByEmailResponse);
+  // LookupUserById resolves a user by id.
+  rpc LookupUserById(LookupUserByIdRequest) returns (LookupUserByIdResponse);
+}
+
+message User {
+  // UUID string.
+  string id = 1;
+  string email = 2;
+  string display_name = 3;
+}
+
+message LookupUserByEmailRequest {
+  string email = 1;
+}
+
+message LookupUserByEmailResponse {
+  User user = 1;
+}
+
+message LookupUserByIdRequest {
+  string id = 1;
+}
+
+message LookupUserByIdResponse {
+  User user = 1;
+}

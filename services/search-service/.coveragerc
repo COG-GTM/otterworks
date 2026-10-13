@@ -1,7 +1,8 @@
+# Coverage gate enforced by `pytest --cov=app` in CI. See docs/testing/coverage-thresholds.md to ratchet.
 [run]
 source = app
 omit = app/tests/*
 
 [report]
 show_missing = true
-fail_under = 0
+fail_under = 74

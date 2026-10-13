@@ -63,10 +63,12 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
     )
     assert versions_response.status_code == 200, versions_response.text
     versions = versions_response.json()
-    assert [version["version_number"] for version in versions] == [1, 2, 3]
+    # document-service returns versions newest-first (order_by version_number desc).
+    assert [version["version_number"] for version in versions] == [3, 2, 1]
+    first_version = next(version for version in versions if version["version_number"] == 1)
 
     restore_response = api_client.client.post(
-        f"/api/v1/documents/{document_id}/versions/{versions[0]['id']}/restore",
+        f"/api/v1/documents/{document_id}/versions/{first_version['id']}/restore",
         headers=headers,
     )
     assert restore_response.status_code == 200, restore_response.text

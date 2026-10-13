@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package otterworks.common.v1;
+
+option go_package = "github.com/COG-GTM/otterworks/gen/go/otterworks/common/v1;commonv1";
+
+// ResourceType enumerates the user-visible resources shared across services
+// (mirrors the `resourceType`/`entityType` enums in shared/events/schemas).
+enum ResourceType {
+  RESOURCE_TYPE_UNSPECIFIED = 0;
+  RESOURCE_TYPE_DOCUMENT = 1;
+  RESOURCE_TYPE_FILE = 2;
+  RESOURCE_TYPE_FOLDER = 3;
+  RESOURCE_TYPE_USER = 4;
+  RESOURCE_TYPE_GROUP = 5;
+}
+
+// SharePermission mirrors file-service `SharePermission` and the
+// `permission` enum in file-events.json / audit-events.json.
+enum SharePermission {
+  SHARE_PERMISSION_UNSPECIFIED = 0;
+  SHARE_PERMISSION_VIEWER = 1;
+  SHARE_PERMISSION_EDITOR = 2;
+  SHARE_PERMISSION_ADMIN = 3;
+}
+
+// PageRequest is the cursor-less page/size pagination used by the REST APIs.
+message PageRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message PageInfo {
+  int32 page = 1;
+  int32 page_size = 2;
+  int64 total = 3;
+}

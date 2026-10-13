@@ -50,3 +50,7 @@ testpaths = ["tests"]
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+# Coverage gate enforced by `pytest --cov=app` in CI. See docs/testing/coverage-thresholds.md to ratchet.
+[tool.coverage.report]
+fail_under = 80

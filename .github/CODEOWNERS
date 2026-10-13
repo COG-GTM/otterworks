@@ -1,0 +1,16 @@
+# Code owners for COG-GTM/otterworks.
+# @DhrovS is the default owner for every path until per-area GitHub teams with write access
+# exist on this fork; split ownership by adding more specific patterns below (last match wins).
+
+*                               @DhrovS
+
+# Governance, CI and contracts
+/.github/                       @DhrovS
+/shared/proto/                  @DhrovS
+/shared/openapi/                @DhrovS
+/docs/adr/                      @DhrovS
+
+# Shared infrastructure (deployed from upstream; see AGENTS.md before changing)
+/infrastructure/                @DhrovS
+/demo-platform/                 @DhrovS
+/scripts/                       @DhrovS

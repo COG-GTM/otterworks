@@ -1,0 +1,54 @@
+name: Performance (k6)
+
+# Load tests for the core user flows against a docker-compose stack on the runner.
+# Manual or weekly; not on every PR (runner numbers are noisy, see tests/perf/README.md).
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "k6 script under tests/perf/ (or 'all')"
+        required: false
+        default: all
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/core-stack
+        with:
+          extra-services: search-service
+      - uses: grafana/setup-k6-action@v1
+      - name: Run k6
+        env:
+          BASE_URL: http://localhost:8080
+          SCENARIO: ${{ github.event.inputs.scenario || 'all' }}
+        run: |
+          mkdir -p perf-results
+          if [ "$SCENARIO" = "all" ]; then
+            scripts="auth-login file-upload-list document-crud search"
+          else
+            scripts="$SCENARIO"
+          fi
+          status=0
+          for s in $scripts; do
+            echo "::group::k6 $s"
+            k6 run --summary-export "perf-results/$s.json" "tests/perf/$s.js" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - name: Upload k6 summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summaries
+          path: perf-results/
+      - name: Tear down
+        if: always()
+        run: $OTTERWORKS_COMPOSE down -v
