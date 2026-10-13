@@ -20,7 +20,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 K8S_DIR="${HERE}/../k8s"
 pinned_version="${CERT_MANAGER_CHART_VERSION:-}"
-# shellcheck source=../k8s/platform-addons.versions.env
+# shellcheck source=/dev/null
 source "${K8S_DIR}/platform-addons.versions.env"
 CERT_MANAGER_CHART_VERSION="${pinned_version:-${CERT_MANAGER_CHART_VERSION}}"
 CERT_MANAGER_NAMESPACE="${CERT_MANAGER_NAMESPACE:-cert-manager}"

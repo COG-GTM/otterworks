@@ -26,7 +26,7 @@ INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
 _ING_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ING_ADDONS_DIR="${_ING_LIB_DIR}/../../demo-platform/k8s"
 if [ -f "${_ING_ADDONS_DIR}/platform-addons.versions.env" ]; then
-  # shellcheck source=../../demo-platform/k8s/platform-addons.versions.env
+  # shellcheck source=/dev/null
   source "${_ING_ADDONS_DIR}/platform-addons.versions.env"
 fi
 INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"

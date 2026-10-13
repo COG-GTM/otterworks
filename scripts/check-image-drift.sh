@@ -61,7 +61,7 @@ legacy="$(git grep -nE 'workshop/otterworks[-/]' -- ':!docs/SDLC-COVERAGE.md' ':
 ${legacy}"
 
 # 4. external-dns pin ---------------------------------------------------------
-# shellcheck source=../demo-platform/k8s/platform-addons.versions.env
+# shellcheck source=/dev/null
 source demo-platform/k8s/platform-addons.versions.env
 grep -q "image: registry.k8s.io/external-dns/external-dns:${EXTERNAL_DNS_VERSION}\$" demo-platform/k8s/dns-tls/external-dns.yaml \
   || err "demo-platform/k8s/dns-tls/external-dns.yaml image is not pinned to ${EXTERNAL_DNS_VERSION}"

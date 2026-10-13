@@ -32,7 +32,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${HERE}/../.." && pwd)"
 K8S_DIR="${HERE}/../k8s"
 pinned_version="${ARGOCD_CHART_VERSION:-}"
-# shellcheck source=../k8s/platform-addons.versions.env
+# shellcheck source=/dev/null
 source "${K8S_DIR}/platform-addons.versions.env"
 ARGOCD_CHART_VERSION="${pinned_version:-${ARGOCD_CHART_VERSION}}"
 ARGOCD_NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
