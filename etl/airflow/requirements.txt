@@ -1,0 +1,4 @@
+# Installed on top of apache/airflow:2.10.5 (which already ships the amazon, postgres and http
+# providers) with the matching constraints file. See Dockerfile.
+apache-airflow-providers-apache-spark
+pyspark

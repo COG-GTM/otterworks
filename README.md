@@ -190,8 +190,9 @@ otterworks/
 │   ├── policies/          #   Network policies (default-deny, DNS, namespace egress)
 │   └── scanning/          #   Trivy container scanning config
 ├── etl/
-│   ├── airflow/           #   Airflow DAGs, plugins, and tests
-│   └── spark/             #   Scala Spark processing jobs
+│   ├── airflow/           #   Airflow 2.10 DAGs (one per legacy job), tests, local docker-compose runner
+│   ├── spark/             #   PySpark jobs submitted from Airflow (analytics aggregation) + tests
+│   └── scripts/           #   Legacy cron scripts (frozen "before" state; see etl/ETL_UPGRADE_GUIDE.md)
 ├── scripts/               # Deploy and teardown scripts
 └── .github/workflows/     # CI/CD pipelines (ci, docker-build, security-scan)
 ```

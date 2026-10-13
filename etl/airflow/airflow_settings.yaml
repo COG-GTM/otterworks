@@ -1,0 +1,45 @@
+# Connection / Variable inventory for otterworks ETL, in Astro CLI `airflow_settings.yaml` format.
+# Placeholders only. The docker-compose runner sets the same ids from .env (see .env.example).
+airflow:
+  connections:
+    - conn_id: aws_default
+      conn_type: aws
+      conn_login: __SET_ME__          # AWS access key id (or omit and use an IAM role / IRSA)
+      conn_password: __SET_ME__       # AWS secret access key
+      conn_extra:
+        region_name: us-east-1
+        # endpoint_url: http://otterworks-localstack:4566   # LocalStack only
+    - conn_id: otterworks_postgres
+      conn_type: postgres
+      conn_host: __SET_ME__
+      conn_port: 5432
+      conn_schema: otterworks
+      conn_login: __SET_ME__
+      conn_password: __SET_ME__
+    - conn_id: otterworks_meilisearch
+      conn_type: http
+      conn_host: __SET_ME__
+      conn_port: 7700
+      conn_schema: http
+      conn_password: __SET_ME__       # MeiliSearch API key
+    - conn_id: otterworks_document_service
+      conn_type: http
+      conn_host: __SET_ME__
+      conn_port: 8083
+      conn_schema: http
+    - conn_id: otterworks_file_service
+      conn_type: http
+      conn_host: __SET_ME__
+      conn_port: 8082
+      conn_schema: http
+    - conn_id: spark_default
+      conn_type: spark
+      conn_host: local[*]
+    - conn_id: otterworks_slack_webhook   # optional; absent = Slack alerting disabled
+      conn_type: http
+      conn_host: hooks.slack.com
+      conn_schema: https
+      conn_password: /services/__SET_ME__
+  variables:
+    - variable_name: otterworks_etl
+      variable_value: '{"alert_emails": [], "storage_cleanup_dry_run": true}'
