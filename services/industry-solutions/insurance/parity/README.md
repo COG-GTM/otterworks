@@ -9,6 +9,13 @@ routes.yaml                   PL/SQL entrypoint → HTTP endpoint, probe SQL ↔
 rules/<module>.rules.yaml     rule ledger: statement, PL/SQL lines, scenarios, decision
 harness/record.py             re-seeds the frozen fixture, runs PL/SQL via python-oracledb
 harness/replay.py             resets the parity tenant, replays over HTTP, writes reports/parity.{md,json}
+```
+
+Each transcript stores `source_sha`, `fixture_sha` and `scenario_sha` (a hash of the scenario's
+id, module, entrypoint, actor, inputs, setup and probes). `verify.py` and `replay.py` fail any
+transcript whose fingerprints no longer match, so an edited scenario must be re-recorded.
+
+```text
 harness/rules_gate.py         every scenario claimed, every rule sourced + unit-tested
 harness/verify.py             one fresh transcript per scenario (fingerprints match)
 ```

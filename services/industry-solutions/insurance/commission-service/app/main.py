@@ -20,13 +20,14 @@ from app.security import (
     CALCULATE,
     MANAGE_RATES,
     MANAGE_SPLITS,
+    PARITY_RESET,
     RUN_ETL,
     VIEW,
     Principal,
     require,
 )
 
-PERIOD_PATTERN = r"^\d{4}-\d{2}$"
+PERIOD_PATTERN = r"^[0-9]{4}-[0-9]{2}$"
 
 
 class RateUpsert(BaseModel):
@@ -93,7 +94,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(psycopg.errors.UniqueViolation)
     async def unique_violation(_: Request, exc: psycopg.errors.UniqueViolation) -> JSONResponse:
-        return _error(DuplicateOpenRateError("unique constraint violated"))
+        if exc.diag.constraint_name == "ux_rates_open":
+            return _error(DuplicateOpenRateError("unique constraint violated"))
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={"error": {"code": "CONFLICT", "legacy_ora_code": -1, "message": "conflict"}},
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -148,6 +154,7 @@ def _ledger_json(row: Any) -> dict[str, Any]:
 
 Viewer = Annotated[Principal, Depends(require(VIEW))]
 RateAdmin = Annotated[Principal, Depends(require(MANAGE_RATES))]
+ParityReset = Annotated[Principal, Depends(require(PARITY_RESET))]
 SplitManager = Annotated[Principal, Depends(require(MANAGE_SPLITS))]
 Calculator = Annotated[Principal, Depends(require(CALCULATE))]
 EtlRunner = Annotated[Principal, Depends(require(RUN_ETL))]
@@ -313,10 +320,14 @@ def summary(
 
 
 @router.post("/internal/reset", include_in_schema=False)
-def reset(request: Request, principal: RateAdmin) -> dict[str, str]:
-    """Restore the caller's own tenant to its seed. Disabled unless explicitly enabled."""
+def reset(request: Request, principal: ParityReset) -> dict[str, str]:
+    """Restore the caller's own tenant to its seed.
+
+    Off unless enabled, limited to allow-listed fixture tenants, and needs the dedicated
+    parity role, so an ordinary tenant admin can never wipe a tenant.
+    """
     settings: Settings = request.app.state.settings
-    if not settings.enable_reset:
+    if not settings.enable_reset or principal.tenant_id not in settings.reset_tenant_ids:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="not found")
     db: Database = request.app.state.db
     try:

@@ -48,6 +48,26 @@ def fixture_sha() -> str:
     return _digest(FIXTURE_FILES)
 
 
+SCENARIO_FIELDS = ("id", "module", "entrypoint", "actor", "inputs", "setup", "probes")
+
+
+def scenario_sha(scenario: dict[str, Any]) -> str:
+    """Fingerprint of everything that drives the Oracle call (not the target-side divergence)."""
+    material = {key: scenario.get(key) for key in SCENARIO_FIELDS}
+    material["actor"] = material["actor"] or "parity"
+    encoded = json.dumps(material, sort_keys=True, default=str).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def stale_reasons(scenario: dict[str, Any], transcript: dict[str, Any]) -> list[str]:
+    checks = (
+        ("source_sha", source_sha(), "PL/SQL source changed since recording"),
+        ("fixture_sha", fixture_sha(), "fixture schema/seed changed since recording"),
+        ("scenario_sha", scenario_sha(scenario), "scenario changed since recording"),
+    )
+    return [message for name, expected, message in checks if transcript.get(name) != expected]
+
+
 def load_routes() -> dict[str, Any]:
     return yaml.safe_load(ROUTES.read_text())
 

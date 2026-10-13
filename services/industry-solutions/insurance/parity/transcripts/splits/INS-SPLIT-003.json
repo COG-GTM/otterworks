@@ -23,7 +23,9 @@
   },
   "probes": {},
   "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
   "scenario": "INS-SPLIT-003",
+  "scenario_sha": "7c6c2cc33c060dae6a7544264d1e7a6a1f66a26dc7e2c0421e4250bbe232386f",
   "setup": [],
   "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
 }

@@ -32,7 +32,9 @@
     }
   },
   "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
   "scenario": "INS-ETL-006",
+  "scenario_sha": "59345c93a03f3f6686dc26a9365d208d0df5b4a3e2140009d93f76a1595fef4c",
   "setup": [
     {
       "fields": {

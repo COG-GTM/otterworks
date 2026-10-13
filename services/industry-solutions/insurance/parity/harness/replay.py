@@ -22,6 +22,7 @@ from harness.common import (
     normalize,
     normalize_row,
     source_sha,
+    stale_reasons,
     transcript_path,
 )
 
@@ -30,7 +31,7 @@ def token(secret: str, tenant: str, actor: str) -> str:
     claims = {
         "sub": actor,
         "tenant_id": tenant,
-        "roles": ["ADMIN"],
+        "roles": ["ADMIN", "COMMISSION_PARITY_RESET"],
         "type": "access",
         "exp": int(time.time()) + 600,
     }
@@ -158,14 +159,13 @@ def main() -> int:
                             "problems": ["no transcript recorded"]})
             continue
         transcript = json.loads(path.read_text())
-        stale = [name for name, sha in (("source_sha", source_sha()), ("fixture_sha", fixture_sha()))
-                 if transcript.get(name) != sha]
+        stale = stale_reasons(scenario, transcript)
         if stale:
             results.append({"scenario": scenario["id"], "module": scenario["module"],
                             "entrypoint": scenario["entrypoint"], "status": "FAIL", "rule": None,
-                            "problems": [f"stale transcript: {', '.join(stale)} changed"]})
+                            "problems": [f"stale transcript: {reason}" for reason in stale]})
             continue
-        headers = {"Authorization": f"Bearer {token(secret, contract['parity_tenant'], transcript['actor'])}"}
+        headers = {"Authorization": f"Bearer {token(secret, contract['parity_tenant'], scenario.get('actor') or 'parity')}"}
         with httpx.Client(base_url=args.base_url, headers=headers, timeout=30) as client:
             results.append(replay(client, contract, scenario, transcript))
     write_report(results)

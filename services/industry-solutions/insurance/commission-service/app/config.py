@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     jwt_audience: str | None = None
     tenant_claim: str = "tenant_id"
     enable_reset: bool = False
+    reset_tenants: str = ""
+
+    @property
+    def reset_tenant_ids(self) -> frozenset[str]:
+        return frozenset(t.strip() for t in self.reset_tenants.split(",") if t.strip())
 
     @field_validator("jwt_algorithms")
     @classmethod

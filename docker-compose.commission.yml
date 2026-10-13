@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${COMMISSION_DB_ADMIN_PASSWORD:?COMMISSION_DB_ADMIN_PASSWORD is required}
       COMMISSION_SVC_DB_PASSWORD: ${COMMISSION_SVC_DB_PASSWORD:?COMMISSION_SVC_DB_PASSWORD is required}
     ports:
-      - "127.0.0.1:${COMMISSION_DB_PORT:-56544}:5432"
+      - "127.0.0.1:${COMMISSION_DB_PORT:?COMMISSION_DB_PORT is required}:5432"
     volumes:
       - ./services/industry-solutions/insurance/commission-service/db/init/01_app_role.sh:/docker-entrypoint-initdb.d/01_app_role.sh:ro
       - commission-db-data:/var/lib/postgresql/data
@@ -32,8 +32,9 @@ services:
       COMMISSION_SVC_DATABASE_URL: postgresql://commission_svc:${COMMISSION_SVC_DB_PASSWORD}@commission-db:5432/commission_${NS:-dev}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       COMMISSION_SVC_ENABLE_RESET: ${COMMISSION_SVC_ENABLE_RESET:-false}
+      COMMISSION_SVC_RESET_TENANTS: ${COMMISSION_SVC_RESET_TENANTS:-}
     ports:
-      - "127.0.0.1:${COMMISSION_SVC_PORT:-8098}:8098"
+      - "127.0.0.1:${COMMISSION_SVC_PORT:?COMMISSION_SVC_PORT is required}:8098"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8098/health')"]
       interval: 5s

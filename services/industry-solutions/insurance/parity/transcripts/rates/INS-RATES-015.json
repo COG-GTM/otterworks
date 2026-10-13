@@ -40,7 +40,9 @@
     }
   },
   "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
   "scenario": "INS-RATES-015",
+  "scenario_sha": "b308e7a08448c0ba875a00d60f1ab715d1fed071dff63ceefecf1f82bd003291",
   "setup": [],
   "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
 }

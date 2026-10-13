@@ -77,7 +77,20 @@ class PostgresCommissionRepository:
         return None if row is None else Policy(**row)
 
     # --- rates ------------------------------------------------------------
+    def _lock_policy(self, policy_id: int) -> None:
+        self._one(
+            "SELECT 1 FROM commission.policies WHERE tenant_id = %s AND policy_id = %s FOR UPDATE",
+            policy_id,
+        )
+
     def open_rates(self, product_code: str, agent_id: int | None) -> list[Rate]:
+        # Serialise every writer of one tenant/product/agent rate scope for the transaction,
+        # so the read below sees rows committed by a writer we waited on.
+        self._one(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s || '|' || %s || '|' || %s, 0))",
+            product_code,
+            "" if agent_id is None else str(agent_id),
+        )
         rows = self._all(
             f"""SELECT {RATE_COLUMNS} FROM commission.commission_rates
                  WHERE tenant_id = %s AND product_code = %s
@@ -160,6 +173,7 @@ class PostgresCommissionRepository:
         return [Split(**row) for row in rows]
 
     def replace_splits(self, policy_id: int, splits: list[Split]) -> None:
+        self._lock_policy(policy_id)
         self.db.execute(
             "DELETE FROM commission.commission_splits WHERE tenant_id = %s AND policy_id = %s",
             (self.tenant_id, policy_id),
@@ -173,6 +187,7 @@ class PostgresCommissionRepository:
 
     # --- ledger -----------------------------------------------------------
     def delete_ledger(self, policy_id: int, period_month: str) -> None:
+        self._lock_policy(policy_id)
         self.db.execute(
             """DELETE FROM commission.commission_ledger
                 WHERE tenant_id = %s AND policy_id = %s AND period_month = %s""",

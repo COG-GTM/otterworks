@@ -106,7 +106,16 @@ def test_calculation_audited(repo: FakeRepository) -> None:
 @pytest.mark.rule("INS-CALC-009")
 @pytest.mark.parametrize(
     ("period", "ora_code"),
-    [("2025-13", -1843), ("2025-00", -1843), ("2025-6", -1861), ("June", -1861), ("", -1861)],
+    [
+        ("2025-13", -1843),
+        ("2025-00", -1843),
+        ("2025-6", -1861),
+        ("June", -1861),
+        ("", -1861),
+        ("0000-01", -1841),
+        ("\uff12\uff10\uff12\uff15-06", -1861),
+        ("2025-06\n", -1861),
+    ],
 )
 def test_period_must_be_canonical(repo: FakeRepository, period: str, ora_code: int) -> None:
     with pytest.raises(InvalidPeriodError) as err:

@@ -16,15 +16,17 @@ from app.domain.model import IN_FORCE, CommissionRepository, LedgerRow
 from app.domain.oracle_compat import monthly_commission
 from app.domain.rates import resolve_rate
 
-PERIOD = re.compile(r"^(\d{4})-(\d{2})$")
+PERIOD = re.compile(r"([0-9]{4})-([0-9]{2})")
 
 
 def period_as_of(period_month: str) -> date:
     """LAST_DAY(TO_DATE(period, 'YYYY-MM')), restricted to canonical YYYY-MM."""
-    match = PERIOD.match(period_month or "")
+    match = PERIOD.fullmatch(period_month or "")
     if not match:
         raise InvalidPeriodError("literal does not match format string", -1861)
     year, month = int(match.group(1)), int(match.group(2))
+    if year == 0:
+        raise InvalidPeriodError("(full) year must be between -4713 and +9999, and not be 0", -1841)
     if not 1 <= month <= 12:
         raise InvalidPeriodError("not a valid month", -1843)
     return date(year, month, calendar.monthrange(year, month)[1])

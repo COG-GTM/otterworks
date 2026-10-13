@@ -85,14 +85,18 @@ Oracle `NUMBER(5,2)` columns do (`12.345` passes validation, stores `12.35`, aud
   `COMMISSION_SVC_DATABASE_URL` are required environment variables — the service refuses
   to start without them. In Kubernetes they would come from the existing secret wiring;
   locally `make commission-up` generates throwaway random values into the gitignored
-  `../parity/.local.env`. `POST /internal/reset` (used by parity) exists only when
-  `COMMISSION_SVC_ENABLE_RESET=true` and only resets the caller's own tenant.
+  `../parity/.local.env`. `POST /internal/reset` (used by parity) answers 404 unless
+  `COMMISSION_SVC_ENABLE_RESET=true` **and** the caller's tenant is listed in
+  `COMMISSION_SVC_RESET_TENANTS`; it also needs the dedicated `COMMISSION_PARITY_RESET` role
+  (tenant `ADMIN` is not enough) and only resets the caller's own tenant.
+- Concurrency: rate writers take a transaction advisory lock per tenant/product/agent scope;
+  split replacement and recalculation lock the policy row, so concurrent requests serialise.
 
 ## Running it
 
 ```bash
 make commission-test                   # ruff, ruff format, mypy, unit tests (no DB)
-make commission-up NS=dev              # service on :8098 + its Postgres on :56544
+make commission-up NS=dev              # service + its Postgres on per-NS ports (printed)
 make commission-integration NS=dev     # HTTP, role and tenant-isolation tests against that Postgres
 make commission-rules-gate             # rule ledger + transcript freshness
 make commission-parity NS=dev          # replay Oracle transcripts against the service

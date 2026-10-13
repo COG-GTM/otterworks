@@ -28,7 +28,9 @@
     }
   },
   "recorded_against": "oracle-free",
+  "rerecord_reason": "add scenario_sha fingerprint so edited scenarios fail as stale",
   "scenario": "INS-CALC-005",
+  "scenario_sha": "985891395081703e98c595e16b9a05a9feb9f098b9bd90f3674a76d6c086e72c",
   "setup": [],
   "source_sha": "b024a5ba1c1144e919515457c30553ea3afc02c95bf43499fe8501feb19f9d85"
 }

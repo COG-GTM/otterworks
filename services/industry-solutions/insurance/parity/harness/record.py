@@ -24,6 +24,7 @@ from harness.common import (
     load_scenarios,
     normalize,
     normalize_row,
+    scenario_sha,
     source_sha,
     transcript_path,
 )
@@ -215,6 +216,7 @@ def record(scenario: dict[str, Any], oltp: oracledb.Connection, dw: oracledb.Con
         "probes": probes,
         "source_sha": source_sha(),
         "fixture_sha": fixture_sha(),
+        "scenario_sha": scenario_sha(scenario),
         "recorded_against": os.environ.get("INSURANCE_ORACLE_IMAGE", "oracle-free"),
     }
 
