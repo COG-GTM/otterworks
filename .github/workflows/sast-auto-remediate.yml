@@ -240,6 +240,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Open escalation issue
+        id: issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -265,11 +266,21 @@ jobs:
 
           _Opened automatically by the SAST auto-remediation pipeline._"
 
-          gh api "repos/${REPO}/issues" \
+          # Forks often have Issues disabled (HTTP 410): escalate on the PR instead.
+          if out="$(gh api "repos/${REPO}/issues" \
             -f title="[Security] Unresolved SAST findings on PR #${PR_NUM}" \
             -f body="$BODY" \
             -f "labels[]=security" \
-            -f "labels[]=needs-human-review"
+            -f "labels[]=needs-human-review" 2>&1)"; then
+            echo "where=A GitHub Issue has been opened for manual review." >> "$GITHUB_OUTPUT"
+          elif grep -q "Issues has been disabled" <<< "$out"; then
+            echo "::warning::Issues are disabled in ${REPO}; posting the escalation on the PR instead."
+            gh api "repos/${REPO}/issues/${PR_NUM}/comments" -f body="$BODY" > /dev/null
+            echo "where=Issues are disabled in this repository, so the remaining findings are posted on this PR for manual review." >> "$GITHUB_OUTPUT"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
 
       - name: Comment on PR about escalation
         env:
@@ -277,10 +288,11 @@ jobs:
           PR_NUM: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           FIX_ATTEMPTS: ${{ env.MAX_FIX_ATTEMPTS }}
+          WHERE: ${{ steps.issue.outputs.where }}
         run: |
           gh api \
             "repos/${REPO}/issues/${PR_NUM}/comments" \
-            -f body=":rotating_light: **Escalation:** Automated remediation has been attempted ${FIX_ATTEMPTS} times without resolving all findings. A GitHub Issue has been opened for manual review."
+            -f body=":rotating_light: **Escalation:** Automated remediation has been attempted ${FIX_ATTEMPTS} times without resolving all findings. ${WHERE}"
 
   # ─────────────────────────────────────────────────────────────
   #  Path 2: SonarCloud quality gate (CI-based analysis)
