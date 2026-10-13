@@ -52,6 +52,7 @@ resource "aws_iam_role" "dns" {
 }
 
 data "aws_iam_policy_document" "dns" {
+  #checkov:skip=CKV_AWS_356:route53 List*/GetChange do not support resource-level permissions; writes are scoped to the zone.
   count = var.enable_dns ? 1 : 0
   statement {
     effect    = "Allow"

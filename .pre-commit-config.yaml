@@ -1,0 +1,16 @@
+# Optional local hooks for the Terraform roots (pip install pre-commit &&
+# pre-commit install). CI runs the same checks in terraform-static.yml.
+repos:
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.96.1
+    hooks:
+      - id: terraform_fmt
+        files: ^(platform/terraform|infrastructure/terraform|demo-platform/infra/terraform)/
+      - id: terraform_tflint
+        files: ^(platform/terraform|infrastructure/terraform|demo-platform/infra/terraform)/
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl
+      - id: terraform_checkov
+        files: ^(platform/terraform|infrastructure/terraform|demo-platform/infra/terraform)/
+        args:
+          - --args=--config-file __GIT_WORKING_DIR__/.checkov.yaml

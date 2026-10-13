@@ -34,6 +34,8 @@ locals {
 # --- VPC ---
 
 resource "aws_vpc" "main" {
+  #checkov:skip=CKV2_AWS_11:VPC flow logs are not enabled in the demo environments (cost); tracked as an IaC follow-up for prod.
+  #checkov:skip=CKV2_AWS_12:Nothing is launched into the default security group; adopting it with aws_default_security_group would strip its rules on first apply.
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
@@ -57,6 +59,7 @@ resource "aws_internet_gateway" "main" {
 
 resource "aws_subnet" "public" { # nosemgrep: terraform.aws.security.aws-subnet-has-public-ip-address.aws-subnet-has-public-ip-address
   count = var.az_count
+  #checkov:skip=CKV_AWS_130:Public subnets host nodes directly when enable_nat_gateway = false (dev cost model); prod uses private subnets behind NAT.
 
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, 100 + count.index)

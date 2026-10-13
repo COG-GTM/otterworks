@@ -1,0 +1,9 @@
+# Shared checkov settings for scripts/terraform-check.sh, CI and pre-commit.
+# Findings are suppressed inline (#checkov:skip=<ID>:<reason>) next to the
+# resource they concern, never here, so every exception carries its reason.
+framework:
+  - terraform
+download-external-modules: false
+skip-path:
+  - \.terraform
+  - tests

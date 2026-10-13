@@ -82,6 +82,8 @@ module "ecr" {
   environment = var.environment
   ecr_prefix  = var.ecr_prefix
 
+  create_repositories = var.create_ecr_repositories
+
   service_names = [
     "api-gateway",
     "auth-service",

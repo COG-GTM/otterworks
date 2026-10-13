@@ -1,0 +1,184 @@
+name: Terraform Plan
+
+# Plans every environment of each Terraform root a PR touches and posts the
+# plan as a PR comment + artifact. Read-only (-lock=false, never applies).
+#
+# OFF unless ALL of these hold, otherwise the gate job explains why it skipped:
+#   - repo variable TF_PLAN_ENABLED == 'true'
+#   - repo variable TF_PLAN_ROLE_ARN is set (an IAM role whose OIDC trust
+#     covers this repo's pull_request / main subjects; see docs/IAC.md)
+#   - the PR comes from this repository (fork PRs get no OIDC credentials)
+# Today none are set, and the existing AWS_ROLE_ARN role is not trusted for
+# devin/* refs, so this workflow only reports "skipped".
+
+on:
+  pull_request:
+    paths:
+      - "platform/terraform/**"
+      - "infrastructure/terraform/**"
+      - "demo-platform/infra/terraform/**"
+      - ".github/terraform-environments.json"
+      - ".github/workflows/terraform-plan.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: 1.9.8
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: changes
+        with:
+          filters: |
+            platform: ["platform/terraform/**"]
+            infrastructure: ["infrastructure/terraform/**"]
+            demo: ["demo-platform/infra/terraform/**"]
+            shared: [".github/terraform-environments.json", ".github/workflows/terraform-plan.yml"]
+
+      - name: Roots to plan
+        id: matrix
+        env:
+          PLATFORM: ${{ steps.changes.outputs.platform }}
+          INFRA: ${{ steps.changes.outputs.infrastructure }}
+          DEMO: ${{ steps.changes.outputs.demo }}
+          SHARED: ${{ steps.changes.outputs.shared }}
+          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          roots=()
+          { [[ "$PLATFORM" == true || "$SHARED" == true || "$MANUAL" == true ]]; } && roots+=('"platform/terraform"')
+          { [[ "$INFRA" == true || "$PLATFORM" == true || "$SHARED" == true || "$MANUAL" == true ]]; } && roots+=('"infrastructure/terraform"')
+          { [[ "$DEMO" == true || "$SHARED" == true || "$MANUAL" == true ]]; } && roots+=('"demo-platform/infra/terraform"')
+          wanted="[$(IFS=,; echo "${roots[*]}")]"
+          matrix="$(jq -c --argjson wanted "$wanted" \
+            '{include: [.include[] | select(.root as $r | $wanted | index($r))]}' \
+            .github/terraform-environments.json)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Roots/environments in scope: \`$matrix\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Credential gate
+        id: gate
+        env:
+          PLAN_ENABLED: ${{ vars.TF_PLAN_ENABLED }}
+          ROLE_ARN: ${{ vars.TF_PLAN_ROLE_ARN }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          REPO: ${{ github.repository }}
+        run: |
+          reasons=()
+          [[ "$PLAN_ENABLED" == "true" ]] || reasons+=("repo variable TF_PLAN_ENABLED is not 'true'")
+          [[ -n "$ROLE_ARN" ]] || reasons+=("repo variable TF_PLAN_ROLE_ARN is not set")
+          [[ "$HEAD_REPO" == "$REPO" ]] || reasons+=("PR comes from fork $HEAD_REPO (no OIDC token for untrusted code)")
+          if (( ${#reasons[@]} )); then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Terraform plan skipped"
+              echo "No AWS credentials are available to this run, so no plan was made:"
+              printf -- '- %s\n' "${reasons[@]}"
+              echo
+              echo "Offline checks still ran in *Terraform Static Analysis*. See docs/IAC.md to enable."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice title=Terraform plan skipped::${reasons[*]}"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "### Terraform plan enabled" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  plan:
+    name: plan ${{ matrix.root }} (${{ matrix.env }})
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true' && needs.gate.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.gate.outputs.matrix) }}
+    env:
+      ROOT: ${{ matrix.root }}
+      ENV_NAME: ${{ matrix.env }}
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_meilisearch_master_key: ${{ secrets.TF_VAR_MEILISEARCH_MASTER_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.TF_PLAN_ROLE_ARN }}
+          role-session-name: tf-plan-${{ github.run_id }}
+          aws-region: us-east-1
+
+      - name: terraform init
+        run: terraform -chdir="$ROOT" init -backend-config="environments/backend-${ENV_NAME}.hcl" -reconfigure
+
+      - name: terraform plan
+        id: plan
+        run: |
+          set +e
+          terraform -chdir="$ROOT" plan -lock=false -no-color -detailed-exitcode \
+            -var-file="environments/${ENV_NAME}.tfvars" -out=tfplan > plan.log 2>&1
+          rc=$?
+          set -e
+          cat plan.log
+          if [[ $rc -eq 1 ]]; then echo "outcome=error" >> "$GITHUB_OUTPUT"; exit 1; fi
+          [[ $rc -eq 2 ]] && echo "outcome=changes" >> "$GITHUB_OUTPUT" || echo "outcome=no-changes" >> "$GITHUB_OUTPUT"
+          # The rendered plan masks sensitive values; the binary tfplan is never uploaded.
+          terraform -chdir="$ROOT" show -no-color tfplan > plan.txt
+
+      - name: Upload rendered plan
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: plan-${{ strategy.job-index }}-${{ matrix.env }}
+          path: |
+            plan.txt
+            plan.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Comment plan on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          OUTCOME: ${{ steps.plan.outputs.outcome || 'error' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const root = process.env.ROOT, envName = process.env.ENV_NAME;
+            const marker = `<!-- terraform-plan:${root}:${envName} -->`;
+            const file = fs.existsSync('plan.txt') ? 'plan.txt' : 'plan.log';
+            let body = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : 'no output';
+            const max = 60000;
+            if (body.length > max) body = body.slice(0, max) + '\n... truncated, see the run artifact';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const text = `${marker}\n### Terraform plan: \`${root}\` (${envName}) — ${process.env.OUTCOME}\n` +
+              `<details><summary>Show plan</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>\n\n[Run](${runUrl})`;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100 });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body: text });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body: text });
+            }

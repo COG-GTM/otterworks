@@ -19,6 +19,7 @@
 # control table's key: the two have different readers, and sharing one would
 # quietly widen the control table's key policy to the provisioner.
 resource "aws_kms_key" "dashboard_passcode" {
+  #checkov:skip=CKV2_AWS_64:The default key policy (account root + IAM) is intended; access is granted by IAM policies scoped with kms:ViaService.
   description             = "Encrypts the Demo Ops dashboard passcode secret"
   enable_key_rotation     = true
   deletion_window_in_days = 7
@@ -33,6 +34,7 @@ resource "aws_kms_alias" "dashboard_passcode" {
 }
 
 resource "aws_secretsmanager_secret" "dashboard_passcode" {
+  #checkov:skip=CKV2_AWS_57:The value is owned by the Helm chart and rotated with helm upgrade (see the comment below), not by a Lambda.
   name        = "otterworks/${var.environment}/dashboard/passcode"
   description = "Passcode for the Demo Ops dashboard (${var.dns_zone_name != "" ? "ops.${var.dns_zone_name}" : "ops dashboard"})"
   kms_key_id  = aws_kms_key.dashboard_passcode.arn
@@ -56,6 +58,7 @@ resource "aws_secretsmanager_secret" "dashboard_passcode" {
 # command above. Nothing that holds this grant needs to change.
 
 resource "aws_iam_user" "provisioner" {
+  #checkov:skip=CKV_AWS_273:Demo provisioners are partner staff without SSO in this account; the user holds only the passcode read grant.
   name = var.provisioner_user_name
   path = "/demo/"
 
@@ -98,6 +101,7 @@ data "aws_iam_policy_document" "provisioner" {
 }
 
 resource "aws_iam_user_policy" "provisioner" {
+  #checkov:skip=CKV_AWS_40:A single-purpose user with one inline grant; a group would add indirection without reducing privilege.
   name   = "dashboard-access"
   user   = aws_iam_user.provisioner.name
   policy = data.aws_iam_policy_document.provisioner.json

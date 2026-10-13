@@ -48,9 +48,9 @@ data "terraform_remote_state" "platform" {
   backend = "s3"
 
   config = {
-    bucket = "otterworks-terraform-state"
-    key    = "platform/terraform.tfstate"
-    region = "us-east-1"
+    bucket = var.platform_state_bucket
+    key    = var.platform_state_key
+    region = var.aws_region
   }
 }
 
@@ -61,7 +61,6 @@ locals {
   vpc_id            = data.terraform_remote_state.platform.outputs.vpc_id
   vpc_cidr          = data.terraform_remote_state.platform.outputs.vpc_cidr_block
   private_subnets   = data.terraform_remote_state.platform.outputs.private_subnet_ids
-  public_subnets    = data.terraform_remote_state.platform.outputs.public_subnet_ids
   oidc_provider_arn = data.terraform_remote_state.platform.outputs.oidc_provider_arn
   oidc_provider_url = data.terraform_remote_state.platform.outputs.oidc_provider_url
 }
@@ -98,6 +97,10 @@ module "database" {
   project     = "otterworks"
   db_password = var.db_password
 
+  db_instance_class        = var.db_instance_class
+  db_allocated_storage     = var.db_allocated_storage
+  db_max_allocated_storage = var.db_max_allocated_storage
+
   vpc_id     = local.vpc_id
   vpc_cidr   = local.vpc_cidr
   subnet_ids = local.private_subnets
@@ -133,6 +136,9 @@ module "cache" {
   vpc_id              = local.vpc_id
   subnet_ids          = local.private_subnets
   allowed_cidr_blocks = [local.vpc_cidr]
+
+  redis_node_type          = var.redis_node_type
+  redis_num_cache_clusters = var.redis_num_cache_clusters
 }
 
 module "monitoring" {

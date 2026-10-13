@@ -36,6 +36,8 @@ locals {
 }
 
 data "aws_iam_policy_document" "dashboard" {
+  #checkov:skip=CKV_AWS_356:The "*" statements are Describe/List calls without resource-level support; mutating actions carry cluster-ownership tag conditions.
+  #checkov:skip=CKV_AWS_111:Infra-sweep deletes are conditioned on ownership tags for the sweepable clusters (see local.sweepable_clusters).
   # Full control of the control table (+ any indexes).
   statement {
     sid    = "ControlTable"

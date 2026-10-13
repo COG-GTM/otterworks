@@ -46,6 +46,10 @@ resource "aws_iam_role_policy_attachment" "cluster_vpc_controller" {
 # --- EKS Cluster ---
 
 resource "aws_eks_cluster" "main" { # nosemgrep: terraform.lang.security.eks-public-endpoint-enabled.eks-public-endpoint-enabled
+  #checkov:skip=CKV_AWS_37:api, audit and authenticator are enabled; controllerManager/scheduler logs are omitted to limit CloudWatch cost.
+  #checkov:skip=CKV_AWS_38:The public endpoint is required for CI and operator kubectl access; there is no VPN or bastion.
+  #checkov:skip=CKV_AWS_39:See CKV_AWS_38.
+  #checkov:skip=CKV_AWS_58:Envelope encryption of secrets needs a KMS key and is irreversible once enabled; tracked as an IaC follow-up.
   name     = var.cluster_name
   version  = var.cluster_version
   role_arn = aws_iam_role.cluster.arn

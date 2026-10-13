@@ -5,5 +5,5 @@ output "repository_urls" {
 
 output "registry_id" {
   description = "ECR registry ID (AWS account ID)"
-  value       = values(aws_ecr_repository.services)[0].registry_id
+  value       = data.aws_caller_identity.current.account_id
 }

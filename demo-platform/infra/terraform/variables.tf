@@ -153,3 +153,12 @@ variable "github_actions_trusted_repos" {
   }
 }
 
+
+# owner/repo list trusted by the Terraform plan/apply roles (iam_terraform_ci.tf).
+# Empty = the roles are not created. Adding a repo trusts its same-repo PRs and
+# main for READ-ONLY plans, and its terraform-* GitHub Environments for apply.
+variable "terraform_ci_trusted_repos" {
+  description = "Repositories (owner/repo) whose Terraform workflows may assume the plan/apply roles. Empty disables them."
+  type        = list(string)
+  default     = []
+}
