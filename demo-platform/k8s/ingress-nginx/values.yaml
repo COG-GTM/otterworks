@@ -1,0 +1,20 @@
+# Shared ingress-nginx controller (one controller, one NLB for the whole
+# cluster). The ONLY permitted LoadBalancer Service in this repo -- see AGENTS.md.
+# Used by scripts/lib/ingress-nginx.sh and platform/terraform/modules/platform-addons.
+controller:
+  replicaCount: 1
+  service:
+    type: LoadBalancer
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: nlb
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  # Off in the upstream chart; the reaper's idle scan reads the per-namespace
+  # request counter from this endpoint.
+  metrics:
+    enabled: true
+  config:
+    # Chart default is 1m, which 413s uploads before they reach file-service.
+    proxy-body-size: 100m

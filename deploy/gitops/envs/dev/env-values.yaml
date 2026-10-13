@@ -1,0 +1,9 @@
+# Helm values applied to EVERY service in the dev environment (namespace
+# otterworks-dev), layered after deploy/gitops/base/values.yaml and before
+# services/<service>.yaml. Secrets/config are NOT here: create
+# <service>-secrets / <service>-config out-of-band (see docs/GITOPS.md).
+replicaCount: 1
+ingress:
+  # Only the public services (web-app, api-gateway, admin-dashboard) enable
+  # ingress, in their services/<service>.yaml.
+  enabled: false

@@ -21,6 +21,17 @@
 
 INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
 
+# Pinned chart version + shared values live with the other platform add-ons so
+# the scripts and platform/terraform/modules/platform-addons cannot drift.
+_ING_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_ING_ADDONS_DIR="${_ING_LIB_DIR}/../../demo-platform/k8s"
+if [ -f "${_ING_ADDONS_DIR}/platform-addons.versions.env" ]; then
+  # shellcheck source=../../demo-platform/k8s/platform-addons.versions.env
+  source "${_ING_ADDONS_DIR}/platform-addons.versions.env"
+fi
+INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"
+INGRESS_NGINX_VALUES="${INGRESS_NGINX_VALUES:-${_ING_ADDONS_DIR}/ingress-nginx/values.yaml}"
+
 # Reuse the caller's logging when it has some, so output stays consistent with
 # the script that sourced this one.
 ing_log()  { if declare -F log  >/dev/null; then log  "$@"; else echo "[ingress] $*"; fi; }
@@ -34,12 +45,24 @@ ensure_ingress_nginx() {
   # serves the built-in self-signed certificate for every tenant host -- the
   # install returns success and TLS is broken cluster-wide.
   local reuse=()
+  local version="${INGRESS_NGINX_CHART_VERSION}"
   if helm status ingress-nginx -n "${INGRESS_NAMESPACE}" >/dev/null 2>&1; then
     ing_log "Shared ingress-nginx already installed in ${INGRESS_NAMESPACE}."
     reuse=(--reuse-values)
+    # Never silently move the controller that fronts every tenant to a new
+    # chart version: keep the deployed one unless the bump is explicitly opted into.
+    local deployed
+    deployed="$(helm list -n "${INGRESS_NAMESPACE}" --filter '^ingress-nginx$' -o json 2>/dev/null \
+      | jq -r '.[0].chart // ""' | sed 's/^ingress-nginx-//')"
+    if [ -n "${deployed}" ] && [ "${deployed}" != "${version}" ] && [ "${INGRESS_NGINX_ALLOW_UPGRADE:-false}" != true ]; then
+      ing_warn "ingress-nginx ${deployed} is deployed; pinned version is ${version}. Keeping ${deployed} (set INGRESS_NGINX_ALLOW_UPGRADE=true to move)."
+      version="${deployed}"
+    fi
   else
-    ing_log "Installing shared ingress-nginx (one controller, one NLB)..."
+    ing_log "Installing shared ingress-nginx ${version} (one controller, one NLB)..."
   fi
+  local values_args=()
+  if [ -f "${INGRESS_NGINX_VALUES}" ]; then values_args=(-f "${INGRESS_NGINX_VALUES}"); fi
 
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
   helm repo update ingress-nginx >/dev/null 2>&1 || true
@@ -52,9 +75,12 @@ ensure_ingress_nginx() {
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
   # is ever scaled to zero. It costs one port and one ClusterIP Service.
+  # The --set flags below mirror demo-platform/k8s/ingress-nginx/values.yaml so
+  # an install still has the required settings if that file is ever missing.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
-    "${reuse[@]}" \
+    --version "${version}" \
+    "${reuse[@]}" "${values_args[@]}" \
     --set controller.service.type=LoadBalancer \
     --set controller.service.annotations."service\.beta\.kubernetes\.io/aws-load-balancer-type"=nlb \
     --set controller.replicaCount=1 \

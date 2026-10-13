@@ -1,0 +1,120 @@
+# Offline checks for the ingress / GitOps / image-naming platform layer.
+# Read-only: no cloud credentials, no cluster access, nothing is applied.
+name: Platform checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "infrastructure/helm/**"
+      - "deploy/gitops/**"
+      - "demo-platform/k8s/**"
+      - "demo-platform/scripts/install-*.sh"
+      - "platform/terraform/**"
+      - "scripts/**"
+      - "docs/**"
+      - ".github/workflows/platform-checks.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HELM_VERSION: v3.16.2
+  KUBECONFORM_VERSION: v0.6.7
+  K8S_VERSION: 1.31.0
+
+jobs:
+  image-drift:
+    name: Image name drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - run: scripts/check-image-drift.sh
+
+  charts:
+    name: Helm lint / template / kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+      - name: Install kubeconform
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Lint and render every chart (chart defaults)
+        run: |
+          set -euo pipefail
+          mkdir -p rendered
+          for chart in infrastructure/helm/*/; do
+            name="$(basename "${chart}")"
+            helm lint "${chart}" --set image.tag=ci
+            helm template "${name}" "${chart}" --set image.tag=ci > "rendered/default-${name}.yaml"
+          done
+      - name: Render every chart with each GitOps environment's values
+        run: |
+          set -euo pipefail
+          for envdir in deploy/gitops/envs/*/; do
+            env="$(basename "${envdir}")"
+            for f in "${envdir}"services/*.yaml; do
+              svc="$(basename "${f}" .yaml)"
+              helm template "${svc}" "infrastructure/helm/${svc}" -n "otterworks-${env}" \
+                -f deploy/gitops/base/values.yaml -f "${envdir}env-values.yaml" -f "${f}" \
+                --set image.repository=123456789012.dkr.ecr.us-east-1.amazonaws.com/otterworks/${svc} \
+                > "rendered/${env}-${svc}.yaml"
+            done
+          done
+      - name: No LoadBalancer Services outside the shared ingress-nginx controller
+        run: |
+          if grep -nE '^\s*type:\s*LoadBalancer' rendered/*.yaml; then
+            echo "::error::Charts must use ClusterIP behind the shared ingress-nginx (AGENTS.md)"; exit 1
+          fi
+      - name: kubeconform (core + CRD schemas)
+        run: |
+          kubeconform -strict -summary -kubernetes-version "${K8S_VERSION}" \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered/*.yaml deploy/gitops/bootstrap deploy/gitops/apps \
+            demo-platform/k8s/dns-tls/local-ca-issuer.yaml
+
+  promote-script:
+    name: GitOps promotion script
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote dev -> staging -> prod in a scratch tree
+        run: |
+          set -euo pipefail
+          NEW_TAG=main-0000000 yq -i '.image.tag = strenv(NEW_TAG)' deploy/gitops/envs/dev/services/api-gateway.yaml
+          scripts/gitops-promote.sh dev staging api-gateway | tee out.txt
+          grep -q 'api-gateway: .* -> main-0000000' out.txt
+          scripts/gitops-promote.sh staging prod
+          test "$(yq -r .image.tag deploy/gitops/envs/prod/services/api-gateway.yaml)" = main-0000000
+          ! scripts/gitops-promote.sh dev prod 2>/dev/null
+          git checkout -- deploy/gitops
+
+  addons-terraform:
+    name: platform-addons Terraform (offline)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: platform/terraform/modules/platform-addons
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate

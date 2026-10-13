@@ -1,0 +1,16 @@
+# prod/admin-dashboard. Bumped only by promotion PRs: scripts/gitops-promote.sh staging prod
+# (or the gitops-promote workflow). Do not edit image.tag by hand.
+image:
+  tag: main-cc23bf1
+ingress:
+  enabled: true
+  hosts:
+    - host: admin-prod.otterworks.app
+      paths:
+        - path: /
+          pathType: Prefix
+  # No secretName: served by the shared wildcard certificate on ingress-nginx
+  # (demo-platform/k8s/dns-tls/wildcard-certificate.yaml).
+  tls:
+    - hosts:
+        - admin-prod.otterworks.app
