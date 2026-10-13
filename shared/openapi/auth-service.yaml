@@ -190,8 +190,7 @@ paths:
       tags: [users]
       operationId: lookupUserByEmail
       summary: Resolve a user by email (internal callers, e.g. file sharing)
-      description: Permitted without a JWT by `SecurityConfig`; intended for service-to-service use.
-      security: []
+      description: Requires an authenticated bearer token (`SecurityConfig`); used by internal callers such as file-service sharing.
       parameters:
         - name: email
           in: query
@@ -215,7 +214,6 @@ paths:
       tags: [users]
       operationId: lookupUserById
       summary: Resolve a user by id (internal callers)
-      security: []
       parameters:
         - name: id
           in: path

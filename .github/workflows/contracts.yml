@@ -41,12 +41,19 @@ jobs:
         run: buf lint shared/proto
       - name: buf breaking
         run: |
-          base="${{ github.event.pull_request.base.ref || 'main' }}"
-          git fetch --no-tags origin "$base"
-          if git ls-tree -r --name-only "origin/$base" -- shared/proto | grep -q '\.proto$'; then
-            buf breaking shared/proto --against ".git#ref=refs/remotes/origin/${base},subdir=shared/proto"
+          # PRs compare against the base branch; pushes compare against the previous head (event.before).
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}"
+            against="$(git merge-base HEAD "origin/${{ github.event.pull_request.base.ref }}")"
           else
-            echo "::notice::No .proto files on origin/${base} yet; skipping buf breaking (first contract commit)."
+            against="${{ github.event.before }}"
+          fi
+          if [ -z "$against" ] || [ "$against" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${against}^{commit}" 2>/dev/null; then
+            echo "::notice::No previous commit to compare against; skipping buf breaking."
+          elif git ls-tree -r --name-only "$against" -- shared/proto | grep -q '\.proto$'; then
+            buf breaking shared/proto --against ".git#ref=${against},subdir=shared/proto"
+          else
+            echo "::notice::No .proto files at ${against} yet; skipping buf breaking (first contract commit)."
           fi
 
   openapi:

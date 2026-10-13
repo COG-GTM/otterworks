@@ -1,15 +1,12 @@
-# Derived from the routes in services/api-gateway; keep in sync when routes change.
 openapi: 3.0.3
 info:
   title: OtterWorks API Gateway
-  description: 'Go (chi) edge gateway: JWT validation, rate limiting, per-route circuit breakers, request
-    IDs, CORS, and
+  description: 'Go (chi) edge gateway: JWT validation, rate limiting, per-route circuit breakers, request IDs, CORS,
+    and
 
-    reverse-proxying to the backend services. Derived from `services/api-gateway/internal/config/config.go`
-    (`ServiceRoutes`),
+    reverse-proxying to the backend services. Derived from `services/api-gateway/internal/config/config.go` (`ServiceRoutes`),
 
-    `internal/proxy/router.go` and `internal/middleware/jwt.go`. Per-service request/response schemas
-    live in the
+    `internal/proxy/router.go` and `internal/middleware/jwt.go`. Per-service request/response schemas live in the
 
     service-specific specs in this directory.'
   version: 1.0.0
@@ -69,11 +66,11 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyAuth
+      operationId: proxyAuthGet
       summary: Reverse-proxy /api/v1/auth/* to auth-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Login/register/refresh
-        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected
-        from validated JWT claims (see docs/adr).'
+        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from
+        validated JWT claims (see docs/adr).'
       security: []
       responses:
         '200':
@@ -99,6 +96,138 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyAuthPost
+      summary: Reverse-proxy POST /api/v1/auth/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Login/register/refresh
+        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from
+        validated JWT claims (see docs/adr).'
+      security: []
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id003
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id003
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id003
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id003
+    put:
+      tags:
+      - proxy
+      operationId: proxyAuthPut
+      summary: Reverse-proxy PUT /api/v1/auth/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Login/register/refresh
+        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from
+        validated JWT claims (see docs/adr).'
+      security: []
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id004
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id004
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id004
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id004
+    patch:
+      tags:
+      - proxy
+      operationId: proxyAuthPatch
+      summary: Reverse-proxy PATCH /api/v1/auth/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Login/register/refresh
+        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from
+        validated JWT claims (see docs/adr).'
+      security: []
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id005
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id005
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id005
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id005
+    delete:
+      tags:
+      - proxy
+      operationId: proxyAuthDelete
+      summary: Reverse-proxy DELETE /api/v1/auth/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Login/register/refresh
+        are public paths (no JWT). Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from
+        validated JWT claims (see docs/adr).'
+      security: []
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id006
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id006
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id006
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id006
   /api/v1/files/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -110,7 +239,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyFiles
+      operationId: proxyFilesGet
       summary: Reverse-proxy /api/v1/files/* to file-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -137,6 +266,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyFilesPost
+      summary: Reverse-proxy POST /api/v1/files/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id007
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id007
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id007
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id007
+    put:
+      tags:
+      - proxy
+      operationId: proxyFilesPut
+      summary: Reverse-proxy PUT /api/v1/files/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id008
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id008
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id008
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id008
+    patch:
+      tags:
+      - proxy
+      operationId: proxyFilesPatch
+      summary: Reverse-proxy PATCH /api/v1/files/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id009
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id009
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id009
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id009
+    delete:
+      tags:
+      - proxy
+      operationId: proxyFilesDelete
+      summary: Reverse-proxy DELETE /api/v1/files/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id010
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id010
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id010
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id010
   /api/v1/folders/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -148,7 +401,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyFolders
+      operationId: proxyFoldersGet
       summary: Reverse-proxy /api/v1/folders/* to file-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -175,6 +428,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyFoldersPost
+      summary: Reverse-proxy POST /api/v1/folders/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id011
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id011
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id011
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id011
+    put:
+      tags:
+      - proxy
+      operationId: proxyFoldersPut
+      summary: Reverse-proxy PUT /api/v1/folders/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id012
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id012
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id012
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id012
+    patch:
+      tags:
+      - proxy
+      operationId: proxyFoldersPatch
+      summary: Reverse-proxy PATCH /api/v1/folders/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id013
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id013
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id013
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id013
+    delete:
+      tags:
+      - proxy
+      operationId: proxyFoldersDelete
+      summary: Reverse-proxy DELETE /api/v1/folders/* to file-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/file-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see file-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id014
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id014
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id014
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id014
   /api/v1/documents/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -186,11 +563,10 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyDocuments
+      operationId: proxyDocumentsGet
       summary: Reverse-proxy /api/v1/documents/* to document-service
-      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`.
-        Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims
-        (see docs/adr).'
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
       responses:
         '200':
           description: Upstream response; see document-service.yaml
@@ -214,6 +590,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyDocumentsPost
+      summary: Reverse-proxy POST /api/v1/documents/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id015
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id015
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id015
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id015
+    put:
+      tags:
+      - proxy
+      operationId: proxyDocumentsPut
+      summary: Reverse-proxy PUT /api/v1/documents/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id016
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id016
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id016
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id016
+    patch:
+      tags:
+      - proxy
+      operationId: proxyDocumentsPatch
+      summary: Reverse-proxy PATCH /api/v1/documents/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id017
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id017
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id017
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id017
+    delete:
+      tags:
+      - proxy
+      operationId: proxyDocumentsDelete
+      summary: Reverse-proxy DELETE /api/v1/documents/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id018
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id018
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id018
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id018
   /api/v1/templates/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -225,11 +725,10 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyTemplates
+      operationId: proxyTemplatesGet
       summary: Reverse-proxy /api/v1/templates/* to document-service
-      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`.
-        Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims
-        (see docs/adr).'
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
       responses:
         '200':
           description: Upstream response; see document-service.yaml
@@ -253,6 +752,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyTemplatesPost
+      summary: Reverse-proxy POST /api/v1/templates/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id019
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id019
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id019
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id019
+    put:
+      tags:
+      - proxy
+      operationId: proxyTemplatesPut
+      summary: Reverse-proxy PUT /api/v1/templates/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id020
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id020
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id020
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id020
+    patch:
+      tags:
+      - proxy
+      operationId: proxyTemplatesPatch
+      summary: Reverse-proxy PATCH /api/v1/templates/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id021
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id021
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id021
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id021
+    delete:
+      tags:
+      - proxy
+      operationId: proxyTemplatesDelete
+      summary: Reverse-proxy DELETE /api/v1/templates/* to document-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/document-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see document-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id022
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id022
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id022
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id022
   /api/v1/collab/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -264,7 +887,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyCollab
+      operationId: proxyCollabGet
       summary: Reverse-proxy /api/v1/collab/* to collab-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/collab-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -291,6 +914,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyCollabPost
+      summary: Reverse-proxy POST /api/v1/collab/* to collab-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/collab-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see collab-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id023
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id023
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id023
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id023
+    put:
+      tags:
+      - proxy
+      operationId: proxyCollabPut
+      summary: Reverse-proxy PUT /api/v1/collab/* to collab-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/collab-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see collab-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id024
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id024
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id024
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id024
+    patch:
+      tags:
+      - proxy
+      operationId: proxyCollabPatch
+      summary: Reverse-proxy PATCH /api/v1/collab/* to collab-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/collab-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see collab-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id025
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id025
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id025
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id025
+    delete:
+      tags:
+      - proxy
+      operationId: proxyCollabDelete
+      summary: Reverse-proxy DELETE /api/v1/collab/* to collab-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/collab-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see collab-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id026
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id026
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id026
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id026
   /api/v1/notifications/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -302,11 +1049,10 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyNotifications
+      operationId: proxyNotificationsGet
       summary: Reverse-proxy /api/v1/notifications/* to notification-service
-      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`.
-        Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims
-        (see docs/adr).'
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
       responses:
         '200':
           description: Upstream response; see notification-service.yaml
@@ -330,6 +1076,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyNotificationsPost
+      summary: Reverse-proxy POST /api/v1/notifications/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id027
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id027
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id027
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id027
+    put:
+      tags:
+      - proxy
+      operationId: proxyNotificationsPut
+      summary: Reverse-proxy PUT /api/v1/notifications/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id028
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id028
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id028
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id028
+    patch:
+      tags:
+      - proxy
+      operationId: proxyNotificationsPatch
+      summary: Reverse-proxy PATCH /api/v1/notifications/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id029
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id029
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id029
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id029
+    delete:
+      tags:
+      - proxy
+      operationId: proxyNotificationsDelete
+      summary: Reverse-proxy DELETE /api/v1/notifications/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id030
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id030
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id030
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id030
   /api/v1/preferences/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -341,11 +1211,10 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyPreferences
+      operationId: proxyPreferencesGet
       summary: Reverse-proxy /api/v1/preferences/* to notification-service
-      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`.
-        Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims
-        (see docs/adr).'
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
       responses:
         '200':
           description: Upstream response; see notification-service.yaml
@@ -369,6 +1238,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyPreferencesPost
+      summary: Reverse-proxy POST /api/v1/preferences/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id031
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id031
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id031
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id031
+    put:
+      tags:
+      - proxy
+      operationId: proxyPreferencesPut
+      summary: Reverse-proxy PUT /api/v1/preferences/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id032
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id032
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id032
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id032
+    patch:
+      tags:
+      - proxy
+      operationId: proxyPreferencesPatch
+      summary: Reverse-proxy PATCH /api/v1/preferences/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id033
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id033
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id033
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id033
+    delete:
+      tags:
+      - proxy
+      operationId: proxyPreferencesDelete
+      summary: Reverse-proxy DELETE /api/v1/preferences/* to notification-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/notification-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see notification-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id034
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id034
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id034
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id034
   /api/v1/search/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -380,7 +1373,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxySearch
+      operationId: proxySearchGet
       summary: Reverse-proxy /api/v1/search/* to search-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/search-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -407,6 +1400,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxySearchPost
+      summary: Reverse-proxy POST /api/v1/search/* to search-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/search-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see search-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id035
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id035
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id035
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id035
+    put:
+      tags:
+      - proxy
+      operationId: proxySearchPut
+      summary: Reverse-proxy PUT /api/v1/search/* to search-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/search-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see search-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id036
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id036
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id036
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id036
+    patch:
+      tags:
+      - proxy
+      operationId: proxySearchPatch
+      summary: Reverse-proxy PATCH /api/v1/search/* to search-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/search-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see search-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id037
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id037
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id037
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id037
+    delete:
+      tags:
+      - proxy
+      operationId: proxySearchDelete
+      summary: Reverse-proxy DELETE /api/v1/search/* to search-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/search-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see search-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id038
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id038
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id038
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id038
   /api/v1/analytics/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -418,11 +1535,10 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyAnalytics
+      operationId: proxyAnalyticsGet
       summary: Reverse-proxy /api/v1/analytics/* to analytics-service
-      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`.
-        Client-supplied `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims
-        (see docs/adr).'
+      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
       responses:
         '200':
           description: Upstream response; see analytics-service.yaml
@@ -446,6 +1562,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyAnalyticsPost
+      summary: Reverse-proxy POST /api/v1/analytics/* to analytics-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see analytics-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id039
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id039
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id039
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id039
+    put:
+      tags:
+      - proxy
+      operationId: proxyAnalyticsPut
+      summary: Reverse-proxy PUT /api/v1/analytics/* to analytics-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see analytics-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id040
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id040
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id040
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id040
+    patch:
+      tags:
+      - proxy
+      operationId: proxyAnalyticsPatch
+      summary: Reverse-proxy PATCH /api/v1/analytics/* to analytics-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see analytics-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id041
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id041
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id041
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id041
+    delete:
+      tags:
+      - proxy
+      operationId: proxyAnalyticsDelete
+      summary: Reverse-proxy DELETE /api/v1/analytics/* to analytics-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/analytics-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see analytics-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id042
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id042
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id042
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id042
   /api/v1/admin/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -457,7 +1697,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyAdmin
+      operationId: proxyAdminGet
       summary: Reverse-proxy /api/v1/admin/* to admin-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/admin-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -484,6 +1724,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyAdminPost
+      summary: Reverse-proxy POST /api/v1/admin/* to admin-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/admin-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see admin-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id043
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id043
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id043
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id043
+    put:
+      tags:
+      - proxy
+      operationId: proxyAdminPut
+      summary: Reverse-proxy PUT /api/v1/admin/* to admin-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/admin-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see admin-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id044
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id044
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id044
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id044
+    patch:
+      tags:
+      - proxy
+      operationId: proxyAdminPatch
+      summary: Reverse-proxy PATCH /api/v1/admin/* to admin-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/admin-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see admin-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id045
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id045
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id045
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id045
+    delete:
+      tags:
+      - proxy
+      operationId: proxyAdminDelete
+      summary: Reverse-proxy DELETE /api/v1/admin/* to admin-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/admin-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see admin-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id046
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id046
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id046
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id046
   /api/v1/audit/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -495,7 +1859,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyAudit
+      operationId: proxyAuditGet
       summary: Reverse-proxy /api/v1/audit/* to audit-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/audit-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -522,6 +1886,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyAuditPost
+      summary: Reverse-proxy POST /api/v1/audit/* to audit-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/audit-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see audit-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id047
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id047
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id047
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id047
+    put:
+      tags:
+      - proxy
+      operationId: proxyAuditPut
+      summary: Reverse-proxy PUT /api/v1/audit/* to audit-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/audit-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see audit-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id048
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id048
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id048
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id048
+    patch:
+      tags:
+      - proxy
+      operationId: proxyAuditPatch
+      summary: Reverse-proxy PATCH /api/v1/audit/* to audit-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/audit-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see audit-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id049
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id049
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id049
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id049
+    delete:
+      tags:
+      - proxy
+      operationId: proxyAuditDelete
+      summary: Reverse-proxy DELETE /api/v1/audit/* to audit-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/audit-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see audit-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id050
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id050
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id050
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id050
   /api/v1/reports/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -533,7 +2021,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxyReports
+      operationId: proxyReportsGet
       summary: Reverse-proxy /api/v1/reports/* to report-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/report-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -560,6 +2048,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxyReportsPost
+      summary: Reverse-proxy POST /api/v1/reports/* to report-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/report-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see report-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id051
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id051
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id051
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id051
+    put:
+      tags:
+      - proxy
+      operationId: proxyReportsPut
+      summary: Reverse-proxy PUT /api/v1/reports/* to report-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/report-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see report-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id052
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id052
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id052
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id052
+    patch:
+      tags:
+      - proxy
+      operationId: proxyReportsPatch
+      summary: Reverse-proxy PATCH /api/v1/reports/* to report-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/report-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see report-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id053
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id053
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id053
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id053
+    delete:
+      tags:
+      - proxy
+      operationId: proxyReportsDelete
+      summary: Reverse-proxy DELETE /api/v1/reports/* to report-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/report-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see report-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id054
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id054
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id054
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id054
   /api/v1/settings/{proxyPath}:
     parameters:
     - name: proxyPath
@@ -571,7 +2183,7 @@ paths:
     get:
       tags:
       - proxy
-      operationId: proxySettings
+      operationId: proxySettingsGet
       summary: Reverse-proxy /api/v1/settings/* to auth-service
       description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Client-supplied
         `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
@@ -598,6 +2210,130 @@ paths:
           content:
             application/json:
               schema: *id002
+    post:
+      tags:
+      - proxy
+      operationId: proxySettingsPost
+      summary: Reverse-proxy POST /api/v1/settings/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id055
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id055
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id055
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id055
+    put:
+      tags:
+      - proxy
+      operationId: proxySettingsPut
+      summary: Reverse-proxy PUT /api/v1/settings/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id056
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id056
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id056
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id056
+    patch:
+      tags:
+      - proxy
+      operationId: proxySettingsPatch
+      summary: Reverse-proxy PATCH /api/v1/settings/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id057
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id057
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id057
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id057
+    delete:
+      tags:
+      - proxy
+      operationId: proxySettingsDelete
+      summary: Reverse-proxy DELETE /api/v1/settings/* to auth-service
+      description: 'All methods are forwarded. Full contract: `shared/openapi/auth-service.yaml`. Client-supplied
+        `X-User-ID`/`X-User-Email` are stripped and re-injected from validated JWT claims (see docs/adr).'
+      responses:
+        '200':
+          description: Upstream response; see auth-service.yaml
+        '401':
+          description: Missing/invalid JWT
+          content:
+            application/json:
+              schema: &id058
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limited
+          content:
+            application/json:
+              schema: *id058
+        '502':
+          description: Upstream unavailable
+          content:
+            application/json:
+              schema: *id058
+        '503':
+          description: Circuit breaker open
+          content:
+            application/json:
+              schema: *id058
   /socket.io:
     x-upstream-service: collab-service
     get:
