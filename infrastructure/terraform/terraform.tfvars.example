@@ -17,5 +17,9 @@ namespace = "otterworks"
 # REQUIRED: RDS PostgreSQL master password (no default — must be set)
 db_password = "your-secure-password-here"
 
+# External Secrets Operator (docs/SECRETS.md). Keep true once enabled: a later
+# apply with it false deletes the vaulted keys pods sync from.
+# enable_external_secrets = true
+
 # CloudWatch log retention in days
 log_retention_days = 30

@@ -59,6 +59,48 @@ data "aws_iam_policy_document" "eso_read" {
   }
 }
 
+# Tenant namespaces use a separate ClusterSecretStore that assumes this role,
+# so a tenant ExternalSecret can only ever reach the shared-RDS credential,
+# never the golden JWT/session signing keys.
+data "aws_iam_policy_document" "eso_tenant_assume_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.eso.arn]
+    }
+  }
+}
+
+data "aws_iam_policy_document" "eso_tenant_read" {
+  statement {
+    sid    = "ReadSharedDbPassword"
+    effect = "Allow"
+    actions = [
+      "secretsmanager:GetSecretValue",
+      "secretsmanager:DescribeSecret",
+    ]
+    resources = [
+      for svc in local.db_services :
+      "arn:aws:secretsmanager:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:secret:${local.prefix}/${svc}/DB_PASSWORD-??????"
+    ]
+  }
+}
+
+resource "aws_iam_role" "eso_tenant" {
+  name               = "${var.project}-external-secrets-tenant-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.eso_tenant_assume_role.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy" "eso_tenant_read" {
+  name   = "${var.project}-external-secrets-tenant-read"
+  role   = aws_iam_role.eso_tenant.id
+  policy = data.aws_iam_policy_document.eso_tenant_read.json
+}
+
 resource "aws_iam_role" "eso" {
   name               = "${var.project}-external-secrets-${var.environment}"
   assume_role_policy = data.aws_iam_policy_document.eso_assume_role.json
@@ -72,4 +114,17 @@ resource "aws_iam_role_policy" "eso_read" {
   name   = "${var.project}-external-secrets-read"
   role   = aws_iam_role.eso.id
   policy = data.aws_iam_policy_document.eso_read.json
+}
+
+resource "aws_iam_role_policy" "eso_assume_tenant" {
+  name = "${var.project}-external-secrets-assume-tenant"
+  role = aws_iam_role.eso.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "sts:AssumeRole"
+      Resource = aws_iam_role.eso_tenant.arn
+    }]
+  })
 }

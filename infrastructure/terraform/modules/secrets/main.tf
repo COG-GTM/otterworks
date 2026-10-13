@@ -73,6 +73,9 @@ locals {
   # only these prefixes.
   services = sort(distinct(concat(keys(local.service_secrets), keys(var.service_config))))
 
+  # Services whose DB_PASSWORD tenants may sync via the tenant store.
+  db_services = sort([for svc, kv in local.service_secrets : svc if contains(keys(kv), "DB_PASSWORD")])
+
   config_entries = merge([
     for svc, kv in var.service_config : {
       for k, v in kv : "${svc}/${k}" => { service = svc, key = k, value = v }

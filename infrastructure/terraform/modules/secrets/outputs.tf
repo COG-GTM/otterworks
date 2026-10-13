@@ -3,6 +3,11 @@ output "eso_role_arn" {
   value       = aws_iam_role.eso.arn
 }
 
+output "eso_tenant_role_arn" {
+  description = "IAM role the tenant ClusterSecretStore assumes (DB_PASSWORD keys only)"
+  value       = aws_iam_role.eso_tenant.arn
+}
+
 output "key_prefix" {
   description = "Prefix of every key this module writes (<project>/<environment>)"
   value       = local.prefix

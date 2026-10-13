@@ -87,10 +87,20 @@ role:
   admin secret `otterworks/dev/rds/master` and the MeiliSearch master key
   `otterworks/dev/meilisearch-master-key` are not readable by ESO.
 
-The ClusterSecretStores have no `auth` block, so the AWS provider uses the
-controller's IRSA identity. There are no static keys anywhere. Both stores carry
-`conditions.namespaceRegexes: ^otterworks(-[a-z0-9-]+)?$`, so only the golden
-namespace and tenant namespaces can reference them.
+There are no static keys anywhere. Store `conditions` only restrict *which
+namespaces* may reference a store, not *which keys* they request, so the stores
+are split by trust level:
+
+| Store | Namespaces | AWS identity | Can read |
+|---|---|---|---|
+| `otterworks-secretsmanager` | golden only (`GOLDEN_NAMESPACE`, default `otterworks`) | controller IRSA role | all `otterworks/<env>/<service>/*` secrets |
+| `otterworks-parameterstore` | golden only | controller IRSA role | all `/otterworks/<env>/<service>/*` parameters |
+| `otterworks-tenant-secretsmanager` | `^otterworks-[a-z0-9-]+$` (tenants) | assumes `external_secrets_tenant_role_arn` | only `otterworks/<env>/<service>/DB_PASSWORD` |
+
+So a tenant ExternalSecret can never sync the golden `JWT_SECRET`,
+`SECRET_KEY_BASE` or webhook secret, even if someone writes one by hand. The
+tenant role trusts only the controller role (`sts:AssumeRole`), and the
+controller role may assume only that role.
 
 ## Enabling it (operators)
 
@@ -102,13 +112,23 @@ deliberate, reviewed action; none run from CI):
    (or `USE_EXTERNAL_SECRETS=true ./scripts/deploy-dev.sh`, which passes
    `TF_VAR_enable_external_secrets` through its normal Terraform step).
 2. **Install ESO once per cluster**:
-   `ESO_ROLE_ARN=$(terraform -chdir=infrastructure/terraform output -raw external_secrets_role_arn) demo-platform/scripts/install-external-secrets.sh`
+   `ESO_ROLE_ARN=$(terraform -chdir=infrastructure/terraform output -raw external_secrets_role_arn) ESO_TENANT_ROLE_ARN=$(terraform -chdir=infrastructure/terraform output -raw external_secrets_tenant_role_arn) demo-platform/scripts/install-external-secrets.sh`
    (`--dry-run` renders the chart and stores without touching the cluster).
 3. **Deploy with the opt-in**:
    `USE_EXTERNAL_SECRETS=true ./scripts/deploy-dev.sh --skip-terraform` or
    `USE_EXTERNAL_SECRETS=true ./scripts/deploy-tenant.sh <ID>`.
-   Both run a read-only preflight (CRDs present, both stores `Ready`) and refuse
-   to deploy otherwise.
+   Both run a read-only preflight (CRD present, their stores `Ready`) and refuse
+   to deploy otherwise. Dashboard-launched tenant deploys need the ESO rules in
+   `demo-platform/helm/demo-platform/templates/rbac.yaml` (read the CRD and the
+   tenant store, manage ExternalSecrets).
+
+**Staying enabled.** Once the state holds the ESO role, `deploy-dev.sh` and
+`spinup-dev.sh` keep `enable_external_secrets=true` even without
+`USE_EXTERNAL_SECRETS` (`eso_tf_enabled` in `scripts/lib/external-secrets.sh`),
+so a routine apply never deletes keys running pods sync from. When applying
+Terraform by hand, set `enable_external_secrets = true` in your tfvars.
+Disabling is a deliberate `terraform apply -var enable_external_secrets=false`
+after redeploying without the opt-in.
 
 With the opt-in, `deploy-dev.sh` stops writing JWT/DB/Rails secrets into the
 Helm values file entirely, so the chart's `<release>-secrets` Secret is no
@@ -151,7 +171,8 @@ into the pod. Values are fixed at deploy time.
    Manager) or `externalSecrets.parameters` (SSM). For values built from
    secrets (connection strings) add an ESO v2 template under
    `externalSecrets.templates`, e.g.
-   `DATABASE_URL: "postgres://user:{{ .DB_PASSWORD | urlquery }}@host/db"`.
+   `DATABASE_URL: "postgres://user:{{ .DB_PASSWORD | urlquery | replace \"+\" \"%20\" }}@host/db"`
+   (`urlquery` encodes a space as `+`, which database URL parsers keep literally).
 3. Keep the fallback working: add the matching `add_secret` / `config.*` wiring
    in `scripts/deploy-dev.sh` / `scripts/lib/tenant-common.sh`.
 4. Validate locally: `helm template <svc> infrastructure/helm/<svc> --set image.tag=t --set externalSecrets.enabled=true`.

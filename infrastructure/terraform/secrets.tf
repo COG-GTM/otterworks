@@ -73,6 +73,11 @@ output "external_secrets_role_arn" {
   value       = try(module.secrets[0].eso_role_arn, "")
 }
 
+output "external_secrets_tenant_role_arn" {
+  description = "Role the tenant ClusterSecretStore assumes (empty when disabled)"
+  value       = try(module.secrets[0].eso_tenant_role_arn, "")
+}
+
 output "external_secrets_key_prefix" {
   description = "Prefix of every vaulted key, e.g. otterworks/dev (empty when disabled)"
   value       = try(module.secrets[0].key_prefix, "")

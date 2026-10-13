@@ -107,6 +107,9 @@ fi
 
 # ---------- Step 2: Provision Application Infrastructure ----------
 
+# shellcheck source=lib/external-secrets.sh
+source "${SCRIPT_DIR}/lib/external-secrets.sh"
+
 if [ "${SKIP_TERRAFORM}" = false ]; then
   DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set when running Terraform}"
   log "Provisioning application infrastructure (RDS, DynamoDB, S3, SQS, etc.)..."
@@ -116,8 +119,9 @@ if [ "${SKIP_TERRAFORM}" = false ]; then
   # not visible in the process argument list (ps / /proc/*/cmdline). Consistent
   # with the Helm secret handling below.
   # USE_EXTERNAL_SECRETS=true also vaults app secrets/config for ESO
-  # (infrastructure/terraform/secrets.tf); otherwise that file creates nothing.
-  TF_VAR_db_password="${DB_PASSWORD}" TF_VAR_enable_external_secrets="${USE_EXTERNAL_SECRETS}" \
+  # (infrastructure/terraform/secrets.tf). Sticky once enabled, so a later
+  # plain deploy never deletes keys running pods depend on.
+  TF_VAR_db_password="${DB_PASSWORD}" TF_VAR_enable_external_secrets="$(eso_tf_enabled .)" \
     terraform apply -auto-approve -input=false
   cd "${REPO_ROOT}"
   log "Application infrastructure provisioned."
@@ -143,8 +147,6 @@ kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply
 # on the URLs this script prints, instead of silently having no entry point.
 # shellcheck source=lib/ingress-nginx.sh
 source "${SCRIPT_DIR}/lib/ingress-nginx.sh"
-# shellcheck source=lib/external-secrets.sh
-source "${SCRIPT_DIR}/lib/external-secrets.sh"
 ensure_ingress_nginx
 
 # ---------- Step 5: ECR Login ----------

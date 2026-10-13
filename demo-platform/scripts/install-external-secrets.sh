@@ -17,6 +17,8 @@
 # Env:
 #   ESO_VERSION         chart version (pinned; default below)
 #   ESO_ROLE_ARN        IRSA role ARN (required unless --dry-run)
+#   ESO_TENANT_ROLE_ARN role the tenant store assumes (external_secrets_tenant_role_arn)
+#   GOLDEN_NAMESPACE    only namespace allowed to use the golden stores (default otterworks)
 #   AWS_REGION          region for the ClusterSecretStores (default us-east-1)
 #   ESO_EXTRA_VALUES    optional extra values file (e.g. local kind/LocalStack)
 # ------------------------------------------------------------------------------
@@ -29,6 +31,7 @@ RELEASE=external-secrets
 SERVICE_ACCOUNT=external-secrets
 ESO_VERSION="${ESO_VERSION:-2.10.0}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+GOLDEN_NAMESPACE="${GOLDEN_NAMESPACE:-otterworks}"
 DRY_RUN=false
 [ "${1:-}" = "--dry-run" ] && DRY_RUN=true
 
@@ -39,10 +42,17 @@ for bin in helm kubectl; do
   command -v "${bin}" >/dev/null 2>&1 || fail "${bin} is required"
 done
 [[ "${AWS_REGION}" =~ ^[a-z0-9-]+$ ]] || fail "invalid AWS_REGION: ${AWS_REGION}"
+[[ "${GOLDEN_NAMESPACE}" =~ ^[a-z0-9-]+$ ]] || fail "invalid GOLDEN_NAMESPACE: ${GOLDEN_NAMESPACE}"
 
 if [ "${DRY_RUN}" = false ] && [ -z "${ESO_ROLE_ARN:-}" ]; then
   fail "ESO_ROLE_ARN is required (terraform -chdir=infrastructure/terraform output -raw external_secrets_role_arn)"
 fi
+if [ "${DRY_RUN}" = false ] && [ -z "${ESO_TENANT_ROLE_ARN:-}" ]; then
+  fail "ESO_TENANT_ROLE_ARN is required (terraform -chdir=infrastructure/terraform output -raw external_secrets_tenant_role_arn)"
+fi
+ESO_TENANT_ROLE_ARN="${ESO_TENANT_ROLE_ARN:-arn:aws:iam::000000000000:role/dry-run-tenant}"
+[[ "${ESO_TENANT_ROLE_ARN}" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$ ]] \
+  || fail "invalid ESO_TENANT_ROLE_ARN: ${ESO_TENANT_ROLE_ARN}"
 
 helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
 helm repo update external-secrets >/dev/null
@@ -57,7 +67,10 @@ helm_args=(
 )
 [ -n "${ESO_EXTRA_VALUES:-}" ] && helm_args+=(-f "${ESO_EXTRA_VALUES}")
 
-render_stores() { sed "s|\${AWS_REGION}|${AWS_REGION}|g" "${STORES}"; }
+render_stores() {
+  sed -e "s|\${AWS_REGION}|${AWS_REGION}|g" -e "s|\${GOLDEN_NAMESPACE}|${GOLDEN_NAMESPACE}|g" \
+    -e "s|\${ESO_TENANT_ROLE_ARN}|${ESO_TENANT_ROLE_ARN}|g" "${STORES}"
+}
 
 if [ "${DRY_RUN}" = true ]; then
   helm template "${RELEASE}" external-secrets/external-secrets "${helm_args[@]}"
@@ -84,6 +97,7 @@ for attempt in 1 2 3 4 5 6; do
 done
 
 kubectl wait --for=condition=Ready clustersecretstore/otterworks-secretsmanager \
-  clustersecretstore/otterworks-parameterstore --timeout=120s \
+  clustersecretstore/otterworks-parameterstore clustersecretstore/otterworks-tenant-secretsmanager \
+  --timeout=120s \
   || fail "ClusterSecretStores not Ready; check the IRSA role trust/policy (kubectl describe clustersecretstore)"
 log "done."

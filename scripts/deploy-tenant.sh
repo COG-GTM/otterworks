@@ -478,7 +478,7 @@ deploy_service() {
 }
 
 if eso_enabled; then
-  eso_preflight || { err "External Secrets Operator is not ready; unset USE_EXTERNAL_SECRETS to use Helm-rendered secrets"; exit 1; }
+  eso_preflight tenant || { err "External Secrets Operator is not ready; unset USE_EXTERNAL_SECRETS to use Helm-rendered secrets"; exit 1; }
 fi
 log "Deploying services into ${NS} (profile=${PROFILE}, ${#TENANT_SERVICES[@]} services)..."
 FAILED=()

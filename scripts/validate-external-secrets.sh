@@ -47,12 +47,14 @@ for d in yaml.safe_load_all(open(f"{work}/crds.yaml")):
 PY
 
 mkdir -p "${WORK}/out"
-sed "s|\${AWS_REGION}|us-east-1|g" "${REPO_ROOT}/demo-platform/k8s/external-secrets/cluster-secret-stores.yaml" \
+sed -e "s|\${AWS_REGION}|us-east-1|g" -e "s|\${GOLDEN_NAMESPACE}|otterworks|g" \
+  -e "s|\${ESO_TENANT_ROLE_ARN}|arn:aws:iam::000000000000:role/otterworks-external-secrets-tenant-dev|g" \
+  "${REPO_ROOT}/demo-platform/k8s/external-secrets/cluster-secret-stores.yaml" \
   > "${WORK}/out/cluster-secret-stores.yaml"
 
 fail=0
 # shellcheck disable=SC2016
-doc_tpl='postgresql+asyncpg://u:{{ .DB_PASSWORD | urlquery }}@h:5432/d'
+doc_tpl='postgresql+asyncpg://u:{{ .DB_PASSWORD | urlquery | replace "+" "%20" }}@h:5432/d'
 for chart in "${REPO_ROOT}"/infrastructure/helm/*/; do
   c="$(basename "${chart}")"
   helm lint "${chart}" --set image.tag=ci >/dev/null || { echo "FAIL lint (off) ${c}"; fail=1; }
