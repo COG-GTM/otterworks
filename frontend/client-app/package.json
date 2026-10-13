@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "start": "vite preview",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npx playwright test",
@@ -56,18 +56,21 @@
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
-    "@types/node": "^20.11.24",
+    "@types/node": "^24.19.2",
     "@types/react": "^18.2.62",
     "@types/react-dom": "^18.2.19",
-    "@typescript-eslint/parser": "^8.64.0",
     "@vitejs/plugin-react": "^6.0.3",
-    "eslint": "^8.57.0",
+    "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^25.0.1",
     "msw": "^2.15.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
+    "typescript-eslint": "^8.71.2",
     "vite": "^8.1.4",
     "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
