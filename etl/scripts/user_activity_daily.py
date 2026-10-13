@@ -16,7 +16,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import boto3
-import psycopg2
+import psycopg
 
 
 def main():
@@ -47,79 +47,70 @@ def main():
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), lookback_days
     ))
 
-    conn = None
-    cursor = None
     daily_summaries = []
 
     try:
-        conn = psycopg2.connect(
+        with psycopg.connect(
             host=db_host,
             port=db_port,
             dbname=db_name,
             user=db_user,
             password=db_password,
-        )
-        cursor = conn.cursor()
+        ) as conn, conn.cursor() as cursor:
+            summary_sql = """
+                SELECT
+                    report_date,
+                    active_users,
+                    active_documents,
+                    active_files,
+                    total_events,
+                    documents_created,
+                    documents_edited,
+                    comments_added,
+                    files_uploaded,
+                    files_shared,
+                    files_deleted,
+                    bytes_uploaded
+                FROM analytics_daily_summary
+                WHERE report_date BETWEEN %s::date - %s * interval '1 day' AND %s::date
+                ORDER BY report_date;
+            """
 
-        summary_sql = """
-            SELECT
-                report_date,
-                active_users,
-                active_documents,
-                active_files,
-                total_events,
-                documents_created,
-                documents_edited,
-                comments_added,
-                files_uploaded,
-                files_shared,
-                files_deleted,
-                bytes_uploaded
-            FROM analytics_daily_summary
-            WHERE report_date BETWEEN %s::date - interval '%s days' AND %s::date
-            ORDER BY report_date;
-        """
+            cursor.execute(summary_sql, (ds, lookback_days, ds))
+            rows = cursor.fetchall()
 
-        cursor.execute(summary_sql, (ds, lookback_days, ds))
-        rows = cursor.fetchall()
+            columns = [
+                "report_date",
+                "active_users",
+                "active_documents",
+                "active_files",
+                "total_events",
+                "documents_created",
+                "documents_edited",
+                "comments_added",
+                "files_uploaded",
+                "files_shared",
+                "files_deleted",
+                "bytes_uploaded",
+            ]
 
-        columns = [
-            "report_date",
-            "active_users",
-            "active_documents",
-            "active_files",
-            "total_events",
-            "documents_created",
-            "documents_edited",
-            "comments_added",
-            "files_uploaded",
-            "files_shared",
-            "files_deleted",
-            "bytes_uploaded",
-        ]
+            for row in rows:
+                record = {}
+                for i, col in enumerate(columns):
+                    val = row[i]
+                    if hasattr(val, "isoformat"):
+                        val = val.isoformat()
+                    record[col] = val
+                daily_summaries.append(record)
 
-        for row in rows:
-            record = {}
-            for i, col in enumerate(columns):
-                val = row[i]
-                if hasattr(val, "isoformat"):
-                    val = val.isoformat()
-                record[col] = val
-            daily_summaries.append(record)
-
-        print("[%s] Retrieved %d daily summary records" % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(daily_summaries)
-        ))
+            print("[%s] Retrieved %d daily summary records" % (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(daily_summaries)
+            ))
     except Exception as e:
         print("[%s] ERROR: PostgreSQL query failed: %s" % (
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(e)
         ))
         sys.exit(1)
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
 
     # ---- Read per-user activity data from S3 ----
     print("[%s] Reading per-user activity data from S3 (lookback: %d days)..." % (
