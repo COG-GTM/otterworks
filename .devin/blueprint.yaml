@@ -1,6 +1,19 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
+  # Docker Hub 429s outlast the retries below; pull through mirror.gcr.io (falls back to Docker Hub).
+  sudo python3 - <<'PY'
+  import json, os
+  p = "/etc/docker/daemon.json"
+  cfg = json.load(open(p)) if os.path.exists(p) else {}
+  mirrors = cfg.setdefault("registry-mirrors", [])
+  if "https://mirror.gcr.io" not in mirrors:
+      mirrors.append("https://mirror.gcr.io")
+  json.dump(cfg, open(p, "w"), indent=2)
+  PY
+  sudo systemctl restart docker || echo "WARN: docker restart failed; registry mirror not active."
+  for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done
+
   # Docker Hub rate-limits anonymous pulls (HTTP 429), so the infra image pull gets the
   # same backoff loop as the builds below rather than failing the whole setup on one 429.
   n=0
@@ -162,8 +175,8 @@ initialize: |
   wait $EMU_PID 2>/dev/null || true
 
   # Warm ~/.m2 so the Maven services resolve from cache instead of downloading Boot's tree.
-  (cd services/report-service && mvn -B -q dependency:go-offline) || echo "WARN: report-service dependency warm-up failed."
-  (cd services/legacy-portal && ./mvnw -B -q dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
+  (cd services/report-service && mvn -B -q -s maven-settings.xml dependency:go-offline) || echo "WARN: report-service dependency warm-up failed."
+  (cd services/legacy-portal && ./mvnw -B -q -s maven-settings.xml dependency:go-offline) || echo "WARN: legacy-portal dependency warm-up failed."
 
   # Seed the "RetailCo enterprise drive" (~2,445 files / 15 departments / 60 docs) through the
   # gateway so a session only runs `make up` to come up data-rich. Postgres, DynamoDB and

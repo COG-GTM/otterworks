@@ -5,12 +5,12 @@
 FROM maven:3.9-eclipse-temurin-11 AS builder
 
 WORKDIR /app
-COPY pom.xml .
+COPY pom.xml maven-settings.xml ./
 # Download dependencies first for Docker layer caching.
-RUN mvn -B dependency:go-offline
+RUN mvn -B -s maven-settings.xml dependency:go-offline
 
 COPY src/ src/
-RUN mvn -B package -DskipTests
+RUN mvn -B -s maven-settings.xml package -DskipTests
 
 # LEGACY: JRE 11 runtime (target: eclipse-temurin:17-jre or 21-jre).
 FROM eclipse-temurin:11-jre-jammy
