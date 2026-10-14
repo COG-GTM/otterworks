@@ -118,6 +118,10 @@ initialize: |
   # (`make dev-android`) both prefer Google's Maven Central mirror.
   mkdir -p $HOME/.gradle/init.d
   cp services/auth-service/gradle-init.gradle $HOME/.gradle/init.d/maven-central-mirror.gradle
+  # Same for Maven: the report-service/legacy-portal images use maven-settings.xml via `mvn -s`;
+  # the host copy covers the ~/.m2 warm-ups below and runtime `make test-report`.
+  mkdir -p $HOME/.m2
+  cp services/report-service/maven-settings.xml $HOME/.m2/settings.xml
 
   # Warm the Gradle cache so runtime `make dev-android` builds are incremental.
   export ANDROID_HOME=$HOME/Android/Sdk ANDROID_SDK_ROOT=$HOME/Android/Sdk
