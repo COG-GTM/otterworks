@@ -252,12 +252,15 @@ class MeiliSearchService:
         best: dict[str, float] = {}
 
         for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except Exception:
+                logger.exception("suggest_index_failed", index=index_name, prefix=prefix)
+                continue
             for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
                 if not text:
