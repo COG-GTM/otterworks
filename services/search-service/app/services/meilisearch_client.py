@@ -255,14 +255,22 @@ class MeiliSearchService:
         ``showRankingScore`` is requested.
         """
         scored: list[tuple[float, str]] = []
+        index_names = [self.documents_index_name, self.files_index_name]
+        failures = 0
 
-        for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
+        for index_name in index_names:
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except Exception:
+                failures += 1
+                if failures == len(index_names):
+                    raise
+                logger.warning("suggest_index_failed", index=index_name, exc_info=True)
+                continue
             for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
                 if text:
