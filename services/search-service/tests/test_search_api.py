@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from meilisearch.errors import MeilisearchCommunicationError
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -121,6 +123,27 @@ class TestSuggestEndpoint:
         response = client.get("/api/v1/search/suggest?q=te")
         assert response.status_code == 200
         assert response.get_json()["suggestions"] == ["Test Doc"]
+
+    def test_suggest_keeps_results_when_one_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index does not discard document suggestions."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = [
+            {"hits": [{"title": "Doc A", "_rankingScore": 0.8}]},
+            MeilisearchCommunicationError("files index unavailable"),
+        ]
+
+        response = client.get("/api/v1/search/suggest?q=do")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Doc A"]
+
+    def test_suggest_all_indexes_fail_returns_empty(self, client, mock_meilisearch_client):
+        """When every index fails the handler degrades to an empty list."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = MeilisearchCommunicationError("meilisearch down")
+
+        response = client.get("/api/v1/search/suggest?q=do")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
 
     def test_suggest_with_chaos_flag_set_does_not_500(self, client):
         """A leftover suggest_500 Redis flag no longer alters the response."""
