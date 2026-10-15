@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
+from meilisearch.errors import MeilisearchCommunicationError
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -97,6 +101,57 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert len(data["suggestions"]) >= 1
+
+    def test_suggest_ranks_by_score_across_indexes(self, client, mock_meilisearch_client):
+        """Suggestions are merged across indexes and ordered by _rankingScore."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = [
+            {"hits": [{"title": "Low", "_rankingScore": 0.2}, {"title": "Mid", "_rankingScore": 0.5}]},
+            {"hits": [{"name": "High", "_rankingScore": 0.9}, {"name": "Mid", "_rankingScore": 0.4}]},
+        ]
+
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["High", "Mid", "Low"]
+        assert mock_index.search.call_args[0][1]["showRankingScore"] is True
+
+    def test_suggest_missing_ranking_score_does_not_500(self, client, mock_meilisearch_client):
+        """Hits without _rankingScore must not crash the handler."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"hits": [{"title": "Test Doc"}]}
+
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Test Doc"]
+
+    def test_suggest_keeps_results_when_one_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index does not discard document suggestions."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = [
+            {"hits": [{"title": "Doc A", "_rankingScore": 0.8}]},
+            MeilisearchCommunicationError("files index unavailable"),
+        ]
+
+        response = client.get("/api/v1/search/suggest?q=do")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Doc A"]
+
+    def test_suggest_all_indexes_fail_returns_empty(self, client, mock_meilisearch_client):
+        """When every index fails the handler degrades to an empty list."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = MeilisearchCommunicationError("meilisearch down")
+
+        response = client.get("/api/v1/search/suggest?q=do")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
+    def test_suggest_with_chaos_flag_set_does_not_500(self, client):
+        """A leftover suggest_500 Redis flag no longer alters the response."""
+        with patch("app.api.search._get_redis") as mock_redis:
+            mock_redis.return_value.exists.return_value = 1
+            response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
 
     def test_suggest_empty_query(self, client):
         """Suggest with empty query returns empty list."""

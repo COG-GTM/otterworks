@@ -8,6 +8,7 @@ from typing import Any
 
 import meilisearch
 import structlog
+from meilisearch.errors import MeilisearchError
 
 from app.config import MeiliSearchConfig
 from app.models.search_result import AnalyticsData, SearchHit, SearchResponse
@@ -248,26 +249,43 @@ class MeiliSearchService:
         )
 
     def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching."""
+        """Autocomplete suggestions using MeiliSearch prefix matching.
+
+        Hits from all indexes are merged and ordered by ``_rankingScore``.
+        """
+        scored: list[tuple[float, str]] = []
+        index_names = [self.documents_index_name, self.files_index_name]
+        errors: list[MeilisearchError] = []
+
+        for index_name in index_names:
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except MeilisearchError as exc:
+                logger.warning("suggest_index_failed", index=index_name, error=str(exc))
+                errors.append(exc)
+                continue
+            for hit in result.get("hits", []):
+                text = hit.get("title") or hit.get("name", "")
+                if text:
+                    scored.append((float(hit.get("_rankingScore") or 0.0), text))
+
+        if len(errors) == len(index_names):
+            raise errors[-1]
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+
         suggestions: list[str] = []
         seen: set[str] = set()
-
-        for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-            })
-            for hit in result["hits"]:
-                text = hit.get("title") or hit.get("name", "")
-                if text and text not in seen:
-                    suggestions.append(text)
-                    seen.add(text)
-                    if len(suggestions) >= size:
-                        break
-            if len(suggestions) >= size:
-                break
-
+        for _, text in scored:
+            if text not in seen:
+                suggestions.append(text)
+                seen.add(text)
+                if len(suggestions) >= size:
+                    break
         return suggestions
 
     def _wait_and_check(self, task_uid: int, timeout_in_ms: int = 10000) -> None:
