@@ -8,6 +8,7 @@ from typing import Any
 
 import meilisearch
 import structlog
+from meilisearch.errors import MeilisearchError
 
 from app.config import MeiliSearchConfig
 from app.models.search_result import AnalyticsData, SearchHit, SearchResponse
@@ -254,18 +255,29 @@ class MeiliSearchService:
         MeiliSearch's ``_rankingScore`` (requested via ``showRankingScore``).
         """
         scored: list[tuple[float, str]] = []
+        index_names = [self.documents_index_name, self.files_index_name]
+        last_error: MeilisearchError | None = None
+        failed = 0
 
-        for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
+        for index_name in index_names:
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except MeilisearchError as e:
+                logger.warning("suggest_index_failed", index=index_name, error=str(e))
+                last_error = e
+                failed += 1
+                continue
             for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
                 if text:
                     scored.append((float(hit.get("_rankingScore") or 0.0), text))
+
+        if failed == len(index_names) and last_error is not None:
+            raise last_error
 
         scored.sort(key=lambda item: item[0], reverse=True)
 

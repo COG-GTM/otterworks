@@ -123,6 +123,20 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         assert response.get_json()["suggestions"] == ["Test Doc", "test.txt"]
 
+    def test_suggest_keeps_results_when_one_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index must not discard document suggestions."""
+        from meilisearch.errors import MeilisearchCommunicationError
+
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = [
+            {"hits": [{"title": "Test Plan", "_rankingScore": 0.9}]},
+            MeilisearchCommunicationError("files index unavailable"),
+        ]
+
+        response = client.get("/api/v1/search/suggest?q=te")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Test Plan"]
+
     def test_suggest_ignores_stale_redis_flag(self, client, mock_meilisearch_client):
         """/suggest never reaches the old ranking enrichment path, even if a Redis flag is set."""
         with patch("redis.Redis") as mock_redis:
