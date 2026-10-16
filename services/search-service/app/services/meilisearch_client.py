@@ -248,27 +248,29 @@ class MeiliSearchService:
         )
 
     def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching."""
-        suggestions: list[str] = []
-        seen: set[str] = set()
+        """Autocomplete suggestions using MeiliSearch prefix matching, ordered by relevance."""
+        best_scores: dict[str, float] = {}
 
         for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-            })
-            for hit in result["hits"]:
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except Exception:
+                logger.warning("suggest_index_search_failed", index=index_name, exc_info=True)
+                continue
+            for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
-                if text and text not in seen:
-                    suggestions.append(text)
-                    seen.add(text)
-                    if len(suggestions) >= size:
-                        break
-            if len(suggestions) >= size:
-                break
+                if not text:
+                    continue
+                score = float(hit.get("_rankingScore") or 0.0)
+                if score > best_scores.get(text, -1.0):
+                    best_scores[text] = score
 
-        return suggestions
+        ranked = sorted(best_scores, key=lambda text: best_scores[text], reverse=True)
+        return ranked[:size]
 
     def _wait_and_check(self, task_uid: int, timeout_in_ms: int = 10000) -> None:
         """Wait for a MeiliSearch task and raise on failure."""
