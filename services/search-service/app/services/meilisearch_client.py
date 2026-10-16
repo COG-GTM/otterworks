@@ -248,27 +248,32 @@ class MeiliSearchService:
         )
 
     def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching."""
-        suggestions: list[str] = []
-        seen: set[str] = set()
+        """Autocomplete suggestions using MeiliSearch prefix matching.
+
+        Hits from the documents and files indexes are merged and ordered by
+        MeiliSearch's ``_rankingScore`` (requested via ``showRankingScore``).
+        Hits without a score sort last instead of raising.
+        """
+        best_scores: dict[str, float] = {}
 
         for index_name in [self.documents_index_name, self.files_index_name]:
             index = self.client.index(index_name)
             result = index.search(prefix, {
                 "limit": size,
                 "attributesToRetrieve": ["title", "name"],
+                "showRankingScore": True,
             })
-            for hit in result["hits"]:
+            for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
-                if text and text not in seen:
-                    suggestions.append(text)
-                    seen.add(text)
-                    if len(suggestions) >= size:
-                        break
-            if len(suggestions) >= size:
-                break
+                if not text:
+                    continue
+                score = hit.get("_rankingScore")
+                score = float(score) if isinstance(score, (int, float)) else 0.0
+                if text not in best_scores or score > best_scores[text]:
+                    best_scores[text] = score
 
-        return suggestions
+        ranked = sorted(best_scores, key=lambda t: best_scores[t], reverse=True)
+        return ranked[:size]
 
     def _wait_and_check(self, task_uid: int, timeout_in_ms: int = 10000) -> None:
         """Wait for a MeiliSearch task and raise on failure."""
