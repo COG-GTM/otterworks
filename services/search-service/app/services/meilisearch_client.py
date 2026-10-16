@@ -247,21 +247,25 @@ class MeiliSearchService:
             query=search_term or "*",
         )
 
-    def suggest(self, prefix: str, size: int = 10) -> list[str]:
+    def suggest(self, prefix: str, size: int = 10, owner_id: str | None = None) -> list[str]:
         """Autocomplete suggestions using MeiliSearch prefix matching.
 
         Hits from all indexes are merged and ordered by ``_rankingScore``
         (requested via ``showRankingScore``); hits without a score sort last.
+        When ``owner_id`` is given, results are scoped to that owner.
         """
         scored: dict[str, float] = {}
+        params: dict[str, Any] = {
+            "limit": size,
+            "attributesToRetrieve": ["title", "name"],
+            "showRankingScore": True,
+        }
+        if owner_id:
+            params["filter"] = f'owner_id = "{self._escape(owner_id)}"'
 
         for index_name in [self.documents_index_name, self.files_index_name]:
             index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
+            result = index.search(prefix, params)
             for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
                 if not text:

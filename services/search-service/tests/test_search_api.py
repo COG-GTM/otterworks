@@ -120,6 +120,16 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         assert set(response.get_json()["suggestions"]) == {"Doc A", "File B"}
 
+    def test_suggest_scoped_to_user(self, client, mock_meilisearch_client):
+        """X-User-ID scopes suggestions in every index to that owner."""
+        mock_index = mock_meilisearch_client.index.return_value
+
+        response = client.get("/api/v1/search/suggest?q=te", headers={"X-User-ID": "user-1"})
+        assert response.status_code == 200
+        assert mock_index.search.call_count == 2
+        for call in mock_index.search.call_args_list:
+            assert call[0][1]["filter"] == 'owner_id = "user-1"'
+
     def test_suggest_empty_index(self, client, mock_meilisearch_client):
         """An empty index returns an empty list, not a 500."""
         response = client.get("/api/v1/search/suggest?q=zz")

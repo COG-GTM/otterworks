@@ -61,14 +61,16 @@ def suggest() -> tuple:
     """Autocomplete suggestions based on prefix.
 
     Query params: q (required, min 2 chars)
+    Suggestions are scoped to the authenticated user via ``X-User-ID``.
     """
     prefix = request.args.get("q", "")
+    owner_id = request.headers.get("X-User-ID", "").strip() or None
     if not prefix or len(prefix) < 2:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
     try:
         service = _get_service()
-        suggestions = service.suggest(prefix)
+        suggestions = service.suggest(prefix, owner_id=owner_id)
         return jsonify({"suggestions": suggestions, "query": prefix}), 200
     except Exception:
         logger.exception("suggest_failed", prefix=prefix)
