@@ -121,6 +121,18 @@ class TestSuggestEndpoint:
         assert response.status_code == 200
         assert set(response.get_json()["suggestions"]) == {"Doc A", "File B"}
 
+    def test_suggest_keeps_results_when_one_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index must not discard healthy document suggestions."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = [
+            {"hits": [{"title": "Doc A", "_rankingScore": 0.8}]},
+            RuntimeError("index_not_found"),
+        ]
+
+        response = client.get("/api/v1/search/suggest?q=do")
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Doc A"]
+
     def test_suggest_no_hits(self, client, mock_meilisearch_client):
         """An empty index returns an empty suggestion list, not a server error."""
         response = client.get("/api/v1/search/suggest?q=zzzz")
