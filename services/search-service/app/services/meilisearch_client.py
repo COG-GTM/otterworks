@@ -8,6 +8,7 @@ from typing import Any
 
 import meilisearch
 import structlog
+from meilisearch.errors import MeilisearchError
 
 from app.config import MeiliSearchConfig
 from app.models.search_result import AnalyticsData, SearchHit, SearchResponse
@@ -252,17 +253,24 @@ class MeiliSearchService:
 
         Hits from the documents and files indexes are merged and ordered by
         MeiliSearch's ``_rankingScore`` (requested via ``showRankingScore``).
-        Hits without a score sort last instead of raising.
+        Hits without a score sort last instead of raising. A failure in one
+        index is logged and the other index's hits are still returned.
         """
         best_scores: dict[str, float] = {}
+        index_names = [self.documents_index_name, self.files_index_name]
+        failures: list[MeilisearchError] = []
 
-        for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
+        for index_name in index_names:
+            try:
+                result = self.client.index(index_name).search(prefix, {
+                    "limit": size,
+                    "attributesToRetrieve": ["title", "name"],
+                    "showRankingScore": True,
+                })
+            except MeilisearchError as exc:
+                logger.warning("suggest_index_failed", index=index_name, error=str(exc))
+                failures.append(exc)
+                continue
             for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
                 if not text:
@@ -271,6 +279,9 @@ class MeiliSearchService:
                 score = float(score) if isinstance(score, (int, float)) else 0.0
                 if text not in best_scores or score > best_scores[text]:
                     best_scores[text] = score
+
+        if len(failures) == len(index_names):
+            raise failures[0]
 
         ranked = sorted(best_scores, key=lambda t: best_scores[t], reverse=True)
         return ranked[:size]
