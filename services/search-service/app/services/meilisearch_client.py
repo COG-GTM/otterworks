@@ -247,28 +247,36 @@ class MeiliSearchService:
             query=search_term or "*",
         )
 
-    def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching."""
-        suggestions: list[str] = []
-        seen: set[str] = set()
+    def suggest(self, prefix: str, size: int = 10, owner_id: str | None = None) -> list[str]:
+        """Autocomplete suggestions using MeiliSearch prefix matching.
+
+        Hits from all indexes are merged and ordered by ``_rankingScore``
+        (requested via ``showRankingScore``); hits without a score sort last.
+        When ``owner_id`` is given, results are scoped to that owner.
+        """
+        scored: dict[str, float] = {}
+        params: dict[str, Any] = {
+            "limit": size,
+            "attributesToRetrieve": ["title", "name"],
+            "showRankingScore": True,
+        }
+        if owner_id:
+            params["filter"] = f'owner_id = "{self._escape(owner_id)}"'
 
         for index_name in [self.documents_index_name, self.files_index_name]:
             index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-            })
-            for hit in result["hits"]:
+            result = index.search(prefix, params)
+            for hit in result.get("hits", []):
                 text = hit.get("title") or hit.get("name", "")
-                if text and text not in seen:
-                    suggestions.append(text)
-                    seen.add(text)
-                    if len(suggestions) >= size:
-                        break
-            if len(suggestions) >= size:
-                break
+                if not text:
+                    continue
+                score = hit.get("_rankingScore")
+                score = float(score) if isinstance(score, (int, float)) else 0.0
+                if text not in scored or score > scored[text]:
+                    scored[text] = score
 
-        return suggestions
+        ranked = sorted(scored, key=lambda t: scored[t], reverse=True)
+        return ranked[:size]
 
     def _wait_and_check(self, task_uid: int, timeout_in_ms: int = 10000) -> None:
         """Wait for a MeiliSearch task and raise on failure."""
