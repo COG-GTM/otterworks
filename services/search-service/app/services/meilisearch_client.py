@@ -8,6 +8,7 @@ from typing import Any
 
 import meilisearch
 import structlog
+from meilisearch.errors import MeilisearchError
 
 from app.config import MeiliSearchConfig
 from app.models.search_result import AnalyticsData, SearchHit, SearchResponse
@@ -26,6 +27,7 @@ _search_analytics: dict[str, Any] = {
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
+SUGGEST_MAX_PAGES = 5
 
 
 def record_search_analytics(query: str, result_count: int) -> None:
@@ -248,20 +250,42 @@ class MeiliSearchService:
         )
 
     def suggest(self, prefix: str, size: int = 10) -> list[str]:
-        """Autocomplete suggestions using MeiliSearch prefix matching, ordered by relevance."""
-        candidates: list[tuple[float, str]] = []
+        """Autocomplete suggestions using MeiliSearch prefix matching, ordered by relevance.
 
-        for index_name in [self.documents_index_name, self.files_index_name]:
-            index = self.client.index(index_name)
-            result = index.search(prefix, {
-                "limit": size,
-                "attributesToRetrieve": ["title", "name"],
-                "showRankingScore": True,
-            })
-            for hit in result.get("hits", []):
-                text = hit.get("title") or hit.get("name", "")
-                if text:
-                    candidates.append((float(hit.get("_rankingScore") or 0.0), text))
+        Hits from both indexes are merged and ranked by ``_rankingScore``. Further
+        pages are fetched while deduplication leaves fewer than ``size`` titles, and
+        a failing index is skipped so the other index can still serve suggestions.
+        """
+        candidates: list[tuple[float, str]] = []
+        distinct: set[str] = set()
+        active = [self.documents_index_name, self.files_index_name]
+        offset = 0
+
+        for _ in range(SUGGEST_MAX_PAGES):
+            has_more: list[str] = []
+            for index_name in active:
+                try:
+                    result = self.client.index(index_name).search(prefix, {
+                        "limit": size,
+                        "offset": offset,
+                        "attributesToRetrieve": ["title", "name"],
+                        "showRankingScore": True,
+                    })
+                except MeilisearchError:
+                    logger.warning("suggest_index_failed", index=index_name, prefix=prefix, exc_info=True)
+                    continue
+                hits = result.get("hits", [])
+                for hit in hits:
+                    text = hit.get("title") or hit.get("name", "")
+                    if text:
+                        candidates.append((float(hit.get("_rankingScore") or 0.0), text))
+                        distinct.add(text)
+                if len(hits) >= size:
+                    has_more.append(index_name)
+            active = has_more
+            if not active or len(distinct) >= size:
+                break
+            offset += size
 
         candidates.sort(key=lambda c: c[0], reverse=True)
 

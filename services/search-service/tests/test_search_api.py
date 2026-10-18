@@ -212,3 +212,33 @@ class TestSuggestRanking:
         assert response.get_json()["suggestions"] == ["Team Notes", "team.png", "Team Roadmap", "no-score.txt"]
         opts = docs_index.search.call_args[0][1]
         assert opts["showRankingScore"] is True
+
+    def test_suggest_keeps_healthy_index_when_other_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index must not drop suggestions from the documents index."""
+        from meilisearch.errors import MeilisearchCommunicationError
+
+        docs_index = MagicMock()
+        docs_index.search.return_value = {"hits": [{"title": "Design Doc", "_rankingScore": 0.8}]}
+        files_index = MagicMock()
+        files_index.search.side_effect = MeilisearchCommunicationError("connection refused")
+        mock_meilisearch_client.index.side_effect = lambda name: (
+            docs_index if name == "test-otterworks-documents" else files_index
+        )
+
+        response = client.get("/api/v1/search/suggest?q=de")
+
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Design Doc"]
+
+    def test_suggest_fetches_more_pages_when_duplicates_leave_it_short(self, app, mock_meilisearch_client):
+        """Duplicate titles on the first page trigger fetching further pages."""
+        pages = {
+            0: [{"title": "Report", "_rankingScore": 0.9}] * 3,
+            3: [{"title": "Report Q1", "_rankingScore": 0.8}, {"title": "Report Q2", "_rankingScore": 0.7}],
+        }
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = lambda q, opts: {"hits": pages.get(opts["offset"], [])}
+
+        suggestions = app.config["SEARCH_SERVICE"].suggest("re", size=3)
+
+        assert suggestions == ["Report", "Report Q1", "Report Q2"]
