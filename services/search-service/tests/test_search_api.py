@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -159,3 +161,84 @@ class TestAnalyticsEndpoint:
         assert "zero_result_queries" in data
         assert "total_searches" in data
         assert "avg_results_per_query" in data
+
+
+class TestSuggestRanking:
+    """Regression tests for the ranking-score enrichment in /suggest."""
+
+    def test_suggest_does_not_500_when_ranking_flag_set(self, client, mock_meilisearch_client):
+        """Suggest must not crash with KeyError when the ranking path flag is set in Redis."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.return_value = {"hits": [{"title": "Quarterly Report"}]}
+
+        with patch("redis.Redis.exists", return_value=1):
+            response = client.get("/api/v1/search/suggest?q=qu")
+
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Quarterly Report"]
+
+    def test_suggest_empty_index_does_not_500_when_ranking_flag_set(self, client):
+        """Suggest on an empty index returns an empty list rather than a 500."""
+        with patch("redis.Redis.exists", return_value=1):
+            response = client.get("/api/v1/search/suggest?q=zz")
+
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == []
+
+    def test_suggest_sorted_by_ranking_score_across_indexes(self, client, mock_meilisearch_client):
+        """Suggestions from both indexes are merged and ordered by _rankingScore."""
+        docs_index = MagicMock()
+        docs_index.search.return_value = {
+            "hits": [
+                {"title": "Team Roadmap", "_rankingScore": 0.4},
+                {"title": "Team Notes", "_rankingScore": 0.9},
+            ]
+        }
+        files_index = MagicMock()
+        files_index.search.return_value = {
+            "hits": [
+                {"name": "team.png", "_rankingScore": 0.7},
+                {"name": "Team Notes", "_rankingScore": 0.95},
+                {"name": "no-score.txt"},
+            ]
+        }
+        mock_meilisearch_client.index.side_effect = lambda name: (
+            docs_index if name == "test-otterworks-documents" else files_index
+        )
+
+        response = client.get("/api/v1/search/suggest?q=te")
+
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Team Notes", "team.png", "Team Roadmap", "no-score.txt"]
+        opts = docs_index.search.call_args[0][1]
+        assert opts["showRankingScore"] is True
+
+    def test_suggest_keeps_healthy_index_when_other_index_fails(self, client, mock_meilisearch_client):
+        """A failing files index must not drop suggestions from the documents index."""
+        from meilisearch.errors import MeilisearchCommunicationError
+
+        docs_index = MagicMock()
+        docs_index.search.return_value = {"hits": [{"title": "Design Doc", "_rankingScore": 0.8}]}
+        files_index = MagicMock()
+        files_index.search.side_effect = MeilisearchCommunicationError("connection refused")
+        mock_meilisearch_client.index.side_effect = lambda name: (
+            docs_index if name == "test-otterworks-documents" else files_index
+        )
+
+        response = client.get("/api/v1/search/suggest?q=de")
+
+        assert response.status_code == 200
+        assert response.get_json()["suggestions"] == ["Design Doc"]
+
+    def test_suggest_fetches_more_pages_when_duplicates_leave_it_short(self, app, mock_meilisearch_client):
+        """Duplicate titles on the first page trigger fetching further pages."""
+        pages = {
+            0: [{"title": "Report", "_rankingScore": 0.9}] * 3,
+            3: [{"title": "Report Q1", "_rankingScore": 0.8}, {"title": "Report Q2", "_rankingScore": 0.7}],
+        }
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = lambda q, opts: {"hits": pages.get(opts["offset"], [])}
+
+        suggestions = app.config["SEARCH_SERVICE"].suggest("re", size=3)
+
+        assert suggestions == ["Report", "Report Q1", "Report Q2"]
