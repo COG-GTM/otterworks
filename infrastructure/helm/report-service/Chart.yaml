@@ -1,6 +1,6 @@
 apiVersion: v2
 name: report-service
-description: OtterWorks Report Service - Legacy Java 8/Spring Boot 2.5 report generation
+description: OtterWorks Report Service - Java 17/Spring Boot 3.2 report generation
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
