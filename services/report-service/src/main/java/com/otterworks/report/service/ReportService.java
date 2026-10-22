@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
@@ -124,7 +124,7 @@ public class ReportService {
     @Transactional
     public boolean deleteReport(Long id) {
         Optional<Report> optReport = reportRepository.findById(id);
-        if (!optReport.isPresent()) {
+        if (optReport.isEmpty()) {
             return false;
         }
 
