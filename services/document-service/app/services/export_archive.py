@@ -15,6 +15,9 @@ logger = structlog.get_logger()
 
 DEFAULT_ARCHIVE_DIR = "/var/lib/otterworks/exports"
 
+# O_PATH directory handles need only search (x) permission, matching what open(path) needs.
+_DIR_FLAGS = getattr(os, "O_PATH", os.O_RDONLY) | os.O_DIRECTORY
+
 
 class ExportArchive:
     """Serves rendered export files from the archive directory."""
@@ -64,10 +67,10 @@ class ExportArchive:
         symlink planted or swapped in after the containment check cannot redirect
         the read outside the archive.
         """
-        dir_fd = os.open(self.base_dir, os.O_RDONLY | os.O_DIRECTORY)
+        dir_fd = os.open(self.base_dir, _DIR_FLAGS)
         try:
             for part in parts[:-1]:
-                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd)
+                next_fd = os.open(part, _DIR_FLAGS | os.O_NOFOLLOW, dir_fd=dir_fd)
                 os.close(dir_fd)
                 dir_fd = next_fd
             return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)

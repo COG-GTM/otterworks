@@ -37,6 +37,16 @@ def test_reads_export_in_subdirectory(archive):
     assert archive.read_export("reports/q3.md") == "# Q3\n"
 
 
+def test_reads_export_through_search_only_directories(archive, tmp_path):
+    os.chmod(tmp_path / "reports", 0o311)
+    os.chmod(tmp_path, 0o311)
+    try:
+        assert archive.read_export("reports/q3.md") == "# Q3\n"
+    finally:
+        os.chmod(tmp_path, 0o755)
+        os.chmod(tmp_path / "reports", 0o755)
+
+
 def test_missing_export_raises(archive):
     with pytest.raises(FileNotFoundError):
         archive.read_export("absent.md")
