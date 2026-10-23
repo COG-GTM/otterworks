@@ -96,3 +96,90 @@ async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"title": "report' OR '1'='1"},
+        {"title": "report'"},
+        {"content_type": "text/markdown' OR '1'='1"},
+        {"title": "x') UNION SELECT id, title FROM documents --"},
+    ],
+)
+async def test_filter_values_are_bound_not_interpolated(
+    client: AsyncClient, owner_id: uuid.UUID, params: dict
+):
+    other_owner = uuid.uuid4()
+    await _create(client, owner_id, "Quarterly Report", content_type="text/markdown")
+    await _create(client, other_owner, "Other Owner Report", content_type="text/markdown")
+
+    resp = await client.get(
+        "/api/v1/documents/", params={"owner_id": str(owner_id), **params}, auth=None
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 0
+    assert body["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_filter_title_with_quote_matches_literally(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Otter's Report")
+    await _create(client, owner_id, "Meeting Notes")
+
+    resp = await client.get("/api/v1/documents/", params={"title": "otter's"}, auth=None)
+
+    assert resp.status_code == 200
+    assert [item["title"] for item in resp.json()["items"]] == ["Otter's Report"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"sort": "title; DROP TABLE documents"},
+        {"sort": "(SELECT 1)"},
+        {"sort": "title", "direction": "asc; DROP TABLE documents"},
+        {"sort": "title", "direction": "asc, (SELECT pg_sleep(5))"},
+    ],
+)
+async def test_filter_rejects_sort_outside_allow_list(
+    client: AsyncClient, owner_id: uuid.UUID, params: dict
+):
+    await _create(client, owner_id, "Quarterly Report")
+
+    resp = await client.get("/api/v1/documents/", params=params, auth=None)
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"].lower()
+    assert "drop table" not in detail
+    assert "select" not in detail
+    assert "sqlalchemy" not in detail
+
+    follow_up = await client.get(
+        "/api/v1/documents/", params={"title": "report"}, auth=None
+    )
+    assert follow_up.status_code == 200
+    assert follow_up.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_filter_sort_direction_is_case_insensitive(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Beta plan")
+    await _create(client, owner_id, "Alpha plan")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"title": "plan", "sort": "title", "direction": "DESC"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert [item["title"] for item in resp.json()["items"]] == ["Beta plan", "Alpha plan"]
