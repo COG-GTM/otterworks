@@ -18,7 +18,7 @@ Kotlin/Ktor service (`services/notification-service`) behind the gateway at `/ap
 | Unit (JUnit/Gradle) | `services/notification-service/src/test/kotlin/**/*QaTest.kt` (5 files) | 55 | 46 | 9 `@Ignore` (NS-1..5, 7, 8, 13 + NS-4 repo) |
 | Functional (pytest via gateway) | `tests/api/test_qa_notification_service.py` | 25 | 11 | 14 xfail |
 | E2E (Playwright) | `frontend/client-app/e2e/qa-notification-service.spec.ts` | 6 | 3 | 3 `test.fail` (NS-6 x2, NS-9) |
-| E2E (computer use) | Run by the testing agent; recording linked in the PR | 1 run | see PR | — |
+| E2E (computer use) | Recorded browser run by the testing agent (recording in the PR comments) | 5 steps | 5 (the share step plus 3 documented defects reproduced: NS-9 bell without badge, NS-6 PATCH returning 404 and POST returning 405) | — |
 
 The whole notification-service Gradle suite (`gradle check`) passes: 93 tests, 0 failures, 9 skipped (all skips are the QA findings above).
 
@@ -41,6 +41,10 @@ The whole notification-service Gradle suite (`gradle check`) passes: 93 tests, 0
 | NS-13 | Low | `repository/NotificationRepository.kt:155` | `DELETE /notifications/{random-uuid}` | 404 | 204 (`DeleteItem` is unconditional) |
 
 Each exposing test is marked with its finding ID: `@Ignore("FINDING NS-x ...")` in Kotlin, `pytest.mark.xfail(reason="FINDING NS-x ...")` in pytest, and `test.fail(true, "FINDING NS-x ...")` in Playwright. When a bug is fixed, the strict markers start failing, which tells you to remove the marker. No product code was changed.
+
+## Out-of-scope observation (computer-use run)
+
+- After sharing in the client-app Share dialog, the success toast "Shared with ..." appears, but the dialog's access list keeps showing "No one else has access yet". The recipient still gets the notification and can open the file. This affects the file-service / share-dialog flows, which are outside this unit, so it is recorded here only for the owning QA unit to triage.
 
 ## Not tested / limitations
 
