@@ -2,7 +2,9 @@ package com.otterworks.auth.service;
 
 import com.otterworks.auth.dto.UpdateProfileRequest;
 import com.otterworks.auth.dto.UserDTO;
+import com.otterworks.auth.dto.UserLookupResponse;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.UserLookupNotFoundException;
 import com.otterworks.auth.repository.UserRepository;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -57,10 +59,18 @@ public class UserService {
   }
 
   @Transactional(readOnly = true)
-  public UserDTO findByEmail(String email) {
+  public UserLookupResponse lookupByEmail(String email) {
     return userRepository
-        .findByEmail(email)
-        .map(UserDTO::fromEntity)
-        .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        .findByEmail(email.trim())
+        .map(user -> UserLookupResponse.fromUserDTO(UserDTO.fromEntity(user)))
+        .orElseThrow(UserLookupNotFoundException::new);
+  }
+
+  @Transactional(readOnly = true)
+  public UserLookupResponse lookupById(UUID id) {
+    return userRepository
+        .findById(id)
+        .map(user -> UserLookupResponse.fromUserDTO(UserDTO.fromEntity(user)))
+        .orElseThrow(UserLookupNotFoundException::new);
   }
 }

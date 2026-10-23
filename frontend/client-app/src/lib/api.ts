@@ -110,15 +110,15 @@ export const authApi = {
   logout: async (): Promise<void> => {
     await apiClient.post("/auth/logout");
   },
-  lookupUser: async (email: string): Promise<{ id: string; email: string; displayName: string }> => {
-    const { data } = await apiClient.get<{ id: string; email: string; displayName: string }>(
+  lookupUser: async (email: string): Promise<{ id: string; displayName: string }> => {
+    const { data } = await apiClient.get<{ id: string; displayName: string }>(
       "/auth/users/lookup",
       { params: { email } }
     );
     return data;
   },
-  lookupUserById: async (id: string): Promise<{ id: string; email: string; displayName: string }> => {
-    const { data } = await apiClient.get<{ id: string; email: string; displayName: string }>(
+  lookupUserById: async (id: string): Promise<{ id: string; displayName: string }> => {
+    const { data } = await apiClient.get<{ id: string; displayName: string }>(
       `/auth/users/by-id/${id}`
     );
     return data;
@@ -258,8 +258,8 @@ export const filesApi = {
     try {
       userId = (await authApi.lookupUser(email)).id;
     } catch (err) {
-      // auth-service reports an unknown email as 400 "User not found with
-      // email: ..."; other lookup failures are rethrown.
+      // auth-service reports an unknown email as 404 "User not found" (older
+      // builds used 400); other lookup failures are rethrown.
       const isUserNotFound =
         isAxiosError(err) &&
         (err.response?.status === 404 ||
