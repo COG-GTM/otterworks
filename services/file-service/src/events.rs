@@ -66,6 +66,19 @@ impl EventPublisher {
         }
     }
 
+    #[cfg(test)]
+    pub fn from_parts(
+        client: aws_sdk_sns::Client,
+        topic_arn: Option<String>,
+        share_fail_topic_arn: Option<String>,
+    ) -> Self {
+        Self {
+            client,
+            topic_arn,
+            share_fail_topic_arn,
+        }
+    }
+
     /// Whether the share-event failure switch is on, in which case every
     /// share request (including re-shares) attempts the publish.
     pub fn share_publish_forced(&self) -> bool {
