@@ -117,17 +117,9 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
     )
   }
 
-  private def buildCsvContent(data: List[Map[String, String]]): String =
-    if data.isEmpty then "event_id,event_type,user_id,resource_id,resource_type,timestamp\n"
-    else
-      val headers = List("event_id", "event_type", "user_id", "resource_id", "resource_type", "timestamp")
-      val headerLine = headers.mkString(",")
-      val rows = data.map { row =>
-        headers.map(h => escapeCsvField(row.getOrElse(h, ""))).mkString(",")
-      }
-      (headerLine :: rows).mkString("\n") + "\n"
-
-  private def escapeCsvField(value: String): String =
-    if value.contains(",") || value.contains("\"") || value.contains("\n") then
-      "\"" + value.replace("\"", "\"\"") + "\""
-    else value
+  private[api] def buildCsvContent(data: List[Map[String, String]]): String =
+    val headers = List("event_id", "event_type", "user_id", "resource_id", "resource_type", "timestamp")
+    val rows = data.map { row =>
+      headers.map(h => CsvCell.text(row.getOrElse(h, ""))).mkString(",")
+    }
+    (headers.mkString(",") :: rows).mkString("\n") + "\n"
