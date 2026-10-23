@@ -1,6 +1,7 @@
 package com.otterworks.analytics.api
 
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
+import akka.http.scaladsl.model.headers.RawHeader
 import akka.http.scaladsl.server.Directives.concat
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
@@ -34,20 +35,24 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val analyticsRoutes = AnalyticsRoutes(service)
     (eventRoutes, analyticsRoutes, service)
 
+  private def caller(userId: String) = addHeader(RawHeader(EventRoutes.UserIdHeader, userId))
+
+  private def trackJson(body: String) = HttpEntity(ContentTypes.`application/json`, body)
+
   // --- Event Routes ---
 
   "POST /api/v1/analytics/events" should "accept a valid event" in {
     val (eventRoutes, _, _) = createRoutes()
     val payload = TrackEventRequest(
       eventType = "document.created",
-      userId = "user-1",
+      userId = Some("user-1"),
       resourceId = "doc-1",
       resourceType = "document",
       metadata = Some(Map("title" -> "Test"))
     ).toJson.compactPrint
     val entity = HttpEntity(ContentTypes.`application/json`, payload)
 
-    Post("/api/v1/analytics/events", entity) ~> eventRoutes.routes ~> check {
+    Post("/api/v1/analytics/events", entity) ~> caller("user-1") ~> eventRoutes.routes ~> check {
       status shouldBe StatusCodes.Accepted
       val response = responseAs[AcceptedResponse]
       response.status shouldBe "accepted"
@@ -60,16 +65,81 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val routes = concat(eventRoutes.routes, analyticsRoutes.routes)
     val payload = TrackEventRequest(
       eventType = "document.created",
-      userId = "user-1",
+      userId = Some("user-1"),
       resourceId = "doc-1",
       resourceType = "document",
       metadata = Some(Map("title" -> "Test"))
     ).toJson.compactPrint
     val entity = HttpEntity(ContentTypes.`application/json`, payload)
 
-    Post("/api/v1/analytics/events", entity) ~> routes ~> check {
+    Post("/api/v1/analytics/events", entity) ~> caller("user-1") ~> routes ~> check {
       status shouldBe StatusCodes.Accepted
     }
+  }
+
+  it should "reject a request without a gateway-asserted caller" in {
+    val (eventRoutes, _, service) = createRoutes()
+    Post("/api/v1/analytics/events", trackJson("""{"eventType":"document.viewed","userId":"user-1","resourceId":"doc-1","resourceType":"document"}""")) ~>
+      eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.Unauthorized
+      }
+    service.getEventCount.futureValue shouldBe 0
+  }
+
+  it should "reject a body userId that differs from the caller" in {
+    val (eventRoutes, _, service) = createRoutes()
+    Post("/api/v1/analytics/events", trackJson("""{"eventType":"document.viewed","userId":"victim","resourceId":"doc-1","resourceType":"document"}""")) ~>
+      caller("attacker") ~> eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.Forbidden
+      }
+    service.getUserActivity("victim").futureValue.totalEvents shouldBe 0
+  }
+
+  it should "attribute the event to the caller when userId is omitted" in {
+    val (eventRoutes, _, service) = createRoutes()
+    Post("/api/v1/analytics/events", trackJson("""{"eventType":"document.viewed","resourceId":"doc-1","resourceType":"document"}""")) ~>
+      caller("user-7") ~> eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.Accepted
+      }
+    service.getUserActivity("user-7").futureValue.totalEvents shouldBe 1
+  }
+
+  it should "reject event types outside EventType.All" in {
+    val (eventRoutes, _, service) = createRoutes()
+    Post("/api/v1/analytics/events", trackJson("""{"eventType":"admin.pwned","resourceId":"doc-1","resourceType":"document"}""")) ~>
+      caller("user-1") ~> eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    service.getEventCount.futureValue shouldBe 0
+  }
+
+  it should "not let callers forge storage accounting events" in {
+    val (eventRoutes, _, service) = createRoutes()
+    Post("/api/v1/analytics/events", trackJson("""{"eventType":"storage.allocated","resourceId":"file-1","resourceType":"file","metadata":{"bytes":"999999999"}}""")) ~>
+      caller("user-1") ~> eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    service.getStorageUsage(Some("user-1")).futureValue.totalStorageBytes shouldBe 0
+  }
+
+  it should "reject oversized metadata" in {
+    val (eventRoutes, _, service) = createRoutes()
+    val metadata = (1 to 17).map(i => s""""k$i":"v"""").mkString("{", ",", "}")
+    Post("/api/v1/analytics/events", trackJson(s"""{"eventType":"document.viewed","resourceId":"doc-1","resourceType":"document","metadata":$metadata}""")) ~>
+      caller("user-1") ~> eventRoutes.routes ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    service.getEventCount.futureValue shouldBe 0
+  }
+
+  it should "reject bodies over the size limit" in {
+    val (eventRoutes, _, service) = createRoutes()
+    val big = "x" * (TrackEventPolicy.MaxBodyBytes.toInt + 1)
+    Post("/api/v1/analytics/events", trackJson(s"""{"eventType":"document.viewed","resourceId":"doc-1","resourceType":"document","metadata":{"k":"$big"}}""")) ~>
+      caller("user-1") ~> akka.http.scaladsl.server.Route.seal(eventRoutes.routes) ~> check {
+        status.intValue shouldBe 413
+      }
+    service.getEventCount.futureValue shouldBe 0
   }
 
   // --- Dashboard Route ---
