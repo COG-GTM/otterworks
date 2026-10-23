@@ -57,21 +57,8 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # --- Local Development ---
 
-# Signing keys that were once committed to this repo; a .env still carrying one is rotated.
-PUBLIC_JWT_SECRETS := otterworks-local-dev-jwt-secret-change-me-in-production dev-jwt-secret-otterworks-2024-change-in-production otterworks-dev-secret
-
-env: ## Create .env with a random per-checkout JWT_SECRET (docker-compose.yml requires one)
-	@for s in $(PUBLIC_JWT_SECRETS); do \
-		if grep -qsxE "JWT_SECRET=[\"']?$$s[\"']?" .env; then \
-			sed -i.bak -E '/^JWT_SECRET=/d' .env && rm -f .env.bak; \
-			echo "Removed a publicly known JWT_SECRET from .env"; \
-		fi; \
-	done
-	@if ! grep -qs '^JWT_SECRET=.' .env; then \
-		if [ -s .env ] && [ -n "$$(tail -c1 .env)" ]; then echo >> .env; fi; \
-		echo "JWT_SECRET=$$(openssl rand -hex 32)" >> .env; \
-		echo "Wrote a random JWT_SECRET to .env"; \
-	fi
+env: ## Ensure .env has a private random JWT_SECRET (docker-compose.yml requires one)
+	@./scripts/ensure-jwt-secret.sh .env
 
 infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
 	docker compose -f docker-compose.infra.yml up -d
