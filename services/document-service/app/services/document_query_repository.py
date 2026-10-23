@@ -9,12 +9,12 @@ allow-list of columns and directions.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import ColumnElement, bindparam, column, false, func, select, table
+from sqlalchemy import ColumnElement, Uuid, bindparam, column, false, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import NullType
 
 logger = structlog.get_logger()
 
@@ -33,9 +33,7 @@ COLUMNS = (
     "updated_at",
 )
 
-SORTABLE_COLUMNS = frozenset(
-    {"title", "content_type", "word_count", "version", "created_at", "updated_at"}
-)
+SORTABLE_COLUMNS = frozenset(COLUMNS)
 SORT_DIRECTIONS = frozenset({"asc", "desc"})
 
 # Untyped columns return rows exactly as the driver reads them.
@@ -56,6 +54,10 @@ def _order_by(sort: str, direction: str) -> ColumnElement[Any]:
     return col.asc() if normalized == "asc" else col.desc()
 
 
+def _uuid_param(name: str, value: Any) -> Any:
+    return bindparam(name, uuid.UUID(str(value)), type_=Uuid())
+
+
 class DocumentQueryRepository:
     """Reads the document table for the list endpoint's metadata filters."""
 
@@ -72,10 +74,9 @@ class DocumentQueryRepository:
         c = _documents.c
         clauses: list[ColumnElement[bool]] = [c.is_deleted == false(), c.is_template == false()]
         if owner_id:
-            # Untyped so the database coerces it to the uuid column's type.
-            clauses.append(c.owner_id == bindparam("owner_id", str(owner_id), type_=NullType()))
+            clauses.append(c.owner_id == _uuid_param("owner_id", owner_id))
         if folder_id:
-            clauses.append(c.folder_id == bindparam("folder_id", str(folder_id), type_=NullType()))
+            clauses.append(c.folder_id == _uuid_param("folder_id", folder_id))
         if title_contains:
             pattern = bindparam("title_pattern", f"%{title_contains}%")
             clauses.append(func.lower(c.title).like(func.lower(pattern)))
