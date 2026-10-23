@@ -164,8 +164,7 @@ class AuthControllerIntegrationTest {
     String accessToken =
         registerAndGetAccessToken("update@otterworks.dev", "password123", "Original Name");
 
-    String body =
-        """
+    String body = """
         {"displayName": "Updated Name"}
         """;
 
