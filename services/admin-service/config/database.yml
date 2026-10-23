@@ -4,19 +4,24 @@ default: &default
   pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
   host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
   port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+
+# Local convenience credentials are scoped to development/test only.
+development: &local
+  <<: *default
   username: <%= ENV.fetch("DATABASE_USER", "otterworks") %>
   password: <%= ENV.fetch("DATABASE_PASSWORD", "otterworks") %>
-
-development:
-  <<: *default
   database: admin_service_development
 
 test:
-  <<: *default
+  <<: *local
   database: admin_service_test
 
 production:
   <<: *default
+  username: <%= ENV.fetch("DATABASE_USER", "otterworks") %>
+  # No fallback: booting production without DATABASE_PASSWORD fails instead of
+  # connecting with a credential published in this repository.
+  password: <%= ENV.fetch("DATABASE_PASSWORD") { raise KeyError, "DATABASE_PASSWORD must be set in production" if Rails.env.production? } %>
   # Tenant deploys provision one shared per-tenant database (otterworks_<id>)
   # rather than a per-service one; this branch is only ever deployed to the
   # coggtm tenant, hence the default.
