@@ -23,10 +23,29 @@ and the datasource. That is exactly what makes this a good decomposition candida
 |---|---|---|---|
 | Announcements | `com.otterworks.legacyportal.announcements` | `announcements` | `GET/POST /api/announcements`, `GET /api/announcements/{id}`, `POST /api/announcements/{id}/publish` |
 | User Preferences | `com.otterworks.legacyportal.userpreferences` | `user_preferences` | `GET /api/preferences/{userId}`, `PUT /api/preferences/{userId}` |
-| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
+| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback`, `GET /api/feedback/average-rating` |
 
 Shared, non-domain plumbing lives in `com.otterworks.legacyportal.common` (health endpoint,
-exception handling).
+exception handling) and `com.otterworks.legacyportal.security` (authentication).
+
+## Authentication
+
+The portal is not behind the api-gateway, so it authenticates every request itself. All
+`/api/**` routes require `Authorization: Bearer <access token>` issued by auth-service; the
+portal verifies the HMAC signature with the same `JWT_SECRET` (required, at least 32 bytes —
+startup fails otherwise) and rejects refresh, expired, unsigned and forged tokens with `401`.
+Only `/health` and `/actuator/health` are anonymous.
+
+The caller's identity always comes from the token's `sub`, never from the request:
+
+| Route | Rule |
+|---|---|
+| `POST /api/feedback` | filed as the caller; a body `userId` other than the caller is `403` |
+| `GET /api/feedback` | the caller's own feedback; `?userId=<other>` requires the `ADMIN` role |
+| `GET /api/preferences/{userId}` | caller's own, or any user with `ADMIN` |
+| `PUT /api/preferences/{userId}` | caller's own only |
+| `POST /api/announcements`, `POST /api/announcements/{id}/publish` | `ADMIN` only |
+| `GET /api/announcements?publishedOnly=false`, unpublished `GET /api/announcements/{id}` | `ADMIN` only (others get `403` / `404`) |
 
 ### Why it's an obvious decomposition candidate
 
@@ -50,9 +69,11 @@ cd services/legacy-portal
 ### Local / on a VM (embedded H2, self-contained)
 
 ```bash
+export JWT_SECRET=<auth-service JWT signing secret>
 ./scripts/run-onprem.sh
 curl http://localhost:8095/health          # {"status":"UP","service":"legacy-portal"}
 curl http://localhost:8095/actuator/health
+curl -H "Authorization: Bearer $ACCESS_TOKEN" http://localhost:8095/api/feedback
 ```
 
 Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legacy-portal.service).
@@ -60,6 +81,7 @@ Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legac
 ### On-prem with a real PostgreSQL (Docker Compose)
 
 ```bash
+export JWT_SECRET=<auth-service JWT signing secret>
 docker compose -f docker-compose.onprem.yml up --build
 curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v

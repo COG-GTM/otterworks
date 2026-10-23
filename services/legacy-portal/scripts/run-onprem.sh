@@ -8,10 +8,18 @@
 # a real PostgreSQL by exporting SPRING_PROFILES_ACTIVE=postgres and SPRING_DATASOURCE_*.
 #
 # Usage:
-#   ./scripts/run-onprem.sh            # build (if needed) + run with embedded H2
-#   SKIP_BUILD=1 ./scripts/run-onprem.sh
+#   JWT_SECRET=... ./scripts/run-onprem.sh            # build (if needed) + run with embedded H2
+#   JWT_SECRET=... SKIP_BUILD=1 ./scripts/run-onprem.sh
+#
+# JWT_SECRET must be the secret auth-service signs access tokens with: every /api/** call
+# needs `Authorization: Bearer <access token>`, and the portal will not start without it.
 # ------------------------------------------------------------------------------
 set -euo pipefail
+
+if [[ -z "${JWT_SECRET:-}" ]]; then
+  echo "[run-onprem] JWT_SECRET is not set (use the auth-service JWT signing secret)." >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
