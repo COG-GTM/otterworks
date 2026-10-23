@@ -275,14 +275,28 @@ resolve_alert_webhook_secret() {
 }
 
 restart_alert_webhook_consumers() {
-  local ns=$1 d
+  local ns=$1 d failed=0
+  local -a restarted=()
   [ "${ALERT_WEBHOOK_SECRET_CHANGED:-false}" = true ] || return 0
+  # Restart every consumer before waiting on any, so one slow or failed rollout
+  # never leaves the others running with the previous secret.
   for d in admin-service file-service notification-service; do
     # Absent by design in reduced profiles (e.g. --profile core).
     kubectl -n "${ns}" get "deployment/${d}" >/dev/null 2>&1 || continue
-    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null
-    kubectl -n "${ns}" rollout status "deployment/${d}" --timeout=300s >/dev/null
+    if kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null; then
+      restarted+=("${d}")
+    else
+      echo "ERROR: failed to restart ${d} after ALERT_WEBHOOK_SECRET rotation" >&2
+      failed=1
+    fi
   done
+  for d in "${restarted[@]}"; do
+    kubectl -n "${ns}" rollout status "deployment/${d}" --timeout=300s >/dev/null || {
+      echo "ERROR: ${d} did not finish rolling out after ALERT_WEBHOOK_SECRET rotation" >&2
+      failed=1
+    }
+  done
+  return "${failed}"
 }
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 
