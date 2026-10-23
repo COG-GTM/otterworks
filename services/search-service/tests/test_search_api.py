@@ -162,6 +162,7 @@ class TestAnalyticsEndpoint:
             mc._search_analytics["queries"] = []
             mc._search_analytics["total_searches"] = 0
             mc._search_analytics["total_results"] = 0
+            mc._owner_totals.clear()
 
         clear()
         yield
@@ -231,6 +232,29 @@ class TestAnalyticsEndpoint:
         data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "attacker"}).get_json()
         assert data["total_searches"] == 0
         assert "secret-merger" not in str(data)
+
+    def test_user_totals_survive_query_list_eviction(self, monkeypatch):
+        """Other users' searches evicting old entries don't shrink a user's totals."""
+        from app.services import meilisearch_client as mc
+
+        monkeypatch.setattr(mc, "MAX_ANALYTICS_ENTRIES", 3)
+        mc.record_search_analytics("mine", 4, "user-a")
+        for i in range(5):
+            mc.record_search_analytics(f"other-{i}", 1, "user-b")
+
+        data = mc.get_search_analytics(owner_id="user-a")
+        assert data.total_searches == 1
+        assert data.avg_results_per_query == 4.0
+        assert data.popular_queries == []
+
+    def test_owner_counters_are_bounded(self, monkeypatch):
+        from app.services import meilisearch_client as mc
+
+        monkeypatch.setattr(mc, "MAX_ANALYTICS_OWNERS", 2)
+        for owner in ("a", "b", "c"):
+            mc.record_search_analytics("q", 1, owner)
+        assert list(mc._owner_totals) == ["b", "c"]
+        assert mc.get_search_analytics(owner_id="a").total_searches == 0
 
     def test_service_token_gets_global_analytics(self, token_client):
         """The internal service token still sees aggregate analytics across users."""

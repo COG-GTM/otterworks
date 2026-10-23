@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import OrderedDict
 from typing import Any
 
 import meilisearch
@@ -26,6 +27,11 @@ _search_analytics: dict[str, Any] = {
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
+MAX_ANALYTICS_OWNERS = 10000
+
+# Per-user cumulative counters (LRU-bounded) so scoped totals don't shrink
+# when other users' searches evict entries from the bounded query list.
+_owner_totals: OrderedDict[str, list[int]] = OrderedDict()
 
 
 def record_search_analytics(query: str, result_count: int, owner_id: str | None = None) -> None:
@@ -41,6 +47,13 @@ def record_search_analytics(query: str, result_count: int, owner_id: str | None 
         )
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
+        if owner_id is not None:
+            counters = _owner_totals.pop(owner_id, [0, 0])
+            counters[0] += 1
+            counters[1] += result_count
+            _owner_totals[owner_id] = counters
+            if len(_owner_totals) > MAX_ANALYTICS_OWNERS:
+                _owner_totals.popitem(last=False)
         if len(_search_analytics["queries"]) > MAX_ANALYTICS_ENTRIES:
             _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
@@ -56,11 +69,11 @@ def get_search_analytics(owner_id: str | None = None) -> AnalyticsData:
         queries = list(_search_analytics["queries"])
         total_searches = _search_analytics["total_searches"]
         total_results = _search_analytics["total_results"]
+        if owner_id is not None:
+            total_searches, total_results = _owner_totals.get(owner_id, (0, 0))
 
     if owner_id is not None:
         queries = [entry for entry in queries if entry.get("owner_id") == owner_id]
-        total_searches = len(queries)
-        total_results = sum(entry["result_count"] for entry in queries)
 
     query_counts: dict[str, int] = {}
     zero_result_counts: dict[str, int] = {}
