@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 
 class TestIndexDocumentEndpoint:
     """Tests for POST /api/v1/search/index/document."""
@@ -108,3 +110,13 @@ class TestReindexEndpoint:
         assert response.status_code == 200
         data = response.get_json()
         assert data["status"] == "reindexed"
+
+    def test_reindex_keeps_index_when_document_crawl_is_rejected(
+        self, client, mock_meilisearch_client
+    ):
+        """A rejected document-service crawl must not wipe the existing index."""
+        rejected = MagicMock(status_code=401)
+        with patch("app.services.indexer.requests.get", return_value=rejected):
+            response = client.post("/api/v1/search/reindex")
+        assert response.status_code == 500
+        mock_meilisearch_client.delete_index.assert_not_called()
