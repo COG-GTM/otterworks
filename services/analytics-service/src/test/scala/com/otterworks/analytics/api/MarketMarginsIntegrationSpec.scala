@@ -2,6 +2,7 @@ package com.otterworks.analytics.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
+import akka.http.scaladsl.model.headers.RawHeader
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.dimafeng.testcontainers.PostgreSQLContainer
 import com.otterworks.analytics.batch.MarketSeeder
@@ -135,12 +136,18 @@ class MarketMarginsIntegrationSpec
     count(database, "product_margin_daily") shouldBe margins
   }
 
+  private val auth = new MarketAuth(Some(new JwtVerifier(TestTokens.Secret)), Set("ADMIN"), Set("ADMIN"))
+  private val adminAuthorization = RawHeader("Authorization", s"Bearer ${TestTokens.access("finance-admin", Seq("ADMIN"))}")
+
   private def routes =
     val (_, r, svc) = requireStack()
-    akka.http.scaladsl.server.Directives.concat(
-      MarginRoutes(svc, r).routes,
-      MarketIngestRoutes(svc, r).routes,
-    )
+    import akka.http.scaladsl.server.Directives.*
+    mapRequest(_.addHeader(adminAuthorization)) {
+      concat(
+        MarginRoutes(svc, r, auth).routes,
+        MarketIngestRoutes(svc, r, auth).routes,
+      )
+    }
 
   "GET /api/v1/analytics/margins" should "return KPIs and ~40 formula-consistent rows (AC-03/BDD-03)" in {
     requireStack()

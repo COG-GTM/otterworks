@@ -363,6 +363,58 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
 
 
 @probe(
+    finding_id="DAST-MARGINS-COST-EXPOSURE",
+    title="Supplier cost/margin data readable and market prices writable by any user",
+    severity=Severity.MEDIUM,
+    owasp="API5:2023 Broken Function Level Authorization",
+    cwe="CWE-285",
+    service="analytics-service",
+    remediation=(
+        "Verify the bearer token in analytics-service and require a margins-read role for "
+        "/margins and /market reads and a market-write role for POST /market/observations."
+    ),
+)
+def margins_cost_exposure(ctx: ScanContext) -> Result:
+    """A self-registered standard user reads cost data and posts a market observation."""
+    self = margins_cost_exposure.probe
+    attempts = [
+        ("GET", "/api/v1/analytics/margins", None),
+        ("GET", "/api/v1/analytics/margins/export", None),
+        ("GET", "/api/v1/analytics/market/status", None),
+        # An empty batch: reaching the handler is the finding, and it writes nothing.
+        ("POST", "/api/v1/analytics/market/observations", {"observations": []}),
+    ]
+    evidence: list[Evidence] = []
+    exposed: list[str] = []
+    unreached: list[str] = []
+    for method, path, body in attempts:
+        response = ctx.request(method, path, identity=ctx.attacker, json=body)
+        label = f"{method} {path}"
+        if unavailable(response):
+            # 503 is also what analytics answers when its Postgres backend is down.
+            unreached.append(f"{label} -> {response.status_code}")
+            continue
+        evidence.append(Evidence.from_response(response, note=label))
+        if response.status_code not in (401, 403):
+            exposed.append(f"{label} -> {response.status_code}")
+    if exposed:
+        return self.result(
+            Verdict.VULNERABLE,
+            f"standard user was not refused: {', '.join(exposed)}",
+            evidence,
+        )
+    if unreached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"margins/market routes did not produce an auth verdict: {', '.join(unreached)}",
+            evidence,
+        )
+    return self.result(
+        Verdict.SECURE, "every margins/market route refused the standard user", evidence
+    )
+
+
+@probe(
     finding_id="DAST-SEARCH-TENANT-LEAK",
     title="Search results leak documents owned by another tenant",
     severity=Severity.HIGH,
