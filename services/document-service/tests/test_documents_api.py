@@ -260,6 +260,37 @@ async def test_create_document_via_jwt_hs384(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_create_document_via_jwt_hs512(client: AsyncClient, monkeypatch):
+    """A 64-byte secret (deploy-tenant.sh default) makes auth-service sign with HS512."""
+    secret = "a" * 64
+    monkeypatch.setenv("JWT_SECRET", secret)
+    user_id = uuid.uuid4()
+    token = jwt.encode({"sub": str(user_id)}, secret, algorithm="HS512")
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "HS512 Doc", "owner_id": str(user_id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_create_document_rejects_refresh_token(client: AsyncClient):
+    """Refresh tokens share the signing key but must not act as access credentials."""
+    user_id = uuid.uuid4()
+    token = jwt.encode(
+        {"sub": str(user_id), "type": "refresh"}, TEST_JWT_SECRET, algorithm="HS384"
+    )
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Refresh Doc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
     """X-User-Id header alone is not trusted (prevents identity spoofing)."""
     user_id = uuid.uuid4()
@@ -279,5 +310,32 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         "/api/v1/documents/",
         json={"title": "No Auth Doc"},
         auth=None,  # opt out of the client fixture's default bearer token
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_document_rejects_foreign_owner_id(client: AsyncClient):
+    """A body owner_id naming another user must not forge a document under them."""
+    victim_id = uuid.uuid4()
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Forged", "content": "planted", "owner_id": str(victim_id)},
+    )
+    assert resp.status_code == 403
+
+    listing = await client.get("/api/v1/documents/", params={"owner_id": str(victim_id)})
+    assert listing.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_create_document_body_owner_id_requires_auth(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    """A body owner_id is not a substitute for authentication."""
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Unauthenticated", "owner_id": str(owner_id)},
+        auth=None,
     )
     assert resp.status_code == 401
