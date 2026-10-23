@@ -39,9 +39,9 @@ class MetricsBoundsSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     active.count shouldBe 1500
     active.users should have size MetricsAggregator.Limits.MaxActiveUsers
 
-    val export = MetricsAggregator.exportData(events, "7d")
-    export should have size MetricsAggregator.Limits.MaxExportRows
-    export.head("event_id") shouldBe "e000001" // newest first
+    val exported = MetricsAggregator.exportData(events, "7d")
+    exported should have size MetricsAggregator.Limits.MaxExportRows
+    exported.head("event_id") shouldBe "e000001" // newest first
   }
 
   it should "cap a user's recent events" in {

@@ -184,10 +184,10 @@ class PostgresMetricsRepositorySpec extends AnyFlatSpec with Matchers with Scala
     val mem = new InMemoryMetricsRepository(PostgresConfig("", "", "", 1))
     events.foreach(e => Await.result(mem.storeEvent(e), 10.seconds))
 
-    val export = pg.getExportData("7d").futureValue
-    export should have size MetricsAggregator.Limits.MaxExportRows
-    export.head("event_id") shouldBe "b000001"
-    export shouldBe mem.getExportData("7d").futureValue
+    val exported = pg.getExportData("7d").futureValue
+    exported should have size MetricsAggregator.Limits.MaxExportRows
+    exported.head("event_id") shouldBe "b000001"
+    exported shouldBe mem.getExportData("7d").futureValue
 
     val active = pg.getActiveUsers("7d").futureValue
     active.count shouldBe 1200
