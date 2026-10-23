@@ -289,14 +289,16 @@ pub async fn get_file_metadata(
 /// authenticated JWT. This prevents a caller from spoofing another user's
 /// `owner_id` via the query string. Fall back to `query.owner_id` only when
 /// no header is present (direct/internal callers).
-fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<Uuid> {
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
-
-    header_owner_id.or(query_owner_id)
+/// Listings are always scoped to the authenticated caller; an `owner_id` query
+/// naming anyone else is rejected rather than honoured.
+fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Result<Uuid, ServiceError> {
+    let caller = authz::caller_id(req)?;
+    if query_owner_id.is_some_and(|owner| owner != caller) {
+        return Err(ServiceError::Forbidden(
+            "cannot list another user's files".into(),
+        ));
+    }
+    Ok(caller)
 }
 
 pub async fn list_files(
@@ -307,7 +309,7 @@ pub async fn list_files(
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = Some(resolve_owner_id(&req, query.owner_id)?);
     let mut files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
@@ -391,7 +393,7 @@ pub async fn list_trashed(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = Some(resolve_owner_id(&req, query.owner_id)?);
     let files = meta.list_trashed(owner_id).await?;
 
     let page = query.page.unwrap_or(1).max(1);
@@ -739,18 +741,18 @@ pub async fn remove_share(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid user id: {e}")))?;
 
-    // The owner may revoke any share; a recipient may only remove their own.
-    if user_id == caller {
-        load_authorized_file(&meta, &file_id, &caller, FileAction::Read).await?;
+    // A recipient may always drop their own grant (even while the file is
+    // trashed); only the owner may revoke anyone else's.
+    let share = if user_id == caller {
+        meta.find_existing_share(&file_id, &caller)
+            .await?
+            .ok_or_else(|| ServiceError::FileNotFound(file_id.to_string()))?
     } else {
         load_authorized_file(&meta, &file_id, &caller, FileAction::Manage).await?;
-    }
-
-    // Find the existing share
-    let share = meta
-        .find_existing_share(&file_id, &user_id)
-        .await?
-        .ok_or_else(|| ServiceError::ShareNotFound("Share not found".into()))?;
+        meta.find_existing_share(&file_id, &user_id)
+            .await?
+            .ok_or_else(|| ServiceError::ShareNotFound("Share not found".into()))?
+    };
 
     meta.delete_share(&share.id).await?;
 
@@ -765,7 +767,7 @@ pub async fn list_folders(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = Some(resolve_owner_id(&req, query.owner_id)?);
     let folders = meta.list_folders(query.parent_id, owner_id).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
