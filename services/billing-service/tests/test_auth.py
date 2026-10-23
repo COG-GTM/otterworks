@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import time
 from datetime import date
 from decimal import Decimal
@@ -139,6 +141,15 @@ def test_api_requires_bearer_token(client: TestClient, state, method: str, path:
 )
 def test_invalid_tokens_are_rejected(client: TestClient, state, bad_token: str) -> None:
     response = plan_change(client, TENANT_A, bearer(bad_token))
+    assert response.status_code == 401
+    assert state["change_plan"] == []
+
+
+@pytest.mark.parametrize("alg", [["HS256"], {"name": "HS256"}, None, 256])
+def test_non_string_alg_is_rejected(client: TestClient, state, alg: object) -> None:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": alg}).encode()).rstrip(b"=").decode()
+    _header, payload, signature = token(tenant_id=str(TENANT_A)).split(".")
+    response = plan_change(client, TENANT_A, bearer(f"{header}.{payload}.{signature}"))
     assert response.status_code == 401
     assert state["change_plan"] == []
 
