@@ -60,10 +60,16 @@ Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legac
 ### On-prem with a real PostgreSQL (Docker Compose)
 
 ```bash
+./scripts/init-onprem-env.sh                 # once: random DB_PASSWORD -> .env (gitignored)
 docker compose -f docker-compose.onprem.yml up --build
 curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v
 ```
+
+There is no default database password: Compose refuses to start until `DB_PASSWORD` is set
+(exported or in `.env`), and the app refuses to start under the `postgres` profile without
+`SPRING_DATASOURCE_PASSWORD`. Changing `DB_PASSWORD` after the first run needs `down -v` (or
+`ALTER ROLE`), since PostgreSQL only applies it when the data volume is initialised.
 
 This brings up PostgreSQL alongside the app; the three schemas are created by
 [`scripts/initdb.sql`](scripts/initdb.sql). This stack is intentionally separate from the
