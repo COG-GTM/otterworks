@@ -177,6 +177,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 		UserID: "user-123",
 		Email:  "test@otterworks.dev",
 		Roles:  []string{"user"},
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -201,6 +202,73 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	require.NotNil(t, capturedClaims)
 	assert.Equal(t, "user-123", capturedClaims.UserID)
 	assert.Equal(t, "test@otterworks.dev", capturedClaims.Email)
+}
+
+func TestJWTAuth_RejectsNonAccessTokens(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for name, tokenType := range map[string]string{"refresh": "refresh", "untyped": ""} {
+		t.Run(name, func(t *testing.T) {
+			claims := JWTClaims{
+				Type: tokenType,
+				RegisteredClaims: jwt.RegisteredClaims{
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+					Subject:   "user-123",
+					ID:        "refresh-jti",
+				},
+			}
+			tokenStr := generateTestToken(t, testSecret, claims)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/documents/doc-1", nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			assert.Contains(t, rec.Body.String(), "not an access token")
+		})
+	}
+}
+
+func TestJWTAuth_RefreshPathAcceptsOnlyRefreshTokens(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for tokenType, want := range map[string]int{
+		RefreshTokenType: http.StatusOK,
+		AccessTokenType:  http.StatusUnauthorized,
+		"":               http.StatusUnauthorized,
+	} {
+		t.Run("type_"+tokenType, func(t *testing.T) {
+			claims := JWTClaims{
+				Type: tokenType,
+				RegisteredClaims: jwt.RegisteredClaims{
+					ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+					Subject:   "user-123",
+				},
+			}
+			req := httptest.NewRequest(http.MethodPost, RefreshPath, nil)
+			req.Header.Set("Authorization", "Bearer "+generateTestToken(t, testSecret, claims))
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, want, rec.Code)
+		})
+	}
 }
 
 func TestJWTAuth_ExpiredToken(t *testing.T) {
