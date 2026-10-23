@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe JwtAuthenticator do
-  let(:secret) { Rails.application.secrets.jwt_secret }
+  let(:secret) { JwtSecret.current }
   let(:app) { ->(env) { [200, {}, [env['jwt.user_email'].to_s]] } }
   let(:payload) { { sub: SecureRandom.uuid, email: 'admin@otterworks.com', role: 'super_admin' } }
 
@@ -28,6 +28,15 @@ RSpec.describe JwtAuthenticator do
     )
     _status, _headers, body = described_class.new(role_app).call(env)
     expect(body.first).to eq('admin')
+  end
+
+  it 'rejects an OWNER token forged with the public docker-compose default secret' do
+    forged = JWT.encode({ sub: SecureRandom.uuid, email: 'attacker@example.com', roles: ['OWNER'],
+                          exp: 1.hour.from_now.to_i },
+                        'otterworks-local-dev-jwt-secret-change-me-in-production', 'HS256')
+    status, _headers, body = call(forged)
+    expect(status).to eq(401)
+    expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
   end
 
   it 'rejects a token signed with the wrong secret' do
