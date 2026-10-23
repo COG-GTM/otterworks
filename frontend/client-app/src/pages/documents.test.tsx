@@ -95,6 +95,35 @@ describe("Documents page", () => {
     expect(screen.queryByText("Documents could not be loaded.")).not.toBeInTheDocument();
   });
 
+  it("shows the error state when refreshing a cached empty list fails", async () => {
+    server.use(
+      http.get(DOCUMENTS_URL, () =>
+        HttpResponse.json({ error: "unavailable" }, { status: 503 })
+      )
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    queryClient.setQueryData(["documents", "list"], {
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <DocumentsPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Documents could not be loaded."
+    );
+    expect(screen.queryByText("No documents yet")).not.toBeInTheDocument();
+    expect(screen.queryByText("Documents could not be refreshed.", { exact: false })).not.toBeInTheDocument();
+  });
+
   it("still shows the empty state for a successful empty list", async () => {
     server.use(
       http.get(DOCUMENTS_URL, () =>

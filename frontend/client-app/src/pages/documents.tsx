@@ -59,6 +59,7 @@ function DocumentsContent() {
 
   const raw = data as PaginatedResponse<Document> & { items?: Document[] } | undefined;
   const documents = raw?.items ?? raw?.data ?? [];
+  const showRefreshError = isError && documents.length > 0;
   const filtered = searchQuery
     ? documents.filter((doc) =>
         doc.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -111,7 +112,7 @@ function DocumentsContent() {
         />
       </div>
 
-      {isError && data !== undefined && (
+      {showRefreshError && (
         <div
           role="alert"
           className="flex items-center justify-between gap-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm"
@@ -135,7 +136,7 @@ function DocumentsContent() {
       {/* Document listing */}
       <DocumentListing
         isLoading={isLoading}
-        isError={isError && data === undefined}
+        isError={isError && !showRefreshError}
         isRetrying={isFetching}
         onRetry={() => refetch()}
         documents={filtered}
