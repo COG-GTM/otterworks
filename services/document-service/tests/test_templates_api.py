@@ -2,6 +2,7 @@
 
 import uuid
 
+import jwt
 import pytest
 from httpx import AsyncClient
 
@@ -57,6 +58,24 @@ async def test_create_template_requires_authentication(client: AsyncClient):
 
     listing = await client.get("/api/v1/templates/")
     assert listing.json() == []
+
+
+@pytest.mark.asyncio
+async def test_create_template_accepts_hs512_token(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    # auth-service (jjwt) signs with HS512 when JWT_SECRET is 64 bytes, as deploy scripts generate.
+    secret = "a" * 64
+    monkeypatch.setenv("JWT_SECRET", secret)
+    caller = uuid.uuid4()
+    token = jwt.encode({"sub": str(caller), "type": "access"}, secret, algorithm="HS512")
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "HS512"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["created_by"] == str(caller)
 
 
 @pytest.mark.asyncio
