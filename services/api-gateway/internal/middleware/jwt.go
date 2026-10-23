@@ -22,10 +22,14 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
-// AccessTokenType is the `type` claim auth-service sets on access tokens.
-// Refresh tokens are signed with the same key but carry `type=refresh`; they
-// are only valid at the refresh endpoint and must never authenticate a request.
-const AccessTokenType = "access"
+// auth-service signs access and refresh tokens with the same key and tells
+// them apart by the `type` claim. A refresh token is only valid at RefreshPath
+// (where auth-service also checks revocation) and never authenticates a request.
+const (
+	AccessTokenType  = "access"
+	RefreshTokenType = "refresh"
+	RefreshPath      = "/api/v1/auth/refresh"
+)
 
 // JWTConfig holds configuration for JWT validation middleware.
 type JWTConfig struct {
@@ -40,9 +44,6 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
-		// Carries the refresh token, which auth-service validates (type,
-		// signature and revocation) itself.
-		"/api/v1/auth/refresh",
 	}
 }
 
@@ -80,7 +81,18 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(tokenStr, cfg.Secret)
+			if r.URL.Path == RefreshPath {
+				if _, err := validateToken(tokenStr, cfg.Secret, RefreshTokenType); err != nil {
+					writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+					return
+				}
+				// No identity is derived from a refresh token; auth-service
+				// re-validates it and checks revocation.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims, err := validateToken(tokenStr, cfg.Secret, AccessTokenType)
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
@@ -112,7 +124,7 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-func validateToken(tokenStr, secret string) (*JWTClaims, error) {
+func validateToken(tokenStr, secret, wantType string) (*JWTClaims, error) {
 	claims := &JWTClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -132,8 +144,8 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 		return nil, fmt.Errorf("token has expired")
 	}
 
-	if claims.Type != AccessTokenType {
-		return nil, fmt.Errorf("token is not an access token")
+	if claims.Type != wantType {
+		return nil, fmt.Errorf("token is not an %s token", wantType)
 	}
 
 	return claims, nil

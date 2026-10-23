@@ -37,7 +37,6 @@ func TestJWTAuth_PublicPathsSkipValidation(t *testing.T) {
 		"/metrics",
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
-		"/api/v1/auth/refresh",
 	}
 
 	for _, path := range publicPaths {
@@ -252,38 +251,56 @@ func TestJWTAuth_RejectsNonAccessTokens(t *testing.T) {
 	}
 }
 
-func TestJWTAuth_RefreshEndpointAcceptsRefreshToken(t *testing.T) {
+func TestJWTAuth_RefreshEndpointAcceptsOnlyRefreshTokens(t *testing.T) {
 	cfg := JWTConfig{
 		Secret:     testSecret,
 		PublicPath: DefaultPublicPaths(),
 		PrefixPath: DefaultPrefixPaths(),
 	}
-
+	exp := jwt.NewNumericDate(time.Now().Add(time.Hour))
 	refresh := generateTestToken(t, testSecret, JWTClaims{
-		Type: "refresh",
-		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        "jti-123",
-			Subject:   "user-123",
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
-		},
+		Type:             RefreshTokenType,
+		RegisteredClaims: jwt.RegisteredClaims{ID: "jti-123", Subject: "user-123", ExpiresAt: exp},
+	})
+	access := generateTestToken(t, testSecret, JWTClaims{
+		Type:             AccessTokenType,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123", ExpiresAt: exp},
 	})
 
+	var reached bool
 	var gotAuth string
 	var gotClaims *JWTClaims
 	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
 		gotAuth = r.Header.Get("Authorization")
 		gotClaims = GetJWTClaims(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/refresh", nil)
-	req.Header.Set("Authorization", "Bearer "+refresh)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+	send := func(authorization string) *httptest.ResponseRecorder {
+		reached, gotAuth, gotClaims = false, "", nil
+		req := httptest.NewRequest(http.MethodPost, RefreshPath, nil)
+		if authorization != "" {
+			req.Header.Set("Authorization", authorization)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
 
+	rec := send("Bearer " + refresh)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "Bearer "+refresh, gotAuth, "auth-service needs the refresh token to validate it")
 	assert.Nil(t, gotClaims, "the gateway must not derive an identity from a refresh token")
+
+	for name, authorization := range map[string]string{
+		"anonymous":    "",
+		"access token": "Bearer " + access,
+	} {
+		rec := send(authorization)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, name)
+		assert.False(t, reached, "%s must not reach auth-service's refresh endpoint", name)
+	}
 }
 
 func TestJWTAuth_ExpiredToken(t *testing.T) {
