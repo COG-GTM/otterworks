@@ -12,7 +12,8 @@
 #     SPRING_PROFILES_ACTIVE=postgres
 #     SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5432/legacyportal
 #     SPRING_DATASOURCE_USERNAME=legacyportal
-#     SPRING_DATASOURCE_PASSWORD=... (do not commit real secrets)
+#     SPRING_DATASOURCE_PASSWORD=...  (required, no default; e.g. `openssl rand -hex 24`;
+#                                      chmod 600 the file, do not commit real secrets)
 [Unit]
 Description=OtterWorks Legacy Portal (modular monolith)
 After=network.target

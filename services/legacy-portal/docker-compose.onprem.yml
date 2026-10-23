@@ -7,6 +7,7 @@
 # of the golden app's cluster deployment.
 #
 #   Usage (from services/legacy-portal/):
+#     ./scripts/init-onprem-env.sh      # once: writes a random DB_PASSWORD to .env (gitignored)
 #     docker compose -f docker-compose.onprem.yml up --build
 #     curl http://localhost:8095/health
 #     docker compose -f docker-compose.onprem.yml down -v
@@ -17,7 +18,7 @@ services:
     environment:
       POSTGRES_DB: legacyportal
       POSTGRES_USER: legacyportal
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-legacyportal}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set - run ./scripts/init-onprem-env.sh}
     volumes:
       - ./scripts/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
       - legacy-portal-db-data:/var/lib/postgresql/data
@@ -39,7 +40,7 @@ services:
       SPRING_PROFILES_ACTIVE: postgres
       SPRING_DATASOURCE_URL: jdbc:postgresql://legacy-portal-db:5432/legacyportal
       SPRING_DATASOURCE_USERNAME: legacyportal
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-legacyportal}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set - run ./scripts/init-onprem-env.sh}
     ports:
       - "8095:8095"
     healthcheck:
