@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.RegistrationRejectedException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import java.util.Set;
@@ -60,18 +61,41 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
-  void register_shouldRejectDuplicateEmail() throws Exception {
+  void register_shouldRejectDuplicateEmailWithNeutralMessage() throws Exception {
     createTestUser("duplicate@otterworks.dev", "password123", "Duplicate User");
 
     String body =
         """
-        {"email": "duplicate@otterworks.dev", "password": "password123", "displayName": "Dup User"}
+        {"email": "duplicate@otterworks.dev", "password": "different-pass", "displayName": "Dup"}
         """;
 
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").value(RegistrationRejectedException.CLIENT_MESSAGE))
+            .andExpect(jsonPath("$.accessToken").doesNotExist())
+            .andReturn();
+
+    assertThat(result.getResponse().getContentAsString())
+        .doesNotContainIgnoringCase("already")
+        .doesNotContain("duplicate@otterworks.dev");
+    assertThat(userRepository.count()).isEqualTo(1);
+    assertThat(
+            passwordEncoder.matches(
+                "password123",
+                userRepository.findByEmail("duplicate@otterworks.dev").get().getPasswordHash()))
+        .isTrue();
+
+    String login =
+        """
+        {"email": "duplicate@otterworks.dev", "password": "password123"}
+        """;
     mockMvc
-        .perform(
-            post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-        .andExpect(status().isBadRequest());
+        .perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(login))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.accessToken").isNotEmpty());
   }
 
   @Test
@@ -140,7 +164,8 @@ class AuthControllerIntegrationTest {
     String accessToken =
         registerAndGetAccessToken("update@otterworks.dev", "password123", "Original Name");
 
-    String body = """
+    String body =
+        """
         {"displayName": "Updated Name"}
         """;
 

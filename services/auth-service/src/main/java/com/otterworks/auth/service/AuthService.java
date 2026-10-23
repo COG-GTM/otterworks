@@ -6,6 +6,7 @@ import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.dto.RegisterRequest;
 import com.otterworks.auth.entity.RefreshToken;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.RegistrationRejectedException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
@@ -15,6 +16,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,16 +44,24 @@ public class AuthService {
 
   @Transactional
   public AuthResponse register(RegisterRequest request) {
+    // Hash before the existence check so both outcomes pay the same bcrypt cost.
+    String passwordHash = passwordEncoder.encode(request.getPassword());
     if (userRepository.existsByEmail(request.getEmail())) {
-      throw new IllegalArgumentException("Email already registered");
+      log.info("Registration rejected");
+      throw new RegistrationRejectedException();
     }
 
     User user = new User();
     user.setEmail(request.getEmail());
-    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordHash(passwordHash);
     user.setDisplayName(request.getDisplayName());
     user.setRoles(Set.of(User.Role.USER));
-    user = userRepository.save(user);
+    try {
+      user = userRepository.saveAndFlush(user);
+    } catch (DataIntegrityViolationException e) {
+      log.info("Registration rejected");
+      throw new RegistrationRejectedException();
+    }
 
     log.info("User registered: email={}", user.getEmail());
     return buildAuthResponse(user);

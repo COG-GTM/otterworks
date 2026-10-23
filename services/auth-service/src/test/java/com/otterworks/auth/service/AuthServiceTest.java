@@ -10,6 +10,7 @@ import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.dto.RegisterRequest;
 import com.otterworks.auth.entity.RefreshToken;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.RegistrationRejectedException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,7 +57,7 @@ class AuthServiceTest {
 
     when(userRepository.existsByEmail("new@otterworks.dev")).thenReturn(false);
     when(passwordEncoder.encode("password123")).thenReturn("$2a$12$encoded");
-    when(userRepository.save(any(User.class)))
+    when(userRepository.saveAndFlush(any(User.class)))
         .thenAnswer(
             inv -> {
               User u = inv.getArgument(0);
@@ -75,22 +77,45 @@ class AuthServiceTest {
     assertThat(response.getAccessToken()).isEqualTo("access-token");
     assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
     assertThat(response.getTokenType()).isEqualTo("Bearer");
-    verify(userRepository).save(any(User.class));
+    verify(userRepository).saveAndFlush(any(User.class));
     verify(refreshTokenRepository).save(any(RefreshToken.class));
   }
 
   @Test
-  void register_shouldThrowWhenEmailExists() {
+  void register_shouldRejectExistingEmailWithoutRevealingIt() {
     RegisterRequest request = new RegisterRequest();
     request.setEmail("existing@otterworks.dev");
     request.setPassword("password123");
     request.setDisplayName("Existing User");
 
+    when(passwordEncoder.encode("password123")).thenReturn("$2a$12$encoded");
     when(userRepository.existsByEmail("existing@otterworks.dev")).thenReturn(true);
 
     assertThatThrownBy(() -> authService.register(request))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Email already registered");
+        .isInstanceOf(RegistrationRejectedException.class)
+        .hasMessage(RegistrationRejectedException.CLIENT_MESSAGE)
+        .hasMessageNotContainingAny("already", "registered", "existing@otterworks.dev");
+    verify(passwordEncoder).encode("password123");
+    verify(userRepository, never()).saveAndFlush(any(User.class));
+    verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
+  }
+
+  @Test
+  void register_shouldRejectConcurrentDuplicateWithSameNeutralError() {
+    RegisterRequest request = new RegisterRequest();
+    request.setEmail("race@otterworks.dev");
+    request.setPassword("password123");
+    request.setDisplayName("Race User");
+
+    when(passwordEncoder.encode("password123")).thenReturn("$2a$12$encoded");
+    when(userRepository.existsByEmail("race@otterworks.dev")).thenReturn(false);
+    when(userRepository.saveAndFlush(any(User.class)))
+        .thenThrow(new DataIntegrityViolationException("users_email_key"));
+
+    assertThatThrownBy(() -> authService.register(request))
+        .isInstanceOf(RegistrationRejectedException.class)
+        .hasMessage(RegistrationRejectedException.CLIENT_MESSAGE);
+    verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
   }
 
   @Test
