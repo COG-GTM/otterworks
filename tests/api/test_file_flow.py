@@ -1,5 +1,7 @@
-import pytest
+import os
 
+import httpx
+import pytest
 
 pytestmark = pytest.mark.api_flow
 
@@ -127,3 +129,67 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_file_listings_are_scoped_to_the_authenticated_caller(api_client):
+    owner = api_client.register_user("file-scope-owner")
+    other = api_client.register_user("file-scope-other")
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("scoped.txt", b"owner only", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    for path in ("/api/v1/files", "/api/v1/files/trash", "/api/v1/folders"):
+        foreign = api_client.client.get(path, headers=other.auth_headers, params={"owner_id": owner.id})
+        assert foreign.status_code == 403, f"{path}: {foreign.text}"
+
+    other_listing = api_client.client.get("/api/v1/files", headers=other.auth_headers)
+    assert other_listing.status_code == 200, other_listing.text
+    assert all(item["owner_id"] == other.id for item in other_listing.json()["files"])
+    assert all(item["id"] != file_id for item in other_listing.json()["files"])
+
+    forged_upload = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=other.auth_headers,
+        files={"file": ("forged.txt", b"forged", "text/plain")},
+        data={"owner_id": owner.id},
+    )
+    assert forged_upload.status_code == 403, forged_upload.text
+
+    forged_folder = api_client.client.post(
+        "/api/v1/folders",
+        headers=other.auth_headers,
+        json={"name": "forged folder", "owner_id": owner.id},
+    )
+    assert forged_folder.status_code == 403, forged_folder.text
+
+    owner_listing = api_client.client.get("/api/v1/files", headers=owner.auth_headers)
+    assert owner_listing.status_code == 200, owner_listing.text
+    assert any(item["id"] == file_id for item in owner_listing.json()["files"])
+
+
+def test_file_service_rejects_direct_requests_without_caller_identity(api_client):
+    file_service_url = os.getenv("OTTERWORKS_FILE_SERVICE_URL", "http://localhost:8082").rstrip("/")
+    try:
+        httpx.get(f"{file_service_url}/health", timeout=3.0)
+    except httpx.HTTPError:
+        pytest.skip(f"file-service is not directly reachable at {file_service_url}")
+
+    victim = api_client.register_user("file-direct-victim")
+    for path in ("/api/v1/files", "/api/v1/files/trash", "/api/v1/folders"):
+        anonymous = httpx.get(f"{file_service_url}{path}", timeout=10.0)
+        assert anonymous.status_code == 401, f"{path}: {anonymous.text}"
+        assert anonymous.json()["error"] == "unauthorized"
+
+    anonymous_upload = httpx.post(
+        f"{file_service_url}/api/v1/files/upload",
+        files={"file": ("anon.txt", b"anonymous", "text/plain")},
+        data={"owner_id": victim.id},
+        timeout=10.0,
+    )
+    assert anonymous_upload.status_code == 401, anonymous_upload.text
