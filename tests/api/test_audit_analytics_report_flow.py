@@ -29,10 +29,26 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     query_response = api_client.client.get(
         "/api/v1/audit/events",
         headers=user.auth_headers,
-        params={"user_id": user.id, "action": "create", "page": 1, "size": 10},
+        params={"user_id": user.id, "action": "create", "size": 10},
     )
     assert query_response.status_code == 200, query_response.text
-    assert query_response.json()["total"] >= 1
+    query_body = query_response.json()
+    assert any(e["id"] == event_id for e in query_body["events"]), query_body
+    assert "nextCursor" in query_body
+
+    offset_response = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=user.auth_headers,
+        params={"page": 2, "size": 1},
+    )
+    assert offset_response.status_code == 400, offset_response.text
+
+    bad_cursor_response = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=user.auth_headers,
+        params={"cursor": "not-a-cursor", "size": 1},
+    )
+    assert bad_cursor_response.status_code == 400, bad_cursor_response.text
 
     history_response = api_client.client.get(
         f"/api/v1/audit/resources/{resource_id}/history",

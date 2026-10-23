@@ -4,6 +4,7 @@ public sealed class ComplianceReport
 {
     public string Period { get; set; } = string.Empty;
     public int TotalEvents { get; set; }
+    public bool Truncated { get; set; }
     public int UniqueUsers { get; set; }
     public Dictionary<string, int> ActionBreakdown { get; set; } = new();
     public Dictionary<string, int> ResourceTypeBreakdown { get; set; } = new();

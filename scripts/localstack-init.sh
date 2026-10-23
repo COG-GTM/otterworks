@@ -57,11 +57,53 @@ table_exists otterworks-file-metadata || awslocal dynamodb create-table \
   --key-schema AttributeName=id,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST
 
+# GSIs mirror infrastructure/terraform/modules/database/main.tf; the audit
+# service reads exclusively through them (no table scans).
 table_exists otterworks-audit-events || awslocal dynamodb create-table \
   --table-name otterworks-audit-events \
-  --attribute-definitions AttributeName=id,AttributeType=S \
+  --attribute-definitions \
+    AttributeName=id,AttributeType=S \
+    AttributeName=user_id,AttributeType=S \
+    AttributeName=date_partition,AttributeType=S \
+    AttributeName=timestamp,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
+  --global-secondary-indexes \
+    '[{"IndexName":"user-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"timestamp-index","KeySchema":[{"AttributeName":"date_partition","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' \
   --billing-mode PAY_PER_REQUEST
+
+# Tables restored from a pre-GSI snapshot keep their old schema; add any missing
+# audit index in place. Events written before the upgrade lack the index keys
+# and stay invisible to index queries until rewritten.
+gsi_status() {
+  awslocal dynamodb describe-table --table-name "$1" \
+    --query "Table.GlobalSecondaryIndexes[?IndexName=='$2'].IndexStatus" --output text
+}
+wait_gsi_active() {
+  local table="$1" index="$2" status=""
+  for _ in $(seq 1 60); do
+    status=$(gsi_status "$table" "$index")
+    [ "$status" = "ACTIVE" ] && return 0
+    sleep 1
+  done
+  echo "GSI ${index} on ${table} not ACTIVE after 60s (status: ${status:-unknown})" >&2
+  return 1
+}
+ensure_gsi() {
+  local table="$1" index="$2" hash="$3" range="$4" status
+  status=$(gsi_status "$table" "$index")
+  if [ -n "$status" ] && [ "$status" != "None" ]; then
+    wait_gsi_active "$table" "$index"
+    return
+  fi
+  echo "Adding missing GSI ${index} to ${table}"
+  awslocal dynamodb update-table --table-name "$table" \
+    --attribute-definitions AttributeName="$hash",AttributeType=S AttributeName="$range",AttributeType=S \
+    --global-secondary-index-updates \
+      "[{\"Create\":{\"IndexName\":\"${index}\",\"KeySchema\":[{\"AttributeName\":\"${hash}\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"${range}\",\"KeyType\":\"RANGE\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}}]" >/dev/null
+  wait_gsi_active "$table" "$index"
+}
+ensure_gsi otterworks-audit-events user-index user_id timestamp
+ensure_gsi otterworks-audit-events timestamp-index date_partition timestamp
 
 table_exists otterworks-notifications || awslocal dynamodb create-table \
   --table-name otterworks-notifications \
