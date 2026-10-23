@@ -11,7 +11,7 @@ Run against: the local core stack (`/home/ubuntu/otterworks-up.sh`) with the gat
 | Unit (`cargo test`) | `services/file-service/src/tests/` | 60 | 37 | 23 (`#[ignore]`, run with `cargo test -- --ignored`: all 23 fail as expected) |
 | Functional / API (pytest through the gateway) | `tests/api/test_qa_file_service.py` | 43 | 25 | 18 (`xfail(strict=True)`) |
 | E2E (Playwright) | `frontend/client-app/e2e/qa-file-service.spec.ts` | 4 | 2 | 2 (`test.fail`) |
-| E2E (computer use) | Recording linked in the PR | 1 run | see PR | — |
+| E2E (computer use) | Recording linked in the PR | 1 run | 12 steps pass | FS-14 reproduced; FS-15 found; move not tested in the UI (no move control) |
 
 The 24 unit tests that already existed (parsers, config, alerts, events, health) still pass. Before this audit the service
 had no tests that called a handler through its route.
@@ -76,6 +76,8 @@ cd frontend/client-app && npx playwright test e2e/qa-file-service.spec.ts   # 4 
 | FS-12 | Low | trash state | Trash a file, then download it | Trashed files are read-only/hidden until restored | Still downloadable, renamable and shareable | `files::finding_fs12_*` |
 | FS-13 | Low | `GET /files/{id}/versions` | Random UUID | 404 | `200 {"versions":[]}` | `files::finding_fs13_*` |
 | FS-14 | Medium | `storage.rs` `presigned_download_url` | Click **Download** on the file detail page | The browser saves the file | The presigned URL has no `response-content-disposition=attachment`, and the `download` attribute is ignored across origins, so the app tab navigates to the raw object (and renders HTML inline; see FS-06) | e2e `FS-14` |
+
+| FS-15 | Low | web-app `pages/file-detail.tsx` (not file-service) | The share recipient opens a file shared with them | Owner shows the sharer | Owner is shown as "You" | computer-use run (screenshot in the PR) |
 
 Notes (not defects in this unit):
 
