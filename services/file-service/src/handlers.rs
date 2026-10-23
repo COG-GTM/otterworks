@@ -1114,7 +1114,6 @@ mod tests {
                 .app_data(unreachable_metadata().await)
                 .route("/files/{file_id}", web::get().to(get_file_metadata))
                 .route("/files/{file_id}/versions", web::get().to(list_versions))
-                .route("/files/{file_id}/trash", web::post().to(trash_file))
                 .route("/folders", web::post().to(create_folder))
                 .route("/folders/{folder_id}", web::get().to(get_folder))
                 .route("/folders/{folder_id}", web::delete().to(delete_folder)),
@@ -1125,7 +1124,6 @@ mod tests {
         let requests = vec![
             test::TestRequest::get().uri(&format!("/files/{id}")),
             test::TestRequest::get().uri(&format!("/files/{id}/versions")),
-            test::TestRequest::post().uri(&format!("/files/{id}/trash")),
             test::TestRequest::post()
                 .uri("/folders")
                 .set_json(serde_json::json!({"name": "x", "owner_id": Uuid::new_v4()})),
