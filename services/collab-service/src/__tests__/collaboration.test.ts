@@ -150,9 +150,13 @@ describe('CollaborationManager', () => {
     });
 
     it('should reject a refresh token presented as the socket token', (done) => {
-      const refreshToken = jwt.sign({ sub: 'user-refresh', type: 'refresh' }, JWT_SECRET, {
-        expiresIn: '30d',
-      });
+      const refreshToken = jwt.sign(
+        { sub: 'user-refresh', type: 'refresh' },
+        JWT_SECRET,
+        {
+          expiresIn: '30d',
+        },
+      );
       const client = clientIO(`http://localhost:${PORT}`, {
         auth: { token: refreshToken },
         transports: ['websocket'],
