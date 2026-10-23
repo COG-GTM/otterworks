@@ -24,6 +24,12 @@ public class GlobalExceptionHandler {
     return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
   }
 
+  @ExceptionHandler(RegistrationRejectedException.class)
+  public ResponseEntity<Map<String, Object>> handleRegistrationRejected(
+      RegistrationRejectedException ex) {
+    return buildErrorResponse(HttpStatus.BAD_REQUEST, RegistrationRejectedException.CLIENT_MESSAGE);
+  }
+
   @ExceptionHandler(MethodArgumentNotValidException.class)
   public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
     String errors =

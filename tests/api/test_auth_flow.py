@@ -67,7 +67,11 @@ def test_auth_validation_and_protected_routes(api_client):
             "displayName": user.display_name,
         },
     )
-    assert duplicate.status_code in {400, 409}
+    assert duplicate.status_code == 400, duplicate.text
+    # The public register endpoint must not act as a registered-email oracle.
+    assert "already" not in duplicate.text.lower()
+    assert user.email not in duplicate.text
+    assert "accessToken" not in duplicate.json()
 
     invalid_login = api_client.client.post(
         "/api/v1/auth/login",
