@@ -35,7 +35,7 @@ PUBLIC_PREFIXES = ("/health", "/metrics")
 JWT_ALGORITHMS = ["HS256", "HS384", "HS512"]
 
 #: Endpoints that operate on the whole tenant's index and have no per-user scope.
-SERVICE_ONLY_ENDPOINTS = frozenset({"index.reindex"})
+SERVICE_ONLY_ENDPOINTS = frozenset({"index.reindex", "search.search_analytics"})
 
 
 @dataclass(frozen=True)
@@ -84,7 +84,7 @@ def require_auth(app):
         if endpoint in SERVICE_ONLY_ENDPOINTS and not principal.is_service:
             logger.warning("auth_forbidden", endpoint=endpoint, path=path, user_id=principal.user_id)
             return jsonify({"error": "forbidden"}), 403
-        if principal.is_service and endpoint.startswith("search."):
+        if principal.is_service and endpoint.startswith("search.") and endpoint not in SERVICE_ONLY_ENDPOINTS:
             # A service token has no user scope; letting it search would return
             # every tenant's documents.
             logger.warning("auth_forbidden", endpoint=endpoint, path=path, caller="service")

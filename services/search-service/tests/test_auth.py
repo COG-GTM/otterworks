@@ -161,6 +161,11 @@ class TestServiceToken:
         assert response.status_code == 201
         assert mock_index.add_documents.call_args.args[0][0]["owner_id"] == VICTIM
 
+    def test_analytics_requires_the_service_token(self, auth_client, mock_meilisearch_client):
+        mock_meilisearch_client.get_indexes.return_value = {"results": []}
+        assert auth_client.get("/api/v1/search/analytics", headers=_bearer(_token())).status_code == 403
+        assert auth_client.get("/api/v1/search/analytics", headers=_bearer(SERVICE_TOKEN)).status_code == 200
+
     def test_reindex_requires_the_service_token(self, auth_client):
         with patch("app.api.index.Indexer.reindex", return_value={"status": "reindexed"}) as reindex:
             assert auth_client.post("/api/v1/search/reindex", headers=_bearer(_token())).status_code == 403
