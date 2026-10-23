@@ -13,7 +13,7 @@ interface ShareDialogProps {
   ownerName?: string;
   ownerEmail?: string;
   sharedWith: SharedUser[];
-  resolvedUsers?: Record<string, { name: string; email: string }>;
+  resolvedUsers?: Record<string, { name: string }>;
   onShare: (email: string, permission: "view" | "edit") => Promise<void>;
   onClose: () => void;
   onPermissionChange?: (userId: string, permission: "view" | "edit") => Promise<void>;
@@ -244,7 +244,7 @@ export function ShareDialog({
                       .map((user) => {
                         const resolved = resolvedUsers[user.userId];
                         const displayName = resolved?.name || user.name || user.userId.slice(0, 8);
-                        const displayEmail = resolved?.email || user.email;
+                        const displayEmail = user.email;
                         const isUpdating = updatingUserId === user.userId;
                         const isRemoving = removingUserId === user.userId;
                         return (
