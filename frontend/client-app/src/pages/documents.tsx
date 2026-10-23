@@ -7,6 +7,7 @@ import {
   List,
   FileText,
   Search,
+  AlertCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { DocumentCard } from "@/components/documents/document-card";
@@ -34,7 +35,7 @@ function DocumentsContent() {
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["documents", "list"],
     queryFn: () => documentsApi.list(),
   });
@@ -113,6 +114,9 @@ function DocumentsContent() {
       {/* Document listing */}
       <DocumentListing
         isLoading={isLoading}
+        isError={isError}
+        isRetrying={isFetching}
+        onRetry={() => refetch()}
         documents={filtered}
         searchQuery={searchQuery}
         viewMode={viewMode}
@@ -125,6 +129,9 @@ function DocumentsContent() {
 
 function DocumentListing({
   isLoading,
+  isError,
+  isRetrying,
+  onRetry,
   documents,
   searchQuery,
   viewMode,
@@ -132,6 +139,9 @@ function DocumentListing({
   onDelete,
 }: Readonly<{
   isLoading: boolean;
+  isError: boolean;
+  isRetrying: boolean;
+  onRetry: () => void;
   documents: Document[];
   searchQuery: string;
   viewMode: ViewMode;
@@ -140,6 +150,32 @@ function DocumentListing({
 }>) {
   if (isLoading) {
     return <PageLoader />;
+  }
+
+  if (isError) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center py-16 px-4 text-center"
+      >
+        <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+          <AlertCircle size={28} className="text-red-500" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
+          Documents could not be loaded.
+        </h3>
+        <p className="text-sm text-gray-500 max-w-sm mb-4">
+          Something went wrong while loading your documents. Please try again.
+        </p>
+        <button
+          onClick={onRetry}
+          disabled={isRetrying}
+          className="px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 disabled:opacity-50 transition text-sm font-medium"
+        >
+          {isRetrying ? "Retrying..." : "Retry"}
+        </button>
+      </div>
+    );
   }
 
   if (documents.length === 0) {
