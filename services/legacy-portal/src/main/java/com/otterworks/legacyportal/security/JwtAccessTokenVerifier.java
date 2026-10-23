@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 /**
  * Verifies the HMAC-signed (HS256/HS384/HS512) access tokens auth-service issues, using the
  * shared {@code JWT_SECRET}.
- * Refresh tokens, tokens without a subject, expired tokens and bad signatures are rejected.
+ * Only {@code type: access} tokens with a subject and an unexpired {@code exp} are accepted.
  */
 @Component
 public class JwtAccessTokenVerifier {
@@ -26,7 +26,7 @@ public class JwtAccessTokenVerifier {
     private final SecretKey key;
 
     public JwtAccessTokenVerifier(@Value("${portal.security.jwt-secret:}") String secret) {
-        byte[] bytes = secret == null ? new byte[0] : secret.trim().getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < MIN_SECRET_BYTES) {
             throw new IllegalStateException(
                     "JWT_SECRET (portal.security.jwt-secret) must be set to the auth-service signing"
@@ -42,7 +42,7 @@ public class JwtAccessTokenVerifier {
         } catch (JwtException | IllegalArgumentException e) {
             return Optional.empty();
         }
-        if ("refresh".equals(claims.get("type"))) {
+        if (!"access".equals(claims.get("type")) || claims.getExpiration() == null) {
             return Optional.empty();
         }
         String subject = claims.getSubject();

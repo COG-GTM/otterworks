@@ -48,6 +48,32 @@ class JwtAccessTokenVerifierTest {
     }
 
     @Test
+    void rejectsSignedTokensThatAreNotExpiringAccessTokens() {
+        javax.crypto.SecretKey key = TestTokens.key(TestTokens.SECRET);
+        java.util.Date exp = new java.util.Date(System.currentTimeMillis() + 60_000);
+
+        String untyped = io.jsonwebtoken.Jwts.builder().setSubject("u-1").setExpiration(exp)
+                .signWith(key).compact();
+        String otherType = io.jsonwebtoken.Jwts.builder().setSubject("u-1").claim("type", "reset")
+                .setExpiration(exp).signWith(key).compact();
+        String noExpiry = io.jsonwebtoken.Jwts.builder().setSubject("u-1").claim("type", "access")
+                .signWith(key).compact();
+
+        assertThat(verifier.verify(untyped)).isEmpty();
+        assertThat(verifier.verify(otherType)).isEmpty();
+        assertThat(verifier.verify(noExpiry)).isEmpty();
+    }
+
+    @Test
+    void usesTheSecretBytesVerbatimLikeAuthService() {
+        String padded = " " + TestTokens.SECRET + " ";
+        String token = TestTokens.access(TestTokens.key(padded), "u-1", 60, "USER");
+
+        assertThat(new JwtAccessTokenVerifier(padded).verify(token)).isPresent();
+        assertThat(verifier.verify(token)).isEmpty();
+    }
+
+    @Test
     void rejectsUnsignedToken() {
         String unsigned =
                 io.jsonwebtoken.Jwts.builder().setSubject("u-1").claim("roles", "ADMIN").compact();
