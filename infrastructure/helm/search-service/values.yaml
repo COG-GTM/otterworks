@@ -10,8 +10,10 @@ service:
   port: 8087
   targetPort: 8087
 
+# Backends are reached only through the api-gateway; never give search-service
+# its own public host.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
