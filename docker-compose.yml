@@ -31,7 +31,7 @@ services:
       ADMIN_SERVICE_URL: http://admin-service:8089
       AUDIT_SERVICE_URL: http://audit-service:8090
       REPORT_SERVICE_URL: http://report-service:8091
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
     - auth-service
     healthcheck:
@@ -70,7 +70,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/otterworks
       SPRING_DATASOURCE_USERNAME: otterworks
       SPRING_DATASOURCE_PASSWORD: otterworks_dev
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -116,7 +116,7 @@ services:
       # Failed uploads fire a Grafana-style alert at admin-service's ingest
       # endpoint so each failure opens its own incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:?ALERT_WEBHOOK_SECRET is not set - run 'make env' to generate local secrets into .env}
       # Off locally even on this demo variant branch: the permanent failure is
       # baked into the file-service image (see its Dockerfile) for tenant
       # coggtm, and this explicit false overrides it so a local stack still
@@ -124,7 +124,7 @@ services:
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
       FILE_SEED_DEMO_DOCS: ${FILE_SEED_DEMO_DOCS:-false}
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       localstack:
         condition: service_healthy
@@ -167,7 +167,7 @@ services:
       DOC_SVC_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -207,7 +207,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: collab-service
       HTTP_PORT: 8084
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       redis:
         condition: service_healthy
@@ -253,14 +253,14 @@ services:
       # Consumer failures fire a Grafana-style alert at admin-service's ingest
       # endpoint so a sustained failure opens an incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:?ALERT_WEBHOOK_SECRET is not set - run 'make env' to generate local secrets into .env}
       # Off by default (matches the image's Dockerfile default). Set it to true
       # to point the consumer at a nonexistent queue; NOTIFICATION_STRICT_SCHEMA
       # instead reproduces the strict-parser deserialization failure (needs
       # message traffic, e.g. sharing a file).
       NOTIFICATION_SQS_ALWAYS_FAIL: ${NOTIFICATION_SQS_ALWAYS_FAIL:-false}
       NOTIFICATION_STRICT_SCHEMA: ${NOTIFICATION_STRICT_SCHEMA:-false}
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       localstack:
         condition: service_healthy
@@ -302,7 +302,7 @@ services:
       OTEL_SERVICE_NAME: search-service
       SQS_ENABLED: 'true'
       SQS_QUEUE_URL: http://localstack:4566/000000000000/otterworks-search-events
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       meilisearch:
         condition: service_healthy
@@ -342,7 +342,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: analytics-service
       S3_DATA_LAKE_BUCKET: otterworks-data-lake
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       localstack:
         condition: service_healthy
@@ -384,21 +384,22 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: admin-service
       RAILS_ENV: development
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
       DATABASE_URL: postgres://otterworks:otterworks_dev@postgres:5432/otterworks
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_USER: otterworks
       DATABASE_PASSWORD: otterworks_dev
-      SECRET_KEY_BASE: dev-secret-key-base-otterworks-change-in-production
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:?SECRET_KEY_BASE is not set - run 'make env' to generate local secrets into .env}
       DEVIN_API_KEY: ${DEVIN_API_KEY:-}
       DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
       SLACK_USER_MAP: ${SLACK_USER_MAP:-}
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
-      CHAOS_SECRET: ${CHAOS_SECRET:-}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:?ALERT_WEBHOOK_SECRET is not set - run 'make env' to generate local secrets into .env}
+      # Random per checkout (make env): chaos calls need X-Chaos-Secret: <value from .env>.
+      CHAOS_SECRET: ${CHAOS_SECRET:?CHAOS_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -439,7 +440,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: report-service
       DB_HOST: postgres
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
       DB_PORT: 5432
       DB_NAME: otterworks_reports
       DB_USER: otterworks
@@ -491,7 +492,7 @@ services:
       Aws__DynamoDbTable: otterworks-audit-events
       Aws__S3ArchiveBucket: otterworks-audit-archive
       ASPNETCORE_URLS: http://+:8090
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set - run 'make env' to generate local secrets into .env}
     depends_on:
       localstack:
         condition: service_healthy

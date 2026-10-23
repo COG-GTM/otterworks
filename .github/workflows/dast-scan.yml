@@ -27,6 +27,8 @@ on:
       - 'infrastructure/helm/**'
       - 'security/dast/**'
       - '.github/workflows/dast-scan.yml'
+      - 'docker-compose*.yml'
+      - 'scripts/ensure-local-env.sh'
   schedule:
     - cron: '0 7 * * *' # Daily 7AM UTC
   workflow_dispatch:
@@ -61,6 +63,10 @@ jobs:
       # shrink the surface the coverage gate measures.
       - name: Unit-test the harness
         run: make dast-test
+
+      # docker-compose.yml has no secret defaults; generate throwaway ones for this run.
+      - name: Generate local stack secrets
+        run: make env
 
       - name: Start the application stack
         run: |
