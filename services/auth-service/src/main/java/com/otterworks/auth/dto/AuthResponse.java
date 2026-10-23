@@ -8,8 +8,10 @@ import lombok.Data;
 @AllArgsConstructor
 public class AuthResponse {
   private String accessToken;
+
   @JsonInclude(JsonInclude.Include.NON_NULL)
   private String refreshToken;
+
   private String tokenType;
   private long expiresIn;
   private UserDto user;

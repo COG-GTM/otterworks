@@ -199,8 +199,7 @@ class AuthControllerIntegrationTest {
 
   @Test
   void refresh_shouldRotateTheHttpOnlyCookieAndReturnOnlyAnAccessToken() throws Exception {
-    MvcResult registerResult =
-        register("refresh@otterworks.dev", "password123", "Refresh User");
+    MvcResult registerResult = register("refresh@otterworks.dev", "password123", "Refresh User");
     String refreshToken = refreshCookieValue(registerResult);
 
     MvcResult refreshResult =
@@ -266,8 +265,7 @@ class AuthControllerIntegrationTest {
         .andExpect(status().isBadRequest());
   }
 
-  private MvcResult register(String email, String password, String displayName)
-      throws Exception {
+  private MvcResult register(String email, String password, String displayName) throws Exception {
     String body =
         String.format(
             "{\"email\": \"%s\", \"password\": \"%s\", \"displayName\": \"%s\"}",
