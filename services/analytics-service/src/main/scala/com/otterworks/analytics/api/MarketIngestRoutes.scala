@@ -18,24 +18,24 @@ import spray.json.*
  *   GET  /api/v1/analytics/market/status
  *   POST /api/v1/analytics/market/observations   (manual Trading Economics pulls)
  *
- * Authentication is enforced by the API gateway's JWT middleware; requests
- * reaching this service have already presented a valid bearer token.
+ * Each route verifies the bearer token in-service: reads need a margins-read role,
+ * observations need a market-write role.
  */
-class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository):
+class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository, auth: MarketAuth):
 
   private val logger = LoggerFactory.getLogger(getClass)
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics" / "market") {
     concat(
       path("series") {
-        get {
+        (get & auth.reader) { _ =>
           onSuccess(repo.listSeries()) { series =>
             complete(JsObject("series" -> series.toList.toJson))
           }
         }
       },
       path("prices") {
-        get {
+        (get & auth.reader) { _ =>
           parameters("series_code", "from".optional, "to".optional) { (seriesCode, from, to) =>
             onSuccess(repo.listPrices(seriesCode, from, to)) { prices =>
               complete(JsObject("prices" -> prices.toList.toJson))
@@ -44,17 +44,18 @@ class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository):
         }
       },
       path("status") {
-        get {
+        (get & auth.reader) { _ =>
           onSuccess(repo.marketStatus()) { status =>
             complete(status)
           }
         }
       },
       path("observations") {
-        post {
+        (post & auth.writer) { caller =>
           entity(as[ObservationsRequest]) { request =>
             onSuccess(marginService.ingest(request)) {
               case Right(response) =>
+                logger.info("User {} ingested {} market observations", caller.userId, response.accepted)
                 complete(response)
               case Left(rejected) =>
                 logger.info("Rejected all {} market observations", rejected.size)

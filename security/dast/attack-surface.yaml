@@ -59,6 +59,16 @@ routes:
     auth: bearer JWT + admin role
     expect:
       - unauthenticated callers receive 401
+  - prefix: /api/v1/analytics/margins
+    service: analytics-service
+    auth: bearer JWT + margins-read role (ADMIN/OWNER by default), verified in-service
+    expect:
+      - standard users receive 403; requests without a valid token receive 401
+  - prefix: /api/v1/analytics/market
+    service: analytics-service
+    auth: bearer JWT + margins-read role (reads) / market-write role (POST observations)
+    expect:
+      - standard users receive 403; requests without a valid token receive 401
   - prefix: /api/v1/audit
     service: audit-service
     auth: bearer JWT

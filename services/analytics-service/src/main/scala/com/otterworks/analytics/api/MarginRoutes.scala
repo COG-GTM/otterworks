@@ -14,44 +14,48 @@ import com.otterworks.analytics.service.MarginService
  *   GET /api/v1/analytics/margins
  *   GET /api/v1/analytics/margins/series?sku=&category=&from=&to=
  *   GET /api/v1/analytics/margins/export?format=csv
+ *
+ * Supplier cost data: every route requires a verified token with a margins-read role.
  */
-class MarginRoutes(marginService: MarginService, repo: MarketRepository):
+class MarginRoutes(marginService: MarginService, repo: MarketRepository, auth: MarketAuth):
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics" / "margins") {
-    concat(
-      pathEndOrSingleSlash {
-        get {
-          onSuccess(marginService.marginsDashboard()) { response =>
-            complete(response)
+    auth.reader { _ =>
+      concat(
+        pathEndOrSingleSlash {
+          get {
+            onSuccess(marginService.marginsDashboard()) { response =>
+              complete(response)
+            }
           }
-        }
-      },
-      path("series") {
-        get {
-          parameters("sku".optional, "category".optional, "from".optional, "to".optional) {
-            (sku, category, from, to) =>
-              onSuccess(repo.marginSeries(sku, category, from, to)) { points =>
-                complete(MarginSeriesResponse(sku, category, points.toList))
-              }
-          }
-        }
-      },
-      path("export") {
-        get {
-          parameters("format".withDefault("json")) { format =>
-            format match
-              case "csv" =>
-                onSuccess(marginService.marginsDashboard()) { response =>
-                  complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, buildCsvContent(response.rows)))
+        },
+        path("series") {
+          get {
+            parameters("sku".optional, "category".optional, "from".optional, "to".optional) {
+              (sku, category, from, to) =>
+                onSuccess(repo.marginSeries(sku, category, from, to)) { points =>
+                  complete(MarginSeriesResponse(sku, category, points.toList))
                 }
-              case _ =>
-                onSuccess(marginService.marginsDashboard()) { response =>
-                  complete(response)
-                }
+            }
           }
-        }
-      },
-    )
+        },
+        path("export") {
+          get {
+            parameters("format".withDefault("json")) { format =>
+              format match
+                case "csv" =>
+                  onSuccess(marginService.marginsDashboard()) { response =>
+                    complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, buildCsvContent(response.rows)))
+                  }
+                case _ =>
+                  onSuccess(marginService.marginsDashboard()) { response =>
+                    complete(response)
+                  }
+            }
+          }
+        },
+      )
+    }
   }
 
   private def buildCsvContent(rows: List[MarginRow]): String =

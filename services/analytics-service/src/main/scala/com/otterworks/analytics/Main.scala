@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
-import com.otterworks.analytics.api.{AnalyticsRoutes, EventRoutes, HealthRoutes, MarginRoutes, MarketIngestRoutes}
+import com.otterworks.analytics.api.{AnalyticsRoutes, EventRoutes, HealthRoutes, MarginRoutes, MarketAuth, MarketIngestRoutes}
 import com.otterworks.analytics.batch.MarketSeeder
 import com.otterworks.analytics.config.AppConfig
 import com.otterworks.analytics.db.AnalyticsDb
@@ -61,9 +61,12 @@ object Main:
         catch
           case ex: Exception =>
             system.log.warn(s"Market baseline seed failed: ${ex.getMessage}")
+        if config.auth.jwtSecret.isEmpty then
+          system.log.warn("JWT_SECRET is not set; margins/market routes will answer 503")
+        val marketAuth = MarketAuth(config.auth)
         concat(
-          MarginRoutes(marginService, marketRepository).routes,
-          MarketIngestRoutes(marginService, marketRepository).routes,
+          MarginRoutes(marginService, marketRepository, marketAuth).routes,
+          MarketIngestRoutes(marginService, marketRepository, marketAuth).routes,
         )
       case None =>
         pathPrefix("api" / "v1" / "analytics" / ("margins" | "market")) {
