@@ -260,6 +260,28 @@ async def test_create_document_via_jwt_hs384(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_owner_flow_with_hs512_jwt(client: AsyncClient, monkeypatch: pytest.MonkeyPatch):
+    """auth-service signs with HS512 when JWT_SECRET is `openssl rand -hex 32`."""
+    secret = "0123456789abcdef" * 4
+    monkeypatch.setenv("JWT_SECRET", secret)
+    user_id = uuid.uuid4()
+    token = jwt.encode({"sub": str(user_id)}, secret, algorithm="HS512")
+    headers = {"Authorization": f"Bearer {token}"}
+    created = await client.post("/api/v1/documents/", json={"title": "HS512 Doc"}, headers=headers)
+    assert created.status_code == 201
+    assert created.json()["owner_id"] == str(user_id)
+    read = await client.get(f"/api/v1/documents/{created.json()['id']}", headers=headers)
+    assert read.status_code == 200
+
+    old_default = "otterworks-local-dev-jwt-secret-change-me-in-production"  # noqa: S105
+    forged = jwt.encode({"sub": str(user_id)}, old_default, algorithm="HS512")
+    denied = await client.get(
+        f"/api/v1/documents/{created.json()['id']}", headers={"Authorization": f"Bearer {forged}"}
+    )
+    assert denied.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
     """X-User-Id header alone is not trusted (prevents identity spoofing)."""
     user_id = uuid.uuid4()
