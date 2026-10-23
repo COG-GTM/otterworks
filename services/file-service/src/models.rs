@@ -145,7 +145,6 @@ pub struct ListFoldersResponse {
 pub struct CreateFolderRequest {
     pub name: String,
     pub parent_id: Option<Uuid>,
-    pub owner_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +168,6 @@ pub struct ShareFileRequest {
     pub shared_with: Option<Uuid>,
     pub shared_with_email: Option<String>,
     pub permission: SharePermission,
-    pub shared_by: Uuid,
 }
 
 #[derive(Debug, Serialize)]
