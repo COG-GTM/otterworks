@@ -60,7 +60,7 @@ async def test_list_documents(client: AsyncClient, owner_id: uuid.UUID):
             "/api/v1/documents/",
             json={"title": f"Doc {i}", "content": "", "owner_id": str(owner_id)},
         )
-    resp = await client.get("/api/v1/documents/", params={"owner_id": str(owner_id)})
+    resp = await client.get("/api/v1/documents/")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total"] == 3
@@ -75,7 +75,7 @@ async def test_list_documents_pagination(client: AsyncClient, owner_id: uuid.UUI
             json={"title": f"Doc {i}", "content": "", "owner_id": str(owner_id)},
         )
     resp = await client.get(
-        "/api/v1/documents/", params={"owner_id": str(owner_id), "page": 1, "size": 2}
+        "/api/v1/documents/", params={"page": 1, "size": 2}
     )
     data = resp.json()
     assert data["total"] == 5
@@ -281,3 +281,63 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+async def _create_for(client: AsyncClient, owner: uuid.UUID, title: str, content: str = "") -> dict:
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": title, "content": content},
+        headers={"Authorization": f"Bearer {_make_jwt(str(owner))}"},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/v1/documents/", {}),
+        ("/api/v1/documents", {}),
+        ("/api/v1/documents/", {"title": "secret"}),
+        ("/api/v1/documents/search", {"q": "secret"}),
+    ],
+)
+async def test_list_and_search_require_authentication(
+    client: AsyncClient, path: str, params: dict
+):
+    await _create_for(client, uuid.uuid4(), "Victim secret", "secret body")
+
+    resp = await client.get(path, params=params, auth=None)
+
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_ignores_caller_supplied_owner_id(
+    client: AsyncClient, owner_id: uuid.UUID, path: str
+):
+    victim = uuid.uuid4()
+    await _create_for(client, victim, "Victim doc", "victim secret")
+    mine = await _create_for(client, owner_id, "My doc")
+
+    for params in ({}, {"owner_id": str(victim)}, {"owner_id": str(victim), "title": "doc"}):
+        resp = await client.get(path, params=params)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert [item["id"] for item in body["items"]] == [mine["id"]]
+        assert body["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_search_is_scoped_to_caller(client: AsyncClient, owner_id: uuid.UUID):
+    await _create_for(client, uuid.uuid4(), "Victim plan", "shared keyword")
+    mine = await _create_for(client, owner_id, "My plan", "shared keyword")
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "shared keyword"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert [item["id"] for item in body["items"]] == [mine["id"]]
