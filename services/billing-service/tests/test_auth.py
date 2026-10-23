@@ -19,12 +19,13 @@ PLAN = UUID("10000000-0000-0000-0000-000000000002")
 FAR_FUTURE = 4102444800
 
 
-def token(secret: str | None = None, **overrides: object) -> str:
+def token(secret: str | None = None, alg: str = "HS256", **overrides: object) -> str:
     claims: dict[str, object] = {"sub": "user-1", "type": "access", "exp": FAR_FUTURE}
     claims.update(overrides)
     return encode_token(
         {key: value for key, value in claims.items() if value is not None},
         secret or settings.jwt_secret,
+        alg,
     )
 
 
@@ -123,6 +124,11 @@ def test_api_requires_bearer_token(client: TestClient, state, method: str, path:
         token(secret="another-secret-that-is-long-enough-000000"),
         token(exp=int(time.time()) - 3600),
         token(exp=None),
+        token(exp=float("nan")),
+        token(exp=float("inf")),
+        token(nbf=float("nan")),
+        token(nbf="2026-01-01"),
+        token(alg="HS512", secret="another-secret-that-is-long-enough-000000"),
         token(type="refresh"),
         token(sub=None),
         token(tenant_id="not-a-uuid"),
@@ -143,6 +149,19 @@ def test_alg_none_token_is_rejected(client: TestClient, state) -> None:
     assert plan_change(client, TENANT_A, bearer(f"{none_header}.{payload}.")).status_code == 401
     assert plan_change(client, TENANT_A, bearer(f"{header}.{payload}.")).status_code == 401
     assert state["change_plan"] == []
+
+
+@pytest.mark.parametrize("alg", ["HS256", "HS384", "HS512"])
+def test_platform_hmac_algorithms_are_accepted(client: TestClient, alg: str) -> None:
+    response = client.get("/api/plans", headers=bearer(token(alg=alg)))
+    assert response.status_code == 200
+
+
+def test_algorithm_swap_invalidates_signature(client: TestClient) -> None:
+    header, _payload, signature = token(alg="HS512").split(".")
+    _header, payload, _signature = token(alg="HS512", roles=["ADMIN"]).split(".")
+    response = client.get("/api/plans", headers=bearer(f"{header}.{payload}.{signature}"))
+    assert response.status_code == 401
 
 
 def test_tenant_caller_reads_own_entitlement(client: TestClient) -> None:
