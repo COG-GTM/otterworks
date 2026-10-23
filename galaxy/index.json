@@ -1,0 +1,2021 @@
+{
+  "repo": "COG-GTM/otterworks",
+  "commit": "cc23bf1993db9db1c40dc7a4b475082443f80092",
+  "root": {
+    "id": "root",
+    "name": "OtterWorks",
+    "description": "Polyglot multi-tenant collaboration platform (files, documents, real-time editing) behind a Go API gateway. Indexed with emphasis on the local core profile: api-gateway, auth-service, file-service, document-service, client web-app and Postgres/Redis/LocalStack/Meilisearch.",
+    "children": [
+      {
+        "id": "edge-identity",
+        "name": "Edge & Identity",
+        "description": "Go api-gateway (chi) that terminates every /api/v1 request: JWT validation, identity header rewriting, rate limiting, CORS, circuit breaking and proxying to backend services.",
+        "files": [
+          {
+            "path": "services/api-gateway/cmd/server/main.go"
+          }
+        ],
+        "children": [
+          {
+            "id": "gateway-middleware-chain",
+            "name": "Gateway Middleware Chain",
+            "description": "Bootstraps the gateway and composes the global middleware order (request id, real IP, metrics, logging, recoverer, compression, rate limit, CORS, JWT) before mounting the proxy router.",
+            "files": [
+              {
+                "path": "services/api-gateway/cmd/server/main.go",
+                "lines": "29-158"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-jwt-middleware",
+            "name": "Gateway JWT Middleware",
+            "description": "Validates HS256 Bearer tokens on protected route prefixes, skipping exact public paths (login/register) and prefix paths (/health, /metrics, /socket.io); stores claims in request context.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/middleware/jwt.go"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-identity-proxy",
+            "name": "Identity Header Strip/Inject Proxy",
+            "description": "Reverse-proxy director that deletes client-supplied X-User-ID / X-User-Email and re-injects them only from validated JWT claims (sub or user_id, email).",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/proxy/router.go",
+                "lines": "50-91"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-route-table",
+            "name": "Service Route Table",
+            "description": "Maps /api/v1 prefixes (auth, files, folders, documents, templates, settings, collab, search, ...) to backend URLs and mounts one proxy handler per prefix with a JSON 404 fallback.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/config/config.go",
+                "lines": "94-112"
+              },
+              {
+                "path": "services/api-gateway/internal/proxy/router.go",
+                "lines": "1-48"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-config-secrets",
+            "name": "Gateway Config & Secret Loading",
+            "description": "Env-driven configuration: backend URLs, JWT_SECRET (validated non-empty at startup), CORS lists, rate limit and circuit breaker tuning.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/config/config.go",
+                "lines": "1-93"
+              },
+              {
+                "path": "services/api-gateway/internal/config/config.go",
+                "lines": "114-144"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-rate-limiting",
+            "name": "Per-IP Rate Limiting",
+            "description": "Token-bucket limiter keyed on client IP (X-Forwarded-For / RemoteAddr) returning 429 with Retry-After, with periodic bucket cleanup.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/middleware/ratelimit.go"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-cors",
+            "name": "CORS Policy",
+            "description": "Origin allow-list CORS middleware with credentials, exposed headers and preflight short-circuit; supports wildcard origins.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/middleware/cors.go"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-circuit-breaker",
+            "name": "Circuit Breaker",
+            "description": "Per-route-prefix circuit breaker that trips on failure ratio and returns 503 while open; wraps the proxy handler with a status recorder.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/proxy/circuitbreaker.go"
+              },
+              {
+                "path": "services/api-gateway/internal/proxy/router.go",
+                "lines": "106-127"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "gateway-observability",
+            "name": "Gateway Telemetry",
+            "description": "Request ID propagation, structured zerolog access logs, Prometheus request metrics with path normalisation, health endpoint and OTLP tracing setup.",
+            "files": [
+              {
+                "path": "services/api-gateway/internal/middleware/requestid.go"
+              },
+              {
+                "path": "services/api-gateway/internal/middleware/logging.go"
+              },
+              {
+                "path": "services/api-gateway/internal/middleware/metrics.go"
+              },
+              {
+                "path": "services/api-gateway/internal/health/handler.go"
+              },
+              {
+                "path": "services/api-gateway/cmd/server/main.go",
+                "lines": "160-195"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "accounts-auth",
+        "name": "Accounts & Auth",
+        "description": "Spring Boot auth-service owning users, roles, refresh tokens and settings; issues the JWTs every other service trusts.",
+        "files": [
+          {
+            "path": "services/auth-service/src/main/java/com/otterworks/auth/AuthServiceApplication.java"
+          }
+        ],
+        "children": [
+          {
+            "id": "auth-registration-login",
+            "name": "Registration & Login",
+            "description": "POST /api/v1/auth/register and /login: validates DTOs, creates users with default role, verifies credentials and returns access + refresh tokens.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "28-39"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/AuthService.java",
+                "lines": "44-78"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/RegisterRequest.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/LoginRequest.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/AuthResponse.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-token-issuance",
+            "name": "JWT Token Issuance",
+            "description": "JwtTokenProvider signs access/refresh JWTs (sub, email, roles, jti) with the configured secret and validates/parses them; JwtConfig binds jwt.* properties.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/security/JwtTokenProvider.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/config/JwtConfig.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-refresh-logout",
+            "name": "Token Refresh & Logout",
+            "description": "POST /refresh exchanges a refresh JWT (checked against persisted, non-revoked refresh tokens) for a new pair; /logout revokes the user's refresh tokens.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "40-46"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "89-95"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/AuthService.java",
+                "lines": "79-104"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/AuthService.java",
+                "lines": "123-148"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/entity/RefreshToken.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/repository/RefreshTokenRepository.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-password-hashing",
+            "name": "Password Hashing & Change",
+            "description": "BCrypt PasswordEncoder bean plus the change-password flow that verifies the current password before re-hashing.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/config/SecurityConfig.java",
+                "lines": "53-57"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "62-69"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/AuthService.java",
+                "lines": "105-122"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/ChangePasswordRequest.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-security-filter-chain",
+            "name": "Spring Security Filter Chain",
+            "description": "Stateless SecurityFilterChain declaring public vs authenticated endpoints and the JwtAuthFilter that turns Bearer tokens into an Authentication.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/config/SecurityConfig.java",
+                "lines": "1-52"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/security/JwtAuthFilter.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-user-directory",
+            "name": "Profile & User Directory",
+            "description": "GET/PUT /profile, user lookup by email or id (used by sharing flows) and admin user listing backed by UserService and the User/Role entities.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "47-61"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/AuthController.java",
+                "lines": "70-88"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/UserService.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/UserDTO.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/UpdateProfileRequest.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/UserLookupResponse.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-user-settings",
+            "name": "User Settings",
+            "description": "GET/PATCH /api/v1/settings for per-user preferences, persisted in user_settings.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/SettingsController.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/service/UserSettingsService.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/entity/UserSettings.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/repository/UserSettingsRepository.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/UserSettingsDTO.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/dto/UpdateSettingsRequest.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-config-errors",
+            "name": "Auth Config, Health & Errors",
+            "description": "application*.yml (datasource, jwt.secret with dev default, token expiries), global exception mapping, DB health endpoint and logging config.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/resources/application.yml"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/application-dev.yml"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/application-prod.yml"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/logback-spring.xml"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/exception/GlobalExceptionHandler.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/controller/HealthController.java"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "document-domain",
+        "name": "Document Domain",
+        "description": "FastAPI document-service: rich-text documents with versions, comments, templates, share links and exports on PostgreSQL.",
+        "files": [
+          {
+            "path": "services/document-service/app/main.py"
+          }
+        ],
+        "children": [
+          {
+            "id": "doc-service-bootstrap",
+            "name": "Document Service Bootstrap & Config",
+            "description": "FastAPI app factory with CORS, router registration and lifespan DB init; pydantic Settings (DOC_SVC_ prefix) for DB URL, SNS, CORS; health/metrics endpoints.",
+            "files": [
+              {
+                "path": "services/document-service/app/main.py"
+              },
+              {
+                "path": "services/document-service/app/config.py"
+              },
+              {
+                "path": "services/document-service/app/api/health.py"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-identity-resolution",
+            "name": "Caller Identity & Ownership Checks",
+            "description": "Extracts the user from the Authorization JWT (HS256/HS384 with JWT_SECRET) or, when no secret is configured, from the forwarded X-User-ID header; enforces owner-only access.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "68-107"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-crud-api",
+            "name": "Document CRUD API",
+            "description": "Create/get/update/patch/delete document endpoints and the DocumentService ORM operations behind them, including word counts and automatic version snapshots.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "109-155"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "341-415"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "1-205"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-listing-filtering",
+            "name": "Listing, Metadata Filtering & Search",
+            "description": "GET /documents list with optional owner/folder/title/content_type/sort filters routed to DocumentQueryRepository (raw SQL text built from f-strings), plus the ORM-based /search endpoint.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "156-175"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "201-340"
+              },
+              {
+                "path": "services/document-service/app/services/document_query_repository.py"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "258-280"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-share-links",
+            "name": "Document Share Links",
+            "description": "POST /{id}/share mints a share token and GET /shared?document_id&token resolves it; tokens are MD5(document_id:salt) with SHARE_LINK_SALT defaulting to a static value.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "186-200"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "463-480"
+              },
+              {
+                "path": "services/document-service/app/services/share_link.py"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-exports",
+            "name": "Exports & Export Archive",
+            "description": "GET /{id}/export renders HTML/Markdown/text exports; GET /exports?name= reads a named file from the export archive directory via os.path.join + open().",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "176-185"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "481-499"
+              },
+              {
+                "path": "services/document-service/app/services/export_archive.py"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "281-298"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-versioning",
+            "name": "Document Versioning",
+            "description": "List document versions and restore a prior version, snapshotting current content first.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "416-462"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "206-257"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-comments",
+            "name": "Document Comments",
+            "description": "Add, list and delete comments on a document.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/comments.py"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "299-347"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-templates",
+            "name": "Document Templates",
+            "description": "List/create templates and instantiate a new document from a template.",
+            "files": [
+              {
+                "path": "services/document-service/app/api/templates.py"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "500-520"
+              },
+              {
+                "path": "services/document-service/app/services/document_service.py",
+                "lines": "348-394"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "file-storage",
+        "name": "File Storage",
+        "description": "Rust/actix file-service: uploads to S3, file/folder/version/share metadata in DynamoDB, trash and activity feeds.",
+        "files": [
+          {
+            "path": "services/file-service/src/main.rs"
+          }
+        ],
+        "children": [
+          {
+            "id": "file-service-bootstrap",
+            "name": "File Service Bootstrap & Config",
+            "description": "actix-web server wiring (route table for /api/v1/files and /api/v1/folders), env config for AWS endpoints/tables/SNS, error mapping and request-id middleware.",
+            "files": [
+              {
+                "path": "services/file-service/src/main.rs"
+              },
+              {
+                "path": "services/file-service/src/config.rs"
+              },
+              {
+                "path": "services/file-service/src/errors.rs"
+              },
+              {
+                "path": "services/file-service/src/middleware.rs"
+              },
+              {
+                "path": "services/file-service/src/seed.rs"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-upload-pipeline",
+            "name": "Upload Pipeline",
+            "description": "Multipart upload handler: resolves owner from X-User-ID (or form field), builds the S3 key files/{owner}/{id}, uploads, writes metadata + first version and emits file_uploaded.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "46-229"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-s3-storage",
+            "name": "S3 Object Storage Client",
+            "description": "Thin AWS SDK S3 client: put/get/delete/copy objects and presigned download URLs against LocalStack or AWS.",
+            "files": [
+              {
+                "path": "services/file-service/src/storage.rs"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-metadata-store",
+            "name": "DynamoDB Metadata Client",
+            "description": "MetadataClient for file items plus attribute parsing helpers and the domain models (FileMetadata, Folder, FileVersion, FileShare, request/response DTOs).",
+            "files": [
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "1-123"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "642-893"
+              },
+              {
+                "path": "services/file-service/src/models.rs"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-listing-activity",
+            "name": "File Listing, Ownership & Activity",
+            "description": "Get metadata, list files / shared-with-me / trash and the activity feed; owner resolution prefers the gateway-injected X-User-ID over the owner_id query param.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "230-373"
+              },
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "762-842"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "228-305"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-download",
+            "name": "Download via Presigned URL",
+            "description": "GET /{id}/download looks up metadata by id and returns a one-hour presigned S3 URL.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "395-413"
+              },
+              {
+                "path": "services/file-service/src/storage.rs",
+                "lines": "78-98"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-lifecycle",
+            "name": "File Lifecycle (Move/Rename/Trash/Delete)",
+            "description": "Delete, move, rename, trash and restore handlers and the conditional DynamoDB updates behind them.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "374-394"
+              },
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "414-467"
+              },
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "481-525"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "124-227"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-versions",
+            "name": "File Versions",
+            "description": "List stored versions of a file and persist new version records.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "468-480"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "447-503"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-sharing",
+            "name": "File Sharing",
+            "description": "Share a file with a user id or email (permission levels), remove shares, and the share table queries; publishes file_shared and raises alerts on notification failures.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "526-687"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "504-641"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-folders",
+            "name": "Folder Model",
+            "description": "Folder CRUD endpoints and DynamoDB folder table operations.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "688-761"
+              },
+              {
+                "path": "services/file-service/src/metadata.rs",
+                "lines": "306-446"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "data-stores",
+        "name": "Data Stores",
+        "description": "Local infrastructure from docker-compose.infra.yml backing the core profile: PostgreSQL, Redis, LocalStack (S3/DynamoDB/SNS/SQS) and Meilisearch.",
+        "files": [
+          {
+            "path": "docker-compose.infra.yml"
+          }
+        ],
+        "children": [
+          {
+            "id": "postgres-instance",
+            "name": "PostgreSQL Instance",
+            "description": "postgres:15 container (otterworks/otterworks_dev) with init script creating extra databases.",
+            "files": [
+              {
+                "path": "docker-compose.infra.yml",
+                "lines": "3-27"
+              },
+              {
+                "path": "scripts/init-db.sql"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "auth-schema",
+            "name": "Auth Schema (Flyway + JPA)",
+            "description": "Flyway migrations for users, roles, refresh_tokens and user_settings and the User/Role JPA entities and repositories.",
+            "files": [
+              {
+                "path": "services/auth-service/src/main/resources/db/migration/V1__create_users_table.sql"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/db/migration/V2__create_roles_table.sql"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/db/migration/V3__create_refresh_tokens_table.sql"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/db/migration/V4__create_user_settings_table.sql"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/entity/User.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/entity/Role.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/repository/UserRepository.java"
+              },
+              {
+                "path": "services/auth-service/src/main/java/com/otterworks/auth/repository/RoleRepository.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "document-schema",
+            "name": "Document Schema (Alembic + SQLAlchemy)",
+            "description": "Alembic migration for documents, versions, comments, templates; SQLAlchemy models, async engine/session and Pydantic schemas.",
+            "files": [
+              {
+                "path": "services/document-service/alembic/env.py"
+              },
+              {
+                "path": "services/document-service/alembic/script.py.mako"
+              },
+              {
+                "path": "services/document-service/alembic/versions/001_initial_schema.py"
+              },
+              {
+                "path": "services/document-service/app/models/document.py"
+              },
+              {
+                "path": "services/document-service/app/db/session.py"
+              },
+              {
+                "path": "services/document-service/app/db/base.py"
+              },
+              {
+                "path": "services/document-service/app/schemas/document.py"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "redis-store",
+            "name": "Redis",
+            "description": "redis:7 with LRU eviction; holds chaos flags, collab state and caches.",
+            "files": [
+              {
+                "path": "docker-compose.infra.yml",
+                "lines": "28-46"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "localstack-s3",
+            "name": "LocalStack S3 Buckets",
+            "description": "LocalStack emulating AWS; provisions otterworks-files, data-lake and audit-archive buckets and restores S3 seed data on boot.",
+            "files": [
+              {
+                "path": "docker-compose.infra.yml",
+                "lines": "47-75"
+              },
+              {
+                "path": "scripts/localstack-init.sh",
+                "lines": "1-17"
+              },
+              {
+                "path": "scripts/localstack-restore.sh"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "dynamodb-tables",
+            "name": "DynamoDB Tables",
+            "description": "LocalStack DynamoDB tables for file metadata, folders, versions, shares, audit events and notifications.",
+            "files": [
+              {
+                "path": "scripts/localstack-init.sh",
+                "lines": "50-106"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "meilisearch-store",
+            "name": "Meilisearch",
+            "description": "Meilisearch v1.6 full-text index used by search-service.",
+            "files": [
+              {
+                "path": "docker-compose.infra.yml",
+                "lines": "76-96"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "web-client",
+        "name": "Web Client",
+        "description": "React + Vite SPA (frontend/client-app) served by nginx, talking to the gateway through a same-origin /api/v1 proxy.",
+        "files": [
+          {
+            "path": "frontend/client-app/src/App.tsx"
+          }
+        ],
+        "children": [
+          {
+            "id": "web-app-shell",
+            "name": "App Shell & Routing",
+            "description": "React Router route table, layout shell, sidebar/breadcrumb, landing and dashboard pages and query provider.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/App.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/main.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/layout/app-shell.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/layout/sidebar.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/dashboard.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/landing.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/providers/query-provider.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/chaos/chaos-error-banner.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/stores/ui-store.ts"
+              },
+              {
+                "path": "frontend/client-app/src/lib/utils.ts"
+              },
+              {
+                "path": "frontend/client-app/src/lib/corporate.ts"
+              },
+              {
+                "path": "frontend/client-app/src/pages/privacy.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/terms.tsx"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-api-client",
+            "name": "Axios API Client",
+            "description": "Shared axios instance: attaches Bearer token from localStorage, camelCases responses and handles 401 by re-verifying /auth/profile and redirecting to login.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/lib/api-client.ts"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-same-origin-proxy",
+            "name": "Same-Origin /api/v1 Proxy",
+            "description": "nginx (prod) and Vite dev server proxy forwarding /api/v1/* to API_GATEWAY_URL with a 100 MB body limit and websocket upgrade.",
+            "files": [
+              {
+                "path": "frontend/client-app/nginx/default.conf.template"
+              },
+              {
+                "path": "frontend/client-app/vite.config.ts"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-auth-session",
+            "name": "Login, Registration & Session",
+            "description": "Login/register pages, auth API calls and the zustand auth store holding tokens in localStorage.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/pages/login.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/register.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/stores/auth-store.ts"
+              },
+              {
+                "path": "frontend/client-app/src/providers/auth-provider.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/lib/api.ts",
+                "lines": "88-125"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-files-ui",
+            "name": "Files UI",
+            "description": "File browser, detail, upload dropzone, share dialog, trash/shared/recent/starred views and the filesApi/storageApi calls.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/pages/files.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/file-detail.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/trash.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/shared.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/recent.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/starred.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/files/file-upload-dropzone.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/files/share-dialog.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/files/file-preview.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/lib/api.ts",
+                "lines": "159-346"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-documents-ui",
+            "name": "Documents UI & Editor",
+            "description": "Document list, card and the collaborative editor with presence avatars plus documentsApi calls.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/pages/documents.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/document-editor.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/documents/document-card.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/editor/collaborative-editor.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/editor/user-presence-avatars.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/lib/api.ts",
+                "lines": "347-383"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-search-notifications",
+            "name": "Search & Notifications UI",
+            "description": "Search page/bar and notifications page/bell with searchApi, notificationsApi and activityApi.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/pages/search.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/notifications.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/ui/search-bar.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/components/ui/notification-bell.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/lib/native-notifications.ts"
+              },
+              {
+                "path": "frontend/client-app/src/lib/api.ts",
+                "lines": "384-474"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "web-settings-billing",
+            "name": "Settings, Margins & Billing UI",
+            "description": "User settings page, analytics margins page and billing plan/entitlement pages with their API modules.",
+            "files": [
+              {
+                "path": "frontend/client-app/src/pages/settings.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/pages/margins.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/features/billing/api.ts"
+              },
+              {
+                "path": "frontend/client-app/src/features/billing/plans-page.tsx"
+              },
+              {
+                "path": "frontend/client-app/src/lib/api.ts",
+                "lines": "627-677"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "contracts-eventing",
+        "name": "Contracts & Eventing",
+        "description": "Shared API/event contracts and the SNS/SQS fan-out that decouples core services from downstream consumers.",
+        "files": [
+          {
+            "path": "shared/openapi/README.md"
+          }
+        ],
+        "children": [
+          {
+            "id": "api-contracts",
+            "name": "OpenAPI & Proto Contracts",
+            "description": "OpenAPI specs for document, search and notification services; proto directory placeholder.",
+            "files": [
+              {
+                "path": "shared/openapi/document-service.yaml"
+              },
+              {
+                "path": "shared/openapi/search-service.yaml"
+              },
+              {
+                "path": "shared/openapi/notification-service.yaml"
+              },
+              {
+                "path": "shared/proto/README.md"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "event-schemas",
+            "name": "Event Schemas",
+            "description": "JSON Schemas for file, document, collaboration, notification and audit events.",
+            "files": [
+              {
+                "path": "shared/events/schemas/file-events.json"
+              },
+              {
+                "path": "shared/events/schemas/document-events.json"
+              },
+              {
+                "path": "shared/events/schemas/collaboration-events.json"
+              },
+              {
+                "path": "shared/events/schemas/notification-events.json"
+              },
+              {
+                "path": "shared/events/schemas/audit-events.json"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "sns-sqs-event-bus",
+            "name": "SNS/SQS Event Bus",
+            "description": "otterworks-events SNS topic fanned out to notification, audit and search SQS queues, provisioned in LocalStack.",
+            "files": [
+              {
+                "path": "scripts/localstack-init.sh",
+                "lines": "18-49"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-event-publisher",
+            "name": "File Event Publisher",
+            "description": "Publishes file_uploaded/deleted/shared/trashed/restored/updated/moved events to SNS.",
+            "files": [
+              {
+                "path": "services/file-service/src/events.rs"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "doc-event-publisher",
+            "name": "Document Event Publisher",
+            "description": "boto3 SNS publisher for document lifecycle events (enabled via DOC_SVC_SNS_ENABLED).",
+            "files": [
+              {
+                "path": "services/document-service/app/services/event_publisher.py"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "file-alert-webhooks",
+            "name": "Upload/Share Failure Alerts",
+            "description": "Builds and posts signed alert payloads to admin-service when uploads or share notifications fail.",
+            "files": [
+              {
+                "path": "services/file-service/src/alerts.rs"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "platform-services",
+        "name": "Platform Services",
+        "description": "Non-core services in the full profile (summary nodes only).",
+        "files": [
+          {
+            "path": "docker-compose.yml",
+            "lines": "188-552"
+          }
+        ],
+        "children": [
+          {
+            "id": "collab-service",
+            "name": "Collaboration Service",
+            "description": "Node/TypeScript Socket.IO + Yjs real-time co-editing with JWT socket auth and Redis adapter.",
+            "files": [
+              {
+                "path": "services/collab-service/src/index.ts"
+              },
+              {
+                "path": "services/collab-service/src/middleware/auth.ts"
+              },
+              {
+                "path": "services/collab-service/src/handlers/collaboration.ts"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "search-service",
+            "name": "Search Service",
+            "description": "Python search API and SQS-driven indexer over Meilisearch.",
+            "files": [
+              {
+                "path": "services/search-service/app/main.py"
+              },
+              {
+                "path": "services/search-service/app/api/search.py"
+              },
+              {
+                "path": "services/search-service/app/services/indexer.py"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "notification-service",
+            "name": "Notification Service",
+            "description": "Kotlin/Ktor notifications: SQS consumer, DynamoDB repository, websocket push and preferences routes.",
+            "files": [
+              {
+                "path": "services/notification-service/src/main/kotlin/com/otterworks/notification/Application.kt"
+              },
+              {
+                "path": "services/notification-service/src/main/kotlin/com/otterworks/notification/routes/Routes.kt"
+              },
+              {
+                "path": "services/notification-service/src/main/kotlin/com/otterworks/notification/consumer/SqsConsumer.kt"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "admin-service",
+            "name": "Admin Service & Dashboard",
+            "description": "Rails admin API (users, quotas, chaos, incidents/alerts triage) and the Angular admin dashboard.",
+            "files": [
+              {
+                "path": "services/admin-service/config/routes.rb"
+              },
+              {
+                "path": "services/admin-service/app/controllers/api/v1/admin/incidents_controller.rb"
+              },
+              {
+                "path": "services/admin-service/app/controllers/api/v1/admin/chaos_controller.rb"
+              },
+              {
+                "path": "frontend/admin-dashboard/src/app/app.routes.ts"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "audit-service",
+            "name": "Audit Service",
+            "description": ".NET audit trail consuming SNS/SQS events into DynamoDB with S3 archiving.",
+            "files": [
+              {
+                "path": "services/audit-service/Program.cs"
+              },
+              {
+                "path": "services/audit-service/src/Controllers/AuditController.cs"
+              },
+              {
+                "path": "services/audit-service/src/Services/DynamoDbAuditRepository.cs"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "report-service",
+            "name": "Report Service",
+            "description": "Spring Boot report generation over its own otterworks_reports database.",
+            "files": [
+              {
+                "path": "services/report-service/src/main/java/com/otterworks/report/controller/ReportController.java"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "analytics-service",
+            "name": "Analytics Service",
+            "description": "Scala analytics: event ingest, usage rollups and margin analytics routes.",
+            "files": [
+              {
+                "path": "services/analytics-service/src/main/scala/com/otterworks/analytics/Main.scala"
+              },
+              {
+                "path": "services/analytics-service/src/main/scala/com/otterworks/analytics/api/AnalyticsRoutes.scala"
+              },
+              {
+                "path": "services/analytics-service/src/main/scala/com/otterworks/analytics/api/MarginRoutes.scala"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "billing-service",
+            "name": "Billing Service",
+            "description": "Python billing plans and tenant entitlements.",
+            "files": [
+              {
+                "path": "services/billing-service/app/main.py"
+              },
+              {
+                "path": "services/billing-service/app/repository.py"
+              }
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "runtime-ops",
+        "name": "Runtime, Secrets & Resilience",
+        "description": "How the core profile is composed and configured locally, where shared secrets come from, chaos hooks, observability and (summarised) Kubernetes deployment.",
+        "files": [
+          {
+            "path": "docker-compose.yml"
+          }
+        ],
+        "children": [
+          {
+            "id": "compose-core-profile",
+            "name": "Compose Core Profile",
+            "description": "docker-compose service definitions for api-gateway, auth, file, document and web-app with their env wiring to Postgres/Redis/LocalStack.",
+            "files": [
+              {
+                "path": "docker-compose.yml",
+                "lines": "3-187"
+              },
+              {
+                "path": "docker-compose.yml",
+                "lines": "512-536"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "shared-jwt-secret",
+            "name": "Shared JWT Secret Distribution",
+            "description": "JWT_SECRET is injected into gateway, auth, file and document services from compose (dev default) and read by each service's config.",
+            "files": [
+              {
+                "path": "docker-compose.yml",
+                "lines": "34"
+              },
+              {
+                "path": "docker-compose.yml",
+                "lines": "73"
+              },
+              {
+                "path": "docker-compose.yml",
+                "lines": "127"
+              },
+              {
+                "path": "docker-compose.yml",
+                "lines": "170"
+              },
+              {
+                "path": "services/auth-service/src/main/resources/application.yml",
+                "lines": "31-34"
+              },
+              {
+                "path": "services/api-gateway/internal/config/config.go",
+                "lines": "77"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "68-70"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "chaos-flags",
+            "name": "Chaos Flags",
+            "description": "Redis-backed chaos switches checked by file and document services (upload S3 errors, slow queries) and the bug catalog / injector scripts.",
+            "files": [
+              {
+                "path": "services/file-service/src/handlers.rs",
+                "lines": "8-28"
+              },
+              {
+                "path": "services/document-service/app/api/documents.py",
+                "lines": "40-66"
+              },
+              {
+                "path": "scripts/bug-catalog.yaml"
+              },
+              {
+                "path": "scripts/inject-bug.sh"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "observability-stack",
+            "name": "Observability Stack",
+            "description": "Prometheus, Grafana, Jaeger, OTel collector and Fluent Bit containers.",
+            "files": [
+              {
+                "path": "docker-compose.infra.yml",
+                "lines": "97-257"
+              }
+            ],
+            "children": []
+          },
+          {
+            "id": "k8s-deploy-summary",
+            "name": "Kubernetes Deployment (summary)",
+            "description": "Helm charts and tenant deploy script used for EKS tenants; summarised only.",
+            "files": [
+              {
+                "path": "infrastructure/helm"
+              },
+              {
+                "path": "scripts/deploy-tenant.sh"
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  },
+  "relations": [
+    {
+      "from": "web-api-client",
+      "to": "web-same-origin-proxy",
+      "label": "calls"
+    },
+    {
+      "from": "web-same-origin-proxy",
+      "to": "gateway-middleware-chain",
+      "label": "routes-to"
+    },
+    {
+      "from": "web-app-shell",
+      "to": "web-auth-session",
+      "label": "imports"
+    },
+    {
+      "from": "web-auth-session",
+      "to": "auth-registration-login",
+      "label": "calls"
+    },
+    {
+      "from": "web-api-client",
+      "to": "auth-user-directory",
+      "label": "calls"
+    },
+    {
+      "from": "web-files-ui",
+      "to": "file-upload-pipeline",
+      "label": "calls"
+    },
+    {
+      "from": "web-files-ui",
+      "to": "file-sharing",
+      "label": "calls"
+    },
+    {
+      "from": "web-files-ui",
+      "to": "file-download",
+      "label": "calls"
+    },
+    {
+      "from": "web-files-ui",
+      "to": "auth-user-directory",
+      "label": "calls"
+    },
+    {
+      "from": "web-documents-ui",
+      "to": "doc-crud-api",
+      "label": "calls"
+    },
+    {
+      "from": "web-documents-ui",
+      "to": "doc-share-links",
+      "label": "calls"
+    },
+    {
+      "from": "web-documents-ui",
+      "to": "collab-service",
+      "label": "calls"
+    },
+    {
+      "from": "web-search-notifications",
+      "to": "search-service",
+      "label": "calls"
+    },
+    {
+      "from": "web-search-notifications",
+      "to": "notification-service",
+      "label": "calls"
+    },
+    {
+      "from": "web-settings-billing",
+      "to": "auth-user-settings",
+      "label": "calls"
+    },
+    {
+      "from": "web-settings-billing",
+      "to": "analytics-service",
+      "label": "calls"
+    },
+    {
+      "from": "web-settings-billing",
+      "to": "billing-service",
+      "label": "calls"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-rate-limiting",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-cors",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-jwt-middleware",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-observability",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-config-secrets",
+      "label": "depends-on"
+    },
+    {
+      "from": "gateway-middleware-chain",
+      "to": "gateway-route-table",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "gateway-identity-proxy",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "gateway-circuit-breaker",
+      "label": "imports"
+    },
+    {
+      "from": "gateway-identity-proxy",
+      "to": "gateway-jwt-middleware",
+      "label": "depends-on"
+    },
+    {
+      "from": "gateway-jwt-middleware",
+      "to": "shared-jwt-secret",
+      "label": "depends-on"
+    },
+    {
+      "from": "gateway-jwt-middleware",
+      "to": "auth-token-issuance",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "auth-registration-login",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "auth-refresh-logout",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "auth-user-directory",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "auth-user-settings",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "file-service-bootstrap",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "doc-service-bootstrap",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "collab-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "search-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "notification-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "admin-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "audit-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "report-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-route-table",
+      "to": "analytics-service",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-identity-proxy",
+      "to": "file-listing-activity",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-identity-proxy",
+      "to": "file-upload-pipeline",
+      "label": "routes-to"
+    },
+    {
+      "from": "gateway-identity-proxy",
+      "to": "doc-identity-resolution",
+      "label": "routes-to"
+    },
+    {
+      "from": "auth-registration-login",
+      "to": "auth-password-hashing",
+      "label": "depends-on"
+    },
+    {
+      "from": "auth-registration-login",
+      "to": "auth-token-issuance",
+      "label": "calls"
+    },
+    {
+      "from": "auth-refresh-logout",
+      "to": "auth-token-issuance",
+      "label": "calls"
+    },
+    {
+      "from": "auth-security-filter-chain",
+      "to": "auth-token-issuance",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "auth-user-directory",
+      "to": "auth-security-filter-chain",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "auth-user-settings",
+      "to": "auth-security-filter-chain",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "auth-token-issuance",
+      "to": "shared-jwt-secret",
+      "label": "depends-on"
+    },
+    {
+      "from": "auth-token-issuance",
+      "to": "auth-config-errors",
+      "label": "depends-on"
+    },
+    {
+      "from": "auth-registration-login",
+      "to": "auth-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "auth-refresh-logout",
+      "to": "auth-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "auth-user-directory",
+      "to": "auth-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "auth-password-hashing",
+      "to": "auth-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "auth-user-settings",
+      "to": "auth-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "auth-schema",
+      "to": "postgres-instance",
+      "label": "depends-on"
+    },
+    {
+      "from": "doc-service-bootstrap",
+      "to": "doc-crud-api",
+      "label": "imports"
+    },
+    {
+      "from": "doc-crud-api",
+      "to": "doc-identity-resolution",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "doc-listing-filtering",
+      "to": "doc-identity-resolution",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "doc-share-links",
+      "to": "doc-identity-resolution",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "doc-exports",
+      "to": "doc-identity-resolution",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "doc-identity-resolution",
+      "to": "shared-jwt-secret",
+      "label": "depends-on"
+    },
+    {
+      "from": "doc-identity-resolution",
+      "to": "auth-token-issuance",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "doc-crud-api",
+      "to": "document-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "doc-listing-filtering",
+      "to": "document-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "doc-share-links",
+      "to": "document-schema",
+      "label": "persists-through"
+    },
+    {
+      "from": "document-schema",
+      "to": "postgres-instance",
+      "label": "depends-on"
+    },
+    {
+      "from": "doc-templates",
+      "to": "doc-crud-api",
+      "label": "calls"
+    },
+    {
+      "from": "doc-crud-api",
+      "to": "doc-event-publisher",
+      "label": "calls"
+    },
+    {
+      "from": "doc-crud-api",
+      "to": "chaos-flags",
+      "label": "depends-on"
+    },
+    {
+      "from": "chaos-flags",
+      "to": "redis-store",
+      "label": "persists-through"
+    },
+    {
+      "from": "doc-service-bootstrap",
+      "to": "document-schema",
+      "label": "depends-on"
+    },
+    {
+      "from": "file-service-bootstrap",
+      "to": "file-upload-pipeline",
+      "label": "imports"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "file-s3-storage",
+      "label": "calls"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "file-versions",
+      "label": "calls"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "file-event-publisher",
+      "label": "calls"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "file-alert-webhooks",
+      "label": "calls"
+    },
+    {
+      "from": "file-upload-pipeline",
+      "to": "chaos-flags",
+      "label": "depends-on"
+    },
+    {
+      "from": "file-download",
+      "to": "file-s3-storage",
+      "label": "calls"
+    },
+    {
+      "from": "file-download",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-lifecycle",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-lifecycle",
+      "to": "file-event-publisher",
+      "label": "calls"
+    },
+    {
+      "from": "file-listing-activity",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-sharing",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-sharing",
+      "to": "file-event-publisher",
+      "label": "calls"
+    },
+    {
+      "from": "file-sharing",
+      "to": "file-alert-webhooks",
+      "label": "calls"
+    },
+    {
+      "from": "file-folders",
+      "to": "file-metadata-store",
+      "label": "calls"
+    },
+    {
+      "from": "file-s3-storage",
+      "to": "localstack-s3",
+      "label": "persists-through"
+    },
+    {
+      "from": "file-metadata-store",
+      "to": "dynamodb-tables",
+      "label": "persists-through"
+    },
+    {
+      "from": "file-service-bootstrap",
+      "to": "redis-store",
+      "label": "depends-on"
+    },
+    {
+      "from": "file-event-publisher",
+      "to": "sns-sqs-event-bus",
+      "label": "persists-through"
+    },
+    {
+      "from": "doc-event-publisher",
+      "to": "sns-sqs-event-bus",
+      "label": "persists-through"
+    },
+    {
+      "from": "file-event-publisher",
+      "to": "event-schemas",
+      "label": "depends-on"
+    },
+    {
+      "from": "doc-event-publisher",
+      "to": "event-schemas",
+      "label": "depends-on"
+    },
+    {
+      "from": "sns-sqs-event-bus",
+      "to": "localstack-s3",
+      "label": "depends-on"
+    },
+    {
+      "from": "notification-service",
+      "to": "sns-sqs-event-bus",
+      "label": "depends-on"
+    },
+    {
+      "from": "audit-service",
+      "to": "sns-sqs-event-bus",
+      "label": "depends-on"
+    },
+    {
+      "from": "search-service",
+      "to": "sns-sqs-event-bus",
+      "label": "depends-on"
+    },
+    {
+      "from": "search-service",
+      "to": "meilisearch-store",
+      "label": "persists-through"
+    },
+    {
+      "from": "audit-service",
+      "to": "dynamodb-tables",
+      "label": "persists-through"
+    },
+    {
+      "from": "notification-service",
+      "to": "dynamodb-tables",
+      "label": "persists-through"
+    },
+    {
+      "from": "collab-service",
+      "to": "redis-store",
+      "label": "persists-through"
+    },
+    {
+      "from": "collab-service",
+      "to": "auth-token-issuance",
+      "label": "authenticates-via"
+    },
+    {
+      "from": "report-service",
+      "to": "postgres-instance",
+      "label": "persists-through"
+    },
+    {
+      "from": "file-alert-webhooks",
+      "to": "admin-service",
+      "label": "calls"
+    },
+    {
+      "from": "doc-crud-api",
+      "to": "api-contracts",
+      "label": "depends-on"
+    },
+    {
+      "from": "search-service",
+      "to": "api-contracts",
+      "label": "depends-on"
+    },
+    {
+      "from": "notification-service",
+      "to": "api-contracts",
+      "label": "depends-on"
+    },
+    {
+      "from": "admin-service",
+      "to": "chaos-flags",
+      "label": "calls"
+    },
+    {
+      "from": "compose-core-profile",
+      "to": "postgres-instance",
+      "label": "depends-on"
+    },
+    {
+      "from": "compose-core-profile",
+      "to": "localstack-s3",
+      "label": "depends-on"
+    },
+    {
+      "from": "compose-core-profile",
+      "to": "shared-jwt-secret",
+      "label": "depends-on"
+    },
+    {
+      "from": "k8s-deploy-summary",
+      "to": "compose-core-profile",
+      "label": "depends-on"
+    },
+    {
+      "from": "gateway-observability",
+      "to": "observability-stack",
+      "label": "depends-on"
+    }
+  ]
+}
