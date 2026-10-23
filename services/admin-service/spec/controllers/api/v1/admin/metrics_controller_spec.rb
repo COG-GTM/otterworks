@@ -23,4 +23,12 @@ RSpec.describe Api::V1::Admin::MetricsController do
       expect(body['features']['enabled']).to eq(1)
     end
   end
+
+  describe 'role enforcement' do
+    it 'forbids the metrics summary for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :summary
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
