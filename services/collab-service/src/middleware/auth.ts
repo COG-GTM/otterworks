@@ -35,7 +35,7 @@ export function userFromToken(token: string, jwtSecret: string): AuthenticatedUs
   }
   // auth-service mints `type: access` and `type: refresh`; only access tokens
   // may be used here (same rule as auth-service's JwtAuthFilter).
-  if (decoded.type !== undefined && decoded.type !== 'access') {
+  if (decoded.type !== 'access') {
     throw new Error('Not an access token');
   }
   return {

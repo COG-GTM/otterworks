@@ -186,7 +186,10 @@ describe('auth helpers', () => {
   it('requires a subject claim', () => {
     expect(() => userFromToken(jwt.sign({ email: 'a@b.c' }, secret), secret)).toThrow();
     expect(
-      userFromToken(jwt.sign({ sub: 'u1', roles: ['USER'] }, secret), secret).userId,
+      userFromToken(
+        jwt.sign({ sub: 'u1', type: 'access', roles: ['USER'] }, secret),
+        secret,
+      ).userId,
     ).toBe('u1');
   });
 
@@ -194,6 +197,7 @@ describe('auth helpers', () => {
     expect(() =>
       userFromToken(jwt.sign({ sub: 'u1', type: 'refresh' }, secret), secret),
     ).toThrow();
+    expect(() => userFromToken(jwt.sign({ sub: 'u1' }, secret), secret)).toThrow();
     expect(
       userFromToken(jwt.sign({ sub: 'u1', type: 'access' }, secret), secret).userId,
     ).toBe('u1');
