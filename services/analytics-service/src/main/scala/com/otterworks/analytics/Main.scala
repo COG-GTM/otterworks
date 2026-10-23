@@ -18,10 +18,12 @@ import scala.util.{Failure, Success}
 
 object Main:
   def main(args: Array[String]): Unit =
+    // Load config before starting the actor system so a missing credential
+    // exits the JVM instead of leaving Akka's non-daemon threads running.
+    val config = AppConfig.load()
+
     given system: ActorSystem[Nothing] = ActorSystem(Behaviors.empty, "analytics-service")
     given ec: ExecutionContextExecutor = system.executionContext
-
-    val config = AppConfig.load()
 
     // Wire up the metrics store. The golden default is the durable PostgreSQL
     // store (the "before" state for the S3/Iceberg lakehouse migration); the
