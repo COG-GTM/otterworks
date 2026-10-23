@@ -468,3 +468,18 @@ def test_a_backend_that_serves_a_caller_claiming_nothing_is_the_finding(
     result = gateway_bypass_identity(StubContext(gateway=401))
     assert result.verdict is Verdict.VULNERABLE
     assert "requires no identity at all" in result.detail
+
+
+def test_the_repo_compose_file_ships_no_default_jwt_secret():
+    """A JWT_SECRET default in compose is public, so anyone could forge admin tokens."""
+    import yaml
+
+    spec = yaml.safe_load(perimeter.COMPOSE.read_text())
+    secrets = {
+        name: (svc.get("environment") or {}).get("JWT_SECRET")
+        for name, svc in spec["services"].items()
+        if "JWT_SECRET" in (svc.get("environment") or {})
+    }
+    assert secrets, "expected services to read JWT_SECRET from the environment"
+    for name, value in secrets.items():
+        assert value.startswith("${JWT_SECRET:?"), f"{name}: JWT_SECRET must be required, got {value!r}"

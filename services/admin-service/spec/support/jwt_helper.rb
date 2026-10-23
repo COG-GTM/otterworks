@@ -7,7 +7,7 @@ module JwtHelper
       exp: 24.hours.from_now.to_i,
       iat: Time.current.to_i
     }
-    secret = Rails.application.secrets.jwt_secret
+    secret = JwtSecret.current
     JWT.encode(payload, secret, 'HS256')
   end
 

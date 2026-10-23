@@ -10,6 +10,7 @@ require 'rails/test_unit/railtie'
 
 Bundler.require(*Rails.groups)
 
+require_relative '../app/middleware/jwt_secret'
 require_relative '../app/middleware/jwt_authenticator'
 
 module AdminService
