@@ -25,9 +25,10 @@ open http://localhost:3000        # Web App (React / Next.js)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
-Or without Make:
+Or without Make (`docker-compose.yml` has no default `JWT_SECRET`; `make env` writes a random one to `.env`):
 
 ```bash
+echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
