@@ -60,8 +60,9 @@ upload `.catch` in `file-upload-dropzone.tsx`).
 admin-service already owns the Devin flow: `DevinSessionService.create_session`
 (reads `DEVIN_API_KEY`/`DEVIN_ORG_ID`, no-ops with a warning if missing) and the
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
-or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
-unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
+or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; the endpoint fails
+closed with 503 when that env var is unset or the retired `demo-alert-secret`, so
+the sending service and admin-service must share a generated secret). Reuse it instead of adding a
 second Devin client:
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
@@ -70,12 +71,15 @@ second Devin client:
   `services/file-service/src/alerts.rs`: labels `alertname`, `severity`,
   `affected_service`, annotations summary/description, `startsAt`. Config via env
   `ADMIN_SERVICE_URL` (default `http://admin-service:8089` resolves in-namespace)
-  and optional `ALERT_WEBHOOK_SECRET`. Missing config → warn and skip. Never log
+  and `ALERT_WEBHOOK_SECRET` (required by admin-service). Missing config → warn and skip. Never log
   secrets.
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+  controller honors by bypassing the skip — up to `ALERT_DEDUP_BYPASS_LIMIT`
+  (default 10) bypasses per service per 10 minutes (atomic Redis counter
+  `alerts:dedup_bypass:<service>`), after which extra alerts fall back to normal
+  dedup. Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant

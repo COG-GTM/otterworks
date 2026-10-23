@@ -5,6 +5,7 @@ class AdminSettingsService
   SLACK_NOTIFICATIONS_KEY = 'admin:slack_notifications'.freeze
   SLACK_WEBHOOK_URL_KEY = 'admin:slack_webhook_url'.freeze
   SLACK_BOT_TOKEN_KEY = 'admin:slack_bot_token'.freeze
+  DEDUP_BYPASS_KEY_PREFIX = 'alerts:dedup_bypass:'.freeze
 
   class << self
     def auto_investigate_enabled?
@@ -175,6 +176,26 @@ class AdminSettingsService
     rescue StandardError => e
       Rails.logger.error("Failed to clear Slack credentials: #{e.message}")
       raise
+    ensure
+      redis&.close
+    end
+
+    # Atomically reserves one dedup=false incident for the service in a fixed
+    # window. Fails closed (false) when the budget is spent or Redis is down.
+    def reserve_dedup_bypass(affected_service, limit:, window:)
+      redis = Redis.new(
+        url: ServiceEnv.redis_url,
+        timeout: 2
+      )
+      key = "#{DEDUP_BYPASS_KEY_PREFIX}#{affected_service}"
+      _created, count = redis.multi do |tx|
+        tx.set(key, 0, ex: window.to_i, nx: true)
+        tx.incr(key)
+      end
+      count <= limit
+    rescue StandardError => e
+      Rails.logger.error("Failed to reserve dedup bypass: #{e.message}")
+      false
     ensure
       redis&.close
     end
