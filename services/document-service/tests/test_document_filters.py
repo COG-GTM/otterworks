@@ -126,6 +126,35 @@ async def test_filter_values_are_bound_not_interpolated(
 
 
 @pytest.mark.asyncio
+async def test_owner_scoped_filter_only_returns_owner_documents(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    other_owner = uuid.uuid4()
+    folder_id = uuid.uuid4()
+    await _create(client, owner_id, "Quarterly Report", folder_id=str(folder_id))
+    await _create(client, owner_id, "Annual Report")
+    await _create(client, other_owner, "Other Owner Report", folder_id=str(folder_id))
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"owner_id": str(owner_id), "title": "report", "sort": "title", "direction": "asc"},
+        auth=None,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert [item["title"] for item in body["items"]] == ["Annual Report", "Quarterly Report"]
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"owner_id": str(owner_id), "folder_id": str(folder_id), "title": "report"},
+        auth=None,
+    )
+    assert resp.status_code == 200
+    assert [item["title"] for item in resp.json()["items"]] == ["Quarterly Report"]
+
+
+@pytest.mark.asyncio
 async def test_filter_title_with_quote_matches_literally(
     client: AsyncClient, owner_id: uuid.UUID
 ):

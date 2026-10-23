@@ -10,12 +10,15 @@ resolved from an allow-list of column names and directions.
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 import structlog
-from sqlalchemy import column, false, func, select, table
+from sqlalchemy import bindparam, column, false, func, select, table
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy.sql.elements import BindParameter, ColumnElement
+
+from app.models.document import Document
 
 logger = structlog.get_logger()
 
@@ -42,6 +45,12 @@ SORT_DIRECTIONS = frozenset({"asc", "desc"})
 _documents = table("documents", *(column(name) for name in COLUMNS))
 
 
+def _uuid_param(name: str, value: str | uuid.UUID) -> BindParameter[uuid.UUID]:
+    """Bind a uuid with the model column's type so every driver encodes it natively."""
+    as_uuid = value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+    return bindparam(name, as_uuid, type_=Document.__table__.c[name].type)
+
+
 class InvalidSortError(ValueError):
     """Raised when the requested sort column or direction is not allowed."""
 
@@ -65,9 +74,9 @@ class DocumentQueryRepository:
             c.is_template == false(),
         ]
         if owner_id:
-            clauses.append(c.owner_id == owner_id)
+            clauses.append(c.owner_id == _uuid_param("owner_id", owner_id))
         if folder_id:
-            clauses.append(c.folder_id == folder_id)
+            clauses.append(c.folder_id == _uuid_param("folder_id", folder_id))
         if title_contains:
             clauses.append(func.lower(c.title).like(func.lower(f"%{title_contains}%")))
         if content_type:
