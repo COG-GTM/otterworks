@@ -29,6 +29,13 @@ export interface Config {
   };
 }
 
+export function requireJwtSecret(secret: string | undefined): string {
+  if (!secret || secret.trim() === '') {
+    throw new Error('JWT_SECRET environment variable is required but not set');
+  }
+  return secret;
+}
+
 export function loadConfig(): Config {
   return {
     httpPort: parseInt(process.env.HTTP_PORT || '8084', 10),
@@ -40,7 +47,7 @@ export function loadConfig(): Config {
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'collab:',
     },
     jwt: {
-      secret: process.env.JWT_SECRET || 'otterworks-dev-secret',
+      secret: requireJwtSecret(process.env.JWT_SECRET),
       issuer: process.env.JWT_ISSUER || 'otterworks-auth-service',
     },
     cors: {

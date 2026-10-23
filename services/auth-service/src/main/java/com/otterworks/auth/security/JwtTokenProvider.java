@@ -26,6 +26,9 @@ public class JwtTokenProvider {
       @Value("${jwt.secret}") String secret,
       @Value("${jwt.access-token-expiry:3600}") long accessTokenExpiry,
       @Value("${jwt.refresh-token-expiry:2592000}") long refreshTokenExpiry) {
+    if (secret == null || secret.isBlank()) {
+      throw new IllegalStateException("JWT_SECRET environment variable is required but not set");
+    }
     this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     this.accessTokenExpiry = accessTokenExpiry;
     this.refreshTokenExpiry = refreshTokenExpiry;

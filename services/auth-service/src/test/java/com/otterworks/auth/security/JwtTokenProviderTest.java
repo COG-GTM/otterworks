@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.otterworks.auth.entity.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +22,32 @@ class JwtTokenProviderTest {
             "test-jwt-secret-otterworks-must-be-at-least-32-bytes-long-for-hmac",
             3600,
             2592000); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
+  }
+
+  @Test
+  void constructor_shouldRejectMissingSecret() {
+    assertThatThrownBy(() -> new JwtTokenProvider(null, 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("   ", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+  }
+
+  @Test
+  void validateAndGetClaims_shouldRejectTokenSignedWithAnotherSecret() {
+    JwtTokenProvider attacker =
+        new JwtTokenProvider(
+            "otterworks-local-dev-jwt-secret-change-me-in-production",
+            3600,
+            2592000); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
+    String forged = attacker.generateAccessToken(createTestUser());
+
+    assertThatThrownBy(() -> jwtTokenProvider.validateAndGetClaims(forged))
+        .isInstanceOf(JwtException.class);
   }
 
   @Test
