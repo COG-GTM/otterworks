@@ -14,6 +14,10 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
+# Generate local secrets (JWT_SECRET, SECRET_KEY_BASE, ALERT_WEBHOOK_SECRET, CHAOS_SECRET) into .env.
+# The make targets below run this for you; it only fills in values that are missing.
+make env
+
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
@@ -25,9 +29,11 @@ open http://localhost:3000        # Web App (React / Next.js)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
-Or without Make:
+Or without Make (compose has no default for these secrets and refuses to start until
+`.env` or your shell provides them, so run `scripts/ensure-local-env.sh` once first):
 
 ```bash
+scripts/ensure-local-env.sh
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
@@ -138,6 +144,7 @@ Run `make help` to list all available commands. Key targets:
 
 | Command | Description |
 |---------|-------------|
+| `make env` | Generate any missing local compose secrets into the gitignored `.env` |
 | `make infra-up` | Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability) |
 | `make up` | Build and start all application services |
 | `make down` | Stop all services and infrastructure |
