@@ -264,6 +264,132 @@ class AuthControllerIntegrationTest {
         .andExpect(jsonPath("$.content").isArray());
   }
 
+  @Test
+  void lookupByEmail_shouldReturnOnlyIdAndDisplayName() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+    createTestUser("recipient@otterworks.dev", "password123", "Recipient");
+    String recipientId =
+        userRepository.findByEmail("recipient@otterworks.dev").get().getId().toString();
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "recipient@otterworks.dev")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.id").value(recipientId))
+        .andExpect(jsonPath("$.displayName").value("Recipient"))
+        .andExpect(jsonPath("$.email").doesNotExist());
+  }
+
+  @Test
+  void lookupByEmail_unknownEmailShouldReturnGenericNotFound() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                get("/api/v1/auth/users/lookup")
+                    .param("email", "ghost@otterworks.dev")
+                    .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.message").value("User not found"))
+            .andReturn();
+
+    assertThat(result.getResponse().getContentAsString()).doesNotContain("ghost@otterworks.dev");
+  }
+
+  @Test
+  void lookupById_shouldNotExposeEmail() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+    createTestUser("victim@otterworks.dev", "password123", "Victim");
+    String victimId = userRepository.findByEmail("victim@otterworks.dev").get().getId().toString();
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                get("/api/v1/auth/users/by-id/" + victimId)
+                    .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(victimId))
+            .andExpect(jsonPath("$.displayName").value("Victim"))
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andReturn();
+
+    assertThat(result.getResponse().getContentAsString()).doesNotContain("victim@otterworks.dev");
+  }
+
+  @Test
+  void lookupById_unknownIdShouldReturnGenericNotFound() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/by-id/" + java.util.UUID.randomUUID())
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("User not found"));
+  }
+
+  @Test
+  void lookupByEmail_shouldBeRateLimitedPerCaller() throws Exception {
+    String token = registerAndGetAccessToken("prober@otterworks.dev", "password123", "Prober");
+
+    for (int i = 0; i < 5; i++) {
+      mockMvc
+          .perform(
+              get("/api/v1/auth/users/lookup")
+                  .param("email", "guess" + i + "@otterworks.dev")
+                  .header("Authorization", "Bearer " + token))
+          .andExpect(status().isNotFound());
+    }
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "guess5@otterworks.dev")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isTooManyRequests())
+        .andExpect(header().exists("Retry-After"));
+
+    String otherToken = registerAndGetAccessToken("other@otterworks.dev", "password123", "Other");
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "prober@otterworks.dev")
+                .header("Authorization", "Bearer " + otherToken))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void lookupById_shouldBeRateLimitedPerCaller() throws Exception {
+    String token = registerAndGetAccessToken("prober@otterworks.dev", "password123", "Prober");
+
+    for (int i = 0; i < 5; i++) {
+      mockMvc
+          .perform(
+              get("/api/v1/auth/users/by-id/" + java.util.UUID.randomUUID())
+                  .header("Authorization", "Bearer " + token))
+          .andExpect(status().isNotFound());
+    }
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/by-id/" + java.util.UUID.randomUUID())
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isTooManyRequests());
+  }
+
+  @Test
+  void lookup_shouldRejectUnauthenticatedRequest() throws Exception {
+    mockMvc
+        .perform(get("/api/v1/auth/users/lookup").param("email", "anyone@otterworks.dev"))
+        .andExpect(status().isForbidden());
+    mockMvc
+        .perform(get("/api/v1/auth/users/by-id/" + java.util.UUID.randomUUID()))
+        .andExpect(status().isForbidden());
+  }
+
   private void createTestUser(String email, String password, String displayName) {
     User user = new User();
     user.setEmail(email);

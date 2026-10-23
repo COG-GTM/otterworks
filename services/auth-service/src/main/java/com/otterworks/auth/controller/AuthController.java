@@ -2,6 +2,7 @@ package com.otterworks.auth.controller;
 
 import com.otterworks.auth.dto.*;
 import com.otterworks.auth.service.AuthService;
+import com.otterworks.auth.service.UserLookupRateLimiter;
 import com.otterworks.auth.service.UserService;
 import jakarta.validation.Valid;
 import java.util.UUID;
@@ -19,10 +20,13 @@ public class AuthController {
 
   private final AuthService authService;
   private final UserService userService;
+  private final UserLookupRateLimiter lookupRateLimiter;
 
-  public AuthController(AuthService authService, UserService userService) {
+  public AuthController(
+      AuthService authService, UserService userService, UserLookupRateLimiter lookupRateLimiter) {
     this.authService = authService;
     this.userService = userService;
+    this.lookupRateLimiter = lookupRateLimiter;
   }
 
   @PostMapping("/register")
@@ -68,15 +72,17 @@ public class AuthController {
   }
 
   @GetMapping("/users/lookup")
-  public ResponseEntity<UserLookupResponse> lookupUser(@RequestParam String email) {
-    UserDTO user = userService.findByEmail(email);
-    return ResponseEntity.ok(UserLookupResponse.fromUserDTO(user));
+  public ResponseEntity<UserLookupResponse> lookupUser(
+      Authentication authentication, @RequestParam String email) {
+    lookupRateLimiter.checkEmailLookup(authentication);
+    return ResponseEntity.ok(userService.lookupByEmail(email));
   }
 
   @GetMapping("/users/by-id/{id}")
-  public ResponseEntity<UserLookupResponse> lookupUserById(@PathVariable UUID id) {
-    UserDTO user = userService.getProfile(id);
-    return ResponseEntity.ok(UserLookupResponse.fromUserDTO(user));
+  public ResponseEntity<UserLookupResponse> lookupUserById(
+      Authentication authentication, @PathVariable UUID id) {
+    lookupRateLimiter.checkIdLookup(authentication);
+    return ResponseEntity.ok(userService.lookupById(id));
   }
 
   @GetMapping("/users")
