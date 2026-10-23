@@ -149,11 +149,13 @@ the findings this harness demonstrates — fixes land on a branch and its PR.
 Planted bugs (see `AGENTS.md`) stay in place. Adding a probe to
 `security/dast/harness/probes/` is always welcome on `main`.
 
-`DAST-GATEWAY-BYPASS-IDENTITY` reproduces against the local stack because
-`docker-compose.yml` publishes backend ports — that is a development
-convenience, not something to "fix" by unpublishing them, which would break
-local development. It is graded `low` from that origin for exactly that reason;
-the deployment-relevant half is each backend chart's `ingress.enabled`.
+`docker-compose.yml` publishes only the gateway (8080) and the frontends; backends
+use `expose:` and collab-service's JWT-checked websocket is bound to
+`127.0.0.1:8084`. `DAST-GATEWAY-BYPASS-IDENTITY` therefore reports `secure`
+against the local stack — a backend `ports:` entry on `0.0.0.0` reintroduces the
+bypass and fails `make dast-test`. To reach a backend directly while debugging,
+bind it to loopback in a local override file. The deployment-relevant half is
+each backend chart's `ingress.enabled`.
 
 ## Revert
 
