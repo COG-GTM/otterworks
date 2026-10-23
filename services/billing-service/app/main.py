@@ -6,10 +6,11 @@ from typing import Annotated
 from uuid import UUID
 
 import psycopg
-from fastapi import FastAPI, HTTPException, Path, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from app.auth import CallerDep, authorize_tenant, require_internal_reset_token
 from app.config import settings
 from app.db import connect, migrate, reset
 from app.domain import catalog, change_plan, entitlement
@@ -27,8 +28,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -47,16 +48,18 @@ def health() -> dict[str, str]:
     return {"status": "healthy", "service": settings.app_name}
 
 
-@app.post("/internal/reset", status_code=204)
+@app.post(
+    "/internal/reset",
+    status_code=204,
+    dependencies=[Depends(require_internal_reset_token)],
+)
 def internal_reset() -> Response:
-    if not settings.allow_internal_reset:
-        raise HTTPException(status_code=404, detail="internal reset is disabled")
     reset()
     return Response(status_code=204)
 
 
 @app.get("/api/plans")
-def list_plans() -> list[dict]:
+def list_plans(_caller: CallerDep) -> list[dict]:
     with connect() as connection:
         plans = catalog(PostgresPlansRepository(connection).list_plans())
     return [
@@ -76,7 +79,9 @@ def list_plans() -> list[dict]:
 def get_entitlement(
     tenant_id: Annotated[UUID, Path()],
     on: Annotated[date, Query()],
+    caller: CallerDep,
 ) -> dict:
+    authorize_tenant(caller, tenant_id)
     with connect() as connection:
         row = entitlement(
             PostgresPlansRepository(connection).find_entitlements(tenant_id),
@@ -97,7 +102,12 @@ def get_entitlement(
 
 
 @app.post("/api/tenants/{tenant_id}/plan-change")
-def change_tenant_plan(tenant_id: Annotated[UUID, Path()], request: PlanChange) -> dict:
+def change_tenant_plan(
+    tenant_id: Annotated[UUID, Path()],
+    request: PlanChange,
+    caller: CallerDep,
+) -> dict:
+    authorize_tenant(caller, tenant_id)
     try:
         with connect() as connection:
             repository = PostgresPlansRepository(connection)
