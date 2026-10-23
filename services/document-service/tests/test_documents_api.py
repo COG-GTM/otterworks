@@ -280,6 +280,12 @@ async def test_owner_flow_with_hs512_jwt(client: AsyncClient, monkeypatch: pytes
     )
     assert denied.status_code == 401
 
+    refresh = jwt.encode({"sub": str(user_id), "type": "refresh"}, secret, algorithm="HS512")
+    denied = await client.get(
+        f"/api/v1/documents/{created.json()['id']}", headers={"Authorization": f"Bearer {refresh}"}
+    )
+    assert denied.status_code == 401
+
 
 @pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
