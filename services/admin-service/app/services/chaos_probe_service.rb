@@ -42,12 +42,30 @@ class ChaosProbeService
     },
   }.freeze
 
-  # Starts a background probe thread for the given service.
+  @probes = {}
+  @probes_lock = Mutex.new
+
+  # Starts a background probe thread for the given service and returns it.
+  # At most one probe runs per Redis key: re-triggering while a probe is alive
+  # returns the existing thread instead of spawning another one.
   # The thread self-terminates when the Redis key no longer exists.
   def self.start(service:, redis_key:)
     probe_config = SERVICE_PROBES[service]
     return unless probe_config
 
+    @probes_lock.synchronize do
+      existing = @probes[redis_key]
+      return existing if existing&.alive?
+
+      @probes[redis_key] = spawn_probe(service, redis_key, probe_config)
+    end
+  end
+
+  def self.running?(redis_key)
+    @probes_lock.synchronize { @probes[redis_key]&.alive? || false }
+  end
+
+  def self.spawn_probe(service, redis_key, probe_config)
     Thread.new do
       Thread.current.report_on_exception = true
       Rails.logger.info("[ChaosProbe] Started for #{service}")
@@ -58,7 +76,7 @@ class ChaosProbeService
 
       iterations = 0
       loop do
-        break unless redis.exists?(redis_key)
+        break if !redis.exists?(redis_key) && release_if_expired(redis_key, redis)
 
         PROBE_BATCH.times { fire_probe(probe_config) }
         iterations += 1
@@ -70,8 +88,23 @@ class ChaosProbeService
       Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
     ensure
       redis&.close
+      @probes_lock.synchronize { @probes.delete(redis_key) if @probes[redis_key] == Thread.current }
     end
   end
+  private_class_method :spawn_probe
+
+  # Re-checks the key under the registry lock before a probe gives up, so a
+  # trigger racing with a reset either sees this probe deregistered (and spawns
+  # a new one) or this probe sees the restored key and keeps running.
+  def self.release_if_expired(redis_key, redis)
+    @probes_lock.synchronize do
+      next false if redis.exists?(redis_key)
+
+      @probes.delete(redis_key) if @probes[redis_key] == Thread.current
+      true
+    end
+  end
+  private_class_method :release_if_expired
 
   def self.fire_probe(config)
     uri = URI.parse(config[:url])
