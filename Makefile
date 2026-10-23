@@ -1,4 +1,4 @@
-.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
+.PHONY: help infra-up infra-down up down build test test-coverage test-api-flows test-api-flows-collect lint deploy-dev teardown-dev seed wait-for-db security-scan test-report build-report testdata-validate testdata-clean testdata-setup-schema batch-usage-rollup batch-usage-rollup-seed dev-backend dev-web dev-admin dev-android dev-electron dast-list dast-scan dast-verify dast-baseline dast-zap procs-validate procs-secrets procs-token procs-up procs-down procs-record procs-list procs-parity procs-rules-gate insurance-up insurance-down insurance-test deps-inventory deps-gate deps-command deps-transcript deps-transcript-baseline deps-tests deps-record dast-coverage dast-routes dast-test eq-list eq-gate eq-baseline eq-verify eq-exploit eq-exploit-refactored eq-tests eq-record
 
 SHELL := /bin/bash
 
@@ -12,6 +12,8 @@ PROCS_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(5543
 PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(8096 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
+PROCS_SECRETS = procs/.secrets/$(NS).env
+PROCS_LOAD_SECRETS = set -a && . ./$(PROCS_SECRETS) && set +a &&
 PROCS_ENV = NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
 procs-validate:
@@ -19,11 +21,18 @@ procs-validate:
 	@command -v python3 >/dev/null 2>&1 || (echo "python3 is required for namespace port derivation" >&2; exit 2)
 	@test -n "$(PROCS_PORT_OFFSET)" || (echo "could not derive namespace port offset" >&2; exit 2)
 
-procs-up: procs-validate ## Start the legacy billing stored-procedure stack (NS=<namespace>)
-	$(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
+procs-secrets: procs-validate
+	@test -s $(PROCS_SECRETS) || (umask 077 && mkdir -p $(dir $(PROCS_SECRETS)) && python3 -c "import secrets; print('BILLING_SVC_JWT_SECRET=' + secrets.token_hex(32)); print('BILLING_SVC_INTERNAL_RESET_TOKEN=' + secrets.token_hex(32))" > $(PROCS_SECRETS))
+
+procs-up: procs-secrets ## Start the legacy billing stored-procedure stack (NS=<namespace>)
+	$(PROCS_LOAD_SECRETS) $(PROCS_ENV) $(PROCS_COMPOSE) up -d --build --wait
 
 procs-down: procs-validate ## Stop the legacy billing stored-procedure stack (NS=<namespace>)
-	$(PROCS_ENV) $(PROCS_COMPOSE) down -v
+	BILLING_SVC_JWT_SECRET=unused BILLING_SVC_INTERNAL_RESET_TOKEN=unused $(PROCS_ENV) $(PROCS_COMPOSE) down -v
+	rm -f $(PROCS_SECRETS)
+
+procs-token: procs-secrets ## Print a 15-minute billing-service admin token for the namespace (NS=<namespace>)
+	@$(PROCS_LOAD_SECRETS) $(PROCS_UV) python -c "import os, sys; sys.path.insert(0, 'procs/harness'); from replay import target_access_token; print(target_access_token(os.environ['BILLING_SVC_JWT_SECRET']))"
 
 procs-record: procs-validate ## Record legacy billing transcripts (NS=<namespace>, MODULE and OUTPUT_DIR optional)
 	$(PROCS_ENV) DB_NAME=billing_$(NS) DB_PORT=$(PROCS_DB_PORT) $(PROCS_UV) procs/harness/record.py $(if $(MODULE),--module $(MODULE),) $(if $(OUTPUT_DIR),--output-dir $(OUTPUT_DIR),) $(if $(ALLOW_RERECORD),--allow-rerecord,) $(if $(RERECORD_REASON),--rerecord-reason $(RERECORD_REASON),)
@@ -31,8 +40,8 @@ procs-record: procs-validate ## Record legacy billing transcripts (NS=<namespace
 procs-list: ## List stored-procedure modules and scenarios
 	$(PROCS_UV) procs/harness/list.py $(if $(MODULE),--module $(MODULE),)
 
-procs-parity: procs-validate ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
-	$(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
+procs-parity: procs-secrets ## Replay extracted billing scenarios (NS=<namespace>, MODULE and SCENARIO optional)
+	$(PROCS_LOAD_SECRETS) $(PROCS_ENV) BILLING_SVC_URL=$${BILLING_SVC_URL:-http://localhost:$(PROCS_TARGET_PORT)} $(PROCS_UV) procs/harness/replay.py $(if $(MODULE),--module $(MODULE),) $(if $(SCENARIO),--scenario $(SCENARIO),)
 
 procs-rules-gate: ## Validate the approved HITL rule ledger (MODULE=<module> or ALL=1)
 	@test -n "$(MODULE)$(ALL)" || (echo "MODULE or ALL=1 is required" >&2; exit 2)
