@@ -9,7 +9,9 @@ final case class AppConfig(
     aws: AwsConfig,
     postgres: PostgresConfig,
     repository: RepositoryConfig,
-    server: ServerConfig
+    server: ServerConfig,
+    documentService: DocumentServiceConfig,
+    auth: AuthConfig = AuthConfig(None)
 )
 
 final case class S3Config(dataLakeBucket: String)
@@ -27,6 +29,12 @@ final case class RepositoryConfig(backend: String):
   def isPostgres: Boolean = backend.trim.toLowerCase == "postgres"
 
 final case class ServerConfig(host: String, port: Int)
+
+/** document-service endpoint used to authorize per-document analytics reads. */
+final case class DocumentServiceConfig(url: String, timeoutMs: Int)
+
+/** Shared HMAC secret for verifying auth-service access tokens (JWT_SECRET). */
+final case class AuthConfig(jwtSecret: Option[String])
 
 object AppConfig:
   def load(): AppConfig =
@@ -70,4 +78,19 @@ object AppConfig:
       port = if analytics.hasPath("server.port") then analytics.getInt("server.port") else 8088
     )
 
-    AppConfig(s3, sqs, aws, postgres, repository, server)
+    val documentService = DocumentServiceConfig(
+      url =
+        if analytics.hasPath("document-service.url") then analytics.getString("document-service.url")
+        else "http://document-service:8083",
+      timeoutMs =
+        if analytics.hasPath("document-service.timeout-ms") then analytics.getInt("document-service.timeout-ms")
+        else 3000
+    )
+
+    val auth = AuthConfig(
+      jwtSecret =
+        if analytics.hasPath("auth.jwt-secret") then Some(analytics.getString("auth.jwt-secret")).filter(_.trim.nonEmpty)
+        else None
+    )
+
+    AppConfig(s3, sqs, aws, postgres, repository, server, documentService, auth)

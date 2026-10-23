@@ -342,6 +342,7 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: analytics-service
       S3_DATA_LAKE_BUCKET: otterworks-data-lake
+      DOCUMENT_SERVICE_URL: http://document-service:8083
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:

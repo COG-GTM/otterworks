@@ -5,15 +5,15 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
-import com.otterworks.analytics.api.{AnalyticsRoutes, EventRoutes, HealthRoutes, MarginRoutes, MarketIngestRoutes}
+import com.otterworks.analytics.api.{AnalyticsRoutes, CallerAuth, EventRoutes, HealthRoutes, MarginRoutes, MarketIngestRoutes}
 import com.otterworks.analytics.batch.MarketSeeder
 import com.otterworks.analytics.config.AppConfig
 import com.otterworks.analytics.db.AnalyticsDb
 import com.otterworks.analytics.repository.{InMemoryMetricsRepository, MarketRepository, MetricsRepository, PostgresMetricsRepository}
-import com.otterworks.analytics.service.{AnalyticsService, EventProcessor, MarginService}
+import com.otterworks.analytics.service.{AnalyticsService, DocumentServiceAccess, EventProcessor, MarginService}
 
 import scala.concurrent.{Await, ExecutionContextExecutor}
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.util.{Failure, Success}
 
 object Main:
@@ -74,7 +74,10 @@ object Main:
 
     // Build routes
     val healthRoutes = HealthRoutes(analyticsService)
-    val analyticsRoutes = AnalyticsRoutes(analyticsService)
+    val documentAccess = DocumentServiceAccess(config.documentService.url, config.documentService.timeoutMs.millis)
+    val analyticsRoutes = AnalyticsRoutes(analyticsService, documentAccess, CallerAuth(config.auth.jwtSecret))
+    if config.auth.jwtSecret.isEmpty then
+      system.log.warn("JWT_SECRET is not set: analytics query routes will reject every request with 401")
     val eventRoutes = EventRoutes(analyticsService)
 
     val routes: Route = concat(
