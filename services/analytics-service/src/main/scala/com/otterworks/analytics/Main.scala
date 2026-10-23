@@ -76,6 +76,8 @@ object Main:
     val healthRoutes = HealthRoutes(analyticsService)
     val documentAccess = DocumentServiceAccess(config.documentService.url, config.documentService.timeoutMs.millis)
     val analyticsRoutes = AnalyticsRoutes(analyticsService, documentAccess, CallerAuth(config.auth.jwtSecret))
+    if config.auth.jwtSecret.isEmpty then
+      system.log.warn("JWT_SECRET is not set: analytics query routes will reject every request with 401")
     val eventRoutes = EventRoutes(analyticsService)
 
     val routes: Route = concat(

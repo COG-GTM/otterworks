@@ -19,8 +19,8 @@ final case class Caller(userId: String, roles: Set[String], authorization: Optio
  * and a gateway X-User-ID that disagrees with the token's subject is rejected.
  * Callers inside the cluster therefore cannot assert an identity by header.
  *
- * Without a verifier the gateway-forwarded X-User-ID is the identity and no
- * caller is treated as an admin, so org-wide views stay closed.
+ * Without a verifier (JWT_SECRET unset) identity cannot be established, so
+ * every query is rejected with 401 rather than trusting an unsigned header.
  */
 final class CallerAuth(verifier: Option[JwtVerifier]):
   import CallerAuth.*
@@ -35,8 +35,7 @@ final class CallerAuth(verifier: Option[JwtVerifier]):
             bearerToken(authorization).flatMap(v.verify).filter(t => forwardedId.forall(_ == t.subject)).map { t =>
               Caller(t.subject, t.roles, authorization)
             }
-          case None =>
-            forwardedId.map(Caller(_, Set.empty, authorization))
+          case None => None
         resolved match
           case Some(c) => provide(c)
           case None    => unauthorized.toDirective[Tuple1[Caller]]

@@ -271,22 +271,18 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
       }
   }
 
-  it should "fall back to the gateway X-User-ID without admin rights when no JWT secret is configured" in {
+  it should "reject every query when no JWT secret is configured" in {
     val service = AnalyticsService(MetricsRepository(testConfig))
     val routes = AnalyticsRoutes(service, StubDocumentAccess(Set.empty), CallerAuth(None)).routes
-    Get("/api/v1/analytics/users/user-1/activity").withHeaders(RawHeader("X-User-ID", "user-1")) ~> routes ~> check {
-      status shouldBe StatusCodes.OK
-    }
-    Get("/api/v1/analytics/users/victim/activity").withHeaders(RawHeader("X-User-ID", "user-1")) ~> routes ~> check {
-      status shouldBe StatusCodes.Forbidden
-    }
-    Get("/api/v1/analytics/export").withHeaders(RawHeader("X-User-ID", "admin-1"), RawHeader("X-User-Roles", "ADMIN")) ~>
-      routes ~> check {
-        status shouldBe StatusCodes.Forbidden
+    val headerSets = Seq(
+      List(RawHeader("X-User-ID", "user-1")),
+      List(bearer("user-1", "USER")),
+      List(RawHeader("X-User-ID", "admin-1"), bearer("admin-1", "ADMIN")),
+    )
+    for uri <- allQueryPaths; headers <- headerSets do
+      Get(uri).withHeaders(headers) ~> routes ~> check {
+        withClue(uri) { status shouldBe StatusCodes.Unauthorized }
       }
-    Get("/api/v1/analytics/dashboard") ~> routes ~> check {
-      status shouldBe StatusCodes.Unauthorized
-    }
   }
 
   it should "ignore a client-supplied X-User-Roles header" in {
