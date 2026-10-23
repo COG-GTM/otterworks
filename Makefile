@@ -63,7 +63,10 @@ infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearc
 infra-down: ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
-up: ## Start all services (add seed=1 to seed after start)
+local-secrets: ## Generate local-only secrets (ALERT_WEBHOOK_SECRET) into the gitignored .env
+	@scripts/ensure-local-secrets.sh
+
+up: local-secrets ## Start all services (add seed=1 to seed after start)
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
  ifdef seed
 	@$(MAKE) --no-print-directory wait-for-db seed
@@ -98,7 +101,7 @@ COMPOSE := docker compose -f docker-compose.infra.yml -f docker-compose.yml
 # otherwise default to :8085, which only matches the k8s dev environment.
 COLLAB_WS_URL := ws://localhost:8084
 
-dev-backend: ## Start the Dockerized backend (all services except the frontend containers)
+dev-backend: local-secrets ## Start the Dockerized backend (all services except the frontend containers)
 	$(COMPOSE) up -d $$($(COMPOSE) config --services | grep -vE '^(web-app|admin-dashboard)$$')
 	@echo "Backend up - API gateway on http://localhost:8080 (fresh DB? run: make seed)"
 

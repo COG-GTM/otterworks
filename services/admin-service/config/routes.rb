@@ -61,7 +61,8 @@ Rails.application.routes.draw do
         put 'settings/slack_notifications', to: 'settings#update_slack_notifications'
         delete 'settings/slack_notifications', to: 'settings#destroy_slack_notifications'
 
-        # Grafana alert webhook (no JWT — protected by X-Alert-Secret header)
+        # Grafana alert webhook (no JWT — requires ALERT_WEBHOOK_SECRET via X-Alert-Secret
+        # or Authorization: Bearer; rejected when the secret is unset)
         post 'alerts/ingest', to: 'alerts#ingest'
       end
     end

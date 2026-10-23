@@ -20,6 +20,15 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
+        # Grafana groups at most a handful of alerts per notification; anything
+        # larger is a flood, not a real alert group.
+        MAX_ALERTS_PER_REQUEST = 50
+        MAX_TITLE_LENGTH       = 255
+        MAX_DESCRIPTION_LENGTH = 4_000
+
+        # Publicly known values that once shipped as defaults; never accepted.
+        RETIRED_SECRETS = %w[demo-alert-secret].freeze
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -32,6 +41,11 @@ module Api
           alerts = params[:alerts]
           unless alerts.is_a?(Array)
             return render json: { error: 'Missing alerts array' }, status: :bad_request
+          end
+
+          if alerts.size > MAX_ALERTS_PER_REQUEST
+            return render json: { error: "Too many alerts (max #{MAX_ALERTS_PER_REQUEST})" },
+                          status: :payload_too_large
           end
 
           processed = alerts.map { |alert| process_alert(alert) }.compact
@@ -48,8 +62,8 @@ module Api
           alert_name       = labels[:alertname].to_s
           affected_service = labels[:affected_service].to_s.presence || labels[:service].to_s.presence
           severity         = SEVERITY_MAP.fetch(labels[:severity].to_s, 'medium')
-          summary          = annotations[:summary].to_s
-          description      = annotations[:description].to_s.presence || summary
+          summary          = annotations[:summary].to_s.truncate(MAX_TITLE_LENGTH)
+          description      = (annotations[:description].to_s.presence || summary).truncate(MAX_DESCRIPTION_LENGTH)
           reporter_email   = labels[:reporter_email].to_s.presence
 
           if status == 'resolved'
@@ -62,8 +76,11 @@ module Api
 
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          # which case every firing alert opens its own incident, up to a
+          # per-service hourly budget. Past the budget it dedupes as usual.
+          bypass_dedup = labels[:dedup].to_s == 'false' &&
+                         AlertIngestBudget.allow_dedup_bypass?(affected_service)
+          unless bypass_dedup
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -76,7 +93,7 @@ module Api
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
           incident = Incident.create!(
-            title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
+            title:            (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(MAX_TITLE_LENGTH),
             description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',
@@ -138,17 +155,27 @@ module Api
           parts.join("\n\n")
         end
 
+        # The ingest path skips JWT auth (JwtAuthenticator::EXCLUDED_PATHS), so
+        # this shared secret is its only gate: fail closed when it is missing
+        # or still a publicly known default.
         def verify_alert_secret
-          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil).to_s.strip
+          if expected.empty? || RETIRED_SECRETS.include?(expected)
+            Rails.logger.error('ALERT_WEBHOOK_SECRET is unset or a retired default; rejecting alert ingest')
+            return render json: { error: 'Alert ingest is not configured' }, status: :service_unavailable
+          end
 
           # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
           # (Grafana webhook contact points send the token as a Bearer header)
-          provided = request.headers['X-Alert-Secret'].presence ||
-                     request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+          provided = request.headers['X-Alert-Secret'].presence || bearer_token
+          return if provided && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
+        end
+
+        def bearer_token
+          scheme, token = request.headers['Authorization'].to_s.split(' ', 2)
+          token.presence if scheme&.casecmp?('Bearer')
         end
       end
     end

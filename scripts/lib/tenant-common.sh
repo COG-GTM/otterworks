@@ -255,6 +255,29 @@ YAML
 # locked-down temp values file passed to helm via -f, so secret values never
 # appear in the process argument list (ps / /proc/*/cmdline). Mirrors deploy-dev.sh.
 add_secret() { SECRET_KV+=("$1" "$2"); }
+
+# admin-service's alert-ingest webhook skips JWT auth and rejects every alert
+# while ALERT_WEBHOOK_SECRET is unset, so each deploy provisions one shared by
+# admin-service and the alert senders. The namespace's current value is reused
+# so a redeploy does not rotate it under pods Helm leaves running (their
+# Deployments carry no Secret checksum); when it does change, all three are
+# restarted together by restart_alert_webhook_consumers.
+resolve_alert_webhook_secret() {
+  local ns=$1 existing
+  existing="$(kubectl -n "${ns}" get secret admin-service-secrets \
+    -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-${existing:-$(openssl rand -hex 32)}}"
+  ALERT_WEBHOOK_SECRET_CHANGED=false
+  [ "${ALERT_WEBHOOK_SECRET}" = "${existing}" ] || ALERT_WEBHOOK_SECRET_CHANGED=true
+}
+
+restart_alert_webhook_consumers() {
+  local ns=$1 d
+  [ "${ALERT_WEBHOOK_SECRET_CHANGED:-false}" = true ] || return 0
+  for d in admin-service file-service notification-service; do
+    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null 2>&1 || true
+  done
+}
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 
 # Build per-service Helm --set flags (EXTRA_ARGS) + secret pairs (SECRET_KV) for
@@ -295,6 +318,13 @@ build_helm_args() {
     case "$service" in
       api-gateway|auth-service|document-service|collab-service|admin-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
+    esac
+  fi
+
+  if [ -n "${ALERT_WEBHOOK_SECRET:-}" ]; then
+    case "$service" in
+      admin-service|file-service|notification-service)
+        add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
     esac
   fi
 
