@@ -60,9 +60,11 @@ upload `.catch` in `file-upload-dropzone.tsx`).
 admin-service already owns the Devin flow: `DevinSessionService.create_session`
 (reads `DEVIN_API_KEY`/`DEVIN_ORG_ID`, no-ops with a warning if missing) and the
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
-or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
-unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
-second Devin client:
+or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; the endpoint fails
+closed with 503 when that env var is unset or the retired `demo-alert-secret`,
+and caps a request at 50 alerts). `make up` generates a local value into `.env`;
+the deploy scripts provision one per namespace for admin-service, file-service and
+notification-service. Reuse it instead of adding a second Devin client:
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
   the error the client receives) a Grafana-shaped alert payload to
@@ -75,7 +77,9 @@ second Devin client:
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+  controller honors by bypassing the skip — up to `ALERT_DEDUP_BYPASS_PER_HOUR`
+  (default 20) incidents per service per hour (`AlertIngestBudget`, Redis); past
+  that, alerts dedupe normally. Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant
