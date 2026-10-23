@@ -113,14 +113,22 @@ def bola_files(ctx: ScanContext) -> Result:
     file_id = upload.json()["file"]["id"]
     base = f"/api/v1/files/{file_id}"
 
+    def attempt(method: str, path: str, body: dict | None = None):
+        # Retry 5xx while the share table finishes provisioning on a fresh stack.
+        for _ in range(10):
+            response = ctx.request(method, path, identity=ctx.attacker, json=body)
+            if response.status_code < 500:
+                break
+            time.sleep(3)
+        return response
+
     attempts = [
-        ctx.get(base, identity=ctx.attacker),
-        ctx.get(f"{base}/download", identity=ctx.attacker),
-        ctx.request(
+        attempt("GET", base),
+        attempt("GET", f"{base}/download"),
+        attempt(
             "POST",
             f"{base}/share",
-            identity=ctx.attacker,
-            json={
+            {
                 "shared_with": ctx.attacker.user_id,
                 "permission": "editor",
                 "shared_by": ctx.victim.user_id,
