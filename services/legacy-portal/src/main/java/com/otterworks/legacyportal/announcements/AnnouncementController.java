@@ -1,12 +1,18 @@
 package com.otterworks.legacyportal.announcements;
 
+import com.otterworks.legacyportal.security.PortalRoles;
 import java.time.Instant;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,17 +32,27 @@ public class AnnouncementController {
         this.service = service;
     }
 
+    /** Drafts ({@code publishedOnly=false}) are listed only for content admins. */
     @GetMapping
     public List<AnnouncementResponse> list(
-            @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly) {
+            @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly,
+            Authentication authentication) {
+        if (!publishedOnly) {
+            requireContentAdmin(authentication);
+        }
         List<Announcement> announcements =
                 publishedOnly ? service.listPublished() : service.listAll();
         return announcements.stream().map(AnnouncementResponse::from).collect(Collectors.toList());
     }
 
+    /** A draft is reported as not found to anyone but a content admin. */
     @GetMapping("/{id}")
-    public AnnouncementResponse get(@PathVariable Long id) {
-        return AnnouncementResponse.from(service.get(id));
+    public AnnouncementResponse get(@PathVariable Long id, Authentication authentication) {
+        Announcement announcement = service.get(id);
+        if (!announcement.isPublished() && !PortalRoles.isContentAdmin(authentication)) {
+            throw new NoSuchElementException("announcement " + id + " not found");
+        }
+        return AnnouncementResponse.from(announcement);
     }
 
     @PostMapping
@@ -49,6 +65,17 @@ public class AnnouncementController {
     @PostMapping("/{id}/publish")
     public AnnouncementResponse publish(@PathVariable Long id) {
         return AnnouncementResponse.from(service.publish(id));
+    }
+
+    private static void requireContentAdmin(Authentication authentication) {
+        if (authentication == null
+                || authentication instanceof AnonymousAuthenticationToken
+                || !authentication.isAuthenticated()) {
+            throw new AuthenticationCredentialsNotFoundException("Authentication required");
+        }
+        if (!PortalRoles.isContentAdmin(authentication)) {
+            throw new AccessDeniedException("Announcement drafts are restricted to admins");
+        }
     }
 
     public static class CreateAnnouncementRequest {
