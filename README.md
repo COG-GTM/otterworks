@@ -14,6 +14,10 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
+# Shared secret for alert webhooks into admin-service (required — alert ingest
+# rejects every request while it is unset)
+export ALERT_WEBHOOK_SECRET=$(openssl rand -hex 32)
+
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
