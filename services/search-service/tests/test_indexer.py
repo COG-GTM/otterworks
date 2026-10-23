@@ -5,9 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from app.config import MeiliSearchConfig
-from app.services.indexer import Indexer
+from app.services.indexer import Indexer, ReindexSourceError
 from app.services.meilisearch_client import MeiliSearchService
 
 
@@ -122,3 +123,43 @@ class TestIndexer:
     def test_process_event_unknown_action(self, indexer: Indexer):
         result = indexer.process_event({"action": "unknown", "data": {}})
         assert result is None
+
+
+def _page(status: int, payload: object) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status
+    resp.json.return_value = payload
+    return resp
+
+
+class TestReindexFailsClosed:
+    """Reindex never wipes the indices unless both source crawls succeed."""
+
+    @pytest.mark.parametrize(
+        "responses",
+        [
+            [_page(401, {})],
+            [_page(200, {"items": []}), _page(503, {})],
+            [_page(200, {"items": [{"id": "d1", "title": "t"}]}), _page(500, {})],
+            requests.Timeout("slow"),
+        ],
+    )
+    def test_crawl_failure_leaves_indices(self, indexer: Indexer, responses):
+        with (
+            patch("app.services.indexer.requests.get", side_effect=responses),
+            pytest.raises(ReindexSourceError),
+        ):
+            indexer.reindex()
+        indexer.search.client.delete_index.assert_not_called()
+
+    def test_successful_crawl_rebuilds(self, indexer: Indexer):
+        pages = [
+            _page(200, {"items": [{"id": "d1", "title": "Doc", "owner_id": "u1"}]}),
+            _page(200, {"items": []}),
+            _page(200, {"files": [{"id": "f1", "name": "a.txt", "owner_id": "u1"}]}),
+            _page(200, {"files": []}),
+        ]
+        with patch("app.services.indexer.requests.get", side_effect=pages):
+            result = indexer.reindex()
+        assert result["indexed_counts"] == {"documents": 1, "files": 1}
+        assert indexer.search.client.delete_index.call_count == 2

@@ -181,10 +181,13 @@ paths:
   /api/v1/search/index/document:
     post:
       operationId: indexDocument
+      security:
+        - serviceToken: []
       summary: Index a document
       description: |
-        Adds or updates a document in the search index. Called by the
-        document-service or via SQS event processing.
+        Adds or updates a document in the search index. Internal: called by
+        the document-service or via SQS event processing, and requires the
+        `SEARCH_SERVICE_TOKEN` bearer token. Gateway users get 403.
       requestBody:
         required: true
         content:
@@ -226,6 +229,10 @@ paths:
                 missing_title:
                   value:
                     error: "Document 'title' is required"
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
         "500":
           description: Internal server error
           content:
@@ -238,10 +245,13 @@ paths:
   /api/v1/search/index/file:
     post:
       operationId: indexFile
+      security:
+        - serviceToken: []
       summary: Index a file
       description: |
-        Adds or updates a file in the search index. Called by the
-        file-service or via SQS event processing.
+        Adds or updates a file in the search index. Internal: called by the
+        file-service or via SQS event processing, and requires the
+        `SEARCH_SERVICE_TOKEN` bearer token. Gateway users get 403.
       requestBody:
         required: true
         content:
@@ -285,6 +295,10 @@ paths:
                 missing_name:
                   value:
                     error: "File 'name' is required"
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
         "500":
           description: Internal server error
           content:
@@ -297,6 +311,8 @@ paths:
   /api/v1/search/index/document/{id}:
     delete:
       operationId: removeDocument
+      security:
+        - serviceToken: []
       summary: Remove a document from the search index
       parameters:
         - name: id
@@ -334,6 +350,10 @@ paths:
                 status: "not_found"
                 id: "doc-abc123"
                 type: "document"
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
         "500":
           description: Internal server error
           content:
@@ -346,6 +366,8 @@ paths:
   /api/v1/search/index/file/{id}:
     delete:
       operationId: removeFile
+      security:
+        - serviceToken: []
       summary: Remove a file from the search index
       parameters:
         - name: id
@@ -381,6 +403,10 @@ paths:
                 status: "not_found"
                 id: "file-xyz789"
                 type: "file"
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
         "500":
           description: Internal server error
           content:
@@ -393,10 +419,15 @@ paths:
   /api/v1/search/reindex:
     post:
       operationId: reindex
+      security:
+        - serviceToken: []
       summary: Trigger a full reindex (admin operation)
       description: |
         Crawls the document-service and file-service to re-populate
-        the entire search index. This is an administrative operation.
+        the entire search index. Internal administrative operation that
+        requires the `SEARCH_SERVICE_TOKEN` bearer token. Both crawls must
+        succeed before the indices are rebuilt; otherwise 502 is returned
+        and the existing indices are left intact.
       responses:
         "200":
           description: Reindex triggered successfully
@@ -410,6 +441,18 @@ paths:
                 indexed_counts:
                   documents: 150
                   files: 340
+        "401":
+          $ref: "#/components/responses/ServiceUnauthorized"
+        "403":
+          $ref: "#/components/responses/ServiceForbidden"
+        "502":
+          description: A source service could not be crawled; indices left intact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Reindex aborted: source service unavailable"
         "500":
           description: Internal server error
           content:
@@ -511,6 +554,28 @@ paths:
                 search_service_requests_total{method="GET",endpoint="/api/v1/search/",status="200"} 100
 
 components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      description: Internal service token (`SEARCH_SERVICE_TOKEN`). Not issued to users.
+  responses:
+    ServiceUnauthorized:
+      description: No credentials presented
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "unauthorized"
+    ServiceForbidden:
+      description: Caller is not the internal service (gateway user, wrong token, or token not configured)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: "forbidden"
   parameters:
     XUserID:
       name: X-User-ID
