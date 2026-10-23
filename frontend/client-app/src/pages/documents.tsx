@@ -111,10 +111,31 @@ function DocumentsContent() {
         />
       </div>
 
+      {isError && data !== undefined && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm"
+        >
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>
+              Documents could not be refreshed. Showing previously loaded documents.
+            </span>
+          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="px-3 py-1.5 bg-white border border-red-200 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 transition text-sm font-medium"
+          >
+            {isFetching ? "Retrying..." : "Retry"}
+          </button>
+        </div>
+      )}
+
       {/* Document listing */}
       <DocumentListing
         isLoading={isLoading}
-        isError={isError}
+        isError={isError && data === undefined}
         isRetrying={isFetching}
         onRetry={() => refetch()}
         documents={filtered}
