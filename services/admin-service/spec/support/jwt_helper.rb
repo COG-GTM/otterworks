@@ -4,6 +4,7 @@ module JwtHelper
       sub: user_id,
       email: email,
       role: role,
+      type: 'access',
       exp: 24.hours.from_now.to_i,
       iat: Time.current.to_i
     }

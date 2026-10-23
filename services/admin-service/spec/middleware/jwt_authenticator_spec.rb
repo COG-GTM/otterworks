@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe JwtAuthenticator do
   let(:secret) { Rails.application.secrets.jwt_secret }
   let(:app) { ->(env) { [200, {}, [env['jwt.user_email'].to_s]] } }
-  let(:payload) { { sub: SecureRandom.uuid, email: 'admin@otterworks.com', role: 'super_admin' } }
+  let(:payload) { { sub: SecureRandom.uuid, email: 'admin@otterworks.com', role: 'super_admin', type: 'access' } }
 
   def call(token)
     env = Rack::MockRequest.env_for('/api/v1/admin/incidents',
@@ -24,10 +24,19 @@ RSpec.describe JwtAuthenticator do
     env = Rack::MockRequest.env_for(
       '/api/v1/admin/incidents',
       'HTTP_AUTHORIZATION' =>
-        "Bearer #{JWT.encode({ sub: SecureRandom.uuid, roles: %w[USER ADMIN] }, secret, 'HS512')}"
+        "Bearer #{JWT.encode({ sub: SecureRandom.uuid, roles: %w[USER ADMIN], type: 'access' }, secret, 'HS512')}"
     )
     _status, _headers, body = described_class.new(role_app).call(env)
     expect(body.first).to eq('admin')
+  end
+
+  [{ type: 'refresh', jti: SecureRandom.uuid }, {}].each do |extra|
+    it "rejects a #{extra[:type] || 'type-less'} token signed with the right secret" do
+      claims = payload.except(:type).merge(extra)
+      status, _headers, body = call(JWT.encode(claims, secret, 'HS512'))
+      expect(status).to eq(401)
+      expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
+    end
   end
 
   it 'rejects a token signed with the wrong secret' do

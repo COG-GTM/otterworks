@@ -18,8 +18,18 @@ type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
+
+// auth-service signs access and refresh tokens with the same key and tells
+// them apart by the `type` claim. A refresh token is only valid at RefreshPath
+// (where auth-service also checks revocation) and never authenticates a request.
+const (
+	AccessTokenType  = "access"
+	RefreshTokenType = "refresh"
+	RefreshPath      = "/api/v1/auth/refresh"
+)
 
 // JWTConfig holds configuration for JWT validation middleware.
 type JWTConfig struct {
@@ -71,7 +81,18 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(tokenStr, cfg.Secret)
+			if r.URL.Path == RefreshPath {
+				if _, err := validateToken(tokenStr, cfg.Secret, RefreshTokenType); err != nil {
+					writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+					return
+				}
+				// No identity is derived from a refresh token; auth-service
+				// re-validates it and checks revocation.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims, err := validateToken(tokenStr, cfg.Secret, AccessTokenType)
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
@@ -103,7 +124,7 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-func validateToken(tokenStr, secret string) (*JWTClaims, error) {
+func validateToken(tokenStr, secret, wantType string) (*JWTClaims, error) {
 	claims := &JWTClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -121,6 +142,10 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	// Check expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	if claims.Type != wantType {
+		return nil, fmt.Errorf("token is not an %s token", wantType)
 	}
 
 	return claims, nil

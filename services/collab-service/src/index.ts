@@ -2,13 +2,12 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
-import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
 import { loadConfig } from './config';
 import { MetricsCollector } from './metrics';
-import { createAuthMiddleware } from './middleware/auth';
+import { createAuthMiddleware, verifyAccessToken } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
@@ -155,7 +154,7 @@ httpServer.on('upgrade', (request, socket, head) => {
   }
 
   try {
-    jwt.verify(token, config.jwt.secret);
+    verifyAccessToken(token, config.jwt.secret);
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

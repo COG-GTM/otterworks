@@ -65,6 +65,12 @@ async def _maybe_inject_latency() -> None:
         await asyncio.sleep(delay)
 
 
+# auth-service signs access and refresh tokens with the same key; only access
+# tokens may authenticate API calls (refresh tokens are long-lived and their
+# revocation is enforced only by auth-service's /refresh endpoint).
+ACCESS_TOKEN_TYPE = "access"
+
+
 def _get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
@@ -78,6 +84,8 @@ def _extract_user_id(request: Request) -> UUID | None:
         if secret:
             try:
                 payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                if payload.get("type") != ACCESS_TOKEN_TYPE:
+                    return None
                 user_id_str = payload.get("user_id") or payload.get("sub")
                 if user_id_str:
                     return UUID(str(user_id_str))
