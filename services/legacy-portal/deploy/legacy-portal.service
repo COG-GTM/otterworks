@@ -7,8 +7,11 @@
 #   sudo cp deploy/legacy-portal.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now legacy-portal
 #
-# Optional PostgreSQL backend (defaults to embedded H2):
-#   /etc/legacy-portal.env with:
+# Required: /etc/legacy-portal.env (mode 0600) with the auth-service JWT signing secret —
+# every /api/** call needs a bearer access token and the portal will not start without it:
+#     JWT_SECRET=... (do not commit real secrets)
+#
+# Optional PostgreSQL backend (defaults to embedded H2), in the same file:
 #     SPRING_PROFILES_ACTIVE=postgres
 #     SPRING_DATASOURCE_URL=jdbc:postgresql://db-host:5432/legacyportal
 #     SPRING_DATASOURCE_USERNAME=legacyportal
@@ -21,7 +24,7 @@ After=network.target
 Type=simple
 User=legacyportal
 WorkingDirectory=/opt/legacy-portal
-EnvironmentFile=-/etc/legacy-portal.env
+EnvironmentFile=/etc/legacy-portal.env
 ExecStart=/usr/bin/java -jar /opt/legacy-portal/legacy-portal.jar
 SuccessExitStatus=143
 Restart=on-failure

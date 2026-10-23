@@ -1,12 +1,16 @@
 package com.otterworks.legacyportal.announcements;
 
+import com.otterworks.legacyportal.security.PortalPrincipal;
 import java.time.Instant;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,15 +32,24 @@ public class AnnouncementController {
 
     @GetMapping
     public List<AnnouncementResponse> list(
+            @AuthenticationPrincipal PortalPrincipal caller,
             @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly) {
+        if (!publishedOnly && !caller.isAdmin()) {
+            throw new AccessDeniedException("only admins can list unpublished announcements");
+        }
         List<Announcement> announcements =
                 publishedOnly ? service.listPublished() : service.listAll();
         return announcements.stream().map(AnnouncementResponse::from).collect(Collectors.toList());
     }
 
     @GetMapping("/{id}")
-    public AnnouncementResponse get(@PathVariable Long id) {
-        return AnnouncementResponse.from(service.get(id));
+    public AnnouncementResponse get(
+            @AuthenticationPrincipal PortalPrincipal caller, @PathVariable Long id) {
+        Announcement announcement = service.get(id);
+        if (!announcement.isPublished() && !caller.isAdmin()) {
+            throw new NoSuchElementException("announcement " + id + " not found");
+        }
+        return AnnouncementResponse.from(announcement);
     }
 
     @PostMapping

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.otterworks.legacyportal.security.TestTokens;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -16,6 +17,9 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 class LegacyPortalApplicationTest {
+
+    private static final String USER = TestTokens.bearer("u1", "USER");
+    private static final String ADMIN = TestTokens.bearer("admin-1", "USER", "ADMIN");
 
     @Autowired private MockMvc mockMvc;
 
@@ -36,20 +40,23 @@ class LegacyPortalApplicationTest {
     void announcementsModuleRoundTrips() throws Exception {
         mockMvc.perform(
                         post("/api/announcements")
+                                .header("Authorization", ADMIN)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
                                         "{\"title\":\"Release\",\"body\":\"v1 is out\",\"published\":true}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber());
 
-        mockMvc.perform(get("/api/announcements"))
+        mockMvc.perform(get("/api/announcements").header("Authorization", USER))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("Release"));
     }
 
     @Test
     void preferencesModuleReturnsDefaults() throws Exception {
-        mockMvc.perform(get("/api/preferences/newuser"))
+        mockMvc.perform(
+                        get("/api/preferences/newuser")
+                                .header("Authorization", TestTokens.bearer("newuser", "USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.theme").value("light"));
     }
@@ -58,9 +65,10 @@ class LegacyPortalApplicationTest {
     void feedbackModuleValidatesRating() throws Exception {
         mockMvc.perform(
                         post("/api/feedback")
+                                .header("Authorization", USER)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content(
-                                        "{\"userId\":\"u1\",\"rating\":9,\"message\":\"bad rating\"}"))
+                                        "{\"rating\":9,\"message\":\"bad rating\"}"))
                 .andExpect(status().isBadRequest());
     }
 }

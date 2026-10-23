@@ -8,7 +8,10 @@ import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import com.otterworks.legacyportal.security.PortalPrincipal;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,14 +32,27 @@ public class FeedbackController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public FeedbackResponse submit(@Valid @RequestBody SubmitFeedbackRequest request) {
+    public FeedbackResponse submit(
+            @AuthenticationPrincipal PortalPrincipal caller,
+            @Valid @RequestBody SubmitFeedbackRequest request) {
+        // Feedback is always filed as the caller; a body userId is accepted only if it matches.
+        String requested = request.getUserId();
+        if (requested != null && !requested.equals(caller.getUserId())) {
+            throw new AccessDeniedException("cannot submit feedback as another user");
+        }
         return FeedbackResponse.from(
-                service.submit(request.getUserId(), request.getRating(), request.getMessage()));
+                service.submit(caller.getUserId(), request.getRating(), request.getMessage()));
     }
 
     @GetMapping
-    public List<FeedbackResponse> listForUser(@RequestParam String userId) {
-        return service.listForUser(userId).stream()
+    public List<FeedbackResponse> listForUser(
+            @AuthenticationPrincipal PortalPrincipal caller,
+            @RequestParam(required = false) String userId) {
+        String target = userId == null ? caller.getUserId() : userId;
+        if (!caller.canAccessUser(target)) {
+            throw new AccessDeniedException("cannot read another user's feedback");
+        }
+        return service.listForUser(target).stream()
                 .map(FeedbackResponse::from)
                 .collect(Collectors.toList());
     }
@@ -48,7 +64,7 @@ public class FeedbackController {
 
     public static class SubmitFeedbackRequest {
 
-        @NotBlank
+        /** Optional and deprecated: the author is the authenticated caller. */
         @Size(max = 100)
         private String userId;
 

@@ -19,6 +19,12 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
 
+# Every /api/** route requires an access token issued by auth-service. The portal verifies
+# the HMAC signature with the same JWT_SECRET; startup fails if it is unset or too short.
+portal:
+  security:
+    jwt-secret: ${JWT_SECRET:}
+
 management:
   endpoints:
     web:

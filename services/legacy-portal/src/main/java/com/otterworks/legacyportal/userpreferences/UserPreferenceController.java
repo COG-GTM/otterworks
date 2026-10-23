@@ -1,8 +1,11 @@
 package com.otterworks.legacyportal.userpreferences;
 
+import com.otterworks.legacyportal.security.PortalPrincipal;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -21,13 +24,22 @@ public class UserPreferenceController {
     }
 
     @GetMapping("/{userId}")
-    public PreferenceResponse get(@PathVariable String userId) {
+    public PreferenceResponse get(
+            @AuthenticationPrincipal PortalPrincipal caller, @PathVariable String userId) {
+        if (!caller.canAccessUser(userId)) {
+            throw new AccessDeniedException("cannot read another user's preferences");
+        }
         return PreferenceResponse.from(service.getOrDefault(userId));
     }
 
     @PutMapping("/{userId}")
     public PreferenceResponse update(
-            @PathVariable String userId, @Valid @RequestBody UpdatePreferenceRequest request) {
+            @AuthenticationPrincipal PortalPrincipal caller,
+            @PathVariable String userId,
+            @Valid @RequestBody UpdatePreferenceRequest request) {
+        if (!caller.getUserId().equals(userId)) {
+            throw new AccessDeniedException("cannot change another user's preferences");
+        }
         return PreferenceResponse.from(
                 service.save(
                         userId,

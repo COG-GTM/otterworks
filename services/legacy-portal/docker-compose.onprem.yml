@@ -7,6 +7,7 @@
 # of the golden app's cluster deployment.
 #
 #   Usage (from services/legacy-portal/):
+#     export JWT_SECRET=<auth-service signing secret>   # required: /api/** needs a bearer token
 #     docker compose -f docker-compose.onprem.yml up --build
 #     curl http://localhost:8095/health
 #     docker compose -f docker-compose.onprem.yml down -v
@@ -40,6 +41,8 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://legacy-portal-db:5432/legacyportal
       SPRING_DATASOURCE_USERNAME: legacyportal
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-legacyportal}
+      # Same secret auth-service signs access tokens with; the portal refuses to start without it.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to the auth-service JWT signing secret}
     ports:
       - "8095:8095"
     healthcheck:
