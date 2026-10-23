@@ -64,6 +64,18 @@ class MetricsBoundsSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     MetricsAggregator.activeUsers(events, "7d").count shouldBe 1
   }
 
+  "parseBytes" should "accept only signed ASCII integers within the Long range" in {
+    def p(v: String) = MetricsAggregator.parseBytes(Map("bytes" -> v))
+    p("42") shouldBe Some(42L)
+    p("+42") shouldBe Some(42L)
+    p("-5") shouldBe Some(-5L)
+    p(Long.MaxValue.toString) shouldBe Some(Long.MaxValue)
+    p("9223372036854775808") shouldBe None
+    p("abc") shouldBe None
+    p("\u0661\u0662") shouldBe None
+    MetricsAggregator.parseBytes(Map.empty) shouldBe None
+  }
+
   "InMemoryMetricsRepository" should "evict the oldest events beyond maxEvents" in {
     val repo = new InMemoryMetricsRepository(PostgresConfig("", "", "", 1), maxEvents = 5)
     (1 to 8).foreach(i => Await.result(repo.storeEvent(ev(i, "user-1", "doc-1", now.plusMillis(i.toLong))), 5.seconds))

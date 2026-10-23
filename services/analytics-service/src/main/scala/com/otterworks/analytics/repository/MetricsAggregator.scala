@@ -43,7 +43,7 @@ object MetricsAggregator:
       storageUsedBytes = Math.max(0L, events
         .filter(e => e.eventType == EventType.StorageAllocated || e.eventType == EventType.StorageReleased)
         .foldLeft(0L) { (acc, e) =>
-          val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+          val bytes = parseBytes(e.metadata).getOrElse(0L)
           if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
         }),
       collabSessions = filtered.count(_.eventType == EventType.CollabSessionStarted).toLong,
@@ -150,7 +150,7 @@ object MetricsAggregator:
     )
 
     val totalBytes = storageEvents.foldLeft(0L) { (acc, e) =>
-      val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+      val bytes = parseBytes(e.metadata).getOrElse(0L)
       if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
     }
 
@@ -161,7 +161,7 @@ object MetricsAggregator:
       .filter(e => e.eventType == EventType.StorageAllocated)
       .groupBy(_.resourceType)
       .map { case (rt, evts) =>
-        rt -> evts.flatMap(_.metadata.get("bytes").flatMap(s => scala.util.Try(s.toLong).toOption)).sum
+        rt -> evts.flatMap(e => parseBytes(e.metadata)).sum
       }
       .toMap
 
@@ -190,6 +190,16 @@ object MetricsAggregator:
         )
       }
       .toList
+
+  private val AsciiInteger = "[+-]?[0-9]+".r
+
+  /**
+   * The `bytes` metadata value as a Long: an optionally signed ASCII-digit
+   * integer within the Long range. Mirrors the SQL parsing in
+   * PostgresMetricsRepository (`String.toLong` alone also accepts non-ASCII digits).
+   */
+  def parseBytes(metadata: Map[String, String]): Option[Long] =
+    metadata.get("bytes").filter(AsciiInteger.matches).flatMap(_.toLongOption)
 
   /** Group by key, keeping each group's first-seen position and events in insertion order. */
   private def groupFirstSeen(events: Seq[AnalyticsEvent])(key: AnalyticsEvent => String)
