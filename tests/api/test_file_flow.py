@@ -127,3 +127,97 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_file_and_folder_endpoints_enforce_ownership(api_client):
+    owner = api_client.register_user("file-authz-owner")
+    attacker = api_client.register_user("file-authz-attacker")
+
+    folder_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": f"Private {api_client.run_id}", "owner_id": attacker.id},
+    )
+    assert folder_response.status_code == 201, folder_response.text
+    folder = folder_response.json()
+    api_client.created_folders.append(folder["id"])
+    assert folder["owner_id"] == owner.id, "folder owner must come from the caller, not the body"
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("private.txt", b"owner-only", "text/plain")},
+        data={"folder_id": folder["id"]},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    attacker_headers = attacker.auth_headers
+    denied = [
+        api_client.client.get(f"/api/v1/files/{file_id}", headers=attacker_headers),
+        api_client.client.get(f"/api/v1/files/{file_id}/download", headers=attacker_headers),
+        api_client.client.get(f"/api/v1/files/{file_id}/versions", headers=attacker_headers),
+        api_client.client.patch(
+            f"/api/v1/files/{file_id}/rename", headers=attacker_headers, json={"name": "pwned"}
+        ),
+        api_client.client.put(
+            f"/api/v1/files/{file_id}/move", headers=attacker_headers, json={"folder_id": None}
+        ),
+        api_client.client.post(f"/api/v1/files/{file_id}/trash", headers=attacker_headers),
+        api_client.client.post(f"/api/v1/files/{file_id}/restore", headers=attacker_headers),
+        api_client.client.post(
+            f"/api/v1/files/{file_id}/share",
+            headers=attacker_headers,
+            json={"shared_with": attacker.id, "permission": "editor", "shared_by": owner.id},
+        ),
+        api_client.client.delete(f"/api/v1/files/{file_id}", headers=attacker_headers),
+        api_client.client.get(f"/api/v1/folders/{folder['id']}", headers=attacker_headers),
+        api_client.client.put(
+            f"/api/v1/folders/{folder['id']}", headers=attacker_headers, json={"name": "pwned"}
+        ),
+        api_client.client.delete(f"/api/v1/folders/{folder['id']}", headers=attacker_headers),
+    ]
+    for response in denied:
+        assert response.status_code in {403, 404}, (response.request.method, response.request.url, response.text)
+
+    shared = api_client.client.get("/api/v1/files/shared", headers=attacker_headers)
+    assert shared.status_code == 200, shared.text
+    assert all(item["id"] != file_id for item in shared.json()["files"])
+
+    owner_view = api_client.client.get(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+    assert owner_view.status_code == 200, owner_view.text
+    assert owner_view.json()["name"] == "private.txt"
+    assert owner_view.json()["is_trashed"] is False
+    assert owner_view.json()["shared_with"] == []
+
+    # A legitimate viewer share records the caller as sharer and grants read-only access.
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": attacker.id, "permission": "viewer", "shared_by": attacker.id},
+    )
+    assert share_response.status_code == 201, share_response.text
+    assert share_response.json()["share"]["shared_by"] == owner.id
+
+    viewer_get = api_client.client.get(f"/api/v1/files/{file_id}/download", headers=attacker_headers)
+    assert viewer_get.status_code == 200, viewer_get.text
+    viewer_rename = api_client.client.patch(
+        f"/api/v1/files/{file_id}/rename", headers=attacker_headers, json={"name": "pwned"}
+    )
+    assert viewer_rename.status_code == 403, viewer_rename.text
+    viewer_reshare = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=attacker_headers,
+        json={"shared_with": attacker.id, "permission": "editor"},
+    )
+    assert viewer_reshare.status_code == 403, viewer_reshare.text
+
+    for file_id_to_delete in list(api_client.created_files):
+        if file_id_to_delete == file_id:
+            response = api_client.client.delete(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+            assert response.status_code == 204, response.text
+            api_client.created_files.remove(file_id)
+    response = api_client.client.delete(f"/api/v1/folders/{folder['id']}", headers=owner.auth_headers)
+    assert response.status_code == 204, response.text
+    api_client.created_folders.remove(folder["id"])
