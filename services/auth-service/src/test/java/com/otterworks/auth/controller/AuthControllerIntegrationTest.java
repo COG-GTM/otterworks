@@ -1,6 +1,7 @@
 package com.otterworks.auth.controller;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -263,6 +264,34 @@ class AuthControllerIntegrationTest {
         .perform(
             post("/api/v1/auth/refresh").cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
         .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void logout_withOnlyTheRefreshCookie_shouldRevokeItAfterAccessTokenExpiry() throws Exception {
+    MvcResult registerResult = register("expired@otterworks.dev", "password123", "Expired User");
+    String refreshToken = refreshCookieValue(registerResult);
+
+    MvcResult logoutResult =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/logout")
+                    .cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    assertThat(logoutResult.getResponse().getHeader(HttpHeaders.SET_COOKIE)).contains("Max-Age=0");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh").cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void logout_withoutCredentials_shouldStillClearTheCookie() throws Exception {
+    mockMvc
+        .perform(post("/api/v1/auth/logout"))
+        .andExpect(status().isNoContent())
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
   }
 
   private MvcResult register(String email, String password, String displayName) throws Exception {

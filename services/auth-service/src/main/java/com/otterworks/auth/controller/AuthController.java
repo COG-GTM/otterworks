@@ -96,9 +96,15 @@ public class AuthController {
   }
 
   @PostMapping("/logout")
-  public ResponseEntity<Void> logout(Authentication authentication) {
-    UUID userId = UUID.fromString((String) authentication.getPrincipal());
-    authService.logout(userId);
+  public ResponseEntity<Void> logout(Authentication authentication, HttpServletRequest request) {
+    if (authentication != null && authentication.getPrincipal() instanceof String principal) {
+      authService.logout(UUID.fromString(principal));
+    } else {
+      String refreshToken = refreshTokenCookie.read(request);
+      if (refreshToken != null) {
+        authService.logoutWithRefreshToken(refreshToken);
+      }
+    }
     return ResponseEntity.noContent()
         .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.clear().toString())
         .build();

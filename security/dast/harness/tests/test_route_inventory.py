@@ -235,9 +235,14 @@ def test_an_unreadable_middleware_is_not_an_empty_public_list(tmp_path: Path) ->
     assert gateway_public_paths(write(tmp_path / "other.go", "package middleware")) is None
 
 
-def test_the_repository_gateway_serves_only_login_register_and_refresh_anonymously() -> None:
+def test_the_repository_gateway_serves_only_the_session_endpoints_anonymously() -> None:
     exact, prefixes = gateway_public_paths()
-    # refresh carries no bearer token; auth-service authenticates it from the HttpOnly cookie.
-    assert exact == {"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/refresh"}
+    # refresh/logout carry no bearer token; auth-service authenticates them from the HttpOnly cookie.
+    assert exact == {
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+        "/api/v1/auth/refresh",
+        "/api/v1/auth/logout",
+    }
     assert "/api/v1/auth/profile" not in exact
     assert "/metrics" in prefixes

@@ -38,7 +38,8 @@ public class SecurityConfig {
                         "/actuator/prometheus",
                         "/api/v1/auth/register",
                         "/api/v1/auth/login",
-                        "/api/v1/auth/refresh")
+                        "/api/v1/auth/refresh",
+                        "/api/v1/auth/logout")
                     .permitAll()
                     .requestMatchers("/api/v1/auth/users/lookup", "/api/v1/auth/users/by-id/**")
                     .authenticated()

@@ -31,12 +31,14 @@ type JWTConfig struct {
 }
 
 // DefaultPublicPaths returns the default set of exact-match paths that skip JWT validation.
-// /api/v1/auth/refresh is authenticated by the auth-service from its HttpOnly refresh cookie.
+// refresh and logout are authenticated by the auth-service from its HttpOnly refresh cookie,
+// so an expired access token can still end the session.
 func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
 		"/api/v1/auth/refresh",
+		"/api/v1/auth/logout",
 	}
 }
 
