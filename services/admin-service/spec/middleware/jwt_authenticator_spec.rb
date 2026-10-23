@@ -35,4 +35,16 @@ RSpec.describe JwtAuthenticator do
     expect(status).to eq(401)
     expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
   end
+
+  it 'requires a JWT for the chaos endpoints' do
+    env = Rack::MockRequest.env_for('/api/v1/admin/chaos', method: 'POST')
+    status, = described_class.new(app).call(env)
+    expect(status).to eq(401)
+  end
+
+  it 'leaves the alert ingest webhook to its shared-secret check' do
+    env = Rack::MockRequest.env_for('/api/v1/admin/alerts/ingest', method: 'POST')
+    status, = described_class.new(app).call(env)
+    expect(status).to eq(200)
+  end
 end

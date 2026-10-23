@@ -11,6 +11,7 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -76,12 +77,14 @@ module Api
           end
         end
 
+        # Callers must already hold an admin JWT (require_admin!). When
+        # CHAOS_SECRET is configured, X-Chaos-Secret is required as well.
         def verify_chaos_secret
-          expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          expected = ENV.fetch('CHAOS_SECRET', '').to_s
+          return if expected.empty?
 
-          provided = request.headers['X-Chaos-Secret']
-          return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
+          provided = request.headers['X-Chaos-Secret'].to_s
+          return if ActiveSupport::SecurityUtils.secure_compare(provided, expected)
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
         end

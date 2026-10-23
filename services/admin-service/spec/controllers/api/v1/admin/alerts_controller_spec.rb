@@ -1,9 +1,20 @@
 require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::AlertsController do
+  let(:alert_secret) { 'test-alert-secret' }
+
+  around do |example|
+    original = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
+    ENV['ALERT_WEBHOOK_SECRET'] = alert_secret
+    example.run
+  ensure
+    ENV['ALERT_WEBHOOK_SECRET'] = original
+  end
+
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    request.headers['X-Alert-Secret'] = alert_secret
   end
 
   def firing_alert(labels: {}, summary: 'File upload failed: a.txt')
@@ -67,6 +78,50 @@ RSpec.describe Api::V1::Admin::AlertsController do
 
       expect(SlackNotifierService).to have_received(:notify_incident)
         .with(hash_including(reporter_email: nil))
+    end
+  end
+
+  describe 'webhook secret verification' do
+    it 'rejects requests with no secret' do
+      request.headers['X-Alert-Secret'] = nil
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(response).to have_http_status(:unauthorized)
+      expect(Incident.count).to eq(0)
+    end
+
+    it 'rejects requests with the wrong secret' do
+      request.headers['X-Alert-Secret'] = 'wrong-secret'
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(response).to have_http_status(:unauthorized)
+      expect(Incident.count).to eq(0)
+    end
+
+    it 'accepts the secret as a Grafana-style Bearer token' do
+      request.headers['X-Alert-Secret'] = nil
+      request.headers['Authorization'] = "Bearer #{alert_secret}"
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(response).to have_http_status(:ok)
+      expect(Incident.count).to eq(1)
+    end
+
+    [nil, ''].each do |unset|
+      it "fails closed when ALERT_WEBHOOK_SECRET is #{unset.inspect}" do
+        ENV['ALERT_WEBHOOK_SECRET'] = unset
+        request.headers['X-Alert-Secret'] = nil
+        post :ingest, params: { alerts: [firing_alert] }
+        expect(response).to have_http_status(:service_unavailable)
+        expect(Incident.count).to eq(0)
+        expect(DevinSessionService).not_to have_received(:create_session)
+      end
+    end
+
+    it 'does not resolve incidents for unauthenticated resolved alerts' do
+      incident = Incident.create!(title: 'Real outage', description: 'outage', severity: 'high', status: 'open',
+                                  affected_service: 'file-service')
+      request.headers['X-Alert-Secret'] = nil
+      post :ingest, params: { alerts: [firing_alert.merge(status: 'resolved')] }
+      expect(response).to have_http_status(:unauthorized)
+      expect(incident.reload.status).to eq('open')
     end
   end
 end
