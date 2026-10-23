@@ -63,6 +63,8 @@ env: ## Generate a per-checkout JWT_SECRET in .env (docker-compose.yml requires 
 	elif grep -qE '^JWT_SECRET=.+' .env 2>/dev/null; then \
 		echo "Using JWT_SECRET from .env"; \
 	else \
+		(umask 077; touch .env) && chmod 600 .env && \
+		{ [ ! -s .env ] || [ -z "$$(tail -c1 .env)" ] || echo >> .env; } && \
 		echo "JWT_SECRET=$$(openssl rand -hex 32)" >> .env && echo "Generated a random JWT_SECRET in .env"; \
 	fi
 
