@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import random
+import time
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -46,7 +46,9 @@ def seeded_target(target):
 
 
 def unique_future_date() -> str:
-    return (date(2031, 1, 1) + timedelta(days=random.randint(0, 3000))).isoformat()
+    # Strictly increasing across runs (one day per wall-clock minute): legacy sp_change_plan
+    # leaves overlapping open subscriptions for back-dated changes (QA-BILL-11).
+    return (date(2030, 1, 1) + timedelta(days=int(time.time() // 60) - 29_800_000)).isoformat()
 
 
 # --- legacy plans module -------------------------------------------------------

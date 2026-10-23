@@ -7,6 +7,8 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID, uuid5
 
+import pytest
+
 from app.domain import (
     PLAN_CHANGE_NAMESPACE,
     EntitlementRow,
@@ -190,3 +192,15 @@ def test_change_plan_repeated_identical_request_hits_duplicate_id() -> None:
         assert "duplicate" in str(error)
     else:  # pragma: no cover - documents the contract
         raise AssertionError("identical plan change should collide on the uuid5 id")
+
+
+@pytest.mark.xfail(
+    reason="QA-BILL-11: back-dated change leaves the later future-dated subscription open "
+    "(parity with legacy sp_change_plan), so two open-ended subscriptions overlap",
+    strict=True,
+)
+def test_change_plan_backdated_leaves_single_open_subscription() -> None:
+    repo = MemoryRepository([sub(SUB_A, STARTER, date(2026, 1, 1))])
+    change_plan(repo, TENANT, SCALE, date(2026, 7, 1))
+    subscriptions, _ = change_plan(repo, TENANT, GROWTH, date(2026, 4, 1))
+    assert len([item for item in subscriptions if item.ends_on is None]) == 1

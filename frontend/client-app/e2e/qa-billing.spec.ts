@@ -92,7 +92,11 @@ test.describe("Legacy billing server-rendered pages", () => {
   });
 
   test("legacy change-plan form post lands on the new entitlement", async ({ page }) => {
-    const effective = `2032-0${1 + Math.floor(Math.random() * 9)}-${10 + Math.floor(Math.random() * 18)}`;
+    // Strictly increasing across runs (one day per minute): back-dated legacy plan changes
+    // leave overlapping open subscriptions (QA-BILL-11).
+    const effective = new Date(Date.UTC(2030, 0, 1) + (Math.floor(Date.now() / 60_000) - 29_800_000) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     await page.goto(`${LEGACY_BILLING}/`);
     const response = await page.request.post(`${LEGACY_BILLING}/plans/${TENANT_6}/change`, {
       form: { plan_id: GROWTH, effective_on: effective },

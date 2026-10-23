@@ -100,6 +100,23 @@ def test_change_plan_unknown_plan_is_rejected(db) -> None:
         )
 
 
+@pytest.mark.xfail(
+    reason="QA-BILL-11: a back-dated plan change (effective before an existing future-dated "
+    "subscription) leaves two open-ended subscriptions (plans.sql sp_change_plan only closes "
+    "rows with starts_on < effective_on)",
+    strict=True,
+)
+def test_change_plan_backdated_leaves_single_open_subscription(db) -> None:
+    query(db, "CALL billing.sp_change_plan(%s, %s, %s)", (TENANT[3], SCALE, "2026-07-01"))
+    query(db, "CALL billing.sp_change_plan(%s, %s, %s)", (TENANT[3], STARTER, "2026-04-01"))
+    open_rows = query(
+        db,
+        "SELECT id FROM billing.subscriptions WHERE tenant_id = %s AND ends_on IS NULL",
+        (TENANT[3],),
+    )
+    assert len(open_rows) == 1
+
+
 # --- rating ------------------------------------------------------------------
 
 

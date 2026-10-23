@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -198,3 +199,14 @@ def test_entitlement_unknown_tenant_is_404(client, calls) -> None:
     calls["result"] = []
     response = client.get("/plans/00000000-0000-0000-0000-0000000000ff/entitlement")
     assert response.status_code == 404
+
+
+@pytest.mark.xfail(
+    reason="QA-BILL-12: gunicorn runs a single sync worker (Dockerfile CMD), so one idle "
+    "keep-alive browser connection blocks every request until the 30s WORKER TIMEOUT",
+    strict=True,
+)
+def test_gunicorn_serves_concurrent_connections() -> None:
+    dockerfile = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    cmd = next(line for line in dockerfile.splitlines() if line.startswith("CMD"))
+    assert any(flag in cmd for flag in ("--workers", "-w", "--threads", "gthread", "gevent"))

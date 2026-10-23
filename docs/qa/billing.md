@@ -49,13 +49,16 @@ test runs in a rolled-back transaction. URLs are overridable with `QA_LEGACY_BIL
 
 | Layer | Location | Tests | Pass | xfail | skip |
 |---|---|---|---|---|---|
-| Unit — billing-service | `services/billing-service/tests/test_qa_{domain,api}.py` | 37 | 36 | 1 | 0 |
-| Unit — legacy-billing (Flask + procs) | `services/legacy-billing/tests/` | 50 | 43 | 7 | 0 |
+| Unit — billing-service | `services/billing-service/tests/test_qa_{domain,api}.py` | 38 | 36 | 2 | 0 |
+| Unit — legacy-billing (Flask + procs) | `services/legacy-billing/tests/` | 52 | 43 | 9 | 0 |
 | Unit — legacy-portal (MockMvc) | `services/legacy-portal/src/test/java/.../qa/QaPortalApiTest.java` | 30 | 29 | 0 | 1 (`@Disabled`, QA-BILL-09) |
-| **Unit total** | | **117** | **108** | **8** | **1** |
+| **Unit total** | | **120** | **108** | **11** | **1** |
 | Functional / API | `tests/api/test_qa_billing_{flow,portal}.py` | 34 | 27 | 6 | 1 (QA-BILL-01) |
 | E2E — Playwright | `frontend/client-app/e2e/qa-billing.spec.ts` | 8 | 8 | 0 | 0 |
 | E2E — computer use | testing-agent recording (see PR comment) | 1 run | | | |
+
+Legacy plan-change tests use a strictly increasing far-future effective date (one day per
+wall-clock minute) so repeated runs never back-date a change (QA-BILL-11).
 
 Pre-existing suites still green: billing-service (8 existing), legacy-portal `./mvnw verify`
 (46 run, 2 skipped incl. 1 pre-existing), `make procs-parity` (PASS=5).
@@ -73,6 +76,8 @@ Pre-existing suites still green: billing-service (8 existing), legacy-portal `./
 | QA-BILL-07 | Low (test infra) | legacy-portal | `AnnouncementServiceTest` | `./mvnw verify` on `main` | Green | Fails: `@SpringBootTest` commits a "Release" row into the shared named H2 DB that leaks into `@DataJpaTest`. Fixed in the test (`@BeforeEach deleteAll`, rolled back) |
 | QA-BILL-08 | Info | legacy-portal | all controllers | `PUT /api/preferences/{anyUser}` | Caller can only modify own data | No authentication/ownership checks anywhere (by design for the legacy fixture; flag before exposing) |
 | QA-BILL-09 | Low | legacy-portal | `AnnouncementController#get` | Create draft, `GET /api/announcements/{id}` | 404 for unpublished | Draft returned to any caller |
+| QA-BILL-11 | Medium | legacy-billing (mirrored in billing-service `domain.change_plan`) | `db/procs/plans.sql` `sp_change_plan` (closes only rows with `starts_on < effective_on`) | Change tenant 3 to SCALE eff. 2026-07-01, then to STARTER eff. 2026-04-01 | One open-ended subscription; later future-dated row superseded | Two open-ended subscriptions overlap from 2026-07-01 (entitlement then picks SCALE). Found when repeated automated runs with random dates left tenant 6 with four overlapping rows |
+| QA-BILL-12 | Medium | legacy-billing | `Dockerfile` `CMD ["gunicorn", "--bind", "0.0.0.0:8096", "app:app"]` | Open the legacy pages in Chrome, then `curl :8109/plans` | Requests served concurrently | A single sync worker is held by an idle browser keep-alive connection; other requests hang until `WORKER TIMEOUT` (30s, "Error handling request (no URI read)" in logs). Seen during the computer-use run as intermittent timeouts / error pages |
 | QA-BILL-10 | Info | legacy-billing | `app/templates/index.html` | Browse `:8109` | Server-rendered entitlement / change-plan / invoice pages | Only the plan list is server-rendered; other flows are JSON / form-post endpoints, so E2E drives them via the JSON pages and form posts |
 
 Notes: the first rating tier is 101 units (`LEAST(billable, 101)`); this matches the recorded
