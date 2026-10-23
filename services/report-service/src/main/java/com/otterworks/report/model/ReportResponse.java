@@ -52,8 +52,12 @@ public class ReportResponse {
     @ApiModelProperty(value = "Download URL")
     private String downloadUrl;
 
-    @ApiModelProperty(value = "Error message if failed")
+    @ApiModelProperty(value = "Generic error message if failed")
     private String errorMessage;
+
+    @ApiModelProperty(value = "Failure reason code if failed",
+            allowableValues = "DATA_SOURCE_UNAVAILABLE, INVALID_PARAMETERS, GENERATION_FAILED")
+    private String failureReason;
 
     public ReportResponse() {
     }
@@ -77,7 +81,14 @@ public class ReportResponse {
         if (report.getFilePath() != null) {
             response.setDownloadUrl("/api/v1/reports/" + report.getId() + "/download");
         }
-        response.setErrorMessage(report.getErrorMessage());
+        ReportFailureReason failureReason = ReportFailureReason.fromStoredValue(report.getErrorMessage());
+        if (failureReason == null && report.getStatus() == ReportStatus.FAILED) {
+            failureReason = ReportFailureReason.GENERATION_FAILED;
+        }
+        if (failureReason != null) {
+            response.setFailureReason(failureReason.name());
+            response.setErrorMessage(failureReason.getMessage());
+        }
         return response;
     }
 
@@ -192,5 +203,13 @@ public class ReportResponse {
 
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public String getFailureReason() {
+        return failureReason;
+    }
+
+    public void setFailureReason(String failureReason) {
+        this.failureReason = failureReason;
     }
 }
