@@ -29,7 +29,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
-import { cn } from "@/lib/utils";
+import { cn, getApiErrorMessage } from "@/lib/utils";
 import type { ViewMode, SortField } from "@/types";
 
 // Run a delete operation over a list of ids, tallying successes and failures
@@ -119,7 +119,7 @@ function FileBrowserContent() {
       setNewFolderName("");
       toast.success("Folder created");
     },
-    onError: () => toast.error("Failed to create folder"),
+    onError: (err) => toast.error(getApiErrorMessage(err, "Failed to create folder")),
   });
 
   const renameFileMutation = useMutation({
@@ -138,7 +138,7 @@ function FileBrowserContent() {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       toast.success("Folder renamed");
     },
-    onError: () => toast.error("Failed to rename folder"),
+    onError: (err) => toast.error(getApiErrorMessage(err, "Failed to rename folder")),
   });
 
   const handleUploadFile = useCallback(
@@ -403,7 +403,8 @@ function FileBrowserContent() {
             onClick={() => {
               if (newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim());
             }}
-            className="px-3 py-1.5 bg-otter-600 text-white rounded-lg text-sm hover:bg-otter-700 transition"
+            disabled={!newFolderName.trim() || createFolderMutation.isPending}
+            className="px-3 py-1.5 bg-otter-600 text-white rounded-lg text-sm hover:bg-otter-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Create
           </button>
