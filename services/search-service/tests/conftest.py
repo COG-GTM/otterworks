@@ -10,10 +10,12 @@ from app.config import AppConfig, AuthConfig, MeiliSearchConfig, SQSConfig
 from app.main import create_app
 from app.services.meilisearch_client import MeiliSearchService
 
+SERVICE_TOKEN = "test-service-token"
+
 
 @pytest.fixture()
 def app_config() -> AppConfig:
-    """Create a test AppConfig with auth disabled."""
+    """Create a test AppConfig with the gateway auth hook disabled."""
     return AppConfig(
         service_name="search-service-test",
         port=8087,
@@ -26,7 +28,7 @@ def app_config() -> AppConfig:
             files_index="test-otterworks-files",
         ),
         sqs=SQSConfig(enabled=False),
-        auth=AuthConfig(service_token="", require_auth=False),
+        auth=AuthConfig(service_token=SERVICE_TOKEN, require_auth=False),
     )
 
 
@@ -80,3 +82,9 @@ def meilisearch_service(app_config: AppConfig, mock_meilisearch_client: MagicMoc
         mock_cls.return_value = mock_meilisearch_client
         service = MeiliSearchService(app_config.meilisearch)
         return service
+
+
+@pytest.fixture()
+def service_headers() -> dict[str, str]:
+    """Headers carrying the internal service token."""
+    return {"Authorization": f"Bearer {SERVICE_TOKEN}"}
