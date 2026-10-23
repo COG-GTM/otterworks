@@ -12,7 +12,13 @@ import type { WebSocketServer } from 'ws';
 export const COLLAB_SUBPROTOCOL = 'otterworks.collab.v1';
 export const BEARER_SUBPROTOCOL_PREFIX = 'otterworks.bearer.';
 
-const URL_CREDENTIAL_PARAMS = ['token', 'access_token', 'jwt'];
+const URL_CREDENTIAL_PARAMS = [
+  'token',
+  'access_token',
+  'refresh_token',
+  'id_token',
+  'jwt',
+];
 const HMAC_ALGORITHMS: jwt.Algorithm[] = ['HS256', 'HS384', 'HS512'];
 
 export const LOG_REDACT_PATHS = [

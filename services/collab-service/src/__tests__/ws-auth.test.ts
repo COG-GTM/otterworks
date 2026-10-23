@@ -96,6 +96,17 @@ describe('authenticateUpgrade', () => {
     expect(result).toEqual({ ok: false, reason: 'token_in_url' });
   });
 
+  it.each(['access_token', 'refresh_token', 'id_token', 'jwt'])(
+    'rejects a %s query parameter even when a header token is valid',
+    (param) => {
+      const result = authenticateUpgrade(
+        { url: `/document-1?${param}=${refreshToken()}`, headers: bearer(accessToken()) },
+        SECRET,
+      );
+      expect(result).toEqual({ ok: false, reason: 'token_in_url' });
+    },
+  );
+
   it('rejects a refresh token', () => {
     const result = authenticateUpgrade(
       { url: '/document-1', headers: bearer(refreshToken()) },
