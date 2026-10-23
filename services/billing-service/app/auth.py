@@ -75,7 +75,8 @@ def decode_token(token: str, secret: str, now: float | None = None) -> dict:
         raise InvalidTokenError("malformed token")
     header_segment, payload_segment, signature_segment = parts
     header = _json_segment(header_segment)
-    digest = HMAC_ALGORITHMS.get(header.get("alg"))
+    alg = header.get("alg")
+    digest = HMAC_ALGORITHMS.get(alg) if isinstance(alg, str) else None
     if digest is None:
         raise InvalidTokenError("unsupported token algorithm")
     expected = hmac.new(
