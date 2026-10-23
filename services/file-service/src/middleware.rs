@@ -1,4 +1,4 @@
-use actix_web::body::MessageBody;
+use actix_web::body::{EitherBody, MessageBody};
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::http::header::HeaderMap;
 use actix_web::middleware::Next;
@@ -57,13 +57,18 @@ pub fn caller_from_headers(headers: &HeaderMap) -> Result<Uuid, ServiceError> {
 }
 
 /// Rejects any request that carries no valid caller identity before it reaches
-/// a handler, so no route can run unscoped.
+/// a handler, so no route can run unscoped. The rejection is returned as a 401
+/// response (not an `Err`) so outer middleware still logs and counts it.
 pub async fn require_caller(
     req: ServiceRequest,
     next: Next<impl MessageBody>,
-) -> Result<ServiceResponse<impl MessageBody>, Error> {
-    caller_from_headers(req.headers())?;
-    next.call(req).await
+) -> Result<ServiceResponse<EitherBody<impl MessageBody>>, Error> {
+    if let Err(err) = caller_from_headers(req.headers()) {
+        return Ok(req.error_response(err).map_into_right_body());
+    }
+    next.call(req)
+        .await
+        .map(ServiceResponse::map_into_left_body)
 }
 
 // -- Request ID Middleware --
@@ -156,6 +161,7 @@ mod tests {
     async fn require_caller_rejects_missing_and_invalid_identity() {
         let app = test::init_service(
             App::new()
+                .wrap(RequestId)
                 .route("/health", web::get().to(HttpResponse::Ok))
                 .service(
                     web::scope("/api")
@@ -170,6 +176,7 @@ mod tests {
         assert_eq!(anonymous.status(), 401);
         let body: serde_json::Value = test::read_body_json(anonymous).await;
         assert_eq!(body["error"], "unauthorized");
+        assert!(render_metrics().contains(r#"status="401""#));
 
         let invalid = test::call_service(
             &app,
