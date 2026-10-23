@@ -1,6 +1,6 @@
 package com.otterworks.analytics.config
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 
 /** Typed configuration wrapper for the analytics service. */
 final case class AppConfig(
@@ -51,18 +51,18 @@ object AppConfig:
         else None
     )
 
-    val pg = analytics.getConfig("postgres")
-    val postgres = PostgresConfig(
-      url = pg.getString("url"),
-      user = pg.getString("user"),
-      password = pg.getString("password"),
-      maxPoolSize = pg.getInt("max-pool-size")
-    )
-
     val repository = RepositoryConfig(
       backend =
         if analytics.hasPath("repository.backend") then analytics.getString("repository.backend")
         else "postgres"
+    )
+
+    val pg = analytics.getConfig("postgres")
+    val postgres = PostgresConfig(
+      url = pg.getString("url"),
+      user = pg.getString("user"),
+      password = postgresPassword(pg, required = repository.isPostgres),
+      maxPoolSize = pg.getInt("max-pool-size")
     )
 
     val server = ServerConfig(
@@ -71,3 +71,13 @@ object AppConfig:
     )
 
     AppConfig(s3, sqs, aws, postgres, repository, server)
+
+  private def postgresPassword(pg: Config, required: Boolean): String =
+    val password = if pg.hasPath("password") then pg.getString("password") else ""
+    if password.isEmpty && required then
+      throw new ConfigException.BadValue(
+        "analytics.postgres.password",
+        "no PostgreSQL password configured; set POSTGRES_PASSWORD or DATABASE_PASSWORD " +
+          "(or ANALYTICS_REPOSITORY_BACKEND=in-memory to run without a database)"
+      )
+    password
