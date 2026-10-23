@@ -22,6 +22,42 @@ The Flask layer intentionally binds request values, calls a database
 entrypoint, and renders the returned values. It does not reproduce domain
 decisions in Python.
 
+## Authentication and tenant scoping
+
+Every route except `/health` requires `Authorization: Bearer <JWT>`. Tokens are
+HS256 access tokens signed with `LEGACY_BILLING_JWT_SECRET` (the platform
+`JWT_SECRET` used by auth-service and api-gateway, at least 32 bytes). If the
+secret is unset or too short, protected routes return `503` — the service fails
+closed. Refresh tokens, `alg` other than `HS256`, and tokens without `exp` or
+`sub` are rejected with `401`.
+
+Access is granted by two claims:
+
+- `scope` (space-separated) or `scp` (list): `billing:read`, `billing:write`,
+  `billing:admin`. `write` implies `read`; `admin` implies both.
+- `tenant_id`: the tenant the caller acts for. Tenant-scoped routes return
+  `403` unless it matches the target tenant; `billing:admin` may act for any
+  tenant.
+
+| Route | Scope | Tenant check |
+|---|---|---|
+| `/`, `/plans` | `billing:read` | — (plan catalog) |
+| `GET /plans/<tenant>/entitlement`, `GET /api/invoices/<tenant>/preview`, `POST /api/rating/preview` | `billing:read` | path / body `tenant_id` |
+| `GET /api/invoices/<invoice>/lines` | `billing:read` | invoice owner (`404` otherwise) |
+| `POST /plans/<tenant>/change` | `billing:write` | path tenant |
+| `POST /api/rating/finalize`, `POST /api/invoices/<tenant>/issue`, `GET /api/dunning/overdue`, `POST /api/dunning/schedule`, `POST /api/dunning/suspend` | `billing:admin` | — (operator actions) |
+
+A route registered without a policy decorator (`requires`/`public` in
+`app/auth.py`) is rejected with `403`.
+
+For the local Compose profile, export a secret before `make procs-up`:
+
+```bash
+export LEGACY_BILLING_JWT_SECRET=$(openssl rand -hex 32)
+```
+
+Tests: `uv run --with flask==3.1.1 --with psycopg[binary]==3.2.9 --with pytest==8.3.5 pytest services/legacy-billing/tests`.
+
 ## Why it is an extraction candidate
 
 - The domain boundaries are already grouped into database procedure modules.
