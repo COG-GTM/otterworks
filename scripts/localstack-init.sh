@@ -17,7 +17,7 @@ make_bucket otterworks-audit-archive
 
 # SQS Queue (create-queue is idempotent for an existing queue with the same name)
 awslocal sqs create-queue --queue-name otterworks-notifications
-awslocal sqs create-queue --queue-name otterworks-audit-events-queue
+awslocal sqs create-queue --queue-name otterworks-audit-events-queue-local # audit-service consumes the per-tenant queue (Aws__TenantId=local in compose)
 awslocal sqs create-queue --queue-name otterworks-search-events
 
 # SNS Topic (create-topic returns the existing ARN if it already exists)
@@ -32,7 +32,7 @@ awslocal sns subscribe \
   --protocol sqs \
   --notification-endpoint "$NOTIFICATION_QUEUE_ARN"
 AUDIT_QUEUE_ARN=$(awslocal sqs get-queue-attributes \
-  --queue-url http://localhost:4566/000000000000/otterworks-audit-events-queue \
+  --queue-url http://localhost:4566/000000000000/otterworks-audit-events-queue-local \
   --attribute-names QueueArn \
   --query 'Attributes.QueueArn' \
   --output text)
