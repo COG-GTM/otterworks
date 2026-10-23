@@ -76,7 +76,7 @@ class ChaosProbeService
 
       iterations = 0
       loop do
-        break unless redis.exists?(redis_key)
+        break if !redis.exists?(redis_key) && release_if_expired(redis_key, redis)
 
         PROBE_BATCH.times { fire_probe(probe_config) }
         iterations += 1
@@ -92,6 +92,19 @@ class ChaosProbeService
     end
   end
   private_class_method :spawn_probe
+
+  # Re-checks the key under the registry lock before a probe gives up, so a
+  # trigger racing with a reset either sees this probe deregistered (and spawns
+  # a new one) or this probe sees the restored key and keeps running.
+  def self.release_if_expired(redis_key, redis)
+    @probes_lock.synchronize do
+      next false if redis.exists?(redis_key)
+
+      @probes.delete(redis_key) if @probes[redis_key] == Thread.current
+      true
+    end
+  end
+  private_class_method :release_if_expired
 
   def self.fire_probe(config)
     uri = URI.parse(config[:url])

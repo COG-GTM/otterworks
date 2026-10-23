@@ -49,4 +49,22 @@ RSpec.describe ChaosProbeService do
     expect(second).not_to equal(first)
     expect(second).to be_alive
   end
+
+  it 'keeps probing when the key is restored while the probe was about to exit' do
+    key = 'chaos:file-service:upload_s3_error'
+    checks = 0
+    fired = Queue.new
+    allow(redis).to receive(:exists?) do |k|
+      checks += 1
+      checks == 1 ? false : active_keys.include?(k)
+    end
+    allow(described_class).to receive(:fire_probe) { fired << true }
+
+    probe = start('file-service', key)
+
+    expect(fired.pop(timeout: 2)).to be(true)
+    expect(probe).to be_alive
+    expect(described_class.running?(key)).to be(true)
+    expect(start('file-service', key)).to equal(probe)
+  end
 end
