@@ -80,7 +80,7 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         "/api/v1/analytics/events",
         headers=user.auth_headers,
         json={
-            "eventType": "document_viewed",
+            "eventType": "document.viewed",
             "userId": user.id,
             "resourceId": resource_id,
             "resourceType": "document",
@@ -88,6 +88,38 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         },
     )
     assert track_response.status_code in {200, 201, 202}, track_response.text
+
+    other = api_client.register_user("analytics-victim")
+    forged_response = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers={**user.auth_headers, "X-User-ID": other.id},
+        json={
+            "eventType": "document.viewed",
+            "userId": other.id,
+            "resourceId": resource_id,
+            "resourceType": "document",
+        },
+    )
+    assert forged_response.status_code == 403, forged_response.text
+
+    forged_storage = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=user.auth_headers,
+        json={
+            "eventType": "storage.allocated",
+            "resourceId": resource_id,
+            "resourceType": "file",
+            "metadata": {"bytes": "999999999"},
+        },
+    )
+    assert forged_storage.status_code == 400, forged_storage.text
+
+    unknown_type = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=user.auth_headers,
+        json={"eventType": "admin.pwned", "resourceId": resource_id, "resourceType": "document"},
+    )
+    assert unknown_type.status_code == 400, unknown_type.text
 
     dashboard_response = api_client.client.get(
         "/api/v1/analytics/dashboard",
