@@ -126,4 +126,24 @@ public class S3AuditArchiverTests
         _mockS3.Verify(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
         _mockRepository.Verify(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>()), Times.Never);
     }
+
+    [Fact]
+    public async Task ExportAsync_WithTenant_ShouldPrefixKeyWithTenant()
+    {
+        var archiver = new S3AuditArchiver(
+            _mockS3.Object,
+            _mockRepository.Object,
+            Options.Create(new AwsSettings { S3ArchiveBucket = "test-archive-bucket", TenantId = "tenant-a" }),
+            _mockLogger.Object);
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(new List<AuditEvent>());
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
+
+        await archiver.ExportAsync(from, to, "json");
+
+        _mockS3.Verify(s => s.PutObjectAsync(It.Is<PutObjectRequest>(req =>
+            req.Key.StartsWith("tenants/tenant-a/audit-exports/")),
+            default), Times.Once);
+    }
 }

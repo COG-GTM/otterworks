@@ -156,6 +156,23 @@ public class AuditServiceTests
     }
 
     [Fact]
+    public async Task GetResourceHistoryAsync_WithActor_ShouldOnlyReturnActorEvents()
+    {
+        var events = new List<AuditEvent>
+        {
+            CreateSampleEvent("e1", userId: "user-1", resourceId: "doc-1"),
+            CreateSampleEvent("e2", userId: "user-2", resourceId: "doc-1"),
+        };
+
+        _mockRepository.Setup(r => r.GetResourceHistoryAsync("doc-1")).ReturnsAsync(events);
+
+        var history = await _service.GetResourceHistoryAsync("doc-1", "user-1");
+
+        Assert.Equal(1, history.TotalEvents);
+        Assert.All(history.Events, e => Assert.Equal("user-1", e.UserId));
+    }
+
+    [Fact]
     public async Task GetResourceHistoryAsync_ShouldReturnHistory()
     {
         var events = new List<AuditEvent>

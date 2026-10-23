@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -7,7 +10,8 @@ public static class AuditController
 {
     public static void MapAuditEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/audit");
+        var group = app.MapGroup("/api/v1/audit")
+            .RequireAuthorization(AuditAuthorization.AuthenticatedPolicy);
 
         group.MapPost("/events", RecordEvent)
             .WithName("RecordAuditEvent")
@@ -33,19 +37,24 @@ public static class AuditController
 
         group.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
+            .RequireAuthorization(AuditAuthorization.AuditorPolicy)
             .Produces<ComplianceReport>(StatusCodes.Status200OK);
 
         group.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
+            .RequireAuthorization(AuditAuthorization.AuditorPolicy)
             .Produces<ExportResult>(StatusCodes.Status200OK);
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
+            .RequireAuthorization(AuditAuthorization.AuditorPolicy)
             .Produces<ArchiveResult>(StatusCodes.Status200OK);
     }
 
     private static async Task<IResult> RecordEvent(
         AuditEventRequest request,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         IAuditService auditService)
     {
         if (string.IsNullOrWhiteSpace(request.UserId) ||
@@ -55,6 +64,9 @@ public static class AuditController
         {
             return Results.BadRequest(new { error = "UserId, Action, ResourceType, and ResourceId are required." });
         }
+
+        if (!await IsAuditorAsync(user, authorization) && request.UserId != AuditAuthorization.GetUserId(user))
+            return Results.Forbid();
 
         var response = await auditService.RecordEventAsync(request);
         return Results.Created($"/api/v1/audit/events/{response.Id}", response);
@@ -69,8 +81,18 @@ public static class AuditController
         DateTime? to,
         int? page,
         int? size,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         IAuditService auditService)
     {
+        if (!await IsAuditorAsync(user, authorization))
+        {
+            var callerId = AuditAuthorization.GetUserId(user);
+            if (!string.IsNullOrEmpty(user_id) && user_id != callerId)
+                return Results.Forbid();
+            user_id = callerId;
+        }
+
         var pageNumber = page ?? 1;
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
 
@@ -80,17 +102,31 @@ public static class AuditController
 
     private static async Task<IResult> GetEvent(
         string id,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         IAuditService auditService)
     {
         var result = await auditService.GetEventAsync(id);
+        if (result is not null &&
+            result.UserId != AuditAuthorization.GetUserId(user) &&
+            !await IsAuditorAsync(user, authorization))
+        {
+            result = null;
+        }
+
         return result is not null ? Results.Ok(result) : Results.NotFound(new { error = "Event not found." });
     }
 
     private static async Task<IResult> GetUserActivityReport(
         string userId,
         string? period,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         IAuditService auditService)
     {
+        if (userId != AuditAuthorization.GetUserId(user) && !await IsAuditorAsync(user, authorization))
+            return Results.Forbid();
+
         var reportPeriod = period ?? "30d";
         var report = await auditService.GetUserActivityReportAsync(userId, reportPeriod);
         return Results.Ok(report);
@@ -98,9 +134,12 @@ public static class AuditController
 
     private static async Task<IResult> GetResourceHistory(
         string resourceId,
+        ClaimsPrincipal user,
+        IAuthorizationService authorization,
         IAuditService auditService)
     {
-        var history = await auditService.GetResourceHistoryAsync(resourceId);
+        var actorUserId = await IsAuditorAsync(user, authorization) ? null : AuditAuthorization.GetUserId(user);
+        var history = await auditService.GetResourceHistoryAsync(resourceId, actorUserId);
         return Results.Ok(history);
     }
 
@@ -138,5 +177,11 @@ public static class AuditController
     {
         var result = await auditService.ArchiveOldEventsAsync();
         return Results.Ok(result);
+    }
+
+    private static async Task<bool> IsAuditorAsync(ClaimsPrincipal user, IAuthorizationService authorization)
+    {
+        var result = await authorization.AuthorizeAsync(user, AuditAuthorization.AuditorPolicy);
+        return result.Succeeded;
     }
 }

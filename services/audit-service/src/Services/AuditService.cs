@@ -87,9 +87,11 @@ public class AuditService : IAuditService
         return report;
     }
 
-    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId)
+    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId, string? actorUserId = null)
     {
         var events = await _repository.GetResourceHistoryAsync(resourceId);
+        if (actorUserId is not null)
+            events = events.Where(e => e.UserId == actorUserId).ToList();
 
         return new ResourceHistory
         {

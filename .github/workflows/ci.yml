@@ -278,7 +278,7 @@ jobs:
           dotnet-version: '8.0.x'
       - run: dotnet restore
       - run: dotnet build --no-restore
-      - run: dotnet test --no-build
+      - run: dotnet test tests/AuditService.Tests/AuditService.Tests.csproj
 
   # React/Next.js - Web App
   web-app:

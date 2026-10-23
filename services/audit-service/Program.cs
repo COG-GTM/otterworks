@@ -4,6 +4,7 @@ using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Config;
 using OtterWorks.AuditService.Controllers;
 using OtterWorks.AuditService.Middleware;
@@ -69,6 +70,7 @@ builder.Services.AddSingleton<IAmazonSimpleNotificationService>(_ =>
 builder.Services.AddSingleton<IAuditRepository, DynamoDbAuditRepository>();
 builder.Services.AddSingleton<IAuditArchiver, S3AuditArchiver>();
 builder.Services.AddSingleton<IAuditService, OtterWorks.AuditService.Services.AuditService>();
+builder.Services.AddAuditAuthorization(builder.Configuration);
 
 // SNS/SQS Consumer background service
 builder.Services.AddHostedService<SnsConsumer>();
@@ -98,6 +100,9 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 
 // Prometheus metrics endpoint
 app.UseHttpMetrics();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Health check
 app.MapGet("/health", async (IAmazonDynamoDB dynamoDb) =>

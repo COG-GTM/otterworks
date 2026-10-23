@@ -209,7 +209,7 @@ public class DynamoDbAuditRepositoryTests
         Assert.Equal(2, result.Count);
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "ResourceId = :rid" &&
+            req.FilterExpression == "(ResourceId = :rid) AND attribute_not_exists(#tenant)" &&
             req.ExpressionAttributeValues[":rid"].S == "doc-1"),
             default), Times.Once);
     }
@@ -245,10 +245,134 @@ public class DynamoDbAuditRepositoryTests
         await _repository.GetEventsByDateRangeAsync(from, to);
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "#ts >= :fromTs AND #ts <= :toTs" &&
+            req.FilterExpression == "(#ts >= :fromTs AND #ts <= :toTs) AND attribute_not_exists(#tenant)" &&
             req.ExpressionAttributeNames["#ts"] == "Timestamp"),
             default), Times.Once);
     }
+
+    [Fact]
+    public async Task SaveEventAsync_WithTenant_ShouldTagItemWithTenantId()
+    {
+        var repository = CreateTenantRepository("tenant-a");
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await repository.SaveEventAsync(new AuditEvent { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1" });
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            req.Item["TenantId"].S == "tenant-a"), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveEventAsync_WithoutTenant_ShouldNotTagItem()
+    {
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await _repository.SaveEventAsync(new AuditEvent { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1" });
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            !req.Item.ContainsKey("TenantId")), default), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithTenantAndNoFilters_ShouldStillFilterByTenant()
+    {
+        var repository = CreateTenantRepository("tenant-a");
+        SetupEmptyScan();
+
+        await repository.QueryEventsAsync(null, null, null, null, null, null, 1, 20);
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression == "#tenant = :tenant" &&
+            req.ExpressionAttributeNames["#tenant"] == "TenantId" &&
+            req.ExpressionAttributeValues[":tenant"].S == "tenant-a"),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithoutTenant_ShouldExcludeTenantTaggedItems()
+    {
+        SetupEmptyScan();
+
+        await _repository.QueryEventsAsync(null, null, null, null, null, null, 1, 20);
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression == "attribute_not_exists(#tenant)" &&
+            req.ExpressionAttributeNames["#tenant"] == "TenantId"),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task ScanQueries_WithTenant_ShouldAllBeTenantScoped()
+    {
+        var repository = CreateTenantRepository("tenant-a");
+        SetupEmptyScan();
+
+        await repository.QueryEventsAsync("u1", "create", null, null, null, null, 1, 20);
+        await repository.GetAllUserEventsAsync("u1");
+        await repository.GetResourceHistoryAsync("d1");
+        await repository.GetEventsByDateRangeAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow);
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression.EndsWith(" AND #tenant = :tenant") &&
+            req.ExpressionAttributeValues[":tenant"].S == "tenant-a"),
+            default), Times.Exactly(4));
+    }
+
+    [Fact]
+    public async Task GetEventAsync_FromAnotherTenant_ShouldReturnNull()
+    {
+        var repository = CreateTenantRepository("tenant-a");
+        var item = CreateDynamoDbItem("e1", "u1", "create", "doc", "d1");
+        item["TenantId"] = new AttributeValue { S = "tenant-b" };
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        Assert.Null(await repository.GetEventAsync("e1"));
+    }
+
+    [Fact]
+    public async Task GetEventAsync_FromSameTenant_ShouldReturnEvent()
+    {
+        var repository = CreateTenantRepository("tenant-a");
+        var item = CreateDynamoDbItem("e1", "u1", "create", "doc", "d1");
+        item["TenantId"] = new AttributeValue { S = "tenant-a" };
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        Assert.NotNull(await repository.GetEventAsync("e1"));
+    }
+
+    [Fact]
+    public async Task GetEventAsync_TenantTaggedItemWithoutConfiguredTenant_ShouldReturnNull()
+    {
+        var item = CreateDynamoDbItem("e1", "u1", "create", "doc", "d1");
+        item["TenantId"] = new AttributeValue { S = "tenant-b" };
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        Assert.Null(await _repository.GetEventAsync("e1"));
+    }
+
+    private DynamoDbAuditRepository CreateTenantRepository(string tenantId) =>
+        new(_mockDynamoDb.Object,
+            Options.Create(new AwsSettings { DynamoDbTable = "test-audit-events", TenantId = tenantId }),
+            _mockLogger.Object);
+
+    private void SetupEmptyScan() =>
+        _mockDynamoDb
+            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
+            .ReturnsAsync(new ScanResponse
+            {
+                Items = new List<Dictionary<string, AttributeValue>>(),
+                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
+            });
 
     private static Dictionary<string, AttributeValue> CreateDynamoDbItem(
         string id, string userId, string action, string resourceType, string resourceId)

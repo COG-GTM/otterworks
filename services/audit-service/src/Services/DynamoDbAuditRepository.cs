@@ -7,6 +7,8 @@ namespace OtterWorks.AuditService.Services;
 
 public class DynamoDbAuditRepository : IAuditRepository
 {
+    private const string TenantAttribute = "TenantId";
+
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly AwsSettings _settings;
     private readonly ILogger<DynamoDbAuditRepository> _logger;
@@ -33,6 +35,9 @@ public class DynamoDbAuditRepository : IAuditRepository
             ["ResourceId"] = new AttributeValue { S = auditEvent.ResourceId },
             ["Timestamp"] = new AttributeValue { S = auditEvent.Timestamp.ToString("O") },
         };
+
+        if (!string.IsNullOrEmpty(_settings.TenantId))
+            item[TenantAttribute] = new AttributeValue { S = _settings.TenantId };
 
         if (auditEvent.IpAddress is not null)
             item["IpAddress"] = new AttributeValue { S = auditEvent.IpAddress };
@@ -72,7 +77,7 @@ public class DynamoDbAuditRepository : IAuditRepository
         };
 
         var response = await _dynamoDb.GetItemAsync(request);
-        if (response.Item is null || response.Item.Count == 0)
+        if (response.Item is null || response.Item.Count == 0 || !BelongsToTenant(response.Item))
             return null;
 
         return MapToAuditEvent(response.Item);
@@ -142,6 +147,7 @@ public class DynamoDbAuditRepository : IAuditRepository
         }
 
         var allEvents = new List<AuditEvent>();
+        ApplyTenantScope(scanRequest);
         ScanResponse? response = null;
 
         do
@@ -185,6 +191,7 @@ public class DynamoDbAuditRepository : IAuditRepository
         };
 
         var events = new List<AuditEvent>();
+        ApplyTenantScope(scanRequest);
         ScanResponse? response = null;
 
         do
@@ -214,6 +221,7 @@ public class DynamoDbAuditRepository : IAuditRepository
         };
 
         var events = new List<AuditEvent>();
+        ApplyTenantScope(scanRequest);
         ScanResponse? response = null;
 
         do
@@ -248,6 +256,7 @@ public class DynamoDbAuditRepository : IAuditRepository
         };
 
         var events = new List<AuditEvent>();
+        ApplyTenantScope(scanRequest);
         ScanResponse? response = null;
 
         do
@@ -318,6 +327,36 @@ public class DynamoDbAuditRepository : IAuditRepository
         var deleted = idList.Count - totalFailed;
         _logger.LogInformation("Deleted {Deleted} of {Total} audit events from DynamoDB", deleted, idList.Count);
         return deleted;
+    }
+
+    private bool BelongsToTenant(Dictionary<string, AttributeValue> item)
+    {
+        var hasTenant = item.TryGetValue(TenantAttribute, out var tenant) && !string.IsNullOrEmpty(tenant.S);
+        return string.IsNullOrEmpty(_settings.TenantId)
+            ? !hasTenant
+            : hasTenant && tenant!.S == _settings.TenantId;
+    }
+
+    private void ApplyTenantScope(ScanRequest scanRequest)
+    {
+        scanRequest.ExpressionAttributeNames ??= new Dictionary<string, string>();
+        scanRequest.ExpressionAttributeNames["#tenant"] = TenantAttribute;
+
+        string tenantFilter;
+        if (string.IsNullOrEmpty(_settings.TenantId))
+        {
+            tenantFilter = "attribute_not_exists(#tenant)";
+        }
+        else
+        {
+            scanRequest.ExpressionAttributeValues ??= new Dictionary<string, AttributeValue>();
+            scanRequest.ExpressionAttributeValues[":tenant"] = new AttributeValue { S = _settings.TenantId };
+            tenantFilter = "#tenant = :tenant";
+        }
+
+        scanRequest.FilterExpression = string.IsNullOrEmpty(scanRequest.FilterExpression)
+            ? tenantFilter
+            : $"({scanRequest.FilterExpression}) AND {tenantFilter}";
     }
 
     private static AuditEvent MapToAuditEvent(Dictionary<string, AttributeValue> item)
