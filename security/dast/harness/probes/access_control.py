@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 
 from .base import Evidence, Result, Severity, Verdict, probe, redact, unavailable
 from .context import ScanContext
@@ -92,11 +93,17 @@ def bola_files(ctx: ScanContext) -> Result:
     """Attacker reads, downloads and self-shares a file owned by the victim."""
     self = bola_files.probe
     name = f"victim-file-{ctx.run_id}.txt"
-    upload = ctx.client.post(
-        "/api/v1/files/upload",
-        headers=ctx.victim.headers,
-        files={"file": (name, f"confidential {ctx.victim_marker}".encode(), "text/plain")},
-    )
+    # The metadata tables may still be provisioning right after the stack
+    # starts, so a 5xx upload is retried briefly before giving up.
+    for _ in range(10):
+        upload = ctx.client.post(
+            "/api/v1/files/upload",
+            headers=ctx.victim.headers,
+            files={"file": (name, f"confidential {ctx.victim_marker}".encode(), "text/plain")},
+        )
+        if upload.status_code < 500:
+            break
+        time.sleep(3)
     if upload.status_code != 201:
         return self.result(
             Verdict.INCONCLUSIVE,
