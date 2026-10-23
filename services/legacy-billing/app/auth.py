@@ -16,6 +16,7 @@ import functools
 import hashlib
 import hmac
 import json
+import re
 import time
 import uuid
 
@@ -26,6 +27,7 @@ WRITE = "billing:write"
 ADMIN = "billing:admin"
 MIN_SECRET_BYTES = 32
 CLOCK_SKEW_SECONDS = 30
+SEGMENT = re.compile(r"[A-Za-z0-9_-]+\Z")
 
 
 class InvalidToken(Exception):
@@ -63,7 +65,7 @@ def _numeric(claims, name, required=False):
 
 def decode_token(token, secret, now=None):
     parts = token.split(".")
-    if len(parts) != 3 or not all(parts):
+    if len(parts) != 3 or not all(SEGMENT.match(part) for part in parts):
         raise InvalidToken("malformed token")
     header = _json_segment(parts[0])
     if header.get("alg") != "HS256":
