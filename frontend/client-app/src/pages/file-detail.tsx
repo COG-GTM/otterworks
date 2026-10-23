@@ -312,7 +312,7 @@ function FileDetailContent() {
                   {file.sharedWith.map((shared) => {
                     const resolved = resolvedUsers[shared.userId];
                     const displayName = resolved?.name || shared.name || shared.userId.slice(0, 8);
-                    const displayEmail = shared.email;
+                    const displayEmail = shared.email || `ID ${shared.userId.slice(0, 8)}`;
                     return (
                       <div key={shared.userId} className="flex items-center gap-3">
                         <div

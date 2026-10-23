@@ -244,7 +244,7 @@ export function ShareDialog({
                       .map((user) => {
                         const resolved = resolvedUsers[user.userId];
                         const displayName = resolved?.name || user.name || user.userId.slice(0, 8);
-                        const displayEmail = user.email;
+                        const displayEmail = user.email || `ID ${user.userId.slice(0, 8)}`;
                         const isUpdating = updatingUserId === user.userId;
                         const isRemoving = removingUserId === user.userId;
                         return (
