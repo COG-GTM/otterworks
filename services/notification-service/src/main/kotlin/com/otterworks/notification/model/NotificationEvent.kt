@@ -92,7 +92,6 @@ data class UnreadCountResponse(
 
 @Serializable
 data class NotificationPreferenceRequest(
-    val userId: String,
     val eventType: String,
     val channels: List<DeliveryChannel>,
 )

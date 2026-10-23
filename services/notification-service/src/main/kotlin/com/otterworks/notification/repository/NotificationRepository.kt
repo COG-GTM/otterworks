@@ -46,14 +46,14 @@ class NotificationRepository(
         logger.debug { "Saved notification ${notification.id} for user ${notification.userId}" }
     }
 
-    suspend fun getNotificationById(id: String): Notification? {
+    suspend fun getNotificationById(id: String, userId: String): Notification? {
         val request = GetItemRequest {
             tableName = config.dynamoDbTableNotifications
             key = mapOf("id" to AttributeValue.S(id))
         }
 
         val response = dynamoDbClient.getItem(request)
-        return response.item?.let { mapToNotification(it) }
+        return response.item?.let { mapToNotification(it) }?.takeIf { it.userId == userId }
     }
 
     suspend fun getNotificationsByUserId(
@@ -118,7 +118,7 @@ class NotificationRepository(
         return totalCount
     }
 
-    suspend fun markAsRead(id: String): Boolean {
+    suspend fun markAsRead(id: String, userId: String): Boolean {
         val request = UpdateItemRequest {
             tableName = config.dynamoDbTableNotifications
             key = mapOf("id" to AttributeValue.S(id))
@@ -126,8 +126,9 @@ class NotificationRepository(
             expressionAttributeNames = mapOf("#r" to "read")
             expressionAttributeValues = mapOf(
                 ":readVal" to AttributeValue.Bool(true),
+                ":uid" to AttributeValue.S(userId),
             )
-            conditionExpression = "attribute_exists(id)"
+            conditionExpression = OWNED_BY_CALLER
         }
 
         return try {
@@ -145,17 +146,19 @@ class NotificationRepository(
         val unreadNotifications = notifications.filter { !it.read }
 
         for (notification in unreadNotifications) {
-            markAsRead(notification.id)
+            markAsRead(notification.id, userId)
         }
 
         logger.info { "Marked ${unreadNotifications.size} notifications as read for user $userId" }
         return unreadNotifications.size
     }
 
-    suspend fun deleteNotification(id: String): Boolean {
+    suspend fun deleteNotification(id: String, userId: String): Boolean {
         val request = DeleteItemRequest {
             tableName = config.dynamoDbTableNotifications
             key = mapOf("id" to AttributeValue.S(id))
+            conditionExpression = OWNED_BY_CALLER
+            expressionAttributeValues = mapOf(":uid" to AttributeValue.S(userId))
         }
 
         return try {
@@ -242,5 +245,10 @@ class NotificationRepository(
             logger.error(e) { "Failed to map DynamoDB item to NotificationPreference" }
             null
         }
+    }
+
+    companion object {
+        // Writes by id only succeed when the row exists and belongs to the caller.
+        const val OWNED_BY_CALLER = "attribute_exists(id) AND userId = :uid"
     }
 }

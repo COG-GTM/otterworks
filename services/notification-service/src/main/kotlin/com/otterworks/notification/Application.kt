@@ -5,6 +5,7 @@ import aws.sdk.kotlin.services.ses.SesClient
 import aws.sdk.kotlin.services.sqs.SqsClient
 import aws.smithy.kotlin.runtime.net.url.Url
 import com.otterworks.notification.alerts.AlertPublisher
+import com.otterworks.notification.auth.configureAuthentication
 import com.otterworks.notification.config.AppConfig
 import com.otterworks.notification.consumer.SqsConsumer
 import com.otterworks.notification.plugins.configureMonitoring
@@ -50,6 +51,7 @@ fun main() {
 fun Application.module(config: AppConfig = AppConfig.load()) {
     val prometheusRegistry = configureMonitoring()
     configurePlugins(config)
+    configureAuthentication(config.jwtSecret)
     configureDependencyInjection(config, prometheusRegistry)
     configureRouting(prometheusRegistry)
 

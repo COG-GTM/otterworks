@@ -7,13 +7,17 @@ pytestmark = pytest.mark.api_flow
 def test_notification_listing_read_preferences_and_route_gaps(api_client):
     user = api_client.register_user("notification-flow")
 
-    missing_user_response = api_client.client.get("/api/v1/notifications", headers=user.auth_headers)
-    assert missing_user_response.status_code == 400
+    unauthenticated_response = api_client.client.get(
+        "/api/v1/notifications",
+        headers={"X-User-ID": user.id},
+        params={"user_id": user.id},
+    )
+    assert unauthenticated_response.status_code == 401
 
     list_response = api_client.client.get(
         "/api/v1/notifications",
         headers=user.auth_headers,
-        params={"user_id": user.id, "page": 1, "page_size": 20},
+        params={"page": 1, "page_size": 20},
     )
     assert list_response.status_code == 200, list_response.text
     data = list_response.json()
@@ -22,17 +26,13 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
 
     unread_response = api_client.client.get(
         "/api/v1/notifications/unread-count",
-        headers=user.auth_headers,
-        params={"user_id": user.id},
+        headers={**user.auth_headers, "X-User-ID": "someone-else"},
+        params={"user_id": "someone-else"},
     )
     assert unread_response.status_code == 200, unread_response.text
     assert unread_response.json()["userId"] == user.id
 
-    mark_all_response = api_client.client.put(
-        "/api/v1/notifications/read-all",
-        headers=user.auth_headers,
-        params={"user_id": user.id},
-    )
+    mark_all_response = api_client.client.put("/api/v1/notifications/read-all", headers=user.auth_headers)
     assert mark_all_response.status_code == 200, mark_all_response.text
     assert "markedCount" in mark_all_response.json()
 
@@ -42,18 +42,15 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     )
     assert missing_notification.status_code == 404
 
-    preferences_get = api_client.client.get(
-        "/api/v1/preferences",
-        headers=user.auth_headers,
-        params={"user_id": user.id},
-    )
+    preferences_get = api_client.client.get("/api/v1/preferences", headers=user.auth_headers)
     api_client.assert_gateway_route_available(preferences_get, "/api/v1/preferences")
     assert preferences_get.status_code == 200, preferences_get.text
+    assert preferences_get.json()["userId"] == user.id
 
     preferences_put = api_client.client.put(
         "/api/v1/preferences",
         headers=user.auth_headers,
-        json={"userId": user.id, "eventType": "document_edited", "channels": ["IN_APP"]},
+        json={"eventType": "document_edited", "channels": ["IN_APP"]},
     )
     assert preferences_put.status_code == 204, preferences_put.text
 
