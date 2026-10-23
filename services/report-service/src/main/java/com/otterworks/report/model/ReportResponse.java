@@ -82,6 +82,9 @@ public class ReportResponse {
             response.setDownloadUrl("/api/v1/reports/" + report.getId() + "/download");
         }
         ReportFailureReason failureReason = ReportFailureReason.fromStoredValue(report.getErrorMessage());
+        if (failureReason == null && report.getStatus() == ReportStatus.FAILED) {
+            failureReason = ReportFailureReason.GENERATION_FAILED;
+        }
         if (failureReason != null) {
             response.setFailureReason(failureReason.name());
             response.setErrorMessage(failureReason.getMessage());

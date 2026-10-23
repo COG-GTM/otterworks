@@ -94,13 +94,28 @@ public class ReportGenerationWorkerTest {
     }
 
     @Test
-    public void classifiesByCauseChain() {
+    public void generatorFailureIsNotReportedAsInvalidParameters() throws Exception {
+        Report report = analyticsReport(null);
+        when(reportRepository.findById(7L)).thenReturn(Optional.of(report));
+        when(appConfig.getMaxRows()).thenReturn(1000);
+        when(pdfGenerator.generatePdf(any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("The number of columns in PdfPTable constructor must be greater than zero."));
+
+        worker.generateReportAsync(7L);
+
+        assertEquals(ReportStatus.FAILED, report.getStatus());
+        assertEquals("GENERATION_FAILED", report.getErrorMessage());
+    }
+
+    @Test
+    public void classifiesDownstreamErrorsByCauseChainOtherwiseUsesStage() {
         assertEquals(ReportFailureReason.DATA_SOURCE_UNAVAILABLE, ReportGenerationWorker.classifyFailure(
-                new RuntimeException(new ResourceAccessException(INTERNAL_URL))));
-        assertEquals(ReportFailureReason.INVALID_PARAMETERS, ReportGenerationWorker.classifyFailure(
-                new UncheckedExecutionException(new IllegalArgumentException("Illegal character in query"))));
+                new RuntimeException(new ResourceAccessException(INTERNAL_URL)), ReportFailureReason.GENERATION_FAILED));
         assertEquals(ReportFailureReason.GENERATION_FAILED, ReportGenerationWorker.classifyFailure(
-                new RuntimeException("/app/reports/out-7.pdf (No space left on device)")));
+                new UncheckedExecutionException(new IllegalArgumentException("Illegal character in query")),
+                ReportFailureReason.GENERATION_FAILED));
+        assertEquals(ReportFailureReason.INVALID_PARAMETERS, ReportGenerationWorker.classifyFailure(
+                new RuntimeException("Unexpected character"), ReportFailureReason.INVALID_PARAMETERS));
     }
 
     private Report analyticsReport(String parameters) {
