@@ -41,10 +41,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -52,7 +52,22 @@ func (c *Config) Validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
 	}
+	for _, published := range PublishedJWTSecrets {
+		if c.JWTSecret == published {
+			return fmt.Errorf("JWT_SECRET is a default published in the OtterWorks repository; anyone can forge tokens with it - set a random value (openssl rand -hex 32)")
+		}
+	}
 	return nil
+}
+
+// PublishedJWTSecrets are defaults that have shipped in this repository, so a
+// token signed with one of them proves nothing.
+var PublishedJWTSecrets = []string{
+	"otterworks-local-dev-jwt-secret-change-me-in-production",
+	"dev-jwt-secret-otterworks-2024-change-in-production",
+	"otterworks-dev-secret",
+	"dev_jwt_secret_key",
+	"test_jwt_secret_key",
 }
 
 // Load reads configuration from environment variables with sensible defaults.

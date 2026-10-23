@@ -57,13 +57,21 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # --- Local Development ---
 
+PUBLISHED_JWT_SECRETS := otterworks-local-dev-jwt-secret-change-me-in-production dev-jwt-secret-otterworks-2024-change-in-production otterworks-dev-secret dev_jwt_secret_key test_jwt_secret_key
+
 env: ## Generate a per-checkout JWT_SECRET in .env (docker-compose.yml requires one)
-	@if [ -n "$${JWT_SECRET:-}" ]; then \
+	@current="$${JWT_SECRET:-$$(sed -n 's/^JWT_SECRET=//p' .env 2>/dev/null | tail -n1)}"; \
+	for published in $(PUBLISHED_JWT_SECRETS); do \
+		if [ "$$current" = "$$published" ]; then \
+			echo "JWT_SECRET is a public default from this repo; remove it and re-run make env" >&2; exit 1; \
+		fi; \
+	done; \
+	if [ -n "$${JWT_SECRET:-}" ]; then \
 		echo "Using JWT_SECRET from the environment"; \
 	elif grep -qE '^JWT_SECRET=.+' .env 2>/dev/null; then \
 		echo "Using JWT_SECRET from .env"; \
 	else \
-		(umask 077; touch .env) && \
+		(umask 077; touch .env) && chmod 600 .env && \
 		{ [ ! -s .env ] || [ -z "$$(tail -c1 .env)" ] || echo >> .env; } && \
 		echo "JWT_SECRET=$$(openssl rand -hex 32)" >> .env && echo "Generated a random JWT_SECRET in .env"; \
 	fi
