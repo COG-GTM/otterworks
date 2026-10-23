@@ -7,6 +7,7 @@ import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { useAuthStore } from "@/stores/auth-store";
+import { getAccessToken } from "@/lib/auth-session";
 import { generateColor } from "@/lib/utils";
 import {
   Bold,
@@ -59,7 +60,7 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("otter_access_token") : null;
+    const token = getAccessToken();
     const wsProvider = new WebsocketProvider(
       COLLAB_WS_URL,
       `document-${documentId}`,

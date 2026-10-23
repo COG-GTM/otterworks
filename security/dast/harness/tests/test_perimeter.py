@@ -321,7 +321,7 @@ def test_a_route_the_middleware_protects_is_not_excused(two_routes, monkeypatch)
     )
     assert perimeter.anonymous_by_design("/api/v1/auth/login")
     assert perimeter.anonymous_by_design("/health/ready")
-    assert not perimeter.anonymous_by_design("/api/v1/auth/refresh")
+    assert not perimeter.anonymous_by_design("/api/v1/auth/profile")
 
 
 def test_an_unreadable_middleware_makes_the_sweep_withhold_a_verdict(

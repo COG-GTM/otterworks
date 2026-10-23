@@ -18,6 +18,7 @@ type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -30,10 +31,12 @@ type JWTConfig struct {
 }
 
 // DefaultPublicPaths returns the default set of exact-match paths that skip JWT validation.
+// /api/v1/auth/refresh is authenticated by the auth-service from its HttpOnly refresh cookie.
 func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		"/api/v1/auth/refresh",
 	}
 }
 
@@ -121,6 +124,11 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	// Check expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	// Refresh tokens are only redeemable at /api/v1/auth/refresh, where revocation is checked.
+	if claims.Type == "refresh" {
+		return nil, fmt.Errorf("refresh token cannot be used as an access token")
 	}
 
 	return claims, nil

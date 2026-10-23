@@ -1,4 +1,5 @@
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
+import { clearSession, getAccessToken, setAccessToken } from "./auth-session";
 import { Capacitor } from "@capacitor/core";
 
 // ── snake_case → camelCase helpers ────────────────────────────
@@ -35,22 +36,44 @@ export const API_BASE_URL = Capacitor.isNativePlatform()
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
 apiClient.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("otter_access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-let isVerifyingToken = false;
+let refreshInFlight: Promise<string | null> | null = null;
+
+// Exchanges the HttpOnly refresh cookie for a new in-memory access token.
+export function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = axios
+      .post<{ accessToken?: string }>(`${API_BASE_URL}/auth/refresh`, null, {
+        withCredentials: true,
+      })
+      .then((response) => {
+        const token = response.data?.accessToken ?? null;
+        setAccessToken(token);
+        return token;
+      })
+      .catch(() => {
+        clearSession();
+        return null;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
 
 apiClient.interceptors.response.use(
   (response) => {
@@ -60,30 +83,20 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
-      const url = error.config?.url || "";
-      if (!url.includes("/auth/")) {
-        if (isVerifyingToken) {
-          return Promise.reject(error);
-        }
-        isVerifyingToken = true;
-        try {
-          await axios.get(`${API_BASE_URL}/auth/profile`, {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("otter_access_token")}`,
-            },
-          });
-        } catch (verifyError: unknown) {
-          const status = (verifyError as { response?: { status?: number } })?.response?.status;
-          if (status === 401) {
-            localStorage.removeItem("otter_access_token");
-            localStorage.removeItem("otter_refresh_token");
-            window.location.href = "/login";
-          }
-        } finally {
-          isVerifyingToken = false;
-        }
+    const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+    if (
+      error.response?.status === 401 &&
+      typeof window !== "undefined" &&
+      original &&
+      !original._retried &&
+      !(original.url || "").includes("/auth/")
+    ) {
+      original._retried = true;
+      const token = await refreshAccessToken();
+      if (token) {
+        return apiClient(original);
       }
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }

@@ -58,7 +58,7 @@ class ApiClient:
             display_name=payload["displayName"],
             id=user["id"],
             access_token=data["accessToken"],
-            refresh_token=data["refreshToken"],
+            refresh_token=response.cookies["otter_refresh_token"],
         )
 
     def login_user(self, user: RegisteredUser) -> dict:
