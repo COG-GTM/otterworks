@@ -77,8 +77,9 @@ second Devin client:
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
   controller honors by bypassing the skip — up to `ALERT_DEDUP_BYPASS_LIMIT`
-  (default 10) alert-created incidents per service per 10 minutes, after which
-  extra alerts are skipped as `rate_limited`. Devin sessions also only fire when
+  (default 10) bypasses per service per 10 minutes (atomic Redis counter
+  `alerts:dedup_bypass:<service>`), after which extra alerts fall back to normal
+  dedup. Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant

@@ -29,7 +29,7 @@ module Api
         MAX_DESCRIPTION_LENGTH = 4_000
 
         # `dedup=false` alerts open one incident (and Devin session) each; cap
-        # how many a single service can open per window.
+        # how many bypasses a single service gets per window.
         DEDUP_BYPASS_WINDOW = 10.minutes
         DEFAULT_DEDUP_BYPASS_LIMIT = 10
 
@@ -80,12 +80,8 @@ module Api
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s == 'false'
-            if dedup_bypass_exhausted?(affected_service)
-              Rails.logger.warn("Alert #{alert_name} skipped — dedup=false budget exhausted for #{affected_service}")
-              return { skipped: true, reason: 'rate_limited' }
-            end
-          else
+          bypass_dedup = labels[:dedup].to_s == 'false' && reserve_dedup_bypass(affected_service, alert_name)
+          unless bypass_dedup
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -162,13 +158,16 @@ module Api
           parts.join("\n\n")
         end
 
-        def dedup_bypass_exhausted?(affected_service)
+        # Over budget, a dedup=false alert falls back to normal deduplication.
+        def reserve_dedup_bypass(affected_service, alert_name)
           limit = ENV.fetch('ALERT_DEDUP_BYPASS_LIMIT', DEFAULT_DEDUP_BYPASS_LIMIT).to_i
           limit = DEFAULT_DEDUP_BYPASS_LIMIT unless limit.positive?
+          return true if AdminSettingsService.reserve_dedup_bypass(
+            affected_service, limit: limit, window: DEDUP_BYPASS_WINDOW
+          )
 
-          Incident.where(affected_service: affected_service, reporter_id: nil)
-                  .where('created_at > ?', DEDUP_BYPASS_WINDOW.ago)
-                  .count >= limit
+          Rails.logger.warn("Alert #{alert_name}: dedup=false budget exhausted for #{affected_service}; deduplicating")
+          false
         end
 
         # Alert text is attacker-influenced and ends up in the incident record

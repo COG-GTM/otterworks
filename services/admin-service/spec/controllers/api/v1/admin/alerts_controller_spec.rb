@@ -7,6 +7,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    allow(AdminSettingsService).to receive(:reserve_dedup_bypass).and_return(true)
     allow(ENV).to receive(:fetch).and_call_original
     allow(ENV).to receive(:fetch).with('ALERT_WEBHOOK_SECRET', nil).and_return(configured_secret)
     request.headers['X-Alert-Secret'] = secret
@@ -56,16 +57,25 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(2)
     end
 
-    it 'caps dedup=false incidents per service within the window' do
+    it 'falls back to normal dedup once the dedup=false budget is spent' do
       allow(ENV).to receive(:fetch).with('ALERT_DEDUP_BYPASS_LIMIT', anything).and_return('2')
+      allow(AdminSettingsService).to receive(:reserve_dedup_bypass).and_return(true, true, false, false)
 
-      3.times do
+      4.times do
         post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
       end
 
       expect(Incident.count).to eq(2)
       expect(DevinSessionService).to have_received(:create_session).twice
-      expect(response.parsed_body['incidents'].last).to include('skipped' => true, 'reason' => 'rate_limited')
+      expect(AdminSettingsService).to have_received(:reserve_dedup_bypass)
+        .with('file-service', limit: 2, window: described_class::DEDUP_BYPASS_WINDOW).exactly(4).times
+      expect(response.parsed_body['incidents'].last).to include('skipped' => true, 'reason' => 'duplicate')
+    end
+
+    it 'still opens an incident for an over-budget dedup=false alert when none is open' do
+      allow(AdminSettingsService).to receive(:reserve_dedup_bypass).and_return(false)
+      post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      expect(Incident.count).to eq(1)
     end
 
     it 'rejects payloads without an alerts array' do
