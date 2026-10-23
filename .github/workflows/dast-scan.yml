@@ -62,6 +62,9 @@ jobs:
       - name: Unit-test the harness
         run: make dast-test
 
+      - name: Generate a per-run JWT secret
+        run: make env
+
       - name: Start the application stack
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \

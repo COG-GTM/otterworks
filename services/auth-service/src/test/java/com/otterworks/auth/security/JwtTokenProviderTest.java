@@ -5,10 +5,13 @@ import static org.assertj.core.api.Assertions.*;
 import com.otterworks.auth.entity.User;
 import io.jsonwebtoken.Claims;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
 
 class JwtTokenProviderTest {
 
@@ -108,6 +111,26 @@ class JwtTokenProviderTest {
   @Test
   void getRefreshTokenExpiry_shouldReturnConfiguredValue() {
     assertThat(jwtTokenProvider.getRefreshTokenExpiry()).isEqualTo(2592000);
+  }
+
+  @Test
+  void constructor_shouldRejectMissingSecret() {
+    assertThatThrownBy(() -> new JwtTokenProvider(null, 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("  ", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+  }
+
+  @Test
+  void applicationYml_shouldNotShipADefaultSigningSecret() {
+    YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+    yaml.setResources(new ClassPathResource("application.yml"));
+    Properties props = yaml.getObject();
+
+    assertThat(props).isNotNull();
+    assertThat(props.getProperty("jwt.secret")).isEqualTo("${JWT_SECRET}");
   }
 
   private User createTestUser() {
