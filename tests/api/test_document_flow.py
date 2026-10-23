@@ -163,6 +163,27 @@ def test_document_validation_and_ownership_risk_cases(api_client):
     )
     assert cross_user_read.status_code in {401, 403, 404}
 
+    forged_template = api_client.client.post(
+        "/api/v1/templates/",
+        headers=user_a.auth_headers,
+        json={"name": f"Forged Template {api_client.run_id}", "created_by": user_b.id},
+    )
+    assert forged_template.status_code == 403, forged_template.text
+
+    anonymous_template = api_client.client.post(
+        "/api/v1/templates/",
+        json={"name": f"Anonymous Template {api_client.run_id}", "created_by": user_b.id},
+    )
+    assert anonymous_template.status_code == 401
+
+    own_template = api_client.client.post(
+        "/api/v1/templates/",
+        headers=user_a.auth_headers,
+        json={"name": f"Owned Template {api_client.run_id}"},
+    )
+    assert own_template.status_code == 201, own_template.text
+    assert own_template.json()["created_by"] == user_a.id
+
     bad_export_format = api_client.client.get(
         f"/api/v1/documents/{document_id}/export",
         headers=user_a.auth_headers,

@@ -108,7 +108,7 @@ class TemplateCreate(BaseModel):
     description: str = Field(default="")
     content: str = Field(default="")
     content_type: str = Field(default="text/markdown")
-    created_by: UUID
+    created_by: UUID | None = None
 
 
 class TemplateResponse(BaseModel):
