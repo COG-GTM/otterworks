@@ -4,6 +4,10 @@ class JwtAuthenticator
 
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
+  # auth-service signs access and refresh tokens with the same key; only
+  # access tokens may authenticate a request.
+  ACCESS_TOKEN_TYPE = 'access'
+
   def initialize(app)
     @app = app
   end
@@ -55,8 +59,13 @@ class JwtAuthenticator
     secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
-    decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
-    decoded.first
+    payload = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512]).first
+    unless payload['type'] == ACCESS_TOKEN_TYPE
+      Rails.logger.warn('JWT authentication failed: not an access token')
+      return nil
+    end
+
+    payload
   rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
     nil

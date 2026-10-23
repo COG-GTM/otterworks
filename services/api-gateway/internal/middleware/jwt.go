@@ -18,8 +18,14 @@ type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
+
+// AccessTokenType is the `type` claim auth-service sets on access tokens.
+// Refresh tokens are signed with the same key but carry `type=refresh`; they
+// are only valid at the refresh endpoint and must never authenticate a request.
+const AccessTokenType = "access"
 
 // JWTConfig holds configuration for JWT validation middleware.
 type JWTConfig struct {
@@ -34,6 +40,9 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		// Carries the refresh token, which auth-service validates (type,
+		// signature and revocation) itself.
+		"/api/v1/auth/refresh",
 	}
 }
 
@@ -121,6 +130,10 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	// Check expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	if claims.Type != AccessTokenType {
+		return nil, fmt.Errorf("token is not an access token")
 	}
 
 	return claims, nil

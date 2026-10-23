@@ -20,8 +20,25 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
+}
+
+// auth-service signs access and refresh tokens with the same key; refresh
+// tokens are only valid at its /refresh endpoint and must never open a session.
+export const ACCESS_TOKEN_TYPE = 'access';
+
+export function verifyAccessToken(token: string, jwtSecret: string): JwtPayload {
+  const decoded = jwt.verify(token, jwtSecret);
+  if (typeof decoded !== 'object' || decoded === null) {
+    throw new Error('Invalid token payload');
+  }
+  const payload = decoded as JwtPayload;
+  if (payload.type !== ACCESS_TOKEN_TYPE) {
+    throw new Error('Token is not an access token');
+  }
+  return payload;
 }
 
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
@@ -37,7 +54,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = verifyAccessToken(token, jwtSecret);
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,
