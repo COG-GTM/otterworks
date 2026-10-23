@@ -63,13 +63,13 @@ def test_admin_health_users_features_and_permissions(api_client):
 
     health_response = api_client.client.get("/api/v1/admin/health/services", headers=user.auth_headers)
     api_client.assert_gateway_route_available(health_response, "/api/v1/admin")
-    assert health_response.status_code in {200, 401, 403, 503}, health_response.text
+    assert health_response.status_code in {401, 403}, health_response.text
 
     users_response = api_client.client.get("/api/v1/admin/users", headers=user.auth_headers)
     assert users_response.status_code in {401, 403}
 
     metrics_response = api_client.client.get("/api/v1/admin/metrics/summary", headers=user.auth_headers)
-    assert metrics_response.status_code in {200, 401, 403}
+    assert metrics_response.status_code in {401, 403}
 
     feature_create_response = api_client.client.post(
         "/api/v1/admin/features",
@@ -88,14 +88,24 @@ def test_admin_health_users_features_and_permissions(api_client):
         headers=user.auth_headers,
         params={"page": 1, "per_page": 10},
     )
-    assert announcement_response.status_code in {200, 401, 403}
+    assert announcement_response.status_code in {401, 403}
 
     audit_logs_response = api_client.client.get(
         "/api/v1/admin/audit-logs",
         headers=user.auth_headers,
         params={"page": 1, "per_page": 10},
     )
-    assert audit_logs_response.status_code in {200, 401, 403}
+    assert audit_logs_response.status_code in {401, 403}
+
+    for path in (
+        "/api/v1/admin/incidents",
+        "/api/v1/admin/config",
+        "/api/v1/admin/features",
+        "/api/v1/admin/settings/devin_credentials",
+        f"/api/v1/admin/quotas/{api_client.run_id}",
+    ):
+        response = api_client.client.get(path, headers=user.auth_headers)
+        assert response.status_code in {401, 403}, f"{path} -> {response.status_code}"
 
 
 def test_gateway_health_cors_request_id_and_unavailable_route_behavior(api_client):

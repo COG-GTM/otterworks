@@ -2,6 +2,8 @@ module Api
   module V1
     module Admin
       class AuditLogsController < ApplicationController
+        before_action :require_admin!
+
         class InvalidDateError < StandardError; end
 
         rescue_from InvalidDateError do |e|
