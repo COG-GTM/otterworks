@@ -685,6 +685,19 @@ pub async fn remove_share(
 
 // -- Folder Handlers --
 
+pub(crate) fn validate_folder_name(raw: &str) -> Result<String, ServiceError> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(ServiceError::BadRequest("name cannot be empty".into()));
+    }
+    if trimmed.chars().count() > 255 {
+        return Err(ServiceError::BadRequest(
+            "name cannot exceed 255 characters".into(),
+        ));
+    }
+    Ok(trimmed.to_string())
+}
+
 pub async fn list_folders(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
@@ -699,10 +712,11 @@ pub async fn create_folder(
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let name = validate_folder_name(&body.name)?;
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
-        name: body.name.clone(),
+        name,
         parent_id: body.parent_id,
         owner_id: body.owner_id,
         created_at: now,
@@ -737,9 +751,8 @@ pub async fn update_folder(
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
 
-    let folder = meta
-        .update_folder(&folder_id, body.name.clone(), body.parent_id)
-        .await?;
+    let name = body.name.as_deref().map(validate_folder_name).transpose()?;
+    let folder = meta.update_folder(&folder_id, name, body.parent_id).await?;
     Ok(HttpResponse::Ok().json(folder))
 }
 
@@ -827,6 +840,52 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_folder_name_rejects_empty_names() {
+        for name in ["", "   \t\n"] {
+            assert!(matches!(
+                validate_folder_name(name),
+                Err(ServiceError::BadRequest(message)) if message == "name cannot be empty"
+            ));
+        }
+    }
+
+    #[test]
+    fn validate_folder_name_trims_whitespace() {
+        assert_eq!(validate_folder_name("  Reports  ").unwrap(), "Reports");
+    }
+
+    #[test]
+    fn validate_folder_name_accepts_255_characters() {
+        assert_eq!(
+            validate_folder_name(&"x".repeat(255))
+                .unwrap()
+                .chars()
+                .count(),
+            255
+        );
+    }
+
+    #[test]
+    fn validate_folder_name_rejects_256_characters() {
+        assert!(matches!(
+            validate_folder_name(&"x".repeat(256)),
+            Err(ServiceError::BadRequest(message))
+                if message == "name cannot exceed 255 characters"
+        ));
+    }
+
+    #[test]
+    fn validate_folder_name_counts_multibyte_characters() {
+        assert_eq!(
+            validate_folder_name(&"é".repeat(255))
+                .unwrap()
+                .chars()
+                .count(),
+            255
+        );
+    }
 
     #[actix_rt::test]
     async fn test_health_endpoint() {

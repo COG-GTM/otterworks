@@ -4,6 +4,66 @@ import pytest
 pytestmark = pytest.mark.api_flow
 
 
+def test_folder_name_validation(api_client):
+    owner = api_client.register_user("folder-name-validation")
+
+    for name in ("", "   "):
+        response = api_client.client.post(
+            "/api/v1/folders",
+            headers=owner.auth_headers,
+            json={"name": name, "owner_id": owner.id},
+        )
+        assert response.status_code == 400, response.text
+        assert "name cannot be empty" in response.text
+
+    too_long_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": "x" * 256, "owner_id": owner.id},
+    )
+    assert too_long_response.status_code == 400, too_long_response.text
+
+    create_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": "  Reports  ", "owner_id": owner.id},
+    )
+    assert create_response.status_code == 201, create_response.text
+    folder = create_response.json()
+    api_client.created_folders.append(folder["id"])
+    assert folder["name"] == "Reports"
+
+    invalid_rename_response = api_client.client.put(
+        f"/api/v1/folders/{folder['id']}",
+        headers=owner.auth_headers,
+        json={"name": "  "},
+    )
+    assert invalid_rename_response.status_code == 400, invalid_rename_response.text
+    assert "name cannot be empty" in invalid_rename_response.text
+
+    get_response = api_client.client.get(
+        f"/api/v1/folders/{folder['id']}",
+        headers=owner.auth_headers,
+    )
+    assert get_response.status_code == 200, get_response.text
+    assert get_response.json()["name"] == "Reports"
+
+    rename_response = api_client.client.put(
+        f"/api/v1/folders/{folder['id']}",
+        headers=owner.auth_headers,
+        json={"name": "  Renamed  "},
+    )
+    assert rename_response.status_code == 200, rename_response.text
+    assert rename_response.json()["name"] == "Renamed"
+
+    delete_response = api_client.client.delete(
+        f"/api/v1/folders/{folder['id']}",
+        headers=owner.auth_headers,
+    )
+    assert delete_response.status_code == 204, delete_response.text
+    api_client.created_folders.remove(folder["id"])
+
+
 def test_file_folder_upload_lifecycle_share_and_download(api_client):
     owner = api_client.register_user("file-owner")
     collaborator = api_client.register_user("file-collaborator")
