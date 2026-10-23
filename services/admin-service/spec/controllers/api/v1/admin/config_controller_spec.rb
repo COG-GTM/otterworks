@@ -27,4 +27,20 @@ RSpec.describe Api::V1::Admin::ConfigController do
       expect(body['value']).to eq('new_value')
     end
   end
+
+  describe 'role enforcement' do
+    let(:config) { create(:system_config) }
+
+    it 'forbids listing configs for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :index
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'forbids reading a config for non-admin roles' do
+      set_jwt_env(request, role: 'viewer')
+      get :show, params: { id: config.id }
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
