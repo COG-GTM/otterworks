@@ -65,33 +65,42 @@ async def _maybe_inject_latency() -> None:
         await asyncio.sleep(delay)
 
 
+ACCESS_TOKEN_TYPE = "access"
+
+
 def _get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
 
 def _extract_user_id(request: Request) -> UUID | None:
-    """Extract user ID from the Authorization JWT."""
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
-        secret = _get_jwt_secret()
-        if secret:
-            try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
-                user_id_str = payload.get("user_id") or payload.get("sub")
-                if user_id_str:
-                    return UUID(str(user_id_str))
-            except (jwt.PyJWTError, ValueError):
-                pass
-        else:
-            forwarded_user_id = request.headers.get("X-User-ID")
-            if forwarded_user_id:
-                try:
-                    return UUID(str(forwarded_user_id))
-                except ValueError:
-                    pass
+    """Extract the caller's user ID from an auth-service access token.
 
-    return None
+    Only tokens carrying ``type: "access"`` are accepted: auth-service signs its
+    long-lived refresh tokens with the same secret. Without ``JWT_SECRET`` no
+    token can be verified, so the request is treated as unauthenticated rather
+    than trusting a client-supplied ``X-User-ID`` header.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    secret = _get_jwt_secret()
+    if not secret:
+        logger.error("jwt_secret_not_configured")
+        return None
+    token = auth_header[len("Bearer "):]
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+    except jwt.PyJWTError:
+        return None
+    if payload.get("type") != ACCESS_TOKEN_TYPE:
+        return None
+    user_id_str = payload.get("user_id") or payload.get("sub")
+    if not user_id_str:
+        return None
+    try:
+        return UUID(str(user_id_str))
+    except ValueError:
+        return None
 
 
 def _require_user_id(request: Request) -> UUID:

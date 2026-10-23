@@ -213,11 +213,23 @@ async def http_case(fixture: Fixture, case: dict[str, Any]) -> Any:
     return response_observation(response)
 
 
+FIXTURE_JWT_SECRET = "equivalence-fixture-jwt-secret-pad32"  # noqa: S105
+
+
+def fixture_access_token(user_id: str) -> str:
+    """An auth-service style access token for ``user_id``, signed with the fixture secret."""
+    import jwt
+
+    return jwt.encode(
+        {"sub": user_id, "type": "access"}, FIXTURE_JWT_SECRET, algorithm="HS256"
+    )
+
+
 async def share_link_http_roundtrip(fixture: Fixture, args: dict[str, Any]) -> dict[str, Any]:
     """Mint a share link over HTTP and read the document back through it."""
     document_id = args["document_id"]
     owner_id = args["owner_id"]
-    headers = {"Authorization": "Bearer fixture", "X-User-ID": owner_id}
+    headers = {"Authorization": f"Bearer {fixture_access_token(owner_id)}"}
     async with AppClient(fixture) as client:
         minted = await client.post(
             f"/api/v1/documents/{document_id}/share", headers=headers
@@ -329,6 +341,7 @@ async def main() -> int:
     spec = json.loads(args.cases.read_text(encoding="utf-8"))
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
 
+    os.environ["JWT_SECRET"] = FIXTURE_JWT_SECRET
     for key, value in spec.get("env", {}).items():
         os.environ[key] = value
 

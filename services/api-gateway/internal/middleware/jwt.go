@@ -13,11 +13,23 @@ import (
 
 type jwtClaimsKey struct{}
 
+// Token "type" claims issued by auth-service. Both kinds are signed with the
+// same secret, so the claim is what keeps a 30-day refresh token from being
+// used as an access token.
+const (
+	AccessTokenType  = "access"
+	RefreshTokenType = "refresh"
+)
+
+// RefreshPath is the only route that accepts a refresh token as its bearer.
+const RefreshPath = "/api/v1/auth/refresh"
+
 // JWTClaims represents the claims extracted from a validated JWT.
 type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -71,7 +83,7 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(tokenStr, cfg.Secret)
+			claims, err := validateToken(tokenStr, cfg.Secret, requiredTokenType(r.URL.Path))
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
@@ -103,7 +115,14 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-func validateToken(tokenStr, secret string) (*JWTClaims, error) {
+func requiredTokenType(path string) string {
+	if path == RefreshPath {
+		return RefreshTokenType
+	}
+	return AccessTokenType
+}
+
+func validateToken(tokenStr, secret, tokenType string) (*JWTClaims, error) {
 	claims := &JWTClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -121,6 +140,10 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	// Check expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	if claims.Type != tokenType {
+		return nil, fmt.Errorf("not an %s token", tokenType)
 	}
 
 	return claims, nil

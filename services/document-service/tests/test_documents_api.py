@@ -12,7 +12,7 @@ os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
 
 def _make_jwt(user_id: str) -> str:
-    return jwt.encode({"user_id": user_id}, TEST_JWT_SECRET, algorithm="HS256")
+    return jwt.encode({"user_id": user_id, "type": "access"}, TEST_JWT_SECRET, algorithm="HS256")
 
 
 @pytest.mark.asyncio
@@ -249,7 +249,9 @@ async def test_create_document_via_jwt(client: AsyncClient):
 async def test_create_document_via_jwt_hs384(client: AsyncClient):
     """Create a document using an HS384-signed JWT (matches auth-service algorithm)."""
     user_id = uuid.uuid4()
-    token = jwt.encode({"sub": str(user_id)}, TEST_JWT_SECRET, algorithm="HS384")
+    token = jwt.encode(
+        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS384"
+    )
     resp = await client.post(
         "/api/v1/documents/",
         json={"title": "HS384 Doc"},
