@@ -74,24 +74,33 @@ table_exists otterworks-audit-events || awslocal dynamodb create-table \
 # Tables restored from a pre-GSI snapshot keep their old schema; add any missing
 # audit index in place. Events written before the upgrade lack the index keys
 # and stay invisible to index queries until rewritten.
+gsi_status() {
+  awslocal dynamodb describe-table --table-name "$1" \
+    --query "Table.GlobalSecondaryIndexes[?IndexName=='$2'].IndexStatus" --output text
+}
+wait_gsi_active() {
+  local table="$1" index="$2" status=""
+  for _ in $(seq 1 60); do
+    status=$(gsi_status "$table" "$index")
+    [ "$status" = "ACTIVE" ] && return 0
+    sleep 1
+  done
+  echo "GSI ${index} on ${table} not ACTIVE after 60s (status: ${status:-unknown})" >&2
+  return 1
+}
 ensure_gsi() {
-  local table="$1" index="$2" hash="$3" range="$4"
-  if awslocal dynamodb describe-table --table-name "$table" \
-      --query "Table.GlobalSecondaryIndexes[?IndexName=='${index}'].IndexName" --output text | grep -qx "$index"; then
-    return 0
+  local table="$1" index="$2" hash="$3" range="$4" status
+  status=$(gsi_status "$table" "$index")
+  if [ -n "$status" ] && [ "$status" != "None" ]; then
+    wait_gsi_active "$table" "$index"
+    return
   fi
   echo "Adding missing GSI ${index} to ${table}"
   awslocal dynamodb update-table --table-name "$table" \
     --attribute-definitions AttributeName="$hash",AttributeType=S AttributeName="$range",AttributeType=S \
     --global-secondary-index-updates \
       "[{\"Create\":{\"IndexName\":\"${index}\",\"KeySchema\":[{\"AttributeName\":\"${hash}\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"${range}\",\"KeyType\":\"RANGE\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}}]" >/dev/null
-  for _ in $(seq 1 30); do
-    status=$(awslocal dynamodb describe-table --table-name "$table" \
-      --query "Table.GlobalSecondaryIndexes[?IndexName=='${index}'].IndexStatus" --output text)
-    [ "$status" = "ACTIVE" ] && return 0
-    sleep 1
-  done
-  echo "GSI ${index} on ${table} not ACTIVE after 30s (status: ${status:-unknown})" >&2
+  wait_gsi_active "$table" "$index"
 }
 ensure_gsi otterworks-audit-events user-index user_id timestamp
 ensure_gsi otterworks-audit-events timestamp-index date_partition timestamp
