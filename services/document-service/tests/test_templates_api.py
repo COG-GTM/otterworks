@@ -2,34 +2,88 @@
 
 import uuid
 
+import jwt
 import pytest
 from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_template(client: AsyncClient):
+async def test_create_template(client: AsyncClient, owner_id: uuid.UUID):
     resp = await client.post(
         "/api/v1/templates/",
         json={
             "name": "Meeting Notes",
             "description": "Template for meeting notes",
             "content": "## Meeting Notes\n\n- Attendees:\n- Agenda:",
-            "created_by": str(uuid.uuid4()),
         },
     )
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "Meeting Notes"
     assert data["description"] == "Template for meeting notes"
+    assert data["created_by"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_create_template_accepts_own_created_by(client: AsyncClient, owner_id: uuid.UUID):
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "Own", "created_by": str(owner_id)},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["created_by"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_create_template_rejects_forged_created_by(client: AsyncClient):
+    victim = uuid.uuid4()
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "Forged", "created_by": str(victim)},
+    )
+    assert resp.status_code == 403
+
+    listing = await client.get("/api/v1/templates/")
+    assert all(t["created_by"] != str(victim) for t in listing.json())
+
+
+@pytest.mark.asyncio
+async def test_create_template_requires_authentication(client: AsyncClient):
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "Anonymous", "created_by": str(uuid.uuid4())},
+        auth=None,
+    )
+    assert resp.status_code == 401
+
+    listing = await client.get("/api/v1/templates/")
+    assert listing.json() == []
+
+
+@pytest.mark.asyncio
+async def test_create_template_accepts_hs512_token(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    # auth-service (jjwt) signs with HS512 when JWT_SECRET is 64 bytes, as deploy scripts generate.
+    secret = "a" * 64
+    monkeypatch.setenv("JWT_SECRET", secret)
+    caller = uuid.uuid4()
+    token = jwt.encode({"sub": str(caller), "type": "access"}, secret, algorithm="HS512")
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "HS512"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["created_by"] == str(caller)
 
 
 @pytest.mark.asyncio
 async def test_list_templates(client: AsyncClient):
-    creator = str(uuid.uuid4())
     for name in ["Alpha", "Beta", "Gamma"]:
         await client.post(
             "/api/v1/templates/",
-            json={"name": name, "content": f"{name} content", "created_by": creator},
+            json={"name": name, "content": f"{name} content"},
         )
 
     resp = await client.get("/api/v1/templates/")
@@ -47,7 +101,6 @@ async def test_create_document_from_template(client: AsyncClient, owner_id: uuid
             "name": "Blank Doc",
             "content": "Start typing here...",
             "content_type": "text/plain",
-            "created_by": str(uuid.uuid4()),
         },
     )
     template_id = template_resp.json()["id"]

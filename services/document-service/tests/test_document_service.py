@@ -198,10 +198,11 @@ async def test_template_crud_and_create_from(
             name="Report",
             description="Monthly report",
             content="## Report\n\nContent here",
-            created_by=uuid.uuid4(),
-        )
+        ),
+        created_by=owner_id,
     )
     assert template.name == "Report"
+    assert template.created_by == owner_id
 
     templates = await service.list_templates()
     assert len(templates) == 1
