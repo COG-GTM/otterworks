@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -150,12 +152,133 @@ class TestAdvancedSearchEndpoint:
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
+    SERVICE_TOKEN = "svc-token-for-tests"
+
+    @pytest.fixture(autouse=True)
+    def _reset_analytics(self):
+        from app.services import meilisearch_client as mc
+
+        def clear():
+            mc._search_analytics["queries"] = []
+            mc._search_analytics["total_searches"] = 0
+            mc._search_analytics["total_results"] = 0
+            mc._owner_totals.clear()
+
+        clear()
+        yield
+        clear()
+
+    @pytest.fixture()
+    def token_client(self, app):
+        import dataclasses
+
+        from app.config import AuthConfig
+
+        app.config["APP_CONFIG"] = dataclasses.replace(
+            app.config["APP_CONFIG"],
+            auth=AuthConfig(service_token=self.SERVICE_TOKEN, require_auth=False),
+        )
+        return app.test_client()
+
+    @staticmethod
+    def _search(client, user_id, query, hits):
+        from unittest.mock import patch as _patch
+
+        service = client.application.config["SEARCH_SERVICE"]
+        index = service.client.index.return_value
+        with _patch.object(index, "search", return_value={"hits": [], "estimatedTotalHits": hits}):
+            resp = client.get(f"/api/v1/search/?q={query}&type=document", headers={"X-User-ID": user_id})
+        assert resp.status_code == 200
+
     def test_analytics_returns_data(self, client):
-        """Analytics endpoint returns analytics data."""
-        response = client.get("/api/v1/search/analytics")
+        """Analytics endpoint returns analytics data for an authenticated user."""
+        response = client.get("/api/v1/search/analytics", headers={"X-User-ID": "user-1"})
         assert response.status_code == 200
         data = response.get_json()
         assert "popular_queries" in data
         assert "zero_result_queries" in data
         assert "total_searches" in data
         assert "avg_results_per_query" in data
+
+    def test_analytics_rejects_anonymous_even_when_auth_disabled(self, client):
+        """No service token and no gateway identity -> 403."""
+        response = client.get("/api/v1/search/analytics")
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "forbidden"}
+
+    def test_user_only_sees_own_queries(self, client):
+        """Another user's raw query strings and totals are never returned."""
+        self._search(client, "victim", "acquisition-target-acme", 0)
+        self._search(client, "victim", "q3-layoffs", 3)
+        self._search(client, "attacker", "budget", 2)
+
+        data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "attacker"}).get_json()
+        assert data["popular_queries"] == [{"query": "budget", "count": 1}]
+        assert data["zero_result_queries"] == []
+        assert data["total_searches"] == 1
+        assert data["avg_results_per_query"] == 2.0
+        body = str(data)
+        assert "acquisition-target-acme" not in body
+        assert "q3-layoffs" not in body
+
+        victim = client.get("/api/v1/search/analytics", headers={"X-User-ID": "victim"}).get_json()
+        assert {q["query"] for q in victim["popular_queries"]} == {"acquisition-target-acme", "q3-layoffs"}
+        assert victim["zero_result_queries"] == [{"query": "acquisition-target-acme", "count": 1}]
+        assert victim["total_searches"] == 2
+
+    def test_advanced_search_is_scoped_too(self, client):
+        """Queries recorded by /advanced are attributed to the caller."""
+        client.post("/api/v1/search/advanced", json={"q": "secret-merger"}, headers={"X-User-ID": "victim"})
+        data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "attacker"}).get_json()
+        assert data["total_searches"] == 0
+        assert "secret-merger" not in str(data)
+
+    def test_user_totals_survive_query_list_eviction(self, monkeypatch):
+        """Other users' searches evicting old entries don't shrink a user's totals."""
+        from app.services import meilisearch_client as mc
+
+        monkeypatch.setattr(mc, "MAX_ANALYTICS_ENTRIES", 3)
+        mc.record_search_analytics("mine", 4, "user-a")
+        for i in range(5):
+            mc.record_search_analytics(f"other-{i}", 1, "user-b")
+
+        data = mc.get_search_analytics(owner_id="user-a")
+        assert data.total_searches == 1
+        assert data.avg_results_per_query == 4.0
+        assert data.popular_queries == []
+
+    def test_owner_counters_are_bounded(self, monkeypatch):
+        from app.services import meilisearch_client as mc
+
+        monkeypatch.setattr(mc, "MAX_ANALYTICS_OWNERS", 2)
+        for owner in ("a", "b", "c"):
+            mc.record_search_analytics("q", 1, owner)
+        assert list(mc._owner_totals) == ["b", "c"]
+        assert mc.get_search_analytics(owner_id="a").total_searches == 0
+
+    def test_service_token_gets_global_analytics(self, token_client):
+        """The internal service token still sees aggregate analytics across users."""
+        self._search(token_client, "victim", "q3-layoffs", 0)
+        self._search(token_client, "attacker", "budget", 2)
+
+        resp = token_client.get(
+            "/api/v1/search/analytics", headers={"Authorization": f"Bearer {self.SERVICE_TOKEN}"}
+        )
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["total_searches"] == 2
+        assert {q["query"] for q in data["popular_queries"]} == {"q3-layoffs", "budget"}
+
+    def test_wrong_service_token_is_scoped_to_user(self, token_client):
+        """A bad bearer token falls back to the caller's own scope."""
+        self._search(token_client, "victim", "q3-layoffs", 0)
+        resp = token_client.get(
+            "/api/v1/search/analytics",
+            headers={"Authorization": "Bearer nope", "X-User-ID": "attacker"},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["total_searches"] == 0
+
+    def test_wrong_service_token_without_user_is_rejected(self, token_client):
+        resp = token_client.get("/api/v1/search/analytics", headers={"Authorization": "Bearer nope"})
+        assert resp.status_code == 403

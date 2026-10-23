@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import OrderedDict
 from typing import Any
 
 import meilisearch
@@ -26,26 +27,53 @@ _search_analytics: dict[str, Any] = {
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
+MAX_ANALYTICS_OWNERS = 10000
+
+# Per-user cumulative counters (LRU-bounded) so scoped totals don't shrink
+# when other users' searches evict entries from the bounded query list.
+_owner_totals: OrderedDict[str, list[int]] = OrderedDict()
 
 
-def record_search_analytics(query: str, result_count: int) -> None:
-    """Record a search query for analytics purposes."""
+def record_search_analytics(query: str, result_count: int, owner_id: str | None = None) -> None:
+    """Record a search query for analytics purposes, tagged with the searching user."""
     with _analytics_lock:
         _search_analytics["queries"].append(
-            {"query": query, "result_count": result_count, "timestamp": time.time()}
+            {
+                "query": query,
+                "result_count": result_count,
+                "owner_id": owner_id,
+                "timestamp": time.time(),
+            }
         )
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
+        if owner_id is not None:
+            counters = _owner_totals.pop(owner_id, [0, 0])
+            counters[0] += 1
+            counters[1] += result_count
+            _owner_totals[owner_id] = counters
+            if len(_owner_totals) > MAX_ANALYTICS_OWNERS:
+                _owner_totals.popitem(last=False)
         if len(_search_analytics["queries"]) > MAX_ANALYTICS_ENTRIES:
             _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
 
-def get_search_analytics() -> AnalyticsData:
-    """Compute search analytics from recorded queries."""
+def get_search_analytics(owner_id: str | None = None) -> AnalyticsData:
+    """Compute search analytics from recorded queries.
+
+    With ``owner_id`` the result only covers that user's own recorded
+    queries; without it the result is global and must only be returned to
+    trusted internal callers.
+    """
     with _analytics_lock:
         queries = list(_search_analytics["queries"])
         total_searches = _search_analytics["total_searches"]
         total_results = _search_analytics["total_results"]
+        if owner_id is not None:
+            total_searches, total_results = _owner_totals.get(owner_id, (0, 0))
+
+    if owner_id is not None:
+        queries = [entry for entry in queries if entry.get("owner_id") == owner_id]
 
     query_counts: dict[str, int] = {}
     zero_result_counts: dict[str, int] = {}
@@ -181,7 +209,7 @@ class MeiliSearchService:
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))
 
-        record_search_analytics(query, total)
+        record_search_analytics(query, total, owner_id)
 
         start = (page - 1) * page_size if multi_index else 0
         page_hits = all_hits[start : start + page_size]
@@ -234,7 +262,7 @@ class MeiliSearchService:
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))
 
-        record_search_analytics(search_term or "*", total)
+        record_search_analytics(search_term or "*", total, owner_id)
 
         start = (page - 1) * page_size if multi_index else 0
         page_hits = all_hits[start : start + page_size]

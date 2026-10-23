@@ -9,6 +9,7 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import has_service_token
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -159,9 +160,21 @@ def advanced_search() -> tuple:
 
 @search_bp.route("/analytics", methods=["GET"])
 def search_analytics() -> tuple:
-    """Search analytics: popular queries, zero-result queries."""
+    """Search analytics: popular queries, zero-result queries.
+
+    Service-token callers get global analytics across all users. A
+    gateway-authenticated user only gets analytics for their own queries,
+    and a caller with neither identity is rejected.
+    """
+    if has_service_token(current_app.config["APP_CONFIG"].auth.service_token):
+        owner_id = None
+    else:
+        owner_id = request.headers.get("X-User-ID", "").strip()
+        if not owner_id:
+            logger.warning("analytics_forbidden", path=request.path)
+            return jsonify({"error": "forbidden"}), 403
     try:
-        analytics = get_search_analytics()
+        analytics = get_search_analytics(owner_id=owner_id)
         return jsonify(analytics.to_dict()), 200
     except Exception:
         logger.exception("analytics_failed")
