@@ -37,12 +37,13 @@ async def test_share_endpoint_round_trip(client, owner_id: uuid.UUID, monkeypatc
     # app off the X-User-ID fallback for the whole session. Drop it here so the
     # identity path this test exercises is the same whichever tests ran first.
     monkeypatch.delenv("JWT_SECRET", raising=False)
+    headers = {"Authorization": "Bearer token", "X-User-ID": str(owner_id)}
     created = await client.post(
         "/api/v1/documents/",
         json={"title": "Shared", "content": "body", "owner_id": str(owner_id)},
+        headers=headers,
     )
     doc_id = created.json()["id"]
-    headers = {"Authorization": "Bearer token", "X-User-ID": str(owner_id)}
 
     minted = await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
     assert minted.status_code == 200
