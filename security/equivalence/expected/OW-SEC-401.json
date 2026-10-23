@@ -501,10 +501,10 @@
  ],
  "finding": "OW-SEC-401",
  "fingerprint": {
-  "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
+  "cases_sha256": "1f4d6fa7a6cfea720a1e7b91cee82a86c4349fa7618b19f076836b770dd9d85c",
   "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
   "observed_sha256": {
-   "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
+   "services/document-service/app/api/documents.py": "9f7f11b6447ed42ee7c5ef30dac941e3a523870544103dc27a9e43a630d253c1"
   },
   "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
   "subject_sha256": {
@@ -517,37 +517,27 @@
   "app.services.document_query_repository:DocumentQueryRepository.search_documents": "search_documents(self, *, owner_id: 'str | None' = None, title_contains: 'str | None' = None, content_type: 'str | None' = None, folder_id: 'str | None' = None, sort: 'str' = 'updated_at', direction: 'str' = 'desc', limit: 'int' = 20, offset: 'int' = 0) -> 'list[dict[str, Any]]'"
  },
  "module": "document-service",
- "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
- "recorded_at": "2026-08-18T01:19:28.827608+00:00",
+ "reason": "document list/search now require the caller's identity and are owner-scoped (sfind-55981286); HTTP list cases authenticate as the fixture owner",
+ "recorded_at": "2026-10-23T04:45:59.408311+00:00",
  "rerecorded_from": {
   "fingerprint": {
    "cases_sha256": "e5e712c2e7cde249eeac558f8e7990d59eadceaa94b80caaecea3b499a2b6a58",
    "emitter_sha256": "085ebb3cb2d4f1799457ba0bdec2528f8bb2d5c6eff853f78c81b3340ffa0dc9",
    "observed_sha256": {
-    "services/document-service/app/api/documents.py": "dfac23263dfc7d0d548f34c33b2abcb3c8b09b6b8eeafd543ad03df8702934e1"
+    "services/document-service/app/api/documents.py": "0026eb7fda38ff10fce4d7699512a2d2af87f51b032c99ef000b7c20a8e75ca5"
    },
    "seed_sha256": "8fdf4fcc58c4b0e23d90cb65e10c372edce4633651cabff071ebdc8c6ac7ee97",
    "subject_sha256": {
     "services/document-service/app/services/document_query_repository.py": "a79c49a410fe174bab2247f776088d76d747c8bacc96c8f91fd5e0d281b95e6d"
    }
   },
-  "reason": "harness v2: subject vs observes split so one finding's refactor no longer regrades its neighbours",
-  "recorded_at": "2026-08-18T00:47:16.618672+00:00"
+  "reason": "route handler now maps every unreadable-export OSError to the recorded 404; refresh observed-file provenance and suite pass list",
+  "recorded_at": "2026-08-18T01:19:28.827608+00:00"
  },
  "suite": {
-  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-y77h6q2j/junit.xml",
-  "exit_code": 1,
-  "failed": [
-   "tests.test_documents_api::test_delete_document",
-   "tests.test_documents_api::test_document_versions",
-   "tests.test_documents_api::test_export_document_html",
-   "tests.test_documents_api::test_export_document_markdown",
-   "tests.test_documents_api::test_get_document",
-   "tests.test_documents_api::test_get_document_not_found",
-   "tests.test_documents_api::test_patch_document",
-   "tests.test_documents_api::test_restore_version",
-   "tests.test_documents_api::test_update_document"
-  ],
+  "command": "poetry run pytest -q --junitxml=/tmp/ow-equivalence-junit-76s3kwjm/junit.xml",
+  "exit_code": 0,
+  "failed": [],
   "passed": [
    "tests.test_comments_api::test_add_comment",
    "tests.test_comments_api::test_add_comment_document_not_found",
@@ -556,9 +546,11 @@
    "tests.test_comments_api::test_list_comments",
    "tests.test_document_filters::test_filter_by_content_type",
    "tests.test_document_filters::test_filter_by_title_fragment",
+   "tests.test_document_filters::test_filter_is_scoped_to_caller",
    "tests.test_document_filters::test_filter_no_match_returns_empty",
    "tests.test_document_filters::test_filter_orders_by_title_ascending",
    "tests.test_document_filters::test_filter_paginates",
+   "tests.test_document_filters::test_filter_requires_authentication",
    "tests.test_document_filters::test_unfiltered_list_is_unchanged",
    "tests.test_document_service::test_add_comment_to_nonexistent_document",
    "tests.test_document_service::test_comments_crud",
@@ -571,17 +563,35 @@
    "tests.test_document_service::test_patch_partial_update",
    "tests.test_document_service::test_restore_version",
    "tests.test_document_service::test_search",
+   "tests.test_document_service::test_search_is_scoped_to_owner",
    "tests.test_document_service::test_soft_delete",
    "tests.test_document_service::test_template_crud_and_create_from",
    "tests.test_document_service::test_update_creates_version",
+   "tests.test_document_service_version_order::test_list_versions_matches_recent_versions_ordering",
+   "tests.test_document_service_version_order::test_list_versions_returns_newest_first",
    "tests.test_documents_api::test_create_document",
    "tests.test_documents_api::test_create_document_no_auth_returns_401",
    "tests.test_documents_api::test_create_document_via_jwt",
    "tests.test_documents_api::test_create_document_via_jwt_hs384",
    "tests.test_documents_api::test_create_document_x_user_id_header_ignored",
+   "tests.test_documents_api::test_delete_document",
+   "tests.test_documents_api::test_document_versions",
+   "tests.test_documents_api::test_export_document_html",
+   "tests.test_documents_api::test_export_document_markdown",
+   "tests.test_documents_api::test_get_document",
+   "tests.test_documents_api::test_get_document_not_found",
    "tests.test_documents_api::test_list_documents",
    "tests.test_documents_api::test_list_documents_pagination",
+   "tests.test_documents_api::test_list_documents_requires_authentication[/api/v1/documents/]",
+   "tests.test_documents_api::test_list_documents_requires_authentication[/api/v1/documents]",
+   "tests.test_documents_api::test_list_documents_scoped_to_caller[/api/v1/documents/]",
+   "tests.test_documents_api::test_list_documents_scoped_to_caller[/api/v1/documents]",
+   "tests.test_documents_api::test_patch_document",
+   "tests.test_documents_api::test_restore_version",
    "tests.test_documents_api::test_search_documents",
+   "tests.test_documents_api::test_search_documents_requires_authentication",
+   "tests.test_documents_api::test_search_documents_scoped_to_caller",
+   "tests.test_documents_api::test_update_document",
    "tests.test_export_archive::test_export_endpoint_404s_for_undecodable_file",
    "tests.test_export_archive::test_export_endpoint_404s_for_unknown_name",
    "tests.test_export_archive::test_export_endpoint_404s_for_unreadable_file",
