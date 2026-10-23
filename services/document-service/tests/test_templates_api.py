@@ -70,3 +70,43 @@ async def test_create_from_template_not_found(client: AsyncClient, owner_id: uui
         json={"title": "Orphan", "owner_id": str(owner_id)},
     )
     assert resp.status_code == 404
+
+
+async def _make_template(client: AsyncClient) -> str:
+    resp = await client.post(
+        "/api/v1/templates/",
+        json={"name": "Tpl", "content": "tpl body", "created_by": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 201
+    return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_from_template_owner_is_caller(client: AsyncClient, owner_id: uuid.UUID):
+    template_id = await _make_template(client)
+    resp = await client.post(
+        f"/api/v1/documents/from-template/{template_id}", json={"title": "Mine"}
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_create_from_template_rejects_foreign_owner_id(client: AsyncClient):
+    template_id = await _make_template(client)
+    resp = await client.post(
+        f"/api/v1/documents/from-template/{template_id}",
+        json={"title": "Forged", "owner_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_from_template_requires_auth(client: AsyncClient):
+    template_id = await _make_template(client)
+    resp = await client.post(
+        f"/api/v1/documents/from-template/{template_id}",
+        json={"title": "Anon", "owner_id": str(uuid.uuid4())},
+        auth=None,
+    )
+    assert resp.status_code == 401
