@@ -13,12 +13,20 @@ import scala.concurrent.{ExecutionContext, Future}
  * Useful for tests and local development where a live database is not
  * available. Aggregations are delegated to [[MetricsAggregator]] so its results
  * match the durable [[PostgresMetricsRepository]] exactly.
+ *
+ * The buffer is bounded to `maxEvents` (oldest evicted first) so per-query
+ * snapshot and aggregation cost cannot grow without limit.
  */
-class InMemoryMetricsRepository(config: PostgresConfig)(using ec: ExecutionContext) extends MetricsRepository:
+class InMemoryMetricsRepository(
+    config: PostgresConfig,
+    maxEvents: Int = InMemoryMetricsRepository.DefaultMaxEvents
+)(using ec: ExecutionContext) extends MetricsRepository:
+
+  require(maxEvents > 0, "maxEvents must be positive")
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private val events = mutable.ListBuffer.empty[AnalyticsEvent]
+  private val events = mutable.ArrayDeque.empty[AnalyticsEvent]
   private val lock = new Object
 
   private def snapshot(): Seq[AnalyticsEvent] = lock.synchronized(events.toSeq)
@@ -26,6 +34,7 @@ class InMemoryMetricsRepository(config: PostgresConfig)(using ec: ExecutionConte
   def storeEvent(event: AnalyticsEvent): Future[Unit] = Future {
     lock.synchronized {
       events += event
+      while events.size > maxEvents do events.removeHead()
     }
     logger.debug("Stored event {} of type {}", event.eventId, event.eventType)
   }
@@ -53,3 +62,6 @@ class InMemoryMetricsRepository(config: PostgresConfig)(using ec: ExecutionConte
 
   def getEventCount: Future[Long] =
     Future(snapshot().size.toLong)
+
+object InMemoryMetricsRepository:
+  val DefaultMaxEvents: Int = 100000

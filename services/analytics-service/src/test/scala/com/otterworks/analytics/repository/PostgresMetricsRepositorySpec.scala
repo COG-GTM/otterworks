@@ -161,3 +161,65 @@ class PostgresMetricsRepositorySpec extends AnyFlatSpec with Matchers with Scala
     val pg2 = new PostgresMetricsRepository(database)
     pg2.getEventCount.futureValue shouldBe before
   }
+
+  it should "bound result sizes server-side and still reconcile with the in-memory store" in {
+    val database = requireDb()
+    val pg = new PostgresMetricsRepository(database)
+    val n = MetricsAggregator.Limits.MaxExportRows + 50
+    val newest = base.plusSeconds(1800)
+    val events = (1 to n).map { i =>
+      AnalyticsEvent(f"b$i%06d", EventType.DocumentViewed, s"user-${i % 1200}", s"doc-${i % 150}", "document",
+        Map.empty, newest.minusNanos(i.toLong * 1000L))
+    }
+    val newestNanos = newest.getEpochSecond * 1000000000L + newest.getNano
+    // Bulk insert in the same order as `events` so serial ids follow insertion order.
+    Await.result(
+      database.database.run(sqlu"""
+        INSERT INTO analytics_events (event_id, event_type, user_id, resource_id, resource_type, metadata, occurred_at)
+        SELECT 'b' || lpad(i::text, 6, '0'), ${EventType.DocumentViewed}, 'user-' || (i % 1200),
+               'doc-' || (i % 150), 'document', '{}', ${newestNanos} - i * 1000
+        FROM generate_series(1, ${n}) AS i ORDER BY i"""),
+      30.seconds
+    )
+    val mem = new InMemoryMetricsRepository(PostgresConfig("", "", "", 1))
+    events.foreach(e => Await.result(mem.storeEvent(e), 10.seconds))
+
+    val export = pg.getExportData("7d").futureValue
+    export should have size MetricsAggregator.Limits.MaxExportRows
+    export.head("event_id") shouldBe "b000001"
+    export shouldBe mem.getExportData("7d").futureValue
+
+    val active = pg.getActiveUsers("7d").futureValue
+    active.count shouldBe 1200
+    active.users should have size MetricsAggregator.Limits.MaxActiveUsers
+    active shouldBe mem.getActiveUsers("7d").futureValue
+
+    val top = pg.getTopContent("documents", "7d", 10000).futureValue
+    top.items should have size MetricsAggregator.Limits.MaxTopContent
+    top shouldBe mem.getTopContent("documents", "7d", 10000).futureValue
+
+    pg.getUserActivity("user-7").futureValue shouldBe mem.getUserActivity("user-7").futureValue
+    pg.getDashboardSummary("7d").futureValue shouldBe mem.getDashboardSummary("7d").futureValue
+  }
+
+  it should "parse storage bytes exactly like the in-memory aggregation" in {
+    val database = requireDb()
+    val pg = new PostgresMetricsRepository(database)
+    val odd = List(
+      AnalyticsEvent("s1", EventType.StorageAllocated, "user-1", "f1", "file", Map("bytes" -> "100"), at(1)),
+      AnalyticsEvent("s2", EventType.StorageAllocated, "user-1", "f2", "file", Map("bytes" -> Long.MaxValue.toString), at(2)),
+      AnalyticsEvent("s3", EventType.StorageAllocated, "user-1", "f3", "document", Map("bytes" -> "9223372036854775808"), at(3)),
+      AnalyticsEvent("s4", EventType.StorageReleased, "user-1", "f1", "file", Map("bytes" -> "-5"), at(4)),
+      AnalyticsEvent("s5", EventType.StorageAllocated, "user-2", "f4", "file", Map("bytes" -> "abc"), at(5)),
+      AnalyticsEvent("s6", EventType.StorageAllocated, "user-2", "f5", "image", Map.empty, at(6)),
+      AnalyticsEvent("s7", EventType.StorageAllocated, "user-2", "f6", "file", Map("bytes" -> "+42"), at(7)),
+      AnalyticsEvent("s8", EventType.StorageReleased, "user-2", "f6", "file", Map("bytes" -> "7"), at(8))
+    )
+    odd.foreach(e => Await.result(pg.storeEvent(e), 10.seconds))
+    val mem = new InMemoryMetricsRepository(PostgresConfig("", "", "", 1))
+    odd.foreach(e => Await.result(mem.storeEvent(e), 10.seconds))
+
+    for user <- List(None, Some("user-1"), Some("user-2"), Some("nobody")) do
+      pg.getStorageUsage(user).futureValue shouldBe mem.getStorageUsage(user).futureValue
+    pg.getDashboardSummary("30d").futureValue shouldBe mem.getDashboardSummary("30d").futureValue
+  }

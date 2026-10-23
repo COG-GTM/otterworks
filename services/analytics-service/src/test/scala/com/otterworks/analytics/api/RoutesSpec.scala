@@ -8,13 +8,15 @@ import com.otterworks.analytics.config.PostgresConfig
 import com.otterworks.analytics.model.*
 import com.otterworks.analytics.model.AnalyticsEventJsonProtocol.{*, given}
 import com.otterworks.analytics.model.DashboardJsonProtocol.{*, given}
-import com.otterworks.analytics.repository.MetricsRepository
+import com.otterworks.analytics.repository.{InMemoryMetricsRepository, MetricsRepository}
 import com.otterworks.analytics.service.AnalyticsService
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Millis, Seconds, Span}
 import spray.json.*
+
+import scala.concurrent.{Future, Promise}
 
 class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with ScalaFutures:
 
@@ -204,4 +206,51 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
       csv should include("event_id,event_type,user_id,resource_id,resource_type,timestamp")
       csv should include("document.created")
     }
+  }
+
+  // --- Request limits ---
+
+  "GET /api/v1/analytics/top-content" should "reject a limit above the maximum page size" in {
+    val (_, analyticsRoutes, _) = createRoutes()
+    for limit <- List("0", "-1", "101", "100000") do
+      Get(s"/api/v1/analytics/top-content?limit=$limit") ~> akka.http.scaladsl.server.Route.seal(analyticsRoutes.routes) ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    Get("/api/v1/analytics/top-content?limit=100") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
+    }
+  }
+
+  "AnalyticsRoutes" should "shed queries beyond maxConcurrentQueries and release slots when they finish" in {
+    val gate = Promise[Unit]()
+    val repo = new InMemoryMetricsRepository(testConfig) {
+      override def getDashboardSummary(period: String): Future[DashboardSummary] =
+        gate.future.flatMap(_ => super.getDashboardSummary(period))
+    }
+    val routes = AnalyticsRoutes(AnalyticsService(repo), maxConcurrentQueries = 1).routes
+
+    val blocked = Get("/api/v1/analytics/dashboard") ~> routes
+    Get("/api/v1/analytics/active-users") ~> routes ~> check {
+      status shouldBe StatusCodes.ServiceUnavailable
+      header("Retry-After").map(_.value) shouldBe Some("1")
+    }
+    gate.success(())
+    blocked ~> check { status shouldBe StatusCodes.OK }
+    Get("/api/v1/analytics/active-users") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+    }
+  }
+
+  "POST /api/v1/analytics/events" should "reject oversized bodies and fields" in {
+    val (eventRoutes, _, _) = createRoutes()
+    val sealedRoutes = akka.http.scaladsl.server.Route.seal(eventRoutes.routes)
+    def post(req: TrackEventRequest) =
+      Post("/api/v1/analytics/events", HttpEntity(ContentTypes.`application/json`, req.toJson.compactPrint))
+
+    val longUser = TrackEventRequest("document.created", "u" * 129, "doc-1", "document", None)
+    post(longUser) ~> sealedRoutes ~> check { status shouldBe StatusCodes.BadRequest }
+
+    val bigBody = TrackEventRequest("document.created", "user-1", "doc-1", "document",
+      Some((1 to 30).map(i => s"k$i" -> ("x" * 1000)).toMap))
+    post(bigBody) ~> sealedRoutes ~> check { status.intValue shouldBe 413 }
   }
