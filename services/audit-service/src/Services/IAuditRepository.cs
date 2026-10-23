@@ -4,9 +4,9 @@ public interface IAuditRepository
 {
     Task SaveEventAsync(AuditEvent auditEvent);
     Task<AuditEvent?> GetEventAsync(string id);
-    Task<AuditEventPage> QueryEventsAsync(string? userId, string? action, string? resourceType, string? resourceId, DateTime? from, DateTime? to, int page, int pageSize);
-    Task<List<AuditEvent>> GetAllUserEventsAsync(string userId);
-    Task<List<AuditEvent>> GetResourceHistoryAsync(string resourceId);
-    Task<List<AuditEvent>> GetEventsByDateRangeAsync(DateTime from, DateTime to);
+    Task<AuditEventPage> QueryEventsAsync(AuditEventQuery query);
+    Task<AuditEventPage> GetUserEventsAsync(string userId, DateTime from, DateTime to, int maxEvents);
+    Task<AuditEventPage> GetResourceHistoryAsync(string resourceId, string? cursor, int pageSize);
+    Task<AuditEventPage> GetEventsByDateRangeAsync(DateTime from, DateTime to, int maxEvents);
     Task<int> DeleteEventsAsync(IEnumerable<string> eventIds);
 }

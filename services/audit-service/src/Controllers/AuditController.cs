@@ -67,14 +67,19 @@ public static class AuditController
         string? resource_type,
         DateTime? from,
         DateTime? to,
+        string? cursor,
         int? page,
         int? size,
         IAuditService auditService)
     {
-        var pageNumber = page ?? 1;
-        var pageSize = Math.Clamp(size ?? 20, 1, 100);
+        if (page > 1 && string.IsNullOrEmpty(cursor))
+        {
+            return Results.BadRequest(new { error = "Offset pagination is not supported; pass the previous response's nextCursor as 'cursor'." });
+        }
 
-        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
+        var pageSize = Math.Clamp(size ?? 20, 1, 100);
+        var query = new AuditEventQuery(user_id, action, resource_type, resource, from, to, cursor, pageSize);
+        var result = await auditService.QueryEventsAsync(query);
         return Results.Ok(result);
     }
 
@@ -98,9 +103,12 @@ public static class AuditController
 
     private static async Task<IResult> GetResourceHistory(
         string resourceId,
+        string? cursor,
+        int? size,
         IAuditService auditService)
     {
-        var history = await auditService.GetResourceHistoryAsync(resourceId);
+        var pageSize = Math.Clamp(size ?? 50, 1, 100);
+        var history = await auditService.GetResourceHistoryAsync(resourceId, cursor, pageSize);
         return Results.Ok(history);
     }
 

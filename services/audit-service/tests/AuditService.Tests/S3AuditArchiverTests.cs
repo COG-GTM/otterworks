@@ -40,13 +40,14 @@ public class S3AuditArchiverTests
             new() { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow },
         };
 
-        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to, It.IsAny<int>())).ReturnsAsync(new AuditEventPage { Events = events });
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
 
         var result = await _archiver.ExportAsync(from, to, "json");
 
         Assert.Equal("json", result.Format);
         Assert.Equal(1, result.EventCount);
+        Assert.False(result.Truncated);
         Assert.Contains("test-archive-bucket", result.DownloadUrl);
         Assert.Contains(".json", result.DownloadUrl);
 
@@ -66,7 +67,7 @@ public class S3AuditArchiverTests
             new() { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow },
         };
 
-        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to, It.IsAny<int>())).ReturnsAsync(new AuditEventPage { Events = events });
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
 
         var result = await _archiver.ExportAsync(from, to, "csv");
@@ -90,13 +91,16 @@ public class S3AuditArchiverTests
             new() { Id = "old-2", UserId = "u2", Action = "update", ResourceType = "doc", ResourceId = "d2", Timestamp = olderThan.AddDays(-5) },
         };
 
-        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan)).ReturnsAsync(events);
+        _mockRepository
+            .Setup(r => r.GetEventsByDateRangeAsync(olderThan.AddDays(-366), olderThan, 10000))
+            .ReturnsAsync(new AuditEventPage { Events = events, NextCursor = "more" });
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
         _mockRepository.Setup(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>())).ReturnsAsync(2);
 
         var result = await _archiver.ArchiveOldEventsAsync(olderThan);
 
         Assert.Equal(2, result.ArchivedCount);
+        Assert.True(result.HasMore);
         Assert.Contains("test-archive-bucket", result.S3Location);
         Assert.Equal("GLACIER", result.StorageClass);
 
@@ -115,8 +119,8 @@ public class S3AuditArchiverTests
         var olderThan = DateTime.UtcNow.AddDays(-90);
 
         _mockRepository
-            .Setup(r => r.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan))
-            .ReturnsAsync(new List<AuditEvent>());
+            .Setup(r => r.GetEventsByDateRangeAsync(It.IsAny<DateTime>(), olderThan, It.IsAny<int>()))
+            .ReturnsAsync(new AuditEventPage());
 
         var result = await _archiver.ArchiveOldEventsAsync(olderThan);
 

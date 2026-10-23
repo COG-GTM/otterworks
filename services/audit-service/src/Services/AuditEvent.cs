@@ -16,7 +16,24 @@ public class AuditEvent
 public class AuditEventPage
 {
     public List<AuditEvent> Events { get; set; } = new();
-    public int Total { get; set; }
-    public int Page { get; set; }
     public int PageSize { get; set; }
+    public string? NextCursor { get; set; }
+    public bool HasMore => NextCursor is not null;
+}
+
+public sealed record AuditEventQuery(
+    string? UserId = null,
+    string? Action = null,
+    string? ResourceType = null,
+    string? ResourceId = null,
+    DateTime? From = null,
+    DateTime? To = null,
+    string? Cursor = null,
+    int PageSize = 20);
+
+public class InvalidAuditQueryException : ArgumentException
+{
+    public InvalidAuditQueryException(string message) : base(message)
+    {
+    }
 }
