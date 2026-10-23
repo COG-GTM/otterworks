@@ -157,6 +157,13 @@ def test_document_validation_and_ownership_risk_cases(api_client):
     assert create_response.status_code == 201, create_response.text
     document_id = create_response.json()["id"]
 
+    forged_owner = api_client.client.post(
+        "/api/v1/documents/",
+        headers=user_b.auth_headers,
+        json={"title": "Forged owner", "content": "planted", "owner_id": user_a.id},
+    )
+    assert forged_owner.status_code == 403, forged_owner.text
+
     cross_user_read = api_client.client.get(
         f"/api/v1/documents/{document_id}",
         headers=user_b.auth_headers,

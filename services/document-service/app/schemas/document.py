@@ -126,5 +126,5 @@ class TemplateResponse(BaseModel):
 
 class DocumentFromTemplate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
-    owner_id: UUID
+    owner_id: UUID | None = None
     folder_id: UUID | None = None

@@ -6,6 +6,9 @@ import uuid
 import jwt
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.models.document import Document
 
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
@@ -281,3 +284,44 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_document_rejects_foreign_owner_id(
+    client: AsyncClient, db_session, owner_id: uuid.UUID
+):
+    """A caller cannot create a document owned by another user via body owner_id."""
+    victim_id = uuid.uuid4()
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Forged", "content": "planted", "owner_id": str(victim_id)},
+    )
+    assert resp.status_code == 403
+
+    owners = (await db_session.execute(select(Document.owner_id))).scalars().all()
+    assert victim_id not in owners
+
+
+@pytest.mark.asyncio
+async def test_create_document_with_owner_id_requires_auth(client: AsyncClient):
+    """A body owner_id no longer substitutes for authentication."""
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Anon", "owner_id": str(uuid.uuid4())},
+        auth=None,
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_create_document_owner_defaults_to_caller(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    resp = await client.post("/api/v1/documents/", json={"title": "Mine"})
+    assert resp.status_code == 201
+    doc = resp.json()
+    assert doc["owner_id"] == str(owner_id)
+
+    versions = await client.get(f"/api/v1/documents/{doc['id']}/versions")
+    assert versions.status_code == 200
+    assert versions.json()[0]["created_by"] == str(owner_id)
