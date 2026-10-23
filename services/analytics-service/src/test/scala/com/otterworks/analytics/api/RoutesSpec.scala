@@ -37,8 +37,11 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
       calls += 1
       Future.successful(readable.contains(caller.userId -> documentId))
 
-  private val adminHeaders = List(RawHeader("X-User-ID", "admin-1"), RawHeader("X-User-Roles", "USER,ADMIN"))
-  private def userHeaders(userId: String) = List(RawHeader("X-User-ID", userId), RawHeader("X-User-Roles", "USER"))
+  private val jwtSecret = "routes-spec-secret"
+  private def token(userId: String, roles: String*): String = TestJwt.sign(jwtSecret, userId, roles)
+  private def bearer(userId: String, roles: String*) = RawHeader("Authorization", s"Bearer ${token(userId, roles*)}")
+  private val adminHeaders = List(bearer("admin-1", "USER", "ADMIN"))
+  private def userHeaders(userId: String) = List(bearer(userId, "USER"))
 
   private def createRoutes(
       documentAccess: DocumentAccess = StubDocumentAccess(Set("user-1" -> "doc-99"))
@@ -46,7 +49,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val repo = MetricsRepository(testConfig)
     val service = AnalyticsService(repo)
     val eventRoutes = EventRoutes(service)
-    val analyticsRoutes = AnalyticsRoutes(service, documentAccess)
+    val analyticsRoutes = AnalyticsRoutes(service, documentAccess, CallerAuth(Some(jwtSecret)))
     (eventRoutes, analyticsRoutes, service)
 
   // --- Event Routes ---
@@ -238,17 +241,60 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     "/api/v1/analytics/storage?user_id=user-1",
   )
 
-  "Analytics query routes" should "reject requests without the gateway X-User-ID header" in {
+  "Analytics query routes" should "reject requests without a valid bearer token" in {
     val (_, analyticsRoutes, _) = createRoutes()
-    allQueryPaths.foreach { uri =>
-      Get(uri) ~> analyticsRoutes.routes ~> check {
-        withClue(uri) { status shouldBe StatusCodes.Unauthorized }
+    val forged = TestJwt.sign("wrong-secret", "admin-1", Seq("ADMIN"))
+    val expired = TestJwt.sign(jwtSecret, "admin-1", Seq("ADMIN"), expiresInSeconds = -60)
+    val refresh = TestJwt.sign(jwtSecret, "admin-1", Seq("ADMIN"), tokenType = "refresh")
+    val unsigned = TestJwt.unsigned("admin-1", Seq("ADMIN"))
+    val badHeaders: Seq[(String, List[RawHeader])] = Seq(
+      "none" -> Nil,
+      "header only" -> List(RawHeader("X-User-ID", "admin-1")),
+      "forged" -> List(RawHeader("Authorization", s"Bearer $forged")),
+      "expired" -> List(RawHeader("Authorization", s"Bearer $expired")),
+      "refresh" -> List(RawHeader("Authorization", s"Bearer $refresh")),
+      "alg none" -> List(RawHeader("Authorization", s"Bearer $unsigned")),
+      "blank sub" -> List(bearer("  ", "ADMIN")),
+      "mismatched X-User-ID" -> List(bearer("attacker", "USER"), RawHeader("X-User-ID", "user-1")),
+    )
+    for uri <- allQueryPaths; (label, headers) <- badHeaders do
+      Get(uri).withHeaders(headers) ~> analyticsRoutes.routes ~> check {
+        withClue(s"$label: $uri") { status shouldBe StatusCodes.Unauthorized }
       }
-      Get(uri).withHeaders(RawHeader("X-User-ID", "  "), RawHeader("X-User-Roles", "ADMIN")) ~>
-        analyticsRoutes.routes ~> check {
-          withClue(s"blank id: $uri") { status shouldBe StatusCodes.Unauthorized }
-        }
+  }
+
+  it should "accept a matching gateway X-User-ID alongside the token" in {
+    val (_, analyticsRoutes, _) = createRoutes()
+    Get("/api/v1/analytics/users/user-1/activity")
+      .withHeaders(bearer("user-1", "USER"), RawHeader("X-User-ID", "user-1")) ~> analyticsRoutes.routes ~> check {
+        status shouldBe StatusCodes.OK
+      }
+  }
+
+  it should "fall back to the gateway X-User-ID without admin rights when no JWT secret is configured" in {
+    val service = AnalyticsService(MetricsRepository(testConfig))
+    val routes = AnalyticsRoutes(service, StubDocumentAccess(Set.empty), CallerAuth(None)).routes
+    Get("/api/v1/analytics/users/user-1/activity").withHeaders(RawHeader("X-User-ID", "user-1")) ~> routes ~> check {
+      status shouldBe StatusCodes.OK
     }
+    Get("/api/v1/analytics/users/victim/activity").withHeaders(RawHeader("X-User-ID", "user-1")) ~> routes ~> check {
+      status shouldBe StatusCodes.Forbidden
+    }
+    Get("/api/v1/analytics/export").withHeaders(RawHeader("X-User-ID", "admin-1"), RawHeader("X-User-Roles", "ADMIN")) ~>
+      routes ~> check {
+        status shouldBe StatusCodes.Forbidden
+      }
+    Get("/api/v1/analytics/dashboard") ~> routes ~> check {
+      status shouldBe StatusCodes.Unauthorized
+    }
+  }
+
+  it should "ignore a client-supplied X-User-Roles header" in {
+    val (_, analyticsRoutes, _) = createRoutes()
+    Get("/api/v1/analytics/export").withHeaders(bearer("attacker", "USER"), RawHeader("X-User-Roles", "ADMIN")) ~>
+      analyticsRoutes.routes ~> check {
+        status shouldBe StatusCodes.Forbidden
+      }
   }
 
   it should "reserve cross-user aggregates and exports for admins" in {
@@ -264,8 +310,8 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "accept ADMIN and OWNER roles case-insensitively" in {
     val (_, analyticsRoutes, _) = createRoutes()
-    Seq("ADMIN", "admin", "USER, Owner").foreach { roles =>
-      Get("/api/v1/analytics/dashboard").withHeaders(RawHeader("X-User-ID", "a"), RawHeader("X-User-Roles", roles)) ~>
+    Seq(Seq("ADMIN"), Seq("admin"), Seq("USER", "Owner")).foreach { roles =>
+      Get("/api/v1/analytics/dashboard").withHeaders(bearer("a", roles*)) ~>
         analyticsRoutes.routes ~> check {
           withClue(roles) { status shouldBe StatusCodes.OK }
         }
@@ -274,7 +320,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
   it should "not treat EDITOR as an admin role" in {
     val (_, analyticsRoutes, _) = createRoutes()
-    Get("/api/v1/analytics/export").withHeaders(RawHeader("X-User-ID", "e"), RawHeader("X-User-Roles", "USER,EDITOR")) ~>
+    Get("/api/v1/analytics/export").withHeaders(bearer("e", "USER", "EDITOR")) ~>
       analyticsRoutes.routes ~> check {
         status shouldBe StatusCodes.Forbidden
       }

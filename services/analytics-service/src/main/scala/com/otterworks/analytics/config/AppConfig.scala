@@ -10,7 +10,8 @@ final case class AppConfig(
     postgres: PostgresConfig,
     repository: RepositoryConfig,
     server: ServerConfig,
-    documentService: DocumentServiceConfig
+    documentService: DocumentServiceConfig,
+    auth: AuthConfig = AuthConfig(None)
 )
 
 final case class S3Config(dataLakeBucket: String)
@@ -31,6 +32,9 @@ final case class ServerConfig(host: String, port: Int)
 
 /** document-service endpoint used to authorize per-document analytics reads. */
 final case class DocumentServiceConfig(url: String, timeoutMs: Int)
+
+/** Shared HMAC secret for verifying auth-service access tokens (JWT_SECRET). */
+final case class AuthConfig(jwtSecret: Option[String])
 
 object AppConfig:
   def load(): AppConfig =
@@ -83,4 +87,10 @@ object AppConfig:
         else 3000
     )
 
-    AppConfig(s3, sqs, aws, postgres, repository, server, documentService)
+    val auth = AuthConfig(
+      jwtSecret =
+        if analytics.hasPath("auth.jwt-secret") then Some(analytics.getString("auth.jwt-secret")).filter(_.trim.nonEmpty)
+        else None
+    )
+
+    AppConfig(s3, sqs, aws, postgres, repository, server, documentService, auth)

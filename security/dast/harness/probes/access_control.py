@@ -433,9 +433,9 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
     cwe="CWE-639",
     service="analytics-service",
     remediation=(
-        "Require the gateway-forwarded X-User-ID in analytics-service, answer per-user "
-        "routes only for the caller's own id, and reserve cross-user aggregates and the "
-        "event export for the admin role forwarded from the validated JWT."
+        "Verify the caller's access token in analytics-service, answer per-user routes "
+        "only for the token subject's own id, and reserve cross-user aggregates and the "
+        "event export for the ADMIN/OWNER roles in the verified JWT."
     ),
 )
 def bola_analytics(ctx: ScanContext) -> Result:

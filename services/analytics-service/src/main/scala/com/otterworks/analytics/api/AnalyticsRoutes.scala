@@ -4,7 +4,7 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
 import akka.http.scaladsl.server.Directives.{authorize as _, *}
 import akka.http.scaladsl.server.Route
-import com.otterworks.analytics.api.CallerAuth.{adminCaller, authorize, caller}
+import com.otterworks.analytics.api.CallerAuth.authorize
 import com.otterworks.analytics.model.DashboardJsonProtocol.{*, given}
 import com.otterworks.analytics.service.{AnalyticsService, DocumentAccess}
 import spray.json.*
@@ -12,8 +12,8 @@ import spray.json.*
 import scala.concurrent.Future
 
 /**
- * Analytics query routes. Every route requires the gateway-forwarded caller
- * identity (see [[CallerAuth]]):
+ * Analytics query routes. Every route requires an authenticated caller
+ * (see [[CallerAuth]]):
  *   GET /api/v1/analytics/dashboard            admin
  *   GET /api/v1/analytics/users/{id}/activity  the user themself or admin
  *   GET /api/v1/analytics/documents/{id}/stats document reader (per document-service) or admin
@@ -22,7 +22,8 @@ import scala.concurrent.Future
  *   GET /api/v1/analytics/storage              own user_id, or admin (required without user_id)
  *   GET /api/v1/analytics/export               admin
  */
-class AnalyticsRoutes(analyticsService: AnalyticsService, documentAccess: DocumentAccess):
+class AnalyticsRoutes(analyticsService: AnalyticsService, documentAccess: DocumentAccess, callerAuth: CallerAuth):
+  import callerAuth.{adminCaller, caller}
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics") {
     concat(
