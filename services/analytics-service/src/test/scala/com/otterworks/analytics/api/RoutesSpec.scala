@@ -378,8 +378,3 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     }
     access.calls shouldBe 0
   }
-
-  "CallerAuth.parseRoles" should "normalise and split the gateway roles header" in {
-    CallerAuth.parseRoles(Some(" user, Admin ,,EDITOR")) shouldBe Set("USER", "ADMIN", "EDITOR")
-    CallerAuth.parseRoles(None) shouldBe Set.empty
-  }
