@@ -490,6 +490,7 @@ services:
       Aws__EndpointUrl: http://localstack:4566
       Aws__DynamoDbTable: otterworks-audit-events
       Aws__S3ArchiveBucket: otterworks-audit-archive
+      Aws__TenantId: local
       ASPNETCORE_URLS: http://+:8090
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:

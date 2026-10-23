@@ -29,6 +29,7 @@ builder.Host.UseSerilog();
 var awsSection = builder.Configuration.GetSection("Aws");
 builder.Services.Configure<AwsSettings>(awsSection);
 var awsSettings = awsSection.Get<AwsSettings>() ?? new AwsSettings();
+awsSettings.EnsureTenantConfigured();
 
 // AWS SDK clients
 builder.Services.AddSingleton<IAmazonDynamoDB>(_ =>

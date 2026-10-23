@@ -387,4 +387,21 @@ public class DynamoDbAuditRepositoryTests
             ["Timestamp"] = new AttributeValue { S = DateTime.UtcNow.ToString("O") },
         };
     }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void EnsureTenantConfigured_WithoutTenant_Throws(string? tenantId)
+    {
+        var settings = new AwsSettings { TenantId = tenantId };
+
+        Assert.Throws<InvalidOperationException>(settings.EnsureTenantConfigured);
+    }
+
+    [Fact]
+    public void EnsureTenantConfigured_WithTenant_DoesNotThrow()
+    {
+        new AwsSettings { TenantId = "otterworks-acme" }.EnsureTenantConfigured();
+    }
 }
