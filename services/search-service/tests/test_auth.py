@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import jwt
@@ -175,7 +176,11 @@ class TestServiceToken:
 
 class TestUserIndexOwnership:
     def _not_indexed(self, mock_index):
-        mock_index.get_document.side_effect = meilisearch.errors.MeilisearchApiError("not found", None)
+        response = SimpleNamespace(
+            status_code=404,
+            text='{"message": "not found", "code": "document_not_found", "type": "invalid_request", "link": ""}',
+        )
+        mock_index.get_document.side_effect = meilisearch.errors.MeilisearchApiError("not found", response)
 
     def test_user_cannot_index_on_behalf_of_another_owner(self, auth_client, mock_index):
         self._not_indexed(mock_index)
