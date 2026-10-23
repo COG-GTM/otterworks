@@ -695,6 +695,25 @@ describe('CollaborationManager', () => {
       client.disconnect();
     });
 
+    it('keeps room membership when an overlapping join for the same document is superseded', async () => {
+      mockRedis.get.mockImplementationOnce(
+        () => new Promise((r) => setTimeout(() => r(null), 300)),
+      );
+      const client = await connectClient('user-acl-same-doc', 'Twice');
+
+      const [first, second] = await Promise.all([
+        join(client, OWNED_DOC),
+        join(client, OWNED_DOC),
+      ]);
+
+      expect(first).toEqual({ success: false, error: 'Superseded by a newer request' });
+      expect(second).toEqual({ success: true });
+      const serverSocket = io.sockets.sockets.get(client.id as string);
+      expect(serverSocket?.rooms.has(`doc:${OWNED_DOC}`)).toBe(true);
+      expect(awareness.getUserDocument(client.id as string)).toBe(OWNED_DOC);
+      client.disconnect();
+    });
+
     it('evicts joined sockets whose access was revoked', async () => {
       const client = await connectClient('user-acl-revoked', 'Revoked');
       expect(await join(client, OWNED_DOC)).toEqual({ success: true });

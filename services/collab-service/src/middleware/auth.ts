@@ -21,6 +21,7 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
 }
@@ -31,6 +32,11 @@ export function userFromToken(token: string, jwtSecret: string): AuthenticatedUs
   const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
   if (!decoded || typeof decoded.sub !== 'string' || !decoded.sub) {
     throw new Error('Token has no subject');
+  }
+  // auth-service mints `type: access` and `type: refresh`; only access tokens
+  // may be used here (same rule as auth-service's JwtAuthFilter).
+  if (decoded.type !== undefined && decoded.type !== 'access') {
+    throw new Error('Not an access token');
   }
   return {
     userId: decoded.sub,

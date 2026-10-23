@@ -1,3 +1,4 @@
+import jwt from 'jsonwebtoken';
 import type { Logger } from 'pino';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -75,6 +76,8 @@ export class DocumentAccessService implements DocumentAccessChecker {
     options: AccessCheckOptions = {},
   ): Promise<boolean> {
     if (!accessToken || !userId || !isValidDocumentId(documentId)) return false;
+    const tokenExpiresAt = tokenExpiryMs(accessToken);
+    if (tokenExpiresAt !== undefined && tokenExpiresAt <= this.now()) return false;
 
     const cacheKey = `${userId}:${documentId.toLowerCase()}`;
     const expiresAt = this.allowed.get(cacheKey);
@@ -100,7 +103,7 @@ export class DocumentAccessService implements DocumentAccessChecker {
         },
       );
       if (response.status === 200) {
-        this.remember(cacheKey);
+        this.remember(cacheKey, tokenExpiresAt);
         return true;
       }
       logger.warn(
@@ -119,13 +122,27 @@ export class DocumentAccessService implements DocumentAccessChecker {
     }
   }
 
-  private remember(cacheKey: string): void {
+  private remember(cacheKey: string, tokenExpiresAt: number | undefined): void {
     if (this.options.cacheTtlMs <= 0) return;
+    const expiresAt = Math.min(
+      this.now() + this.options.cacheTtlMs,
+      tokenExpiresAt ?? Number.POSITIVE_INFINITY,
+    );
     this.allowed.delete(cacheKey);
     if (this.allowed.size >= MAX_CACHE_ENTRIES) {
       const oldest = this.allowed.keys().next().value;
       if (oldest !== undefined) this.allowed.delete(oldest);
     }
-    this.allowed.set(cacheKey, this.now() + this.options.cacheTtlMs);
+    this.allowed.set(cacheKey, expiresAt);
   }
+}
+
+// Callers verify the token signature before asking for access; this only reads
+// `exp` so a cached grant is never honoured for an expired token.
+function tokenExpiryMs(token: string): number | undefined {
+  const decoded = jwt.decode(token);
+  if (!decoded || typeof decoded !== 'object' || typeof decoded.exp !== 'number') {
+    return undefined;
+  }
+  return decoded.exp * 1000;
 }

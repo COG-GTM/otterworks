@@ -175,19 +175,20 @@ export class CollaborationManager {
         );
       }
 
+      // Get or create Yjs document (safe against concurrent joins). The room is
+      // only entered once this join is known to still be current, so a superseded
+      // join never touches room membership owned by a newer one.
+      const doc = await this.getOrCreateDoc(documentId);
+      if (this.joinGenerations.get(socket.id) !== generation) {
+        if (reply) reply({ success: false, error: 'Superseded by a newer request' });
+        return;
+      }
+
       await socket.join(room);
       logger.info(
         { documentId, userId: user.userId, socketId: socket.id },
         'user_joined_document',
       );
-
-      // Get or create Yjs document (safe against concurrent joins)
-      const doc = await this.getOrCreateDoc(documentId);
-      if (this.joinGenerations.get(socket.id) !== generation) {
-        socket.leave(room);
-        if (reply) reply({ success: false, error: 'Superseded by a newer request' });
-        return;
-      }
 
       // Register awareness
       const userAwareness = awareness.addUser(
@@ -222,7 +223,7 @@ export class CollaborationManager {
       if (reply) reply({ success: true });
     } catch (err) {
       logger.error({ err, documentId, socketId: socket.id }, 'join_document_failed');
-      socket.leave(room);
+      if (this.joinGenerations.get(socket.id) === generation) socket.leave(room);
       metrics.connectionErrors.inc({ reason: 'join_failed' });
       if (reply) reply({ success: false, error: 'Failed to join document' });
     }

@@ -149,6 +149,20 @@ describe('DocumentAccessService', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('denies expired tokens and never serves them a cached grant', async () => {
+    let now = 1_000_000;
+    const fetchImpl = respond(200);
+    const svc = service(fetchImpl, () => now, 60000);
+    const token = jwt.sign({ sub: 'user-1', exp: 1_010 }, 'k');
+
+    await expect(svc.canAccess(token, 'user-1', DOC_ID)).resolves.toBe(true);
+    now = 1_010_000;
+    await expect(svc.canAccess(token, 'user-1', DOC_ID)).resolves.toBe(false);
+    const fresh = jwt.sign({ sub: 'user-1', exp: 2_000 }, 'k');
+    await expect(svc.canAccess(fresh, 'user-1', DOC_ID)).resolves.toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('never caches denials', async () => {
     const fetchImpl = respond(403);
     const svc = service(fetchImpl);
@@ -173,6 +187,15 @@ describe('auth helpers', () => {
     expect(() => userFromToken(jwt.sign({ email: 'a@b.c' }, secret), secret)).toThrow();
     expect(
       userFromToken(jwt.sign({ sub: 'u1', roles: ['USER'] }, secret), secret).userId,
+    ).toBe('u1');
+  });
+
+  it('accepts only access tokens', () => {
+    expect(() =>
+      userFromToken(jwt.sign({ sub: 'u1', type: 'refresh' }, secret), secret),
+    ).toThrow();
+    expect(
+      userFromToken(jwt.sign({ sub: 'u1', type: 'access' }, secret), secret).userId,
     ).toBe('u1');
   });
 
