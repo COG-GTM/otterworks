@@ -134,12 +134,17 @@ public class S3AuditArchiver : IAuditArchiver
 
         foreach (var e in events)
         {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
+            sb.AppendLine(string.Join(',',
+                CsvCell.Format(e.Id),
+                CsvCell.Format(e.Timestamp.ToString("O")),
+                CsvCell.Format(e.UserId),
+                CsvCell.Format(e.Action),
+                CsvCell.Format(e.ResourceType),
+                CsvCell.Format(e.ResourceId),
+                CsvCell.Format(e.IpAddress),
+                CsvCell.Format(e.UserAgent)));
         }
 
         return sb.ToString();
     }
-
-    private static string Esc(string? value) =>
-        value?.Replace("\"", "\"\"") ?? string.Empty;
 }
