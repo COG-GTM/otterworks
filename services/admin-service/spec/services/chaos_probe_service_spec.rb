@@ -28,7 +28,7 @@ RSpec.describe ChaosProbeService do
   it 'reuses the running probe when the same key is re-triggered' do
     first = start('file-service', 'chaos:file-service:upload_s3_error')
     5.times { expect(start('file-service', 'chaos:file-service:upload_s3_error')).to equal(first) }
-    expect(Redis).to have_received(:new).once
+    expect(started.compact.uniq.size).to eq(1)
     expect(described_class.running?('chaos:file-service:upload_s3_error')).to be(true)
   end
 
