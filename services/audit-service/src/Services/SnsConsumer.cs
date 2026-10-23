@@ -75,9 +75,23 @@ public class SnsConsumer : BackgroundService
         _logger.LogInformation("SNS Consumer stopping");
     }
 
+    private const string BaseQueueName = "otterworks-audit-events-queue";
+
+    // Tenants share one AWS account, so each tenant consumes its own queue; a shared
+    // queue would let one tenant's consumer ingest (and tenant-tag) another tenant's events.
+    public static string QueueNameFor(string? tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(tenantId))
+            return BaseQueueName;
+
+        var suffix = new string(tenantId.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray());
+        var name = $"{BaseQueueName}-{suffix}";
+        return name.Length <= 80 ? name : name[..80];
+    }
+
     private async Task<string> GetOrCreateQueueUrlAsync(CancellationToken ct)
     {
-        const string queueName = "otterworks-audit-events-queue";
+        var queueName = QueueNameFor(_settings.TenantId);
         try
         {
             var response = await _sqsClient.GetQueueUrlAsync(queueName, ct);

@@ -47,29 +47,61 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
-    compliance_response = api_client.client.get(
-        "/api/v1/audit/reports/compliance",
-        headers=user.auth_headers,
-        params={"period": "30d"},
-    )
-    assert compliance_response.status_code == 200, compliance_response.text
+    for method, path in (
+        ("GET", "/api/v1/audit/reports/compliance"),
+        ("GET", "/api/v1/audit/export"),
+        ("POST", "/api/v1/audit/archive"),
+    ):
+        response = api_client.client.request(method, path, headers=user.auth_headers)
+        assert response.status_code == 403, f"{method} {path}: {response.status_code} {response.text}"
 
-    export_response = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "json"},
-    )
-    assert export_response.status_code == 200, export_response.text
 
-    invalid_export = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "xml"},
-    )
-    assert invalid_export.status_code == 400
+def test_audit_trail_is_isolated_between_users(api_client):
+    owner = api_client.register_user("audit-owner")
+    other = api_client.register_user("audit-other")
+    resource_id = f"isolated-resource-{api_client.run_id}"
 
-    archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    create_response = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=owner.auth_headers,
+        json={
+            "userId": owner.id,
+            "action": "create",
+            "resourceType": "document",
+            "resourceId": resource_id,
+            "details": {"source": "api-flow-test"},
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    event_id = create_response.json()["id"]
+
+    unauthenticated = api_client.client.get("/api/v1/audit/events")
+    assert unauthenticated.status_code == 401
+
+    forged = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=other.auth_headers,
+        json={"userId": owner.id, "action": "delete", "resourceType": "document", "resourceId": resource_id},
+    )
+    assert forged.status_code == 403, forged.text
+
+    assert api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=other.auth_headers).status_code == 404
+
+    cross_query = api_client.client.get(
+        "/api/v1/audit/events", headers=other.auth_headers, params={"user_id": owner.id}
+    )
+    assert cross_query.status_code == 403, cross_query.text
+
+    unfiltered = api_client.client.get("/api/v1/audit/events", headers=other.auth_headers, params={"size": 100})
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert all(event["userId"] == other.id for event in unfiltered.json()["events"])
+
+    cross_report = api_client.client.get(f"/api/v1/audit/reports/user/{owner.id}", headers=other.auth_headers)
+    assert cross_report.status_code == 403, cross_report.text
+
+    history = api_client.client.get(f"/api/v1/audit/resources/{resource_id}/history", headers=other.auth_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["totalEvents"] == 0
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):
