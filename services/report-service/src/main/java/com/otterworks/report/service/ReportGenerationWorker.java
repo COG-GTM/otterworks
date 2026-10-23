@@ -1,9 +1,11 @@
 package com.otterworks.report.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.config.AppConfig;
 import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportCategory;
+import com.otterworks.report.model.ReportFailureReason;
 import com.otterworks.report.model.ReportStatus;
 import com.otterworks.report.model.ReportType;
 import com.otterworks.report.repository.ReportRepository;
@@ -12,12 +14,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClientException;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.Date;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Separate bean for async report generation.
@@ -110,12 +116,26 @@ public class ReportGenerationWorker {
                     reportId, data.size(), outputFile.length(), duration);
 
         } catch (Exception e) {
-            logger.error("Report generation failed for {}: {}", reportId, e.getMessage(), e);
+            ReportFailureReason reason = classifyFailure(e);
+            logger.error("Report generation failed for {} ({}): {}", reportId, reason, e.getMessage(), e);
             report.setStatus(ReportStatus.FAILED);
             report.setCompletedAt(new Date());
-            report.setErrorMessage(e.getMessage());
+            report.setErrorMessage(reason.name());
             reportRepository.save(report);
         }
+    }
+
+    static ReportFailureReason classifyFailure(Throwable error) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable t = error; t != null && seen.add(t); t = t.getCause()) {
+            if (t instanceof RestClientException) {
+                return ReportFailureReason.DATA_SOURCE_UNAVAILABLE;
+            }
+            if (t instanceof JsonProcessingException || t instanceof IllegalArgumentException) {
+                return ReportFailureReason.INVALID_PARAMETERS;
+            }
+        }
+        return ReportFailureReason.GENERATION_FAILED;
     }
 
     private List<Map<String, Object>> fetchDataForCategory(
