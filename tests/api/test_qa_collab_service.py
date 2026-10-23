@@ -23,7 +23,6 @@ import pytest
 import socketio
 import websocket
 
-
 pytestmark = [pytest.mark.api_flow, pytest.mark.websocket]
 
 DIRECT_URL = os.getenv("OTTERWORKS_COLLAB_DIRECT_URL", "http://localhost:8084").rstrip("/")
