@@ -215,10 +215,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        if (!findAccessibleReport(id, caller).isPresent()) {
-            return ResponseEntity.notFound().build();
-        }
-        boolean deleted = reportService.deleteReport(id);
+        boolean deleted = reportService.deleteReport(id, report -> canAccess(caller, report));
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
@@ -228,8 +225,11 @@ public class ReportController {
     // ----- Private helpers -----
 
     private Optional<Report> findAccessibleReport(Long id, AuthenticatedUser caller) {
-        return reportService.getReport(id)
-                .filter(report -> caller.isAdmin() || caller.owns(report.getRequestedBy()));
+        return reportService.getReport(id).filter(report -> canAccess(caller, report));
+    }
+
+    private static boolean canAccess(AuthenticatedUser caller, Report report) {
+        return caller.isAdmin() || caller.owns(report.getRequestedBy());
     }
 
     private String getContentType(com.otterworks.report.model.ReportType reportType) {

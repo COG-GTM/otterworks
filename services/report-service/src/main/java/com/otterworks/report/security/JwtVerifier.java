@@ -66,6 +66,9 @@ public class JwtVerifier {
         }
         try {
             JsonNode header = objectMapper.readTree(decode(parts[0]));
+            if (header == null || !header.isObject()) {
+                return Optional.empty();
+            }
             String macAlgorithm = HMAC_ALGORITHMS.get(header.path("alg").asText(""));
             if (macAlgorithm == null) {
                 return Optional.empty();
@@ -79,6 +82,9 @@ public class JwtVerifier {
             }
 
             JsonNode claims = objectMapper.readTree(decode(parts[1]));
+            if (claims == null || !claims.isObject()) {
+                return Optional.empty();
+            }
             long now = System.currentTimeMillis() / 1000L;
             JsonNode exp = claims.get("exp");
             if (exp == null || !exp.canConvertToLong() || exp.asLong() + CLOCK_SKEW_SECONDS < now) {
@@ -88,7 +94,7 @@ public class JwtVerifier {
             if (nbf != null && (!nbf.canConvertToLong() || nbf.asLong() - CLOCK_SKEW_SECONDS > now)) {
                 return Optional.empty();
             }
-            if ("refresh".equals(claims.path("type").asText(""))) {
+            if (!"access".equals(claims.path("type").asText(""))) {
                 return Optional.empty();
             }
 

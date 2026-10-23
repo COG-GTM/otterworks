@@ -32,7 +32,7 @@ public class JwtVerifierTest {
     @Test
     public void fallsBackToUserIdClaim() {
         String token = TestTokens.sign("HS256", TestTokens.SECRET,
-                "{\"user_id\":\"legacy-user\",\"exp\":" + future + "}");
+                "{\"user_id\":\"legacy-user\",\"type\":\"access\",\"exp\":" + future + "}");
         assertEquals("legacy-user", verifier.verify(token).get().getUserId());
     }
 
@@ -97,5 +97,20 @@ public class JwtVerifierTest {
         String shortSecret = "short";
         assertFalse(new JwtVerifier(shortSecret)
                 .verify(TestTokens.sign("HS256", shortSecret, TestTokens.claims("u", "access", future))).isPresent());
+    }
+
+    @Test
+    public void rejectsEmptyOrNonObjectSegments() {
+        assertFalse(verifier.verify(".e30.e30").isPresent());
+        assertFalse(verifier.verify("e30..e30").isPresent());
+        assertFalse(verifier.verify("WzFd.e30.e30").isPresent());
+    }
+
+    @Test
+    public void rejectsTokensWithoutAccessType() {
+        assertFalse(verifier.verify(TestTokens.sign("HS256", TestTokens.SECRET,
+                TestTokens.claims("u", "", future))).isPresent());
+        assertFalse(verifier.verify(TestTokens.sign("HS256", TestTokens.SECRET,
+                TestTokens.claims("u", "password-reset", future))).isPresent());
     }
 }

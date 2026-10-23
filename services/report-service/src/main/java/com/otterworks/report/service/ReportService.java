@@ -20,6 +20,7 @@ import java.io.File;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Core report orchestration service.
@@ -123,7 +124,16 @@ public class ReportService {
      */
     @Transactional
     public boolean deleteReport(Long id) {
-        Optional<Report> optReport = reportRepository.findById(id);
+        return deleteReport(id, report -> true);
+    }
+
+    /**
+     * Delete a report only if {@code canDelete} accepts it; the check and the delete
+     * run in the same transaction.
+     */
+    @Transactional
+    public boolean deleteReport(Long id, Predicate<Report> canDelete) {
+        Optional<Report> optReport = reportRepository.findById(id).filter(canDelete);
         if (!optReport.isPresent()) {
             return false;
         }
