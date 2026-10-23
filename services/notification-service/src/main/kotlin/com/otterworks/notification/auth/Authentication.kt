@@ -2,13 +2,13 @@ package com.otterworks.notification.auth
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.auth.HttpAuthHeader
-import io.ktor.http.auth.parseAuthorizationHeader
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.jwt.jwt
+import io.ktor.server.auth.parseAuthorizationHeader
 import io.ktor.server.auth.principal
 import io.ktor.server.response.respond
 import kotlinx.serialization.Serializable
