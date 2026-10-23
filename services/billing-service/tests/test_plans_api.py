@@ -7,6 +7,8 @@ import psycopg
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.auth import encode_token
+from app.config import settings
 from app.domain import SubscriptionRow
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
@@ -45,8 +47,13 @@ def test_repeated_plan_change_returns_conflict(monkeypatch) -> None:
     monkeypatch.setattr(main, "change_plan", fake_change_plan)
     with TestClient(main.app) as client:
         payload = {"plan_id": str(PLAN), "effective_on": "2026-03-01"}
-        first = client.post(f"/api/tenants/{TENANT}/plan-change", json=payload)
-        second = client.post(f"/api/tenants/{TENANT}/plan-change", json=payload)
+        token = encode_token(
+            {"sub": "user-1", "type": "access", "exp": 4102444800, "tenant_id": str(TENANT)},
+            settings.jwt_secret,
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        first = client.post(f"/api/tenants/{TENANT}/plan-change", json=payload, headers=headers)
+        second = client.post(f"/api/tenants/{TENANT}/plan-change", json=payload, headers=headers)
 
     assert first.status_code == 200
     assert second.status_code == 409

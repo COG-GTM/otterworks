@@ -43,8 +43,16 @@ export type PlanChangeResult = {
   subscriptions: Subscription[];
 };
 
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("otter_access_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${BILLING_BASE_URL}${path}`, options);
+  const response = await fetch(`${BILLING_BASE_URL}${path}`, {
+    ...options,
+    headers: { ...authHeaders(), ...options?.headers },
+  });
   if (!response.ok) {
     throw new BillingApiError(
       `Billing service returned ${response.status}`,

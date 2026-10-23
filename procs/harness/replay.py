@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
+import hmac
 import http.client
 import json
 import os
 import re
 import subprocess
 import sys
-from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+import time
 from dataclasses import dataclass
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import yaml
+
 try:
     from procs.harness.fingerprints import fixture_sha, source_sha
     from procs.harness.status import EXTRACTED, PENDING, VALID_STATUSES, status_for
@@ -104,11 +109,42 @@ def extract(payload: Any, spec: dict[str, Any]) -> Any:
     return normalize(value, spec.get("type"))
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def target_access_token(secret: str, ttl_seconds: int = 900) -> str:
+    """Mint a short-lived admin access token the billing service accepts (HS256)."""
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    now = int(time.time())
+    claims = {
+        "sub": "procs-parity-harness",
+        "type": "access",
+        "roles": ["ADMIN"],
+        "iat": now,
+        "exp": now + ttl_seconds,
+    }
+    payload = _b64url(json.dumps(claims).encode())
+    signature = hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256)
+    return f"{header}.{payload}.{_b64url(signature.digest())}"
+
+
+def target_auth_headers() -> dict[str, str]:
+    secret = os.getenv("BILLING_SVC_JWT_SECRET", "")
+    return {"Authorization": f"Bearer {target_access_token(secret)}"} if secret else {}
+
+
+def reset_headers() -> dict[str, str]:
+    token = os.getenv("BILLING_SVC_INTERNAL_RESET_TOKEN", "")
+    return {"X-Internal-Reset-Token": token} if token else {}
+
+
 def request_json(
     base_url: str,
     method: str,
     path: str,
     body: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, Any]:
     data = json.dumps(body).encode() if body is not None else None
     parsed = urlsplit(base_url)
@@ -121,7 +157,7 @@ def request_json(
             method,
             f"{parsed.path.rstrip('/')}{path}",
             body=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **(headers or {})},
         )
         response = connection.getresponse()
         raw = response.read()
@@ -143,7 +179,9 @@ def target_request(
         name: inputs[input_name]
         for name, input_name in contract.get("inputs", {}).get("body", {}).items()
     }
-    return request_json(base_url, contract["method"], path, body or None)
+    return request_json(
+        base_url, contract["method"], path, body or None, headers=target_auth_headers()
+    )
 
 
 def load_transcripts(module: str | None) -> list[dict[str, Any]]:
@@ -226,14 +264,17 @@ def classify_transcript(transcript: dict[str, Any], routes: dict[str, Any]) -> s
 
 def reset_target(base_url: str) -> tuple[bool, str]:
     try:
-        status, payload = request_json(base_url, "POST", "/internal/reset")
+        status, payload = request_json(
+            base_url, "POST", "/internal/reset", headers=reset_headers()
+        )
     except (http.client.HTTPException, OSError) as error:
         return False, f"target unreachable during reset: {error}"
     if status != 204:
         if status in {403, 404}:
             return False, (
                 f"target reset refused with HTTP {status}: {payload}; "
-                "enable BILLING_SVC_ALLOW_INTERNAL_RESET for disposable stacks"
+                "enable BILLING_SVC_ALLOW_INTERNAL_RESET and pass a matching "
+                "BILLING_SVC_INTERNAL_RESET_TOKEN for disposable stacks"
             )
         return False, f"target reset returned HTTP {status}: {payload}"
     return True, ""
