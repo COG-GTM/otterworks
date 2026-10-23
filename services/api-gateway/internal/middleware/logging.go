@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,7 +38,7 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				Str("request_id", requestID).
 				Str("method", r.Method).
 				Str("path", r.URL.Path).
-				Str("query", r.URL.RawQuery).
+				Str("query", RedactQuery(r.URL.RawQuery)).
 				Int("status", status).
 				Int("bytes", ww.BytesWritten()).
 				Dur("latency_ms", duration).
@@ -46,6 +48,36 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				Msg("request completed")
 		})
 	}
+}
+
+// credentialQueryParams are query parameters whose values are bearer
+// credentials (e.g. WebSocket clients that put a JWT in the URL).
+var credentialQueryParams = map[string]struct{}{
+	"token":         {},
+	"access_token":  {},
+	"refresh_token": {},
+	"id_token":      {},
+	"jwt":           {},
+}
+
+// RedactQuery replaces the values of credential query parameters so request
+// logs never contain tokens. Parameter order and other values are preserved.
+func RedactQuery(rawQuery string) string {
+	if rawQuery == "" {
+		return rawQuery
+	}
+	pairs := strings.Split(rawQuery, "&")
+	for i, pair := range pairs {
+		key, _, hasValue := strings.Cut(pair, "=")
+		name, err := url.QueryUnescape(key)
+		if err != nil {
+			name = key
+		}
+		if _, sensitive := credentialQueryParams[strings.ToLower(name)]; sensitive && hasValue {
+			pairs[i] = key + "=REDACTED"
+		}
+	}
+	return strings.Join(pairs, "&")
 }
 
 // SetLogLevel configures the global zerolog level.

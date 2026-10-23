@@ -1,7 +1,7 @@
-import jwt from 'jsonwebtoken';
 import type { Socket } from 'socket.io';
 import type { ExtendedError } from 'socket.io/dist/namespace';
 import type { Logger } from 'pino';
+import { verifyAccessToken } from '../ws-auth';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -12,16 +12,6 @@ export interface AuthenticatedUser {
 
 export interface AuthenticatedSocket extends Socket {
   user?: AuthenticatedUser;
-}
-
-interface JwtPayload {
-  sub: string;
-  email?: string;
-  name?: string;
-  display_name?: string;
-  roles?: string[];
-  iat?: number;
-  exp?: number;
 }
 
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
@@ -37,7 +27,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = verifyAccessToken(token, jwtSecret);
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,
