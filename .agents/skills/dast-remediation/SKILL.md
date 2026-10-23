@@ -150,10 +150,14 @@ Planted bugs (see `AGENTS.md`) stay in place. Adding a probe to
 `security/dast/harness/probes/` is always welcome on `main`.
 
 `DAST-GATEWAY-BYPASS-IDENTITY` reproduces against the local stack because
-`docker-compose.yml` publishes backend ports — that is a development
-convenience, not something to "fix" by unpublishing them, which would break
-local development. It is graded `low` from that origin for exactly that reason;
-the deployment-relevant half is each backend chart's `ingress.enabled`.
+`docker-compose.yml` publishes backend ports on `127.0.0.1` only — a
+development convenience for the developer's own host. Do not unpublish them
+(that would break local development), but never widen them back to every
+interface: from another machine on the LAN that is an unauthenticated
+impersonation endpoint. `test_the_repo_compose_file_binds_backends_to_loopback_only`
+in `make dast-test` enforces this. The probe still reaches the loopback port from
+a local scan and grades it `low` for exactly that reason; the deployment-relevant
+half is each backend chart's `ingress.enabled`.
 
 ## Revert
 

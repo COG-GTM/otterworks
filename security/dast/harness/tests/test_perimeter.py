@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -404,6 +405,28 @@ def test_a_port_bound_to_one_interface_is_attacked_there(tmp_path: Path) -> None
     compose.write_text("services:\n  file-service:\n    ports:\n      - '127.0.0.1:8082:8082'\n")
     origins = perimeter.compose_origins("http://localhost:8080", compose=compose)
     assert [o.url for o in origins] == ["http://127.0.0.1:8082"]
+
+
+#: Services meant to be reached from outside the compose host. Everything else
+#: trusts the gateway's X-User-ID, so publishing it on every interface hands any
+#: host that can reach this one an unauthenticated impersonation endpoint.
+EDGE_SERVICES = {"api-gateway", "web-app", "admin-dashboard"}
+LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def test_the_repo_compose_file_binds_backends_to_loopback_only() -> None:
+    spec = yaml.safe_load(perimeter.COMPOSE.read_text())
+    exposed = []
+    for service, definition in spec["services"].items():
+        if service in EDGE_SERVICES:
+            continue
+        for mapping in definition.get("ports") or []:
+            entry = perimeter.published_port(mapping)
+            if entry is not None and entry[0] not in LOOPBACK:
+                exposed.append(f"{service}: {mapping}")
+    assert exposed == [], f"backend ports published beyond loopback: {exposed}"
+    # The gateway is still the published way in.
+    assert "8080:8080" in spec["services"]["api-gateway"]["ports"]
 
 
 # ── writes are not sent to a target nobody called disposable ─────────────────

@@ -26,6 +26,7 @@ on:
       - 'services/**'
       - 'infrastructure/helm/**'
       - 'security/dast/**'
+      - 'docker-compose*.yml'
       - '.github/workflows/dast-scan.yml'
   schedule:
     - cron: '0 7 * * *' # Daily 7AM UTC
