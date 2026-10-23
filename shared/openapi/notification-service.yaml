@@ -280,7 +280,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token issued by auth-service (`type: access`), signed with the shared JWT_SECRET.
+      description: "Access token issued by auth-service (`type: access`), signed with the shared JWT_SECRET."
 
   responses:
     Unauthorized:
