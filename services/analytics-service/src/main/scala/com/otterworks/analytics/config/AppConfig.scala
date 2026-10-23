@@ -9,7 +9,8 @@ final case class AppConfig(
     aws: AwsConfig,
     postgres: PostgresConfig,
     repository: RepositoryConfig,
-    server: ServerConfig
+    server: ServerConfig,
+    limits: QueryLimitsConfig = QueryLimitsConfig()
 )
 
 final case class S3Config(dataLakeBucket: String)
@@ -27,6 +28,12 @@ final case class RepositoryConfig(backend: String):
   def isPostgres: Boolean = backend.trim.toLowerCase == "postgres"
 
 final case class ServerConfig(host: String, port: Int)
+
+/** Request limits for the analytics query/ingest routes and the in-memory store. */
+final case class QueryLimitsConfig(
+    maxConcurrentQueries: Int = 8,
+    inMemoryMaxEvents: Int = 100000
+)
 
 object AppConfig:
   def load(): AppConfig =
@@ -70,4 +77,14 @@ object AppConfig:
       port = if analytics.hasPath("server.port") then analytics.getInt("server.port") else 8088
     )
 
-    AppConfig(s3, sqs, aws, postgres, repository, server)
+    val defaults = QueryLimitsConfig()
+    val limits = QueryLimitsConfig(
+      maxConcurrentQueries =
+        if analytics.hasPath("limits.max-concurrent-queries") then analytics.getInt("limits.max-concurrent-queries")
+        else defaults.maxConcurrentQueries,
+      inMemoryMaxEvents =
+        if analytics.hasPath("limits.in-memory-max-events") then analytics.getInt("limits.in-memory-max-events")
+        else defaults.inMemoryMaxEvents
+    )
+
+    AppConfig(s3, sqs, aws, postgres, repository, server, limits)

@@ -1,14 +1,19 @@
 package com.otterworks.analytics.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
+import akka.http.scaladsl.model.headers.`Retry-After`
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, HttpResponse, StatusCodes}
 import akka.http.scaladsl.server.Directives.*
-import akka.http.scaladsl.server.Route
+import akka.http.scaladsl.server.{Directive, Directive0, Route, RouteResult}
 import com.otterworks.analytics.model.DashboardJsonProtocol.{*, given}
+import com.otterworks.analytics.repository.MetricsAggregator
 import com.otterworks.analytics.service.AnalyticsService
 import spray.json.*
 
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.Future
+import scala.util.control.NonFatal
 
 /**
  * Analytics query routes:
@@ -19,10 +24,41 @@ import java.time.Instant
  *   GET /api/v1/analytics/active-users
  *   GET /api/v1/analytics/storage
  *   GET /api/v1/analytics/export
+ *
+ * Every query is aggregation work, so at most `maxConcurrentQueries` run at
+ * once; extra requests are shed with 503 + Retry-After instead of queueing.
  */
-class AnalyticsRoutes(analyticsService: AnalyticsService):
+class AnalyticsRoutes(
+    analyticsService: AnalyticsService,
+    maxConcurrentQueries: Int = AnalyticsRoutes.DefaultMaxConcurrentQueries
+):
+
+  require(maxConcurrentQueries > 0, "maxConcurrentQueries must be positive")
+
+  private val inFlight = new AtomicInteger(0)
+
+  private val querySlot: Directive0 = Directive[Unit] { inner => ctx =>
+    if inFlight.incrementAndGet() > maxConcurrentQueries then
+      inFlight.decrementAndGet()
+      ctx.complete(
+        HttpResponse(
+          StatusCodes.ServiceUnavailable,
+          headers = List(`Retry-After`(1L)),
+          entity = HttpEntity(ContentTypes.`application/json`, """{"error":"too many concurrent analytics queries"}""")
+        )
+      )
+    else
+      val result: Future[RouteResult] =
+        try inner(())(ctx)
+        catch case NonFatal(e) => Future.failed(e)
+      result.andThen { case _ => inFlight.decrementAndGet() }(using ctx.executionContext)
+  }
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics") {
+    (get & querySlot) { queryRoutes }
+  }
+
+  private def queryRoutes: Route =
     concat(
       // Dashboard Summary
       path("dashboard") {
@@ -65,8 +101,13 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
             "period".withDefault("7d"),
             "limit".as[Int].withDefault(10)
           ) { (contentType, period, limit) =>
+            validate(
+              limit >= 1 && limit <= MetricsAggregator.Limits.MaxTopContent,
+              s"limit must be between 1 and ${MetricsAggregator.Limits.MaxTopContent}"
+            ) {
             onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
               complete(response)
+            }
             }
           }
         }
@@ -115,7 +156,6 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
         }
       },
     )
-  }
 
   private def buildCsvContent(data: List[Map[String, String]]): String =
     if data.isEmpty then "event_id,event_type,user_id,resource_id,resource_type,timestamp\n"
@@ -131,3 +171,6 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
     if value.contains(",") || value.contains("\"") || value.contains("\n") then
       "\"" + value.replace("\"", "\"\"") + "\""
     else value
+
+object AnalyticsRoutes:
+  val DefaultMaxConcurrentQueries: Int = 8

@@ -17,8 +17,20 @@ import java.time.Instant
  * Events are expected in insertion order (oldest first); callers that read
  * from a database MUST return rows ordered by their monotonic insertion id so
  * that group-wise "first seen" semantics match the in-memory list.
+ *
+ * Every response is bounded by [[MetricsAggregator.Limits]]; ties in ranked
+ * lists are broken by first-seen order so both backends rank identically.
  */
 object MetricsAggregator:
+
+  /** Server-side caps applied to every analytics response, on both backends. */
+  object Limits:
+    val RecentEvents: Int = 20
+    val MaxTopContent: Int = 100
+    val MaxActiveUsers: Int = 1000
+    val MaxExportRows: Int = 10000
+
+  def clampTopContentLimit(limit: Int): Int = Math.min(Math.max(limit, 1), Limits.MaxTopContent)
 
   def dashboardSummary(events: Seq[AnalyticsEvent], period: String): DashboardSummary =
     val cutoff = periodToCutoff(period)
@@ -31,7 +43,7 @@ object MetricsAggregator:
       storageUsedBytes = Math.max(0L, events
         .filter(e => e.eventType == EventType.StorageAllocated || e.eventType == EventType.StorageReleased)
         .foldLeft(0L) { (acc, e) =>
-          val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+          val bytes = parseBytes(e.metadata).getOrElse(0L)
           if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
         }),
       collabSessions = filtered.count(_.eventType == EventType.CollabSessionStarted).toLong,
@@ -40,7 +52,7 @@ object MetricsAggregator:
 
   def userActivity(events: Seq[AnalyticsEvent], userId: String): UserActivity =
     val userEvents = events.filter(_.userId == userId)
-    val recent = userEvents.sortBy(_.timestamp)(using Ordering[Instant].reverse).take(20)
+    val recent = userEvents.sortBy(_.timestamp)(using Ordering[Instant].reverse).take(Limits.RecentEvents)
     UserActivity(
       userId = userId,
       totalEvents = userEvents.size.toLong,
@@ -86,10 +98,9 @@ object MetricsAggregator:
     val filtered = events
       .filter(e => e.timestamp.isAfter(cutoff) && resourceTypeFilter.contains(e.resourceType))
 
-    val grouped = filtered.groupBy(_.resourceId)
-    val items = grouped.toList
-      .map { case (resourceId, resourceEvents) =>
-        ContentItem(
+    val items = groupFirstSeen(filtered)(_.resourceId)
+      .map { case (resourceId, firstSeen, resourceEvents) =>
+        firstSeen -> ContentItem(
           resourceId = resourceId,
           resourceType = resourceEvents.head.resourceType,
           title = resourceEvents.head.metadata.getOrElse("title", resourceId),
@@ -97,8 +108,9 @@ object MetricsAggregator:
           uniqueUsers = resourceEvents.map(_.userId).distinct.size.toLong
         )
       }
-      .sortBy(-_.eventCount)
-      .take(limit)
+      .sortBy { case (firstSeen, item) => (-item.eventCount, firstSeen) }
+      .map(_._2)
+      .take(clampTopContentLimit(limit))
 
     TopContentResponse(
       period = period,
@@ -109,20 +121,22 @@ object MetricsAggregator:
   def activeUsers(events: Seq[AnalyticsEvent], period: String): ActiveUsersResponse =
     val cutoff = periodToCutoff(period)
     val filtered = events.filter(_.timestamp.isAfter(cutoff))
-    val grouped = filtered.groupBy(_.userId)
-    val users = grouped.toList
-      .map { case (userId, userEvents) =>
-        ActiveUser(
+    val grouped = groupFirstSeen(filtered)(_.userId)
+    val users = grouped
+      .map { case (userId, firstSeen, userEvents) =>
+        firstSeen -> ActiveUser(
           userId = userId,
           eventCount = userEvents.size.toLong,
           lastActiveAt = userEvents.maxBy(_.timestamp).timestamp.toString
         )
       }
-      .sortBy(-_.eventCount)
+      .sortBy { case (firstSeen, user) => (-user.eventCount, firstSeen) }
+      .map(_._2)
+      .take(Limits.MaxActiveUsers)
 
     ActiveUsersResponse(
       period = period,
-      count = users.size.toLong,
+      count = grouped.size.toLong,
       users = users
     )
 
@@ -136,7 +150,7 @@ object MetricsAggregator:
     )
 
     val totalBytes = storageEvents.foldLeft(0L) { (acc, e) =>
-      val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+      val bytes = parseBytes(e.metadata).getOrElse(0L)
       if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
     }
 
@@ -147,7 +161,7 @@ object MetricsAggregator:
       .filter(e => e.eventType == EventType.StorageAllocated)
       .groupBy(_.resourceType)
       .map { case (rt, evts) =>
-        rt -> evts.flatMap(_.metadata.get("bytes").flatMap(s => scala.util.Try(s.toLong).toOption)).sum
+        rt -> evts.flatMap(e => parseBytes(e.metadata)).sum
       }
       .toMap
 
@@ -164,6 +178,7 @@ object MetricsAggregator:
     events
       .filter(_.timestamp.isAfter(cutoff))
       .sortBy(_.timestamp)(using Ordering[Instant].reverse)
+      .take(Limits.MaxExportRows)
       .map { e =>
         Map(
           "event_id" -> e.eventId,
@@ -175,6 +190,24 @@ object MetricsAggregator:
         )
       }
       .toList
+
+  private val AsciiInteger = "[+-]?[0-9]+".r
+
+  /**
+   * The `bytes` metadata value as a Long: an optionally signed ASCII-digit
+   * integer within the Long range. Mirrors the SQL parsing in
+   * PostgresMetricsRepository (`String.toLong` alone also accepts non-ASCII digits).
+   */
+  def parseBytes(metadata: Map[String, String]): Option[Long] =
+    metadata.get("bytes").filter(AsciiInteger.matches).flatMap(_.toLongOption)
+
+  /** Group by key, keeping each group's first-seen position and events in insertion order. */
+  private def groupFirstSeen(events: Seq[AnalyticsEvent])(key: AnalyticsEvent => String)
+      : List[(String, Int, Seq[AnalyticsEvent])] =
+    events.zipWithIndex
+      .groupBy { case (e, _) => key(e) }
+      .toList
+      .map { case (k, indexed) => (k, indexed.head._2, indexed.map(_._1)) }
 
   def periodToCutoff(period: String): Instant =
     val now = Instant.now()

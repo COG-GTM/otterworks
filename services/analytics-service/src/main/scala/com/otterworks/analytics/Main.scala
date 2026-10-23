@@ -42,10 +42,10 @@ object Main:
             db.close()
             system.log.warn(
               s"Durable PostgreSQL store unavailable (${ex.getMessage}); falling back to in-memory store")
-            (new InMemoryMetricsRepository(config.postgres), None)
+            (new InMemoryMetricsRepository(config.postgres, config.limits.inMemoryMaxEvents), None)
       else
         system.log.info("Analytics using in-memory metrics store (per configuration)")
-        (new InMemoryMetricsRepository(config.postgres), None)
+        (new InMemoryMetricsRepository(config.postgres, config.limits.inMemoryMaxEvents), None)
 
     val analyticsService = AnalyticsService(repository)
     val eventProcessor = EventProcessor(config, analyticsService)
@@ -74,7 +74,7 @@ object Main:
 
     // Build routes
     val healthRoutes = HealthRoutes(analyticsService)
-    val analyticsRoutes = AnalyticsRoutes(analyticsService)
+    val analyticsRoutes = AnalyticsRoutes(analyticsService, config.limits.maxConcurrentQueries)
     val eventRoutes = EventRoutes(analyticsService)
 
     val routes: Route = concat(
