@@ -27,9 +27,12 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
 import java.util.Date
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -38,6 +41,12 @@ class RoutesAuthTest {
 
     private val secret = "test-secret-that-is-long-enough-for-hs256-signing"
     private val service = mockk<NotificationService>(relaxed = true)
+
+    @BeforeTest
+    @AfterTest
+    fun resetKoin() {
+        stopKoin()
+    }
 
     private fun token(
         sub: String,
