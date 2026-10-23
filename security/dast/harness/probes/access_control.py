@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import time
 
 from .base import Evidence, Result, Severity, Verdict, probe, redact, unavailable
 from .context import ScanContext
@@ -72,6 +73,95 @@ def bola_documents(ctx: ScanContext) -> Result:
         Verdict.INCONCLUSIVE,
         f"unexpected status {response.status_code}",
         [Evidence.from_response(response)],
+    )
+
+
+@probe(
+    finding_id="DAST-BOLA-FILES",
+    title="Broken object-level authorization on /api/v1/files/{id} (read, download, share)",
+    severity=Severity.CRITICAL,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="file-service",
+    remediation=(
+        "Resolve the caller from the gateway-injected X-User-ID on every file and folder "
+        "endpoint, require file.owner_id == caller (or a sufficient share grant), and "
+        "derive shared_by from the caller rather than the request body."
+    ),
+)
+def bola_files(ctx: ScanContext) -> Result:
+    """Attacker reads, downloads and self-shares a file owned by the victim."""
+    self = bola_files.probe
+    name = f"victim-file-{ctx.run_id}.txt"
+    # The metadata tables may still be provisioning right after the stack
+    # starts, so a 5xx upload is retried briefly before giving up.
+    for _ in range(10):
+        upload = ctx.client.post(
+            "/api/v1/files/upload",
+            headers=ctx.victim.headers,
+            files={"file": (name, f"confidential {ctx.victim_marker}".encode(), "text/plain")},
+        )
+        if upload.status_code < 500:
+            break
+        time.sleep(3)
+    if upload.status_code != 201:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"could not seed a victim-owned file (upload returned {upload.status_code})",
+            [Evidence.from_response(upload)],
+        )
+    file_id = upload.json()["file"]["id"]
+    base = f"/api/v1/files/{file_id}"
+
+    def attempt(method: str, path: str, body: dict | None = None):
+        # Retry 5xx while the share table finishes provisioning on a fresh stack.
+        for _ in range(10):
+            response = ctx.request(method, path, identity=ctx.attacker, json=body)
+            if response.status_code < 500:
+                break
+            time.sleep(3)
+        return response
+
+    attempts = [
+        attempt("GET", base),
+        attempt("GET", f"{base}/download"),
+        attempt(
+            "POST",
+            f"{base}/share",
+            {
+                "shared_with": ctx.attacker.user_id,
+                "permission": "editor",
+                "shared_by": ctx.victim.user_id,
+            },
+        ),
+    ]
+    leaked = [r for r in attempts if 200 <= r.status_code < 300]
+    if leaked:
+        return self.result(
+            Verdict.VULNERABLE,
+            "the attacker's token read, downloaded or shared the victim's file",
+            [Evidence.from_response(r, note=f"victim file {file_id}") for r in leaked],
+        )
+    if any(r.status_code not in (401, 403, 404) for r in attempts):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "unexpected status from the file routes: "
+            + ", ".join(str(r.status_code) for r in attempts),
+            [Evidence.from_response(r) for r in attempts],
+        )
+    if not (
+        ctx.owner_can_read(base, ctx.victim) and ctx.owner_can_read(f"{base}/download", ctx.victim)
+    ):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the owner is also refused; cross-tenant access cannot be assessed",
+            [Evidence.from_response(attempts[0])],
+        )
+    return self.result(
+        Verdict.SECURE,
+        "the owner can read and download the file but the attacker was refused "
+        + ", ".join(str(r.status_code) for r in attempts),
+        [Evidence.from_response(r) for r in attempts],
     )
 
 
