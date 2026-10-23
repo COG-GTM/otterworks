@@ -468,3 +468,24 @@ def test_a_backend_that_serves_a_caller_claiming_nothing_is_the_finding(
     result = gateway_bypass_identity(StubContext(gateway=401))
     assert result.verdict is Verdict.VULNERABLE
     assert "requires no identity at all" in result.detail
+
+
+# ── the repository's own compose file ────────────────────────────────────────
+
+#: Services the compose file may publish on every interface: the gateway and the
+#: frontends, none of which trusts a caller-supplied identity.
+EDGE_SERVICES = {"api-gateway", "web-app", "admin-dashboard"}
+
+
+def test_the_compose_file_publishes_no_backend_beyond_loopback() -> None:
+    """A backend on 0.0.0.0 takes X-User-ID from anyone who can reach the host."""
+    spec = perimeter.yaml.safe_load(perimeter.COMPOSE.read_text())
+    exposed = [
+        f"{name}: {mapping}"
+        for name, definition in spec["services"].items()
+        if name not in EDGE_SERVICES
+        for mapping in definition.get("ports") or []
+        if (entry := perimeter.published_port(mapping)) and entry[0] != "127.0.0.1"
+    ]
+    assert exposed == []
+    assert compose_origins("http://localhost:8080") == []
