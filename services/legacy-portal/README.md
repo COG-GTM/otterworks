@@ -26,7 +26,23 @@ and the datasource. That is exactly what makes this a good decomposition candida
 | Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
 
 Shared, non-domain plumbing lives in `com.otterworks.legacyportal.common` (health endpoint,
-exception handling).
+exception handling) and `com.otterworks.legacyportal.security` (authentication).
+
+### Authentication
+
+The portal is reached directly (not through the API gateway), so it verifies auth-service access
+tokens itself (HS256/384/512, signed with the shared `JWT_SECRET`, >= 32 bytes). The token's
+`roles` claim maps to `ROLE_<name>` authorities.
+
+| Route | Anonymous | Authenticated, not ADMIN/OWNER | ADMIN or OWNER |
+|---|---|---|---|
+| `POST /api/announcements`, `POST /api/announcements/{id}/publish` | `401` | `403` | allowed |
+| `GET /api/announcements` (default `publishedOnly=true`) | published only | published only | published only |
+| `GET /api/announcements?publishedOnly=false` | `401` | `403` | drafts included |
+| `GET /api/announcements/{id}` of a draft | `404` | `404` | allowed |
+
+Send `Authorization: Bearer <access token>`. Without `JWT_SECRET`, every token is rejected, so
+announcement writes return `401`. Preferences and feedback routes are unchanged.
 
 ### Why it's an obvious decomposition candidate
 
