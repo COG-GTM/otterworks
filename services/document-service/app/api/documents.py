@@ -75,9 +75,13 @@ def _extract_user_id(request: Request) -> UUID | None:
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[len("Bearer "):]
         secret = _get_jwt_secret()
+        # auth-service signs with HS512 once JWT_SECRET is 64+ bytes (jjwt picks
+        # the algorithm from the key length), e.g. `openssl rand -hex 32`.
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384", "HS512"])
+                if payload.get("type") == "refresh":
+                    return None
                 user_id_str = payload.get("user_id") or payload.get("sub")
                 if user_id_str:
                     return UUID(str(user_id_str))
