@@ -53,15 +53,15 @@ public class ReportService {
     }
 
     /**
-     * Create a new report request and start async generation.
+     * Create a new report request owned by {@code requestedBy} and start async generation.
      */
     @Transactional
-    public Report createReport(ReportRequest request) {
+    public Report createReport(ReportRequest request, String requestedBy) {
         Report report = new Report();
         report.setReportName(request.getReportName());
         report.setCategory(request.getCategory());
         report.setReportType(request.getReportType());
-        report.setRequestedBy(request.getRequestedBy());
+        report.setRequestedBy(requestedBy);
         report.setStatus(ReportStatus.PENDING);
         report.setCreatedAt(new Date()); // LEGACY: new Date() instead of Instant.now()
 
