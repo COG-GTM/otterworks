@@ -50,10 +50,18 @@ Access is granted by two claims:
 A route registered without a policy decorator (`requires`/`public` in
 `app/auth.py`) is rejected with `403`.
 
-For the local Compose profile, export a secret before `make procs-up`:
+In a deployment alongside auth-service, set `LEGACY_BILLING_JWT_SECRET` to the
+same value as the platform `JWT_SECRET` so issuer and verifier share the key.
+auth-service access tokens do not yet carry `scope`/`tenant_id`, so until the
+issuer adds those claims they are rejected with `403`.
+
+The local Compose profile has no auth-service. Export a secret before
+`make procs-up` and mint test tokens with it:
 
 ```bash
 export LEGACY_BILLING_JWT_SECRET=$(openssl rand -hex 32)
+TOKEN=$(uv run --with pyjwt python -c 'import jwt, os, time; print(jwt.encode({"sub": "ops", "type": "access", "exp": int(time.time()) + 600, "scope": "billing:read", "tenant_id": "00000000-0000-0000-0000-000000000001"}, os.environ["LEGACY_BILLING_JWT_SECRET"], algorithm="HS256"))')
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8096/plans/00000000-0000-0000-0000-000000000001/entitlement
 ```
 
 Tests: `uv run --with flask==3.1.1 --with psycopg[binary]==3.2.9 --with pytest==8.3.5 pytest services/legacy-billing/tests`.

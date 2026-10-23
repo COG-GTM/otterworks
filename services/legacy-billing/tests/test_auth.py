@@ -229,6 +229,8 @@ def test_rating_requires_json_object(client, calls):
         mint(scope=auth.ADMIN).rsplit(".", 1)[0] + ".",
         mint(scope=auth.ADMIN).rsplit(".", 1)[0],
         "not-a-jwt",
+        "eyJhbGciOiJIUzI1NiJ9.\u00e9.sig",
+        mint(scope=auth.ADMIN).replace(".", "=.", 1),
     ],
     ids=[
         "wrong-secret",
@@ -243,6 +245,8 @@ def test_rating_requires_json_object(client, calls):
         "empty-sig",
         "two-parts",
         "garbage",
+        "non-ascii-payload",
+        "padded-segment",
     ],
 )
 def test_invalid_tokens_are_rejected(client, calls, token):
