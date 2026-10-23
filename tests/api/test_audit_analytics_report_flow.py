@@ -157,7 +157,7 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
     assert create_response.status_code == 202, create_response.text
     report = create_response.json()
     report_id = report["id"]
-    api_client.created_reports.append(report_id)
+    api_client.created_reports.append((report_id, user.auth_headers))
 
     get_response = api_client.client.get(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert get_response.status_code == 200, get_response.text
@@ -177,7 +177,7 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
 
     delete_response = api_client.client.delete(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert delete_response.status_code == 204, delete_response.text
-    api_client.created_reports.remove(report_id)
+    api_client.created_reports.remove((report_id, user.auth_headers))
 
     invalid_report = api_client.client.post(
         "/api/v1/reports",
@@ -185,3 +185,41 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
         json={"category": "USAGE_ANALYTICS", "reportType": "CSV", "requestedBy": user.id},
     )
     assert invalid_report.status_code in {400, 422}
+
+
+def test_reports_are_scoped_to_their_owner(api_client):
+    owner = api_client.register_user("report-owner")
+    intruder = api_client.register_user("report-intruder")
+
+    create_response = api_client.client.post(
+        "/api/v1/reports",
+        headers=owner.auth_headers,
+        json={
+            "reportName": f"Owner Report {api_client.run_id}",
+            "category": "AUDIT_LOG",
+            "reportType": "CSV",
+            "requestedBy": intruder.id,
+        },
+    )
+    api_client.assert_gateway_route_available(create_response, "/api/v1/reports")
+    assert create_response.status_code == 202, create_response.text
+    report = create_response.json()
+    report_id = report["id"]
+    api_client.created_reports.append((report_id, owner.auth_headers))
+    assert report["requestedBy"] == owner.id
+
+    for path in (f"/api/v1/reports/{report_id}", f"/api/v1/reports/{report_id}/download"):
+        assert api_client.client.get(path, headers=intruder.auth_headers).status_code == 404
+        assert api_client.client.get(path).status_code == 401
+    assert api_client.client.delete(f"/api/v1/reports/{report_id}", headers=intruder.auth_headers).status_code == 404
+
+    other_list = api_client.client.get(
+        "/api/v1/reports", headers=intruder.auth_headers, params={"userId": owner.id}
+    )
+    assert other_list.status_code == 403, other_list.text
+
+    own_list = api_client.client.get("/api/v1/reports", headers=intruder.auth_headers)
+    assert own_list.status_code == 200, own_list.text
+    assert all(r["requestedBy"] == intruder.id for r in own_list.json()["reports"])
+
+    assert api_client.client.get(f"/api/v1/reports/{report_id}", headers=owner.auth_headers).status_code == 200

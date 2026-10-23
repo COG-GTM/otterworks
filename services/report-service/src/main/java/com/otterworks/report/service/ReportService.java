@@ -20,6 +20,7 @@ import java.io.File;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Core report orchestration service.
@@ -53,15 +54,15 @@ public class ReportService {
     }
 
     /**
-     * Create a new report request and start async generation.
+     * Create a new report request owned by {@code requestedBy} and start async generation.
      */
     @Transactional
-    public Report createReport(ReportRequest request) {
+    public Report createReport(ReportRequest request, String requestedBy) {
         Report report = new Report();
         report.setReportName(request.getReportName());
         report.setCategory(request.getCategory());
         report.setReportType(request.getReportType());
-        report.setRequestedBy(request.getRequestedBy());
+        report.setRequestedBy(requestedBy);
         report.setStatus(ReportStatus.PENDING);
         report.setCreatedAt(new Date()); // LEGACY: new Date() instead of Instant.now()
 
@@ -123,7 +124,16 @@ public class ReportService {
      */
     @Transactional
     public boolean deleteReport(Long id) {
-        Optional<Report> optReport = reportRepository.findById(id);
+        return deleteReport(id, report -> true);
+    }
+
+    /**
+     * Delete a report only if {@code canDelete} accepts it; the check and the delete
+     * run in the same transaction.
+     */
+    @Transactional
+    public boolean deleteReport(Long id, Predicate<Report> canDelete) {
+        Optional<Report> optReport = reportRepository.findById(id).filter(canDelete);
         if (!optReport.isPresent()) {
             return false;
         }

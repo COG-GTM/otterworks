@@ -13,8 +13,10 @@ service:
   port: 80
   targetPort: 8091
 
+# No public ingress: report traffic must come through the api-gateway
+# (api-t-<id>/... /api/v1/reports). The service also validates the JWT itself.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

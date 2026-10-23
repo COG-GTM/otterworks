@@ -423,7 +423,7 @@ services:
       dockerfile: Dockerfile
     container_name: otterworks-report-service
     ports:
-    - 8091:8091
+    - 127.0.0.1:8091:8091
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test

@@ -4,6 +4,7 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportResponse;
 import com.otterworks.report.model.ReportStatus;
+import com.otterworks.report.security.AuthenticatedUser;
 import com.otterworks.report.service.ReportService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -19,6 +20,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -48,6 +50,10 @@ import java.util.stream.Collectors;
  * - ByteArrayResource loads entire file into memory (target: InputStreamResource for streaming)
  * - No pagination on list endpoint
  * - Manual response mapping without MapStruct or similar
+ *
+ * Every endpoint is scoped to the authenticated caller: reports are created for the
+ * caller, and only their owner (or an ADMIN) can see, download or delete them.
+ * Reports owned by someone else answer 404 so IDs cannot be probed for existence.
  */
 @RestController
 @RequestMapping("/api/v1/reports")
@@ -69,13 +75,14 @@ public class ReportController {
             @ApiResponse(code = 400, message = "Invalid request")
     })
     public ResponseEntity<ReportResponse> createReport(
+            @AuthenticationPrincipal AuthenticatedUser caller,
             @Valid @RequestBody ReportRequest request) {
 
         logger.info("Report request: name={}, category={}, type={}, by={}",
                 request.getReportName(), request.getCategory(),
-                request.getReportType(), request.getRequestedBy());
+                request.getReportType(), caller.getUserId());
 
-        Report report = reportService.createReport(request);
+        Report report = reportService.createReport(request, caller.getUserId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ReportResponse.fromEntity(report));
     }
@@ -87,10 +94,11 @@ public class ReportController {
             @ApiResponse(code = 404, message = "Report not found")
     })
     public ResponseEntity<ReportResponse> getReport(
+            @AuthenticationPrincipal AuthenticatedUser caller,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> report = reportService.getReport(id);
+        Optional<Report> report = findAccessibleReport(id, caller);
         if (!report.isPresent()) { // LEGACY: !isPresent() instead of isEmpty()
             return ResponseEntity.notFound().build();
         }
@@ -98,16 +106,32 @@ public class ReportController {
     }
 
     @GetMapping
-    @ApiOperation(value = "List reports", notes = "List reports filtered by user ID or status")
+    @ApiOperation(value = "List reports",
+            notes = "Lists the caller's reports, optionally filtered by status. Only admins may list another user's reports or all reports.")
+    @ApiResponses({
+            @ApiResponse(code = 200, message = "Reports"),
+            @ApiResponse(code = 403, message = "userId names another user and the caller is not an admin")
+    })
     public ResponseEntity<Map<String, Object>> listReports(
-            @ApiParam(value = "Filter by user ID")
+            @AuthenticationPrincipal AuthenticatedUser caller,
+            @ApiParam(value = "Filter by user ID (admins only, unless it is the caller's own ID)")
             @RequestParam(required = false) String userId,
             @ApiParam(value = "Filter by status")
             @RequestParam(required = false) ReportStatus status) {
 
+        if (userId != null && !caller.owns(userId) && !caller.isAdmin()) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
         List<Report> reports;
-        if (userId != null) {
-            reports = reportService.getReportsByUser(userId);
+        if (userId != null || !caller.isAdmin()) {
+            String owner = userId != null ? userId : caller.getUserId();
+            reports = reportService.getReportsByUser(owner);
+            if (status != null) {
+                reports = reports.stream()
+                        .filter(report -> report.getStatus() == status)
+                        .collect(Collectors.toList());
+            }
         } else if (status != null) {
             reports = reportService.getReportsByStatus(status);
         } else {
@@ -134,10 +158,11 @@ public class ReportController {
             @ApiResponse(code = 409, message = "Report is still generating")
     })
     public ResponseEntity<Resource> downloadReport(
+            @AuthenticationPrincipal AuthenticatedUser caller,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> optReport = reportService.getReport(id);
+        Optional<Report> optReport = findAccessibleReport(id, caller);
         if (!optReport.isPresent()) {
             return ResponseEntity.notFound().build();
         }
@@ -186,10 +211,11 @@ public class ReportController {
             @ApiResponse(code = 404, message = "Report not found")
     })
     public ResponseEntity<Void> deleteReport(
+            @AuthenticationPrincipal AuthenticatedUser caller,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        boolean deleted = reportService.deleteReport(id);
+        boolean deleted = reportService.deleteReport(id, report -> canAccess(caller, report));
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
@@ -197,6 +223,14 @@ public class ReportController {
     }
 
     // ----- Private helpers -----
+
+    private Optional<Report> findAccessibleReport(Long id, AuthenticatedUser caller) {
+        return reportService.getReport(id).filter(report -> canAccess(caller, report));
+    }
+
+    private static boolean canAccess(AuthenticatedUser caller, Report report) {
+        return caller.isAdmin() || caller.owns(report.getRequestedBy());
+    }
 
     private String getContentType(com.otterworks.report.model.ReportType reportType) {
         // LEGACY: switch without enhanced syntax
