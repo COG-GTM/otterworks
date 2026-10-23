@@ -16,17 +16,26 @@ const mockLogger = {
   child: jest.fn().mockReturnThis(),
 } as never;
 
-function sign(payload: Record<string, unknown>, expiresIn: string | number = '1h'): string {
+function sign(
+  payload: Record<string, unknown>,
+  expiresIn: string | number = '1h',
+): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn } as jwt.SignOptions); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
 }
 
 function fakeSocket(token: string): Socket {
-  return { id: 'socket-1', handshake: { auth: { token }, headers: {} } } as unknown as Socket;
+  return {
+    id: 'socket-1',
+    handshake: { auth: { token }, headers: {} },
+  } as unknown as Socket;
 }
 
 describe('verifyAccessToken', () => {
   it('accepts an access token', () => {
-    const payload = verifyAccessToken(sign({ sub: 'user-1', type: 'access' }), JWT_SECRET);
+    const payload = verifyAccessToken(
+      sign({ sub: 'user-1', type: 'access' }),
+      JWT_SECRET,
+    );
     expect(payload.sub).toBe('user-1');
   });
 
@@ -58,7 +67,9 @@ describe('createAuthMiddleware', () => {
   });
 
   it('rejects a socket presenting a refresh token', () => {
-    const socket = fakeSocket(sign({ sub: 'user-1', type: 'refresh', jti: 'jti-1' }, '30d'));
+    const socket = fakeSocket(
+      sign({ sub: 'user-1', type: 'refresh', jti: 'jti-1' }, '30d'),
+    );
     const next = jest.fn();
     middleware(socket, next);
     expect(next).toHaveBeenCalledWith(expect.any(Error));
