@@ -398,6 +398,7 @@ services:
       SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
       SLACK_USER_MAP: ${SLACK_USER_MAP:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Optional second factor for /api/v1/admin/chaos (admin JWT is always required).
       CHAOS_SECRET: ${CHAOS_SECRET:-}
     depends_on:
       postgres:

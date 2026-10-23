@@ -42,12 +42,30 @@ class ChaosProbeService
     },
   }.freeze
 
-  # Starts a background probe thread for the given service.
+  @probes = {}
+  @probes_lock = Mutex.new
+
+  # Starts a background probe thread for the given service and returns it.
+  # At most one probe runs per Redis key: re-triggering while a probe is alive
+  # returns the existing thread instead of spawning another one.
   # The thread self-terminates when the Redis key no longer exists.
   def self.start(service:, redis_key:)
     probe_config = SERVICE_PROBES[service]
     return unless probe_config
 
+    @probes_lock.synchronize do
+      existing = @probes[redis_key]
+      return existing if existing&.alive?
+
+      @probes[redis_key] = spawn_probe(service, redis_key, probe_config)
+    end
+  end
+
+  def self.running?(redis_key)
+    @probes_lock.synchronize { @probes[redis_key]&.alive? || false }
+  end
+
+  def self.spawn_probe(service, redis_key, probe_config)
     Thread.new do
       Thread.current.report_on_exception = true
       Rails.logger.info("[ChaosProbe] Started for #{service}")
@@ -70,8 +88,10 @@ class ChaosProbeService
       Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
     ensure
       redis&.close
+      @probes_lock.synchronize { @probes.delete(redis_key) if @probes[redis_key] == Thread.current }
     end
   end
+  private_class_method :spawn_probe
 
   def self.fire_probe(config)
     uri = URI.parse(config[:url])

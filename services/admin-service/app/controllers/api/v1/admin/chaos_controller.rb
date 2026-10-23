@@ -11,6 +11,10 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        # JwtAuthenticator authenticates the caller; only admins may inject
+        # failures or resolve incidents. CHAOS_SECRET, when configured, is an
+        # additional factor for the same admins — never a replacement.
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -29,10 +33,17 @@ module Api
           redis_key = "chaos:#{svc}:#{scenario}"
           redis.setex(redis_key, CHAOS_TTL_SECONDS, '1')
 
-          # Start background probe to generate traffic → Prometheus metrics → Grafana alert
+          # Start background probe to generate traffic → Prometheus metrics → Grafana alert.
+          # At most one probe runs per key, so repeated triggers don't stack threads.
           ChaosProbeService.start(service: svc, redis_key: redis_key)
 
-          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s) by #{current_user_id}")
+          AuditLogger.log(
+            action: 'chaos.triggered',
+            resource_type: 'ChaosFlag',
+            request: request,
+            changes_made: { key: redis_key, service: svc, scenario: scenario, ttl_seconds: CHAOS_TTL_SECONDS }
+          )
 
           render json: {
             status:     'chaos_active',
@@ -62,7 +73,14 @@ module Api
             end
           end
 
-          Rails.logger.warn("CHAOS RESET: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
+          Rails.logger.warn("CHAOS RESET by #{current_user_id}: cleared #{keys.size} flag(s): #{keys.join(', ')}; " \
+                            "resolved #{resolved_incidents.size} incident(s)")
+          AuditLogger.log(
+            action: 'chaos.reset',
+            resource_type: 'ChaosFlag',
+            request: request,
+            changes_made: { cleared: keys, resolved_incidents: resolved_incidents }
+          )
 
           render json: { status: 'reset', cleared: keys, resolved_incidents: resolved_incidents }
         end
@@ -78,7 +96,7 @@ module Api
 
         def verify_chaos_secret
           expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          return if expected.blank? # admin JWT alone (require_admin!) when no second factor is configured
 
           provided = request.headers['X-Chaos-Secret']
           return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
