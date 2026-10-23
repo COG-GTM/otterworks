@@ -17,8 +17,10 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -180,6 +182,47 @@ public class CsvReportGeneratorTest {
 
         assertTrue("File name should contain sanitized report name",
                 csv.getName().startsWith("monthly_security_audit_"));
+    }
+
+    @Test
+    public void formulaPrefixedEventValuesAreNeutralized() throws IOException {
+        Report report = buildReport("Formula Injection Report");
+        List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("resource_id", "=cmd|'/c calc'!A1");
+        row.put("title", "=HYPERLINK(\"https://evil\",\"click\")");
+        row.put("actor", "@SUM(1+1)");
+        row.put("details", "+1-2");
+        row.put("delta", Integer.valueOf(-3));
+        data.add(row);
+
+        File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
+        List<String> lines = readAllLines(csv);
+        String dataLine = lines.get(lines.size() - 1);
+
+        assertEquals("\"'=cmd|'/c calc'!A1\",\"'=HYPERLINK(\"\"https://evil\"\",\"\"click\"\")\","
+                + "\"'@SUM(1+1)\",\"'+1-2\",\"-3\"", dataLine);
+    }
+
+    @Test
+    public void formulaPrefixedColumnNamesAndReportNameAreNeutralized() throws IOException {
+        Properties templates = new Properties();
+        templates.setProperty("banner.title", "${reportName}");
+        CsvReportGenerator custom = new CsvReportGenerator(new ReportHeaderRenderer(templates));
+        Report report = buildReport("=HYPERLINK(\"https://evil\")");
+        List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("-1+cmd", "value");
+        data.add(row);
+
+        File csv = custom.generateCsv(report, data, outputDir.getAbsolutePath());
+        List<String> lines = readAllLines(csv);
+
+        assertEquals("\"'=HYPERLINK(\"\"https://evil\"\")\"", lines.get(0));
+        assertTrue("Header row should be escaped", lines.contains("\"'-1+cmd\""));
+        for (String line : lines) {
+            assertFalse("No cell may start with a formula trigger: " + line, line.matches("^\"[=+\\-@].*"));
+        }
     }
 
     // ---- Helpers ----
