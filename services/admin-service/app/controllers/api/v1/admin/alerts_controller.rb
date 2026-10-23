@@ -25,6 +25,7 @@ module Api
         MAX_ALERTS_PER_REQUEST = 50
         MAX_TITLE_LENGTH       = 255
         MAX_DESCRIPTION_LENGTH = 4_000
+        MAX_RUNBOOK_URL_LENGTH = 1_000
 
         # Publicly known values that once shipped as defaults; never accepted.
         RETIRED_SECRETS = %w[demo-alert-secret].freeze
@@ -92,12 +93,11 @@ module Api
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
-          incident_description = build_description(alert_name, description, labels, annotations)
-                                 .truncate(MAX_DESCRIPTION_LENGTH)
+          title = (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(MAX_TITLE_LENGTH)
 
           incident = Incident.create!(
-            title:            (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(MAX_TITLE_LENGTH),
-            description:      incident_description,
+            title:            title,
+            description:      build_description(alert_name, description, labels, annotations),
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',
             affected_service: affected_service,
@@ -148,14 +148,18 @@ module Api
           Rails.logger.warn("Could not auto-resolve incident #{incident.id} for alert #{alert_name}: #{e.message}")
         end
 
+        # Metadata is bounded and kept intact; the free-text description gets the
+        # remaining room so the total stays within MAX_DESCRIPTION_LENGTH.
         def build_description(alert_name, base_description, labels, annotations)
-          parts = [base_description]
-          parts << "**Alert**: #{alert_name}" if alert_name.present?
+          metadata = []
+          metadata << "**Alert**: #{alert_name.truncate(MAX_TITLE_LENGTH)}" if alert_name.present?
           if (runbook = annotations[:runbook_url].to_s).present?
-            parts << "**Runbook**: #{runbook}"
+            metadata << "**Runbook**: #{runbook.truncate(MAX_RUNBOOK_URL_LENGTH)}"
           end
-          parts << "**Source**: Grafana Unified Alerting (auto-generated incident)"
-          parts.join("\n\n")
+          metadata << "**Source**: Grafana Unified Alerting (auto-generated incident)"
+          metadata_text = metadata.join("\n\n")
+          base_room = MAX_DESCRIPTION_LENGTH - metadata_text.length - 2
+          [base_description.to_s.truncate(base_room), metadata_text].join("\n\n")
         end
 
         # The ingest path skips JWT auth (JwtAuthenticator::EXCLUDED_PATHS), so

@@ -111,11 +111,22 @@ RSpec.describe Api::V1::Admin::AlertsController do
       post :ingest, params: { alerts: [alert] }
       expect(Incident.last.description.length).to be <= 4_000
     end
+
+    it 'keeps the runbook link when the alert description is near the cap' do
+      alert = { status: 'firing',
+                labels: { alertname: 'LongAlert', severity: 'critical', affected_service: 'file-service' },
+                annotations: { summary: 'long', description: 'd' * 3_990,
+                               runbook_url: 'https://runbooks.example/file-service' } }
+      post :ingest, params: { alerts: [alert] }
+      expect(Incident.last.description).to include('**Runbook**: https://runbooks.example/file-service')
+      expect(Incident.last.description.length).to be <= 4_000
+    end
   end
 
   describe 'alert secret verification' do
     def forged_alerts
-      { alerts: [{ status: 'firing', labels: { alertname: 'Forged', severity: 'critical', affected_service: 'file-service' },
+      { alerts: [{ status: 'firing',
+                   labels: { alertname: 'Forged', severity: 'critical', affected_service: 'file-service' },
                    annotations: { summary: 'forged' } }] }
     end
 
@@ -157,7 +168,8 @@ RSpec.describe Api::V1::Admin::AlertsController do
       incident = Incident.create!(title: 't', description: 'd', severity: 'high',
                                   status: 'investigating', affected_service: 'file-service')
       request.headers['X-Alert-Secret'] = nil
-      post :ingest, params: { alerts: [{ status: 'resolved', labels: { alertname: 'Forged', affected_service: 'file-service' } }] }
+      resolved = { status: 'resolved', labels: { alertname: 'Forged', affected_service: 'file-service' } }
+      post :ingest, params: { alerts: [resolved] }
       expect(response).to have_http_status(:unauthorized)
       expect(incident.reload.status).to eq('investigating')
     end
