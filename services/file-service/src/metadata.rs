@@ -225,24 +225,14 @@ impl MetadataClient {
         self.get_file(file_id).await
     }
 
-    pub async fn list_trashed(
-        &self,
-        owner_id: Option<Uuid>,
-    ) -> Result<Vec<FileMetadata>, ServiceError> {
-        let mut filter_parts = vec!["is_trashed = :trashed".to_string()];
-        let mut scan_builder = self
+    pub async fn list_trashed(&self, owner_id: &Uuid) -> Result<Vec<FileMetadata>, ServiceError> {
+        let scan_builder = self
             .client
             .scan()
             .table_name(&self.files_table)
-            .expression_attribute_values(":trashed", AttributeValue::Bool(true));
-
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
-        }
-
-        scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
+            .filter_expression("is_trashed = :trashed AND owner_id = :owner_id")
+            .expression_attribute_values(":trashed", AttributeValue::Bool(true))
+            .expression_attribute_values(":owner_id", AttributeValue::S(owner_id.to_string()));
 
         let mut paginator = scan_builder.into_paginator().send();
         let mut files = Vec::new();
@@ -262,22 +252,21 @@ impl MetadataClient {
     pub async fn list_files(
         &self,
         folder_id: Option<Uuid>,
-        owner_id: Option<Uuid>,
+        owner_id: &Uuid,
         include_trashed: bool,
     ) -> Result<Vec<FileMetadata>, ServiceError> {
-        let mut scan_builder = self.client.scan().table_name(&self.files_table);
+        let mut scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.files_table)
+            .expression_attribute_values(":owner_id", AttributeValue::S(owner_id.to_string()));
 
-        let mut filter_parts: Vec<String> = Vec::new();
+        let mut filter_parts: Vec<String> = vec!["owner_id = :owner_id".to_string()];
 
         if let Some(fid) = &folder_id {
             filter_parts.push("folder_id = :folder_id".to_string());
             scan_builder = scan_builder
                 .expression_attribute_values(":folder_id", AttributeValue::S(fid.to_string()));
-        }
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
         }
         if !include_trashed {
             filter_parts.push("is_trashed = :trashed".to_string());
@@ -285,9 +274,7 @@ impl MetadataClient {
                 scan_builder.expression_attribute_values(":trashed", AttributeValue::Bool(false));
         }
 
-        if !filter_parts.is_empty() {
-            scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
-        }
+        scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
 
         // Use the SDK paginator to handle DynamoDB's 1MB-per-Scan limit automatically
         let mut paginator = scan_builder.into_paginator().send();
@@ -405,11 +392,15 @@ impl MetadataClient {
     pub async fn list_folders(
         &self,
         parent_id: Option<Uuid>,
-        owner_id: Option<Uuid>,
+        owner_id: &Uuid,
     ) -> Result<Vec<Folder>, ServiceError> {
-        let mut scan_builder = self.client.scan().table_name(&self.folders_table);
+        let mut scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.folders_table)
+            .expression_attribute_values(":owner_id", AttributeValue::S(owner_id.to_string()));
 
-        let mut filter_parts: Vec<String> = Vec::new();
+        let mut filter_parts: Vec<String> = vec!["owner_id = :owner_id".to_string()];
 
         match &parent_id {
             Some(pid) => {
@@ -421,15 +412,7 @@ impl MetadataClient {
                 filter_parts.push("attribute_not_exists(parent_id)".to_string());
             }
         }
-        if let Some(oid) = &owner_id {
-            filter_parts.push("owner_id = :owner_id".to_string());
-            scan_builder = scan_builder
-                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
-        }
-
-        if !filter_parts.is_empty() {
-            scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
-        }
+        scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
 
         let mut paginator = scan_builder.into_paginator().send();
         let mut folders = Vec::new();

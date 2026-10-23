@@ -1,9 +1,13 @@
+use actix_web::body::MessageBody;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
+use actix_web::http::header::HeaderMap;
+use actix_web::middleware::Next;
 use actix_web::Error;
 use futures_util::future::{ok, LocalBoxFuture, Ready};
 use std::task::{Context, Poll};
 use uuid::Uuid;
 
+use crate::errors::ServiceError;
 use lazy_static::lazy_static;
 use prometheus::{
     register_histogram_vec, register_int_counter_vec, Encoder, HistogramVec, IntCounterVec,
@@ -32,6 +36,34 @@ pub fn render_metrics() -> String {
     let mut buffer = Vec::new();
     encoder.encode(&metric_families, &mut buffer).unwrap();
     String::from_utf8(buffer).unwrap()
+}
+
+// -- Caller Identity --
+
+pub const USER_ID_HEADER: &str = "X-User-ID";
+
+/// The authenticated caller, from the `X-User-ID` header the api-gateway sets
+/// from the validated JWT. A request without it is unauthenticated and must
+/// not fall back to any caller-supplied owner.
+pub fn caller_from_headers(headers: &HeaderMap) -> Result<Uuid, ServiceError> {
+    let value = headers
+        .get(USER_ID_HEADER)
+        .ok_or_else(|| ServiceError::Unauthorized("missing X-User-ID header".into()))?;
+    value
+        .to_str()
+        .ok()
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::Unauthorized("invalid X-User-ID header".into()))
+}
+
+/// Rejects any request that carries no valid caller identity before it reaches
+/// a handler, so no route can run unscoped.
+pub async fn require_caller(
+    req: ServiceRequest,
+    next: Next<impl MessageBody>,
+) -> Result<ServiceResponse<impl MessageBody>, Error> {
+    caller_from_headers(req.headers())?;
+    next.call(req).await
 }
 
 // -- Request ID Middleware --
@@ -112,5 +144,55 @@ where
 
             Ok(res)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::{middleware::from_fn, test, web, App, HttpResponse};
+
+    #[actix_rt::test]
+    async fn require_caller_rejects_missing_and_invalid_identity() {
+        let app = test::init_service(
+            App::new()
+                .route("/health", web::get().to(HttpResponse::Ok))
+                .service(
+                    web::scope("/api")
+                        .wrap(from_fn(require_caller))
+                        .route("", web::get().to(HttpResponse::Ok)),
+                ),
+        )
+        .await;
+
+        let anonymous =
+            test::call_service(&app, test::TestRequest::get().uri("/api").to_request()).await;
+        assert_eq!(anonymous.status(), 401);
+        let body: serde_json::Value = test::read_body_json(anonymous).await;
+        assert_eq!(body["error"], "unauthorized");
+
+        let invalid = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api")
+                .insert_header((USER_ID_HEADER, "not-a-uuid"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(invalid.status(), 401);
+
+        let caller = test::call_service(
+            &app,
+            test::TestRequest::get()
+                .uri("/api")
+                .insert_header((USER_ID_HEADER, Uuid::new_v4().to_string()))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(caller.status(), 200);
+
+        let health =
+            test::call_service(&app, test::TestRequest::get().uri("/health").to_request()).await;
+        assert_eq!(health.status(), 200);
     }
 }
