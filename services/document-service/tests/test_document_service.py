@@ -51,8 +51,11 @@ async def test_list_documents_with_filters(
     items, total = await service.list_documents(owner_id=owner_id)
     assert total == 2
 
-    items, total = await service.list_documents(folder_id=folder_id)
+    items, total = await service.list_documents(owner_id=owner_id, folder_id=folder_id)
     assert total == 1
+
+    items, total = await service.list_documents(owner_id=other_owner, folder_id=folder_id)
+    assert total == 0
 
 
 @pytest.mark.asyncio
@@ -133,7 +136,7 @@ async def test_search(db_session: AsyncSession, owner_id: uuid.UUID):
         DocumentCreate(title="Rust Guide", content="Learn Rust", owner_id=owner_id)
     )
 
-    items, total = await service.search("Python")
+    items, total = await service.search("Python", owner_id=owner_id)
     assert total == 1
     assert items[0].title == "Python Guide"
 
@@ -237,3 +240,19 @@ async def test_paginate_helper():
     assert DocumentService.paginate(11, 1, 5) == 3
     assert DocumentService.paginate(0, 1, 5) == 1
     assert DocumentService.paginate(10, 1, 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_is_scoped_to_owner(db_session: AsyncSession, owner_id: uuid.UUID):
+    service = DocumentService(db_session)
+    other_owner = uuid.uuid4()
+    await service.create(
+        DocumentCreate(title="Mine", content="shared-term", owner_id=owner_id)
+    )
+    await service.create(
+        DocumentCreate(title="Theirs", content="shared-term", owner_id=other_owner)
+    )
+
+    items, total = await service.search("shared-term", owner_id=owner_id)
+    assert total == 1
+    assert [item.title for item in items] == ["Mine"]

@@ -7,6 +7,8 @@ import jwt
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import bearer_auth
+
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
@@ -281,3 +283,64 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+async def _create_as(client: AsyncClient, owner: uuid.UUID, title: str, content: str = ""):
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": title, "content": content},
+        auth=bearer_auth(owner),
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_documents_requires_authentication(client: AsyncClient, path: str):
+    await _create_as(client, uuid.uuid4(), "Victim secret", "confidential")
+
+    resp = await client.get(path, auth=None)
+
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_documents_scoped_to_caller(
+    client: AsyncClient, owner_id: uuid.UUID, path: str
+):
+    victim = uuid.uuid4()
+    await _create_as(client, owner_id, "Mine")
+    await _create_as(client, victim, "Victim secret", "confidential")
+
+    unscoped = await client.get(path)
+    targeted = await client.get(path, params={"owner_id": str(victim)})
+
+    for resp in (unscoped, targeted):
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert [item["owner_id"] for item in data["items"]] == [str(owner_id)]
+
+
+@pytest.mark.asyncio
+async def test_search_documents_requires_authentication(client: AsyncClient):
+    await _create_as(client, uuid.uuid4(), "Victim secret", "confidential")
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "confidential"}, auth=None)
+
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_documents_scoped_to_caller(client: AsyncClient, owner_id: uuid.UUID):
+    await _create_as(client, owner_id, "Mine", "confidential plan")
+    await _create_as(client, uuid.uuid4(), "Victim secret", "confidential")
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "confidential"})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert [item["title"] for item in data["items"]] == ["Mine"]

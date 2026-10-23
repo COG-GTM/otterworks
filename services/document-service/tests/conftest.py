@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator, Callable
 import jwt
 import pytest
 from httpx import ASGITransport, AsyncClient, Request
+from sqlalchemy import Uuid
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
@@ -21,6 +22,26 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
 
+
+
+def _store_uuids_hyphenated() -> None:
+    """Bind uuids to SQLite hyphenated, the way Postgres renders one as text.
+
+    The list endpoint's metadata filters compare ``owner_id`` as text; with
+    SQLAlchemy's default bare-hex storage on SQLite an owner-scoped filtered
+    listing would never match. Mirrors the equivalence fixture.
+    """
+
+    def bind_processor(self, dialect):  # noqa: ANN001, ANN202 - SQLAlchemy hook
+        def process(value):  # noqa: ANN001, ANN202
+            return None if value is None else str(value)
+
+        return process
+
+    Uuid.bind_processor = bind_processor
+
+
+_store_uuids_hyphenated()
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestingSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False

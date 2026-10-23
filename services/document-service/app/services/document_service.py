@@ -84,16 +84,16 @@ class DocumentService:
 
     async def list_documents(
         self,
-        owner_id: UUID | None = None,
+        owner_id: UUID,
         folder_id: UUID | None = None,
         page: int = 1,
         size: int = 20,
     ) -> tuple[list[Document], int]:
         base = select(Document).where(
-            Document.is_deleted.is_(False), Document.is_template.is_(False)
+            Document.owner_id == owner_id,
+            Document.is_deleted.is_(False),
+            Document.is_template.is_(False),
         )
-        if owner_id:
-            base = base.where(Document.owner_id == owner_id)
         if folder_id:
             base = base.where(Document.folder_id == folder_id)
 
@@ -256,11 +256,12 @@ class DocumentService:
     # ---- Search ----
 
     async def search(
-        self, query: str, page: int = 1, size: int = 20
+        self, query: str, owner_id: UUID, page: int = 1, size: int = 20
     ) -> tuple[list[Document], int]:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         base = select(Document).where(
+            Document.owner_id == owner_id,
             Document.is_deleted.is_(False),
             Document.is_template.is_(False),
             or_(
