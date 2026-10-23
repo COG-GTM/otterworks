@@ -7,6 +7,7 @@ import {
   List,
   FileText,
   Search,
+  AlertCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { DocumentCard } from "@/components/documents/document-card";
@@ -34,7 +35,7 @@ function DocumentsContent() {
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["documents", "list"],
     queryFn: () => documentsApi.list(),
   });
@@ -58,6 +59,7 @@ function DocumentsContent() {
 
   const raw = data as PaginatedResponse<Document> & { items?: Document[] } | undefined;
   const documents = raw?.items ?? raw?.data ?? [];
+  const showRefreshError = isError && documents.length > 0;
   const filtered = searchQuery
     ? documents.filter((doc) =>
         doc.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -110,9 +112,33 @@ function DocumentsContent() {
         />
       </div>
 
+      {showRefreshError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm"
+        >
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>
+              Documents could not be refreshed. Showing previously loaded documents.
+            </span>
+          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="px-3 py-1.5 bg-white border border-red-200 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 transition text-sm font-medium"
+          >
+            {isFetching ? "Retrying..." : "Retry"}
+          </button>
+        </div>
+      )}
+
       {/* Document listing */}
       <DocumentListing
         isLoading={isLoading}
+        isError={isError && !showRefreshError}
+        isRetrying={isFetching}
+        onRetry={() => refetch()}
         documents={filtered}
         searchQuery={searchQuery}
         viewMode={viewMode}
@@ -125,6 +151,9 @@ function DocumentsContent() {
 
 function DocumentListing({
   isLoading,
+  isError,
+  isRetrying,
+  onRetry,
   documents,
   searchQuery,
   viewMode,
@@ -132,6 +161,9 @@ function DocumentListing({
   onDelete,
 }: Readonly<{
   isLoading: boolean;
+  isError: boolean;
+  isRetrying: boolean;
+  onRetry: () => void;
   documents: Document[];
   searchQuery: string;
   viewMode: ViewMode;
@@ -140,6 +172,32 @@ function DocumentListing({
 }>) {
   if (isLoading) {
     return <PageLoader />;
+  }
+
+  if (isError) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center py-16 px-4 text-center"
+      >
+        <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+          <AlertCircle size={28} className="text-red-500" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-1">
+          Documents could not be loaded.
+        </h3>
+        <p className="text-sm text-gray-500 max-w-sm mb-4">
+          Something went wrong while loading your documents. Please try again.
+        </p>
+        <button
+          onClick={onRetry}
+          disabled={isRetrying}
+          className="px-4 py-2 bg-otter-600 text-white rounded-lg hover:bg-otter-700 disabled:opacity-50 transition text-sm font-medium"
+        >
+          {isRetrying ? "Retrying..." : "Retry"}
+        </button>
+      </div>
+    );
   }
 
   if (documents.length === 0) {
