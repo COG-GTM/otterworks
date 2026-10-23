@@ -9,7 +9,7 @@ Scope: `services/api-gateway` (Go, chi). Audited the route table (`internal/conf
 | Unit (`go test`) | `services/api-gateway/**/{config_test,main_test,*_qa_test}.go` | 59 new test funcs (+29 subtests); 87 top-level incl. existing | 52 new | 7 `t.Skip("xfail QA-GW-…")` |
 | Functional (pytest via :8080) | `tests/api/test_qa_api_gateway.py` | 40 (incl. parametrized) | 36 | 4 `xfail(strict=True)` |
 | E2E Playwright | `frontend/client-app/e2e/qa-api-gateway.spec.ts` | 6 | 6 | 0 |
-| E2E computer use | testing agent recording (see PR comment) | 3 flows | see PR | – |
+| E2E computer use | testing agent recording (see PR comment) | 3 flows | 3 | 0 |
 
 Commands: `cd services/api-gateway && go vet ./... && go test -race ./...`; `make test-api-flows` (or `python -m pytest tests/api/test_qa_api_gateway.py`); `cd frontend/client-app && npx playwright test e2e/qa-api-gateway.spec.ts`.
 
@@ -26,6 +26,13 @@ Each skipped/xfail test asserts the *correct* behaviour; most have a sibling "ch
 - **Proxy / resilience:** path, query and Authorization forwarded unchanged; unknown route -> JSON 404; upstream down -> 502 JSON without leaking the upstream address, then 503 `circuit breaker open`; breakers isolated per route; 4xx don't trip the breaker; half-open probe limit and re-open; live upstream-down check against an un-started optional backend (reports/audit/analytics).
 - **E2E:** unauthenticated `/dashboard`, `/files`, `/documents` -> `/login`; garbage and expired (validly signed) tokens in localStorage are rejected via `/auth/profile` 401, cleared, and the user lands on `/login`; register -> dashboard -> files -> documents -> dashboard with 200s from the gateway.
 
+### Computer-use run (real Chrome, core stack)
+
+- Pass: with empty localStorage, `/dashboard`, `/files` and `/documents` each land on `/login`.
+- Pass: with `not-a-jwt` in both token keys, `/files` bounces to `/login` and both keys are cleared.
+- Pass: register -> Dashboard -> Files -> Documents -> Dashboard stays signed in; a new document persists across reload.
+- Note (environment, not a gateway defect): the core profile doesn't run notification-service, so `/api/v1/notifications/unread-count` returns gateway 502 -> 503 `circuit breaker open`. That's the intended failure handling. The editor shows "Reconnecting..." because collab-service isn't running either.
+
 ## Findings
 
 | ID | Severity | Location | Repro | Expected | Actual |
@@ -40,6 +47,7 @@ Each skipped/xfail test asserts the *correct* behaviour; most have a sibling "ch
 ## Not tested / limitations
 
 - **Live 503 vs 502 timing** is environment-dependent (needs an optional backend to be down); the functional test skips if all optional backends are running. Unit tests cover it deterministically.
+- The expired-JWT browser variant was automated in Playwright but not repeated in the computer-use run (only the garbage token was).
 - **WebSocket upgrade through `/socket.io`** not exercised end-to-end: collab-service is not in the core profile.
 - **Rate-limit live tests** assume a single client at default `RATE_LIMIT_RPS=100`; set `OTTERWORKS_QA_SKIP_RATE_LIMIT=1` on shared stacks. They sleep to refill the bucket so later tests aren't throttled; running other suites concurrently against the same gateway can cause 429s.
 - Forged-token functional tests use the docker-compose default secret (`OTTERWORKS_JWT_SECRET` overrides it) and skip if it doesn't match the running gateway.
