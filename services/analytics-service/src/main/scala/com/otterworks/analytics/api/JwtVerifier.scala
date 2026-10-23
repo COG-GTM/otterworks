@@ -32,8 +32,8 @@ final class JwtVerifier(secret: String, clock: () => Instant = () => Instant.now
           headerJson <- decodeJson(header)
           alg <- stringField(headerJson, "alg")
           macAlg <- algorithms.get(alg)
-          given <- Try(decoder.decode(signature)).toOption
-          if MessageDigest.isEqual(sign(macAlg, s"$header.$payload"), given)
+          provided <- Try(decoder.decode(signature)).toOption
+          if MessageDigest.isEqual(sign(macAlg, s"$header.$payload"), provided)
           claims <- decodeJson(payload)
           if notExpired(claims)
           if stringField(claims, "type").forall(_ == "access")
