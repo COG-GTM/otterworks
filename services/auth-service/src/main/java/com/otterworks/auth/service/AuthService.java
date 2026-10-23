@@ -125,6 +125,19 @@ public class AuthService {
     log.info("User logged out: {}", userId);
   }
 
+  @Transactional
+  public void logoutWithRefreshToken(String token) {
+    try {
+      String jti = jwtTokenProvider.extractJti(token);
+      String userId = jwtTokenProvider.validateRefreshTokenAndGetUserId(token);
+      if (refreshTokenRepository.findByTokenIdAndRevokedFalse(jti).isPresent()) {
+        logout(UUID.fromString(userId));
+      }
+    } catch (RuntimeException e) {
+      log.debug("Ignoring invalid refresh cookie on logout: {}", e.getMessage());
+    }
+  }
+
   private AuthResponse buildAuthResponse(User user) {
     String accessToken = jwtTokenProvider.generateAccessToken(user);
     String refreshTokenStr = jwtTokenProvider.generateRefreshToken(user);

@@ -37,6 +37,8 @@ func TestJWTAuth_PublicPathsSkipValidation(t *testing.T) {
 		"/metrics",
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		"/api/v1/auth/refresh",
+		"/api/v1/auth/logout",
 	}
 
 	for _, path := range publicPaths {
@@ -320,4 +322,39 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
+}
+
+func TestJWTAuth_RefreshTokenRejectedAsBearer(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	newToken := func(tokenType string) string {
+		return generateTestToken(t, testSecret, JWTClaims{
+			Type: tokenType,
+			RegisteredClaims: jwt.RegisteredClaims{
+				Subject:   "user-123",
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
+			},
+		})
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req.Header.Set("Authorization", "Bearer "+newToken("refresh"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code, "refresh token must not authenticate API calls")
+	assert.Contains(t, rec.Body.String(), "refresh token cannot be used as an access token")
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/documents", nil)
+	req.Header.Set("Authorization", "Bearer "+newToken("access"))
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusOK, rec.Code, "access token should still authenticate")
 }

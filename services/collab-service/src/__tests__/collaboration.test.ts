@@ -149,6 +149,26 @@ describe('CollaborationManager', () => {
       });
     });
 
+    it('should reject a refresh token presented as the socket token', (done) => {
+      const refreshToken = jwt.sign(
+        { sub: 'user-refresh', type: 'refresh' },
+        JWT_SECRET,
+        {
+          expiresIn: '30d',
+        },
+      );
+      const client = clientIO(`http://localhost:${PORT}`, {
+        auth: { token: refreshToken },
+        transports: ['websocket'],
+      });
+
+      client.on('connect_error', (err) => {
+        expect(err.message).toContain('Invalid or expired token');
+        client.disconnect();
+        done();
+      });
+    });
+
     it('should accept connections with a valid token', async () => {
       const client = await connectClient('user-auth-test', 'Test User');
       expect(client.connected).toBe(true);

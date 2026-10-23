@@ -161,7 +161,7 @@ Base URL: `http://localhost:8080/api/v1`. All non-auth calls send `Authorization
 
 | Method & path        | Request                                             | Response (shape)                                        |
 |----------------------|-----------------------------------------------------|---------------------------------------------------------|
-| `POST /auth/register`| `{ displayName, email, password }`                  | `{ accessToken, refreshToken, tokenType, expiresIn, user }` (camelCase) |
+| `POST /auth/register`| `{ displayName, email, password }`                  | `{ accessToken, tokenType, expiresIn, user }` (camelCase); refresh token is set as an HttpOnly `otter_refresh_token` cookie |
 | `POST /auth/login`   | `{ email, password }`                               | same as register                                        |
 | `GET /documents`     | query `page`, `size`                                | `{ items:[…], total, page, size, pages }` (snake_case)  |
 | `POST /documents`    | `{ title }`                                         | created document object (snake_case)                    |

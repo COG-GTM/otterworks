@@ -20,6 +20,7 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
 }
@@ -38,6 +39,9 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
 
     try {
       const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      if (decoded.type === 'refresh') {
+        throw new Error('refresh token cannot be used as an access token');
+      }
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,

@@ -1,6 +1,7 @@
 package com.otterworks.auth.controller;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -9,12 +10,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import com.otterworks.auth.security.RefreshTokenCookie;
+import jakarta.servlet.http.Cookie;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
@@ -51,12 +55,13 @@ class AuthControllerIntegrationTest {
                 post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.accessToken").isNotEmpty())
-            .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
             .andExpect(jsonPath("$.tokenType").value("Bearer"))
             .andExpect(jsonPath("$.user.email").value("newuser@otterworks.dev"))
             .andReturn();
 
     assertThat(userRepository.existsByEmail("newuser@otterworks.dev")).isTrue();
+    assertRefreshCookieIssued(result);
   }
 
   @Test
@@ -100,7 +105,7 @@ class AuthControllerIntegrationTest {
         .perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.accessToken").isNotEmpty())
-        .andExpect(jsonPath("$.refreshToken").isNotEmpty())
+        .andExpect(jsonPath("$.refreshToken").doesNotExist())
         .andExpect(jsonPath("$.user.email").value("login@otterworks.dev"));
   }
 
@@ -194,29 +199,131 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
-  void refresh_shouldReturnNewTokens() throws Exception {
-    String registerBody =
-        """
-        {"email": "refresh@otterworks.dev", "password": "password123", "displayName": "Refresh User"}
-        """;
-    MvcResult registerResult =
+  void refresh_shouldRotateTheHttpOnlyCookieAndReturnOnlyAnAccessToken() throws Exception {
+    MvcResult registerResult = register("refresh@otterworks.dev", "password123", "Refresh User");
+    String refreshToken = refreshCookieValue(registerResult);
+
+    MvcResult refreshResult =
         mockMvc
             .perform(
-                post("/api/v1/auth/register")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(registerBody))
-            .andExpect(status().isCreated())
+                post("/api/v1/auth/refresh")
+                    .cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isNotEmpty())
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
             .andReturn();
 
-    JsonNode registerJson =
-        objectMapper.readTree(registerResult.getResponse().getContentAsString());
-    String refreshToken = registerJson.get("refreshToken").asText();
+    String rotated = assertRefreshCookieIssued(refreshResult);
+    assertThat(rotated).isNotEqualTo(refreshToken);
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh").cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void refresh_shouldRejectARefreshTokenSentAsBearerHeader() throws Exception {
+    MvcResult registerResult = register("bearer@otterworks.dev", "password123", "Bearer User");
+    String refreshToken = refreshCookieValue(registerResult);
 
     mockMvc
         .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + refreshToken))
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.accessToken").isNotEmpty())
-        .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void refreshToken_shouldNotAuthenticateProtectedEndpoints() throws Exception {
+    MvcResult registerResult = register("replay@otterworks.dev", "password123", "Replay User");
+    String refreshToken = refreshCookieValue(registerResult);
+
+    mockMvc
+        .perform(get("/api/v1/auth/profile").header("Authorization", "Bearer " + refreshToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void logout_shouldClearTheRefreshCookieAndRevokeIt() throws Exception {
+    MvcResult registerResult = register("logout@otterworks.dev", "password123", "Logout User");
+    String refreshToken = refreshCookieValue(registerResult);
+    String accessToken =
+        objectMapper
+            .readTree(registerResult.getResponse().getContentAsString())
+            .get("accessToken")
+            .asText();
+
+    MvcResult logoutResult =
+        mockMvc
+            .perform(post("/api/v1/auth/logout").header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    String cleared = logoutResult.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+    assertThat(cleared).startsWith(RefreshTokenCookie.NAME + "=;").contains("Max-Age=0");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh").cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void logout_withOnlyTheRefreshCookie_shouldRevokeItAfterAccessTokenExpiry() throws Exception {
+    MvcResult registerResult = register("expired@otterworks.dev", "password123", "Expired User");
+    String refreshToken = refreshCookieValue(registerResult);
+
+    MvcResult logoutResult =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/logout")
+                    .cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+            .andExpect(status().isNoContent())
+            .andReturn();
+    assertThat(logoutResult.getResponse().getHeader(HttpHeaders.SET_COOKIE)).contains("Max-Age=0");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh").cookie(new Cookie(RefreshTokenCookie.NAME, refreshToken)))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void logout_withoutCredentials_shouldStillClearTheCookie() throws Exception {
+    mockMvc
+        .perform(post("/api/v1/auth/logout"))
+        .andExpect(status().isNoContent())
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
+  }
+
+  private MvcResult register(String email, String password, String displayName) throws Exception {
+    String body =
+        String.format(
+            "{\"email\": \"%s\", \"password\": \"%s\", \"displayName\": \"%s\"}",
+            email, password, displayName);
+    return mockMvc
+        .perform(
+            post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isCreated())
+        .andReturn();
+  }
+
+  private String refreshCookieValue(MvcResult result) {
+    Cookie cookie = result.getResponse().getCookie(RefreshTokenCookie.NAME);
+    assertThat(cookie).isNotNull();
+    return cookie.getValue();
+  }
+
+  private String assertRefreshCookieIssued(MvcResult result) {
+    String header = result.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+    assertThat(header)
+        .startsWith(RefreshTokenCookie.NAME + "=")
+        .contains("Path=/api/v1/auth")
+        .contains("HttpOnly")
+        .contains("Secure")
+        .contains("SameSite=Strict")
+        .contains("Max-Age=2592000");
+    String value = refreshCookieValue(result);
+    assertThat(value).isNotBlank();
+    return value;
   }
 
   @Test
