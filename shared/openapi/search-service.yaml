@@ -426,6 +426,12 @@ paths:
       description: |
         Returns analytics data including popular queries, zero-result queries,
         total search count, and average results per query.
+
+        Results are scoped to the caller: a gateway-authenticated user
+        (`X-User-ID`) only sees analytics for their own queries. Global
+        analytics across all users are returned only to internal callers
+        presenting the service token (`Authorization: Bearer
+        <SEARCH_SERVICE_TOKEN>`). Callers with neither identity get 403.
       responses:
         "200":
           description: Analytics data
@@ -444,6 +450,14 @@ paths:
                     count: 5
                 total_searches: 1500
                 avg_results_per_query: 8.3
+        "403":
+          description: Caller presented neither the service token nor a user identity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "forbidden"
         "500":
           description: Internal server error
           content:

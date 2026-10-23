@@ -274,8 +274,14 @@ class TestMetricsEndpoint:
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
+    def test_analytics_rejects_anonymous(self, openapi_spec: dict[str, Any]) -> None:
+        """Without a service token or user identity the endpoint returns 403."""
+        resp = requests.get(f"{BASE_URL}/api/v1/search/analytics")
+        assert resp.status_code in (401, 403)
+        _validate_response(openapi_spec, resp.json(), "/api/v1/search/analytics", "get", "403")
+
     def test_analytics_response_schema(self, openapi_spec: dict[str, Any]) -> None:
-        """Analytics endpoint returns valid schema."""
+        """Analytics endpoint returns valid schema (scoped to the calling user)."""
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/analytics",
             headers={"X-User-ID": "test-user-001"},
