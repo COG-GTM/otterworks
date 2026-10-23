@@ -103,6 +103,14 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(1)
       expect(Incident.last.title.length).to be <= 255
     end
+
+    it 'caps the incident description including alert metadata' do
+      alert = { status: 'firing',
+                labels: { alertname: 'a' * 5_000, severity: 'critical', affected_service: 'file-service' },
+                annotations: { summary: 'big metadata', runbook_url: "https://#{'r' * 5_000}" } }
+      post :ingest, params: { alerts: [alert] }
+      expect(Incident.last.description.length).to be <= 4_000
+    end
   end
 
   describe 'alert secret verification' do

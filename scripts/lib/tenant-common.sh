@@ -266,6 +266,9 @@ resolve_alert_webhook_secret() {
   local ns=$1 existing
   existing="$(kubectl -n "${ns}" get secret admin-service-secrets \
     -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+  # admin-service rejects the retired public default, so never carry it forward.
+  [ "${existing}" != "demo-alert-secret" ] || existing=""
+  [ "${ALERT_WEBHOOK_SECRET:-}" != "demo-alert-secret" ] || ALERT_WEBHOOK_SECRET=""
   ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-${existing:-$(openssl rand -hex 32)}}"
   ALERT_WEBHOOK_SECRET_CHANGED=false
   [ "${ALERT_WEBHOOK_SECRET}" = "${existing}" ] || ALERT_WEBHOOK_SECRET_CHANGED=true
@@ -275,7 +278,10 @@ restart_alert_webhook_consumers() {
   local ns=$1 d
   [ "${ALERT_WEBHOOK_SECRET_CHANGED:-false}" = true ] || return 0
   for d in admin-service file-service notification-service; do
-    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null 2>&1 || true
+    # Absent by design in reduced profiles (e.g. --profile core).
+    kubectl -n "${ns}" get "deployment/${d}" >/dev/null 2>&1 || continue
+    kubectl -n "${ns}" rollout restart "deployment/${d}" >/dev/null
+    kubectl -n "${ns}" rollout status "deployment/${d}" --timeout=300s >/dev/null
   done
 }
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }

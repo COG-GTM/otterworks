@@ -92,9 +92,12 @@ module Api
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
+          incident_description = build_description(alert_name, description, labels, annotations)
+                                 .truncate(MAX_DESCRIPTION_LENGTH)
+
           incident = Incident.create!(
             title:            (summary.presence || "#{alert_name}: #{affected_service} alert firing").truncate(MAX_TITLE_LENGTH),
-            description:      build_description(alert_name, description, labels, annotations),
+            description:      incident_description,
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',
             affected_service: affected_service,
