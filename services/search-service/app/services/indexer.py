@@ -90,7 +90,8 @@ class Indexer:
         Fetches all documents from the document-service and all files
         from the file-service, then passes them to MeiliSearch for
         bulk re-indexing.  If a source service is unreachable the
-        corresponding index is still cleared and recreated empty.
+        corresponding index is still cleared and recreated empty; if the
+        document-service rejects the crawl the reindex aborts first.
         """
         documents = self._fetch_all_documents()
         files = self._fetch_all_files()
@@ -116,7 +117,10 @@ class Indexer:
                 )
                 if resp.status_code != 200:
                     logger.warning("reindex_document_fetch_failed", status=resp.status_code)
-                    break
+                    raise RuntimeError(
+                        f"document-service rejected the reindex crawl ({resp.status_code}); "
+                        "leaving the existing index untouched"
+                    )
                 data = resp.json()
                 items = data.get("documents") or data.get("items") or data.get("data") or []
                 if not items:
