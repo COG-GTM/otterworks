@@ -25,7 +25,7 @@ module Api
         MAX_ALERTS_PER_REQUEST = 50
         MAX_TITLE_LENGTH       = 255
         MAX_DESCRIPTION_LENGTH = 4_000
-        MAX_RUNBOOK_URL_LENGTH = 1_000
+        MAX_RUNBOOK_URL_LENGTH = 2_000
 
         # Publicly known values that once shipped as defaults; never accepted.
         RETIRED_SECRETS = %w[demo-alert-secret].freeze
@@ -148,14 +148,14 @@ module Api
           Rails.logger.warn("Could not auto-resolve incident #{incident.id} for alert #{alert_name}: #{e.message}")
         end
 
-        # Metadata is bounded and kept intact; the free-text description gets the
+        # Metadata is bounded and never cut mid-field; the free-text description gets the
         # remaining room so the total stays within MAX_DESCRIPTION_LENGTH.
         def build_description(alert_name, base_description, labels, annotations)
           metadata = []
           metadata << "**Alert**: #{alert_name.truncate(MAX_TITLE_LENGTH)}" if alert_name.present?
-          if (runbook = annotations[:runbook_url].to_s).present?
-            metadata << "**Runbook**: #{runbook.truncate(MAX_RUNBOOK_URL_LENGTH)}"
-          end
+          runbook = annotations[:runbook_url].to_s
+          # A truncated URL is a broken link, so oversized ones are dropped whole.
+          metadata << "**Runbook**: #{runbook}" if runbook.present? && runbook.length <= MAX_RUNBOOK_URL_LENGTH
           metadata << "**Source**: Grafana Unified Alerting (auto-generated incident)"
           metadata_text = metadata.join("\n\n")
           base_room = MAX_DESCRIPTION_LENGTH - metadata_text.length - 2

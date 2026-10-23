@@ -121,6 +121,15 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.last.description).to include('**Runbook**: https://runbooks.example/file-service')
       expect(Incident.last.description.length).to be <= 4_000
     end
+
+    it 'keeps a long runbook URL whole rather than truncating it' do
+      url = "https://runbooks.example/signed?sig=#{'s' * 1_050}"
+      alert = { status: 'firing',
+                labels: { alertname: 'LongLink', severity: 'critical', affected_service: 'file-service' },
+                annotations: { summary: 'long link', runbook_url: url } }
+      post :ingest, params: { alerts: [alert] }
+      expect(Incident.last.description).to include("**Runbook**: #{url}")
+    end
   end
 
   describe 'alert secret verification' do
