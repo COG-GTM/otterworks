@@ -28,7 +28,8 @@ every scenario.
 ## Authentication and tenant scoping
 
 Every `/api/*` endpoint requires `Authorization: Bearer <access token>`: an
-HS256 platform access token (`type: access`, `sub`, `exp`) signed with
+HMAC platform access token (HS256/HS384/HS512, as auth-service's JJWT signer
+picks by secret length; `type: access`, `sub`, finite `exp`) signed with
 `BILLING_SVC_JWT_SECRET` (the platform `JWT_SECRET`, at least 32 characters).
 If the secret is unset or too short, the endpoints fail closed with 503.
 
@@ -37,7 +38,9 @@ If the secret is unset or too short, the endpoints fail closed with 503.
   `POST /api/tenants/{tenant_id}/plan-change` additionally require the token's
   `tenant_id` claim to equal the path tenant, or a role listed in
   `BILLING_SVC_ADMIN_ROLES` (default `["ADMIN"]`). Anything else is 403 and
-  never reaches the database.
+  never reaches the database. auth-service does not issue `tenant_id` today, so
+  until the platform has a tenant-membership source only admin tokens (and
+  service tokens minted with a `tenant_id`) can use these two endpoints.
 - `/health` stays public.
 
 `POST /internal/reset` is disabled (404) unless both

@@ -5,6 +5,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import math
 import time
 from dataclasses import dataclass
 from typing import Annotated
@@ -16,6 +17,8 @@ from app.config import settings
 
 MIN_SECRET_LENGTH = 32
 CLOCK_SKEW_SECONDS = 30
+# The platform issuer (JJWT signWith(key)) picks the HMAC size from the secret length.
+HMAC_ALGORITHMS = {"HS256": hashlib.sha256, "HS384": hashlib.sha384, "HS512": hashlib.sha512}
 
 
 @dataclass(frozen=True)
@@ -54,36 +57,43 @@ def _json_segment(segment: str) -> dict:
     return value
 
 
-def encode_token(claims: dict, secret: str) -> str:
-    header = _b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+def _is_number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def encode_token(claims: dict, secret: str, alg: str = "HS256") -> str:
+    header = _b64encode(json.dumps({"alg": alg, "typ": "JWT"}).encode())
     payload = _b64encode(json.dumps(claims).encode())
-    signature = hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256)
+    signature = hmac.new(secret.encode(), f"{header}.{payload}".encode(), HMAC_ALGORITHMS[alg])
     return f"{header}.{payload}.{_b64encode(signature.digest())}"
 
 
 def decode_token(token: str, secret: str, now: float | None = None) -> dict:
-    """Verify an HS256 platform access token and return its claims."""
+    """Verify an HMAC-signed (HS256/384/512) platform access token and return its claims."""
     parts = token.split(".")
     if len(parts) != 3:
         raise InvalidTokenError("malformed token")
     header_segment, payload_segment, signature_segment = parts
     header = _json_segment(header_segment)
-    if header.get("alg") != "HS256":
+    digest = HMAC_ALGORITHMS.get(header.get("alg"))
+    if digest is None:
         raise InvalidTokenError("unsupported token algorithm")
     expected = hmac.new(
-        secret.encode(), f"{header_segment}.{payload_segment}".encode(), hashlib.sha256
+        secret.encode(), f"{header_segment}.{payload_segment}".encode(), digest
     ).digest()
     if not hmac.compare_digest(expected, _b64decode(signature_segment)):
         raise InvalidTokenError("invalid token signature")
     claims = _json_segment(payload_segment)
     current = time.time() if now is None else now
     exp = claims.get("exp")
-    if not isinstance(exp, int | float) or isinstance(exp, bool):
+    if not _is_number(exp):
         raise InvalidTokenError("token has no expiry")
     if current > exp + CLOCK_SKEW_SECONDS:
         raise InvalidTokenError("token expired")
     nbf = claims.get("nbf")
-    if isinstance(nbf, int | float) and current + CLOCK_SKEW_SECONDS < nbf:
+    if nbf is not None and not _is_number(nbf):
+        raise InvalidTokenError("invalid not-before")
+    if nbf is not None and current + CLOCK_SKEW_SECONDS < nbf:
         raise InvalidTokenError("token not yet valid")
     if claims.get("type") != "access":
         raise InvalidTokenError("not an access token")
