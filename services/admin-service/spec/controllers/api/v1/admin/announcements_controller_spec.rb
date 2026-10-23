@@ -60,4 +60,20 @@ RSpec.describe Api::V1::Admin::AnnouncementsController do
       expect(response).to have_http_status(:no_content)
     end
   end
+
+  describe 'role enforcement' do
+    let(:announcement) { create(:announcement) }
+
+    it 'forbids listing announcements for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :index
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'forbids reading an announcement for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :show, params: { id: announcement.id }
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
