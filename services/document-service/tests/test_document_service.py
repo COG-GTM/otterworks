@@ -167,10 +167,11 @@ async def test_comments_crud(db_session: AsyncSession, owner_id: uuid.UUID):
     author = uuid.uuid4()
 
     comment = await service.add_comment(
-        doc.id, CommentCreate(author_id=author, content="Nice!")
+        doc.id, CommentCreate(content="Nice!"), author_id=author
     )
     assert comment is not None
     assert comment.content == "Nice!"
+    assert comment.author_id == author
 
     comments = await service.list_comments(doc.id)
     assert len(comments) == 1
@@ -183,7 +184,7 @@ async def test_comments_crud(db_session: AsyncSession, owner_id: uuid.UUID):
 async def test_add_comment_to_nonexistent_document(db_session: AsyncSession):
     service = DocumentService(db_session)
     result = await service.add_comment(
-        uuid.uuid4(), CommentCreate(author_id=uuid.uuid4(), content="Orphan")
+        uuid.uuid4(), CommentCreate(content="Orphan"), author_id=uuid.uuid4()
     )
     assert result is None
 

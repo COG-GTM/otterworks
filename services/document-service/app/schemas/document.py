@@ -85,7 +85,8 @@ class DocumentVersionResponse(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    author_id: UUID
+    # Ignored: the author is always the authenticated caller.
+    author_id: UUID | None = None
     content: str = Field(..., min_length=1)
 
 
