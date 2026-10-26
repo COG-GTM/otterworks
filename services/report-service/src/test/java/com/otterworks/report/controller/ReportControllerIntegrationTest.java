@@ -363,7 +363,6 @@ public class ReportControllerIntegrationTest {
         request.setReportName(name);
         request.setCategory(category);
         request.setReportType(type);
-        request.setRequestedBy(requestedBy);
         request.setDateFrom(new Date(System.currentTimeMillis() - 86400000L * 7));
         request.setDateTo(new Date());
         return request;
