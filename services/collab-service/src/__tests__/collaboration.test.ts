@@ -714,6 +714,28 @@ describe('CollaborationManager', () => {
       client.disconnect();
     });
 
+    it('releases a document whose load finished after its join was superseded', async () => {
+      const abandonedDoc = `${OWNED_DOC.slice(0, -4)}5106`;
+      mockRedis.get.mockImplementationOnce(
+        () => new Promise((r) => setTimeout(() => r(null), 300)),
+      );
+      const client = await connectClient('user-acl-abandon', 'Abandon');
+
+      const abandoned = join(client, abandonedDoc);
+      await new Promise((r) => setTimeout(r, 100));
+      const current = await join(client, OWNED_DOC);
+
+      expect(current).toEqual({ success: true });
+      expect(await abandoned).toEqual({
+        success: false,
+        error: 'Superseded by a newer request',
+      });
+      await new Promise((r) => setTimeout(r, 100));
+      expect(manager.getDocument(abandonedDoc)).toBeUndefined();
+      expect(manager.getDocument(OWNED_DOC)).toBeDefined();
+      client.disconnect();
+    });
+
     it('evicts joined sockets whose access was revoked', async () => {
       const client = await connectClient('user-acl-revoked', 'Revoked');
       expect(await join(client, OWNED_DOC)).toEqual({ success: true });

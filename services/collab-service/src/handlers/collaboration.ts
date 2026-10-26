@@ -180,6 +180,7 @@ export class CollaborationManager {
       // join never touches room membership owned by a newer one.
       const doc = await this.getOrCreateDoc(documentId);
       if (this.joinGenerations.get(socket.id) !== generation) {
+        this.releaseIfUnused(documentId);
         if (reply) reply({ success: false, error: 'Superseded by a newer request' });
         return;
       }
@@ -609,6 +610,13 @@ export class CollaborationManager {
     } finally {
       this.cleaningUp.delete(documentId);
     }
+  }
+
+  /** Drops a loaded document that no socket ended up joining (e.g. a superseded join). */
+  private releaseIfUnused(documentId: string): void {
+    if (this.deps.awareness.getDocumentUserCount(documentId) > 0) return;
+    if (this.documentInitPromises.has(documentId)) return;
+    void this.persistAndCleanupDocument(documentId);
   }
 
   private async getOrCreateDoc(documentId: string): Promise<Y.Doc> {

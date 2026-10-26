@@ -136,6 +136,18 @@ describe('DocumentAccessService', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('does not share a cached grant with a different token for the same user', async () => {
+    const fetchImpl = respond(200);
+    const svc = service(fetchImpl);
+
+    await expect(svc.canAccess('good-token', 'user-1', DOC_ID)).resolves.toBe(true);
+    fetchImpl.mockResolvedValue({ status: 403 });
+    await expect(svc.canAccess('other-token', 'user-1', DOC_ID)).resolves.toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    await expect(svc.canAccess('good-token', 'user-1', DOC_ID)).resolves.toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it('bypasses the grant cache for fresh checks', async () => {
     const fetchImpl = respond(200);
     const svc = service(fetchImpl, () => 1000, 60000);

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import type { Logger } from 'pino';
 
@@ -79,7 +80,10 @@ export class DocumentAccessService implements DocumentAccessChecker {
     const tokenExpiresAt = tokenExpiryMs(accessToken);
     if (tokenExpiresAt !== undefined && tokenExpiresAt <= this.now()) return false;
 
-    const cacheKey = `${userId}:${documentId.toLowerCase()}`;
+    // Grants are bound to the exact token that earned them, so a token that would
+    // be denied never inherits another token's cached grant for the same user.
+    const tokenHash = createHash('sha256').update(accessToken).digest('hex');
+    const cacheKey = `${userId}:${documentId.toLowerCase()}:${tokenHash}`;
     const expiresAt = this.allowed.get(cacheKey);
     if (expiresAt !== undefined) {
       if (!options.fresh && expiresAt > this.now()) return true;
