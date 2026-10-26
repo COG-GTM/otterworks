@@ -20,7 +20,9 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import javax.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -38,6 +40,9 @@ import java.util.Optional;
 public class ReportService {
 
     private static final Logger logger = LoggerFactory.getLogger(ReportService.class);
+
+    /** Report parameter holding the only user whose rows a non-admin's report may contain. */
+    public static final String OWNER_SCOPE_PARAM = "ownerScope";
 
     private final ReportRepository reportRepository;
     private final ReportGenerationWorker generationWorker;
@@ -77,13 +82,20 @@ public class ReportService {
         report.setDateFrom(request.getDateFrom() != null ? request.getDateFrom() : ReportDateUtils.daysAgo(30));
         report.setDateTo(request.getDateTo() != null ? request.getDateTo() : new Date());
 
-        // Serialize parameters
+        // Serialize parameters. The owner scope is set server-side so a non-admin's report
+        // only ever contains rows about that user, whatever the client sent.
+        Map<String, String> parameters = new HashMap<>();
         if (request.getParameters() != null) {
-            try {
-                report.setParameters(objectMapper.writeValueAsString(request.getParameters()));
-            } catch (JsonProcessingException e) {
-                logger.warn("Failed to serialize report parameters: {}", e.getMessage());
-            }
+            parameters.putAll(request.getParameters());
+        }
+        parameters.remove(OWNER_SCOPE_PARAM);
+        if (!caller.isAdmin()) {
+            parameters.put(OWNER_SCOPE_PARAM, caller.getUserId());
+        }
+        try {
+            report.setParameters(objectMapper.writeValueAsString(parameters));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize report parameters", e);
         }
 
         Report saved = reportRepository.save(report);

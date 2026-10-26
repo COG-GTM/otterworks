@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.repository.ReportRepository;
+import com.otterworks.report.service.ReportService;
 import com.otterworks.report.security.TestTokens;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,7 +19,9 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.Collections;
 import java.util.Date;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.hamcrest.Matchers.anyOf;
@@ -54,6 +58,9 @@ public class ReportControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private ReportRepository reportRepository;
 
     // ---- Authentication ----
 
@@ -112,6 +119,44 @@ public class ReportControllerIntegrationTest {
                         .content(body))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.requestedBy", is("mallory")));
+    }
+
+    @Test
+    public void nonAdminReportIsScopedToCallerRegardlessOfParameters() throws Exception {
+        ReportRequest request = buildRequest("Scoped Analytics",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV);
+        request.setParameters(Collections.singletonMap(ReportService.OWNER_SCOPE_PARAM, "alice"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("mallory"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long id = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        Map<?, ?> params = objectMapper.readValue(
+                reportRepository.findById(id).get().getParameters(), Map.class);
+        assertEquals("mallory", params.get(ReportService.OWNER_SCOPE_PARAM));
+    }
+
+    @Test
+    public void adminReportIsNotOwnerScoped() throws Exception {
+        ReportRequest request = buildRequest("Platform Analytics",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV);
+        request.setParameters(Collections.singletonMap(ReportService.OWNER_SCOPE_PARAM, "alice"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", asAdmin("admin-1"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long id = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        Map<?, ?> params = objectMapper.readValue(
+                reportRepository.findById(id).get().getParameters(), Map.class);
+        assertEquals(null, params.get(ReportService.OWNER_SCOPE_PARAM));
     }
 
     @Test
