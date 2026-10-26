@@ -57,3 +57,24 @@ export function secondsToTtl(seconds: number): string {
 export function randomIdSuffix(): string {
   return Math.random().toString(36).slice(2, 6);
 }
+
+// Docker tag grammar. The tag reaches the runner as `helm --set image.tag=...`,
+// where `,` separates key=value pairs, so anything outside this set (a comma or
+// `=` in particular) would let the caller set other chart values too.
+export const IMAGE_TAG_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/;
+
+export function isValidImageTag(tag: string): boolean {
+  return IMAGE_TAG_PATTERN.test(tag);
+}
+
+// Parse an optional `image_tag` request field. Absent, null and blank mean "no
+// pin"; anything else must be a string in Docker tag grammar.
+export function parseImageTag(
+  raw: unknown,
+): { ok: true; tag: string | undefined } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, tag: undefined };
+  if (typeof raw !== "string") return { ok: false };
+  const tag = raw.trim();
+  if (!tag) return { ok: true, tag: undefined };
+  return isValidImageTag(tag) ? { ok: true, tag } : { ok: false };
+}

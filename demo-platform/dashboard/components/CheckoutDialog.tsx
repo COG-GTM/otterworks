@@ -111,6 +111,8 @@ export default function CheckoutDialog({
               value={imageTag}
               onChange={(e) => setImageTag(e.target.value)}
               placeholder="golden"
+              pattern="\s*[A-Za-z0-9_][A-Za-z0-9_.\-]{0,127}\s*"
+              title="Docker tag: letters, digits, _ . - (max 128, not starting with . or -)"
               className="input"
             />
           </Field>

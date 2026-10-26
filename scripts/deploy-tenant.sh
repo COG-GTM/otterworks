@@ -59,6 +59,9 @@ done
 [ -n "${ATTENDEE_ID}" ] || { err "Usage: $0 <ATTENDEE_ID> [--tier A|B] [--image-tag TAG] [--branch BRANCH] [--ttl 8h|never] [--profile core|full]"; exit 1; }
 case "${TIER}" in A|B) ;; *) err "--tier must be A or B"; exit 1 ;; esac
 case "${PROFILE}" in core|full) ;; *) err "--profile must be core or full"; exit 1 ;; esac
+if [ -n "${IMAGE_TAG_OVERRIDE}" ] && ! valid_image_tag "${IMAGE_TAG_OVERRIDE}"; then
+  err "--image-tag must be a Docker tag ([A-Za-z0-9_][A-Za-z0-9_.-]{0,127})"; exit 1
+fi
 mapfile -t TENANT_SERVICES < <(profile_services "${PROFILE}")
 
 require_bins aws kubectl helm terraform jq
@@ -435,6 +438,10 @@ deploy_service() {
     warn "No image in ECR for ${service}; skipping."
     return 0
   fi
+  if ! valid_image_tag "${tag}"; then
+    err "Refusing to deploy ${service}: invalid image tag '${tag}'"
+    return 1
+  fi
 
   build_helm_args "${service}"
   local secret_file="" secret_args=()
@@ -450,7 +457,7 @@ deploy_service() {
   helm upgrade --install "${service}" "${chart_dir}" \
     --namespace "${NS}" \
     --set image.repository="${ECR_REGISTRY}/${ECR_PREFIX}${service}" \
-    --set image.tag="${tag}" \
+    --set-string image.tag="${tag}" \
     "${EXTRA_ARGS[@]}" \
     "${secret_args[@]}" \
     --timeout 4m \

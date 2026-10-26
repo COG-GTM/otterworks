@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { secondsToTtl } from "@/lib/util";
+import { parseImageTag, secondsToTtl } from "@/lib/util";
 import type { RedeployRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -28,8 +28,9 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   }
 
   const body = (await req.json().catch(() => ({}))) as RedeployRequest;
-  const imageTag =
-    typeof body.image_tag === "string" && body.image_tag.trim() ? body.image_tag.trim() : undefined;
+  const parsedTag = parseImageTag(body.image_tag);
+  if (!parsedTag.ok) return error(400, "invalid image_tag");
+  const imageTag = parsedTag.tag;
   const requestedBranch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : undefined;
 

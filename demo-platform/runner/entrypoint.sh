@@ -197,6 +197,14 @@ main() {
   # shellcheck source=/dev/null
   source "${REPO_DIR}/demo-platform/lib/control-common.sh"
 
+  # IMAGE_TAG comes from a dashboard request and ends up in `helm --set`, which
+  # splits on `,`. Checked inline (Docker tag grammar, as valid_image_tag in
+  # tenant-common.sh) because the sourced library comes from the tenant's own
+  # branch, which may predate that helper. Fail before any status write or Helm.
+  if [ -n "${IMAGE_TAG:-}" ] && ! [[ "${IMAGE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+    die "IMAGE_TAG is not a valid Docker tag"
+  fi
+
   # kubectl/helm auth: in-cluster use the pod ServiceAccount + RBAC (auth'ing as
   # the IRSA IAM role would require an aws-auth mapping this cluster lacks); only
   # write a kubeconfig when running standalone.
