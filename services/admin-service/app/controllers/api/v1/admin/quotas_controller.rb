@@ -3,6 +3,7 @@ module Api
     module Admin
       class QuotasController < ApplicationController
         before_action :require_admin!, only: %i[update]
+        before_action :require_quota_owner_or_admin!, only: %i[show]
         before_action :set_quota, only: %i[show update]
 
         # GET /api/v1/admin/quotas/:user_id
@@ -30,6 +31,14 @@ module Api
         end
 
         private
+
+        # Users may read their own quota; anyone else's requires an admin role.
+        def require_quota_owner_or_admin!
+          return if admin_role?
+          return if current_user_id.present? && current_user_id.to_s == params[:user_id].to_s
+
+          render json: { error: 'Admin role required' }, status: :forbidden
+        end
 
         def set_quota
           @quota = StorageQuota.find_by!(user_id: params[:user_id])
