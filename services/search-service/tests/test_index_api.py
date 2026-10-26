@@ -204,6 +204,25 @@ class TestIndexMutationAuthorization:
             assert response.status_code in (401, 403)
         _assert_index_untouched(mock_meilisearch_client)
 
+    @pytest.mark.parametrize(("method", "path", "body"), MUTATIONS)
+    def test_gateway_user_forbidden_with_require_auth_enabled(
+        self, app_config, mock_meilisearch_client, method, path, body
+    ):
+        # Deployed default: X-User-ID satisfies require_auth, but not the index routes.
+        config = AppConfig(
+            meilisearch=app_config.meilisearch,
+            sqs=app_config.sqs,
+            auth=AuthConfig(service_token=app_config.auth.service_token, require_auth=True),
+        )
+        with patch("app.services.meilisearch_client.meilisearch.Client") as mock_cls:
+            mock_cls.return_value = mock_meilisearch_client
+            gateway_client = create_app(config).test_client()
+        response = _send(gateway_client, method, path, body, {"X-User-ID": "attacker"})
+        assert response.status_code == 403
+        _assert_index_untouched(mock_meilisearch_client)
+        search = gateway_client.get("/api/v1/search/?q=report", headers={"X-User-ID": "attacker"})
+        assert search.status_code == 200
+
     def test_search_still_open_to_gateway_users(self, client, mock_meilisearch_client):
         response = client.get("/api/v1/search/?q=report", headers={"X-User-ID": "user-1"})
         assert response.status_code == 200
