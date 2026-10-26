@@ -17,6 +17,11 @@
 # stdin instead, and the session cookie lands in a jar with 0600 permissions
 # that is removed on exit.
 #
+# DASHBOARD_CI_KEY, when set (CD sets it from a repository secret), is sent as
+# the `x-ops-ci-key` header so the login skips the dashboard's anonymous global
+# brake and a flood of junk logins cannot stall deploys. It travels through a
+# 0600 temp file, never argv, for the same reason as the passcode.
+#
 # Usage:
 #   tenant.sh list
 #   tenant.sh checkout <id> [branch] [ttl]     # branch defaults to workshop-<id>
@@ -54,8 +59,9 @@ for bin in curl jq; do
 done
 
 JAR="$(mktemp)"
-chmod 600 "${JAR}"
-cleanup() { rm -f "${JAR}"; }
+HDR="$(mktemp)"
+chmod 600 "${JAR}" "${HDR}"
+cleanup() { rm -f "${JAR}" "${HDR}"; }
 trap cleanup EXIT
 
 # ------------------------------------------------------------------------------
@@ -79,10 +85,18 @@ login() {
   # env.PASSCODE, not --arg: an argument would be visible in `ps` for the life
   # of the jq process. The environment of a process is readable only by its own
   # user and root.
+  # printf is a builtin, so the key never appears on a process argv; curl
+  # reads it from the 0600 header file.
+  : > "${HDR}"
+  if [ -n "${DASHBOARD_CI_KEY:-}" ]; then
+    printf 'x-ops-ci-key: %s\n' "${DASHBOARD_CI_KEY}" > "${HDR}"
+  fi
+
   local code
   code="$(PASSCODE="${passcode}" jq -nc '{passcode: env.PASSCODE}' |
             curl -sS -o /dev/null -w '%{http_code}' \
                  -c "${JAR}" -X POST "${OPS_HOST}/api/auth/login" \
+                 -H @"${HDR}" \
                  -H 'content-type: application/json' --data-binary @-)"
 
   case "${code}" in

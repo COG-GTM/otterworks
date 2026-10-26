@@ -33,6 +33,7 @@ Deploys the OtterWorks **Demo Platform control plane** into the
 | `dashboard.image` | `<registry>/otterworks/demo-ops-dashboard:<tag>` |
 | `secret.dashboardPasscode` | required (see below) |
 | `secret.sessionSecret` | required (see below) |
+| `secret.dashboardCiKey` | optional; must match the `DASHBOARD_CI_KEY` repo secret CD sends as `x-ops-ci-key` |
 
 ## Passing the passcode secret WITHOUT putting it on argv
 
