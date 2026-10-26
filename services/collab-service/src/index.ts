@@ -190,6 +190,9 @@ httpServer.on('upgrade', (request, socket, head) => {
         socket.destroy();
         return;
       }
+      // setupWSConnection names the room after the URL path; canonicalize it so
+      // every client of a document shares one room regardless of prefix or case.
+      request.url = `/document-${documentId.toLowerCase()}`;
       wss.handleUpgrade(request, socket, head, (ws) => {
         wss.emit('connection', ws, request);
       });

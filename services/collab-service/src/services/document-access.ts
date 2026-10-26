@@ -41,6 +41,8 @@ export class HttpDocumentAccessChecker implements DocumentAccessChecker {
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(this.timeoutMs),
       });
+      // Only the status matters; release the body so the connection can be reused.
+      await response.body?.cancel().catch(() => undefined);
       if (!response.ok) {
         this.logger.debug(
           { documentId, status: response.status },
