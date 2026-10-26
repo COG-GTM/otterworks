@@ -67,8 +67,10 @@ and reuses the same cached tag.
 
 ## 3. The runner deploys its bundled tree, not your branch
 
-The dashboard runner Job cannot check out tenant branches (`GITHUB_TOKEN` /
-`REPO_HTTPS_URL` unset — its log says so explicitly and silently falls back). Therefore:
+The dashboard runner Job never checks out tenant branches: it runs only the scripts and
+charts baked into its image, and uses the branch name solely to pick `tenant-<id>` image
+tags (a branch can be pushed by any attendee, and the runner holds platform-wide
+credentials). Therefore:
 
 - **Helm chart / values / probe / resource changes on a demo branch never reach the
   tenant.** Only changes baked into a service's Docker image ship.

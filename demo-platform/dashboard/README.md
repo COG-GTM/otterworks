@@ -40,9 +40,11 @@ ServiceAccount (IRSA-bound). AWS and Kubernetes clients are constructed lazily, 
 
 Mutating actions never touch AWS/k8s from the web pod's request path beyond creating a
 Kubernetes Job. Each Job (`deploy-<id>-<epoch>`, `teardown-<id>-<epoch>`, `inject-bug-<id>-<epoch>`)
-runs the repo's `scripts/deploy-tenant.sh` / `teardown-tenant.sh` / `inject-bug.sh` from the
-`RUNNER_IMAGE`, carrying `CONTROL_TABLE` / `TENANT_ID` / `TENANT_BRANCH` etc. as env. Secrets
-are referenced via `secretKeyRef` (never placed on argv).
+runs the repo's `scripts/deploy-tenant.sh` / `teardown-tenant.sh` / `inject-bug.sh` bundled in
+the `RUNNER_IMAGE`, carrying `CONTROL_TABLE` / `TENANT_ID` / `TENANT_BRANCH` etc. as env. Secrets
+are referenced via `secretKeyRef` (never placed on argv). The runner never checks out
+`TENANT_BRANCH`; it only selects the tenant's image tags. Checkout/redeploy refuse any branch
+other than the tenant's own `workshop-<id>` / `demo-<id>` (or `main` for a perpetual tenant).
 
 ## Docker
 

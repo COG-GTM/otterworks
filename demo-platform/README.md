@@ -87,8 +87,9 @@ A fork ships to the same registry and the same control plane, so it needs three 
    and its images are tagged `tenant-gtm-derek` rather than colliding on `tenant-derek`.
 
 What a fork changes is service **images**. The runner deploys from the tree in its own image
-and checks out the tenant's branch from this repo, which a fork's branch is not in, so charts
-and deploy scripts come from `main` here. Changing those is a PR upstream, not a fork branch.
+and never checks out a tenant branch (attendees can push those, and the runner holds
+platform-wide credentials), so charts and deploy scripts always come from `main` here.
+Changing those is a PR upstream, not a fork branch.
 
 ## Provisioning tenants without cluster access
 `scripts/tenant.sh` is the dashboard's API from a shell — for people who provision demos, and

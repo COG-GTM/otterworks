@@ -3,7 +3,9 @@
 #
 # Launched as a Kubernetes Job by the ops dashboard to run ONE tenant op
 # (deploy / teardown / inject / reset / reap). Carries the repo + a full CLI
-# toolchain so it can drive the EXISTING scripts in scripts/.
+# toolchain so it can drive the EXISTING scripts in scripts/. Those bundled
+# scripts and charts are the only code the runner executes: it never checks out
+# a tenant branch (see entrypoint.sh).
 #
 # Build from the REPO ROOT so the whole repo (scripts/ + demo-platform/) is in
 # the build context:
@@ -58,8 +60,9 @@ RUN curl -fsSL -o /tmp/terraform.zip \
   && chmod +x /usr/local/bin/terraform \
   && terraform version
 
-# The repo (scripts/ + demo-platform/) — the runner checks out the requested
-# branch at runtime via entrypoint.sh (TENANT_BRANCH).
+# The repo (scripts/ + demo-platform/ + charts) — the trusted tree every runner
+# op executes. Owned by root and not writable by the runner user, so nothing a
+# Job does at runtime can swap in different scripts.
 WORKDIR /workspace
 COPY . /workspace
 
@@ -69,12 +72,14 @@ RUN chmod +x \
       /workspace/scripts/*.sh \
   && git config --system --add safe.directory /workspace
 
-# Run as a non-root user. The runner only needs to read/write /workspace and its
-# own $HOME (git/aws/kube config); it never needs root. In-cluster it uses the
+# Run as a non-root user. The runner only needs to read /workspace and write its
+# own $HOME (aws/kube/helm config); it never needs root. In-cluster it uses the
 # pod ServiceAccount token, which is readable by any uid.
 RUN addgroup -S runner \
   && adduser -S -G runner -h /home/runner runner \
-  && chown -R runner:runner /workspace /home/runner
+  && chown -R root:root /workspace \
+  && chmod -R go-w /workspace \
+  && chown -R runner:runner /home/runner
 USER runner
 
 ENV HOME=/home/runner \

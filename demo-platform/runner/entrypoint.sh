@@ -9,7 +9,7 @@
 # It is deliberately thin glue: the real work is done by the EXISTING tenant
 # tooling in ../scripts (deploy-tenant.sh / teardown-tenant.sh / inject-bug.sh)
 # and the reaper in ../reaper/reaper.sh. This entrypoint only:
-#   1. checks out the requested OtterWorks git branch (TENANT_BRANCH),
+#   1. validates the tenant branch label (TENANT_BRANCH; never checked out),
 #   2. transitions status in the control table (deploying -> active | error),
 #   3. runs the requested op via the existing scripts,
 #   4. records the resolved coordinates (url/api_url/db_name/namespace/expires)
@@ -24,11 +24,11 @@
 #   IMAGE_TAG     optional pinned image tag
 #   HOST_SUFFIX   ingress host suffix              (default demo.otterworks.app)
 #   SCENARIO      bug-catalog scenario (for OP=inject)
-#   TENANT_BRANCH git branch to check out (e.g. workshop-<id>)
+#   TENANT_BRANCH tenant branch (workshop-<id>); selects image tags only, never
+#                 checked out -- all scripts/charts run from the bundled tree
 #   CONTROL_TABLE DynamoDB control table         (default otterworks-demo-control)
 #   AWS_REGION    (default us-east-1)   EKS_CLUSTER (default otterworks-dev)
-#   REPO_DIR      checked-out repo path                   (default /workspace)
-#   REPO_REMOTE   git remote name                         (default origin)
+#   REPO_DIR      the image's bundled repo tree           (default /workspace)
 #   ACTOR         audit actor label                       (default runner)
 #
 # Secrets (from Kubernetes Secret refs in the Job spec — env only, NEVER argv):
@@ -40,7 +40,6 @@
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-/workspace}"
-REPO_REMOTE="${REPO_REMOTE:-origin}"
 CONTROL_TABLE="${CONTROL_TABLE:-otterworks-demo-control}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 EKS_CLUSTER="${EKS_CLUSTER:-otterworks-dev}"
@@ -53,41 +52,28 @@ log()  { echo "[runner] $*"; }
 err()  { echo "[runner] ERROR: $*" >&2; }
 die()  { err "$*"; exit 1; }
 
-# --- git checkout of the requested branch (deploy uses the tenant's branch) ----
-# Fetching a participant branch (workshop-<id>) needs git auth. If GITHUB_TOKEN
-# (from a Secret) and REPO_HTTPS_URL are provided, we fetch over HTTPS via a
-# credential helper that reads the token from the env — never on argv or in logs.
-# Without them we fall back to the tree baked into the image (the golden app);
-# code-level variants then rely on --image-tag rather than a branch checkout.
-configure_git_auth() {
-  git config --global --add safe.directory "${REPO_DIR}" >/dev/null 2>&1 || true
-  [ -n "${GITHUB_TOKEN:-}" ] || return 0
-  local url="${REPO_HTTPS_URL:-}"
-  [ -n "${url}" ] || return 0
-  local helper="/tmp/git-cred-helper.sh"
-  # The helper echoes the token from the env at call time; the value is never
-  # written to disk or passed on a command line.
-  cat > "${helper}" <<'HELPER'
-#!/bin/sh
-echo "username=x-access-token"
-echo "password=${GITHUB_TOKEN}"
-HELPER
-  chmod 700 "${helper}"
-  git config --global credential.helper "${helper}" >/dev/null 2>&1 || true
-  ( cd "${REPO_DIR}" && git remote set-url "${REPO_REMOTE}" "${url}" >/dev/null 2>&1 ) || true
-}
-
-checkout_branch() {
-  [ -n "${TENANT_BRANCH:-}" ] || { log "no TENANT_BRANCH set; using image's bundled checkout"; return 0; }
-  configure_git_auth
-  log "checking out branch ${TENANT_BRANCH} in ${REPO_DIR}"
-  ( cd "${REPO_DIR}" \
-    && git fetch --prune "${REPO_REMOTE}" >/dev/null 2>&1 \
-    && ( git checkout "${TENANT_BRANCH}" >/dev/null 2>&1 \
-         || git checkout -b "${TENANT_BRANCH}" "${REPO_REMOTE}/${TENANT_BRANCH}" >/dev/null 2>&1 ) \
-    && git reset --hard "${REPO_REMOTE}/${TENANT_BRANCH}" >/dev/null 2>&1 ) \
-    && { log "checked out ${TENANT_BRANCH}"; return 0; }
-  err "branch checkout of ${TENANT_BRANCH} failed; continuing with the image's bundled tree (set GITHUB_TOKEN + REPO_HTTPS_URL to enable participant-branch checkouts)"
+# --- tenant branch: a label, never a source of code ---------------------------
+# Everything this runner executes -- scripts/, scripts/lib/, demo-platform/lib/,
+# the reaper and the Helm charts deploy-tenant.sh renders -- comes from the tree
+# baked into this image (REPO_DIR). The runner holds the shared DB admin
+# password, a cluster-wide RBAC role and the dashboard's IAM role, while a
+# tenant branch can be pushed by any workshop attendee with write access. So the
+# branch is NEVER fetched or checked out here: it is only passed to
+# deploy-tenant.sh to pick the tenant's own service images (tenant-<id> tags),
+# which run inside the tenant's namespace, not in this Job. A branch's code
+# reaches its tenant through those images, never through this runner.
+#
+# The name must be workshop-<id>/demo-<id> (or `main`) -- the same shape the
+# dashboard enforces -- so it can't smuggle options or odd characters further.
+validate_tenant_branch() {
+  [ -n "${TENANT_BRANCH:-}" ] || return 0
+  [[ "${TENANT_BRANCH}" =~ ^((workshop|demo)[-/][A-Za-z0-9][A-Za-z0-9._-]{0,62}|main)$ ]] \
+    && [[ "${TENANT_BRANCH}" != *..* ]] \
+    || die "refusing TENANT_BRANCH '${TENANT_BRANCH}': expected workshop-<id>, demo-<id> or main"
+  if [ -n "${REPO_HTTPS_URL:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+    log "REPO_HTTPS_URL/GITHUB_TOKEN are ignored: the runner never checks out tenant branches"
+  fi
+  log "tenant branch ${TENANT_BRANCH} selects image tags only; running the image's bundled scripts from ${REPO_DIR}"
 }
 
 # Convert a compact TTL (8h/30m/2d) to an absolute expiry epoch. Pure integer
@@ -189,9 +175,9 @@ main() {
   command -v aws >/dev/null || die "aws CLI not found in image"
   command -v jq  >/dev/null || die "jq not found in image"
 
-  checkout_branch
+  validate_tenant_branch
 
-  # Shared naming + control-table helpers (from the checked-out repo).
+  # Shared naming + control-table helpers (from the image's bundled tree).
   # shellcheck source=/dev/null
   source "${REPO_DIR}/scripts/lib/tenant-common.sh"
   # shellcheck source=/dev/null
