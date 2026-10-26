@@ -2,7 +2,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
 import jwt from 'jsonwebtoken';
 import type { Logger } from 'pino';
-import type { WebSocketServer } from 'ws';
+import type { WebSocket, WebSocketServer } from 'ws';
 
 // y-websocket clients authenticate with an `Authorization: Bearer` header or, for
 // browsers (which cannot set headers on a WebSocket), by offering the subprotocols
@@ -29,6 +29,21 @@ function parseUrl(rawUrl: string | undefined): URL | null {
     return null;
   }
 }
+
+/**
+ * pino `redact` paths: a backstop so a raw URL or auth header passed to the logger
+ * is censored instead of written out with the token in it.
+ */
+export const LOG_REDACT_PATHS = [
+  'url',
+  'req.url',
+  'token',
+  'authorization',
+  'headers.authorization',
+  'headers["sec-websocket-protocol"]',
+  'req.headers.authorization',
+  'req.headers["sec-websocket-protocol"]',
+];
 
 /** Request path without the query string, safe to log. */
 export function loggablePath(rawUrl: string | undefined): string {
@@ -92,6 +107,17 @@ export function authenticateUpgrade(
 /** `handleProtocols` for the ws server: echo the app protocol, never the bearer token. */
 export function selectSubprotocol(protocols: Set<string>): string | false {
   return protocols.has(COLLAB_SUBPROTOCOL) ? COLLAB_SUBPROTOCOL : false;
+}
+
+/** `connection` listener for the y-websocket server; logs the path only. */
+export function createYWebsocketConnectionHandler(
+  setupConnection: (conn: WebSocket, req: IncomingMessage) => void,
+  logger: Logger,
+) {
+  return (conn: WebSocket, req: IncomingMessage): void => {
+    setupConnection(conn, req);
+    logger.info({ path: loggablePath(req.url) }, 'y-websocket_client_connected');
+  };
 }
 
 /**

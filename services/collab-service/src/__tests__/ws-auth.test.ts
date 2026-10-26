@@ -1,12 +1,15 @@
 import { createServer, type Server } from 'http';
 import type { AddressInfo } from 'net';
+import { Writable } from 'stream';
 import jwt from 'jsonwebtoken';
-import type { Logger } from 'pino';
+import pino, { type Logger } from 'pino';
 import WebSocket, { WebSocketServer } from 'ws';
 import {
   BEARER_SUBPROTOCOL_PREFIX,
   COLLAB_SUBPROTOCOL,
+  LOG_REDACT_PATHS,
   authenticateUpgrade,
+  createYWebsocketConnectionHandler,
   createYWebsocketUpgradeHandler,
   extractUpgradeToken,
   hasUrlCredential,
@@ -167,5 +170,53 @@ describe('y-websocket upgrade handler', () => {
 
   it('rejects a connection without a token', async () => {
     await expect(connect('/document-1')).resolves.toEqual({ status: 401 });
+  });
+});
+
+describe('logging', () => {
+  function capturingLogger(): { logger: Logger; output: () => string } {
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _enc, cb) {
+        chunks.push(chunk.toString());
+        cb();
+      },
+    });
+    const logger = pino(
+      { level: 'info', redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' } },
+      stream,
+    );
+    return { logger, output: () => chunks.join('') };
+  }
+
+  it('connection handler logs the path, not the query string', () => {
+    const { logger, output } = capturingLogger();
+    const setup = jest.fn();
+    const req = { url: `/document-42?token=${token}`, headers: {} };
+    createYWebsocketConnectionHandler(setup, logger)({} as never, req as never);
+    expect(setup).toHaveBeenCalledWith({}, req);
+    expect(output()).toContain('"path":"/document-42"');
+    expect(output()).toContain('y-websocket_client_connected');
+    expect(output()).not.toContain(token);
+  });
+
+  it('redacts raw URLs and auth headers passed to the logger', () => {
+    const { logger, output } = capturingLogger();
+    logger.info(
+      {
+        url: `/document-1?token=${token}`,
+        token,
+        req: {
+          url: `/document-1?token=${token}`,
+          headers: {
+            authorization: `Bearer ${token}`,
+            'sec-websocket-protocol': `${BEARER_SUBPROTOCOL_PREFIX}${token}`,
+          },
+        },
+      },
+      'raw',
+    );
+    expect(output()).toContain('[REDACTED]');
+    expect(output()).not.toContain(token);
   });
 });

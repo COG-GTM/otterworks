@@ -14,8 +14,9 @@ import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 import {
+  LOG_REDACT_PATHS,
+  createYWebsocketConnectionHandler,
   createYWebsocketUpgradeHandler,
-  loggablePath,
   selectSubprotocol,
 } from './ws-auth';
 
@@ -31,6 +32,7 @@ const logger = pino({
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
   base: { service: 'collab-service' },
+  redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' },
 });
 
 const app = express();
@@ -133,10 +135,7 @@ const collabManager = setupCollaborationHandlers(
 
 // y-websocket server for TipTap/Yjs collaborative editing
 const wss = new WebSocketServer({ noServer: true, handleProtocols: selectSubprotocol });
-wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
-  logger.info({ path: loggablePath(req.url) }, 'y-websocket_client_connected');
-});
+wss.on('connection', createYWebsocketConnectionHandler(setupWSConnection, logger));
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
 httpServer.on('upgrade', createYWebsocketUpgradeHandler(wss, config.jwt.secret, logger));
