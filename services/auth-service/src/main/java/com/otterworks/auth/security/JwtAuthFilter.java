@@ -1,13 +1,16 @@
 package com.otterworks.auth.security;
 
+import com.otterworks.auth.entity.User;
+import com.otterworks.auth.repository.UserRepository;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,9 +27,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
   private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
 
   private final JwtTokenProvider jwtTokenProvider;
+  private final UserRepository userRepository;
 
-  public JwtAuthFilter(JwtTokenProvider jwtTokenProvider) {
+  public JwtAuthFilter(JwtTokenProvider jwtTokenProvider, UserRepository userRepository) {
     this.jwtTokenProvider = jwtTokenProvider;
+    this.userRepository = userRepository;
   }
 
   @Override
@@ -46,15 +51,17 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         }
 
         String userId = claims.getSubject();
-        @SuppressWarnings("unchecked")
-        List<String> roles = claims.get("roles", List.class);
-        if (roles == null) {
-          roles = Collections.emptyList();
+        Optional<User> user = userRepository.findById(UUID.fromString(userId));
+        if (user.isEmpty()) {
+          log.debug("JWT subject {} does not match a user", userId);
+          filterChain.doFilter(request, response);
+          return;
         }
 
+        // Authorities come from the database, not the token's roles claim.
         List<SimpleGrantedAuthority> authorities =
-            roles.stream()
-                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+            user.get().getRoles().stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.name()))
                 .collect(Collectors.toList());
 
         UsernamePasswordAuthenticationToken authentication =

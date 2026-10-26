@@ -62,6 +62,11 @@ jobs:
       - name: Unit-test the harness
         run: make dast-test
 
+      # docker-compose.yml has no default JWT_SECRET; give this throwaway stack a
+      # random one in .env, which compose reads for every later step.
+      - name: Generate a JWT secret for the stack
+        run: make env
+
       - name: Start the application stack
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \

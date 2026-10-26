@@ -4,6 +4,14 @@ class JwtAuthenticator
 
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
+  # Signing keys that were committed to this repository as defaults at some point.
+  PUBLISHED_SECRETS = %w[
+    dev-jwt-secret-otterworks-2024-change-in-production
+    otterworks-local-dev-jwt-secret-change-me-in-production
+    otterworks-dev-secret
+    dev_jwt_secret_key
+  ].freeze
+
   def initialize(app)
     @app = app
   end
@@ -52,7 +60,16 @@ class JwtAuthenticator
   end
 
   def decode_token(token)
-    secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
+    secret = Rails.application.credentials.jwt_secret.presence || ENV['JWT_SECRET'].presence || Rails.application.secrets.jwt_secret.presence
+    if secret.nil?
+      Rails.logger.error('JWT authentication failed: JWT_SECRET is not configured')
+      return nil
+    end
+    if PUBLISHED_SECRETS.include?(secret.strip)
+      Rails.logger.error('JWT authentication failed: JWT_SECRET is a value published in the repository')
+      return nil
+    end
+
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
     decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])

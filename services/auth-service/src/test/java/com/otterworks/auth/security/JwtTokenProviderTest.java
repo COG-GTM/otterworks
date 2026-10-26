@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.*;
 
 import com.otterworks.auth.entity.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -21,6 +26,55 @@ class JwtTokenProviderTest {
             "test-jwt-secret-otterworks-must-be-at-least-32-bytes-long-for-hmac",
             3600,
             2592000); // nosemgrep: java.lang.security.audit.crypto.no-static-initialization-vector
+  }
+
+  @Test
+  void constructor_shouldRejectMissingSecret() {
+    assertThatThrownBy(() -> new JwtTokenProvider(null, 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+    assertThatThrownBy(() -> new JwtTokenProvider("   ", 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("JWT_SECRET");
+  }
+
+  @Test
+  void constructor_shouldRejectSecretsPublishedInTheRepository() {
+    for (String published : JwtTokenProvider.PUBLISHED_SECRETS) {
+      assertThatThrownBy(() -> new JwtTokenProvider(published, 3600, 2592000))
+          .isInstanceOf(IllegalStateException.class)
+          .hasMessageContaining("published");
+    }
+  }
+
+  @Test
+  void constructor_shouldRejectSecretsShorterThan32Bytes() {
+    assertThatThrownBy(() -> new JwtTokenProvider("a".repeat(31), 3600, 2592000))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("at least 32 bytes");
+    assertThatCode(() -> new JwtTokenProvider("a".repeat(32), 3600, 2592000))
+        .doesNotThrowAnyException();
+  }
+
+  @Test
+  void validateAndGetClaims_shouldRejectTokenSignedWithPublishedDefault() {
+    String forged =
+        Jwts.builder()
+            .subject(UUID.randomUUID().toString())
+            .claim("roles", List.of("ADMIN"))
+            .claim("type", "access")
+            .expiration(new Date(System.currentTimeMillis() + 3_600_000))
+            .signWith(
+                Keys.hmacShaKeyFor(
+                    "dev-jwt-secret-otterworks-2024-change-in-production"
+                        .getBytes(StandardCharsets.UTF_8)))
+            .compact();
+
+    assertThatThrownBy(() -> jwtTokenProvider.validateAndGetClaims(forged))
+        .isInstanceOf(JwtException.class);
   }
 
   @Test

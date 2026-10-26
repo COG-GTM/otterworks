@@ -17,7 +17,8 @@ Individual service development may also require the language toolchains listed i
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
-# Start all application services (builds images on first run)
+# Start all application services (builds images on first run). `make up` first
+# writes a random JWT_SECRET to .env if neither the environment nor .env has one.
 make up
 
 # Open the app
@@ -28,6 +29,7 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+echo "JWT_SECRET=$(openssl rand -hex 32)" >> .env   # once; docker-compose.yml has no default
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
