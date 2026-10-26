@@ -1,5 +1,6 @@
 import express from 'express';
-import { createServer } from 'http';
+import { createServer, type IncomingMessage } from 'http';
+import type { Duplex } from 'stream';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
@@ -11,6 +12,11 @@ import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
+import {
+  DocumentAccessChecker,
+  documentRoomName,
+  parseDocumentRoomPath,
+} from './services/document-access';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
@@ -128,11 +134,33 @@ const collabManager = setupCollaborationHandlers(
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
+const documentAccess = new DocumentAccessChecker(
+  {
+    documentServiceUrl: config.documentService.url,
+    timeoutMs: config.documentService.accessCheckTimeoutMs,
+  },
+  logger,
+);
+
+// Doc names are authorized during the upgrade; never derived from req.url here.
+const authorizedDocNames = new WeakMap<IncomingMessage, string>();
+
 const wss = new WebSocketServer({ noServer: true });
 wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
-  logger.info({ url: req.url }, 'y-websocket_client_connected');
+  const docName = authorizedDocNames.get(req);
+  authorizedDocNames.delete(req);
+  if (!docName) {
+    conn.close(1008, 'Unauthorized');
+    return;
+  }
+  setupWSConnection(conn, req, { docName });
+  logger.info({ docName }, 'y-websocket_client_connected');
 });
+
+function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
+  socket.write(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`);
+  socket.destroy();
+}
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
 httpServer.on('upgrade', (request, socket, head) => {
@@ -142,30 +170,72 @@ httpServer.on('upgrade', (request, socket, head) => {
   }
 
   // JWT authentication for y-websocket connections
-  const url = new URL(request.url || '', `http://${request.headers.host}`);
+  const url = new URL(request.url || '', 'http://collab-service.local');
   const token =
     url.searchParams.get('token') ||
     request.headers.authorization?.replace('Bearer ', '');
 
   if (!token) {
     logger.warn('y-websocket_connection_rejected: no token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
+    rejectUpgrade(socket, 401, 'Unauthorized');
     return;
   }
 
+  let userId: string | undefined;
   try {
-    jwt.verify(token, config.jwt.secret);
+    const decoded = jwt.verify(token, config.jwt.secret);
+    userId = typeof decoded === 'object' ? decoded.sub : undefined;
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
+    rejectUpgrade(socket, 401, 'Unauthorized');
     return;
   }
 
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+  if (!userId) {
+    logger.warn('y-websocket_connection_rejected: token has no subject');
+    rejectUpgrade(socket, 401, 'Unauthorized');
+    return;
+  }
+
+  const documentId = parseDocumentRoomPath(url.pathname);
+  if (!documentId) {
+    logger.warn(
+      { userId, path: url.pathname },
+      'y-websocket_connection_rejected: invalid document path',
+    );
+    rejectUpgrade(socket, 404, 'Not Found');
+    return;
+  }
+
+  documentAccess
+    .checkAccess(documentId, token)
+    .then((result) => {
+      if (socket.destroyed) return;
+      if (result === 'denied') {
+        logger.warn(
+          { userId, documentId },
+          'y-websocket_connection_rejected: access denied',
+        );
+        rejectUpgrade(socket, 403, 'Forbidden');
+        return;
+      }
+      if (result === 'unavailable') {
+        logger.warn(
+          { userId, documentId },
+          'y-websocket_connection_rejected: access check unavailable',
+        );
+        rejectUpgrade(socket, 503, 'Service Unavailable');
+        return;
+      }
+      authorizedDocNames.set(request, documentRoomName(documentId));
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    })
+    .catch((err) => {
+      logger.error({ err, userId, documentId }, 'y-websocket_upgrade_failed');
+      if (!socket.destroyed) rejectUpgrade(socket, 500, 'Internal Server Error');
+    });
 });
 
 // Start presence cleanup with document eviction callback
