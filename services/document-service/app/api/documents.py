@@ -65,6 +65,17 @@ async def _maybe_inject_latency() -> None:
         await asyncio.sleep(delay)
 
 
+# Signing keys that were committed to this repository as defaults at some point.
+PUBLISHED_JWT_SECRETS = frozenset(
+    {
+        "dev-jwt-secret-otterworks-2024-change-in-production",
+        "otterworks-local-dev-jwt-secret-change-me-in-production",
+        "otterworks-dev-secret",
+        "dev_jwt_secret_key",
+    }
+)
+
+
 def _get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
@@ -77,6 +88,9 @@ def _extract_user_id(request: Request) -> UUID | None:
         secret = _get_jwt_secret()
         # auth-service signs with HS512 once JWT_SECRET is 64+ bytes (jjwt picks
         # the algorithm from the key length), e.g. `openssl rand -hex 32`.
+        if secret.strip() in PUBLISHED_JWT_SECRETS:
+            logger.error("jwt_secret_published", detail="JWT_SECRET is a published default")
+            return None
         if secret:
             try:
                 payload = jwt.decode(token, secret, algorithms=["HS256", "HS384", "HS512"])

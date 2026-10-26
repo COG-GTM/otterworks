@@ -288,6 +288,22 @@ async def test_owner_flow_with_hs512_jwt(client: AsyncClient, monkeypatch: pytes
 
 
 @pytest.mark.asyncio
+async def test_published_jwt_secret_authenticates_nobody(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    """A JWT_SECRET that was committed to the repo must not let anyone mint tokens."""
+    published = "otterworks-local-dev-jwt-secret-change-me-in-production"  # noqa: S105
+    monkeypatch.setenv("JWT_SECRET", published)
+    forged = jwt.encode({"sub": str(uuid.uuid4())}, published, algorithm="HS512")
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Forged"},
+        headers={"Authorization": f"Bearer {forged}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
     """X-User-Id header alone is not trusted (prevents identity spoofing)."""
     user_id = uuid.uuid4()
