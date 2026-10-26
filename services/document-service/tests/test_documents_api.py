@@ -199,6 +199,83 @@ async def test_search_documents(client: AsyncClient, owner_id: uuid.UUID):
     assert data["items"][0]["title"] == "Python Guide"
 
 
+async def _seed_two_owners(client: AsyncClient, owner_id: uuid.UUID) -> uuid.UUID:
+    other_owner = uuid.uuid4()
+    await client.post(
+        "/api/v1/documents/",
+        json={"title": "Mine", "content": "shared-marker mine", "owner_id": str(owner_id)},
+    )
+    await client.post(
+        "/api/v1/documents/",
+        json={"title": "Theirs", "content": "shared-marker theirs"},
+        headers={"Authorization": f"Bearer {_make_jwt(str(other_owner))}"},
+    )
+    return other_owner
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_documents_scoped_to_caller(
+    client: AsyncClient, owner_id: uuid.UUID, path: str
+):
+    await _seed_two_owners(client, owner_id)
+
+    resp = await client.get(path)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert [item["owner_id"] for item in data["items"]] == [str(owner_id)]
+
+    filtered = await client.get(path, params={"sort": "title", "direction": "asc"})
+    assert filtered.status_code == 200
+    assert [item["owner_id"] for item in filtered.json()["items"]] == [str(owner_id)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("params", [{}, {"title": "Theirs"}])
+async def test_list_documents_rejects_other_owner_id(
+    client: AsyncClient, owner_id: uuid.UUID, params: dict
+):
+    other_owner = await _seed_two_owners(client, owner_id)
+
+    resp = await client.get(
+        "/api/v1/documents/", params={"owner_id": str(other_owner), **params}
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_documents_requires_auth(
+    client: AsyncClient, owner_id: uuid.UUID, path: str
+):
+    await _seed_two_owners(client, owner_id)
+
+    resp = await client.get(path, auth=None)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_documents_scoped_to_caller(client: AsyncClient, owner_id: uuid.UUID):
+    await _seed_two_owners(client, owner_id)
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "shared-marker"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["items"][0]["owner_id"] == str(owner_id)
+
+
+@pytest.mark.asyncio
+async def test_search_documents_requires_auth(client: AsyncClient, owner_id: uuid.UUID):
+    await _seed_two_owners(client, owner_id)
+
+    resp = await client.get(
+        "/api/v1/documents/search", params={"q": "shared-marker"}, auth=None
+    )
+    assert resp.status_code == 401
+
+
 @pytest.mark.asyncio
 async def test_export_document_html(client: AsyncClient, owner_id: uuid.UUID):
     create_resp = await client.post(

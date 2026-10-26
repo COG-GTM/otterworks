@@ -90,9 +90,7 @@ async def test_filter_no_match_returns_empty(client: AsyncClient, owner_id: uuid
 async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.UUID):
     await _create(client, owner_id, "Quarterly Report")
 
-    resp = await client.get(
-        "/api/v1/documents/", params={"owner_id": str(owner_id)}, auth=None
-    )
+    resp = await client.get("/api/v1/documents/", params={"owner_id": str(owner_id)})
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
