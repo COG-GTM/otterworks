@@ -62,11 +62,10 @@ public class AuthService {
 
   @Transactional
   public AuthResponse login(LoginRequest request) {
-    loginAttemptThrottle.checkAllowed(request.getEmail());
+    loginAttemptThrottle.beginAttempt(request.getEmail());
 
     User user = userRepository.findByEmail(request.getEmail()).orElse(null);
     if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-      loginAttemptThrottle.recordFailure(request.getEmail());
       throw new IllegalArgumentException("Invalid credentials");
     }
     loginAttemptThrottle.recordSuccess(request.getEmail());
