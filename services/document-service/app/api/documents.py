@@ -174,8 +174,9 @@ async def search_documents(
 
 
 @router.get("/exports", response_class=PlainTextResponse)
-async def read_export(name: str = Query(..., min_length=1)):
+async def read_export(request: Request, name: str = Query(..., min_length=1)):
     """Return a previously rendered export from the export archive."""
+    _require_user_id(request)
     archive = ExportArchive()
     try:
         return archive.read_export(name)
