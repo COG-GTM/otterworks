@@ -2,6 +2,7 @@ package com.otterworks.report.service;
 
 import com.opencsv.CSVWriter;
 import com.otterworks.report.model.Report;
+import com.otterworks.report.util.CsvCellSanitizer;
 import com.otterworks.report.util.ReportDateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,9 @@ import java.util.Set;
  * - OpenCSV 4.x (2018). Upgrade target: 5.9+ (different bean mapping API)
  * - FileWriter without explicit charset (platform-dependent encoding)
  * - Manual column extraction from Map keys
+ *
+ * Every cell (banner, header, data) goes through {@link CsvCellSanitizer} so
+ * event-supplied values cannot be evaluated as spreadsheet formulas.
  *
  * UPGRADE NOTES:
  * - OpenCSV 5.x changed CSVWriter constructor signatures
@@ -72,23 +76,22 @@ public class CsvReportGenerator {
                 bannerVars.put("periodTo", ReportDateUtils.toDisplayString(report.getDateTo()));
                 bannerVars.put("rows", String.valueOf(data.size()));
 
-                writer.writeNext(new String[]{headerRenderer.title(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.generated(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.period(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.rows(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.footer()});
+                writer.writeNext(new String[]{CsvCellSanitizer.sanitize(headerRenderer.title(bannerVars))});
+                writer.writeNext(new String[]{CsvCellSanitizer.sanitize(headerRenderer.generated(bannerVars))});
+                writer.writeNext(new String[]{CsvCellSanitizer.sanitize(headerRenderer.period(bannerVars))});
+                writer.writeNext(new String[]{CsvCellSanitizer.sanitize(headerRenderer.rows(bannerVars))});
+                writer.writeNext(new String[]{CsvCellSanitizer.sanitize(headerRenderer.footer())});
                 writer.writeNext(new String[]{""});
 
                 // Write header row
-                writer.writeNext(header);
+                writer.writeNext(CsvCellSanitizer.sanitizeAll(header));
 
                 // Write data rows
                 for (Map<String, Object> row : data) {
                     String[] values = new String[columns.size()];
                     int i = 0;
                     for (String col : columns) {
-                        Object value = row.get(col);
-                        values[i++] = value != null ? value.toString() : "";
+                        values[i++] = CsvCellSanitizer.sanitize(row.get(col));
                     }
                     writer.writeNext(values);
                 }
