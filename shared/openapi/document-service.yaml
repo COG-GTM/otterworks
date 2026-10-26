@@ -494,7 +494,6 @@ paths:
             schema:
               $ref: "#/components/schemas/CommentCreate"
             example:
-              author_id: "550e8400-e29b-41d4-a716-446655440000"
               content: "Great work on this section!"
       responses:
         "201":
@@ -866,13 +865,10 @@ components:
 
     CommentCreate:
       type: object
+      description: The comment author is the authenticated caller; it is not accepted from the body.
       required:
-        - author_id
         - content
       properties:
-        author_id:
-          type: string
-          format: uuid
         content:
           type: string
           minLength: 1

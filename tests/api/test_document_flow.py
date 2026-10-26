@@ -85,7 +85,7 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
     comment_response = api_client.client.post(
         f"/api/v1/documents/{document_id}/comments",
         headers=headers,
-        json={"author_id": user.id, "content": "Looks good"},
+        json={"content": "Looks good"},
     )
     assert comment_response.status_code == 201, comment_response.text
     comment = comment_response.json()
