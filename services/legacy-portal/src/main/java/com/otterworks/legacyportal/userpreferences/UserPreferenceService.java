@@ -1,5 +1,6 @@
 package com.otterworks.legacyportal.userpreferences;
 
+import com.otterworks.legacyportal.security.UserIds;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +19,7 @@ public class UserPreferenceService {
     /** Returns stored preferences, or sensible defaults if the user has none yet. */
     @Transactional(readOnly = true)
     public UserPreference getOrDefault(String userId) {
+        UserIds.requireValid(userId);
         return repository
                 .findById(userId)
                 .orElseGet(() -> new UserPreference(userId, DEFAULT_THEME, DEFAULT_LOCALE, true));
@@ -25,6 +27,7 @@ public class UserPreferenceService {
 
     @Transactional
     public UserPreference save(String userId, String theme, String locale, boolean emailNotifications) {
+        UserIds.requireValid(userId);
         UserPreference preference =
                 repository
                         .findById(userId)

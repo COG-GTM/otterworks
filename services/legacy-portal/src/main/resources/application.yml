@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: legacy-portal
+  autoconfigure:
+    # Authentication is bearer-token only (SecurityConfig); no generated in-memory user.
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
   # Default profile: embedded H2 with ONE SCHEMA PER BOUNDED CONTEXT. The schema
   # boundaries (announcements / user_preferences / feedback) are the decomposition seams —
   # each could become its own database when the monolith is split into services.
@@ -18,6 +21,11 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
+
+# HMAC secret shared with auth-service (same JWT_SECRET). Unset = every token is rejected.
+legacyportal:
+  security:
+    jwt-secret: ${JWT_SECRET:}
 
 management:
   endpoints:
