@@ -18,8 +18,8 @@ namespace OtterWorks.AuditService.Auth;
 /// * the internal service credential (<c>X-Service-Token</c>), compared to
 ///   <c>AUDIT_SERVICE_TOKEN</c>, for trusted callers such as report-service.
 ///
-/// Admins (ADMIN/OWNER/SUPER_ADMIN roles) and service callers may read the whole trail;
-/// everyone else is scoped to their own user id.
+/// Admins (ADMIN/OWNER/SUPER_ADMIN roles) have full access. Service callers may only query
+/// events (any user). Everyone else is scoped to their own user id.
 /// </summary>
 public static class AuditAuth
 {
@@ -101,8 +101,11 @@ public static class AuditAuth
     }
 
     public static bool IsAdmin(ClaimsPrincipal user) =>
-        user.Identities.Any(i => i.IsAuthenticated && i.AuthenticationType == ServiceTokenScheme) ||
         user.FindAll(RolesClaim).Any(c => AdminRoles.Contains(c.Value, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>Internal service caller (X-Service-Token); limited to querying events.</summary>
+    public static bool IsService(ClaimsPrincipal user) =>
+        user.Identities.Any(i => i.IsAuthenticated && i.AuthenticationType == ServiceTokenScheme);
 
     public static string? GetUserId(ClaimsPrincipal user) => user.FindFirst(SubjectClaim)?.Value;
 
@@ -139,7 +142,7 @@ public static class AuditAuth
             }
 
             var identity = new ClaimsIdentity(
-                new[] { new Claim(SubjectClaim, ServiceRole), new Claim(RolesClaim, ServiceRole) },
+                new[] { new Claim(ClaimTypes.Name, ServiceRole) },
                 ServiceTokenScheme,
                 SubjectClaim,
                 RolesClaim);

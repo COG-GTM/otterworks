@@ -136,6 +136,24 @@ public class AuditEndpointAuthTests : IClassFixture<AuditEndpointAuthTests.Facto
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("GET", "/api/v1/audit/events/evt-1")]
+    [InlineData("GET", "/api/v1/audit/reports/user/alice")]
+    [InlineData("GET", "/api/v1/audit/export")]
+    [InlineData("POST", "/api/v1/audit/archive")]
+    public async Task ServiceToken_IsLimitedToQueryingEvents(string method, string path)
+    {
+        _factory.AuditService.Setup(s => s.GetEventAsync("evt-1"))
+            .ReturnsAsync(new AuditEventResponse { Id = "evt-1", UserId = "alice" });
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Service-Token", ServiceToken);
+
+        var response = await client.SendAsync(new HttpRequestMessage(new HttpMethod(method), path));
+
+        Assert.True(response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound, $"{method} {path}: {response.StatusCode}");
+        _factory.AuditService.Verify(s => s.ArchiveOldEventsAsync(), Times.Never);
+    }
+
     [Fact]
     public async Task GetEvent_NonAdmin_CannotReadAnotherUsersEvent()
     {

@@ -83,7 +83,7 @@ public static class AuditController
         ClaimsPrincipal user,
         IAuditService auditService)
     {
-        if (!AuditAuth.IsAdmin(user))
+        if (!AuditAuth.IsAdmin(user) && !AuditAuth.IsService(user))
         {
             var callerId = AuditAuth.GetUserId(user);
             if (!string.IsNullOrEmpty(user_id) && user_id != callerId)

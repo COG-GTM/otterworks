@@ -446,7 +446,7 @@ services:
       DB_PASSWORD: otterworks_dev
       ANALYTICS_SERVICE_URL: http://analytics-service:8088
       AUDIT_SERVICE_URL: http://audit-service:8090
-      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-}
+      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-local-dev-audit-service-token}
       AUTH_SERVICE_URL: http://auth-service:8081
       REPORT_OUTPUT_DIR: /tmp/reports
     depends_on:
@@ -493,7 +493,7 @@ services:
       Aws__S3ArchiveBucket: otterworks-audit-archive
       ASPNETCORE_URLS: http://+:8090
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
-      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-}
+      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-local-dev-audit-service-token}
     depends_on:
       localstack:
         condition: service_healthy
