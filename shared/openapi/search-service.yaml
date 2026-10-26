@@ -3,7 +3,10 @@ info:
   title: OtterWorks Search Service
   description: |
     Full-text search and indexing service backed by MeiliSearch.
-    Results are scoped per-user via the X-User-ID header set by the API gateway.
+    Every endpoint except /health and /metrics requires `Authorization: Bearer <token>`:
+    either a user access token issued by auth-service (verified with JWT_SECRET) or the
+    SEARCH_SERVICE_TOKEN for internal callers. Search results are scoped to the verified
+    token subject; the X-User-ID header is ignored.
   version: "1.0.0"
   contact:
     name: OtterWorks Platform Team
@@ -19,8 +22,8 @@ paths:
       summary: Full-text search across documents and files
       description: |
         Performs a full-text search across all indexed documents and files.
-        Results are automatically scoped to the authenticated user via the
-        X-User-ID header set by the API gateway.
+        Results are automatically scoped to the user identified by the
+        verified access token.
       parameters:
         - name: q
           in: query
@@ -137,7 +140,7 @@ paths:
       description: |
         Performs an advanced search with additional filters including date range,
         tags, and document type. The owner_id is always derived from the
-        X-User-ID header for tenant isolation (not from the request body).
+        verified access token for tenant isolation (not from the request body).
       parameters:
         - $ref: "#/components/parameters/XUserID"
       requestBody:
@@ -517,8 +520,8 @@ components:
       in: header
       required: false
       description: |
-        User ID for tenant isolation. Set by the API gateway from the
-        authenticated session. All search results are scoped to this user.
+        Deprecated and ignored. The caller's identity is taken from the
+        verified bearer token; a client-supplied X-User-ID has no effect.
       schema:
         type: string
       example: "user-001"

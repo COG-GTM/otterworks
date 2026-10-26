@@ -40,9 +40,7 @@ class AuthConfig:
     service_token: str = field(
         default_factory=lambda: os.getenv("SEARCH_SERVICE_TOKEN", "")
     )
-    require_auth: bool = field(
-        default_factory=lambda: os.getenv("REQUIRE_AUTH", "true").lower() == "true"
-    )
+    jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", ""))
 
 
 @dataclass(frozen=True)

@@ -10,8 +10,10 @@ service:
   port: 8087
   targetPort: 8087
 
+# search-service is reached only through the api-gateway, which validates the
+# caller's JWT. Never give it its own public host by default.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
