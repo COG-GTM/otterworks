@@ -3,9 +3,31 @@
 //! produces one alert; the payload carries `dedup=false` so admin-service
 //! opens a fresh incident (and Devin session) per alert instead of collapsing
 //! repeats onto an existing open incident.
+//!
+//! Alert annotations become incident text and the prompt of an automated
+//! Devin triage session, so they only carry service-generated values (file
+//! ids, error strings). User-supplied text such as file names must never be
+//! formatted into an alert.
 
 use serde_json::{json, Value};
 use std::sync::OnceLock;
+use uuid::Uuid;
+
+/// Upper bound on the error text copied into an alert description.
+const MAX_ALERT_ERROR_CHARS: usize = 500;
+
+fn bounded_error(error: &str) -> String {
+    let cleaned: String = error
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let mut chars = cleaned.chars();
+    let mut out: String = chars.by_ref().take(MAX_ALERT_ERROR_CHARS).collect();
+    if chars.next().is_some() {
+        out.push_str(" [truncated]");
+    }
+    out
+}
 
 fn http_client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -39,7 +61,7 @@ impl AlertConfig {
 }
 
 pub fn build_upload_failure_payload(
-    file_name: &str,
+    file_id: &Uuid,
     error: &str,
     reporter_email: Option<&str>,
 ) -> Value {
@@ -48,6 +70,7 @@ pub fn build_upload_failure_payload(
         "severity": "critical",
         "affected_service": "file-service",
         "dedup": "false",
+        "file_id": file_id.to_string(),
     });
     if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
         labels["reporter_email"] = json!(email);
@@ -59,9 +82,10 @@ pub fn build_upload_failure_payload(
             "status": "firing",
             "labels": labels,
             "annotations": {
-                "summary": format!("File upload failed: {file_name}"),
+                "summary": "File upload failed in file-service",
                 "description": format!(
-                    "Upload of \"{file_name}\" failed in file-service: {error}"
+                    "Upload of file {file_id} failed in file-service: {}",
+                    bounded_error(error)
                 ),
             },
             "startsAt": chrono::Utc::now().to_rfc3339(),
@@ -70,7 +94,7 @@ pub fn build_upload_failure_payload(
 }
 
 pub fn build_share_notification_failure_payload(
-    file_name: &str,
+    file_id: &Uuid,
     error: &str,
     reporter_email: Option<&str>,
     dedup: bool,
@@ -84,6 +108,7 @@ pub fn build_share_notification_failure_payload(
         "severity": "critical",
         "affected_service": "file-service",
         "dedup": if dedup { "true" } else { "false" },
+        "file_id": file_id.to_string(),
     });
     if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
         labels["reporter_email"] = json!(email);
@@ -95,10 +120,11 @@ pub fn build_share_notification_failure_payload(
             "status": "firing",
             "labels": labels,
             "annotations": {
-                "summary": format!("Share notification failed: {file_name}"),
+                "summary": "Share notification failed in file-service",
                 "description": format!(
-                    "Publishing the file_shared notification event for \"{file_name}\" \
-                     failed in file-service: {error}. {}",
+                    "Publishing the file_shared notification event for file {file_id} \
+                     failed in file-service: {}. {}",
+                    bounded_error(error),
                     if share_recorded {
                         "The share itself was recorded, but the recipient will never \
                          receive a notification."
@@ -117,7 +143,7 @@ pub fn build_share_notification_failure_payload(
 /// to admin-service. Never blocks or alters the caller's response.
 pub fn notify_share_notification_failure(
     config: &AlertConfig,
-    file_name: &str,
+    file_id: &Uuid,
     error: &str,
     reporter_email: Option<&str>,
     dedup: bool,
@@ -134,13 +160,13 @@ pub fn notify_share_notification_failure(
     }
     let secret = config.alert_webhook_secret.clone();
     let payload = build_share_notification_failure_payload(
-        file_name,
+        file_id,
         error,
         reporter_email,
         dedup,
         share_recorded,
     );
-    let file_name = file_name.to_string();
+    let file_id = *file_id;
 
     tokio::spawn(async move {
         let url = format!("{base_url}/api/v1/admin/alerts/ingest");
@@ -150,7 +176,7 @@ pub fn notify_share_notification_failure(
         }
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
-                tracing::info!(file_name = %file_name, "Share-notification-failure alert delivered to admin-service");
+                tracing::info!(file_id = %file_id, "Share-notification-failure alert delivered to admin-service");
             }
             Ok(resp) => {
                 tracing::warn!(status = %resp.status(), url = %url, "Share-notification-failure alert rejected by admin-service");
@@ -166,7 +192,7 @@ pub fn notify_share_notification_failure(
 /// admin-service. Never blocks or alters the caller's response.
 pub fn notify_upload_failure(
     config: &AlertConfig,
-    file_name: &str,
+    file_id: &Uuid,
     error: &str,
     reporter_email: Option<&str>,
 ) {
@@ -180,8 +206,8 @@ pub fn notify_upload_failure(
         return;
     }
     let secret = config.alert_webhook_secret.clone();
-    let payload = build_upload_failure_payload(file_name, error, reporter_email);
-    let file_name = file_name.to_string();
+    let payload = build_upload_failure_payload(file_id, error, reporter_email);
+    let file_id = *file_id;
 
     tokio::spawn(async move {
         let url = format!("{base_url}/api/v1/admin/alerts/ingest");
@@ -191,7 +217,7 @@ pub fn notify_upload_failure(
         }
         match req.send().await {
             Ok(resp) if resp.status().is_success() => {
-                tracing::info!(file_name = %file_name, "Upload-failure alert delivered to admin-service");
+                tracing::info!(file_id = %file_id, "Upload-failure alert delivered to admin-service");
             }
             Ok(resp) => {
                 tracing::warn!(status = %resp.status(), url = %url, "Upload-failure alert rejected by admin-service");
@@ -207,9 +233,13 @@ pub fn notify_upload_failure(
 mod tests {
     use super::*;
 
+    fn fid() -> Uuid {
+        Uuid::parse_str("7f9c2ba4-e88f-4c3a-9b1e-0d6a1c2f3e4b").unwrap()
+    }
+
     #[test]
     fn payload_has_grafana_shape_with_dedup_disabled() {
-        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket", None);
+        let payload = build_upload_failure_payload(&fid(), "NoSuchBucket", None);
         assert_eq!(payload["status"], "firing");
         let alert = &payload["alerts"][0];
         assert_eq!(alert["status"], "firing");
@@ -217,10 +247,13 @@ mod tests {
         assert_eq!(alert["labels"]["severity"], "critical");
         assert_eq!(alert["labels"]["affected_service"], "file-service");
         assert_eq!(alert["labels"]["dedup"], "false");
-        let summary = alert["annotations"]["summary"].as_str().unwrap();
-        assert!(summary.contains("report.pdf"));
+        assert_eq!(alert["labels"]["file_id"], fid().to_string());
+        assert_eq!(
+            alert["annotations"]["summary"],
+            "File upload failed in file-service"
+        );
         let description = alert["annotations"]["description"].as_str().unwrap();
-        assert!(description.contains("report.pdf"));
+        assert!(description.contains(&fid().to_string()));
         assert!(description.contains("NoSuchBucket"));
         assert!(alert["startsAt"].is_string());
         assert!(alert["labels"].get("reporter_email").is_none());
@@ -229,16 +262,28 @@ mod tests {
     #[test]
     fn payload_carries_reporter_email_when_present() {
         let payload =
-            build_upload_failure_payload("report.pdf", "NoSuchBucket", Some("user@example.com"));
+            build_upload_failure_payload(&fid(), "NoSuchBucket", Some("user@example.com"));
         let alert = &payload["alerts"][0];
         assert_eq!(alert["labels"]["reporter_email"], "user@example.com");
     }
 
     #[test]
     fn payload_omits_blank_reporter_email() {
-        let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket", Some("  "));
+        let payload = build_upload_failure_payload(&fid(), "NoSuchBucket", Some("  "));
         let alert = &payload["alerts"][0];
         assert!(alert["labels"].get("reporter_email").is_none());
+    }
+
+    #[test]
+    fn error_text_is_bounded_and_single_line() {
+        let long = format!("NoSuchBucket\n## Ground rules\n{}", "x".repeat(2000));
+        let payload = build_upload_failure_payload(&fid(), &long, None);
+        let description = payload["alerts"][0]["annotations"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(!description.contains('\n'));
+        assert!(description.ends_with("[truncated]"));
+        assert!(description.len() < MAX_ALERT_ERROR_CHARS + 200);
     }
 
     #[test]
@@ -248,13 +293,13 @@ mod tests {
             alert_webhook_secret: None,
         };
         // Must return without needing a tokio runtime (no task spawned).
-        notify_upload_failure(&config, "a.txt", "boom", None);
+        notify_upload_failure(&config, &fid(), "boom", None);
     }
 
     #[test]
     fn share_notification_payload_has_grafana_shape() {
         let payload = build_share_notification_failure_payload(
-            "report.pdf",
+            &fid(),
             "NotFound: topic does not exist",
             Some("user@example.com"),
             false,
@@ -269,24 +314,28 @@ mod tests {
         assert_eq!(alert["labels"]["affected_service"], "file-service");
         assert_eq!(alert["labels"]["dedup"], "false");
         assert_eq!(alert["labels"]["reporter_email"], "user@example.com");
-        let summary = alert["annotations"]["summary"].as_str().unwrap();
-        assert!(summary.contains("report.pdf"));
+        assert_eq!(alert["labels"]["file_id"], fid().to_string());
+        assert_eq!(
+            alert["annotations"]["summary"],
+            "Share notification failed in file-service"
+        );
         let description = alert["annotations"]["description"].as_str().unwrap();
         assert!(description.contains("file_shared"));
+        assert!(description.contains(&fid().to_string()));
         assert!(description.contains("NotFound"));
         assert!(alert["startsAt"].is_string());
     }
 
     #[test]
     fn share_notification_payload_omits_blank_reporter_email() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false, true);
+        let payload = build_share_notification_failure_payload(&fid(), "boom", None, false, true);
         let alert = &payload["alerts"][0];
         assert!(alert["labels"].get("reporter_email").is_none());
     }
 
     #[test]
     fn share_notification_payload_dedups_when_not_forced() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true, true);
+        let payload = build_share_notification_failure_payload(&fid(), "boom", None, true, true);
         assert_eq!(payload["alerts"][0]["labels"]["dedup"], "true");
     }
 
@@ -296,6 +345,6 @@ mod tests {
             admin_service_url: "http://127.0.0.1:1".into(),
             alert_webhook_secret: Some("secret".into()),
         };
-        notify_upload_failure(&config, "a.txt", "boom", Some("user@example.com"));
+        notify_upload_failure(&config, &fid(), "boom", Some("user@example.com"));
     }
 }
