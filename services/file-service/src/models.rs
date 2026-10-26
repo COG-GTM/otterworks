@@ -145,7 +145,9 @@ pub struct ListFoldersResponse {
 pub struct CreateFolderRequest {
     pub name: String,
     pub parent_id: Option<Uuid>,
-    pub owner_id: Uuid,
+    /// Ignored beyond a consistency check: the folder is owned by the caller.
+    #[serde(default)]
+    pub owner_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +171,9 @@ pub struct ShareFileRequest {
     pub shared_with: Option<Uuid>,
     pub shared_with_email: Option<String>,
     pub permission: SharePermission,
-    pub shared_by: Uuid,
+    /// Ignored: the share is always recorded as granted by the caller.
+    #[serde(default)]
+    pub shared_by: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
