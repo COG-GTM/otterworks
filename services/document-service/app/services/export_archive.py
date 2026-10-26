@@ -35,9 +35,9 @@ class ExportArchive:
         """
         path = os.path.join(self.base_dir, name)
         logger.debug("export_read", name=name)
-        parts = self._archive_relative_parts(name, path)
+        root, root_id, parts = self._archive_relative_parts(name, path)
         try:
-            fd = self._open_inside_archive(parts)
+            fd = self._open_inside_archive(root, root_id, parts)
         except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
             raise _not_found(path) from None
         except OSError as exc:
@@ -53,8 +53,14 @@ class ExportArchive:
         with handle:
             return handle.read()
 
-    def _archive_relative_parts(self, name: str, path: str) -> list[str]:
-        """Split ``name`` into components that stay inside the archive root."""
+    def _archive_relative_parts(
+        self, name: str, path: str
+    ) -> tuple[str, tuple[int, int], list[str]]:
+        """Split ``name`` into components that stay inside the archive root.
+
+        Also returns the resolved root and its ``(st_dev, st_ino)`` as seen by the
+        check, so the later open can be pinned to that same directory.
+        """
         parts = name.split("/")
         if "\x00" in name or os.path.isabs(name) or any(part in ("", ".", "..") for part in parts):
             logger.warning("export_read_rejected", reason="invalid_name")
@@ -64,23 +70,28 @@ class ExportArchive:
         if os.path.commonpath([root, resolved]) != root or resolved == root:
             logger.warning("export_read_rejected", reason="outside_archive")
             raise _not_found(path)
-        return parts
+        try:
+            root_stat = os.stat(root, follow_symlinks=False)
+        except OSError:
+            raise _not_found(path) from None
+        if not stat.S_ISDIR(root_stat.st_mode):
+            raise _not_found(path)
+        return root, (root_stat.st_dev, root_stat.st_ino), parts
 
-    def _open_inside_archive(self, parts: list[str]) -> int:
+    def _open_inside_archive(self, root: str, root_id: tuple[int, int], parts: list[str]) -> int:
         """Open ``parts`` component by component from the archive root.
 
         Every component is opened relative to its parent with ``O_NOFOLLOW``, so a
         symlink planted or swapped in after the containment check cannot redirect
-        the read outside the archive. The root handle must be the same directory
-        ``realpath(base_dir)`` named before it was opened, so swapping the root
-        itself for a symlink is rejected too. Only regular files are returned.
+        the read outside the archive. The root is opened by the resolved path the
+        containment check used and must be the same directory the check saw, so
+        swapping the root for a symlink or another directory is rejected too. Only
+        regular files are returned.
         """
-        root = os.path.realpath(self.base_dir)
-        expected = os.stat(root)
         dir_fd = os.open(root, _DIR_FLAGS | os.O_NOFOLLOW)
         try:
             opened = os.fstat(dir_fd)
-            if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+            if (opened.st_dev, opened.st_ino) != root_id:
                 logger.warning("export_read_rejected", reason="archive_root_changed")
                 raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT))
             for part in parts[:-1]:
