@@ -6,7 +6,8 @@ info:
     Every endpoint except /health and /metrics requires `Authorization: Bearer <token>`:
     either a user access token issued by auth-service (verified with JWT_SECRET) or the
     SEARCH_SERVICE_TOKEN for internal callers. Search results are scoped to the verified
-    token subject; the X-User-ID header is ignored.
+    token subject; the X-User-ID header is ignored. The indexing, reindex and analytics
+    endpoints act on every user's data and accept only SEARCH_SERVICE_TOKEN (user tokens get 403).
   version: "1.0.0"
   contact:
     name: OtterWorks Platform Team

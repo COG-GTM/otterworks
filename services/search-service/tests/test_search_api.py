@@ -150,9 +150,9 @@ class TestAdvancedSearchEndpoint:
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
-    def test_analytics_returns_data(self, client):
+    def test_analytics_returns_data(self, service_client):
         """Analytics endpoint returns analytics data."""
-        response = client.get("/api/v1/search/analytics")
+        response = service_client.get("/api/v1/search/analytics")
         assert response.status_code == 200
         data = response.get_json()
         assert "popular_queries" in data

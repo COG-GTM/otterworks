@@ -11,7 +11,10 @@ verified:
   proxied through it carry the token too.
 * ``Authorization: Bearer <SEARCH_SERVICE_TOKEN>`` -- a service-to-service
   token for trusted internal callers (SQS indexer, admin reindex jobs). It
-  carries no user identity.
+  carries no user identity, so it cannot run per-user searches.
+
+Writing to the index, reindexing and the cross-user analytics are not scoped to
+one user, so only the service token may call them; user tokens get 403.
 
 The ``X-User-ID`` header is never trusted: any client that reaches the
 service without going through the gateway can set it.
@@ -29,6 +32,10 @@ from flask import g, jsonify, request
 logger = structlog.get_logger()
 
 PUBLIC_PREFIXES = ("/health", "/metrics")
+
+#: Blueprints and endpoints that act on every user's data and need the service token.
+SERVICE_ONLY_BLUEPRINTS = frozenset({"index"})
+SERVICE_ONLY_ENDPOINTS = frozenset({"search.search_analytics"})
 
 #: auth-service signs with jjwt, which picks the HMAC strength from the key length.
 JWT_ALGORITHMS = ["HS256", "HS384", "HS512"]
@@ -73,6 +80,11 @@ def require_auth(app):
             return jsonify({"error": "unauthorized"}), 401
 
         g.principal = principal
+        if not principal.is_service and (
+            request.blueprint in SERVICE_ONLY_BLUEPRINTS or request.endpoint in SERVICE_ONLY_ENDPOINTS
+        ):
+            logger.warning("service_token_required", endpoint=request.endpoint or "", path=path)
+            return jsonify({"error": "a service token is required"}), 403
         return None
 
 

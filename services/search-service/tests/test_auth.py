@@ -133,6 +133,29 @@ class TestServiceToken:
         assert resp.status_code == 401
 
 
+class TestServiceOnlyEndpoints:
+    @pytest.mark.parametrize(
+        ("method", "path", "body"),
+        [
+            ("post", "/api/v1/search/reindex", None),
+            ("post", "/api/v1/search/index/document", {"id": "d", "title": "T", "owner_id": "user-victim"}),
+            ("post", "/api/v1/search/index/file", {"id": "f", "name": "n", "owner_id": "user-victim"}),
+            ("delete", "/api/v1/search/index/document/doc-of-victim", None),
+            ("get", "/api/v1/search/analytics", None),
+        ],
+    )
+    def test_user_token_is_forbidden(self, client, mock_meilisearch_client, method, path, body):
+        resp = getattr(client, method)(path, json=body) if body else getattr(client, method)(path)
+        assert resp.status_code == 403
+        assert resp.get_json() == {"error": "a service token is required"}
+        mock_meilisearch_client.delete_index.assert_not_called()
+        mock_meilisearch_client.index.return_value.add_documents.assert_not_called()
+        mock_meilisearch_client.index.return_value.delete_document.assert_not_called()
+
+    def test_service_token_can_reindex(self, service_client):
+        assert service_client.post("/api/v1/search/reindex").status_code == 200
+
+
 class TestPublicAndUnconfigured:
     def test_health_and_metrics_need_no_token(self, anon_client):
         assert anon_client.get("/health").status_code == 200

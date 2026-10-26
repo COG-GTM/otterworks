@@ -95,6 +95,14 @@ def client(app):
 
 
 @pytest.fixture()
+def service_client(app):
+    """A Flask test client authenticated with the service-to-service token."""
+    test_client = app.test_client()
+    test_client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {TEST_SERVICE_TOKEN}"
+    return test_client
+
+
+@pytest.fixture()
 def anon_client(app):
     """A Flask test client that sends no credentials unless a test adds them."""
     return app.test_client()
