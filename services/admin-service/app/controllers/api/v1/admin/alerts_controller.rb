@@ -62,8 +62,9 @@ module Api
 
           # Deduplicate: skip if an active incident for this service already
           # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          # which case every firing alert opens its own incident, up to the
+          # reporter's AlertIncidentBudget.
+          unless dedup_bypass_allowed?(labels, alert_name, affected_service, reporter_email)
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -112,6 +113,14 @@ module Api
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("Failed to create incident from alert #{alert_name}: #{e.message}")
           nil
+        end
+
+        def dedup_bypass_allowed?(labels, alert_name, affected_service, reporter_email)
+          return false unless labels[:dedup].to_s == 'false'
+
+          allowed = AlertIncidentBudget.allow?(reporter_email: reporter_email)
+          Rails.logger.warn("Alert #{alert_name} over dedup-bypass budget; deduplicating") unless allowed
+          allowed
         end
 
         def resolve_incident(affected_service, alert_name)

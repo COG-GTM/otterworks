@@ -4,9 +4,10 @@ RSpec.describe Api::V1::Admin::AlertsController do
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    allow(AlertIncidentBudget).to receive(:allow?).and_return(true)
   end
 
-  def firing_alert(labels: {}, summary: 'File upload failed: a.txt')
+  def firing_alert(labels: {}, summary: 'File upload failed in file-service')
     {
       status: 'firing',
       labels: {
@@ -44,6 +45,24 @@ RSpec.describe Api::V1::Admin::AlertsController do
       post :ingest, params: { alerts: [firing_alert] }
       post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
       expect(Incident.count).to eq(2)
+    end
+
+    it 'falls back to dedup once the reporter is over the dedup=false budget' do
+      allow(AlertIncidentBudget).to receive(:allow?).and_return(true, false, false)
+      alert = firing_alert(labels: { dedup: 'false', reporter_email: 'mallory@example.com' })
+
+      3.times { post :ingest, params: { alerts: [alert] } }
+
+      expect(Incident.count).to eq(1)
+      expect(DevinSessionService).to have_received(:create_session).once
+      expect(AlertIncidentBudget).to have_received(:allow?)
+        .with(reporter_email: 'mallory@example.com')
+        .exactly(3).times
+    end
+
+    it 'does not consult the budget for alerts that keep dedup on' do
+      post :ingest, params: { alerts: [firing_alert] }
+      expect(AlertIncidentBudget).not_to have_received(:allow?)
     end
 
     it 'rejects payloads without an alerts array' do
