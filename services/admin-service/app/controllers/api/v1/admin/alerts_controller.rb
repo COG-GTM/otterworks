@@ -119,7 +119,7 @@ module Api
           return false unless labels[:dedup].to_s == 'false'
 
           allowed = AlertIncidentBudget.allow?(reporter_email: reporter_email)
-          Rails.logger.warn("Alert #{alert_name} (#{affected_service}) over dedup-bypass budget; deduping") unless allowed
+          Rails.logger.warn("Alert #{alert_name} over dedup-bypass budget; deduplicating") unless allowed
           allowed
         end
 
