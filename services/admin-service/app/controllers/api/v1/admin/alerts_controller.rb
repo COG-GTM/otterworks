@@ -18,6 +18,8 @@ module Api
       #     ]
       #   }
       class AlertsController < ApplicationController
+        AUTO_INCIDENT_SOURCE = '**Source**: Grafana Unified Alerting (auto-generated incident)'.freeze
+
         before_action :verify_alert_secret
 
         SEVERITY_MAP = {
@@ -134,7 +136,7 @@ module Api
           if (runbook = annotations[:runbook_url].to_s).present?
             parts << "**Runbook**: #{runbook}"
           end
-          parts << "**Source**: Grafana Unified Alerting (auto-generated incident)"
+          parts << AUTO_INCIDENT_SOURCE
           parts.join("\n\n")
         end
 
