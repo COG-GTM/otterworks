@@ -8,6 +8,12 @@ export const env = {
   get sessionSecret(): string | undefined {
     return process.env.SESSION_SECRET;
   },
+  // Optional pre-shared key the CD pipeline sends as `x-ops-ci-key` so its
+  // logins skip the anonymous global brake (lib/ratelimit.ts). Unset disables
+  // the CI lane.
+  get dashboardCiKey(): string | undefined {
+    return process.env.DASHBOARD_CI_KEY || undefined;
+  },
   get controlTable(): string {
     return process.env.CONTROL_TABLE || "otterworks-demo-control";
   },

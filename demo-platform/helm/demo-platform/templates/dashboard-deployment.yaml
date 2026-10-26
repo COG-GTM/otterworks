@@ -37,6 +37,12 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.serviceAccount.name }}
                   key: SESSION_SECRET
+            - name: DASHBOARD_CI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.serviceAccount.name }}
+                  key: DASHBOARD_CI_KEY
+                  optional: true
             - name: CONTROL_TABLE
               value: {{ .Values.controlTable | quote }}
             - name: AWS_REGION

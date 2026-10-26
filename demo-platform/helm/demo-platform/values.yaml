@@ -106,6 +106,9 @@ secret:
   create: true
   dashboardPasscode: ""
   sessionSecret: ""
+  # Optional: pre-shared key CD sends as `x-ops-ci-key` (GitHub secret
+  # DASHBOARD_CI_KEY) so its logins skip the anonymous login brake.
+  dashboardCiKey: ""
   dbPassword: ""
   jwtSecret: ""
   secretKeyBase: ""

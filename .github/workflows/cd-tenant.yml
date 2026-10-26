@@ -394,5 +394,7 @@ jobs:
       - name: Sync tenant environment
         env:
           TENANT_PREFIX: ${{ vars.TENANT_PREFIX }}
+          # Optional: lets the login skip the dashboard's anonymous global brake.
+          DASHBOARD_CI_KEY: ${{ secrets.DASHBOARD_CI_KEY }}
           PIN_TAG: ${{ needs.plan.outputs.pin == 'true' && needs.plan.outputs.image_tag || '' }}
         run: demo-platform/scripts/tenant.sh sync "${GITHUB_REF_NAME}" ${PIN_TAG:+"${PIN_TAG}"}

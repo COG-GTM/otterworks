@@ -66,7 +66,8 @@ export type AuditAction =
   | "redeploy"
   | "persist"
   | "login_ok"
-  | "login_fail";
+  | "login_fail"
+  | "global_brake_engaged";
 
 export interface AuditEvent {
   tenantId: string;

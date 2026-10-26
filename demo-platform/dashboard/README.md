@@ -9,8 +9,12 @@ described in [`../docs/control-table-schema.md`](../docs/control-table-schema.md
 
 - **Passcode auth, server-side enforced.** `POST /api/auth/login` constant-time compares
   the passcode against `DASHBOARD_PASSCODE`, sets a signed HttpOnly/Secure/SameSite=Strict
-  `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 / IP / 15 min with
-  backoff), and audits `login_ok`/`login_fail`. `middleware.ts` gates every non-login route,
+  `ow_ops_session` cookie (HMAC via `SESSION_SECRET`, ~8h), rate-limits (5 failures / client /
+  15 min with backoff), and audits `login_ok`/`login_fail`. After 20 failures in a window,
+  anonymous logins are queued with growing spacing (up to 2s, refused only past a 30s queue)
+  instead of refused, so a flood cannot lock facilitators out. Browsers holding a signed
+  `ow_ops_device` cookie (issued on a successful login) and requests carrying the optional
+  `DASHBOARD_CI_KEY` as `x-ops-ci-key` (CD's `tenant.sh`) skip that brake. Tests: `npm test`. `middleware.ts` gates every non-login route,
   and every `/api/*` handler independently calls `requireSession()` (defense in depth).
 - **Tenants.** `GET /api/tenants` joins control-table records with live cluster state
   (namespace phase, ready/total pods, per-service status) cached ~5s. Checkout / check-in /
