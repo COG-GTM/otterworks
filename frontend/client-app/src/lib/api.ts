@@ -186,10 +186,6 @@ export const filesApi = {
     formData.append("file", file);
     if (parentId) formData.append("folder_id", parentId);
 
-    // The file-service requires owner_id — extract it from the JWT sub claim
-    const ownerId = getOwnerIdFromJwt();
-    if (ownerId) formData.append("owner_id", ownerId);
-
     const { data } = await apiClient.post<{ file: RawFileItem }>("/files/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
       signal: options?.signal,
@@ -227,11 +223,9 @@ export const filesApi = {
     }));
   },
   createFolder: async (name: string, parentId?: string | null): Promise<FileItem> => {
-    const ownerId = getOwnerIdFromJwt();
     const { data } = await apiClient.post<any>("/folders", {
       name,
       parent_id: parentId ?? null,
-      owner_id: ownerId,
     });
     return normalizeFileItem(data);
   },
@@ -311,8 +305,6 @@ export const filesApi = {
   },
   getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<FileItem>> => {
     const params: Record<string, string | number> = { page, page_size: pageSize };
-    const ownerId = getOwnerIdFromJwt();
-    if (ownerId) params.owner_id = ownerId;
     const { data } = await apiClient.get<RawFileListResponse>("/files/trash", {
       params,
     });

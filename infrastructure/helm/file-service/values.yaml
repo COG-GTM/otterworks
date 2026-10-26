@@ -10,8 +10,10 @@ service:
   port: 80
   targetPort: 8082
 
+# Off by default: file-service trusts the gateway-injected X-User-ID, so it
+# must only be reached through api-gateway, never via its own public host.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

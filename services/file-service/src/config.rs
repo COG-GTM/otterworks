@@ -20,6 +20,9 @@ pub struct ServerConfig {
     /// When true, owners with no files get a few demo documents seeded on
     /// first listing, so share flows are demoable even when uploads fail.
     pub seed_demo_docs: bool,
+    /// Shared secret internal crawlers (search-service reindex) present as
+    /// `X-Internal-Token` to list files across owners. Unset disables it.
+    pub internal_token: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,6 +69,10 @@ impl ServerConfig {
                 .unwrap_or(104_857_600),
             upload_always_fail: parse_bool_env("FILE_UPLOAD_ALWAYS_FAIL", false),
             seed_demo_docs: parse_bool_env("FILE_SEED_DEMO_DOCS", false),
+            internal_token: env::var("FILE_SERVICE_INTERNAL_TOKEN")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
         }
     }
 }

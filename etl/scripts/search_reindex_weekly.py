@@ -11,6 +11,7 @@
 
 import configparser
 import json
+import os
 import sys
 import time
 from datetime import datetime
@@ -29,6 +30,10 @@ def main():
     file_service_url = config.get("services", "file_service_url")
     meilisearch_url = config.get("services", "meilisearch_url")
     meilisearch_api_key = config.get("services", "meilisearch_api_key")
+    file_service_token = os.environ.get("FILE_SERVICE_INTERNAL_TOKEN") or config.get(
+        "services", "file_service_internal_token", fallback=""
+    )
+    file_service_headers = {"X-Internal-Token": file_service_token} if file_service_token else {}
 
     documents_index = "documents"
     files_index = "files"
@@ -38,6 +43,19 @@ def main():
     meili_headers = {"Content-Type": "application/json"}
     if meilisearch_api_key:
         meili_headers["Authorization"] = "Bearer %s" % meilisearch_api_key
+
+    # ---- Preflight: file-service only lists across owners for the internal
+    # token. Check access before clearing indices so a 401 can't leave the
+    # files index empty.
+    preflight = requests.get(
+        "%s/api/v1/files" % file_service_url,
+        params={"page": 1, "page_size": 1},
+        headers=file_service_headers,
+    )
+    if not preflight.ok:
+        print("[%s] ERROR: file-service listing returned %d; set FILE_SERVICE_INTERNAL_TOKEN. Aborting before clearing indices." % (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), preflight.status_code))
+        sys.exit(1)
 
     # ---- Clear existing indices ----
     print("[%s] Clearing MeiliSearch indices..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -220,6 +238,7 @@ def main():
         resp = requests.get(
             "%s/api/v1/files" % file_service_url,
             params={"page": page, "page_size": api_page_size},
+            headers=file_service_headers,
         )
         resp.raise_for_status()
         data = resp.json()

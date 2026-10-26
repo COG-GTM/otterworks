@@ -127,3 +127,42 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_file_listings_ignore_client_supplied_owner_id(api_client):
+    owner = api_client.register_user("file-owner-scope")
+    intruder = api_client.register_user("file-intruder")
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("owned.txt", b"owner only", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    for path in ("/api/v1/files", "/api/v1/files/trash", "/api/v1/folders"):
+        forged = api_client.client.get(
+            path, headers=intruder.auth_headers, params={"owner_id": owner.id}
+        )
+        assert forged.status_code == 403, (path, forged.text)
+
+    own_listing = api_client.client.get("/api/v1/files", headers=intruder.auth_headers)
+    assert own_listing.status_code == 200, own_listing.text
+    assert all(item["id"] != file_id for item in own_listing.json()["files"])
+
+    forged_upload = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=intruder.auth_headers,
+        files={"file": ("planted.txt", b"planted", "text/plain")},
+        data={"owner_id": owner.id},
+    )
+    assert forged_upload.status_code == 403, forged_upload.text
+
+    forged_folder = api_client.client.post(
+        "/api/v1/folders",
+        headers=intruder.auth_headers,
+        json={"name": "planted", "owner_id": owner.id},
+    )
+    assert forged_folder.status_code == 403, forged_folder.text

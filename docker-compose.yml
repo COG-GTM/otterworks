@@ -124,6 +124,10 @@ services:
       FILE_UPLOAD_ALWAYS_FAIL: ${FILE_UPLOAD_ALWAYS_FAIL:-false}
       FILE_SHARE_EVENT_ALWAYS_FAIL: ${FILE_SHARE_EVENT_ALWAYS_FAIL:-false}
       FILE_SEED_DEMO_DOCS: ${FILE_SEED_DEMO_DOCS:-false}
+      # Lets reindex crawls list files across owners (GET /api/v1/files only);
+      # every other caller must carry the gateway-injected X-User-ID. No
+      # default: the port is published, so the crawl stays off unless set.
+      FILE_SERVICE_INTERNAL_TOKEN: ${FILE_SERVICE_INTERNAL_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
@@ -298,6 +302,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MEILISEARCH_URL: http://meilisearch:7700
+      FILE_SERVICE_INTERNAL_TOKEN: ${FILE_SERVICE_INTERNAL_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: search-service
       SQS_ENABLED: 'true'
