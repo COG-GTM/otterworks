@@ -52,7 +52,8 @@ func isTrusted(ip net.IP, trusted []*net.IPNet) bool {
 
 // ClientIP replaces chi's RealIP. r.RemoteAddr is rewritten to the client
 // address only when the TCP peer is a trusted proxy, in which case the
-// right-most X-Forwarded-For hop that is not itself a trusted proxy is used.
+// right-most X-Forwarded-For hop (the address that proxy saw) is used. Earlier
+// hops are client-controlled and never consulted, even when they look private.
 // True-Client-IP and X-Real-IP are never honoured. The forwarding headers are
 // then normalised so the reverse proxy sends backends X-Forwarded-For and
 // X-Real-IP containing only the resolved client address.
@@ -89,25 +90,14 @@ func resolveClientIP(r *http.Request, trusted []*net.IPNet) (string, string) {
 		return peer.String(), port
 	}
 
-	var hops []string
+	var last string
 	for _, value := range r.Header.Values("X-Forwarded-For") {
-		for _, hop := range strings.Split(value, ",") {
-			hops = append(hops, strings.TrimSpace(hop))
+		if hops := strings.Split(value, ","); len(hops) > 0 {
+			last = strings.TrimSpace(hops[len(hops)-1])
 		}
 	}
-
-	client := peer
-	for i := len(hops) - 1; i >= 0; i-- {
-		ip := net.ParseIP(hops[i])
-		if ip == nil {
-			// A malformed hop was not written by a trusted proxy; stop at the
-			// last address one of them vouched for.
-			break
-		}
-		client = ip
-		if !isTrusted(ip, trusted) {
-			break
-		}
+	if ip := net.ParseIP(last); ip != nil {
+		return ip.String(), port
 	}
-	return client.String(), port
+	return peer.String(), port
 }
