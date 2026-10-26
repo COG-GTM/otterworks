@@ -42,13 +42,19 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-def bearer_auth(user_id: uuid.UUID) -> Callable[[Request], Request]:
-    """httpx auth flow signing every request as ``user_id``.
+def sign_token(user_id: uuid.UUID, **claims: object) -> str:
+    return jwt.encode(
+        {"user_id": str(user_id), **claims}, TEST_JWT_SECRET, algorithm="HS256"
+    )
+
+
+def bearer_auth(user_id: uuid.UUID, **claims: object) -> Callable[[Request], Request]:
+    """httpx auth flow signing every request as ``user_id`` (plus extra ``claims``).
 
     A request that sets its own ``Authorization`` header keeps it; one passing
     ``auth=None`` is sent unauthenticated.
     """
-    token = jwt.encode({"user_id": str(user_id)}, TEST_JWT_SECRET, algorithm="HS256")
+    token = sign_token(user_id, **claims)
 
     def _apply(request: Request) -> Request:
         request.headers.setdefault("Authorization", f"Bearer {token}")
@@ -71,6 +77,16 @@ async def client(
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def admin_id() -> uuid.UUID:
+    return uuid.uuid4()
+
+
+@pytest.fixture
+def admin_auth(admin_id: uuid.UUID) -> Callable[[Request], Request]:
+    return bearer_auth(admin_id, roles=["ADMIN"], type="access")
 
 
 @pytest.fixture

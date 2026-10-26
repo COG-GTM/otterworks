@@ -198,8 +198,8 @@ async def test_template_crud_and_create_from(
             name="Report",
             description="Monthly report",
             content="## Report\n\nContent here",
-            created_by=uuid.uuid4(),
-        )
+        ),
+        created_by=uuid.uuid4(),
     )
     assert template.name == "Report"
 

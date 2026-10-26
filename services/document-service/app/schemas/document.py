@@ -108,7 +108,6 @@ class TemplateCreate(BaseModel):
     description: str = Field(default="")
     content: str = Field(default="")
     content_type: str = Field(default="text/markdown")
-    created_by: UUID
 
 
 class TemplateResponse(BaseModel):
@@ -126,5 +125,5 @@ class TemplateResponse(BaseModel):
 
 class DocumentFromTemplate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
-    owner_id: UUID
+    owner_id: UUID | None = None
     folder_id: UUID | None = None

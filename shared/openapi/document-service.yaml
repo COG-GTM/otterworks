@@ -551,6 +551,11 @@ paths:
     post:
       operationId: createFromTemplate
       summary: Create a document from a template
+      description: |
+        Creates a document owned by the authenticated caller. If owner_id is
+        provided it must match the caller's JWT identity (403 otherwise).
+      security:
+        - bearerAuth: []
       parameters:
         - name: template_id
           in: path
@@ -566,7 +571,6 @@ paths:
               $ref: "#/components/schemas/DocumentFromTemplate"
             example:
               title: "Sprint Planning"
-              owner_id: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         "201":
           description: Document created from template
@@ -593,6 +597,8 @@ paths:
     get:
       operationId: listTemplates
       summary: List all templates
+      security:
+        - bearerAuth: []
       responses:
         "200":
           description: List of templates
@@ -605,6 +611,12 @@ paths:
     post:
       operationId: createTemplate
       summary: Create a new template
+      description: |
+        Requires an ADMIN or OWNER role in the caller's JWT. created_by is
+        always set to the caller's JWT identity; any created_by in the body
+        is ignored.
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -616,7 +628,6 @@ paths:
               description: "Standard format for meeting notes"
               content: "# Meeting Notes\n\n## Attendees\n\n## Agenda\n\n## Action Items"
               content_type: "text/markdown"
-              created_by: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         "201":
           description: Template created
@@ -624,6 +635,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TemplateResponse"
+        "401":
+          description: Missing or invalid bearer token
+        "403":
+          description: Caller lacks an ADMIN or OWNER role
         "422":
           description: Validation error
           content:
@@ -909,7 +924,6 @@ components:
       type: object
       required:
         - title
-        - owner_id
       properties:
         title:
           type: string
@@ -927,7 +941,6 @@ components:
       type: object
       required:
         - name
-        - created_by
       properties:
         name:
           type: string
@@ -942,9 +955,6 @@ components:
         content_type:
           type: string
           default: "text/markdown"
-        created_by:
-          type: string
-          format: uuid
 
     TemplateResponse:
       type: object
