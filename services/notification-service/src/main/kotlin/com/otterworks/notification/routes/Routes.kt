@@ -1,5 +1,7 @@
 package com.otterworks.notification.routes
 
+import com.otterworks.notification.auth.CALLER_AUTH
+import com.otterworks.notification.auth.callerId
 import com.otterworks.notification.model.NotificationPreferenceRequest
 import com.otterworks.notification.model.PaginatedResponse
 import com.otterworks.notification.model.UnreadCountResponse
@@ -8,14 +10,17 @@ import com.otterworks.notification.websocket.WebSocketManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
+import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.Route
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
 import io.ktor.websocket.Frame
@@ -50,14 +55,28 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             )
         }
 
+        notificationApiRoutes(notificationService, webSocketManager)
+    }
+}
+
+/**
+ * Every caller-scoped route sits behind [CALLER_AUTH]: the user ID comes only from the verified
+ * bearer token, never from `X-User-ID`, a `user_id` query parameter, the request body or the path,
+ * so reaching the service without the gateway does not let a caller pick who they are.
+ */
+fun Route.notificationApiRoutes(
+    notificationService: NotificationService,
+    webSocketManager: WebSocketManager,
+) {
+    // A notification that belongs to someone else is reported as missing, not forbidden,
+    // so IDs cannot be probed for existence.
+    suspend fun ownedNotification(id: String, userId: String) =
+        notificationService.getNotificationById(id)?.takeIf { it.userId == userId }
+
+    authenticate(CALLER_AUTH) {
         route("/api/v1/notifications") {
             get {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
-
+                val userId = call.callerId
                 val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
                 val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
 
@@ -75,12 +94,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
 
             get("/unread-count") {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
-
+                val userId = call.callerId
                 val count = notificationService.getUnreadCount(userId)
                 call.respond(UnreadCountResponse(userId = userId, unreadCount = count))
             }
@@ -91,7 +105,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val notification = notificationService.getNotificationById(id)
+                val notification = ownedNotification(id, call.callerId)
                 if (notification != null) {
                     call.respond(notification)
                 } else {
@@ -105,7 +119,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val success = notificationService.markAsRead(id)
+                val success = ownedNotification(id, call.callerId) != null && notificationService.markAsRead(id)
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {
@@ -114,13 +128,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
 
             put("/read-all") {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@put
-                }
-
-                val count = notificationService.markAllAsRead(userId)
+                val count = notificationService.markAllAsRead(call.callerId)
                 call.respond(MarkAllReadResponse(markedCount = count))
             }
 
@@ -130,7 +138,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val success = notificationService.deleteNotification(id)
+                val success = ownedNotification(id, call.callerId) != null && notificationService.deleteNotification(id)
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {
@@ -141,20 +149,19 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
 
         route("/api/v1/preferences") {
             get {
-                val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
-                if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
-                    return@get
-                }
-
-                val preferences = notificationService.getPreferences(userId)
+                val preferences = notificationService.getPreferences(call.callerId)
                 call.respond(preferences)
             }
 
             put {
+                val userId = call.callerId
                 val request = call.receive<NotificationPreferenceRequest>()
+                if (request.userId != null && request.userId != userId) {
+                    call.respond(HttpStatusCode.Forbidden, ErrorResponse("cannot update another user's preferences"))
+                    return@put
+                }
                 notificationService.updatePreferences(
-                    userId = request.userId,
+                    userId = userId,
                     eventType = request.eventType,
                     channels = request.channels,
                 )
@@ -162,32 +169,43 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             }
         }
 
+        webSocket("/ws/notifications") {
+            relayNotifications(call.callerId, webSocketManager)
+        }
+
+        // Kept for existing clients; the path must name the authenticated caller.
         webSocket("/ws/notifications/{userId}") {
-            val userId = call.parameters["userId"]
-            if (userId.isNullOrBlank()) {
-                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "userId is required"))
+            val userId = call.callerId
+            if (call.parameters["userId"] != userId) {
+                close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, "userId does not match the authenticated caller"))
                 return@webSocket
             }
+            relayNotifications(userId, webSocketManager)
+        }
+    }
+}
 
-            webSocketManager.addConnection(userId, this)
+private suspend fun DefaultWebSocketServerSession.relayNotifications(
+    userId: String,
+    webSocketManager: WebSocketManager,
+) {
+    webSocketManager.addConnection(userId, this)
 
-            try {
-                for (frame in incoming) {
-                    when (frame) {
-                        is Frame.Text -> {
-                            val text = frame.readText()
-                            // Handle ping/pong or client messages if needed
-                            if (text == "ping") {
-                                send(Frame.Text("pong"))
-                            }
-                        }
-                        is Frame.Close -> break
-                        else -> { /* ignore other frame types */ }
+    try {
+        for (frame in incoming) {
+            when (frame) {
+                is Frame.Text -> {
+                    val text = frame.readText()
+                    // Handle ping/pong or client messages if needed
+                    if (text == "ping") {
+                        send(Frame.Text("pong"))
                     }
                 }
-            } finally {
-                webSocketManager.removeConnection(userId, this)
+                is Frame.Close -> break
+                else -> { /* ignore other frame types */ }
             }
         }
+    } finally {
+        webSocketManager.removeConnection(userId, this)
     }
 }

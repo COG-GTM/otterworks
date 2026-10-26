@@ -5,6 +5,7 @@ import aws.sdk.kotlin.services.ses.SesClient
 import aws.sdk.kotlin.services.sqs.SqsClient
 import aws.smithy.kotlin.runtime.net.url.Url
 import com.otterworks.notification.alerts.AlertPublisher
+import com.otterworks.notification.auth.configureAuthentication
 import com.otterworks.notification.config.AppConfig
 import com.otterworks.notification.consumer.SqsConsumer
 import com.otterworks.notification.plugins.configureMonitoring
@@ -97,6 +98,8 @@ fun Application.configurePlugins(config: AppConfig = AppConfig.load()) {
             )
         }
     }
+
+    configureAuthentication(config)
 }
 
 fun Application.configureDependencyInjection(
