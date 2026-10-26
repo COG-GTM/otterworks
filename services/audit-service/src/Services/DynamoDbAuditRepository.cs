@@ -1,3 +1,7 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Options;
@@ -7,6 +11,13 @@ namespace OtterWorks.AuditService.Services;
 
 public class DynamoDbAuditRepository : IAuditRepository
 {
+    // Key attributes of the table's GSIs (infrastructure/terraform/modules/database/main.tf).
+    public const string UserIndex = "user-index";
+    public const string TimestampIndex = "timestamp-index";
+    public const string UserIdKey = "user_id";
+    public const string TimestampKey = "timestamp";
+    public const string DatePartitionKey = "date_partition";
+
     private readonly IAmazonDynamoDB _dynamoDb;
     private readonly AwsSettings _settings;
     private readonly ILogger<DynamoDbAuditRepository> _logger;
@@ -32,6 +43,9 @@ public class DynamoDbAuditRepository : IAuditRepository
             ["ResourceType"] = new AttributeValue { S = auditEvent.ResourceType },
             ["ResourceId"] = new AttributeValue { S = auditEvent.ResourceId },
             ["Timestamp"] = new AttributeValue { S = auditEvent.Timestamp.ToString("O") },
+            [UserIdKey] = new AttributeValue { S = auditEvent.UserId },
+            [TimestampKey] = new AttributeValue { S = FormatTimestamp(auditEvent.Timestamp) },
+            [DatePartitionKey] = new AttributeValue { S = FormatDatePartition(auditEvent.Timestamp) },
         };
 
         if (auditEvent.IpAddress is not null)
@@ -80,187 +94,282 @@ public class DynamoDbAuditRepository : IAuditRepository
 
     public async Task<AuditEventPage> QueryEventsAsync(
         string? userId, string? action, string? resourceType, string? resourceId,
-        DateTime? from, DateTime? to, int page, int pageSize)
+        DateTime? from, DateTime? to, int page, int pageSize, string? cursor)
     {
-        var filterExpressions = new List<string>();
-        var expressionValues = new Dictionary<string, AttributeValue>();
-        var expressionNames = new Dictionary<string, string>();
+        var fingerprint = Fingerprint(userId, action, resourceType, resourceId, from, to);
+        AuditQuery query;
+        QueryPosition? start = null;
+        var skip = 0;
 
-        if (!string.IsNullOrEmpty(userId))
+        if (!string.IsNullOrEmpty(cursor))
         {
-            filterExpressions.Add("#uid = :uid");
-            expressionValues[":uid"] = new AttributeValue { S = userId };
-            expressionNames["#uid"] = "UserId";
+            var decoded = DecodeCursor(cursor, fingerprint);
+            query = new AuditQuery(userId, action, resourceType, resourceId, decoded.From, decoded.To);
+            start = ValidatePosition(BuildPlan(query), decoded);
+        }
+        else
+        {
+            var resolvedTo = from.HasValue && !to.HasValue
+                ? ToUtc(from.Value).AddDays(AuditQueryLimits.DefaultWindowDays)
+                : to.HasValue ? ToUtc(to.Value) : DateTime.UtcNow;
+            var resolvedFrom = from.HasValue
+                ? ToUtc(from.Value)
+                : resolvedTo.AddDays(-AuditQueryLimits.DefaultWindowDays);
+            query = new AuditQuery(userId, action, resourceType, resourceId, resolvedFrom, resolvedTo);
+
+            skip = (Math.Max(page, 1) - 1) * pageSize;
+            if (skip > AuditQueryLimits.MaxPageOffset)
+                throw new AuditQueryException(
+                    $"Page offset must not exceed {AuditQueryLimits.MaxPageOffset} events; use the 'cursor' from the previous response.");
         }
 
-        if (!string.IsNullOrEmpty(action))
-        {
-            filterExpressions.Add("#act = :act");
-            expressionValues[":act"] = new AttributeValue { S = action };
-            expressionNames["#act"] = "Action";
-        }
+        AuditQueryLimits.EnsureRange(query.From, query.To);
 
-        if (!string.IsNullOrEmpty(resourceType))
-        {
-            filterExpressions.Add("ResourceType = :rt");
-            expressionValues[":rt"] = new AttributeValue { S = resourceType };
-        }
+        var plan = BuildPlan(query);
+        var (events, next, calls) = await ReadAsync(plan, query, skip + pageSize, AuditQueryLimits.MaxCallsPerPage, start);
+        var paged = events.Skip(skip).ToList();
 
-        if (!string.IsNullOrEmpty(resourceId))
-        {
-            filterExpressions.Add("ResourceId = :rid");
-            expressionValues[":rid"] = new AttributeValue { S = resourceId };
-        }
-
-        if (from.HasValue)
-        {
-            filterExpressions.Add("#ts >= :fromTs");
-            expressionValues[":fromTs"] = new AttributeValue { S = from.Value.ToString("O") };
-            expressionNames["#ts"] = "Timestamp";
-        }
-
-        if (to.HasValue)
-        {
-            var tsAlias = expressionNames.ContainsKey("#ts") ? "#ts" : "#ts";
-            if (!expressionNames.ContainsKey("#ts"))
-                expressionNames["#ts"] = "Timestamp";
-            filterExpressions.Add("#ts <= :toTs");
-            expressionValues[":toTs"] = new AttributeValue { S = to.Value.ToString("O") };
-        }
-
-        var scanRequest = new ScanRequest
-        {
-            TableName = _settings.DynamoDbTable,
-        };
-
-        if (filterExpressions.Count > 0)
-        {
-            scanRequest.FilterExpression = string.Join(" AND ", filterExpressions);
-            scanRequest.ExpressionAttributeValues = expressionValues;
-            if (expressionNames.Count > 0)
-                scanRequest.ExpressionAttributeNames = expressionNames;
-        }
-
-        var allEvents = new List<AuditEvent>();
-        ScanResponse? response = null;
-
-        do
-        {
-            if (response?.LastEvaluatedKey?.Count > 0)
-                scanRequest.ExclusiveStartKey = response.LastEvaluatedKey;
-
-            response = await _dynamoDb.ScanAsync(scanRequest);
-            allEvents.AddRange(response.Items.Select(MapToAuditEvent));
-        }
-        while (response.LastEvaluatedKey?.Count > 0);
-
-        allEvents = allEvents.OrderByDescending(e => e.Timestamp).ToList();
-        var total = allEvents.Count;
-        var paged = allEvents.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-
-        _logger.LogDebug("Queried audit events: userId={UserId}, action={Action}, total={Total}", userId, action, total);
+        _logger.LogDebug("Queried audit events: userId={UserId}, action={Action}, returned={Count}, calls={Calls}",
+            userId, action, paged.Count, calls);
         return new AuditEventPage
         {
             Events = paged,
-            Total = total,
+            Total = paged.Count,
             Page = page,
             PageSize = pageSize,
+            NextCursor = next is null ? null : EncodeCursor(fingerprint, query, next),
+            HasMore = next is not null,
         };
     }
 
-    public async Task<List<AuditEvent>> GetAllUserEventsAsync(string userId)
+    public async Task<AuditEventBatch> GetUserEventsAsync(string userId, DateTime from, DateTime to, int maxEvents)
     {
-        var scanRequest = new ScanRequest
-        {
-            TableName = _settings.DynamoDbTable,
-            FilterExpression = "#uid = :uid",
-            ExpressionAttributeNames = new Dictionary<string, string>
-            {
-                ["#uid"] = "UserId",
-            },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":uid"] = new AttributeValue { S = userId },
-            },
-        };
-
-        var events = new List<AuditEvent>();
-        ScanResponse? response = null;
-
-        do
-        {
-            if (response?.LastEvaluatedKey?.Count > 0)
-                scanRequest.ExclusiveStartKey = response.LastEvaluatedKey;
-
-            response = await _dynamoDb.ScanAsync(scanRequest);
-            events.AddRange(response.Items.Select(MapToAuditEvent));
-        }
-        while (response.LastEvaluatedKey?.Count > 0);
-
-        _logger.LogDebug("Retrieved {Count} events for user {UserId}", events.Count, userId);
-        return events.OrderByDescending(e => e.Timestamp).ToList();
+        var query = new AuditQuery(userId, null, null, null, ToUtc(from), ToUtc(to));
+        var batch = await CollectAsync(query, maxEvents);
+        _logger.LogDebug("Retrieved {Count} events for user {UserId} (truncated={Truncated})",
+            batch.Events.Count, userId, batch.Truncated);
+        return batch;
     }
 
-    public async Task<List<AuditEvent>> GetResourceHistoryAsync(string resourceId)
+    public async Task<AuditEventBatch> GetEventsByDateRangeAsync(DateTime from, DateTime to, int maxEvents)
     {
-        var scanRequest = new ScanRequest
-        {
-            TableName = _settings.DynamoDbTable,
-            FilterExpression = "ResourceId = :rid",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":rid"] = new AttributeValue { S = resourceId },
-            },
-        };
-
-        var events = new List<AuditEvent>();
-        ScanResponse? response = null;
-
-        do
-        {
-            if (response?.LastEvaluatedKey?.Count > 0)
-                scanRequest.ExclusiveStartKey = response.LastEvaluatedKey;
-
-            response = await _dynamoDb.ScanAsync(scanRequest);
-            events.AddRange(response.Items.Select(MapToAuditEvent));
-        }
-        while (response.LastEvaluatedKey?.Count > 0);
-
-        _logger.LogDebug("Retrieved {Count} events for resource {ResourceId}", events.Count, resourceId);
-        return events.OrderByDescending(e => e.Timestamp).ToList();
+        var query = new AuditQuery(null, null, null, null, ToUtc(from), ToUtc(to));
+        return await CollectAsync(query, maxEvents);
     }
 
-    public async Task<List<AuditEvent>> GetEventsByDateRangeAsync(DateTime from, DateTime to)
+    private async Task<AuditEventBatch> CollectAsync(AuditQuery query, int maxEvents)
     {
-        var scanRequest = new ScanRequest
+        if (query.From > query.To)
+            return new AuditEventBatch();
+
+        var (events, next, _) = await ReadAsync(BuildPlan(query), query, maxEvents, AuditQueryLimits.MaxCallsPerCollection, null);
+        return new AuditEventBatch { Events = events, Truncated = next is not null };
+    }
+
+    // Reads at most maxEvents items with at most maxCalls DynamoDB Query calls, newest first.
+    private async Task<(List<AuditEvent> Events, QueryPosition? Next, int Calls)> ReadAsync(
+        QueryPlan plan, AuditQuery query, int maxEvents, int maxCalls, QueryPosition? start)
+    {
+        var events = new List<AuditEvent>();
+        var partition = start?.Partition ?? 0;
+        var startKey = start?.Key;
+        var calls = 0;
+
+        while (partition < plan.Partitions.Count && events.Count < maxEvents && calls < maxCalls)
+        {
+            var limit = Math.Min(maxEvents - events.Count, AuditQueryLimits.MaxItemsPerCall);
+            var request = BuildQueryRequest(plan, plan.Partitions[partition], query, limit, startKey);
+            var response = await _dynamoDb.QueryAsync(request);
+            calls++;
+            events.AddRange(response.Items.Select(MapToAuditEvent));
+
+            if (response.LastEvaluatedKey?.Count > 0)
+            {
+                startKey = response.LastEvaluatedKey;
+            }
+            else
+            {
+                partition++;
+                startKey = null;
+            }
+        }
+
+        var next = partition < plan.Partitions.Count ? new QueryPosition(partition, startKey) : null;
+        return (events, next, calls);
+    }
+
+    private QueryRequest BuildQueryRequest(
+        QueryPlan plan, string partitionValue, AuditQuery query, int limit,
+        Dictionary<string, AttributeValue>? startKey)
+    {
+        var names = new Dictionary<string, string>
+        {
+            ["#pk"] = plan.PartitionAttribute,
+            ["#ts"] = TimestampKey,
+        };
+        var values = new Dictionary<string, AttributeValue>
+        {
+            [":pk"] = new AttributeValue { S = partitionValue },
+            [":fromTs"] = new AttributeValue { S = FormatTimestamp(query.From) },
+            [":toTs"] = new AttributeValue { S = FormatTimestamp(query.To) },
+        };
+        var filters = new List<string>();
+
+        void AddFilter(string? value, string alias, string attribute)
+        {
+            if (string.IsNullOrEmpty(value))
+                return;
+            filters.Add($"#{alias} = :{alias}");
+            names[$"#{alias}"] = attribute;
+            values[$":{alias}"] = new AttributeValue { S = value };
+        }
+
+        AddFilter(query.Action, "act", "Action");
+        AddFilter(query.ResourceType, "rt", "ResourceType");
+        AddFilter(query.ResourceId, "rid", "ResourceId");
+
+        var request = new QueryRequest
         {
             TableName = _settings.DynamoDbTable,
-            FilterExpression = "#ts >= :fromTs AND #ts <= :toTs",
-            ExpressionAttributeNames = new Dictionary<string, string>
-            {
-                ["#ts"] = "Timestamp",
-            },
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":fromTs"] = new AttributeValue { S = from.ToString("O") },
-                [":toTs"] = new AttributeValue { S = to.ToString("O") },
-            },
+            IndexName = plan.IndexName,
+            KeyConditionExpression = "#pk = :pk AND #ts BETWEEN :fromTs AND :toTs",
+            ExpressionAttributeNames = names,
+            ExpressionAttributeValues = values,
+            ScanIndexForward = false,
+            Limit = limit,
         };
 
-        var events = new List<AuditEvent>();
-        ScanResponse? response = null;
+        if (filters.Count > 0)
+            request.FilterExpression = string.Join(" AND ", filters);
 
-        do
+        if (startKey is not null)
+            request.ExclusiveStartKey = startKey;
+
+        return request;
+    }
+
+    private static QueryPlan BuildPlan(AuditQuery query)
+    {
+        if (!string.IsNullOrEmpty(query.UserId))
+            return new QueryPlan(UserIndex, UserIdKey, new[] { query.UserId! });
+
+        var partitions = new List<string>();
+        for (var day = query.To.Date; day >= query.From.Date; day = day.AddDays(-1))
+            partitions.Add(FormatDatePartition(day));
+
+        return new QueryPlan(TimestampIndex, DatePartitionKey, partitions);
+    }
+
+    private static readonly HashSet<string> CursorKeyAttributes = new() { "id", UserIdKey, DatePartitionKey, TimestampKey };
+
+    private static string EncodeCursor(string fingerprint, AuditQuery query, QueryPosition position)
+    {
+        var payload = new CursorPayload
         {
-            if (response?.LastEvaluatedKey?.Count > 0)
-                scanRequest.ExclusiveStartKey = response.LastEvaluatedKey;
+            H = fingerprint,
+            F = query.From.Ticks,
+            T = query.To.Ticks,
+            P = position.Partition,
+            K = position.Key?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.S),
+        };
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
 
-            response = await _dynamoDb.ScanAsync(scanRequest);
-            events.AddRange(response.Items.Select(MapToAuditEvent));
+    private static DecodedCursor DecodeCursor(string cursor, string fingerprint)
+    {
+        CursorPayload? payload;
+        try
+        {
+            var base64 = cursor.Replace('-', '+').Replace('_', '/');
+            base64 = base64.PadRight(base64.Length + ((4 - (base64.Length % 4)) % 4), '=');
+            payload = JsonSerializer.Deserialize<CursorPayload>(Convert.FromBase64String(base64));
         }
-        while (response.LastEvaluatedKey?.Count > 0);
+        catch (Exception ex) when (ex is FormatException or JsonException or ArgumentException)
+        {
+            throw new AuditQueryException("Invalid cursor.");
+        }
 
-        return events.OrderByDescending(e => e.Timestamp).ToList();
+        if (payload is null ||
+            payload.H != fingerprint ||
+            payload.F < DateTime.MinValue.Ticks || payload.F > DateTime.MaxValue.Ticks ||
+            payload.T < DateTime.MinValue.Ticks || payload.T > DateTime.MaxValue.Ticks)
+        {
+            throw new AuditQueryException("Invalid cursor for this query.");
+        }
+
+        return new DecodedCursor(
+            new DateTime(payload.F, DateTimeKind.Utc),
+            new DateTime(payload.T, DateTimeKind.Utc),
+            payload.P,
+            payload.K);
+    }
+
+    private static QueryPosition ValidatePosition(QueryPlan plan, DecodedCursor cursor)
+    {
+        if (cursor.Partition < 0 || cursor.Partition >= plan.Partitions.Count)
+            throw new AuditQueryException("Invalid cursor for this query.");
+
+        if (cursor.Key is null)
+            return new QueryPosition(cursor.Partition, null);
+
+        if (cursor.Key.Count > CursorKeyAttributes.Count ||
+            cursor.Key.Any(kvp => !CursorKeyAttributes.Contains(kvp.Key) || string.IsNullOrEmpty(kvp.Value)) ||
+            !cursor.Key.ContainsKey("id") ||
+            !cursor.Key.ContainsKey(TimestampKey) ||
+            !cursor.Key.TryGetValue(plan.PartitionAttribute, out var partitionValue) ||
+            partitionValue != plan.Partitions[cursor.Partition])
+        {
+            throw new AuditQueryException("Invalid cursor for this query.");
+        }
+
+        return new QueryPosition(
+            cursor.Partition,
+            cursor.Key.ToDictionary(kvp => kvp.Key, kvp => new AttributeValue { S = kvp.Value }));
+    }
+
+    private static string Fingerprint(
+        string? userId, string? action, string? resourceType, string? resourceId, DateTime? from, DateTime? to)
+    {
+        var raw = string.Join("\n",
+            userId ?? string.Empty,
+            action ?? string.Empty,
+            resourceType ?? string.Empty,
+            resourceId ?? string.Empty,
+            from.HasValue ? FormatTimestamp(from.Value) : string.Empty,
+            to.HasValue ? FormatTimestamp(to.Value) : string.Empty);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..16];
+    }
+
+    private static DateTime ToUtc(DateTime value) => value.Kind switch
+    {
+        DateTimeKind.Local => value.ToUniversalTime(),
+        DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        _ => value,
+    };
+
+    private static string FormatTimestamp(DateTime value) =>
+        ToUtc(value).ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", CultureInfo.InvariantCulture);
+
+    private static string FormatDatePartition(DateTime value) =>
+        ToUtc(value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private sealed record AuditQuery(
+        string? UserId, string? Action, string? ResourceType, string? ResourceId, DateTime From, DateTime To);
+
+    private sealed record QueryPlan(string IndexName, string PartitionAttribute, IReadOnlyList<string> Partitions);
+
+    private sealed record QueryPosition(int Partition, Dictionary<string, AttributeValue>? Key);
+
+    private sealed record DecodedCursor(DateTime From, DateTime To, int Partition, Dictionary<string, string>? Key);
+
+    private sealed class CursorPayload
+    {
+        public string H { get; set; } = string.Empty;
+        public long F { get; set; }
+        public long T { get; set; }
+        public int P { get; set; }
+        public Dictionary<string, string>? K { get; set; }
     }
 
     public async Task<int> DeleteEventsAsync(IEnumerable<string> eventIds)

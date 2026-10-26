@@ -8,4 +8,5 @@ public class AwsSettings
     public string S3ArchiveBucket { get; set; } = "otterworks-audit-archive";
     public string? SnsTopicArn { get; set; }
     public int ArchiveAfterDays { get; set; } = 90;
+    public int ArchiveLookbackDays { get; set; } = 365;
 }

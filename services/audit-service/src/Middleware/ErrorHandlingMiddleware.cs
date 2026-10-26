@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using OtterWorks.AuditService.Services;
 
 namespace OtterWorks.AuditService.Middleware;
 
@@ -19,6 +20,12 @@ public class ErrorHandlingMiddleware
         try
         {
             await _next(context);
+        }
+        catch (AuditQueryException ex) when (!context.Response.HasStarted)
+        {
+            context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new { error = ex.Message }));
         }
         catch (Exception ex)
         {

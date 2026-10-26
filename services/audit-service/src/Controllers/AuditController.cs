@@ -16,7 +16,8 @@ public static class AuditController
 
         group.MapGet("/events", QueryEvents)
             .WithName("QueryAuditEvents")
-            .Produces<AuditEventPage>(StatusCodes.Status200OK);
+            .Produces<AuditEventPage>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest);
 
         group.MapGet("/events/{id}", GetEvent)
             .WithName("GetAuditEvent")
@@ -29,7 +30,8 @@ public static class AuditController
 
         group.MapGet("/resources/{resourceId}/history", GetResourceHistory)
             .WithName("GetResourceHistory")
-            .Produces<ResourceHistory>(StatusCodes.Status200OK);
+            .Produces<ResourceHistory>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest);
 
         group.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
@@ -37,7 +39,8 @@ public static class AuditController
 
         group.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
-            .Produces<ExportResult>(StatusCodes.Status200OK);
+            .Produces<ExportResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest);
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
@@ -69,12 +72,13 @@ public static class AuditController
         DateTime? to,
         int? page,
         int? size,
+        string? cursor,
         IAuditService auditService)
     {
-        var pageNumber = page ?? 1;
+        var pageNumber = Math.Max(page ?? 1, 1);
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
 
-        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
+        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize, cursor);
         return Results.Ok(result);
     }
 
@@ -98,9 +102,14 @@ public static class AuditController
 
     private static async Task<IResult> GetResourceHistory(
         string resourceId,
+        DateTime? from,
+        DateTime? to,
+        int? size,
+        string? cursor,
         IAuditService auditService)
     {
-        var history = await auditService.GetResourceHistoryAsync(resourceId);
+        var pageSize = Math.Clamp(size ?? 100, 1, 100);
+        var history = await auditService.GetResourceHistoryAsync(resourceId, from, to, pageSize, cursor);
         return Results.Ok(history);
     }
 
@@ -128,6 +137,8 @@ public static class AuditController
         {
             return Results.BadRequest(new { error = "Format must be 'csv' or 'json'." });
         }
+
+        AuditQueryLimits.EnsureRange(exportFrom, exportTo);
 
         var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat);
         return Results.Ok(result);

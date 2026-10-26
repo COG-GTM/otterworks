@@ -118,100 +118,262 @@ public class DynamoDbAuditRepositoryTests
     }
 
     [Fact]
-    public async Task QueryEventsAsync_ShouldReturnPaginatedResults()
+    public async Task SaveEventAsync_ShouldWriteIndexKeyAttributes()
+    {
+        var auditEvent = new AuditEvent
+        {
+            Id = "test-id",
+            UserId = "user-1",
+            Action = "create",
+            ResourceType = "document",
+            ResourceId = "doc-1",
+            Timestamp = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc),
+        };
+
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await _repository.SaveEventAsync(auditEvent);
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            req.Item["user_id"].S == "user-1" &&
+            req.Item["timestamp"].S == "2026-03-04T05:06:07.0000000Z" &&
+            req.Item["date_partition"].S == "2026-03-04"),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithUserId_ShouldQueryUserIndexWithLimit()
     {
         var items = new List<Dictionary<string, AttributeValue>>
         {
             CreateDynamoDbItem("e1", "user-1", "create", "document", "doc-1"),
             CreateDynamoDbItem("e2", "user-1", "update", "document", "doc-2"),
-            CreateDynamoDbItem("e3", "user-1", "delete", "document", "doc-3"),
         };
+        var captured = SetupQuery(_ => new QueryResponse
+        {
+            Items = items,
+            LastEvaluatedKey = UserIndexKey("e2", "user-1"),
+        });
 
-        _mockDynamoDb
-            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .ReturnsAsync(new ScanResponse
-            {
-                Items = items,
-                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
-            });
+        var result = await _repository.QueryEventsAsync("user-1", null, null, null, null, null, 1, 2, null);
 
-        var result = await _repository.QueryEventsAsync("user-1", null, null, null, null, null, 1, 2);
-
-        Assert.Equal(3, result.Total);
+        Assert.Equal(2, result.Total);
         Assert.Equal(2, result.Events.Count);
         Assert.Equal(1, result.Page);
         Assert.Equal(2, result.PageSize);
+        Assert.True(result.HasMore);
+        Assert.NotNull(result.NextCursor);
+
+        var request = Assert.Single(captured);
+        Assert.Equal("test-audit-events", request.TableName);
+        Assert.Equal("user-index", request.IndexName);
+        Assert.Equal("#pk = :pk AND #ts BETWEEN :fromTs AND :toTs", request.KeyConditionExpression);
+        Assert.Equal("user_id", request.ExpressionAttributeNames["#pk"]);
+        Assert.Equal("timestamp", request.ExpressionAttributeNames["#ts"]);
+        Assert.Equal("user-1", request.ExpressionAttributeValues[":pk"].S);
+        Assert.Equal(2, request.Limit);
+        Assert.False(request.ScanIndexForward);
+        VerifyNoScan();
     }
 
     [Fact]
-    public async Task QueryEventsAsync_WithFilters_ShouldApplyFilterExpression()
+    public async Task QueryEventsAsync_WithFilters_ShouldApplyFilterExpressionToQuery()
     {
-        _mockDynamoDb
-            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .ReturnsAsync(new ScanResponse
-            {
-                Items = new List<Dictionary<string, AttributeValue>>(),
-                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
-            });
+        var captured = SetupQuery(_ => new QueryResponse());
 
-        await _repository.QueryEventsAsync("user-1", "create", "document", "doc-1", null, null, 1, 20);
+        await _repository.QueryEventsAsync("user-1", "create", "document", "doc-1", null, null, 1, 20, null);
 
-        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression != null &&
-            req.FilterExpression.Contains("#uid = :uid") &&
-            req.FilterExpression.Contains("#act = :act") &&
-            req.FilterExpression.Contains("ResourceType = :rt") &&
-            req.FilterExpression.Contains("ResourceId = :rid")),
-            default), Times.Once);
+        var request = Assert.Single(captured);
+        Assert.Equal("#act = :act AND #rt = :rt AND #rid = :rid", request.FilterExpression);
+        Assert.Equal("Action", request.ExpressionAttributeNames["#act"]);
+        Assert.Equal("ResourceType", request.ExpressionAttributeNames["#rt"]);
+        Assert.Equal("ResourceId", request.ExpressionAttributeNames["#rid"]);
+        Assert.Equal("create", request.ExpressionAttributeValues[":act"].S);
+        Assert.Equal("document", request.ExpressionAttributeValues[":rt"].S);
+        Assert.Equal("doc-1", request.ExpressionAttributeValues[":rid"].S);
+        VerifyNoScan();
     }
 
     [Fact]
-    public async Task GetAllUserEventsAsync_ShouldFilterByUserId()
+    public async Task QueryEventsAsync_Unfiltered_ShouldQueryDatePartitionsNewestFirst()
     {
-        var items = new List<Dictionary<string, AttributeValue>>
+        var captured = SetupQuery(_ => new QueryResponse());
+        var from = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 1, 3, 12, 0, 0, DateTimeKind.Utc);
+
+        var result = await _repository.QueryEventsAsync(null, null, null, null, from, to, 1, 20, null);
+
+        Assert.Empty(result.Events);
+        Assert.False(result.HasMore);
+        Assert.Null(result.NextCursor);
+        Assert.Equal(new[] { "2026-01-03", "2026-01-02", "2026-01-01" },
+            captured.Select(r => r.ExpressionAttributeValues[":pk"].S));
+        Assert.All(captured, r =>
         {
-            CreateDynamoDbItem("e1", "user-1", "create", "document", "doc-1"),
-        };
+            Assert.Equal("timestamp-index", r.IndexName);
+            Assert.Equal("date_partition", r.ExpressionAttributeNames["#pk"]);
+            Assert.Equal("2026-01-01T00:00:00.0000000Z", r.ExpressionAttributeValues[":fromTs"].S);
+            Assert.Equal("2026-01-03T12:00:00.0000000Z", r.ExpressionAttributeValues[":toTs"].S);
+        });
+        VerifyNoScan();
+    }
 
-        _mockDynamoDb
-            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .ReturnsAsync(new ScanResponse
+    [Fact]
+    public async Task QueryEventsAsync_Unfiltered_OnLargeTable_ShouldMakeOneCallAndReturnCursor()
+    {
+        var calls = 0;
+        SetupQuery(req =>
+        {
+            calls++;
+            var items = Enumerable.Range(0, req.Limit)
+                .Select(i => CreateDynamoDbItem($"e{calls}-{i}", "user-1", "create", "document", "doc-1"))
+                .ToList();
+            return new QueryResponse
             {
                 Items = items,
-                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
-            });
+                LastEvaluatedKey = DateIndexKey($"e{calls}-last", req.ExpressionAttributeValues[":pk"].S),
+            };
+        });
 
-        var result = await _repository.GetAllUserEventsAsync("user-1");
+        var result = await _repository.QueryEventsAsync(null, null, null, null, null, null, 1, 20, null);
 
-        Assert.Single(result);
-        Assert.Equal("user-1", result[0].UserId);
+        Assert.Equal(1, calls);
+        Assert.Equal(20, result.Events.Count);
+        Assert.True(result.HasMore);
+        Assert.False(string.IsNullOrEmpty(result.NextCursor));
+        VerifyNoScan();
     }
 
     [Fact]
-    public async Task GetResourceHistoryAsync_ShouldFilterByResourceId()
+    public async Task QueryEventsAsync_WhenFilterMatchesNothing_ShouldStopAfterCallBudget()
     {
-        var items = new List<Dictionary<string, AttributeValue>>
+        var calls = 0;
+        SetupQuery(req =>
         {
-            CreateDynamoDbItem("e1", "user-1", "create", "document", "doc-1"),
-            CreateDynamoDbItem("e2", "user-2", "update", "document", "doc-1"),
-        };
-
-        _mockDynamoDb
-            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .ReturnsAsync(new ScanResponse
+            calls++;
+            return new QueryResponse
             {
-                Items = items,
-                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
+                LastEvaluatedKey = DateIndexKey($"e{calls}", req.ExpressionAttributeValues[":pk"].S),
+            };
+        });
+
+        var result = await _repository.QueryEventsAsync(null, "no-such-action", null, null, null, null, 1, 20, null);
+
+        Assert.Equal(AuditQueryLimits.MaxCallsPerPage, calls);
+        Assert.Empty(result.Events);
+        Assert.True(result.HasMore);
+        Assert.NotNull(result.NextCursor);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithCursor_ShouldResumeFromExclusiveStartKey()
+    {
+        var lastKey = UserIndexKey("e2", "user-1");
+        var captured = SetupQuery(req => req.ExclusiveStartKey?.Count > 0
+            ? new QueryResponse { Items = new() { CreateDynamoDbItem("e3", "user-1", "create", "document", "doc-3") } }
+            : new QueryResponse
+            {
+                Items = new()
+                {
+                    CreateDynamoDbItem("e1", "user-1", "create", "document", "doc-1"),
+                    CreateDynamoDbItem("e2", "user-1", "create", "document", "doc-2"),
+                },
+                LastEvaluatedKey = lastKey,
             });
 
-        var result = await _repository.GetResourceHistoryAsync("doc-1");
+        var first = await _repository.QueryEventsAsync("user-1", "create", null, null, null, null, 1, 2, null);
+        var second = await _repository.QueryEventsAsync("user-1", "create", null, null, null, null, 1, 2, first.NextCursor);
 
-        Assert.Equal(2, result.Count);
+        Assert.Equal(2, captured.Count);
+        Assert.Equal(lastKey.Keys.OrderBy(k => k), captured[1].ExclusiveStartKey.Keys.OrderBy(k => k));
+        Assert.All(lastKey, kvp => Assert.Equal(kvp.Value.S, captured[1].ExclusiveStartKey[kvp.Key].S));
+        Assert.Equal(captured[0].ExpressionAttributeValues[":fromTs"].S, captured[1].ExpressionAttributeValues[":fromTs"].S);
+        Assert.Equal(captured[0].ExpressionAttributeValues[":toTs"].S, captured[1].ExpressionAttributeValues[":toTs"].S);
+        Assert.Equal("e3", Assert.Single(second.Events).Id);
+        Assert.False(second.HasMore);
+        Assert.Null(second.NextCursor);
+    }
 
-        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "ResourceId = :rid" &&
-            req.ExpressionAttributeValues[":rid"].S == "doc-1"),
-            default), Times.Once);
+    [Fact]
+    public async Task QueryEventsAsync_WithCursorFromDifferentQuery_ShouldReject()
+    {
+        SetupQuery(_ => new QueryResponse
+        {
+            Items = new() { CreateDynamoDbItem("e1", "user-1", "create", "document", "doc-1") },
+            LastEvaluatedKey = UserIndexKey("e1", "user-1"),
+        });
+
+        var first = await _repository.QueryEventsAsync("user-1", null, null, null, null, null, 1, 1, null);
+
+        await Assert.ThrowsAsync<AuditQueryException>(() =>
+            _repository.QueryEventsAsync("user-2", null, null, null, null, null, 1, 1, first.NextCursor));
+    }
+
+    [Theory]
+    [InlineData("not-a-cursor!!")]
+    [InlineData("eyJIIjoiIn0")]
+    public async Task QueryEventsAsync_WithMalformedCursor_ShouldReject(string cursor)
+    {
+        await Assert.ThrowsAsync<AuditQueryException>(() =>
+            _repository.QueryEventsAsync(null, null, null, null, null, null, 1, 20, cursor));
+        VerifyNoQuery();
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithRangeAboveCap_ShouldReject()
+    {
+        await Assert.ThrowsAsync<AuditQueryException>(() =>
+            _repository.QueryEventsAsync(null, null, null, null,
+                new DateTime(1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(9999, 12, 31, 0, 0, 0, DateTimeKind.Utc), 1, 20, null));
+        VerifyNoQuery();
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_WithDeepPageOffset_ShouldReject()
+    {
+        await Assert.ThrowsAsync<AuditQueryException>(() =>
+            _repository.QueryEventsAsync(null, null, null, null, null, null, 1000, 100, null));
+        VerifyNoQuery();
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_SecondPage_ShouldSkipFirstPage()
+    {
+        var captured = SetupQuery(req => new QueryResponse
+        {
+            Items = Enumerable.Range(1, req.Limit)
+                .Select(i => CreateDynamoDbItem($"e{i}", "user-1", "create", "document", "doc-1"))
+                .ToList(),
+        });
+
+        var result = await _repository.QueryEventsAsync("user-1", null, null, null, null, null, 2, 2, null);
+
+        Assert.Equal(4, Assert.Single(captured).Limit);
+        Assert.Equal(new[] { "e3", "e4" }, result.Events.Select(e => e.Id));
+    }
+
+    [Fact]
+    public async Task GetUserEventsAsync_ShouldQueryUserIndexAndCapResults()
+    {
+        var captured = SetupQuery(req => new QueryResponse
+        {
+            Items = Enumerable.Range(0, req.Limit)
+                .Select(i => CreateDynamoDbItem($"e{i}", "user-1", "create", "document", "doc-1"))
+                .ToList(),
+            LastEvaluatedKey = UserIndexKey("next", "user-1"),
+        });
+
+        var result = await _repository.GetUserEventsAsync("user-1", DateTime.UtcNow.AddDays(-365), DateTime.UtcNow, 5);
+
+        Assert.Equal(5, result.Events.Count);
+        Assert.True(result.Truncated);
+        var request = Assert.Single(captured);
+        Assert.Equal("user-index", request.IndexName);
+        Assert.Equal("user-1", request.ExpressionAttributeValues[":pk"].S);
+        VerifyNoScan();
     }
 
     [Fact]
@@ -229,26 +391,65 @@ public class DynamoDbAuditRepositoryTests
     }
 
     [Fact]
-    public async Task GetEventsByDateRangeAsync_ShouldFilterByTimestamp()
+    public async Task GetEventsByDateRangeAsync_ShouldQueryEachDayPartition()
     {
-        var from = DateTime.UtcNow.AddDays(-7);
-        var to = DateTime.UtcNow;
+        var from = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
+        var to = new DateTime(2026, 2, 7, 0, 0, 0, DateTimeKind.Utc);
+        var captured = SetupQuery(_ => new QueryResponse());
 
-        _mockDynamoDb
-            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
-            .ReturnsAsync(new ScanResponse
-            {
-                Items = new List<Dictionary<string, AttributeValue>>(),
-                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
-            });
+        var result = await _repository.GetEventsByDateRangeAsync(from, to, 100);
 
-        await _repository.GetEventsByDateRangeAsync(from, to);
-
-        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
-            req.FilterExpression == "#ts >= :fromTs AND #ts <= :toTs" &&
-            req.ExpressionAttributeNames["#ts"] == "Timestamp"),
-            default), Times.Once);
+        Assert.Empty(result.Events);
+        Assert.False(result.Truncated);
+        Assert.Equal(7, captured.Count);
+        Assert.All(captured, r => Assert.Equal("timestamp-index", r.IndexName));
+        VerifyNoScan();
     }
+
+    [Fact]
+    public async Task GetEventsByDateRangeAsync_FromMinValue_ShouldStopAtCallBudget()
+    {
+        var captured = SetupQuery(_ => new QueryResponse());
+
+        var result = await _repository.GetEventsByDateRangeAsync(DateTime.MinValue, DateTime.UtcNow, 100);
+
+        Assert.Equal(AuditQueryLimits.MaxCallsPerCollection, captured.Count);
+        Assert.True(result.Truncated);
+        VerifyNoScan();
+    }
+
+    private List<QueryRequest> SetupQuery(Func<QueryRequest, QueryResponse> respond)
+    {
+        var captured = new List<QueryRequest>();
+        _mockDynamoDb
+            .Setup(d => d.QueryAsync(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((QueryRequest req, CancellationToken _) =>
+            {
+                captured.Add(req);
+                return respond(req);
+            });
+        return captured;
+    }
+
+    private void VerifyNoScan() =>
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.IsAny<ScanRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+    private void VerifyNoQuery() =>
+        _mockDynamoDb.Verify(d => d.QueryAsync(It.IsAny<QueryRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+    private static Dictionary<string, AttributeValue> UserIndexKey(string id, string userId) => new()
+    {
+        ["id"] = new AttributeValue { S = id },
+        ["user_id"] = new AttributeValue { S = userId },
+        ["timestamp"] = new AttributeValue { S = "2026-01-01T00:00:00.0000000Z" },
+    };
+
+    private static Dictionary<string, AttributeValue> DateIndexKey(string id, string datePartition) => new()
+    {
+        ["id"] = new AttributeValue { S = id },
+        ["date_partition"] = new AttributeValue { S = datePartition },
+        ["timestamp"] = new AttributeValue { S = datePartition + "T00:00:00.0000000Z" },
+    };
 
     private static Dictionary<string, AttributeValue> CreateDynamoDbItem(
         string id, string userId, string action, string resourceType, string resourceId)

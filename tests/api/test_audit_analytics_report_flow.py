@@ -39,6 +39,21 @@ def test_audit_event_query_reports_export_and_archive(api_client):
         headers=user.auth_headers,
     )
     assert history_response.status_code == 200, history_response.text
+    assert any(item["id"] == event_id for item in history_response.json()["events"])
+
+    unbounded_query = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=user.auth_headers,
+        params={"from": "0001-01-01T00:00:00Z", "to": "9999-12-31T00:00:00Z"},
+    )
+    assert unbounded_query.status_code == 400, unbounded_query.text
+
+    invalid_cursor = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=user.auth_headers,
+        params={"cursor": "not-a-cursor"},
+    )
+    assert invalid_cursor.status_code == 400, invalid_cursor.text
 
     user_report_response = api_client.client.get(
         f"/api/v1/audit/reports/user/{user.id}",
@@ -67,6 +82,13 @@ def test_audit_event_query_reports_export_and_archive(api_client):
         params={"format": "xml"},
     )
     assert invalid_export.status_code == 400
+
+    unbounded_export = api_client.client.get(
+        "/api/v1/audit/export",
+        headers=user.auth_headers,
+        params={"format": "json", "from": "0001-01-01T00:00:00Z", "to": "9999-12-31T00:00:00Z"},
+    )
+    assert unbounded_export.status_code == 400, unbounded_export.text
 
     archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
     assert archive_response.status_code == 200, archive_response.text
