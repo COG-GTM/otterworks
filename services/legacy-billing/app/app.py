@@ -4,10 +4,18 @@ from datetime import date
 from decimal import Decimal
 
 import psycopg
+from auth import (
+    ADMIN,
+    READ,
+    WRITE,
+    authorize_tenant,
+    enforce_declared_policy,
+    parse_tenant,
+    public,
+    requires,
+)
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import HTTPException
-
-from auth import ADMIN, READ, WRITE, authorize_tenant, enforce_declared_policy, parse_tenant, public, requires
 
 app = Flask(__name__)
 app.config["JWT_SECRET"] = os.getenv("LEGACY_BILLING_JWT_SECRET", "")

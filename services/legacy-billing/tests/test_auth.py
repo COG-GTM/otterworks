@@ -4,11 +4,10 @@ import hmac
 import json
 import time
 
-import pytest
-from flask import Flask
-
 import app as legacy
 import auth
+import pytest
+from flask import Flask
 
 SECRET = "test-secret-that-is-at-least-32-bytes-long"
 TENANT = "00000000-0000-0000-0000-000000000001"
