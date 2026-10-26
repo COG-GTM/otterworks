@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestRateLimiter_Allow(t *testing.T) {
-	rl := NewRateLimiter(5)
+	rl := NewRateLimiter(5, 0)
 
 	// First 5 requests should be allowed
 	for i := 0; i < 5; i++ {
@@ -26,7 +27,7 @@ func TestRateLimiter_Allow(t *testing.T) {
 }
 
 func TestRateLimiter_TokenRefill(t *testing.T) {
-	rl := NewRateLimiter(2)
+	rl := NewRateLimiter(2, 0)
 
 	now := time.Now()
 	rl.now = func() time.Time { return now }
@@ -44,7 +45,7 @@ func TestRateLimiter_TokenRefill(t *testing.T) {
 }
 
 func TestRateLimiter_Handler(t *testing.T) {
-	rl := NewRateLimiter(2)
+	rl := NewRateLimiter(2, 0)
 
 	handler := rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -85,7 +86,7 @@ func TestExtractIP(t *testing.T) {
 			expected:   "10.0.0.1",
 		},
 		{
-			name:       "Uses RemoteAddr set by chimw.RealIP",
+			name:       "Uses RemoteAddr set by ClientIP",
 			remoteAddr: "203.0.113.50:1234",
 			expected:   "203.0.113.50",
 		},
@@ -99,4 +100,73 @@ func TestExtractIP(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestRateLimiter_RotatingKeysStayBounded(t *testing.T) {
+	rl := NewRateLimiter(5, 100)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	for i := 0; i < 10000; i++ {
+		rl.Allow(fmt.Sprintf("10.9.%d.%d", i/256, i%256))
+	}
+	assert.LessOrEqual(t, rl.Len(), 100)
+}
+
+func TestRateLimiter_EvictsRefilledBucketsBeforeActiveOnes(t *testing.T) {
+	rl := NewRateLimiter(2, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	assert.True(t, rl.Allow("idle"))
+	now = now.Add(2 * time.Second)
+	assert.True(t, rl.Allow("busy"))
+	assert.True(t, rl.Allow("busy"))
+	assert.False(t, rl.Allow("busy"))
+	assert.True(t, rl.Allow("other"))
+
+	// Map is full; the refilled "idle" bucket is dropped, "busy" keeps its debt.
+	assert.True(t, rl.Allow("new"))
+	assert.Equal(t, 3, rl.Len())
+	assert.False(t, rl.Allow("busy"))
+}
+
+func TestRateLimiter_EvictsLeastRecentlyUsedWhenAllActive(t *testing.T) {
+	rl := NewRateLimiter(1, 2)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	assert.True(t, rl.Allow("a"))
+	assert.True(t, rl.Allow("b"))
+	assert.False(t, rl.Allow("a")) // a is now most recently used
+	assert.True(t, rl.Allow("c"))  // evicts b
+	assert.Equal(t, 2, rl.Len())
+	assert.False(t, rl.Allow("a"))
+}
+
+func TestRateLimiter_ZeroRPSDeniesWithoutStoring(t *testing.T) {
+	rl := NewRateLimiter(0, 0)
+	assert.False(t, rl.Allow("10.0.0.1"))
+	assert.Equal(t, 0, rl.Len())
+}
+
+func TestRateLimiter_SpoofedForwardingHeadersShareOneBucket(t *testing.T) {
+	rl := NewRateLimiter(2, 0)
+	handler := ClientIP(nil)(rl.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})))
+
+	codes := map[int]int{}
+	for i := 0; i < 10; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
+		req.RemoteAddr = "198.51.100.7:40000"
+		req.Header.Set("True-Client-IP", fmt.Sprintf("203.0.113.%d", i))
+		req.Header.Set("X-Real-IP", fmt.Sprintf("203.0.114.%d", i))
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("10.9.0.%d", i))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		codes[rec.Code]++
+	}
+	assert.Equal(t, 2, codes[http.StatusOK])
+	assert.Equal(t, 8, codes[http.StatusTooManyRequests])
 }

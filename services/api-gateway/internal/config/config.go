@@ -26,7 +26,13 @@ type Config struct {
 	ReportServiceURL       string
 
 	// Rate limiting
-	RateLimitRPS int
+	RateLimitRPS        int
+	RateLimitMaxBuckets int
+
+	// TrustedProxyCIDRs are the peers whose X-Forwarded-For is honoured when
+	// resolving the client IP. Unset trusts the private ranges a cluster-internal
+	// proxy connects from; set but empty trusts no proxy (the TCP peer is the client).
+	TrustedProxyCIDRs []string
 
 	// JWT
 	JWTSecret string
@@ -41,10 +47,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -72,7 +78,9 @@ func Load() *Config {
 		AuditServiceURL:        getEnv("AUDIT_SERVICE_URL", "http://audit-service:8090"),
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
-		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitRPS:        getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitMaxBuckets: getEnvInt("RATE_LIMIT_MAX_BUCKETS", 50000),
+		TrustedProxyCIDRs:   getEnvList("TRUSTED_PROXY_CIDRS", DefaultTrustedProxyCIDRs),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
@@ -88,6 +96,19 @@ func Load() *Config {
 		CBTimeout:      time.Duration(getEnvInt("CB_TIMEOUT_SECONDS", 30)) * time.Second,
 		CBFailureRatio: getEnvFloat("CB_FAILURE_RATIO", 0.6),
 	}
+}
+
+// DefaultTrustedProxyCIDRs are the private ranges the ingress-nginx pods (k8s,
+// where the gateway NetworkPolicy only admits the ingress namespace) and the
+// web-app nginx container (docker-compose) connect from. Internet clients never
+// have these addresses, so their X-Forwarded-For is never honoured.
+var DefaultTrustedProxyCIDRs = []string{
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"127.0.0.0/8",
+	"::1/128",
+	"fc00::/7",
 }
 
 // ServiceRoutes returns a map of route prefix to backend service URL.
@@ -134,6 +155,19 @@ func getEnvFloat(key string, fallback float64) float64 {
 		}
 	}
 	return fallback
+}
+
+// getEnvList is getEnvSlice except that a variable set to "" yields an empty
+// list instead of the fallback.
+func getEnvList(key string, fallback []string) []string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	if strings.TrimSpace(val) == "" {
+		return nil
+	}
+	return strings.Split(val, ",")
 }
 
 func getEnvSlice(key string, fallback []string) []string {

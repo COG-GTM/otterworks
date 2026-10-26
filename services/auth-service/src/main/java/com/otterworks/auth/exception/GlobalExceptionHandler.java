@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,6 +23,15 @@ public class GlobalExceptionHandler {
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
     return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+  }
+
+  @ExceptionHandler(LoginThrottledException.class)
+  public ResponseEntity<Map<String, Object>> handleLoginThrottled(LoginThrottledException ex) {
+    ResponseEntity<Map<String, Object>> response =
+        buildErrorResponse(HttpStatus.LOCKED, ex.getMessage());
+    return ResponseEntity.status(response.getStatusCode())
+        .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+        .body(response.getBody());
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)
