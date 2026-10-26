@@ -7,6 +7,7 @@ import com.otterworks.notification.service.NotificationService
 import com.otterworks.notification.websocket.WebSocketManager
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.call
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
@@ -33,6 +34,12 @@ data class ErrorResponse(val error: String)
 
 @Serializable
 data class MarkAllReadResponse(val markedCount: Int)
+
+private const val CALLER_ID_REQUIRED = "X-User-ID header is required"
+
+// By-id operations trust only the gateway-injected identity header, never the user_id query parameter.
+private fun ApplicationCall.callerUserId(): String? =
+    request.headers["X-User-ID"]?.takeIf { it.isNotBlank() }
 
 fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
     val notificationService by inject<NotificationService>()
@@ -91,7 +98,12 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val notification = notificationService.getNotificationById(id)
+                val callerId = call.callerUserId() ?: return@get call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ErrorResponse(CALLER_ID_REQUIRED),
+                )
+
+                val notification = notificationService.getNotificationById(id, callerId)
                 if (notification != null) {
                     call.respond(notification)
                 } else {
@@ -105,7 +117,12 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val success = notificationService.markAsRead(id)
+                val callerId = call.callerUserId() ?: return@put call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ErrorResponse(CALLER_ID_REQUIRED),
+                )
+
+                val success = notificationService.markAsRead(id, callerId)
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {
@@ -130,7 +147,12 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                     ErrorResponse("Notification ID is required"),
                 )
 
-                val success = notificationService.deleteNotification(id)
+                val callerId = call.callerUserId() ?: return@delete call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ErrorResponse(CALLER_ID_REQUIRED),
+                )
+
+                val success = notificationService.deleteNotification(id, callerId)
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {

@@ -212,9 +212,22 @@ class NotificationServiceTest {
     }
 
     @Test
-    fun `markAsRead delegates to repository`() = runTest {
-        coEvery { repository.markAsRead("n-1") } returns true
-        assertTrue(service.markAsRead("n-1"))
+    fun `markAsRead delegates to repository with caller id`() = runTest {
+        coEvery { repository.markAsRead("n-1", "user-1") } returns true
+        assertTrue(service.markAsRead("n-1", "user-1"))
+    }
+
+    @Test
+    fun `deleteNotification delegates to repository with caller id`() = runTest {
+        coEvery { repository.deleteNotification("n-1", "user-1") } returns true
+        assertTrue(service.deleteNotification("n-1", "user-1"))
+    }
+
+    @Test
+    fun `getNotificationById delegates to repository with caller id`() = runTest {
+        coEvery { repository.getNotificationById("n-1", "user-1") } returns null
+        assertEquals(null, service.getNotificationById("n-1", "user-1"))
+        coVerify { repository.getNotificationById("n-1", "user-1") }
     }
 
     @Test
