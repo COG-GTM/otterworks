@@ -41,16 +41,33 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
+}
+
+// MinJWTSecretBytes matches auth-service, which refuses shorter signing keys.
+const MinJWTSecretBytes = 32
+
+// publishedJWTSecrets were committed to this repository as defaults at some point.
+var publishedJWTSecrets = map[string]bool{
+	"dev-jwt-secret-otterworks-2024-change-in-production":     true,
+	"otterworks-local-dev-jwt-secret-change-me-in-production": true,
+	"otterworks-dev-secret":                                   true,
+	"dev_jwt_secret_key":                                      true,
 }
 
 // Validate checks that required security-sensitive configuration is present.
 func (c *Config) Validate() error {
-	if c.JWTSecret == "" {
+	if strings.TrimSpace(c.JWTSecret) == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
+	}
+	if publishedJWTSecrets[strings.TrimSpace(c.JWTSecret)] {
+		return fmt.Errorf("JWT_SECRET is set to a value published in the OtterWorks repository; generate a new one (e.g. make env)")
+	}
+	if len(c.JWTSecret) < MinJWTSecretBytes {
+		return fmt.Errorf("JWT_SECRET must be at least %d bytes long", MinJWTSecretBytes)
 	}
 	return nil
 }
