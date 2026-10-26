@@ -127,3 +127,93 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_file_and_folder_access_is_restricted_to_owner_and_share_grants(api_client):
+    owner = api_client.register_user("file-acl-owner")
+    viewer = api_client.register_user("file-acl-viewer")
+    stranger = api_client.register_user("file-acl-stranger")
+
+    folder_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": f"ACL Folder {api_client.run_id}", "owner_id": owner.id},
+    )
+    assert folder_response.status_code == 201, folder_response.text
+    folder_id = folder_response.json()["id"]
+    api_client.created_folders.append(folder_id)
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("acl.txt", b"owner only", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": viewer.id, "permission": "viewer", "shared_by": owner.id},
+    )
+    assert share_response.status_code == 201, share_response.text
+
+    def mutations(user):
+        headers = user.auth_headers
+        return {
+            "rename": api_client.client.patch(
+                f"/api/v1/files/{file_id}/rename", headers=headers, json={"name": "pwned.txt"}
+            ),
+            "move": api_client.client.put(
+                f"/api/v1/files/{file_id}/move", headers=headers, json={"folder_id": None}
+            ),
+            "trash": api_client.client.post(f"/api/v1/files/{file_id}/trash", headers=headers),
+            "restore": api_client.client.post(f"/api/v1/files/{file_id}/restore", headers=headers),
+            "share": api_client.client.post(
+                f"/api/v1/files/{file_id}/share",
+                headers=headers,
+                json={"shared_with": stranger.id, "permission": "editor", "shared_by": user.id},
+            ),
+            "remove_share": api_client.client.delete(
+                f"/api/v1/files/{file_id}/share/{viewer.id if user is stranger else stranger.id}",
+                headers=headers,
+            ),
+            "delete": api_client.client.delete(f"/api/v1/files/{file_id}", headers=headers),
+            "folder_update": api_client.client.put(
+                f"/api/v1/folders/{folder_id}", headers=headers, json={"name": "pwned"}
+            ),
+            "folder_delete": api_client.client.delete(f"/api/v1/folders/{folder_id}", headers=headers),
+        }
+
+    for user in (stranger, viewer):
+        for action, response in mutations(user).items():
+            assert response.status_code == 403, f"{user.email} {action}: {response.status_code} {response.text}"
+
+    for path in (f"/api/v1/files/{file_id}", f"/api/v1/files/{file_id}/download", f"/api/v1/files/{file_id}/versions"):
+        denied = api_client.client.get(path, headers=stranger.auth_headers)
+        assert denied.status_code == 403, f"stranger GET {path}: {denied.status_code}"
+        allowed = api_client.client.get(path, headers=viewer.auth_headers)
+        assert allowed.status_code == 200, f"viewer GET {path}: {allowed.status_code} {allowed.text}"
+
+    viewer_detail = api_client.client.get(f"/api/v1/files/{file_id}", headers=viewer.auth_headers).json()
+    assert [s["shared_with"] for s in viewer_detail["shared_with"]] == [viewer.id]
+
+    folder_denied = api_client.client.get(f"/api/v1/folders/{folder_id}", headers=stranger.auth_headers)
+    assert folder_denied.status_code == 403
+
+    owner_view = api_client.client.get(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+    assert owner_view.status_code == 200
+    assert owner_view.json()["name"] == "acl.txt"
+    assert owner_view.json()["is_trashed"] is False
+
+    viewer_leave = api_client.client.delete(f"/api/v1/files/{file_id}/share/{viewer.id}", headers=viewer.auth_headers)
+    assert viewer_leave.status_code == 204, viewer_leave.text
+
+    owner_delete = api_client.client.delete(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+    assert owner_delete.status_code == 204, owner_delete.text
+    api_client.created_files.remove(file_id)
+
+    owner_folder_delete = api_client.client.delete(f"/api/v1/folders/{folder_id}", headers=owner.auth_headers)
+    assert owner_folder_delete.status_code == 204, owner_folder_delete.text
+    api_client.created_folders.remove(folder_id)
