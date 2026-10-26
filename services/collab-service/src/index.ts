@@ -12,6 +12,7 @@ import { createAuthMiddleware } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
+import { HttpDocumentAccessChecker } from './services/document-access';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 
@@ -113,6 +114,10 @@ const documentStore = new DocumentStore(redisAdapter, logger, {
 });
 
 const awareness = new AwarenessService(logger);
+const documentAccess = new HttpDocumentAccessChecker(
+  { baseUrl: config.documentService.url, timeoutMs: config.documentService.timeoutMs },
+  logger,
+);
 const presenceHandler = new PresenceHandler(awareness, logger);
 
 // Setup collaboration handlers
@@ -120,6 +125,7 @@ const collabManager = setupCollaborationHandlers(
   io,
   documentStore,
   awareness,
+  documentAccess,
   presenceHandler,
   metrics,
   logger,
@@ -128,6 +134,8 @@ const collabManager = setupCollaborationHandlers(
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
+const YWS_ROOM_PATTERN =
+  /^\/(?:.*\/)?document-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const wss = new WebSocketServer({ noServer: true });
 wss.on('connection', (conn, req) => {
   setupWSConnection(conn, req);
@@ -163,9 +171,36 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+  // y-websocket uses the request path as the room name; clients use `document-<id>`
+  const roomMatch = YWS_ROOM_PATTERN.exec(url.pathname);
+  const documentId = roomMatch?.[1];
+  if (!documentId) {
+    logger.warn({ path: url.pathname }, 'y-websocket_connection_rejected: invalid room');
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  documentAccess
+    .canAccess(documentId, token)
+    .then((allowed) => {
+      if (!allowed) {
+        logger.warn({ documentId }, 'y-websocket_connection_rejected: access denied');
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      // setupWSConnection names the room after the URL path; canonicalize it so
+      // every client of a document shares one room regardless of prefix or case.
+      request.url = `/document-${documentId.toLowerCase()}`;
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    })
+    .catch((err) => {
+      logger.error({ err, documentId }, 'y-websocket_access_check_failed');
+      socket.destroy();
+    });
 });
 
 // Start presence cleanup with document eviction callback
