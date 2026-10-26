@@ -51,8 +51,11 @@ async def test_list_documents_with_filters(
     items, total = await service.list_documents(owner_id=owner_id)
     assert total == 2
 
-    items, total = await service.list_documents(folder_id=folder_id)
+    items, total = await service.list_documents(owner_id=owner_id, folder_id=folder_id)
     assert total == 1
+
+    items, total = await service.list_documents(owner_id=other_owner)
+    assert [d.title for d in items] == ["C"]
 
 
 @pytest.mark.asyncio
@@ -133,9 +136,22 @@ async def test_search(db_session: AsyncSession, owner_id: uuid.UUID):
         DocumentCreate(title="Rust Guide", content="Learn Rust", owner_id=owner_id)
     )
 
-    items, total = await service.search("Python")
+    await service.create(
+        DocumentCreate(title="Python Secrets", content="Learn Python", owner_id=uuid.uuid4())
+    )
+
+    items, total = await service.search("Python", owner_id=owner_id)
     assert total == 1
     assert items[0].title == "Python Guide"
+
+
+@pytest.mark.asyncio
+async def test_list_and_search_require_owner(db_session: AsyncSession):
+    service = DocumentService(db_session)
+    with pytest.raises(ValueError):
+        await service.list_documents(owner_id=None)
+    with pytest.raises(ValueError):
+        await service.search("anything", owner_id=None)
 
 
 @pytest.mark.asyncio

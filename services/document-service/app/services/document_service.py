@@ -22,6 +22,13 @@ from app.services.event_publisher import event_publisher
 logger = structlog.get_logger()
 
 
+def _require_owner(owner_id: UUID | None) -> UUID:
+    """Listing and search are always scoped to one owner; never span every user."""
+    if owner_id is None:
+        raise ValueError("owner_id is required to list or search documents")
+    return owner_id
+
+
 def _word_count(text: str) -> int:
     return len(text.split()) if text else 0
 
@@ -84,16 +91,16 @@ class DocumentService:
 
     async def list_documents(
         self,
-        owner_id: UUID | None = None,
+        owner_id: UUID,
         folder_id: UUID | None = None,
         page: int = 1,
         size: int = 20,
     ) -> tuple[list[Document], int]:
         base = select(Document).where(
-            Document.is_deleted.is_(False), Document.is_template.is_(False)
+            Document.owner_id == _require_owner(owner_id),
+            Document.is_deleted.is_(False),
+            Document.is_template.is_(False),
         )
-        if owner_id:
-            base = base.where(Document.owner_id == owner_id)
         if folder_id:
             base = base.where(Document.folder_id == folder_id)
 
@@ -256,11 +263,12 @@ class DocumentService:
     # ---- Search ----
 
     async def search(
-        self, query: str, page: int = 1, size: int = 20
+        self, query: str, owner_id: UUID, page: int = 1, size: int = 20
     ) -> tuple[list[Document], int]:
         escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         pattern = f"%{escaped}%"
         base = select(Document).where(
+            Document.owner_id == _require_owner(owner_id),
             Document.is_deleted.is_(False),
             Document.is_template.is_(False),
             or_(
