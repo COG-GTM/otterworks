@@ -128,7 +128,6 @@ def test_report_generation_reaches_terminal_state(api_client):
             "reportName": f"Async Report {api_client.run_id}",
             "category": "USAGE_ANALYTICS",
             "reportType": "CSV",
-            "requestedBy": user.id,
             "dateFrom": api_client.iso_time(-7),
             "dateTo": api_client.iso_time(),
             "parameters": {"source": "api-flow-test"},

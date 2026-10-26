@@ -32,10 +32,6 @@ public class ReportRequest {
     @ApiModelProperty(value = "Output format", required = true, example = "PDF")
     private ReportType reportType;
 
-    @NotBlank(message = "Requester ID is required")
-    @ApiModelProperty(value = "User ID requesting the report", required = true)
-    private String requestedBy;
-
     // LEGACY: java.util.Date
     @ApiModelProperty(value = "Start of reporting period")
     private Date dateFrom;
@@ -72,14 +68,6 @@ public class ReportRequest {
 
     public void setReportType(ReportType reportType) {
         this.reportType = reportType;
-    }
-
-    public String getRequestedBy() {
-        return requestedBy;
-    }
-
-    public void setRequestedBy(String requestedBy) {
-        this.requestedBy = requestedBy;
     }
 
     public Date getDateFrom() {

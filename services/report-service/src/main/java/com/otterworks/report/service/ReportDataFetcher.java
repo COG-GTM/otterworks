@@ -72,8 +72,10 @@ public class ReportDataFetcher {
         String cacheKey = "analytics:" + ReportDateUtils.toIsoString(dateFrom) + ":" + ReportDateUtils.toIsoString(dateTo)
                 + (metric != null ? ":metric=" + metric : "");
 
+        String ownerScope = (parameters != null) ? parameters.get(ReportService.OWNER_SCOPE_PARAM) : null;
+        List<Map<String, Object>> events;
         try {
-            return dataCache.get(cacheKey, () -> {
+            events = dataCache.get(cacheKey, () -> {
                 String url = appConfig.getAnalyticsServiceUrl() + "/api/v1/analytics/events"
                         + "?from=" + ReportDateUtils.toIsoString(dateFrom)
                         + "&to=" + ReportDateUtils.toIsoString(dateTo);
@@ -93,9 +95,23 @@ public class ReportDataFetcher {
                 return Collections.emptyList();
             });
         } catch (ExecutionException e) {
+            // Sample rows are synthetic, so they are not owner-scoped.
             logger.error("Failed to fetch analytics data, using sample data: {}", e.getMessage());
             return generateSampleAnalyticsData(dateFrom, dateTo);
         }
+        return ownerScope != null ? restrictToUser(events, ownerScope) : events;
+    }
+
+    /** Keeps only rows that belong to {@code userId}; rows without a user id are dropped. */
+    static List<Map<String, Object>> restrictToUser(List<Map<String, Object>> data, String userId) {
+        List<Map<String, Object>> scoped = new ArrayList<>();
+        for (Map<String, Object> row : data) {
+            Object rowUser = row.containsKey("userId") ? row.get("userId") : row.get("user_id");
+            if (rowUser != null && userId.equals(String.valueOf(rowUser))) {
+                scoped.add(row);
+            }
+        }
+        return scoped;
     }
 
     /**

@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.repository.ReportRepository;
+import com.otterworks.report.service.ReportService;
+import com.otterworks.report.security.TestTokens;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,7 +19,9 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.Collections;
 import java.util.Date;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.hamcrest.Matchers.anyOf;
@@ -54,14 +59,41 @@ public class ReportControllerIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private ReportRepository reportRepository;
+
+    // ---- Authentication ----
+
+    @Test
+    public void reportEndpointsRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/api/v1/reports")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/reports/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/reports/1/download")).andExpect(status().isUnauthorized());
+        mockMvc.perform(delete("/api/v1/reports/1")).andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/reports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(buildRequest("Anon Report",
+                                ReportCategory.USAGE_ANALYTICS, ReportType.PDF))))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    public void spoofedGatewayHeadersDoNotAuthenticate() throws Exception {
+        mockMvc.perform(get("/api/v1/reports")
+                        .header("X-User-ID", "integration-admin")
+                        .header("X-User-Roles", "ADMIN"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ---- POST /api/v1/reports ----
 
     @Test
     public void createPdfReportReturns202WithCorrectBody() throws Exception {
         ReportRequest request = buildRequest("Integration PDF Report",
-                ReportCategory.USAGE_ANALYTICS, ReportType.PDF, "integration-user-1");
+                ReportCategory.USAGE_ANALYTICS, ReportType.PDF);
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("integration-user-1"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -76,11 +108,64 @@ public class ReportControllerIntegrationTest {
     }
 
     @Test
-    public void createCsvReportReturns202() throws Exception {
-        ReportRequest request = buildRequest("Integration CSV Report",
-                ReportCategory.AUDIT_LOG, ReportType.CSV, "integration-user-2");
+    public void requestedByInBodyIsIgnored() throws Exception {
+        String body = objectMapper.writeValueAsString(buildRequest("Impersonation Report",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV))
+                .replaceFirst("\\{", "{\"requestedBy\":\"alice\",");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("mallory"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.requestedBy", is("mallory")));
+    }
+
+    @Test
+    public void nonAdminReportIsScopedToCallerRegardlessOfParameters() throws Exception {
+        ReportRequest request = buildRequest("Scoped Analytics",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV);
+        request.setParameters(Collections.singletonMap(ReportService.OWNER_SCOPE_PARAM, "alice"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("mallory"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long id = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        Map<?, ?> params = objectMapper.readValue(
+                reportRepository.findById(id).get().getParameters(), Map.class);
+        assertEquals("mallory", params.get(ReportService.OWNER_SCOPE_PARAM));
+    }
+
+    @Test
+    public void adminReportIsNotOwnerScoped() throws Exception {
+        ReportRequest request = buildRequest("Platform Analytics",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV);
+        request.setParameters(Collections.singletonMap(ReportService.OWNER_SCOPE_PARAM, "alice"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", asAdmin("admin-1"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        Long id = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+        Map<?, ?> params = objectMapper.readValue(
+                reportRepository.findById(id).get().getParameters(), Map.class);
+        assertEquals(null, params.get(ReportService.OWNER_SCOPE_PARAM));
+    }
+
+    @Test
+    public void createCsvAuditReportAsAdminReturns202() throws Exception {
+        ReportRequest request = buildRequest("Integration CSV Report",
+                ReportCategory.AUDIT_LOG, ReportType.CSV);
+
+        mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", asAdmin("integration-admin-2"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -91,14 +176,28 @@ public class ReportControllerIntegrationTest {
     @Test
     public void createExcelReportReturns202() throws Exception {
         ReportRequest request = buildRequest("Integration Excel Report",
-                ReportCategory.STORAGE_SUMMARY, ReportType.EXCEL, "integration-user-3");
+                ReportCategory.COLLABORATION_METRICS, ReportType.EXCEL);
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("integration-user-3"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.reportType", is("EXCEL")))
-                .andExpect(jsonPath("$.category", is("STORAGE_SUMMARY")));
+                .andExpect(jsonPath("$.category", is("COLLABORATION_METRICS")));
+    }
+
+    @Test
+    public void nonAdminCannotCreatePlatformWideReports() throws Exception {
+        for (ReportCategory category : new ReportCategory[] {ReportCategory.AUDIT_LOG,
+                ReportCategory.COMPLIANCE, ReportCategory.USER_ACTIVITY, ReportCategory.STORAGE_SUMMARY}) {
+            mockMvc.perform(post("/api/v1/reports")
+                            .header("Authorization", as("mallory"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(
+                                    buildRequest("Sensitive " + category, category, ReportType.CSV))))
+                    .andExpect(status().isForbidden());
+        }
     }
 
     @Test
@@ -106,9 +205,9 @@ public class ReportControllerIntegrationTest {
         ReportRequest request = new ReportRequest();
         request.setCategory(ReportCategory.COMPLIANCE);
         request.setReportType(ReportType.PDF);
-        request.setRequestedBy("integration-user-4");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", asAdmin("integration-admin-4"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -119,9 +218,9 @@ public class ReportControllerIntegrationTest {
         ReportRequest request = new ReportRequest();
         request.setReportName("Missing Category Report");
         request.setReportType(ReportType.CSV);
-        request.setRequestedBy("integration-user-5");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", as("integration-user-5"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -132,9 +231,9 @@ public class ReportControllerIntegrationTest {
         ReportRequest request = new ReportRequest();
         request.setReportName("Missing Type Report");
         request.setCategory(ReportCategory.USER_ACTIVITY);
-        request.setRequestedBy("integration-user-6");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", asAdmin("integration-admin-6"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -147,7 +246,7 @@ public class ReportControllerIntegrationTest {
         Long id = createReportAndReturnId("Fetch By Id Report",
                 ReportCategory.SYSTEM_HEALTH, ReportType.PDF, "integration-user-7");
 
-        mockMvc.perform(get("/api/v1/reports/" + id))
+        mockMvc.perform(get("/api/v1/reports/" + id).header("Authorization", as("integration-user-7")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id", is(id.intValue())))
                 .andExpect(jsonPath("$.reportName", is("Fetch By Id Report")))
@@ -156,38 +255,78 @@ public class ReportControllerIntegrationTest {
 
     @Test
     public void getNonExistentReportReturns404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/999999"))
+        mockMvc.perform(get("/api/v1/reports/999999").header("Authorization", as("integration-user-7")))
                 .andExpect(status().isNotFound());
+    }
+
+    // ---- Cross-user access ----
+
+    @Test
+    public void otherUserCannotReadDownloadOrDeleteReport() throws Exception {
+        Long id = createReportAndReturnId("Alice Private Report",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV, "alice");
+
+        mockMvc.perform(get("/api/v1/reports/" + id).header("Authorization", as("mallory")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/reports/" + id + "/download").header("Authorization", as("mallory")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(delete("/api/v1/reports/" + id).header("Authorization", as("mallory")))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/api/v1/reports/" + id).header("Authorization", as("alice")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestedBy", is("alice")));
+    }
+
+    @Test
+    public void otherUserCannotReadAdminAuditReport() throws Exception {
+        Long id = createReportAndReturnId("Admin Audit Report",
+                ReportCategory.AUDIT_LOG, ReportType.CSV, "compliance-admin");
+
+        mockMvc.perform(get("/api/v1/reports/" + id + "/download").header("Authorization", as("mallory")))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/reports/" + id).header("Authorization", asAdmin("other-admin")))
+                .andExpect(status().isOk());
     }
 
     // ---- GET /api/v1/reports ----
 
     @Test
-    public void listReportsByUserIdReturnsArray() throws Exception {
+    public void listReportsReturnsCallersReports() throws Exception {
         String userId = "list-test-user-" + System.currentTimeMillis();
-        createReportAndReturnId("List Test 1", ReportCategory.AUDIT_LOG,
+        createReportAndReturnId("List Test 1", ReportCategory.USAGE_ANALYTICS,
                 ReportType.CSV, userId);
-        createReportAndReturnId("List Test 2", ReportCategory.AUDIT_LOG,
+        createReportAndReturnId("List Test 2", ReportCategory.SYSTEM_HEALTH,
                 ReportType.PDF, userId);
 
-        mockMvc.perform(get("/api/v1/reports").param("userId", userId))
+        mockMvc.perform(get("/api/v1/reports").param("userId", userId).header("Authorization", as(userId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
-                .andExpect(jsonPath("$.total").isNumber());
+                .andExpect(jsonPath("$.total", is(2)));
     }
 
     @Test
-    public void listReportsForUnknownUserReturnsEmptyArray() throws Exception {
-        mockMvc.perform(get("/api/v1/reports")
-                        .param("userId", "nonexistent-user-xyz"))
+    public void listReportsIgnoresOtherUserIdForNonAdmins() throws Exception {
+        String victim = "list-victim-" + System.currentTimeMillis();
+        createReportAndReturnId("Victim Report", ReportCategory.USAGE_ANALYTICS,
+                ReportType.CSV, victim);
+
+        mockMvc.perform(get("/api/v1/reports").param("userId", victim)
+                        .header("Authorization", as("list-attacker-" + System.currentTimeMillis())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
                 .andExpect(jsonPath("$.total", is(0)));
+
+        mockMvc.perform(get("/api/v1/reports").param("userId", victim)
+                        .header("Authorization", asAdmin("list-admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.total", is(1)));
     }
 
     @Test
     public void listReportsByStatusReturnsArray() throws Exception {
-        mockMvc.perform(get("/api/v1/reports").param("status", "COMPLETED"))
+        mockMvc.perform(get("/api/v1/reports").param("status", "COMPLETED")
+                        .header("Authorization", as("integration-user-10")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray());
     }
@@ -196,7 +335,7 @@ public class ReportControllerIntegrationTest {
 
     @Test
     public void downloadNonExistentReportReturns404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/999999/download"))
+        mockMvc.perform(get("/api/v1/reports/999999/download").header("Authorization", as("integration-user-8")))
                 .andExpect(status().isNotFound());
     }
 
@@ -205,13 +344,15 @@ public class ReportControllerIntegrationTest {
         Long id = createReportAndReturnId("Download Pending Report",
                 ReportCategory.USAGE_ANALYTICS, ReportType.PDF, "integration-user-8");
 
-        MvcResult download = mockMvc.perform(get("/api/v1/reports/" + id + "/download"))
+        MvcResult download = mockMvc.perform(get("/api/v1/reports/" + id + "/download")
+                        .header("Authorization", as("integration-user-8")))
                 .andReturn();
 
         // Status is read after the download so it cannot go stale in the wrong direction:
         // generation only moves forward, so a report still pending here was pending during
         // the download too.
-        MvcResult result = mockMvc.perform(get("/api/v1/reports/" + id))
+        MvcResult result = mockMvc.perform(get("/api/v1/reports/" + id)
+                        .header("Authorization", as("integration-user-8")))
                 .andReturn();
         String statusVal = objectMapper.readTree(
                 result.getResponse().getContentAsString()).get("status").asText();
@@ -228,16 +369,16 @@ public class ReportControllerIntegrationTest {
         Long id = createReportAndReturnId("Delete Me Report",
                 ReportCategory.COLLABORATION_METRICS, ReportType.CSV, "integration-user-9");
 
-        mockMvc.perform(delete("/api/v1/reports/" + id))
+        mockMvc.perform(delete("/api/v1/reports/" + id).header("Authorization", as("integration-user-9")))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/v1/reports/" + id))
+        mockMvc.perform(get("/api/v1/reports/" + id).header("Authorization", as("integration-user-9")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void deleteNonExistentReportReturns404() throws Exception {
-        mockMvc.perform(delete("/api/v1/reports/999999"))
+        mockMvc.perform(delete("/api/v1/reports/999999").header("Authorization", as("integration-user-9")))
                 .andExpect(status().isNotFound());
     }
 
@@ -254,13 +395,19 @@ public class ReportControllerIntegrationTest {
 
     // ---- Helpers ----
 
-    private ReportRequest buildRequest(String name, ReportCategory category,
-                                       ReportType type, String requestedBy) {
+    private static String as(String userId) {
+        return TestTokens.bearer(userId, "USER");
+    }
+
+    private static String asAdmin(String userId) {
+        return TestTokens.bearer(userId, "USER", "ADMIN");
+    }
+
+    private ReportRequest buildRequest(String name, ReportCategory category, ReportType type) {
         ReportRequest request = new ReportRequest();
         request.setReportName(name);
         request.setCategory(category);
         request.setReportType(type);
-        request.setRequestedBy(requestedBy);
         request.setDateFrom(new Date(System.currentTimeMillis() - 86400000L * 7));
         request.setDateTo(new Date());
         return request;
@@ -268,8 +415,10 @@ public class ReportControllerIntegrationTest {
 
     private Long createReportAndReturnId(String name, ReportCategory category,
                                          ReportType type, String requestedBy) throws Exception {
-        ReportRequest request = buildRequest(name, category, type, requestedBy);
+        String token = category.isAdminOnly() ? asAdmin(requestedBy) : as(requestedBy);
+        ReportRequest request = buildRequest(name, category, type);
         MvcResult result = mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
