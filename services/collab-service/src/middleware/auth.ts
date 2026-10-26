@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import type { Socket } from 'socket.io';
 import type { ExtendedError } from 'socket.io/dist/namespace';
 import type { Logger } from 'pino';
+import { JWT_ALGORITHMS } from '../config';
 
 export interface AuthenticatedUser {
   userId: string;
@@ -37,7 +38,9 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = jwt.verify(token, jwtSecret, {
+        algorithms: JWT_ALGORITHMS,
+      }) as JwtPayload;
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,

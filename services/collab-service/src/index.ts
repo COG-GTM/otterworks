@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
-import { loadConfig } from './config';
+import { JWT_ALGORITHMS, loadConfig, type Config } from './config';
 import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
@@ -18,7 +18,13 @@ import { setupCollaborationHandlers } from './handlers/collaboration';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { setupWSConnection } = require('y-websocket/bin/utils');
 
-const config = loadConfig();
+let config: Config;
+try {
+  config = loadConfig();
+} catch (err) {
+  process.stderr.write(`collab-service: refusing to start: ${(err as Error).message}\n`);
+  process.exit(1);
+}
 
 const logger = pino({
   level: config.logLevel,
@@ -155,7 +161,7 @@ httpServer.on('upgrade', (request, socket, head) => {
   }
 
   try {
-    jwt.verify(token, config.jwt.secret);
+    jwt.verify(token, config.jwt.secret, { algorithms: JWT_ALGORITHMS });
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

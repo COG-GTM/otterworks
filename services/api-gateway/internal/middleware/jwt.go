@@ -38,11 +38,12 @@ func DefaultPublicPaths() []string {
 }
 
 // DefaultPrefixPaths returns paths where any sub-path also skips JWT validation.
+// /socket.io is deliberately absent: the gateway validates the handshake's bearer
+// token instead of leaving collab-service as the only check on that path.
 func DefaultPrefixPaths() []string {
 	return []string{
 		"/health",
 		"/metrics",
-		"/socket.io",
 	}
 }
 
