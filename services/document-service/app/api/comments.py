@@ -77,7 +77,8 @@ async def delete_comment(
         raise HTTPException(status_code=404, detail="Comment not found")
     if user_id not in (comment.author_id, document.owner_id):
         raise HTTPException(status_code=403, detail="Access denied")
-    await service.delete_comment(document_id, comment_id)
+    if not await service.delete_comment(document_id, comment_id):
+        raise HTTPException(status_code=404, detail="Comment not found")
     logger.info(
         "comment_deleted", document_id=str(document_id), comment_id=str(comment_id)
     )
