@@ -260,6 +260,32 @@ async def test_create_document_via_jwt_hs384(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_refresh_token_does_not_authenticate(client: AsyncClient):
+    """A refresh token is not an access token, even though it shares the signing key."""
+    user_id = uuid.uuid4()
+    refresh = jwt.encode(
+        {"sub": str(user_id), "type": "refresh", "jti": str(uuid.uuid4())},
+        TEST_JWT_SECRET,
+        algorithm="HS384",
+    )
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Refresh Doc"},
+        headers={"Authorization": f"Bearer {refresh}"},
+    )
+    assert resp.status_code == 401
+
+    access = jwt.encode({"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm="HS384")
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Access Doc"},
+        headers={"Authorization": f"Bearer {access}"},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
     """X-User-Id header alone is not trusted (prevents identity spoofing)."""
     user_id = uuid.uuid4()

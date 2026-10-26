@@ -20,8 +20,26 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
+}
+
+/**
+ * Verify a bearer token and require it to be an access token. auth-service signs
+ * refresh tokens with the same key, so signature checks alone would let a 30-day
+ * refresh token act as a login. Tokens without a `type` claim count as access.
+ */
+export function verifyAccessToken(token: string, jwtSecret: string): JwtPayload {
+  const decoded = jwt.verify(token, jwtSecret);
+  if (typeof decoded === 'string') {
+    throw new Error('Unexpected token payload');
+  }
+  const payload = decoded as JwtPayload;
+  if ((payload.type ?? 'access') !== 'access') {
+    throw new Error(`${payload.type} tokens cannot be used as access tokens`);
+  }
+  return payload;
 }
 
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
@@ -37,7 +55,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = verifyAccessToken(token, jwtSecret);
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,

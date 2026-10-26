@@ -306,6 +306,51 @@ def unsigned_jwt(ctx: ScanContext) -> Result:
 
 
 @probe(
+    finding_id="DAST-REFRESH-TOKEN-AS-ACCESS",
+    title="Refresh token accepted as a bearer access token",
+    severity=Severity.MEDIUM,
+    owasp="API2:2023 Broken Authentication",
+    cwe="CWE-613",
+    service="api-gateway",
+    remediation=(
+        "Reject tokens whose type claim is not 'access' everywhere a bearer token is "
+        "verified; accept refresh tokens only on /api/v1/auth/refresh."
+    ),
+)
+def refresh_token_as_access(ctx: ScanContext) -> Result:
+    """Log in as the attacker and present the 30-day refresh token on protected routes."""
+    self = refresh_token_as_access.probe
+    login = ctx.login_response(ctx.attacker.email, ctx.attacker.password)
+    evidence = [Evidence.from_response(login, note="login")]
+    refresh_token = login.json().get("refreshToken", "") if login.status_code == 200 else ""
+    if not refresh_token:
+        return self.result(Verdict.INCONCLUSIVE, "login returned no refresh token", evidence)
+
+    headers = {"Authorization": f"Bearer {refresh_token}"}
+    for path in ("/api/v1/documents/", "/api/v1/auth/profile"):
+        response = ctx.get(path, headers=headers)
+        evidence.append(Evidence.from_response(response, note=f"refresh token on {path}"))
+        if response.status_code < 400:
+            return self.result(
+                Verdict.VULNERABLE, f"refresh token authenticated GET {path}", evidence
+            )
+        if unavailable(response):
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"GET {path} drew status {response.status_code}; the attack cannot be assessed",
+                evidence,
+            )
+
+    control = ctx.get("/api/v1/documents/", headers=ctx.attacker.headers)
+    evidence.append(Evidence.from_response(control, note="control: access token"))
+    if control.status_code >= 400:
+        return self.result(
+            Verdict.INCONCLUSIVE, "the access token was rejected too; no verdict", evidence
+        )
+    return self.result(Verdict.SECURE, "refresh token rejected on every protected route", evidence)
+
+
+@probe(
     finding_id="DAST-UNAUTHENTICATED-ADMIN",
     title="Administrative routes reachable without a token",
     severity=Severity.HIGH,

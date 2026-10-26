@@ -65,6 +65,27 @@ class JwtTokenProviderTest {
   }
 
   @Test
+  void validateAccessTokenAndGetClaims_shouldRejectRefreshToken() {
+    User user = createTestUser();
+    String refreshToken = jwtTokenProvider.generateRefreshToken(user);
+
+    assertThatThrownBy(() -> jwtTokenProvider.validateAccessTokenAndGetClaims(refreshToken))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> jwtTokenProvider.validateTokenAndGetUserId(refreshToken))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void validateAccessTokenAndGetClaims_shouldAcceptAccessToken() {
+    User user = createTestUser();
+    String accessToken = jwtTokenProvider.generateAccessToken(user);
+
+    Claims claims = jwtTokenProvider.validateAccessTokenAndGetClaims(accessToken);
+
+    assertThat(claims.getSubject()).isEqualTo(user.getId().toString());
+  }
+
+  @Test
   void extractJti_shouldReturnJtiFromRefreshToken() {
     User user = createTestUser();
     String token = jwtTokenProvider.generateRefreshToken(user);

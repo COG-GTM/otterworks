@@ -321,3 +321,54 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
 }
+
+func typedTestToken(t *testing.T, tokenType string) string {
+	t.Helper()
+	return generateTestToken(t, testSecret, JWTClaims{
+		Type: tokenType,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Subject:   "user-123",
+		},
+	})
+}
+
+func TestJWTAuth_TokenTypeEnforcement(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:      testSecret,
+		PublicPath:  DefaultPublicPaths(),
+		PrefixPath:  DefaultPrefixPaths(),
+		RefreshPath: DefaultRefreshPaths(),
+	}
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tests := []struct {
+		name      string
+		path      string
+		tokenType string
+		expected  int
+	}{
+		{"refresh token rejected on protected route", "/api/v1/documents/", "refresh", http.StatusUnauthorized},
+		{"refresh token rejected on auth profile", "/api/v1/auth/profile", "refresh", http.StatusUnauthorized},
+		{"refresh token rejected on logout", "/api/v1/auth/logout", "refresh", http.StatusUnauthorized},
+		{"unknown token type rejected", "/api/v1/files/list", "password-reset", http.StatusUnauthorized},
+		{"access token accepted on protected route", "/api/v1/documents/", "access", http.StatusOK},
+		{"untyped token accepted as access token", "/api/v1/documents/", "", http.StatusOK},
+		{"refresh token accepted on refresh endpoint", "/api/v1/auth/refresh", "refresh", http.StatusOK},
+		{"access token rejected on refresh endpoint", "/api/v1/auth/refresh", "access", http.StatusUnauthorized},
+		{"refresh path is an exact match", "/api/v1/auth/refresh/extra", "refresh", http.StatusUnauthorized},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("Authorization", "Bearer "+typedTestToken(t, tt.tokenType))
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, tt.expected, rec.Code)
+		})
+	}
+}

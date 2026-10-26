@@ -30,6 +30,19 @@ RSpec.describe JwtAuthenticator do
     expect(body.first).to eq('admin')
   end
 
+  it 'rejects a refresh token' do
+    refresh = { sub: SecureRandom.uuid, jti: SecureRandom.uuid, type: 'refresh' }
+    status, _headers, body = call(JWT.encode(refresh, secret, 'HS512'))
+    expect(status).to eq(401)
+    expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
+  end
+
+  it 'accepts an access token' do
+    status, _headers, body = call(JWT.encode(payload.merge(type: 'access'), secret, 'HS512'))
+    expect(status).to eq(200)
+    expect(body.first).to eq('admin@otterworks.com')
+  end
+
   it 'rejects a token signed with the wrong secret' do
     status, _headers, body = call(JWT.encode(payload, 'not-the-secret', 'HS512'))
     expect(status).to eq(401)
