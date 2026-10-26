@@ -188,3 +188,57 @@ async def test_export_endpoint_404s_for_names_outside_the_archive(
     owner = await client.get("/api/v1/documents/exports", params={"name": "report.md"})
     assert owner.status_code == 200
     assert owner.text == "# Report\n"
+
+
+def _open_fd_count():
+    return len(os.listdir("/proc/self/fd"))
+
+
+def test_directory_name_is_not_found_and_does_not_leak_descriptors(archive):
+    before = _open_fd_count()
+    for _ in range(20):
+        with pytest.raises(FileNotFoundError):
+            archive.read_export("reports")
+    assert _open_fd_count() == before
+
+
+def test_fifo_inside_archive_is_not_found(archive, tmp_path):
+    os.mkfifo(tmp_path / "pipe.md")
+    before = _open_fd_count()
+    with pytest.raises(FileNotFoundError):
+        archive.read_export("pipe.md")
+    assert _open_fd_count() == before
+
+
+def test_symlink_inside_archive_is_not_followed(archive, tmp_path):
+    os.symlink(tmp_path / "report.md", tmp_path / "latest.md")
+    with pytest.raises(FileNotFoundError):
+        archive.read_export("latest.md")
+
+
+def test_archive_root_swapped_after_containment_check_is_rejected(
+    archive_with_outside_secret, monkeypatch
+):
+    reader, root, secret = archive_with_outside_secret
+    (root / "tenant-secrets.env").write_text("# fine\n", encoding="utf-8")
+    check = reader._archive_relative_parts
+    real_stat = os.stat
+
+    def stat_then_swap(path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        if os.fspath(path) == os.path.realpath(root):
+            (root / "tenant-secrets.env").unlink()
+            (root / "report.md").unlink()
+            root.rmdir()
+            os.symlink(secret.parent, root)
+            monkeypatch.setattr(os, "stat", real_stat)
+        return result
+
+    def check_then_arm(name, path):
+        parts = check(name, path)
+        monkeypatch.setattr(os, "stat", stat_then_swap)
+        return parts
+
+    monkeypatch.setattr(reader, "_archive_relative_parts", check_then_arm)
+    with pytest.raises(FileNotFoundError):
+        reader.read_export("tenant-secrets.env")

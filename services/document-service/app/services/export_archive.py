@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import os
+import stat
 
 import structlog
 
@@ -37,14 +38,19 @@ class ExportArchive:
         parts = self._archive_relative_parts(name, path)
         try:
             fd = self._open_inside_archive(parts)
-        except (FileNotFoundError, NotADirectoryError):
+        except (FileNotFoundError, NotADirectoryError, IsADirectoryError):
             raise _not_found(path) from None
         except OSError as exc:
             if exc.errno == errno.ELOOP:
                 logger.warning("export_read_rejected", reason="symlink")
                 raise _not_found(path) from None
             raise
-        with open(fd, encoding="utf-8") as handle:
+        try:
+            handle = open(fd, encoding="utf-8")  # noqa: SIM115 - closed below; fd closed here on failure
+        except BaseException:
+            os.close(fd)
+            raise
+        with handle:
             return handle.read()
 
     def _archive_relative_parts(self, name: str, path: str) -> list[str]:
@@ -65,17 +71,33 @@ class ExportArchive:
 
         Every component is opened relative to its parent with ``O_NOFOLLOW``, so a
         symlink planted or swapped in after the containment check cannot redirect
-        the read outside the archive.
+        the read outside the archive. The root handle must be the same directory
+        ``realpath(base_dir)`` named before it was opened, so swapping the root
+        itself for a symlink is rejected too. Only regular files are returned.
         """
-        dir_fd = os.open(self.base_dir, _DIR_FLAGS)
+        root = os.path.realpath(self.base_dir)
+        expected = os.stat(root)
+        dir_fd = os.open(root, _DIR_FLAGS | os.O_NOFOLLOW)
         try:
+            opened = os.fstat(dir_fd)
+            if (opened.st_dev, opened.st_ino) != (expected.st_dev, expected.st_ino):
+                logger.warning("export_read_rejected", reason="archive_root_changed")
+                raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT))
             for part in parts[:-1]:
                 next_fd = os.open(part, _DIR_FLAGS | os.O_NOFOLLOW, dir_fd=dir_fd)
                 os.close(dir_fd)
                 dir_fd = next_fd
-            return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dir_fd)
         finally:
             os.close(dir_fd)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise IsADirectoryError(errno.EISDIR, os.strerror(errno.EISDIR))
+            os.set_blocking(fd, True)
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
 
 
 def _not_found(path: str) -> FileNotFoundError:
