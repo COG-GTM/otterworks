@@ -53,16 +53,16 @@ public class AuditService : IAuditService
 
     public async Task<AuditEventPage> QueryEventsAsync(
         string? userId, string? action, string? resourceType, string? resourceId,
-        DateTime? from, DateTime? to, int page, int pageSize)
+        DateTime? from, DateTime? to, int page, int pageSize, string? cursor = null)
     {
-        return await _repository.QueryEventsAsync(userId, action, resourceType, resourceId, from, to, page, pageSize);
+        return await _repository.QueryEventsAsync(userId, action, resourceType, resourceId, from, to, page, pageSize, cursor);
     }
 
     public async Task<UserActivityReport> GetUserActivityReportAsync(string userId, string period)
     {
         var (from, to) = ParsePeriod(period);
-        var events = await _repository.GetAllUserEventsAsync(userId);
-        var filtered = events.Where(e => e.Timestamp >= from && e.Timestamp <= to).ToList();
+        var batch = await _repository.GetUserEventsAsync(userId, from, to, AuditQueryLimits.MaxReportEvents);
+        var filtered = batch.Events;
 
         var report = new UserActivityReport
         {
@@ -80,6 +80,7 @@ public class AuditService : IAuditService
                 .Take(10)
                 .Select(AuditEventResponse.FromEntity)
                 .ToList(),
+            Truncated = batch.Truncated,
         };
 
         _logger.LogInformation("Generated user activity report for {UserId} ({Period}): {TotalEvents} events",
@@ -87,22 +88,26 @@ public class AuditService : IAuditService
         return report;
     }
 
-    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId)
+    public async Task<ResourceHistory> GetResourceHistoryAsync(
+        string resourceId, DateTime? from = null, DateTime? to = null, int pageSize = 100, string? cursor = null)
     {
-        var events = await _repository.GetResourceHistoryAsync(resourceId);
+        var page = await _repository.QueryEventsAsync(null, null, null, resourceId, from, to, 1, pageSize, cursor);
 
         return new ResourceHistory
         {
             ResourceId = resourceId,
-            TotalEvents = events.Count,
-            Events = events.Select(AuditEventResponse.FromEntity).ToList(),
+            TotalEvents = page.Events.Count,
+            Events = page.Events.Select(AuditEventResponse.FromEntity).ToList(),
+            NextCursor = page.NextCursor,
+            HasMore = page.HasMore,
         };
     }
 
     public async Task<ComplianceReport> GetComplianceReportAsync(string period)
     {
         var (from, to) = ParsePeriod(period);
-        var events = await _repository.GetEventsByDateRangeAsync(from, to);
+        var batch = await _repository.GetEventsByDateRangeAsync(from, to, AuditQueryLimits.MaxReportEvents);
+        var events = batch.Events;
 
         var userEventCounts = events.GroupBy(e => e.UserId)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -134,6 +139,7 @@ public class AuditService : IAuditService
                 .ToDictionary(g => g.Key, g => g.Count()),
             SuspiciousActivities = suspicious,
             GeneratedAt = DateTime.UtcNow,
+            Truncated = batch.Truncated,
         };
 
         _logger.LogInformation("Generated compliance report ({Period}): {TotalEvents} events, {UniqueUsers} users, {SuspiciousCount} suspicious",

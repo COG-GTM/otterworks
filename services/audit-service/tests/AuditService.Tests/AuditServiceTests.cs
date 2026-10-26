@@ -122,7 +122,7 @@ public class AuditServiceTests
         };
 
         _mockRepository
-            .Setup(r => r.QueryEventsAsync("user-1", "create", null, null, null, null, 1, 20))
+            .Setup(r => r.QueryEventsAsync("user-1", "create", null, null, null, null, 1, 20, null))
             .ReturnsAsync(page);
 
         var result = await _service.QueryEventsAsync("user-1", "create", null, null, null, null, 1, 20);
@@ -142,7 +142,9 @@ public class AuditServiceTests
             CreateSampleEvent("e3", action: "delete", resourceType: "document"),
         };
 
-        _mockRepository.Setup(r => r.GetAllUserEventsAsync("user-1")).ReturnsAsync(events);
+        _mockRepository
+            .Setup(r => r.GetUserEventsAsync("user-1", It.IsAny<DateTime>(), It.IsAny<DateTime>(), AuditQueryLimits.MaxReportEvents))
+            .ReturnsAsync(new AuditEventBatch { Events = events });
 
         var report = await _service.GetUserActivityReportAsync("user-1", "30d");
 
@@ -164,13 +166,17 @@ public class AuditServiceTests
             CreateSampleEvent("e2", resourceId: "doc-1"),
         };
 
-        _mockRepository.Setup(r => r.GetResourceHistoryAsync("doc-1")).ReturnsAsync(events);
+        _mockRepository
+            .Setup(r => r.QueryEventsAsync(null, null, null, "doc-1", null, null, 1, 100, null))
+            .ReturnsAsync(new AuditEventPage { Events = events, Total = 2, Page = 1, PageSize = 100, NextCursor = "next", HasMore = true });
 
         var history = await _service.GetResourceHistoryAsync("doc-1");
 
         Assert.Equal("doc-1", history.ResourceId);
         Assert.Equal(2, history.TotalEvents);
         Assert.Equal(2, history.Events.Count);
+        Assert.Equal("next", history.NextCursor);
+        Assert.True(history.HasMore);
     }
 
     [Fact]
@@ -184,8 +190,8 @@ public class AuditServiceTests
         };
 
         _mockRepository
-            .Setup(r => r.GetEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>()))
-            .ReturnsAsync(events);
+            .Setup(r => r.GetEventsByDateRangeAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), AuditQueryLimits.MaxReportEvents))
+            .ReturnsAsync(new AuditEventBatch { Events = events, Truncated = true });
 
         var report = await _service.GetComplianceReportAsync("30d");
 
@@ -195,6 +201,7 @@ public class AuditServiceTests
         Assert.Equal(1, report.ActionBreakdown["create"]);
         Assert.Equal(1, report.ActionBreakdown["read"]);
         Assert.Equal(1, report.ActionBreakdown["update"]);
+        Assert.True(report.Truncated);
     }
 
     [Fact]

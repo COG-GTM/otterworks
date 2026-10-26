@@ -29,7 +29,8 @@ public class S3AuditArchiver : IAuditArchiver
 
     public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
     {
-        var events = await _repository.GetEventsByDateRangeAsync(from, to);
+        var batch = await _repository.GetEventsByDateRangeAsync(from, to, AuditQueryLimits.MaxExportEvents);
+        var events = batch.Events;
 
         string content;
         string contentType;
@@ -70,12 +71,15 @@ public class S3AuditArchiver : IAuditArchiver
             DownloadUrl = downloadUrl,
             From = from,
             To = to,
+            Truncated = batch.Truncated,
         };
     }
 
     public async Task<ArchiveResult> ArchiveOldEventsAsync(DateTime olderThan)
     {
-        var events = await _repository.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan);
+        var lookbackFrom = olderThan.AddDays(-_settings.ArchiveLookbackDays);
+        var batch = await _repository.GetEventsByDateRangeAsync(lookbackFrom, olderThan, AuditQueryLimits.MaxArchiveEventsPerRun);
+        var events = batch.Events;
 
         if (events.Count == 0)
         {
@@ -124,6 +128,7 @@ public class S3AuditArchiver : IAuditArchiver
             ArchivedCount = deletedCount,
             S3Location = s3Location,
             ArchivedBefore = olderThan,
+            HasMore = batch.Truncated,
         };
     }
 
