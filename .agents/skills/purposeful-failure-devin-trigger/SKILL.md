@@ -72,10 +72,14 @@ second Devin client:
   `ADMIN_SERVICE_URL` (default `http://admin-service:8089` resolves in-namespace)
   and optional `ALERT_WEBHOOK_SECRET`. Missing config → warn and skip. Never log
   secrets.
-- **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
-  when one is already open for the `affected_service`. To get one incident + one
-  Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+- **Dedup**: `alerts_controller#process_alert` skips creating an incident when one
+  is already open for the `affected_service`, and caps alert-created incidents per
+  service (`ALERT_INCIDENT_RATE_LIMIT`, default 5 per
+  `ALERT_INCIDENT_RATE_WINDOW_SECONDS`, default 3600) — the cap also applies to
+  alerts carrying `"dedup": "false"`. Don't set `dedup=false` on user-triggered
+  failures: it lets any user open an incident + paid Devin session per request.
+  For a fresh incident per demo run, resolve the open one (the chaos reset does
+  this). Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant
@@ -107,8 +111,8 @@ so out of the box `DevinSessionService` no-ops on tenants. Options:
    (`email`, `password`, `displayName`).
 3. Trigger the failure: `POST /api/v1/files/upload` (NOT `/api/v1/files`) → expect 5xx,
    and confirm no metadata row appears while listing/downloading existing files works.
-4. Repeat 2–3 times and confirm one incident per failure (admin API/dashboard), each
-   with its own `devin_session_id`/`devin_session_url` once credentials are loaded.
+4. Repeat 2–3 times and confirm a single open incident for the service (admin API/dashboard)
+   with one `devin_session_id`/`devin_session_url` once credentials are loaded.
 5. Never fire real Devin sessions from local tests — use a fake key locally
    (compose wires `DEVIN_API_KEY: ${DEVIN_API_KEY:-}`, so an exported real key WILL
    create real sessions).
