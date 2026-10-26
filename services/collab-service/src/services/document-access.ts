@@ -55,6 +55,8 @@ export class DocumentAccessChecker {
           signal: controller.signal,
         },
       );
+      // Only the status matters; release the body so the connection can be reused.
+      await response.body?.cancel().catch(() => undefined);
       if (response.ok) return 'allowed';
       if ([400, 401, 403, 404, 422].includes(response.status)) return 'denied';
       this.logger.warn(
