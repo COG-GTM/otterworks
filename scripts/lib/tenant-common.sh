@@ -293,8 +293,15 @@ build_helm_args() {
 
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
+      api-gateway|auth-service|document-service|collab-service|admin-service|audit-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
+    esac
+  fi
+
+  if [ -n "${AUDIT_SERVICE_TOKEN:-}" ]; then
+    case "$service" in
+      audit-service|report-service)
+        add_secret AUDIT_SERVICE_TOKEN "${AUDIT_SERVICE_TOKEN}" ;;
     esac
   fi
 

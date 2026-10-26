@@ -4,6 +4,7 @@ using Amazon.SimpleNotificationService;
 using Amazon.SQS;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Config;
 using OtterWorks.AuditService.Controllers;
 using OtterWorks.AuditService.Middleware;
@@ -90,6 +91,11 @@ builder.Services.AddHealthChecks()
 // Prometheus metrics
 builder.Services.AddSingleton(Metrics.DefaultRegistry);
 
+// Authentication (auth-service JWT or internal service token) and authorization
+if (string.IsNullOrWhiteSpace(builder.Configuration["JWT_SECRET"]))
+    Log.Warning("JWT_SECRET is not configured; all bearer tokens will be rejected");
+builder.Services.AddAuditAuth();
+
 var app = builder.Build();
 
 // Middleware pipeline
@@ -98,6 +104,9 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 
 // Prometheus metrics endpoint
 app.UseHttpMetrics();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Health check
 app.MapGet("/health", async (IAmazonDynamoDB dynamoDb) =>

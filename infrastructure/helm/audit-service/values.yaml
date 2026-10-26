@@ -10,8 +10,9 @@ service:
   port: 8090
   targetPort: 8090
 
+# Reached only through the api-gateway (and report-service) inside the cluster.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -44,8 +45,11 @@ monitoring:
 
 networkPolicy:
   enabled: true
-  ingressNamespace: ingress-nginx
   monitoringNamespace: monitoring
+  # Same-namespace workloads (by app.kubernetes.io/name) allowed to call the API.
+  allowedClients:
+    - api-gateway
+    - report-service
 
 serviceAccount:
   roleArn: ""

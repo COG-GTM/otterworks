@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -7,7 +9,7 @@ public static class AuditController
 {
     public static void MapAuditEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/audit");
+        var group = app.MapGroup("/api/v1/audit").RequireAuthorization();
 
         group.MapPost("/events", RecordEvent)
             .WithName("RecordAuditEvent")
@@ -29,25 +31,34 @@ public static class AuditController
 
         group.MapGet("/resources/{resourceId}/history", GetResourceHistory)
             .WithName("GetResourceHistory")
+            .RequireAuthorization(AuditAuth.AdminPolicy)
             .Produces<ResourceHistory>(StatusCodes.Status200OK);
 
         group.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
+            .RequireAuthorization(AuditAuth.AdminPolicy)
             .Produces<ComplianceReport>(StatusCodes.Status200OK);
 
         group.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
+            .RequireAuthorization(AuditAuth.AdminPolicy)
             .Produces<ExportResult>(StatusCodes.Status200OK);
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
+            .RequireAuthorization(AuditAuth.AdminPolicy)
             .Produces<ArchiveResult>(StatusCodes.Status200OK);
     }
 
     private static async Task<IResult> RecordEvent(
         AuditEventRequest request,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
+        // Only admins and trusted services may record events on behalf of another user.
+        if (!AuditAuth.IsAdmin(user))
+            request.UserId = AuditAuth.GetUserId(user) ?? string.Empty;
+
         if (string.IsNullOrWhiteSpace(request.UserId) ||
             string.IsNullOrWhiteSpace(request.Action) ||
             string.IsNullOrWhiteSpace(request.ResourceType) ||
@@ -69,8 +80,17 @@ public static class AuditController
         DateTime? to,
         int? page,
         int? size,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
+        if (!AuditAuth.IsAdmin(user))
+        {
+            var callerId = AuditAuth.GetUserId(user);
+            if (!string.IsNullOrEmpty(user_id) && user_id != callerId)
+                return Results.Forbid();
+            user_id = callerId;
+        }
+
         var pageNumber = page ?? 1;
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
 
@@ -80,17 +100,24 @@ public static class AuditController
 
     private static async Task<IResult> GetEvent(
         string id,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
         var result = await auditService.GetEventAsync(id);
-        return result is not null ? Results.Ok(result) : Results.NotFound(new { error = "Event not found." });
+        return result is not null && AuditAuth.CanAccessUser(user, result.UserId)
+            ? Results.Ok(result)
+            : Results.NotFound(new { error = "Event not found." });
     }
 
     private static async Task<IResult> GetUserActivityReport(
         string userId,
         string? period,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
+        if (!AuditAuth.CanAccessUser(user, userId))
+            return Results.Forbid();
+
         var reportPeriod = period ?? "30d";
         var report = await auditService.GetUserActivityReportAsync(userId, reportPeriod);
         return Results.Ok(report);
