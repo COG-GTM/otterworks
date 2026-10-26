@@ -230,6 +230,9 @@ def test_rating_requires_json_object(client, calls):
         "not-a-jwt",
         "eyJhbGciOiJIUzI1NiJ9.\u00e9.sig",
         mint(scope=auth.ADMIN).replace(".", "=.", 1),
+        mint(scope=auth.ADMIN, exp=float("nan")),
+        mint(scope=auth.ADMIN, exp=float("inf")),
+        mint(scope=auth.ADMIN, nbf=float("-inf")),
     ],
     ids=[
         "wrong-secret",
@@ -246,6 +249,9 @@ def test_rating_requires_json_object(client, calls):
         "garbage",
         "non-ascii-payload",
         "padded-segment",
+        "nan-exp",
+        "infinite-exp",
+        "infinite-nbf",
     ],
 )
 def test_invalid_tokens_are_rejected(client, calls, token):
@@ -278,8 +284,6 @@ def test_health_stays_public(client, calls, monkeypatch):
 
 def test_every_route_declares_a_policy():
     for rule in legacy.app.url_map.iter_rules():
-        if rule.endpoint == "static":
-            continue
         view = legacy.app.view_functions[rule.endpoint]
         assert getattr(view, "billing_policy", None), rule.rule
 
@@ -303,3 +307,22 @@ def test_accepts_tokens_minted_by_pyjwt(client, calls):
     )
     response = client.get(f"/plans/{TENANT}/entitlement", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
+
+
+def test_no_public_static_route(client, calls):
+    assert "static" not in legacy.app.view_functions
+    assert client.get("/static/app.js").status_code == 404
+
+
+def test_method_not_allowed_keeps_allow_header(client, calls):
+    response = client.post("/plans", headers=bearer(scope=auth.ADMIN))
+    assert response.status_code == 405
+    assert set(response.headers["Allow"].split(", ")) >= {"GET", "HEAD"}
+    assert response.get_json()["error"] == "Method Not Allowed"
+
+
+def test_unauthorized_response_is_json_with_bearer_challenge(client, calls):
+    response = client.get("/plans")
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"].startswith("Bearer")
+    assert response.get_json()["detail"] == "missing bearer token"

@@ -1,3 +1,4 @@
+import json
 import os
 import uuid
 from datetime import date
@@ -17,15 +18,16 @@ from auth import (
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import HTTPException
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 app.config["JWT_SECRET"] = os.getenv("LEGACY_BILLING_JWT_SECRET", "")
 app.before_request(enforce_declared_policy)
 
 
 @app.errorhandler(HTTPException)
 def http_error(error):
-    response = jsonify(error=error.name, detail=error.description)
-    response.status_code = error.code
+    response = error.get_response()
+    response.set_data(json.dumps({"error": error.name, "detail": error.description}))
+    response.content_type = "application/json"
     if error.code == 401:
         response.headers["WWW-Authenticate"] = 'Bearer realm="legacy-billing"'
     return response

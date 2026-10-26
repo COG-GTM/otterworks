@@ -16,6 +16,7 @@ import functools
 import hashlib
 import hmac
 import json
+import math
 import re
 import time
 import uuid
@@ -58,7 +59,7 @@ def _numeric(claims, name, required=False):
         if required:
             raise InvalidToken(f"missing {name}")
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise InvalidToken(f"invalid {name}")
     return value
 
@@ -170,7 +171,7 @@ def requires(scope, tenant=None):
 
 def enforce_declared_policy():
     """Fail closed for any route registered without a ``requires``/``public`` policy."""
-    if request.endpoint is None or request.endpoint == "static":
+    if request.endpoint is None:
         return
     view = current_app.view_functions.get(request.endpoint)
     if getattr(view, "billing_policy", None) is None:
