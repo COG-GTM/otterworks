@@ -74,11 +74,14 @@ RUN chmod +x \
 
 # Run as a non-root user. The runner only needs to read /workspace and write its
 # own $HOME (aws/kube/helm config); it never needs root. In-cluster it uses the
-# pod ServiceAccount token, which is readable by any uid.
+# pod ServiceAccount token, which is readable by any uid. The only writable
+# paths under /workspace are the two Terraform roots (not their files), where
+# `terraform init` creates .terraform/ and .terraform.lock.hcl to read outputs.
 RUN addgroup -S runner \
   && adduser -S -G runner -h /home/runner runner \
   && chown -R root:root /workspace \
   && chmod -R go-w /workspace \
+  && chown runner:runner /workspace/infrastructure/terraform /workspace/platform/terraform \
   && chown -R runner:runner /home/runner
 USER runner
 
