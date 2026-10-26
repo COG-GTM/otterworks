@@ -41,7 +41,9 @@ const mockRedis = {
 } as unknown as jest.Mocked<RedisAdapter>;
 
 const mockDocumentAccess: jest.Mocked<DocumentAccessChecker> = {
-  canAccess: jest.fn(async (documentId: string) => !documentId.startsWith('private-')),
+  canAccess: jest.fn(
+    async (documentId: string, _token: string) => !documentId.startsWith('private-'),
+  ),
 };
 
 const mockLogger = {
