@@ -794,8 +794,8 @@ pub async fn create_folder(
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
-    // Prefer the gateway-injected identity over the client-supplied owner_id.
-    let owner_id = resolve_owner_id(&req, None).unwrap_or(body.owner_id);
+    // The owner is always the authenticated caller; the body's owner_id is ignored.
+    let owner_id = caller_id(&req)?;
     if let Some(parent) = body.parent_id.as_ref() {
         authorize_folder(&meta, parent, &owner_id).await?;
     }

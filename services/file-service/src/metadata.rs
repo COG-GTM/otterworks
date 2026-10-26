@@ -99,6 +99,7 @@ impl MetadataClient {
             .get_item()
             .table_name(&self.files_table)
             .key("id", AttributeValue::S(file_id.to_string()))
+            .consistent_read(true)
             .send()
             .await
             .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
@@ -341,6 +342,7 @@ impl MetadataClient {
             .get_item()
             .table_name(&self.folders_table)
             .key("id", AttributeValue::S(folder_id.to_string()))
+            .consistent_read(true)
             .send()
             .await
             .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
