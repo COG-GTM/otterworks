@@ -1,4 +1,4 @@
-import { loadConfig, requireJwtSecret } from '../config';
+import { PUBLISHED_JWT_SECRETS, loadConfig, requireJwtSecret } from '../config';
 
 describe('JWT secret configuration', () => {
   const original = process.env.JWT_SECRET;
@@ -31,5 +31,11 @@ describe('JWT secret configuration', () => {
   it('has no built-in fallback secret', () => {
     expect(() => requireJwtSecret(undefined)).toThrow();
     expect(() => requireJwtSecret('')).toThrow();
+  });
+
+  it('refuses secrets that were published in the repository', () => {
+    for (const published of PUBLISHED_JWT_SECRETS) {
+      expect(() => requireJwtSecret(published)).toThrow('published');
+    }
   });
 });

@@ -29,9 +29,23 @@ export interface Config {
   };
 }
 
+// Signing keys that were committed to this repository as defaults at some point.
+export const PUBLISHED_JWT_SECRETS: ReadonlySet<string> = new Set([
+  'dev-jwt-secret-otterworks-2024-change-in-production',
+  'otterworks-local-dev-jwt-secret-change-me-in-production',
+  'otterworks-dev-secret',
+  'dev_jwt_secret_key',
+]);
+
 export function requireJwtSecret(secret: string | undefined): string {
   if (!secret || secret.trim() === '') {
     throw new Error('JWT_SECRET environment variable is required but not set');
+  }
+  if (PUBLISHED_JWT_SECRETS.has(secret.trim())) {
+    throw new Error(
+      'JWT_SECRET is set to a value published in the OtterWorks repository; ' +
+        'generate a new one (e.g. make env)',
+    );
   }
   return secret;
 }
