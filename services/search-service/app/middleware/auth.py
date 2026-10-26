@@ -18,6 +18,8 @@ via the gateway.
 
 from __future__ import annotations
 
+import hmac
+
 import structlog
 from flask import jsonify, request
 
@@ -46,10 +48,8 @@ def require_auth(app):
             return None
 
         # Accept a valid service token if one is configured.
-        if auth_config.service_token:
-            token = _extract_bearer_token()
-            if token and token == auth_config.service_token:
-                return None
+        if has_service_token(auth_config.service_token):
+            return None
 
         # Otherwise require gateway-injected user identity.
         user_id = request.headers.get("X-User-ID", "").strip()
@@ -59,6 +59,17 @@ def require_auth(app):
         endpoint = request.endpoint or ""
         logger.warning("auth_rejected", endpoint=endpoint, path=path)
         return jsonify({"error": "unauthorized"}), 401
+
+
+def has_service_token(service_token: str) -> bool:
+    """Return True if the request carries the configured service token.
+
+    Always False when no service token is configured, so callers fail closed.
+    """
+    if not service_token:
+        return False
+    token = _extract_bearer_token()
+    return bool(token) and hmac.compare_digest(token.encode(), service_token.encode())
 
 
 def _extract_bearer_token() -> str:
