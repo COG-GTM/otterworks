@@ -111,8 +111,8 @@ so out of the box `DevinSessionService` no-ops on tenants. Options:
    (`email`, `password`, `displayName`).
 3. Trigger the failure: `POST /api/v1/files/upload` (NOT `/api/v1/files`) → expect 5xx,
    and confirm no metadata row appears while listing/downloading existing files works.
-4. Repeat 2–3 times and confirm a single open incident for the service (admin API/dashboard), each
-   with its own `devin_session_id`/`devin_session_url` once credentials are loaded.
+4. Repeat 2–3 times and confirm a single open incident for the service (admin API/dashboard)
+   with one `devin_session_id`/`devin_session_url` once credentials are loaded.
 5. Never fire real Devin sessions from local tests — use a fake key locally
    (compose wires `DEVIN_API_KEY: ${DEVIN_API_KEY:-}`, so an exported real key WILL
    create real sessions).

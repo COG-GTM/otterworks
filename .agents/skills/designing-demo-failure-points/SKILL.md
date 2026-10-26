@@ -109,7 +109,8 @@ With all demo switches ON (the tenant image config):
 1. trigger via the UI click → red banner with the concise AWS error;
 2. incident on the admin dashboard + Slack message in #automated-alerts,
    attributed to the clicking user;
-3. repeat the click → a second incident/alert;
+3. repeat the click → no new incident/alert (it dedupes onto the open one);
+   resolve that incident, click again → a second incident/alert;
 4. any seeded data present and other flows still usable.
 
 With all switches OFF (golden behavior): no seeding, operation succeeds with
