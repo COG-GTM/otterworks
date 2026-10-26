@@ -12,6 +12,7 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   20 failures in the window, anonymous attempts are queued (growing spacing, 429 only past a
   30s queue) rather than refused; a valid `ow_ops_device` cookie or `x-ops-ci-key` header
   (`DASHBOARD_CI_KEY`) skips the queue. `global_brake_engaged` is audited once per window.
+  A missing/empty/non-string `passcode` → 400 without touching the limiter.
 - `POST /api/auth/logout` → clears cookie.
 - **Every** other `/api/*` handler calls `requireSession()` first (401 if missing/invalid).
   A Next.js `middleware.ts` also gates all non-login routes.

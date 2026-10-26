@@ -56,6 +56,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Validate before touching the limiter so empty/malformed bodies cannot
+  // reserve global queue slots.
+  let submitted = "";
+  try {
+    const body = (await req.json()) as { passcode?: unknown };
+    submitted = typeof body.passcode === "string" ? body.passcode : "";
+  } catch {
+    submitted = "";
+  }
+  if (!submitted) {
+    return NextResponse.json({ error: "passcode required" }, { status: 400 });
+  }
+
   const client = loginClient(req, ip, secret);
   const rate = checkRateLimit(client);
   if (!rate.allowed) {
@@ -66,19 +79,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  let submitted = "";
-  try {
-    const body = (await req.json()) as { passcode?: unknown };
-    submitted = typeof body.passcode === "string" ? body.passcode : "";
-  } catch {
-    submitted = "";
-  }
-
   // Global brake: anonymous attempts wait for their queue slot instead of
   // being refused, so a facilitator still gets in while an attack is running.
   if (rate.delayMs > 0) await sleep(rate.delayMs);
 
-  const ok = submitted.length > 0 && constantTimeEqual(submitted, passcode);
+  const ok = constantTimeEqual(submitted, passcode);
   if (!ok) {
     const engaged = recordFailure(client);
     await audit("login_fail", ip, client.lane === "ip" ? undefined : client.lane);
