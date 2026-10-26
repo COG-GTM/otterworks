@@ -67,6 +67,8 @@ AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account 
 ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+# Internal credential report-service presents to audit-service (X-Service-Token).
+AUDIT_SERVICE_TOKEN="${AUDIT_SERVICE_TOKEN:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"

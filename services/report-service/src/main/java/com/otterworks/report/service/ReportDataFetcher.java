@@ -8,6 +8,9 @@ import com.otterworks.report.util.ReportDateUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
@@ -114,7 +117,11 @@ public class ReportDataFetcher {
                 logger.info("Fetching audit data from: {}", url);
 
                 // Let RestClientException propagate so fallback data is NOT cached.
-                ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+                HttpHeaders headers = new HttpHeaders();
+                if (StringUtils.isNotEmpty(appConfig.getAuditServiceToken())) {
+                    headers.set("X-Service-Token", appConfig.getAuditServiceToken());
+                }
+                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
                 if (response.getBody() != null && response.getBody().containsKey("events")) {
                     return (List<Map<String, Object>>) response.getBody().get("events");
                 }

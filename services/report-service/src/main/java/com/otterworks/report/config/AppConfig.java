@@ -30,6 +30,9 @@ public class AppConfig {
     @Value("${otterworks.audit-service.url:http://audit-service:8090}")
     private String auditServiceUrl;
 
+    @Value("${otterworks.audit-service.token:}")
+    private String auditServiceToken;
+
     @Value("${otterworks.auth-service.url:http://auth-service:8081}")
     private String authServiceUrl;
 
@@ -69,6 +72,10 @@ public class AppConfig {
 
     public String getAuditServiceUrl() {
         return auditServiceUrl;
+    }
+
+    public String getAuditServiceToken() {
+        return auditServiceToken;
     }
 
     public String getAuthServiceUrl() {

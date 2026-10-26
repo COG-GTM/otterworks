@@ -29,6 +29,8 @@ GOLDEN_HOST_SUFFIX="${GOLDEN_HOST_SUFFIX:-otterworks.app}"
 # service that validates tokens. Generated once if not supplied; pass a stable
 # value (JWT_SECRET=...) across redeploys so previously issued tokens stay valid.
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
+# Internal credential report-service presents to audit-service (X-Service-Token).
+AUDIT_SERVICE_TOKEN="${AUDIT_SERVICE_TOKEN:-$(openssl rand -hex 32)}"
 # Rails (admin-service) session key. Stable value recommended across redeploys.
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
@@ -333,8 +335,15 @@ build_helm_args() {
 
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
+      api-gateway|auth-service|document-service|collab-service|admin-service|audit-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
+    esac
+  fi
+
+  if [ -n "${AUDIT_SERVICE_TOKEN:-}" ]; then
+    case "$service" in
+      audit-service|report-service)
+        add_secret AUDIT_SERVICE_TOKEN "${AUDIT_SERVICE_TOKEN}" ;;
     esac
   fi
 

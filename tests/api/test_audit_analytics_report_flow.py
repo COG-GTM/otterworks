@@ -34,12 +34,6 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     assert query_response.status_code == 200, query_response.text
     assert query_response.json()["total"] >= 1
 
-    history_response = api_client.client.get(
-        f"/api/v1/audit/resources/{resource_id}/history",
-        headers=user.auth_headers,
-    )
-    assert history_response.status_code == 200, history_response.text
-
     user_report_response = api_client.client.get(
         f"/api/v1/audit/reports/user/{user.id}",
         headers=user.auth_headers,
@@ -47,29 +41,36 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
-    compliance_response = api_client.client.get(
-        "/api/v1/audit/reports/compliance",
-        headers=user.auth_headers,
-        params={"period": "30d"},
+    # Cross-user reads and admin-only operations are denied to a regular user.
+    other = api_client.register_user("audit-flow-other")
+    other_get = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=other.auth_headers)
+    assert other_get.status_code == 404, other_get.text
+    other_query = api_client.client.get(
+        "/api/v1/audit/events", headers=other.auth_headers, params={"user_id": user.id}
     )
-    assert compliance_response.status_code == 200, compliance_response.text
+    assert other_query.status_code == 403, other_query.text
+    other_report = api_client.client.get(f"/api/v1/audit/reports/user/{user.id}", headers=other.auth_headers)
+    assert other_report.status_code == 403, other_report.text
 
-    export_response = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "json"},
+    forged = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=other.auth_headers,
+        json={"userId": user.id, "action": "delete", "resourceType": "document", "resourceId": resource_id},
     )
-    assert export_response.status_code == 200, export_response.text
+    assert forged.status_code == 201, forged.text
+    assert forged.json()["userId"] == other.id
 
-    invalid_export = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "xml"},
-    )
-    assert invalid_export.status_code == 400
+    for method, path in [
+        ("GET", f"/api/v1/audit/resources/{resource_id}/history"),
+        ("GET", "/api/v1/audit/reports/compliance"),
+        ("GET", "/api/v1/audit/export"),
+        ("POST", "/api/v1/audit/archive"),
+    ]:
+        response = api_client.client.request(method, path, headers=user.auth_headers)
+        assert response.status_code == 403, f"{method} {path}: {response.status_code} {response.text}"
 
-    archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    anonymous = api_client.client.get("/api/v1/audit/events")
+    assert anonymous.status_code == 401, anonymous.text
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):
