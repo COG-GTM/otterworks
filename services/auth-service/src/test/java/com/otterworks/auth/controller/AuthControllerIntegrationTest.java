@@ -9,10 +9,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -31,6 +38,9 @@ class AuthControllerIntegrationTest {
   @Autowired private UserRepository userRepository;
   @Autowired private RefreshTokenRepository refreshTokenRepository;
   @Autowired private PasswordEncoder passwordEncoder;
+
+  @Value("${jwt.secret}")
+  private String jwtSecret;
 
   @BeforeEach
   void setUp() {
@@ -140,7 +150,8 @@ class AuthControllerIntegrationTest {
     String accessToken =
         registerAndGetAccessToken("update@otterworks.dev", "password123", "Original Name");
 
-    String body = """
+    String body =
+        """
         {"displayName": "Updated Name"}
         """;
 
@@ -230,6 +241,27 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
+  void users_shouldIgnoreAdminRoleClaimForNonAdminUser() throws Exception {
+    registerAndGetAccessToken("claims@otterworks.dev", "password123", "Claims User");
+    User user = userRepository.findByEmail("claims@otterworks.dev").orElseThrow();
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users")
+                .header("Authorization", "Bearer " + signedToken(user.getId().toString())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void profile_shouldRejectTokenForUnknownSubject() throws Exception {
+    mockMvc
+        .perform(
+            get("/api/v1/auth/profile")
+                .header("Authorization", "Bearer " + signedToken(UUID.randomUUID().toString())))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
   void users_shouldReturnPaginatedListForAdmin() throws Exception {
     User admin = new User();
     admin.setEmail("admin-test@otterworks.dev");
@@ -262,6 +294,16 @@ class AuthControllerIntegrationTest {
                 .param("size", "10"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.content").isArray());
+  }
+
+  private String signedToken(String subject) {
+    return Jwts.builder()
+        .subject(subject)
+        .claim("roles", List.of("ADMIN", "USER"))
+        .claim("type", "access")
+        .expiration(new Date(System.currentTimeMillis() + 3_600_000))
+        .signWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
+        .compact();
   }
 
   private void createTestUser(String email, String password, String displayName) {
