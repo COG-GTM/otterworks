@@ -38,8 +38,8 @@ pub fn check_file_access(
     if file.owner_id == *caller {
         return Ok(());
     }
-    let shared_with_caller = !file.is_trashed
-        && share.map_or(false, |s| s.file_id == file.id && s.shared_with == *caller);
+    let shared_with_caller =
+        !file.is_trashed && share.is_some_and(|s| s.file_id == file.id && s.shared_with == *caller);
     match (shared_with_caller, access) {
         (true, FileAccess::View) => Ok(()),
         (true, FileAccess::Manage) => Err(ServiceError::Forbidden(
@@ -208,12 +208,7 @@ mod tests {
             404
         );
         assert_eq!(
-            status(check_file_access(
-                &f,
-                &f.owner_id.clone(),
-                None,
-                FileAccess::View
-            )),
+            status(check_file_access(&f, &f.owner_id, None, FileAccess::View)),
             200
         );
     }
