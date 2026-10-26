@@ -53,6 +53,9 @@ func isTrusted(ip net.IP, trusted []*net.IPNet) bool {
 // ClientIP replaces chi's RealIP. r.RemoteAddr is rewritten to the client
 // address only when the TCP peer is a trusted proxy, in which case the
 // right-most X-Forwarded-For hop that is not itself a trusted proxy is used.
+// Walking past trusted hops is what lets browser traffic (client -> ingress ->
+// web-app nginx -> gateway) key on the client rather than the ingress pod, so
+// TRUSTED_PROXY_CIDRS should list only proxy ranges, not client-reachable ones.
 // True-Client-IP and X-Real-IP are never honoured. The forwarding headers are
 // then normalised so the reverse proxy sends backends X-Forwarded-For and
 // X-Real-IP containing only the resolved client address.
