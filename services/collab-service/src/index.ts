@@ -14,6 +14,8 @@ import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
+import { createCollabApiRouter } from './routes/collab-api';
+import { HttpDocumentAccessChecker } from './services/document-access';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { setupWSConnection } = require('y-websocket/bin/utils');
@@ -68,18 +70,25 @@ app.get('/metrics', async (_req, res) => {
   }
 });
 
-// Presence endpoint
-app.get('/api/v1/collab/documents/:id/presence', (req, res) => {
-  const documentId = req.params.id;
-  const presence = presenceHandler.getDocumentPresence(documentId);
-  res.json(presence);
-});
-
-// Active documents listing
-app.get('/api/v1/collab/documents', (_req, res) => {
-  const activeDocuments = presenceHandler.getActiveDocuments();
-  res.json({ documents: activeDocuments, count: activeDocuments.length });
-});
+// Collab REST API: authenticated, presence scoped to callers authorized for the document
+app.use(
+  '/api/v1/collab',
+  createCollabApiRouter({
+    jwtSecret: config.jwt.secret,
+    presenceHandler: {
+      getDocumentPresence: (id) => presenceHandler.getDocumentPresence(id),
+      getActiveDocuments: () => presenceHandler.getActiveDocuments(),
+      getActiveDocumentsForUser: (userId) =>
+        presenceHandler.getActiveDocumentsForUser(userId),
+    },
+    documentAccess: new HttpDocumentAccessChecker(
+      config.documentService.url,
+      config.documentService.timeoutMs,
+      logger,
+    ),
+    logger,
+  }),
+);
 
 // Socket.IO server
 const io = new SocketIOServer(httpServer, {
