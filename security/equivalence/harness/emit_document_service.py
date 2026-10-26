@@ -91,6 +91,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+#: Signs the fixture's own bearer tokens; the service only trusts verified JWTs.
+FIXTURE_JWT_SECRET = "equivalence-fixture-jwt-secret"  # noqa: S105
+
+
 class Fixture:
     """The seeded document-service under test: database, archive, environment."""
 
@@ -215,9 +219,12 @@ async def http_case(fixture: Fixture, case: dict[str, Any]) -> Any:
 
 async def share_link_http_roundtrip(fixture: Fixture, args: dict[str, Any]) -> dict[str, Any]:
     """Mint a share link over HTTP and read the document back through it."""
+    import jwt
+
     document_id = args["document_id"]
     owner_id = args["owner_id"]
-    headers = {"Authorization": "Bearer fixture", "X-User-ID": owner_id}
+    token = jwt.encode({"user_id": owner_id}, FIXTURE_JWT_SECRET, algorithm="HS256")
+    headers = {"Authorization": f"Bearer {token}"}
     async with AppClient(fixture) as client:
         minted = await client.post(
             f"/api/v1/documents/{document_id}/share", headers=headers
@@ -329,6 +336,7 @@ async def main() -> int:
     spec = json.loads(args.cases.read_text(encoding="utf-8"))
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
 
+    os.environ["JWT_SECRET"] = FIXTURE_JWT_SECRET
     for key, value in spec.get("env", {}).items():
         os.environ[key] = value
 
