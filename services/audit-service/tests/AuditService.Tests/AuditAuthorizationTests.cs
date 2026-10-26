@@ -252,9 +252,12 @@ public sealed class AuditAuthorizationTests : IAsyncLifetime
     private static async Task<(WebApplication App, HttpClient Client)> StartAsync(string? secret, IAuditService audit)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+
+        // Drop appsettings.json / ASPNETCORE_URLS so the service's fixed :8090 endpoint is not bound.
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["JWT_SECRET"] = secret });
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["JWT_SECRET"] = secret });
         builder.Services.AddSingleton(audit);
         builder.Services.AddAuditAuthentication(builder.Configuration);
 
