@@ -128,6 +128,9 @@ def bola_files(ctx: ScanContext) -> Result:
         if response.status_code < 300:
             breached.append(f"{method} {path} -> {response.status_code}")
         elif unavailable(response):
+            if breached:
+                # A confirmed breach stands even if a later request could not be assessed.
+                break
             return self.result(
                 Verdict.INCONCLUSIVE,
                 f"{method} {path} returned {response.status_code}; the backend is failing or "
