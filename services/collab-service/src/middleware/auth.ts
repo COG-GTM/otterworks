@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
 
 export interface AuthenticatedSocket extends Socket {
   user?: AuthenticatedUser;
+  accessToken?: string;
 }
 
 interface JwtPayload {
@@ -20,8 +21,41 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
+}
+
+const ADMIN_ROLES = new Set(['ADMIN', 'ROLE_ADMIN']);
+
+export function userFromToken(token: string, jwtSecret: string): AuthenticatedUser {
+  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  if (!decoded || typeof decoded.sub !== 'string' || !decoded.sub) {
+    throw new Error('Token has no subject');
+  }
+  // auth-service mints `type: access` and `type: refresh`; only access tokens
+  // may be used here (same rule as auth-service's JwtAuthFilter).
+  if (decoded.type !== 'access') {
+    throw new Error('Not an access token');
+  }
+  return {
+    userId: decoded.sub,
+    email: decoded.email || '',
+    displayName: decoded.name || decoded.display_name || 'Anonymous',
+    roles: Array.isArray(decoded.roles) ? decoded.roles : [],
+  };
+}
+
+export function extractBearerToken(
+  authorization: string | undefined,
+): string | undefined {
+  if (!authorization || !authorization.startsWith('Bearer ')) return undefined;
+  const token = authorization.slice('Bearer '.length).trim();
+  return token || undefined;
+}
+
+export function isAdmin(user: AuthenticatedUser): boolean {
+  return user.roles.some((role) => ADMIN_ROLES.has(String(role).toUpperCase()));
 }
 
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
@@ -37,17 +71,13 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const user = userFromToken(token, jwtSecret);
 
-      (socket as AuthenticatedSocket).user = {
-        userId: decoded.sub,
-        email: decoded.email || '',
-        displayName: decoded.name || decoded.display_name || 'Anonymous',
-        roles: decoded.roles || [],
-      };
+      (socket as AuthenticatedSocket).user = user;
+      (socket as AuthenticatedSocket).accessToken = token;
 
       logger.debug(
-        { socketId: socket.id, userId: decoded.sub },
+        { socketId: socket.id, userId: user.userId },
         'connection_authenticated',
       );
       next();
@@ -59,6 +89,10 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
       next(new Error('Invalid or expired token'));
     }
   };
+}
+
+export function extractAccessToken(socket: Socket): string | undefined {
+  return (socket as AuthenticatedSocket).accessToken;
 }
 
 export function extractUserFromSocket(socket: Socket): AuthenticatedUser {
