@@ -28,6 +28,12 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 
+auth:
+  bootstrap-admin:
+    email: ${AUTH_BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:}
+    display-name: ${AUTH_BOOTSTRAP_ADMIN_DISPLAY_NAME:Administrator}
+
 jwt:
   secret: ${JWT_SECRET:dev-jwt-secret-otterworks-2024-change-in-production}
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
