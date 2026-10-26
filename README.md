@@ -34,6 +34,8 @@ docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
+No administrator account is seeded. To create the first admin, set `AUTH_BOOTSTRAP_ADMIN_EMAIL` and `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (at least 12 characters, from a secret store in shared environments) before starting auth-service. On startup it creates that ADMIN account only if no administrator exists yet, and it never promotes an existing account.
+
 To stop everything:
 
 ```bash

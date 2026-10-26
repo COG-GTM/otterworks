@@ -26,8 +26,10 @@ description: How to test OtterWorks' failed-upload → admin-service → Slack a
 - Web app registration is open at http://localhost:3000/register (min 8-char password).
   The JWT `email` claim of the logged-in user is what reaches the alert as `labels.reporter_email`
   (api-gateway injects `X-User-Email` from the JWT and strips any client-supplied value).
-- Admin dashboard (localhost:4200) login: `admin@otterworks.dev` / `Admin123!`
-  (seeded by auth-service migration V1). Incidents page: /incidents.
+- Admin dashboard (localhost:4200) login: no admin is seeded. Export
+  `AUTH_BOOTSTRAP_ADMIN_EMAIL` / `AUTH_BOOTSTRAP_ADMIN_PASSWORD` (min 12 chars) before
+  `docker compose up auth-service`; auth-service creates that admin on startup if none exists.
+  Incidents page: /incidents.
 
 ## Verifying the Slack side
 - Alerts go to #automated-alerts (as of 2026-08: channel id C0ALNRR4PSQ, team "Cog GTM [DEMO]";
