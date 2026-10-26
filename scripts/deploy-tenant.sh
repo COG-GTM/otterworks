@@ -22,6 +22,7 @@
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+#   ALERT_WEBHOOK_SECRET is reused from the tenant or generated if unset.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -70,6 +71,14 @@ JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
+# Shared secret file-/notification-service send to admin-service's alert
+# webhook, which rejects every request without it. Reuse the tenant's current
+# value so services redeployed separately stay in sync with admin-service.
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NS}" get secret admin-service-secrets \
+  -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+# admin-service rejects the old compose default; replace it instead of reusing it.
+[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
 T_REDIS_HOST="redis"
 T_MEILI_URL="http://meilisearch:7700"
