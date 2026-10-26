@@ -101,6 +101,18 @@ def _require_user_id(request: Request) -> UUID:
     return user_id
 
 
+def _resolve_list_owner(request: Request, owner_id: UUID | None) -> UUID:
+    """Scope a listing to the authenticated caller.
+
+    ``owner_id`` is accepted only when it names the caller, so a listing can
+    never be widened to another user or, with no identity, to every owner.
+    """
+    user_id = _require_user_id(request)
+    if owner_id is not None and owner_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return user_id
+
+
 def _ensure_owner(document: object, user_id: UUID) -> None:
     if getattr(document, "owner_id", None) != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -155,15 +167,17 @@ async def create_document_no_slash(
 
 @router.get("/search", response_model=DocumentListResponse)
 async def search_documents(
+    request: Request,
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search documents by title or content."""
+    """Search the caller's documents by title or content."""
+    user_id = _require_user_id(request)
     await _maybe_inject_latency()
     service = DocumentService(db)
-    items, total = await service.search(q, page=page, size=size)
+    items, total = await service.search(q, owner_id=user_id, page=page, size=size)
     return DocumentListResponse(
         items=items,
         total=total,
@@ -199,7 +213,7 @@ async def get_shared_document(
 
 
 async def _do_list_documents(
-    owner_id: UUID | None,
+    owner_id: UUID,
     folder_id: UUID | None,
     page: int,
     size: int,
@@ -220,7 +234,7 @@ async def _do_list_documents(
 
 
 async def _do_filter_documents(
-    owner_id: UUID | None,
+    owner_id: UUID,
     folder_id: UUID | None,
     title: str | None,
     content_type: str | None,
@@ -233,7 +247,7 @@ async def _do_filter_documents(
     await _maybe_inject_latency()
     repo = DocumentQueryRepository(db)
     filters = {
-        "owner_id": str(owner_id) if owner_id else None,
+        "owner_id": str(owner_id),
         "title_contains": title,
         "content_type": content_type,
         "folder_id": str(folder_id) if folder_id else None,
@@ -288,7 +302,7 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _resolve_list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -322,7 +336,7 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _resolve_list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
