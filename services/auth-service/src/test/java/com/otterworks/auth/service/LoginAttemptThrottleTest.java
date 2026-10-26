@@ -7,6 +7,12 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -42,13 +48,12 @@ class LoginAttemptThrottleTest {
   }
 
   @Test
-  void locksAccountAfterMaxFailures() {
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.checkAllowed("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
+  void locksAccountAfterMaxAttempts() {
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
 
-    assertThatThrownBy(() -> throttle.checkAllowed("a@otterworks.dev"))
+    assertThatThrownBy(() -> throttle.beginAttempt("a@otterworks.dev"))
         .isInstanceOf(LoginThrottledException.class)
         .satisfies(
             ex -> assertThat(((LoginThrottledException) ex).getRetryAfterSeconds()).isEqualTo(900));
@@ -56,57 +61,100 @@ class LoginAttemptThrottleTest {
 
   @Test
   void keyIsCaseAndWhitespaceInsensitive() {
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.recordFailure(" A@OtterWorks.dev");
-    throttle.recordFailure("A@OTTERWORKS.DEV ");
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt(" A@OtterWorks.dev");
+    throttle.beginAttempt("A@OTTERWORKS.DEV ");
 
-    assertThatThrownBy(() -> throttle.checkAllowed("a@otterworks.dev"))
+    assertThatThrownBy(() -> throttle.beginAttempt("a@otterworks.dev"))
         .isInstanceOf(LoginThrottledException.class);
   }
 
   @Test
   void lockIsPerAccount() {
     for (int i = 0; i < 3; i++) {
-      throttle.recordFailure("victim@otterworks.dev");
+      throttle.beginAttempt("victim@otterworks.dev");
     }
-    throttle.checkAllowed("other@otterworks.dev");
+    throttle.beginAttempt("other@otterworks.dev");
   }
 
   @Test
   void lockExpires() {
     for (int i = 0; i < 3; i++) {
-      throttle.recordFailure("a@otterworks.dev");
+      throttle.beginAttempt("a@otterworks.dev");
     }
     clock.now = clock.now.plus(Duration.ofMinutes(15));
-    throttle.checkAllowed("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
   }
 
   @Test
-  void failuresOutsideWindowDoNotAccumulate() {
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
+  void attemptsOutsideWindowDoNotAccumulate() {
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
     clock.now = clock.now.plus(Duration.ofMinutes(16));
-    throttle.recordFailure("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
 
-    throttle.checkAllowed("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
   }
 
   @Test
-  void successResetsFailures() {
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
+  void successResetsAttempts() {
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
     throttle.recordSuccess("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
-    throttle.recordFailure("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
 
-    throttle.checkAllowed("a@otterworks.dev");
+    throttle.beginAttempt("a@otterworks.dev");
+  }
+
+  @Test
+  void concurrentAttemptsCannotExceedLimit() throws Exception {
+    ExecutorService pool = Executors.newFixedThreadPool(16);
+    try {
+      List<Callable<Boolean>> calls = new ArrayList<>();
+      for (int i = 0; i < 64; i++) {
+        calls.add(
+            () -> {
+              try {
+                throttle.beginAttempt("a@otterworks.dev");
+                return true;
+              } catch (LoginThrottledException e) {
+                return false;
+              }
+            });
+      }
+      long admitted = 0;
+      for (Future<Boolean> f : pool.invokeAll(calls)) {
+        if (f.get()) {
+          admitted++;
+        }
+      }
+      assertThat(admitted).isEqualTo(3);
+    } finally {
+      pool.shutdownNow();
+    }
   }
 
   @Test
   void trackedAccountsAreBounded() {
     for (int i = 0; i < 1000; i++) {
-      throttle.recordFailure("user" + i + "@otterworks.dev");
+      throttle.beginAttempt("user" + i + "@otterworks.dev");
     }
+    assertThat(throttle.trackedAccounts()).isEqualTo(100);
+  }
+
+  @Test
+  void unknownEmailsDoNotEvictLockedAccounts() {
+    for (int i = 0; i < 3; i++) {
+      throttle.beginAttempt("victim@otterworks.dev");
+    }
+    for (int i = 0; i < 1000; i++) {
+      throttle.beginAttempt("user" + i + "@otterworks.dev");
+    }
+
+    assertThatThrownBy(() -> throttle.beginAttempt("victim@otterworks.dev"))
+        .isInstanceOf(LoginThrottledException.class);
     assertThat(throttle.trackedAccounts()).isEqualTo(100);
   }
 }

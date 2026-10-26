@@ -116,7 +116,7 @@ class AuthServiceTest {
 
     assertThat(response.getAccessToken()).isEqualTo("access-token");
     assertThat(response.getUser().getEmail()).isEqualTo("test@otterworks.dev");
-    verify(loginAttemptThrottle).checkAllowed("test@otterworks.dev");
+    verify(loginAttemptThrottle).beginAttempt("test@otterworks.dev");
     verify(loginAttemptThrottle).recordSuccess("test@otterworks.dev");
   }
 
@@ -148,7 +148,7 @@ class AuthServiceTest {
   }
 
   @Test
-  void login_shouldRecordFailureForWrongPasswordAndUnknownEmail() {
+  void login_shouldCountAttemptsForWrongPasswordAndUnknownEmail() {
     LoginRequest wrongPassword = new LoginRequest();
     wrongPassword.setEmail("test@otterworks.dev");
     wrongPassword.setPassword("wrongpassword");
@@ -165,8 +165,8 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.login(unknown))
         .isInstanceOf(IllegalArgumentException.class);
 
-    verify(loginAttemptThrottle).recordFailure("test@otterworks.dev");
-    verify(loginAttemptThrottle).recordFailure("nonexistent@otterworks.dev");
+    verify(loginAttemptThrottle).beginAttempt("test@otterworks.dev");
+    verify(loginAttemptThrottle).beginAttempt("nonexistent@otterworks.dev");
     verify(loginAttemptThrottle, never()).recordSuccess(any());
   }
 
@@ -178,7 +178,7 @@ class AuthServiceTest {
 
     doThrow(new LoginThrottledException(60))
         .when(loginAttemptThrottle)
-        .checkAllowed("test@otterworks.dev");
+        .beginAttempt("test@otterworks.dev");
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(LoginThrottledException.class);
