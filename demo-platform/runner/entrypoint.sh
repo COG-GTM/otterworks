@@ -67,9 +67,10 @@ die()  { err "$*"; exit 1; }
 # dashboard enforces -- so it can't smuggle options or odd characters further.
 validate_tenant_branch() {
   [ -n "${TENANT_BRANCH:-}" ] || return 0
-  [[ "${TENANT_BRANCH}" =~ ^((workshop|demo)[-/][A-Za-z0-9][A-Za-z0-9._-]{0,62}|main)$ ]] \
-    && [[ "${TENANT_BRANCH}" != *..* ]] \
-    || die "refusing TENANT_BRANCH '${TENANT_BRANCH}': expected workshop-<id>, demo-<id> or main"
+  if [[ ! "${TENANT_BRANCH}" =~ ^((workshop|demo)[-/][A-Za-z0-9][A-Za-z0-9._-]{0,62}|main)$ ]] \
+    || [[ "${TENANT_BRANCH}" == *..* ]]; then
+    die "refusing TENANT_BRANCH '${TENANT_BRANCH}': expected workshop-<id>, demo-<id> or main"
+  fi
   if [ -n "${REPO_HTTPS_URL:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
     log "REPO_HTTPS_URL/GITHUB_TOKEN are ignored: the runner never checks out tenant branches"
   fi
