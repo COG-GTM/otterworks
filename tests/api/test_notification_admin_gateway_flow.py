@@ -57,6 +57,32 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     )
     assert preferences_put.status_code == 204, preferences_put.text
 
+    victim = api_client.register_user("notification-victim")
+    cross_user_put = api_client.client.put(
+        "/api/v1/preferences",
+        headers=user.auth_headers,
+        json={"userId": victim.id, "eventType": "file_shared", "channels": []},
+    )
+    assert cross_user_put.status_code == 403, cross_user_put.text
+
+    cross_user_get = api_client.client.get(
+        "/api/v1/preferences",
+        headers=user.auth_headers,
+        params={"user_id": victim.id},
+    )
+    assert cross_user_get.status_code == 403, cross_user_get.text
+
+    victim_preferences = api_client.client.get("/api/v1/preferences", headers=victim.auth_headers)
+    assert victim_preferences.status_code == 200, victim_preferences.text
+    assert victim_preferences.json()["channels"]["file_shared"], victim_preferences.text
+
+    unknown_event_put = api_client.client.put(
+        "/api/v1/preferences",
+        headers=user.auth_headers,
+        json={"eventType": "not_a_real_event", "channels": ["EMAIL"]},
+    )
+    assert unknown_event_put.status_code == 400, unknown_event_put.text
+
 
 def test_admin_health_users_features_and_permissions(api_client):
     user = api_client.register_user("admin-negative")
