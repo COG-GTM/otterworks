@@ -83,6 +83,7 @@ module Api
             affected_service: affected_service,
             reporter_id:      nil, # system-generated
           )
+          ChaosIncidentRegistry.record(incident)
 
           session_result = nil
           if auto_investigate

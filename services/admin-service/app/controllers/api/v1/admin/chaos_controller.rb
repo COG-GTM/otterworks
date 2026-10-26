@@ -11,6 +11,7 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -32,7 +33,7 @@ module Api
           # Start background probe to generate traffic → Prometheus metrics → Grafana alert
           ChaosProbeService.start(service: svc, redis_key: redis_key)
 
-          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s) by #{current_user_id}")
 
           render json: {
             status:     'chaos_active',
@@ -46,23 +47,24 @@ module Api
           keys = redis.keys('chaos:*')
           redis.del(*keys) if keys.any?
 
-          # Resolve any open incidents for chaos-managed services so the next
-          # demo run can create fresh incidents without hitting the dedup guard.
+          # Resolve only incidents the alert pipeline attributed to a chaos run
+          # (ChaosIncidentRegistry), so the next run is not blocked by the dedup
+          # guard. Incidents opened while no chaos flag was set stay untouched.
           resolved_incidents = []
           VALID_SCENARIOS.each_key do |svc|
-            Incident.where(affected_service: svc)
-                    .where(status: %w[open investigating])
-                    .each do |incident|
-              begin
-                incident.resolve!
-                resolved_incidents << incident.id
-              rescue Incident::InvalidTransitionError => e
-                Rails.logger.warn("CHAOS RESET: skipping incident #{incident.id}: #{e.message}")
-              end
+            ids = ChaosIncidentRegistry.ids(redis, svc)
+            next if ids.empty?
+
+            Incident.active.where(id: ids, affected_service: svc).each do |incident|
+              incident.resolve!
+              resolved_incidents << incident.id
+            rescue Incident::InvalidTransitionError => e
+              Rails.logger.warn("CHAOS RESET: skipping incident #{incident.id}: #{e.message}")
             end
+            redis.del(ChaosIncidentRegistry.key(svc))
           end
 
-          Rails.logger.warn("CHAOS RESET: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
+          Rails.logger.warn("CHAOS RESET by #{current_user_id}: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
 
           render json: { status: 'reset', cleared: keys, resolved_incidents: resolved_incidents }
         end
@@ -76,9 +78,11 @@ module Api
           end
         end
 
+        # Optional second factor for scripted callers. The admin JWT is always
+        # required; when CHAOS_SECRET is set the header must match it too.
         def verify_chaos_secret
-          expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          expected = ENV.fetch('CHAOS_SECRET', nil).to_s
+          return if expected.empty?
 
           provided = request.headers['X-Chaos-Secret']
           return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
