@@ -4,18 +4,25 @@ Loads the OpenAPI spec from shared/openapi/search-service.yaml and validates
 that a running search-service instance conforms to the documented contract.
 
 Usage:
-    SEARCH_SERVICE_URL=http://localhost:8087 pytest tests/contract/test_search_contract.py -v
+    SEARCH_SERVICE_URL=http://localhost:8087 JWT_SECRET=<service secret> \
+        pytest tests/contract/test_search_contract.py -v
+
+The service verifies a bearer JWT on every request, so the tests sign one with
+JWT_SECRET (defaulting to the docker-compose development secret). The index and
+analytics tests run only when SEARCH_SERVICE_TOKEN is set.
 
 Requirements:
-    pip install pyyaml jsonschema requests pytest
+    pip install pyyaml jsonschema requests pytest PyJWT
 """
 
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
+import jwt
 import pytest
 import requests
 import yaml
@@ -23,6 +30,26 @@ from jsonschema import validate
 
 SPEC_PATH = Path(__file__).resolve().parents[2] / "shared" / "openapi" / "search-service.yaml"
 BASE_URL = os.environ.get("SEARCH_SERVICE_URL", "http://localhost:8087")
+JWT_SECRET = os.environ.get(
+    "JWT_SECRET", "otterworks-local-dev-jwt-secret-change-me-in-production"
+)
+
+
+def _access_token(sub: str = "test-user-001") -> str:
+    now = int(time.time())
+    return jwt.encode(
+        {"sub": sub, "type": "access", "iat": now, "exp": now + 600}, JWT_SECRET, algorithm="HS256"
+    )
+
+
+AUTH = {"Authorization": f"Bearer {_access_token()}"}
+
+# Index writes and analytics are service-only; they need SEARCH_SERVICE_TOKEN.
+SERVICE_TOKEN = os.environ.get("SEARCH_SERVICE_TOKEN", "")
+SERVICE_AUTH = {"Authorization": f"Bearer {SERVICE_TOKEN}"}
+requires_service_token = pytest.mark.skipif(
+    not SERVICE_TOKEN, reason="SEARCH_SERVICE_TOKEN is not set"
+)
 
 
 @pytest.fixture(scope="session")
@@ -119,7 +146,7 @@ class TestSearchEndpoint:
         """Searching without q parameter returns 400."""
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/",
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -131,7 +158,7 @@ class TestSearchEndpoint:
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/",
             params={"q": "test", "page": "abc"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -142,7 +169,7 @@ class TestSearchEndpoint:
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/",
             params={"q": "test", "page": "1", "size": "10"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -163,7 +190,7 @@ class TestSuggestEndpoint:
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/suggest",
             params={"q": "a"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -176,7 +203,7 @@ class TestSuggestEndpoint:
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/suggest",
             params={"q": "tes"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -193,7 +220,7 @@ class TestAdvancedSearchEndpoint:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/advanced",
             json={},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -212,7 +239,7 @@ class TestAdvancedSearchEndpoint:
                 "page": 1,
                 "size": 10,
             },
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -225,7 +252,7 @@ class TestAdvancedSearchEndpoint:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/advanced",
             json={"page": "invalid"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=AUTH,
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -271,6 +298,7 @@ class TestMetricsEndpoint:
         assert "search_service_requests_total" in body or "search_service" in body
 
 
+@requires_service_token
 class TestAnalyticsEndpoint:
     """Tests for GET /api/v1/search/analytics."""
 
@@ -278,7 +306,7 @@ class TestAnalyticsEndpoint:
         """Analytics endpoint returns valid schema."""
         resp = requests.get(
             f"{BASE_URL}/api/v1/search/analytics",
-            headers={"X-User-ID": "test-user-001"},
+            headers=SERVICE_AUTH,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -291,6 +319,7 @@ class TestAnalyticsEndpoint:
         assert isinstance(body["total_searches"], int)
 
 
+@requires_service_token
 class TestIndexEndpoints:
     """Tests for indexing endpoints."""
 
@@ -298,7 +327,7 @@ class TestIndexEndpoints:
         """POST /api/v1/search/index/document without body returns 400."""
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/document",
-            headers={"Content-Type": "application/json", "X-User-ID": "test-user-001"},
+            headers={"Content-Type": "application/json", **SERVICE_AUTH},
         )
         # Flask returns 400 for missing JSON body
         assert resp.status_code == 400
@@ -310,7 +339,7 @@ class TestIndexEndpoints:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/document",
             json={"title": "Test Doc"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=SERVICE_AUTH,
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -320,7 +349,7 @@ class TestIndexEndpoints:
         """POST /api/v1/search/index/file without body returns 400."""
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/file",
-            headers={"Content-Type": "application/json", "X-User-ID": "test-user-001"},
+            headers={"Content-Type": "application/json", **SERVICE_AUTH},
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -331,7 +360,7 @@ class TestIndexEndpoints:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/file",
             json={"id": "file-001"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=SERVICE_AUTH,
         )
         assert resp.status_code == 400
         body = resp.json()

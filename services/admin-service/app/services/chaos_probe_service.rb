@@ -13,7 +13,8 @@ class ChaosProbeService
   SERVICE_PROBES = {
     'search-service' => {
       url: 'http://search-service:8087/api/v1/search/suggest?q=test',
-      headers: { 'X-User-ID' => 'chaos-probe' },
+      # search-service verifies a JWT on every request and ignores X-User-ID.
+      jwt_subject: 'chaos-probe',
     },
     # file-service upload expects multipart/form-data with a "file" field.
     # Sending JSON results in a 400 before the chaos flag is ever checked.
@@ -93,9 +94,17 @@ class ChaosProbeService
               end
 
     config[:headers]&.each { |k, v| request[k] = v }
+    request['Authorization'] = "Bearer #{probe_token(config[:jwt_subject])}" if config[:jwt_subject]
     http.request(request)
   rescue StandardError
     nil
+  end
+
+  # Short-lived access token signed with the shared JWT_SECRET, for services
+  # that authenticate the caller themselves.
+  def self.probe_token(subject)
+    now = Time.now.to_i
+    JWT.encode({ sub: subject, type: 'access', iat: now, exp: now + 60 }, ENV.fetch('JWT_SECRET', ''), 'HS256')
   end
 
   # Builds a multipart/form-data POST with a small dummy file.

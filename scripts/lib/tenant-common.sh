@@ -293,7 +293,7 @@ build_helm_args() {
 
   if [ -n "${JWT_SECRET}" ]; then
     case "$service" in
-      api-gateway|auth-service|document-service|collab-service|admin-service)
+      api-gateway|auth-service|document-service|collab-service|admin-service|search-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
     esac
   fi
@@ -344,7 +344,7 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.HOST=0.0.0.0" --set-string "config.PORT=8087")
       EXTRA_ARGS+=(--set-string "config.MEILISEARCH_URL=${T_MEILI_URL}")
-      EXTRA_ARGS+=(--set-string "config.REQUIRE_AUTH=false" --set-string "config.SQS_ENABLED=false") ;;
+      EXTRA_ARGS+=(--set-string "config.SQS_ENABLED=false") ;;
     analytics-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       # Drop the nightly usage-rollup CronJob for ephemeral tenants: it is the

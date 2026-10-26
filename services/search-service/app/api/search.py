@@ -9,6 +9,7 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import current_user_id
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -41,13 +42,17 @@ def _get_service() -> MeiliSearchService:
     return current_app.config["SEARCH_SERVICE"]
 
 
+def _user_required() -> tuple:
+    """Reject a caller with no user identity (a service token) from per-user search."""
+    return jsonify({"error": "a user access token is required"}), 403
+
+
 @search_bp.route("/", methods=["GET"], strict_slashes=False)
 def search_documents() -> tuple:
     """Full-text search across documents and files.
 
     Query params: q (required), type, page, size
-    Results are automatically scoped to the authenticated user via the
-    ``X-User-ID`` header set by the API gateway.
+    Results are scoped to the user authenticated by the verified JWT.
     """
     query = request.args.get("q", "")
     try:
@@ -56,7 +61,9 @@ def search_documents() -> tuple:
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
+    owner_id = current_user_id()
+    if owner_id is None:
+        return _user_required()
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
@@ -121,13 +128,16 @@ def advanced_search() -> tuple:
     """Advanced search with filters: date range, owner, type, tags.
 
     JSON body: {q, type, tags, date_from, date_to, page, size}
-    owner_id is always derived from X-User-ID for tenant isolation.
+    owner_id is always derived from the verified JWT for tenant isolation.
     """
+    owner_id = current_user_id()
+    if owner_id is None:
+        return _user_required()
+
     data = request.get_json() or {}
 
     query = data.get("q")
     doc_type = data.get("type")
-    owner_id = request.headers.get("X-User-ID", "").strip() or None
     tags = data.get("tags")
     date_from = data.get("date_from")
     date_to = data.get("date_to")
