@@ -69,28 +69,33 @@ def _get_jwt_secret() -> str:
     return os.environ.get("JWT_SECRET", "")
 
 
-def _extract_user_id(request: Request) -> UUID | None:
-    """Extract user ID from the Authorization JWT."""
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
-        secret = _get_jwt_secret()
-        if secret:
-            try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
-                user_id_str = payload.get("user_id") or payload.get("sub")
-                if user_id_str:
-                    return UUID(str(user_id_str))
-            except (jwt.PyJWTError, ValueError):
-                pass
-        else:
-            forwarded_user_id = request.headers.get("X-User-ID")
-            if forwarded_user_id:
-                try:
-                    return UUID(str(forwarded_user_id))
-                except ValueError:
-                    pass
+def require_jwt_secret() -> None:
+    """Refuse to run without a JWT secret: without one no request can be authenticated."""
+    if not _get_jwt_secret():
+        raise RuntimeError("JWT_SECRET must be set: document-service cannot authenticate callers")
 
+
+def _extract_user_id(request: Request) -> UUID | None:
+    """Extract user ID from a bearer JWT signed with ``JWT_SECRET``.
+
+    Fails closed: with no secret configured no caller is authenticated, and a
+    forwarded ``X-User-ID`` header is never accepted as identity.
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    secret = _get_jwt_secret()
+    if not secret:
+        logger.error("jwt_secret_not_configured")
+        return None
+    token = auth_header[len("Bearer "):]
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+        user_id_str = payload.get("user_id") or payload.get("sub")
+        if user_id_str:
+            return UUID(str(user_id_str))
+    except (jwt.PyJWTError, ValueError):
+        pass
     return None
 
 
