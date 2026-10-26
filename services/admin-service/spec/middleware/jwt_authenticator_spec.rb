@@ -36,6 +36,16 @@ RSpec.describe JwtAuthenticator do
     expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
   end
 
+  it 'rejects every token when JWT_SECRET is a value published in the repository' do
+    allow(Rails.application.credentials).to receive(:jwt_secret).and_return(nil)
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with('JWT_SECRET').and_return('dev_jwt_secret_key')
+
+    status, _headers, body = call(JWT.encode(payload, 'dev_jwt_secret_key', 'HS256'))
+    expect(status).to eq(401)
+    expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
+  end
+
   it 'rejects every token when no JWT secret is configured' do
     allow(Rails.application.credentials).to receive(:jwt_secret).and_return(nil)
     allow(Rails.application.secrets).to receive(:jwt_secret).and_return(nil)
