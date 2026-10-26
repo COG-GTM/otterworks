@@ -33,6 +33,14 @@ jwt:
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
   refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:2592000}
 
+auth:
+  # Per-account failed-login lockout (in-memory, per instance).
+  login-throttle:
+    max-failures: ${LOGIN_THROTTLE_MAX_FAILURES:5}
+    window-seconds: ${LOGIN_THROTTLE_WINDOW_SECONDS:900}
+    lockout-seconds: ${LOGIN_THROTTLE_LOCKOUT_SECONDS:900}
+    max-tracked-accounts: ${LOGIN_THROTTLE_MAX_TRACKED_ACCOUNTS:100000}
+
 management:
   endpoints:
     web:

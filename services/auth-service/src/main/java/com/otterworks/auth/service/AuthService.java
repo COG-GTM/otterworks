@@ -28,16 +28,19 @@ public class AuthService {
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final RefreshTokenRepository refreshTokenRepository;
+  private final LoginAttemptThrottle loginAttemptThrottle;
 
   public AuthService(
       UserRepository userRepository,
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
-      RefreshTokenRepository refreshTokenRepository) {
+      RefreshTokenRepository refreshTokenRepository,
+      LoginAttemptThrottle loginAttemptThrottle) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtTokenProvider = jwtTokenProvider;
     this.refreshTokenRepository = refreshTokenRepository;
+    this.loginAttemptThrottle = loginAttemptThrottle;
   }
 
   @Transactional
@@ -59,14 +62,14 @@ public class AuthService {
 
   @Transactional
   public AuthResponse login(LoginRequest request) {
-    User user =
-        userRepository
-            .findByEmail(request.getEmail())
-            .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+    loginAttemptThrottle.checkAllowed(request.getEmail());
 
-    if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+    User user = userRepository.findByEmail(request.getEmail()).orElse(null);
+    if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+      loginAttemptThrottle.recordFailure(request.getEmail());
       throw new IllegalArgumentException("Invalid credentials");
     }
+    loginAttemptThrottle.recordSuccess(request.getEmail());
 
     user.setLastLoginAt(Instant.now());
     userRepository.save(user);
