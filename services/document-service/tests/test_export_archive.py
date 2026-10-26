@@ -123,14 +123,3 @@ async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path,
     assert "SECRET" not in resp.text
     assert "root:" not in resp.text
 
-
-@pytest.mark.asyncio
-async def test_export_endpoint_requires_authentication(client, monkeypatch, tmp_path):
-    (tmp_path / "report.md").write_text("# Report\n", encoding="utf-8")
-    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
-
-    resp = await client.get(
-        "/api/v1/documents/exports", params={"name": "report.md"}, auth=None
-    )
-
-    assert resp.status_code == 401

@@ -16,6 +16,10 @@ logger = structlog.get_logger()
 DEFAULT_ARCHIVE_DIR = "/var/lib/otterworks/exports"
 
 
+def _open_no_follow(path: str, flags: int) -> int:
+    return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0))
+
+
 class ExportArchive:
     """Serves rendered export files from the archive directory."""
 
@@ -33,7 +37,7 @@ class ExportArchive:
         """
         path = self._resolve(name)
         logger.debug("export_read", name=name)
-        with open(path, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8", opener=_open_no_follow) as handle:
             return handle.read()
 
     def _resolve(self, name: str) -> str:
