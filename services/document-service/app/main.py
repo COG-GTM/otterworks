@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import comments, documents, health, templates
 from app.config import settings
 from app.db.session import engine, init_db
+from app.services.share_link import SECRET_ENV, share_link_secret_configured
 
 logger = structlog.get_logger()
 
@@ -31,6 +32,12 @@ structlog.configure(
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
     await init_db()
+
+    if not share_link_secret_configured():
+        logger.error(
+            "share_link_secret_missing",
+            detail=f"{SECRET_ENV} is unset or too weak; share links will be refused",
+        )
 
     if settings.otel_enabled:
         try:
