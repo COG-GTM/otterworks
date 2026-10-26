@@ -19,7 +19,7 @@ No code fixes were made during this pass. This document captures bugs, UI jank, 
 - **Files:** Upload, list, detail page, sharing, shared-with-me, and trash all worked.
 - **Documents:** Document creation, editor load, typing, autosave/list return all worked.
 - **Search:** Search found the uploaded file and the test document.
-- **Admin dashboard:** Admin login with `admin@otterworks.dev` / `Admin123!` succeeded.
+- **Admin dashboard:** Admin login succeeded.
 - **Mobile basics:** No horizontal overflow found on dashboard, files, documents, search, or settings.
 
 ### Main concerns
