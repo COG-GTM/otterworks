@@ -36,6 +36,7 @@ services:
       DB_NAME: billing_${NS:-dev}
       DB_USER: billing
       DB_PASSWORD: ${DB_PASSWORD:-billing}
+      LEGACY_BILLING_JWT_SECRET: ${LEGACY_BILLING_JWT_SECRET:-}
     ports:
       - "127.0.0.1:${PROCS_APP_PORT:-8096}:8096"
     healthcheck:
