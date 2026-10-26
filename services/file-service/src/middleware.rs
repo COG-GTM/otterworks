@@ -123,9 +123,12 @@ where
 
 // -- Caller identity --
 
-/// Rejects `/api/v1` requests that carry neither the gateway-injected
-/// `X-User-ID` nor the configured internal token, so a caller that reaches
-/// file-service without the gateway cannot pick an identity. Handlers still
+const INTERNAL_LISTING_PATH: &str = "/api/v1/files";
+
+/// Rejects `/api/v1` requests without the gateway-injected `X-User-ID`, so a
+/// caller that reaches file-service without the gateway cannot pick an
+/// identity. The internal token is honoured only for the cross-owner file
+/// listing (`GET /api/v1/files`) used by reindex crawls. Handlers still
 /// resolve the owner themselves via `identity`.
 pub async fn require_caller<B: MessageBody>(
     req: ServiceRequest,
@@ -134,9 +137,10 @@ pub async fn require_caller<B: MessageBody>(
     let internal_token = req
         .app_data::<web::Data<AppConfig>>()
         .and_then(|config| config.server.internal_token.clone());
-    if identity::caller_id(req.headers()).is_ok()
-        || identity::has_internal_token(req.headers(), internal_token.as_deref())
-    {
+    let internal_listing = req.method() == actix_web::http::Method::GET
+        && req.path() == INTERNAL_LISTING_PATH
+        && identity::has_internal_token(req.headers(), internal_token.as_deref());
+    if identity::caller_id(req.headers()).is_ok() || internal_listing {
         return next
             .call(req)
             .await
@@ -201,10 +205,25 @@ mod tests {
             App::new().app_data(config(Some("s3cret"))).service(
                 web::scope("/api/v1/files")
                     .wrap(from_fn(require_caller))
-                    .route("", web::get().to(ok)),
+                    .route("", web::get().to(ok))
+                    .route("/{id}", web::get().to(ok))
+                    .route("/{id}", web::delete().to(ok)),
             ),
         )
         .await;
+
+        for req in [
+            test::TestRequest::get().uri(&format!("/api/v1/files/{ALICE}")),
+            test::TestRequest::delete().uri(&format!("/api/v1/files/{ALICE}")),
+        ] {
+            let resp = test::call_service(
+                &app,
+                req.insert_header(("X-Internal-Token", "s3cret"))
+                    .to_request(),
+            )
+            .await;
+            assert_eq!(resp.status(), actix_web::http::StatusCode::UNAUTHORIZED);
+        }
 
         let user = test::TestRequest::get()
             .uri("/api/v1/files")
