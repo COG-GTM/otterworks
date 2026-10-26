@@ -9,7 +9,9 @@ function sign(payload: Record<string, unknown>): string {
 
 describe('verifyAccessToken', () => {
   it('accepts an access token', () => {
-    expect(verifyAccessToken(sign({ sub: 'user-1', type: 'access' }), JWT_SECRET).sub).toBe('user-1');
+    expect(
+      verifyAccessToken(sign({ sub: 'user-1', type: 'access' }), JWT_SECRET).sub,
+    ).toBe('user-1');
   });
 
   it('accepts an untyped token as an access token', () => {
@@ -18,7 +20,9 @@ describe('verifyAccessToken', () => {
 
   it('rejects a refresh token', () => {
     const refresh = sign({ sub: 'user-1', type: 'refresh', jti: 'abc' });
-    expect(() => verifyAccessToken(refresh, JWT_SECRET)).toThrow('refresh tokens cannot be used as access tokens');
+    expect(() => verifyAccessToken(refresh, JWT_SECRET)).toThrow(
+      'refresh tokens cannot be used as access tokens',
+    );
   });
 
   it('rejects a token signed with another secret', () => {
