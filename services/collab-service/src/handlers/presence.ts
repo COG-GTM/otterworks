@@ -2,10 +2,17 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { Logger } from 'pino';
 import { AwarenessService, type UserAwareness } from '../services/awareness';
 
+// Presence is visible to other editors and API callers; it must not carry contact details.
+export type PresenceUser = Omit<UserAwareness, 'email'>;
+
 export interface PresenceInfo {
   documentId: string;
-  users: UserAwareness[];
+  users: PresenceUser[];
   count: number;
+}
+
+function toPresenceUser({ email: _email, ...user }: UserAwareness): PresenceUser {
+  return user;
 }
 
 export class PresenceHandler {
@@ -18,7 +25,7 @@ export class PresenceHandler {
   }
 
   getDocumentPresence(documentId: string): PresenceInfo {
-    const users = this.awareness.getDocumentUsers(documentId);
+    const users = this.awareness.getDocumentUsers(documentId).map(toPresenceUser);
     return {
       documentId,
       users,
@@ -32,6 +39,14 @@ export class PresenceHandler {
       documentId,
       userCount: this.awareness.getDocumentUserCount(documentId),
     }));
+  }
+
+  getActiveDocumentsForUser(
+    userId: string,
+  ): Array<{ documentId: string; userCount: number }> {
+    return this.getActiveDocuments().filter(({ documentId }) =>
+      this.awareness.getDocumentUsers(documentId).some((user) => user.userId === userId),
+    );
   }
 
   broadcastPresenceUpdate(io: SocketIOServer, documentId: string): void {

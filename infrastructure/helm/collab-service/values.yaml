@@ -10,16 +10,23 @@ service:
   port: 8084
   targetPort: 8084
 
+# The public ingress carries only the WebSocket transports. The REST API
+# (/api/v1/collab/*), /health and /metrics stay behind the api-gateway.
 ingress:
   enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/use-regex: "true"
   hosts:
     - host: collab-service.otterworks.workshop.example.com
       paths:
-        - path: /
-          pathType: Prefix
+        # Socket.IO
+        - path: /socket.io/
+          pathType: ImplementationSpecific
+        # y-websocket rooms opened by the client-app editor (`document-<id>`)
+        - path: /document-[^/]+$
+          pathType: ImplementationSpecific
   tls:
     - secretName: collab-service-tls
       hosts:
