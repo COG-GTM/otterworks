@@ -59,7 +59,9 @@ def _numeric(claims, name, required=False):
         if required:
             raise InvalidToken(f"missing {name}")
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise InvalidToken(f"invalid {name}")
+    if isinstance(value, float) and not math.isfinite(value):
         raise InvalidToken(f"invalid {name}")
     return value
 

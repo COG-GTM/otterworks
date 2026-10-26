@@ -233,6 +233,8 @@ def test_rating_requires_json_object(client, calls):
         mint(scope=auth.ADMIN, exp=float("nan")),
         mint(scope=auth.ADMIN, exp=float("inf")),
         mint(scope=auth.ADMIN, nbf=float("-inf")),
+        mint(scope=auth.ADMIN, exp=-(10**309)),
+        mint(scope=auth.ADMIN, nbf=10**309),
     ],
     ids=[
         "wrong-secret",
@@ -252,6 +254,8 @@ def test_rating_requires_json_object(client, calls):
         "nan-exp",
         "infinite-exp",
         "infinite-nbf",
+        "huge-negative-int-exp",
+        "huge-int-nbf",
     ],
 )
 def test_invalid_tokens_are_rejected(client, calls, token):
@@ -326,3 +330,8 @@ def test_unauthorized_response_is_json_with_bearer_challenge(client, calls):
     assert response.status_code == 401
     assert response.headers["WWW-Authenticate"].startswith("Bearer")
     assert response.get_json()["detail"] == "missing bearer token"
+
+
+def test_huge_integer_exp_does_not_error(client, calls):
+    response = client.get("/api/dunning/overdue", headers=bearer(scope=auth.ADMIN, exp=10**309))
+    assert response.status_code == 200
