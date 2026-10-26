@@ -96,6 +96,13 @@ branch_tag_slug() {
 # golden image, so both call this.
 tenant_image_tag() { printf 'tenant-%s' "$(sanitize_id "$1")"; }
 
+# Docker tag grammar. Image tags reach `helm --set`, which splits on `,` and
+# parses `=`, `[`, `{`; a tag outside this set could set other chart values
+# (e.g. `v1,image.repository=evil/x`), so callers reject it before Helm runs.
+valid_image_tag() {
+  [[ "${1:-}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
+}
+
 # Tenant id for a branch: `workshop-derek` and `demo-derek` both own tenant
 # `derek`. The dashboard rejects a redeploy whose branch does not match the one
 # the tenant was checked out from, so the collision cannot silently hijack.

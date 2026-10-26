@@ -3,7 +3,14 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, checkout } from "@/lib/control";
 import { createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { isNeverTtl, isValidId, randomIdSuffix, sanitizeId, ttlToSeconds } from "@/lib/util";
+import {
+  isNeverTtl,
+  isValidId,
+  parseImageTag,
+  randomIdSuffix,
+  sanitizeId,
+  ttlToSeconds,
+} from "@/lib/util";
 import type { CheckoutRequest, TenantTier } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -20,7 +27,9 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
   const branch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : `workshop-${id}`;
   const tier: TenantTier = body.tier === "B" ? "B" : "A";
-  const imageTag = typeof body.image_tag === "string" && body.image_tag ? body.image_tag : undefined;
+  const parsedTag = parseImageTag(body.image_tag);
+  if (!parsedTag.ok) return error(400, "invalid image_tag");
+  const imageTag = parsedTag.tag;
 
   // "never" and persistent:true are the same request; accept either spelling so
   // a caller cannot end up with a tenant it believes is perpetual while the
