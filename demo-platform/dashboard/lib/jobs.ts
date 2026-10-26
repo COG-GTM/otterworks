@@ -1,6 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
+import { tenantBranchError } from "@/lib/util";
 
 export type RunnerAction = "deploy" | "teardown" | "inject";
 
@@ -20,13 +21,9 @@ export interface RunnerJobInput {
 
 // Secret keys the runner needs at runtime. These are referenced via
 // envFrom/valueFrom (never placed on argv) so the passcode / DB password / AWS
-// creds are not exposed in the Job spec's command line.
-const RUNNER_SECRET_ENV_KEYS = [
-  "DB_PASSWORD",
-  "JWT_SECRET",
-  "SECRET_KEY_BASE",
-  "GITHUB_TOKEN",
-] as const;
+// creds are not exposed in the Job spec's command line. No repository token:
+// the runner never fetches tenant branches, it runs its image's bundled tree.
+const RUNNER_SECRET_ENV_KEYS = ["DB_PASSWORD", "JWT_SECRET", "SECRET_KEY_BASE"] as const;
 
 function jobName(action: RunnerAction, id: string, epoch: number): string {
   // Contract: deploy-<id>-<epoch> / teardown-<id>-<epoch>; inject uses inject-bug.
@@ -40,7 +37,7 @@ export function jobNamePrefixes(id: string): string[] {
 
 function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   // The runner image ENTRYPOINT (entrypoint.sh) dispatches on OP and does the
-  // branch checkout + control-table status/audit writes. We drive it purely
+  // control-table status/audit writes. We drive it purely
   // through env — never by overriding the container command — so that plumbing
   // always runs. Env names must match the entrypoint contract exactly.
   const plain: k8s.V1EnvVar[] = [
@@ -52,8 +49,8 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
     { name: "TENANT_ID", value: input.tenantId },
     { name: "ACTOR", value: "dashboard" },
   ];
+  // A label for image-tag resolution only; the runner never checks it out.
   if (input.branch) plain.push({ name: "TENANT_BRANCH", value: input.branch });
-  if (env.repoHttpsUrl) plain.push({ name: "REPO_HTTPS_URL", value: env.repoHttpsUrl });
   if (input.tier) plain.push({ name: "TIER", value: input.tier });
   if (input.imageTag) plain.push({ name: "IMAGE_TAG", value: input.imageTag });
   if (input.ttl) plain.push({ name: "TTL", value: input.ttl });
@@ -75,6 +72,12 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
 export function buildRunnerJob(input: RunnerJobInput, epoch: number): k8s.V1Job {
   const image = env.runnerImage;
   if (!image) throw new Error("RUNNER_IMAGE is not configured");
+  // Every path that launches a Job (checkout, redeploy of a stored record)
+  // goes through here, so a branch that slipped past a route is still refused.
+  if (input.branch) {
+    const branchError = tenantBranchError(input.branch, input.tenantId, env.perpetualTenantIds);
+    if (branchError) throw new Error(branchError);
+  }
   const name = jobName(input.action, input.tenantId, epoch);
 
   return {

@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { secondsToTtl } from "@/lib/util";
+import { secondsToTtl, tenantBranchError } from "@/lib/util";
 import type { RedeployRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -41,6 +41,13 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
       409,
       `tenant '${id}' is deployed from '${tenant.branch ?? "(none)"}', not '${requestedBranch}'`,
     );
+  }
+
+  // Records checked out before branch names were validated may still carry an
+  // arbitrary branch; refuse to redeploy those until they are checked out again.
+  if (tenant.branch) {
+    const branchError = tenantBranchError(tenant.branch, id, env.perpetualTenantIds);
+    if (branchError) return error(409, `${branchError}; check the tenant in and out again`);
   }
 
   // Not caught: if the cluster cannot be listed we do not know whether a deploy

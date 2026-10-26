@@ -14,6 +14,34 @@ export function isValidId(id: string): boolean {
   return /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/.test(id);
 }
 
+// The branch a tenant deploys from must be that tenant's own: workshop-<id> or
+// demo-<id> (CD may prepend a TENANT_PREFIX to the id, so `<prefix>-<id>` also
+// matches), or `main` for a perpetual tenant. The runner only uses it to pick
+// the tenant's image tags, but it must never name another attendee's branch or
+// anything that isn't a plain ref name. Returns null when acceptable.
+const TENANT_BRANCH_RE = /^(workshop|demo)[-/]([A-Za-z0-9][A-Za-z0-9._-]{0,62})$/;
+
+export function tenantBranchError(
+  branch: string,
+  tenantId: string,
+  perpetualIds: ReadonlySet<string>,
+): string | null {
+  if (branch === "main") {
+    return perpetualIds.has(tenantId)
+      ? null
+      : `branch 'main' is reserved for the perpetual tenant; use workshop-${tenantId}`;
+  }
+  const m = TENANT_BRANCH_RE.exec(branch);
+  const suffix = m?.[2] ? sanitizeId(m[2]) : "";
+  if (!m || branch.includes("..") || !suffix) {
+    return `invalid branch '${branch}': expected workshop-${tenantId} or demo-${tenantId}`;
+  }
+  if (tenantId !== suffix && !tenantId.endsWith(`-${suffix}`)) {
+    return `branch '${branch}' does not belong to tenant '${tenantId}'; expected workshop-${tenantId} or demo-${tenantId}`;
+  }
+  return null;
+}
+
 // A perpetual tenant still carries a real expires_at, ten years out. The
 // reaper skips it on `persistent`, so this is only a second line of defence:
 // if that check ever regresses, the tenant survives rather than being torn

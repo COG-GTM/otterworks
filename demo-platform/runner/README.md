@@ -33,6 +33,13 @@ Non-secret (control-plane metadata): `OP`, `TENANT_ID`, `TIER`, `TTL`,
 `TENANT_BRANCH`, `CONTROL_TABLE` (default `otterworks-demo-control`),
 `AWS_REGION`, `EKS_CLUSTER` (default `otterworks-dev`), `ACTOR`.
 
+`TENANT_BRANCH` (`workshop-<id>` / `demo-<id>` / `main`, anything else is refused) only
+selects the tenant's `tenant-<id>` image tags. The runner **never fetches or checks out a
+branch**: every script, library and chart it runs comes from the tree baked into the image
+(root-owned, read-only to the runner user). Tenant branches can be pushed by workshop
+attendees while the runner holds the shared DB password, a cluster-wide role and the
+dashboard IAM role, so branch content must never execute here.
+
 Secrets (from Kubernetes Secret refs — **env only, never argv**): `DB_PASSWORD`,
 `JWT_SECRET`, `SECRET_KEY_BASE`. AWS creds come from the pod's IRSA role.
 

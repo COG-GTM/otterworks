@@ -56,12 +56,6 @@ export const env = {
   get perpetualHostSuffix(): string {
     return process.env.PERPETUAL_HOST_SUFFIX || "otterworks.app";
   },
-  // HTTPS clone URL passed to runner Jobs so they can fetch participant branches
-  // (workshop-<id>) with GITHUB_TOKEN. Empty -> runner uses the image's bundled
-  // tree (golden app) and code-level variants rely on --image-tag instead.
-  get repoHttpsUrl(): string {
-    return process.env.REPO_HTTPS_URL || "";
-  },
   // Services that are crash-looping BY DESIGN on the golden app (planted
   // workshop bugs, e.g. admin-service's Rails logger bug). A tenant whose only
   // unhealthy pods are these is still "active" — otherwise every tenant would
