@@ -61,9 +61,10 @@ routes:
       - unauthenticated callers receive 401
   - prefix: /api/v1/audit
     service: audit-service
-    auth: bearer JWT
+    auth: bearer JWT (validated by audit-service) + admin role for compliance/export/archive
     expect:
       - unauthenticated callers receive 401
+      - non-admin callers only see and record their own events
 
 # Routes the coverage gate (`make dast-coverage`) is allowed to leave unattacked.
 # The inventory it compares against is read from the services' source, so an entry
