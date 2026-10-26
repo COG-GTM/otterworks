@@ -35,6 +35,8 @@ SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 # without it). Reused from the running release, else generated.
 ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NAMESPACE}" get secret admin-service-secrets \
   -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+# admin-service rejects the old compose default; replace it instead of reusing it.
+[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
 ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
