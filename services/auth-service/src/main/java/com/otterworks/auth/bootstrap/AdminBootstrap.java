@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Creates the first administrator from deployment-supplied credentials. Runs only when
- * AUTH_BOOTSTRAP_ADMIN_EMAIL and AUTH_BOOTSTRAP_ADMIN_PASSWORD are set and no ADMIN exists yet;
- * it never promotes an existing account.
+ * AUTH_BOOTSTRAP_ADMIN_EMAIL and AUTH_BOOTSTRAP_ADMIN_PASSWORD are set and no ADMIN exists yet; it
+ * never promotes an existing account.
  */
 @Component
 public class AdminBootstrap implements ApplicationRunner {

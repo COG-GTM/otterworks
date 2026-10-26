@@ -12,10 +12,9 @@ import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
 
 /**
- * V1 used to seed an admin account with a published password; the seed was removed from V1 and
- * V5 disables the account on existing databases. Databases that applied the old V1 still record
- * its checksum, so it is realigned (only when it matches the old file exactly) before Flyway
- * validates.
+ * V1 used to seed an admin account with a published password; the seed was removed from V1 and V5
+ * disables the account on existing databases. Databases that applied the old V1 still record its
+ * checksum, so it is realigned (only when it matches the old file exactly) before Flyway validates.
  */
 @org.springframework.context.annotation.Configuration
 public class FlywayConfig {
