@@ -10,6 +10,7 @@ import { PresenceHandler } from '../handlers/presence';
 import { MetricsCollector } from '../metrics';
 import { createAuthMiddleware } from '../middleware/auth';
 import { RedisAdapter } from '../services/redis-adapter';
+import type { DocumentAccessChecker } from '../services/document-access';
 
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
@@ -38,6 +39,10 @@ const mockRedis = {
   disconnect: jest.fn(),
   ping: jest.fn().mockResolvedValue(true),
 } as unknown as jest.Mocked<RedisAdapter>;
+
+const mockDocumentAccess: jest.Mocked<DocumentAccessChecker> = {
+  canAccess: jest.fn(async (documentId: string) => !documentId.startsWith('private-')),
+};
 
 const mockLogger = {
   info: jest.fn(),
@@ -76,6 +81,7 @@ describe('CollaborationManager', () => {
       io,
       documentStore,
       awareness,
+      documentAccess: mockDocumentAccess,
       presenceHandler,
       metrics,
       logger: mockLogger,
@@ -371,6 +377,124 @@ describe('CollaborationManager', () => {
 
       client1.disconnect();
       client2.disconnect();
+    });
+  });
+
+  describe('Document Authorization', () => {
+    function join(
+      client: ClientSocket,
+      documentId: string,
+    ): Promise<{ success: boolean; error?: string }> {
+      return new Promise((resolve) => {
+        client.emit('join-document', { documentId }, resolve);
+      });
+    }
+
+    it('should check access with the caller token before joining', async () => {
+      const client = await connectClient('user-authz-check', 'Alice');
+      await join(client, 'doc-authz-check');
+
+      expect(mockDocumentAccess.canAccess).toHaveBeenCalledWith(
+        'doc-authz-check',
+        expect.any(String),
+      );
+      client.disconnect();
+    });
+
+    it('should refuse to join a document the user cannot access', async () => {
+      const client = await connectClient('user-authz-mallory', 'Mallory');
+      const syncSpy = jest.fn();
+      client.on('sync-document', syncSpy);
+
+      const response = await join(client, 'private-doc-join');
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(response).toEqual({ success: false, error: 'Access denied' });
+      expect(syncSpy).not.toHaveBeenCalled();
+      expect(manager.getDocument('private-doc-join')).toBeUndefined();
+      client.disconnect();
+    });
+
+    it('should reject updates for a document the socket has not joined', async () => {
+      const owner = await connectClient('user-authz-owner', 'Alice');
+      const mallory = await connectClient('user-authz-mallory-2', 'Mallory');
+      await join(owner, 'doc-authz-update');
+
+      const ownerUpdates = jest.fn();
+      owner.on('document-update', ownerUpdates);
+
+      const errorPromise = new Promise<{ documentId: string; error: string }>(
+        (resolve) => {
+          mallory.on('document-update-error', resolve);
+        },
+      );
+
+      const attackerDoc = new Y.Doc();
+      attackerDoc.getText('content').insert(0, 'defaced');
+      mallory.emit('document-update', {
+        documentId: 'doc-authz-update',
+        update: Buffer.from(Y.encodeStateAsUpdate(attackerDoc)).toString('base64'),
+      });
+
+      const error = await errorPromise;
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(error).toMatchObject({
+        documentId: 'doc-authz-update',
+        error: 'Access denied',
+      });
+      expect(ownerUpdates).not.toHaveBeenCalled();
+      const ownerDoc = manager.getDocument('doc-authz-update');
+      expect(ownerDoc?.getText('content').toString()).toBe('');
+
+      owner.disconnect();
+      mallory.disconnect();
+    });
+
+    it('should reject history for a document the socket has not joined', async () => {
+      const client = await connectClient('user-authz-history', 'Mallory');
+      const historySpy = jest.fn();
+      client.on('document-history', historySpy);
+
+      const errorPromise = new Promise<{ error: string }>((resolve) => {
+        client.on('history-error', resolve);
+      });
+      client.emit('request-history', { documentId: 'private-doc-history' });
+
+      const error = await errorPromise;
+      expect(error.error).toBe('Access denied');
+      expect(historySpy).not.toHaveBeenCalled();
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+      client.disconnect();
+    });
+
+    it('should reject events naming a document other than the joined one', async () => {
+      const client = await connectClient('user-authz-mismatch', 'Mallory');
+      await join(client, 'doc-authz-own');
+
+      const errorPromise = new Promise<{ documentId: string }>((resolve) => {
+        client.on('history-error', resolve);
+      });
+      client.emit('request-history', { documentId: 'doc-authz-someone-else' });
+
+      const error = await errorPromise;
+      expect(error.documentId).toBe('doc-authz-someone-else');
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+      client.disconnect();
+    });
+
+    it('should return history for the joined document', async () => {
+      const client = await connectClient('user-authz-own-history', 'Alice');
+      await join(client, 'doc-authz-history-ok');
+
+      const historyPromise = new Promise<{ documentId: string }>((resolve) => {
+        client.on('document-history', resolve);
+      });
+      client.emit('request-history', { documentId: 'doc-authz-history-ok' });
+
+      const history = await historyPromise;
+      expect(history.documentId).toBe('doc-authz-history-ok');
+      client.disconnect();
     });
   });
 });
