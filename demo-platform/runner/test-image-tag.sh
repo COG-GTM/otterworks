@@ -82,10 +82,12 @@ check "... without calling helm" "$(grep -c '^helm' "${STUB_LOG}")" "0"
 
 echo "runner entrypoint"
 : > "${STUB_LOG}"
-OP=deploy TENANT_ID=derek DB_PASSWORD=x REPO_DIR="${REPO_ROOT}" IMAGE_TAG="${BAD}" \
-  KUBERNETES_SERVICE_HOST=stub "${REPO_ROOT}/demo-platform/runner/entrypoint.sh" >"${WORK}/out.log" 2>&1
+mkdir -p "${WORK}/gitbin" && ln -s ../bin/stub "${WORK}/gitbin/git"
+PATH="${WORK}/gitbin:${PATH}" OP=deploy TENANT_ID=derek DB_PASSWORD=x REPO_DIR="${REPO_ROOT}" \
+  IMAGE_TAG="${BAD}" TENANT_BRANCH=workshop-derek KUBERNETES_SERVICE_HOST=stub \
+  "${REPO_ROOT}/demo-platform/runner/entrypoint.sh" >"${WORK}/out.log" 2>&1
 check "OP=deploy with a comma in IMAGE_TAG exits non-zero" "$?" "1"
-check "... before any status write or deploy" "$(wc -l < "${STUB_LOG}" | tr -d ' ')" "0"
+check "... before branch checkout, status write or deploy" "$(wc -l < "${STUB_LOG}" | tr -d ' ')" "0"
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
