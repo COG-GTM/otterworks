@@ -134,13 +134,42 @@ async def test_create_template_accepts_admin_roles(client: AsyncClient, role):
 
 
 @pytest.mark.asyncio
-async def test_create_template_rejects_admin_refresh_token(client: AsyncClient):
+async def test_template_routes_reject_refresh_tokens(client: AsyncClient):
+    refresh = bearer_auth(uuid.uuid4(), roles=["ADMIN"], type="refresh")
+    resp = await client.post("/api/v1/templates/", json={"name": "Refresh"}, auth=refresh)
+    assert resp.status_code == 401
+    assert (await client.get("/api/v1/templates/", auth=refresh)).status_code == 401
     resp = await client.post(
-        "/api/v1/templates/",
-        json={"name": "Refresh"},
-        auth=bearer_auth(uuid.uuid4(), roles=["ADMIN"], type="refresh"),
+        f"/api/v1/documents/from-template/{uuid.uuid4()}", json={"title": "x"}, auth=refresh
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_template_routes_accept_hs512_access_tokens(client: AsyncClient):
+    import jwt
+
+    from tests.conftest import TEST_JWT_SECRET
+
+    admin = uuid.uuid4()
+    token = jwt.encode(
+        {"sub": str(admin), "roles": ["ADMIN"], "type": "access"},
+        TEST_JWT_SECRET,
+        algorithm="HS512",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = await client.post("/api/v1/templates/", json={"name": "HS512"}, headers=headers)
+    assert resp.status_code == 201
+    assert resp.json()["created_by"] == str(admin)
+    listed = await client.get("/api/v1/templates/", headers=headers)
+    assert listed.status_code == 200
+    resp = await client.post(
+        f"/api/v1/documents/from-template/{listed.json()[0]['id']}",
+        json={"title": "From HS512"},
+        headers=headers,
+    )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(admin)
 
 
 @pytest.mark.asyncio
