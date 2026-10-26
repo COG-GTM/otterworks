@@ -131,8 +131,9 @@ Replay exit codes are:
 - `8`: target reset refused or failed;
 - `9`: module/scenario selection matched no transcripts.
 
-Reset refusals identify `BILLING_SVC_ALLOW_INTERNAL_RESET` as the disposable
-stack setting required by the harness.
+Reset refusals identify `BILLING_SVC_ALLOW_INTERNAL_RESET` and
+`BILLING_SVC_INTERNAL_RESET_TOKEN` as the disposable stack settings required by
+the harness.
 
 ## Namespace isolation
 
@@ -170,9 +171,12 @@ The `/billing-api` proxy is used by the dev server and by that flagged preview.
 Builds without the flag leave the routes unregistered. The billing screens are
 local parity-fixture pages only: they are not deployed through the normal
 client, Helm, or EKS paths.
-The fixture deliberately has no authentication because the procedures have no
-notion of a caller; a real extraction must add authentication and tenant
-scoping at the edge.
+The billing service requires a bearer access token on every `/api/*` route
+(tenant-scoped via the `tenant_id` claim, or an `ADMIN` role) and a separate
+`X-Internal-Reset-Token` for `/internal/reset`. `make procs-up` writes both
+secrets to `procs/.secrets/<NS>.env`; `make procs-parity` mints an admin token
+from it automatically, and `make procs-token NS=<ns>` prints one to store as
+`otter_access_token` for the client screens.
 
 ## Clean run reversion
 

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parents[3]))
 
+from procs.harness import replay
 from procs.harness.replay import (
     classify_transcript,
     compare,
@@ -16,7 +17,6 @@ from procs.harness.replay import (
     stale_transcripts,
     write_report,
 )
-import procs.harness.replay as replay
 
 
 def test_pending_module_is_skip() -> None:
@@ -340,3 +340,47 @@ def test_mid_loop_target_failure_writes_partial_report(monkeypatch, tmp_path) ->
     assert "PLANS-001" in report
     assert "PLANS-002" not in report
     assert (tmp_path / "reports" / "parity.md").exists()
+
+
+def test_target_access_token_is_short_lived_hs256_admin_token() -> None:
+    import base64
+    import hashlib
+    import hmac
+    import json
+    import time
+
+    secret = "harness-secret-0123456789abcdef0123456789"
+    header, payload, signature = replay.target_access_token(secret).split(".")
+    expected = hmac.new(secret.encode(), f"{header}.{payload}".encode(), hashlib.sha256).digest()
+    assert base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4)) == expected
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    assert json.loads(base64.urlsafe_b64decode(header + "==")) == {"alg": "HS256", "typ": "JWT"}
+    assert claims["type"] == "access" and claims["roles"] == ["ADMIN"]
+    assert time.time() < claims["exp"] <= time.time() + 900
+
+
+def test_target_requests_and_reset_send_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("BILLING_SVC_JWT_SECRET", "harness-secret-0123456789abcdef0123456789")
+    monkeypatch.setenv("BILLING_SVC_INTERNAL_RESET_TOKEN", "reset-token-0123456789abcdef0123456789")
+    calls = []
+
+    def fake_request_json(base_url, method, path, body=None, headers=None):
+        calls.append((method, path, headers))
+        return (204, None) if path == "/internal/reset" else (200, {})
+
+    monkeypatch.setattr(replay, "request_json", fake_request_json)
+    assert replay.reset_target("http://target") == (True, "")
+    contract = {"method": "GET", "path": "/api/plans"}
+    assert replay.target_request("http://target", contract, {}) == (200, {})
+
+    reset_call, api_call = calls
+    assert reset_call[2] == {"X-Internal-Reset-Token": "reset-token-0123456789abcdef0123456789"}
+    assert api_call[2]["Authorization"].startswith("Bearer ")
+
+
+def test_reset_refusal_names_both_settings(monkeypatch) -> None:
+    monkeypatch.setattr(replay, "request_json", lambda *_a, **_k: (403, {"detail": "nope"}))
+    ok, message = replay.reset_target("http://target")
+    assert not ok
+    assert "BILLING_SVC_ALLOW_INTERNAL_RESET" in message
+    assert "BILLING_SVC_INTERNAL_RESET_TOKEN" in message

@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     database_url: str
     cors_origins: list[str] = ["http://localhost:3000"]
     allow_internal_reset: bool = False
+    internal_reset_token: str = ""
+    jwt_secret: str = ""
+    admin_roles: list[str] = ["ADMIN"]
 
     model_config = {"env_prefix": "BILLING_SVC_", "env_file": ".env", "extra": "ignore"}
 
