@@ -61,6 +61,7 @@ class SeededAdminMigrationTest {
         .contains("a0000000-0000-0000-0000-000000000001")
         .contains("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
         .contains("UPDATE refresh_tokens")
+        .contains("DELETE FROM user_roles")
         .doesNotContainIgnoringCase("DELETE FROM users");
   }
 }
