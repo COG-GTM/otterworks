@@ -26,6 +26,8 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
 
     List<Report> findByStatusOrderByCreatedAtAsc(ReportStatus status);
 
+    List<Report> findByRequestedByAndStatusOrderByCreatedAtAsc(String requestedBy, ReportStatus status);
+
     List<Report> findByCategoryAndStatusOrderByCreatedAtDesc(ReportCategory category, ReportStatus status);
 
     // LEGACY: java.util.Date parameter types

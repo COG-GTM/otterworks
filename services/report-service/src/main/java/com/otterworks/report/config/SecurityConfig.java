@@ -1,12 +1,22 @@
 package com.otterworks.report.config;
 
+import com.otterworks.report.security.GatewayIdentityFilter;
+import com.otterworks.report.security.JwtAuthenticationFilter;
+import com.otterworks.report.security.JwtVerifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 // LEGACY: WebSecurityConfigurerAdapter removed in Spring Security 6.
 // Upgrade target: SecurityFilterChain @Bean method
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Security configuration using the deprecated WebSecurityConfigurerAdapter pattern.
@@ -21,6 +31,18 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
+    private static final Logger logger = LoggerFactory.getLogger(SecurityConfig.class);
+
+    private final JwtVerifier jwtVerifier;
+
+    public SecurityConfig(@Value("${otterworks.security.jwt-secret:}") String jwtSecret) {
+        this.jwtVerifier = new JwtVerifier(jwtSecret);
+        if (!jwtVerifier.isConfigured()) {
+            logger.warn("JWT_SECRET is not set: trusting the X-User-ID/X-User-Roles headers set by api-gateway;"
+                    + " keep this service unreachable except through the gateway");
+        }
+    }
+
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         // LEGACY: Uses deprecated antMatchers() and authorizeRequests()
@@ -33,11 +55,20 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             .authorizeRequests()
                 .antMatchers("/health", "/metrics", "/actuator/**").permitAll()
                 .antMatchers("/swagger-ui/**", "/swagger-resources/**", "/v2/api-docs/**").permitAll()
-                .antMatchers("/api/v1/reports/**").permitAll()  // TODO: Add JWT validation
+                .antMatchers("/api/v1/reports/**").authenticated()
+                .anyRequest().authenticated()
+            .and()
+            .addFilterBefore(identityFilter(), UsernamePasswordAuthenticationFilter.class)
+            .exceptionHandling()
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             .and()
             .headers()
                 .frameOptions().deny()
                 .contentTypeOptions().and()
                 .xssProtection().block(true);
+    }
+
+    private OncePerRequestFilter identityFilter() {
+        return jwtVerifier.isConfigured() ? new JwtAuthenticationFilter(jwtVerifier) : new GatewayIdentityFilter();
     }
 }

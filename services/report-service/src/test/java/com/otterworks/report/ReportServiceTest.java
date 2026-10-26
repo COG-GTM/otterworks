@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.security.TestJwt;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
@@ -73,6 +75,7 @@ public class ReportServiceTest {
         request.setDateTo(new Date());
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.bearer("test-user-001"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -93,6 +96,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-002");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.adminBearer("test-user-002"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -108,6 +112,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-003");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.adminBearer("test-user-003"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -116,13 +121,15 @@ public class ReportServiceTest {
 
     @Test
     public void getReportNotFoundShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999"))
+        mockMvc.perform(get("/api/v1/reports/99999")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.bearer("test-user-001")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void listReportsShouldReturnEmptyList() throws Exception {
         mockMvc.perform(get("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.adminBearer("test-admin"))
                         .param("userId", "nonexistent-user"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
@@ -138,6 +145,7 @@ public class ReportServiceTest {
         // Missing reportName — should fail validation
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.bearer("test-user"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -145,7 +153,8 @@ public class ReportServiceTest {
 
     @Test
     public void downloadNonExistentReportShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999/download"))
+        mockMvc.perform(get("/api/v1/reports/99999/download")
+                        .header(HttpHeaders.AUTHORIZATION, TestJwt.bearer("test-user-001")))
                 .andExpect(status().isNotFound());
     }
 }
