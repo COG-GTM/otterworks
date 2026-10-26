@@ -99,8 +99,9 @@ scenarios:
       NotFound error. The share record is persisted, but the request returns
       the error so the UI shows a red failure banner, and file-service
       fires the NotificationEventPublishFailure alert at admin-service's
-      ingest endpoint (dedup=false: one incident + Devin session + Slack
-      message per share, attributed to the sharing user via reporter_email).
+      ingest endpoint (deduped onto the open file-service incident, so repeat
+      clicks reuse one incident + Devin session + Slack message, attributed
+      to the first sharing user via reporter_email; resolve it to re-fire).
       Already ON for the coggtm tenant: the demo branch bakes the variable
       into the file-service image's Dockerfile.
 

@@ -20,6 +20,13 @@ module Api
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
 
+        # Every alert-created incident can start a paid Devin session and page
+        # Slack, and the failures behind some alerts are user-triggered, so
+        # incident creation is capped per affected service in a rolling window
+        # (on top of the one-open-incident dedup), including for `dedup=false`.
+        DEFAULT_INCIDENT_RATE_LIMIT = 5
+        DEFAULT_INCIDENT_RATE_WINDOW_SECONDS = 3600
+
         SEVERITY_MAP = {
           'critical' => 'critical',
           'high'     => 'high',
@@ -60,29 +67,21 @@ module Api
           return nil unless status == 'firing'
           return nil if affected_service.blank?
 
-          # Deduplicate: skip if an active incident for this service already
-          # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
-            existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
-                               .first
-            if existing
-              Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
-              return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
-            end
-          end
-
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
-          incident = Incident.create!(
-            title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
-            description:      build_description(alert_name, description, labels, annotations),
-            severity:         severity,
-            status:           auto_investigate ? 'investigating' : 'open',
-            affected_service: affected_service,
-            reporter_id:      nil, # system-generated
-          )
+          admission = admit_incident(alert_name, affected_service, labels) do
+            Incident.create!(
+              title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
+              description:      build_description(alert_name, description, labels, annotations),
+              severity:         severity,
+              status:           auto_investigate ? 'investigating' : 'open',
+              affected_service: affected_service,
+              reporter_id:      nil, # system-generated
+            )
+          end
+          return admission unless admission.is_a?(Incident)
+
+          incident = admission
 
           session_result = nil
           if auto_investigate
@@ -112,6 +111,60 @@ module Api
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("Failed to create incident from alert #{alert_name}: #{e.message}")
           nil
+        end
+
+        # Runs the dedup and rate-cap checks and, if both pass, yields to create
+        # the incident. A per-service advisory lock serialises concurrent alerts
+        # so a burst cannot race past either check. Returns the created
+        # Incident, or a skip result hash.
+        def admit_incident(alert_name, affected_service, labels)
+          Incident.transaction do
+            Incident.connection.execute(
+              Incident.sanitize_sql_array(
+                ['SELECT pg_advisory_xact_lock(hashtext(?))', "alert-incident:#{affected_service}"]
+              )
+            )
+
+            # Deduplicate onto an active incident for this service unless the
+            # alert opts out with a `dedup=false` label.
+            if labels[:dedup].to_s != 'false'
+              existing = Incident.active.where(affected_service: affected_service).first
+              if existing
+                Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
+                next { skipped: true, incident_id: existing.id, reason: 'duplicate' }
+              end
+            end
+
+            capped = incident_rate_limited(alert_name, affected_service)
+            next capped if capped
+
+            yield
+          end
+        end
+
+        def incident_rate_limited(alert_name, affected_service)
+          recent = Incident.where(affected_service: affected_service, reporter_id: nil)
+                           .where('created_at > ?', incident_rate_window.seconds.ago)
+          return if recent.count < incident_rate_limit
+
+          Rails.logger.warn(
+            "Alert #{alert_name} skipped — #{affected_service} reached #{incident_rate_limit} " \
+            "alert-created incidents in #{incident_rate_window}s"
+          )
+          { skipped: true, incident_id: recent.order(created_at: :desc).pick(:id), reason: 'rate_limited' }
+        end
+
+        def incident_rate_limit
+          positive_env_int('ALERT_INCIDENT_RATE_LIMIT', DEFAULT_INCIDENT_RATE_LIMIT)
+        end
+
+        def incident_rate_window
+          positive_env_int('ALERT_INCIDENT_RATE_WINDOW_SECONDS', DEFAULT_INCIDENT_RATE_WINDOW_SECONDS)
+        end
+
+        def positive_env_int(name, default)
+          value = Integer(ENV.fetch(name, default), exception: false)
+          value&.positive? ? value : default
         end
 
         def resolve_incident(affected_service, alert_name)

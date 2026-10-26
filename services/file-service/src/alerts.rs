@@ -1,8 +1,9 @@
 //! Fire-and-forget alert delivery to admin-service's Grafana-style webhook
-//! ingest endpoint (`POST /api/v1/admin/alerts/ingest`). Each failed upload
-//! produces one alert; the payload carries `dedup=false` so admin-service
-//! opens a fresh incident (and Devin session) per alert instead of collapsing
-//! repeats onto an existing open incident.
+//! ingest endpoint (`POST /api/v1/admin/alerts/ingest`). Each failure produces
+//! one alert, and admin-service collapses repeats onto the open incident for
+//! `file-service`: the failing request is user-triggered, so opting out of
+//! deduplication would let any user open an incident, Slack page and Devin
+//! session per request.
 
 use serde_json::{json, Value};
 use std::sync::OnceLock;
@@ -47,7 +48,6 @@ pub fn build_upload_failure_payload(
         "alertname": "FileUploadFailed",
         "severity": "critical",
         "affected_service": "file-service",
-        "dedup": "false",
     });
     if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
         labels["reporter_email"] = json!(email);
@@ -73,17 +73,12 @@ pub fn build_share_notification_failure_payload(
     file_name: &str,
     error: &str,
     reporter_email: Option<&str>,
-    dedup: bool,
     share_recorded: bool,
 ) -> Value {
-    // `dedup=false` opens a fresh incident per alert; it is reserved for the
-    // forced-failure demo so a genuine SNS outage collapses onto one open
-    // incident like any other alert.
     let mut labels = json!({
         "alertname": "NotificationEventPublishFailure",
         "severity": "critical",
         "affected_service": "file-service",
-        "dedup": if dedup { "true" } else { "false" },
     });
     if let Some(email) = reporter_email.map(str::trim).filter(|e| !e.is_empty()) {
         labels["reporter_email"] = json!(email);
@@ -120,7 +115,6 @@ pub fn notify_share_notification_failure(
     file_name: &str,
     error: &str,
     reporter_email: Option<&str>,
-    dedup: bool,
     share_recorded: bool,
 ) {
     let base_url = config
@@ -133,13 +127,8 @@ pub fn notify_share_notification_failure(
         return;
     }
     let secret = config.alert_webhook_secret.clone();
-    let payload = build_share_notification_failure_payload(
-        file_name,
-        error,
-        reporter_email,
-        dedup,
-        share_recorded,
-    );
+    let payload =
+        build_share_notification_failure_payload(file_name, error, reporter_email, share_recorded);
     let file_name = file_name.to_string();
 
     tokio::spawn(async move {
@@ -208,7 +197,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn payload_has_grafana_shape_with_dedup_disabled() {
+    fn payload_has_grafana_shape_and_keeps_dedup() {
         let payload = build_upload_failure_payload("report.pdf", "NoSuchBucket", None);
         assert_eq!(payload["status"], "firing");
         let alert = &payload["alerts"][0];
@@ -216,7 +205,7 @@ mod tests {
         assert_eq!(alert["labels"]["alertname"], "FileUploadFailed");
         assert_eq!(alert["labels"]["severity"], "critical");
         assert_eq!(alert["labels"]["affected_service"], "file-service");
-        assert_eq!(alert["labels"]["dedup"], "false");
+        assert!(alert["labels"].get("dedup").is_none());
         let summary = alert["annotations"]["summary"].as_str().unwrap();
         assert!(summary.contains("report.pdf"));
         let description = alert["annotations"]["description"].as_str().unwrap();
@@ -257,7 +246,6 @@ mod tests {
             "report.pdf",
             "NotFound: topic does not exist",
             Some("user@example.com"),
-            false,
             true,
         );
         let alert = &payload["alerts"][0];
@@ -267,7 +255,7 @@ mod tests {
         );
         assert_eq!(alert["labels"]["severity"], "critical");
         assert_eq!(alert["labels"]["affected_service"], "file-service");
-        assert_eq!(alert["labels"]["dedup"], "false");
+        assert!(alert["labels"].get("dedup").is_none());
         assert_eq!(alert["labels"]["reporter_email"], "user@example.com");
         let summary = alert["annotations"]["summary"].as_str().unwrap();
         assert!(summary.contains("report.pdf"));
@@ -279,15 +267,18 @@ mod tests {
 
     #[test]
     fn share_notification_payload_omits_blank_reporter_email() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false, true);
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true);
         let alert = &payload["alerts"][0];
         assert!(alert["labels"].get("reporter_email").is_none());
     }
 
     #[test]
-    fn share_notification_payload_dedups_when_not_forced() {
-        let payload = build_share_notification_failure_payload("a.txt", "boom", None, true, true);
-        assert_eq!(payload["alerts"][0]["labels"]["dedup"], "true");
+    fn share_notification_payload_mentions_unrecorded_share() {
+        let payload = build_share_notification_failure_payload("a.txt", "boom", None, false);
+        let description = payload["alerts"][0]["annotations"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(description.contains("The share was not recorded"));
     }
 
     #[actix_rt::test]
