@@ -60,7 +60,7 @@ API — returns `Invalid credentials`, which looks like a typing/IME bug but is 
 
 ```bash
 docker exec otterworks-postgres psql -U otterworks -d otterworks -c 'select email from users;'
-# only admin@otterworks.dev  ->  re-seed before testing
+# drive account missing  ->  re-seed before testing
 python3 -m venv /tmp/retail-seed-venv
 /tmp/retail-seed-venv/bin/pip install -q -r testdata/generated/retail-drive/requirements.txt
 /tmp/retail-seed-venv/bin/python testdata/generated/retail-drive/generate_drive.py \
