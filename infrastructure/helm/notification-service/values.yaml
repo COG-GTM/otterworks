@@ -10,10 +10,8 @@ service:
   port: 80
   targetPort: 8086
 
-# Cluster-internal only: callers must go through api-gateway, which strips and
-# re-injects X-User-ID from the validated JWT (deploy-dev.sh also forces this off).
 ingress:
-  enabled: false
+  enabled: true
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
