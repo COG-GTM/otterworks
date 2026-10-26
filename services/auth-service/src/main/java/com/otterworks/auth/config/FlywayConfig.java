@@ -1,6 +1,5 @@
 package com.otterworks.auth.config;
 
-import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.CoreErrorCode;
 import org.flywaydb.core.api.output.ValidateOutput;
 import org.flywaydb.core.api.output.ValidateResult;
@@ -32,10 +31,9 @@ public class FlywayConfig {
   }
 
   static boolean onlyRewrittenMigrationChecksumMismatch(ValidateResult result) {
-    if (result.validationSuccessful || result.invalidMigrations == null) {
-      return false;
-    }
-    if (result.invalidMigrations.isEmpty()) {
+    if (result.validationSuccessful
+        || result.invalidMigrations == null
+        || result.invalidMigrations.isEmpty()) {
       return false;
     }
     for (ValidateOutput output : result.invalidMigrations) {
