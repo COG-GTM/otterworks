@@ -50,7 +50,8 @@ class AuthControllerIntegrationTest {
 
   @Test
   void register_shouldCreateUserAndReturnTokens() throws Exception {
-    String body = """
+    String body =
+        """
         {"email": "newuser@otterworks.dev", "password": "password123", "displayName": "New User"}
         """;
 
@@ -72,7 +73,8 @@ class AuthControllerIntegrationTest {
   void register_shouldRejectDuplicateEmail() throws Exception {
     createTestUser("duplicate@otterworks.dev", "password123", "Duplicate User");
 
-    String body = """
+    String body =
+        """
         {"email": "duplicate@otterworks.dev", "password": "password123", "displayName": "Dup User"}
         """;
 
@@ -84,7 +86,8 @@ class AuthControllerIntegrationTest {
 
   @Test
   void register_shouldRejectInvalidEmail() throws Exception {
-    String body = """
+    String body =
+        """
         {"email": "not-an-email", "password": "password123", "displayName": "Bad Email"}
         """;
 
@@ -98,7 +101,8 @@ class AuthControllerIntegrationTest {
   void login_shouldReturnTokensForValidCredentials() throws Exception {
     createTestUser("login@otterworks.dev", "password123", "Login User");
 
-    String body = """
+    String body =
+        """
         {"email": "login@otterworks.dev", "password": "password123"}
         """;
 
@@ -114,7 +118,8 @@ class AuthControllerIntegrationTest {
   void login_shouldRejectInvalidCredentials() throws Exception {
     createTestUser("login@otterworks.dev", "password123", "Login User");
 
-    String body = """
+    String body =
+        """
         {"email": "login@otterworks.dev", "password": "wrongpassword"}
         """;
 
@@ -164,7 +169,8 @@ class AuthControllerIntegrationTest {
     String accessToken =
         registerAndGetAccessToken("changepw@otterworks.dev", "password123", "PW User");
 
-    String body = """
+    String body =
+        """
         {"currentPassword": "password123", "newPassword": "newpassword456"}
         """;
 
