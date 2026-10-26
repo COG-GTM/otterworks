@@ -298,7 +298,7 @@ class DocumentService:
     # ---- Comments ----
 
     async def add_comment(
-        self, document_id: UUID, data: CommentCreate
+        self, document_id: UUID, data: CommentCreate, author_id: UUID
     ) -> Comment | None:
         document = await self.get(document_id)
         if not document:
@@ -306,7 +306,7 @@ class DocumentService:
 
         comment = Comment(
             document_id=document_id,
-            author_id=data.author_id,
+            author_id=author_id,
             content=data.content,
         )
         self.db.add(comment)
@@ -318,7 +318,7 @@ class DocumentService:
             {
                 "comment_id": comment.id,
                 "document_id": document_id,
-                "author_id": data.author_id,
+                "author_id": author_id,
             },
         )
         return comment

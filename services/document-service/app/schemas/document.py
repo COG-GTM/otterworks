@@ -85,7 +85,6 @@ class DocumentVersionResponse(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    author_id: UUID
     content: str = Field(..., min_length=1)
 
 
