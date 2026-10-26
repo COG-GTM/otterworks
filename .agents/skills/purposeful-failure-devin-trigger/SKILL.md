@@ -60,8 +60,11 @@ upload `.catch` in `file-upload-dropzone.tsx`).
 admin-service already owns the Devin flow: `DevinSessionService.create_session`
 (reads `DEVIN_API_KEY`/`DEVIN_ORG_ID`, no-ops with a warning if missing) and the
 Grafana-style webhook `POST /api/v1/admin/alerts/ingest` (auth: `X-Alert-Secret`
-or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; if that env var is
-unset the endpoint allows unauthenticated ingest). Reuse it instead of adding a
+or `Authorization: Bearer` matching `ALERT_WEBHOOK_SECRET`; the endpoint rejects
+every alert while that env var is unset, and in production also when it is the
+old public default `demo-alert-secret`. The deploy scripts provision it for
+admin-service, file-service and notification-service; `make up` writes a random
+one to `.env` via `scripts/ensure-local-secrets.sh`). Reuse it instead of adding a
 second Devin client:
 
 - From the failing service, fire-and-forget (`tokio::spawn`, never block or change
@@ -70,12 +73,18 @@ second Devin client:
   `services/file-service/src/alerts.rs`: labels `alertname`, `severity`,
   `affected_service`, annotations summary/description, `startsAt`. Config via env
   `ADMIN_SERVICE_URL` (default `http://admin-service:8089` resolves in-namespace)
-  and optional `ALERT_WEBHOOK_SECRET`. Missing config → warn and skip. Never log
+  and `ALERT_WEBHOOK_SECRET` (required for the alert to be accepted). Missing
+  config → warn and skip. Never log
   secrets.
 - **Dedup**: `alerts_controller#process_alert` normally skips creating an incident
   when one is already open for the `affected_service`. To get one incident + one
   Devin session per failure, the alert carries label `"dedup": "false"`, which the
-  controller honors by bypassing the skip. Devin sessions also only fire when
+  controller honors by bypassing the skip, up to `ALERT_DEDUP_BYPASS_PER_HOUR`
+  (default 20) per service; after that alerts de-duplicate normally. At most 20
+  alerts are accepted per request, and at most `ALERT_DEVIN_SESSIONS_PER_HOUR`
+  (default 10) Devin sessions are started per hour; past that the incident
+  stays `open` for manual triage. Incident title/description are passed to Devin
+  as a fenced, quoted, truncated untrusted-data block. Devin sessions also only fire when
   `AdminSettingsService.auto_investigate_enabled?` is true (fail-open default).
 
 ## Step 4 — Devin credentials on the tenant

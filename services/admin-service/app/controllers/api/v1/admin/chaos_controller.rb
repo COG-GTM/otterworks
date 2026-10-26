@@ -11,6 +11,7 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -78,7 +79,7 @@ module Api
 
         def verify_chaos_secret
           expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          return if expected.nil? || expected.empty? # optional second factor on top of the admin role
 
           provided = request.headers['X-Chaos-Secret']
           return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)

@@ -22,6 +22,8 @@
 #
 # Required env: AWS creds (exported), DB_PASSWORD. Stable JWT_SECRET /
 #   SECRET_KEY_BASE recommended across redeploys (auto-generated if unset).
+#   ALERT_WEBHOOK_SECRET is reused from the tenant's admin-service secret, or
+#   generated on first deploy.
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
@@ -70,6 +72,8 @@ JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(existing_alert_secret "${NS}")}"
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
 T_REDIS_HOST="redis"
 T_MEILI_URL="http://meilisearch:7700"

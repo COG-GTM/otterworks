@@ -138,7 +138,7 @@ services:
       GF_UNIFIED_ALERTING_ENABLED: 'true'
       GF_ALERTING_ENABLED: 'false'
       # Secret sent to the admin-service alert webhook
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
     ports:
     - 3001:3000
     volumes:
