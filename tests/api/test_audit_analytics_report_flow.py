@@ -47,29 +47,35 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
-    compliance_response = api_client.client.get(
-        "/api/v1/audit/reports/compliance",
-        headers=user.auth_headers,
-        params={"period": "30d"},
+    other_user = api_client.register_user("audit-flow-other")
+    foreign_query = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=other_user.auth_headers,
+        params={"user_id": user.id},
     )
-    assert compliance_response.status_code == 200, compliance_response.text
+    assert foreign_query.status_code == 403, foreign_query.text
 
-    export_response = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "json"},
+    foreign_event = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=other_user.auth_headers)
+    assert foreign_event.status_code == 404, foreign_event.text
+
+    forged_event = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=other_user.auth_headers,
+        json={"userId": user.id, "action": "delete", "resourceType": "document", "resourceId": resource_id},
     )
-    assert export_response.status_code == 200, export_response.text
+    assert forged_event.status_code == 403, forged_event.text
 
-    invalid_export = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "xml"},
-    )
-    assert invalid_export.status_code == 400
+    anonymous_query = api_client.client.get("/api/v1/audit/events")
+    assert anonymous_query.status_code == 401, anonymous_query.text
 
-    archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    # Compliance, export and archive are tenant-wide operations reserved for admins.
+    for method, path in (
+        ("GET", "/api/v1/audit/reports/compliance"),
+        ("GET", "/api/v1/audit/export"),
+        ("POST", "/api/v1/audit/archive"),
+    ):
+        response = api_client.client.request(method, path, headers=user.auth_headers)
+        assert response.status_code == 403, f"{method} {path}: {response.text}"
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):

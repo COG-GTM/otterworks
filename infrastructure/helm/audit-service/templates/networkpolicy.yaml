@@ -15,9 +15,11 @@ spec:
     - Ingress
   ingress:
     - from:
-        - namespaceSelector:
+        {{- range .Values.networkPolicy.allowedClients }}
+        - podSelector:
             matchLabels:
-              kubernetes.io/metadata.name: {{ .Values.networkPolicy.ingressNamespace }}
+              app.kubernetes.io/name: {{ . }}
+        {{- end }}
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.networkPolicy.monitoringNamespace }}

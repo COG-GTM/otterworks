@@ -10,8 +10,10 @@ service:
   port: 8090
   targetPort: 8090
 
+# The audit API is internal: callers reach it through the api-gateway, never
+# on a public host of its own.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
@@ -44,8 +46,11 @@ monitoring:
 
 networkPolicy:
   enabled: true
-  ingressNamespace: ingress-nginx
   monitoringNamespace: monitoring
+  # Same-namespace workloads (by app.kubernetes.io/name) allowed to call port 8090.
+  allowedClients:
+    - api-gateway
+    - report-service
 
 serviceAccount:
   roleArn: ""

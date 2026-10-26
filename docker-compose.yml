@@ -471,7 +471,7 @@ services:
       dockerfile: Dockerfile
     container_name: otterworks-audit-service
     ports:
-    - 8090:8090
+    - 127.0.0.1:8090:8090
     environment:
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
