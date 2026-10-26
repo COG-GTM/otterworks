@@ -222,23 +222,34 @@ def test_archive_root_swapped_after_containment_check_is_rejected(
     reader, root, secret = archive_with_outside_secret
     (root / "tenant-secrets.env").write_text("# fine\n", encoding="utf-8")
     check = reader._archive_relative_parts
-    real_stat = os.stat
 
-    def stat_then_swap(path, *args, **kwargs):
-        result = real_stat(path, *args, **kwargs)
-        if os.fspath(path) == os.path.realpath(root):
-            (root / "tenant-secrets.env").unlink()
-            (root / "report.md").unlink()
-            root.rmdir()
-            os.symlink(secret.parent, root)
-            monkeypatch.setattr(os, "stat", real_stat)
+    def check_then_swap(name, path):
+        result = check(name, path)
+        (root / "tenant-secrets.env").unlink()
+        (root / "report.md").unlink()
+        root.rmdir()
+        os.symlink(secret.parent, root)
         return result
 
-    def check_then_arm(name, path):
-        parts = check(name, path)
-        monkeypatch.setattr(os, "stat", stat_then_swap)
-        return parts
+    monkeypatch.setattr(reader, "_archive_relative_parts", check_then_swap)
+    with pytest.raises(FileNotFoundError):
+        reader.read_export("tenant-secrets.env")
 
-    monkeypatch.setattr(reader, "_archive_relative_parts", check_then_arm)
+
+def test_archive_root_replaced_by_another_directory_after_check_is_rejected(
+    archive_with_outside_secret, monkeypatch
+):
+    reader, root, secret = archive_with_outside_secret
+    (root / "tenant-secrets.env").write_text("# fine\n", encoding="utf-8")
+    check = reader._archive_relative_parts
+
+    def check_then_replace(name, path):
+        result = check(name, path)
+        root.rename(root.with_name("archive-old"))
+        root.mkdir()
+        (root / "tenant-secrets.env").write_text("# planted\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(reader, "_archive_relative_parts", check_then_replace)
     with pytest.raises(FileNotFoundError):
         reader.read_export("tenant-secrets.env")
