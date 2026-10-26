@@ -37,13 +37,22 @@ export const JWT_ALGORITHMS: ['HS256', 'HS384', 'HS512'] = ['HS256', 'HS384', 'H
 
 const PUBLIC_DEFAULT_JWT_SECRETS = new Set(['otterworks-dev-secret']);
 
+// docker-compose's local-dev fallback; fine on a laptop, never in a deployed tenant.
+const LOCAL_DEV_JWT_SECRETS = new Set([
+  'otterworks-local-dev-jwt-secret-change-me-in-production',
+]);
+
 export function requireJwtSecret(
   value: string | undefined = process.env.JWT_SECRET,
+  nodeEnv: string | undefined = process.env.NODE_ENV,
 ): string {
   if (!value || value.trim() === '') {
     throw new Error('JWT_SECRET environment variable is required but not set');
   }
-  if (PUBLIC_DEFAULT_JWT_SECRETS.has(value)) {
+  if (
+    PUBLIC_DEFAULT_JWT_SECRETS.has(value) ||
+    (nodeEnv === 'production' && LOCAL_DEV_JWT_SECRETS.has(value))
+  ) {
     throw new Error(
       'JWT_SECRET is set to a publicly known default; configure a random secret',
     );

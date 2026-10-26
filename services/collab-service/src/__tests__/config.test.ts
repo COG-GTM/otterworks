@@ -20,6 +20,15 @@ describe('requireJwtSecret', () => {
     );
   });
 
+  it('rejects the docker-compose local-dev default only in production', () => {
+    const composeDefault = 'otterworks-local-dev-jwt-secret-change-me-in-production';
+    expect(() => requireJwtSecret(composeDefault, 'production')).toThrow(
+      'publicly known default',
+    );
+    expect(requireJwtSecret(composeDefault, 'development')).toBe(composeDefault);
+    expect(requireJwtSecret(composeDefault, undefined)).toBe(composeDefault);
+  });
+
   it('rejects a secret shorter than the minimum length', () => {
     expect(() => requireJwtSecret('a'.repeat(MIN_JWT_SECRET_BYTES - 1))).toThrow(
       `at least ${MIN_JWT_SECRET_BYTES} bytes`,
