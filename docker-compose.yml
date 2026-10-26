@@ -494,7 +494,6 @@ services:
       ASPNETCORE_URLS: http://+:8090
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
       AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-local-dev-audit-service-token}
-      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       localstack:
         condition: service_healthy
