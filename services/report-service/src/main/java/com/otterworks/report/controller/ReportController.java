@@ -4,6 +4,8 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportResponse;
 import com.otterworks.report.model.ReportStatus;
+import com.otterworks.report.security.ReportCaller;
+import com.otterworks.report.service.ReportAccessDeniedException;
 import com.otterworks.report.service.ReportService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -20,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -27,12 +30,14 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import javax.validation.Valid;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -66,16 +71,18 @@ public class ReportController {
     @ApiOperation(value = "Create a new report", notes = "Submits a report generation request. The report is generated asynchronously.")
     @ApiResponses({
             @ApiResponse(code = 202, message = "Report request accepted"),
-            @ApiResponse(code = 400, message = "Invalid request")
+            @ApiResponse(code = 400, message = "Invalid request"),
+            @ApiResponse(code = 403, message = "Category requires the ADMIN role")
     })
     public ResponseEntity<ReportResponse> createReport(
             @Valid @RequestBody ReportRequest request) {
 
+        ReportCaller caller = currentCaller();
         logger.info("Report request: name={}, category={}, type={}, by={}",
                 request.getReportName(), request.getCategory(),
-                request.getReportType(), request.getRequestedBy());
+                request.getReportType(), caller.getUserId());
 
-        Report report = reportService.createReport(request);
+        Report report = reportService.createReport(request, caller);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ReportResponse.fromEntity(report));
     }
@@ -90,7 +97,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> report = reportService.getReport(id);
+        Optional<Report> report = reportService.getReport(id, currentCaller());
         if (!report.isPresent()) { // LEGACY: !isPresent() instead of isEmpty()
             return ResponseEntity.notFound().build();
         }
@@ -98,21 +105,15 @@ public class ReportController {
     }
 
     @GetMapping
-    @ApiOperation(value = "List reports", notes = "List reports filtered by user ID or status")
+    @ApiOperation(value = "List reports",
+            notes = "Lists the caller's reports, optionally filtered by status. Only admins may list other users' reports.")
     public ResponseEntity<Map<String, Object>> listReports(
-            @ApiParam(value = "Filter by user ID")
+            @ApiParam(value = "Filter by user ID (admins only, or the caller's own ID)")
             @RequestParam(required = false) String userId,
             @ApiParam(value = "Filter by status")
             @RequestParam(required = false) ReportStatus status) {
 
-        List<Report> reports;
-        if (userId != null) {
-            reports = reportService.getReportsByUser(userId);
-        } else if (status != null) {
-            reports = reportService.getReportsByStatus(status);
-        } else {
-            reports = reportService.getReportsByStatus(ReportStatus.COMPLETED);
-        }
+        List<Report> reports = reportService.listReports(currentCaller(), userId, status);
 
         List<ReportResponse> responses = reports.stream()
                 .map(ReportResponse::fromEntity)
@@ -137,7 +138,7 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> optReport = reportService.getReport(id);
+        Optional<Report> optReport = reportService.getReport(id, currentCaller());
         if (!optReport.isPresent()) {
             return ResponseEntity.notFound().build();
         }
@@ -189,14 +190,25 @@ public class ReportController {
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        boolean deleted = reportService.deleteReport(id);
+        boolean deleted = reportService.deleteReport(id, currentCaller());
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.noContent().build();
     }
 
+    @ExceptionHandler(ReportAccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDenied(ReportAccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(Collections.singletonMap("error", e.getMessage()));
+    }
+
     // ----- Private helpers -----
+
+    private ReportCaller currentCaller() {
+        return ReportCaller.current()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+    }
 
     private String getContentType(com.otterworks.report.model.ReportType reportType) {
         // LEGACY: switch without enhanced syntax

@@ -35,6 +35,7 @@ class ApiClient:
         self.created_files: list[str] = []
         self.created_folders: list[str] = []
         self.created_reports: list[str] = []
+        self.report_owners: dict[str, RegisteredUser] = {}
         self.indexed_documents: list[str] = []
         self.indexed_files: list[str] = []
 
@@ -135,9 +136,14 @@ class ApiClient:
         self.created_documents.append(document["id"])
         return document
 
+    def track_report(self, report_id: str, owner: RegisteredUser) -> None:
+        self.created_reports.append(report_id)
+        self.report_owners[report_id] = owner
+
     def cleanup(self) -> None:
         for report_id in reversed(self.created_reports):
-            self.client.delete(f"/api/v1/reports/{report_id}")
+            owner = self.report_owners.get(report_id)
+            self.client.delete(f"/api/v1/reports/{report_id}", headers=owner.auth_headers if owner else None)
         for document_id in reversed(self.indexed_documents):
             self.client.delete(f"/api/v1/search/index/document/{document_id}")
         for file_id in reversed(self.indexed_files):
