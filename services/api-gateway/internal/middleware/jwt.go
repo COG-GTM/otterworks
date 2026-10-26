@@ -18,6 +18,8 @@ type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	// Type is auth-service's token kind: "access" or "refresh".
+	Type string `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -27,7 +29,13 @@ type JWTConfig struct {
 	PublicPath          []string // exact paths that skip JWT validation
 	PrefixPath          []string // prefix paths that skip JWT validation (e.g. /health, /metrics)
 	ProtectedPrefixPath []string // route prefixes that require JWT validation; empty means all non-public paths
+	RefreshPath         []string // exact paths that require a refresh token instead of an access token
 }
+
+const (
+	tokenTypeAccess  = "access"
+	tokenTypeRefresh = "refresh"
+)
 
 // DefaultPublicPaths returns the default set of exact-match paths that skip JWT validation.
 func DefaultPublicPaths() []string {
@@ -46,11 +54,23 @@ func DefaultPrefixPaths() []string {
 	}
 }
 
+// DefaultRefreshPaths returns the exact paths where a refresh token is the
+// expected credential. Every other protected path accepts access tokens only.
+func DefaultRefreshPaths() []string {
+	return []string{
+		"/api/v1/auth/refresh",
+	}
+}
+
 // JWTAuth returns middleware that validates JWT tokens on protected routes.
 func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 	exactPaths := make(map[string]bool, len(cfg.PublicPath))
 	for _, p := range cfg.PublicPath {
 		exactPaths[p] = true
+	}
+	refreshPaths := make(map[string]bool, len(cfg.RefreshPath))
+	for _, p := range cfg.RefreshPath {
+		refreshPaths[p] = true
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -73,6 +93,10 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 
 			claims, err := validateToken(tokenStr, cfg.Secret)
 			if err != nil {
+				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+				return
+			}
+			if err := checkTokenType(claims, refreshPaths[r.URL.Path]); err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
 			}
@@ -124,6 +148,29 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	}
 
 	return claims, nil
+}
+
+// checkTokenType keeps refresh tokens off every route except the refresh
+// endpoint, where only refresh tokens are accepted. Refresh tokens are signed
+// with the same key as access tokens but live for 30 days and are revoked only
+// in auth-service's database, so accepting one here would let it outlive
+// logout and password change. Tokens without a type claim predate typed
+// tokens and are treated as access tokens.
+func checkTokenType(claims *JWTClaims, refreshPath bool) error {
+	tokenType := claims.Type
+	if tokenType == "" {
+		tokenType = tokenTypeAccess
+	}
+	if refreshPath {
+		if tokenType != tokenTypeRefresh {
+			return fmt.Errorf("a refresh token is required")
+		}
+		return nil
+	}
+	if tokenType != tokenTypeAccess {
+		return fmt.Errorf("%s tokens cannot be used as access tokens", tokenType)
+	}
+	return nil
 }
 
 func isPublicPath(path string, exactPaths map[string]bool, prefixPaths []string) bool {

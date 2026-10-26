@@ -51,6 +51,30 @@ def test_register_login_profile_refresh_and_logout(api_client):
     assert logout_response.status_code == 204, logout_response.text
 
 
+def test_refresh_token_is_not_an_access_token(api_client):
+    user = api_client.register_user("refresh-as-access")
+    login_data = api_client.login_user(user)
+    refresh_headers = {"Authorization": f"Bearer {login_data['refreshToken']}"}
+
+    for method, path in (
+        ("GET", "/api/v1/auth/profile"),
+        ("GET", "/api/v1/documents/"),
+        ("GET", "/api/v1/files/"),
+        ("POST", "/api/v1/auth/logout"),
+    ):
+        response = api_client.client.request(method, path, headers=refresh_headers)
+        assert response.status_code == 401, f"{method} {path}: {response.status_code} {response.text}"
+
+    access_on_refresh = api_client.client.post(
+        "/api/v1/auth/refresh",
+        headers={"Authorization": f"Bearer {login_data['accessToken']}"},
+    )
+    assert access_on_refresh.status_code in {400, 401, 403}
+
+    refresh_response = api_client.client.post("/api/v1/auth/refresh", headers=refresh_headers)
+    assert refresh_response.status_code == 200, refresh_response.text
+
+
 def test_auth_validation_and_protected_routes(api_client):
     invalid_register = api_client.client.post(
         "/api/v1/auth/register",

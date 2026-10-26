@@ -55,8 +55,15 @@ class JwtAuthenticator
     secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
-    decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
-    decoded.first
+    payload = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512]).first
+    # auth-service signs refresh tokens with the same key; only access tokens
+    # (or untyped tokens from other issuers) may authenticate a request.
+    token_type = payload.fetch('type', 'access')
+    unless token_type == 'access'
+      Rails.logger.warn("JWT authentication failed: #{token_type} token used as access token")
+      return nil
+    end
+    payload
   rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
     nil
