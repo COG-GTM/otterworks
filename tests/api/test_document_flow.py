@@ -104,6 +104,7 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
     )
     assert delete_comment_response.status_code == 204, delete_comment_response.text
 
+    victim = api_client.register_user("document-template-victim")
     template_response = api_client.client.post(
         "/api/v1/templates/",
         headers=headers,
@@ -111,19 +112,24 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
             "name": f"Flow Template {api_client.run_id}",
             "description": "Template for API flow tests",
             "content": "template body",
-            "created_by": user.id,
+            "created_by": victim.id,
         },
     )
-    assert template_response.status_code == 201, template_response.text
-    template = template_response.json()
+    assert template_response.status_code == 403, template_response.text
 
-    from_template_response = api_client.client.post(
-        f"/api/v1/documents/from-template/{template['id']}",
-        headers=headers,
-        json={"title": "From Template", "owner_id": user.id},
+    anonymous_template = api_client.client.post(
+        "/api/v1/templates/",
+        json={"name": f"Anon Template {api_client.run_id}", "created_by": victim.id},
     )
-    assert from_template_response.status_code == 201, from_template_response.text
-    assert from_template_response.json()["content"] == "template body"
+    assert anonymous_template.status_code == 401
+
+    templates_response = api_client.client.get("/api/v1/templates/", headers=headers)
+    assert templates_response.status_code == 200, templates_response.text
+    assert all(
+        t["name"] != f"Flow Template {api_client.run_id}" for t in templates_response.json()
+    )
+
+    assert api_client.client.get("/api/v1/templates/").status_code == 401
 
     delete_response = api_client.client.delete(f"/api/v1/documents/{document_id}", headers=headers)
     assert delete_response.status_code == 204, delete_response.text

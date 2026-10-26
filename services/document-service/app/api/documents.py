@@ -94,6 +94,30 @@ def _extract_user_id(request: Request) -> UUID | None:
     return None
 
 
+def _caller_roles(request: Request) -> frozenset[str]:
+    """Upper-cased roles from a verified access token; empty without one."""
+    auth_header = request.headers.get("Authorization")
+    secret = _get_jwt_secret()
+    if not (secret and auth_header and auth_header.startswith("Bearer ")):
+        return frozenset()
+    try:
+        payload = jwt.decode(
+            auth_header[len("Bearer "):], secret, algorithms=["HS256", "HS384"]
+        )
+    except jwt.PyJWTError:
+        return frozenset()
+    if payload.get("type", "access") != "access":
+        return frozenset()
+    roles = payload.get("roles")
+    if roles is None:
+        roles = [payload.get("role")]
+    elif isinstance(roles, str):
+        roles = [roles]
+    if not isinstance(roles, list):
+        return frozenset()
+    return frozenset(str(r).upper() for r in roles if isinstance(r, str) and r)
+
+
 def _require_user_id(request: Request) -> UUID:
     user_id = _extract_user_id(request)
     if not user_id:
@@ -505,9 +529,14 @@ async def export_document(
 async def create_from_template(
     template_id: UUID,
     body: DocumentFromTemplate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a document from a template."""
+    """Create a document from a template, owned by the authenticated caller."""
+    user_id = _require_user_id(request)
+    if body.owner_id is not None and body.owner_id != user_id:
+        raise HTTPException(status_code=403, detail="owner_id must match the caller")
+    body.owner_id = user_id
     service = DocumentService(db)
     document = await service.create_from_template(template_id, body)
     if not document:
