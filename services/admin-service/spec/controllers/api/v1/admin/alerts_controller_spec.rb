@@ -4,6 +4,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
+    allow(ChaosIncidentRegistry).to receive(:record).and_return(false)
   end
 
   def firing_alert(labels: {}, summary: 'File upload failed: a.txt')
@@ -24,6 +25,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(response).to have_http_status(:ok)
       expect(Incident.count).to eq(1)
       expect(DevinSessionService).to have_received(:create_session).once
+      expect(ChaosIncidentRegistry).to have_received(:record).with(Incident.last)
     end
 
     it 'dedupes repeated alerts for the same service by default' do

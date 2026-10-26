@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::ChaosController do
-  let(:redis) { instance_double(Redis, setex: 'OK', keys: [], del: 0, get: nil, set: true, expire: true) }
+  let(:redis) { instance_double(Redis, setex: 'OK', keys: [], del: 0, smembers: []) }
 
   before do
     allow(Redis).to receive(:new).and_return(redis)
@@ -20,14 +20,9 @@ RSpec.describe Api::V1::Admin::ChaosController do
     end
   end
 
-  def open_incident(service, description: 'real outage', reporter_id: nil, created_at: Time.current)
-    Incident.create!(title: "#{service} down", description: description, severity: 'critical',
-                     status: 'open', affected_service: service, reporter_id: reporter_id,
-                     created_at: created_at)
-  end
-
-  def alert_incident(service, **opts)
-    open_incident(service, description: "p95 high\n\n#{Api::V1::Admin::AlertsController::AUTO_INCIDENT_SOURCE}", **opts)
+  def open_incident(service)
+    Incident.create!(title: "#{service} down", description: 'p95 latency high', severity: 'critical',
+                     status: 'open', affected_service: service)
   end
 
   let(:valid_params) { { service: 'search-service', scenario: 'suggest_500' } }
@@ -58,17 +53,6 @@ RSpec.describe Api::V1::Admin::ChaosController do
       expect(redis).to have_received(:setex).with('chaos:search-service:suggest_500', 600, '1')
       expect(ChaosProbeService).to have_received(:start)
         .with(service: 'search-service', redis_key: 'chaos:search-service:suggest_500')
-      expect(redis).to have_received(:set)
-        .with('chaos_window:search-service', kind_of(String), nx: true, ex: 3600)
-    end
-
-    it 'keeps the original chaos window start when the flag is renewed' do
-      allow(redis).to receive(:set).and_return(false)
-      set_jwt_env(request, role: 'admin')
-      post :trigger, params: valid_params
-
-      expect(response).to have_http_status(:ok)
-      expect(redis).to have_received(:expire).with('chaos_window:search-service', 3600)
     end
 
     context 'when CHAOS_SECRET is set' do
@@ -103,14 +87,9 @@ RSpec.describe Api::V1::Admin::ChaosController do
   end
 
   describe 'DELETE #reset' do
-    let(:window_start) { 10.minutes.ago }
-
-    before do
-      allow(redis).to receive(:get).with('chaos_window:file-service').and_return(window_start.to_i.to_s)
-    end
-
     it 'does not resolve incidents or clear flags for an unauthenticated caller' do
-      incident = alert_incident('file-service')
+      incident = open_incident('file-service')
+      allow(redis).to receive(:smembers).with('chaos_incidents:file-service').and_return([incident.id])
       delete :reset
 
       expect(response).to have_http_status(:forbidden)
@@ -120,7 +99,8 @@ RSpec.describe Api::V1::Admin::ChaosController do
     end
 
     it 'does not resolve incidents or clear flags for a non-admin user' do
-      incident = alert_incident('file-service')
+      incident = open_incident('file-service')
+      allow(redis).to receive(:smembers).with('chaos_incidents:file-service').and_return([incident.id])
       set_jwt_env(request, role: 'user')
       delete :reset
 
@@ -130,25 +110,34 @@ RSpec.describe Api::V1::Admin::ChaosController do
       expect(incident.reload.status).to eq('open')
     end
 
-    it 'clears flags and resolves only alert incidents opened during the chaos window' do
+    it 'clears flags and resolves only incidents attributed to a chaos run' do
       allow(redis).to receive(:keys).with('chaos:*').and_return(['chaos:file-service:upload_s3_error'])
-      chaos = alert_incident('file-service')
-      before_window = alert_incident('file-service', created_at: window_start - 5.minutes)
-      human_filed = open_incident('file-service', reporter_id: SecureRandom.uuid)
-      manual = open_incident('file-service')
-      no_window = alert_incident('search-service')
+      chaos = open_incident('file-service')
+      unattributed = open_incident('file-service')
+      other_service = open_incident('search-service')
+      allow(redis).to receive(:smembers).with('chaos_incidents:file-service').and_return([chaos.id])
 
       set_jwt_env(request, role: 'admin')
       delete :reset
 
       expect(response).to have_http_status(:ok)
       expect(redis).to have_received(:del).with('chaos:file-service:upload_s3_error')
-      expect(redis).to have_received(:del).with('chaos_window:file-service')
+      expect(redis).to have_received(:del).with('chaos_incidents:file-service')
       expect(response.parsed_body['resolved_incidents']).to eq([chaos.id])
       expect(chaos.reload.status).to eq('resolved')
-      [before_window, human_filed, manual, no_window].each do |incident|
-        expect(incident.reload.status).to eq('open')
-      end
+      expect(unattributed.reload.status).to eq('open')
+      expect(other_service.reload.status).to eq('open')
+    end
+
+    it 'ignores registered ids that belong to another service' do
+      foreign = open_incident('search-service')
+      allow(redis).to receive(:smembers).with('chaos_incidents:file-service').and_return([foreign.id])
+
+      set_jwt_env(request, role: 'admin')
+      delete :reset
+
+      expect(response).to have_http_status(:ok)
+      expect(foreign.reload.status).to eq('open')
     end
   end
 end
