@@ -76,6 +76,8 @@ NS="$(tenant_namespace "${ATTENDEE_ID}")"
 # value so services redeployed separately stay in sync with admin-service.
 ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NS}" get secret admin-service-secrets \
   -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+# admin-service rejects the old compose default; replace it instead of reusing it.
+[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
 ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
 T_REDIS_HOST="redis"
