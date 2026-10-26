@@ -89,11 +89,7 @@ public class ReportDataFetcher {
 
                 // Let RestClientException propagate so fallback data is NOT cached.
                 // Only successful responses are stored in the Guava cache.
-                HttpHeaders headers = new HttpHeaders();
-                if (StringUtils.isNotEmpty(appConfig.getAuditServiceToken())) {
-                    headers.set("X-Service-Token", appConfig.getAuditServiceToken());
-                }
-                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+                ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
                 if (response.getBody() != null && response.getBody().containsKey("events")) {
                     return (List<Map<String, Object>>) response.getBody().get("events");
                 }
@@ -121,7 +117,11 @@ public class ReportDataFetcher {
                 logger.info("Fetching audit data from: {}", url);
 
                 // Let RestClientException propagate so fallback data is NOT cached.
-                ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+                HttpHeaders headers = new HttpHeaders();
+                if (StringUtils.isNotEmpty(appConfig.getAuditServiceToken())) {
+                    headers.set("X-Service-Token", appConfig.getAuditServiceToken());
+                }
+                ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
                 if (response.getBody() != null && response.getBody().containsKey("events")) {
                     return (List<Map<String, Object>>) response.getBody().get("events");
                 }
