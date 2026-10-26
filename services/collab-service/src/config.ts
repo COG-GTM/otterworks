@@ -29,6 +29,40 @@ export interface Config {
   };
 }
 
+export const MIN_JWT_SECRET_BYTES = 32;
+
+// Tokens are HMAC-signed by auth-service (jjwt picks HS256/384/512 from the key length);
+// pinning the family blocks alg confusion, matching the gateway's SigningMethodHMAC check.
+export const JWT_ALGORITHMS: ['HS256', 'HS384', 'HS512'] = ['HS256', 'HS384', 'HS512'];
+
+const PUBLIC_DEFAULT_JWT_SECRETS = new Set(['otterworks-dev-secret']);
+
+// docker-compose's local-dev fallback; fine on a laptop, never in a deployed tenant.
+const LOCAL_DEV_JWT_SECRETS = new Set([
+  'otterworks-local-dev-jwt-secret-change-me-in-production',
+]);
+
+export function requireJwtSecret(
+  value: string | undefined = process.env.JWT_SECRET,
+  nodeEnv: string | undefined = process.env.NODE_ENV,
+): string {
+  if (!value || value.trim() === '') {
+    throw new Error('JWT_SECRET environment variable is required but not set');
+  }
+  if (
+    PUBLIC_DEFAULT_JWT_SECRETS.has(value) ||
+    (nodeEnv === 'production' && LOCAL_DEV_JWT_SECRETS.has(value))
+  ) {
+    throw new Error(
+      'JWT_SECRET is set to a publicly known default; configure a random secret',
+    );
+  }
+  if (Buffer.byteLength(value, 'utf8') < MIN_JWT_SECRET_BYTES) {
+    throw new Error(`JWT_SECRET must be at least ${MIN_JWT_SECRET_BYTES} bytes`);
+  }
+  return value;
+}
+
 export function loadConfig(): Config {
   return {
     httpPort: parseInt(process.env.HTTP_PORT || '8084', 10),
@@ -40,7 +74,7 @@ export function loadConfig(): Config {
       keyPrefix: process.env.REDIS_KEY_PREFIX || 'collab:',
     },
     jwt: {
-      secret: process.env.JWT_SECRET || 'otterworks-dev-secret',
+      secret: requireJwtSecret(),
       issuer: process.env.JWT_ISSUER || 'otterworks-auth-service',
     },
     cors: {
