@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The authenticated caller of a report endpoint, from a verified JWT or the api-gateway identity headers.
+ * The authenticated caller of a report endpoint, as established from a verified JWT.
  */
 public final class ReportCaller {
 

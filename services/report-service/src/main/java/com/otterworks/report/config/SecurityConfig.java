@@ -1,6 +1,5 @@
 package com.otterworks.report.config;
 
-import com.otterworks.report.security.GatewayIdentityFilter;
 import com.otterworks.report.security.JwtAuthenticationFilter;
 import com.otterworks.report.security.JwtVerifier;
 import org.slf4j.Logger;
@@ -16,7 +15,6 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Security configuration using the deprecated WebSecurityConfigurerAdapter pattern.
@@ -38,8 +36,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     public SecurityConfig(@Value("${otterworks.security.jwt-secret:}") String jwtSecret) {
         this.jwtVerifier = new JwtVerifier(jwtSecret);
         if (!jwtVerifier.isConfigured()) {
-            logger.warn("JWT_SECRET is not set: trusting the X-User-ID/X-User-Roles headers set by api-gateway;"
-                    + " keep this service unreachable except through the gateway");
+            logger.warn("JWT_SECRET is not set: every /api/v1/reports request will be rejected with 401");
         }
     }
 
@@ -58,7 +55,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .antMatchers("/api/v1/reports/**").authenticated()
                 .anyRequest().authenticated()
             .and()
-            .addFilterBefore(identityFilter(), UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(new JwtAuthenticationFilter(jwtVerifier), UsernamePasswordAuthenticationFilter.class)
             .exceptionHandling()
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
             .and()
@@ -66,9 +63,5 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .frameOptions().deny()
                 .contentTypeOptions().and()
                 .xssProtection().block(true);
-    }
-
-    private OncePerRequestFilter identityFilter() {
-        return jwtVerifier.isConfigured() ? new JwtAuthenticationFilter(jwtVerifier) : new GatewayIdentityFilter();
     }
 }
