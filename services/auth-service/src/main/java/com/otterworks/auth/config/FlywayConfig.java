@@ -1,6 +1,6 @@
 package com.otterworks.auth.config;
 
-import org.flywaydb.core.api.CoreErrorCode;
+import org.flywaydb.core.api.ErrorCode;
 import org.flywaydb.core.api.output.ValidateOutput;
 import org.flywaydb.core.api.output.ValidateResult;
 import org.slf4j.Logger;
@@ -39,7 +39,7 @@ public class FlywayConfig {
     for (ValidateOutput output : result.invalidMigrations) {
       if (!REWRITTEN_MIGRATION_VERSION.equals(output.version)
           || output.errorDetails == null
-          || output.errorDetails.errorCode != CoreErrorCode.CHECKSUM_MISMATCH) {
+          || output.errorDetails.errorCode != ErrorCode.CHECKSUM_MISMATCH) {
         return false;
       }
     }
