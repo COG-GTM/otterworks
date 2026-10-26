@@ -523,6 +523,33 @@ pub async fn restore_file(
     Ok(HttpResponse::Ok().json(file))
 }
 
+/// The authenticated caller, from the `X-User-ID` header the api-gateway
+/// derives from the validated JWT (client-supplied values are stripped).
+fn caller_id(req: &HttpRequest) -> Result<Uuid, ServiceError> {
+    req.headers()
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::Unauthorized("missing X-User-ID header".into()))
+}
+
+/// Resolve the user a write is attributed to: always the authenticated
+/// caller. A legacy body field naming the actor is accepted only when it
+/// names the caller, so a client can never attribute a record to someone else.
+fn resolve_actor(
+    req: &HttpRequest,
+    claimed: Option<Uuid>,
+    field: &str,
+) -> Result<Uuid, ServiceError> {
+    let caller = caller_id(req)?;
+    match claimed {
+        Some(claimed) if claimed != caller => Err(ServiceError::Forbidden(format!(
+            "{field} does not match the authenticated user"
+        ))),
+        _ => Ok(caller),
+    }
+}
+
 pub async fn share_file(
     req: HttpRequest,
     config: web::Data<AppConfig>,
@@ -540,6 +567,8 @@ pub async fn share_file(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(String::from);
+
+    let shared_by = resolve_actor(&req, body.shared_by, "shared_by")?;
 
     let file_id: Uuid = path
         .into_inner()
@@ -584,7 +613,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         (share, false, false)
@@ -596,7 +625,7 @@ pub async fn share_file(
                 file_id,
                 shared_with,
                 permission: body.permission.clone(),
-                shared_by: body.shared_by,
+                shared_by,
                 created_at: existing.created_at,
             };
             meta.put_share(&updated).await?;
@@ -612,7 +641,7 @@ pub async fn share_file(
             file_id,
             shared_with,
             permission: body.permission.clone(),
-            shared_by: body.shared_by,
+            shared_by,
             created_at: Utc::now(),
         };
         meta.put_share(&share).await?;
@@ -696,15 +725,29 @@ pub async fn list_folders(
 }
 
 pub async fn create_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let owner_id = resolve_actor(&req, body.owner_id, "owner_id")?;
+
+    // A folder can only be nested under one of the caller's own folders;
+    // otherwise it would surface in another user's folder tree.
+    if let Some(parent_id) = body.parent_id {
+        let parent = meta.get_folder(&parent_id).await?;
+        if parent.owner_id != owner_id {
+            return Err(ServiceError::Forbidden(
+                "parent folder is not owned by the authenticated user".into(),
+            ));
+        }
+    }
+
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
         name: body.name.clone(),
         parent_id: body.parent_id,
-        owner_id: body.owner_id,
+        owner_id,
         created_at: now,
         updated_at: now,
     };
@@ -827,6 +870,7 @@ pub async fn list_activity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use actix_web::ResponseError;
 
     #[actix_rt::test]
     async fn test_health_endpoint() {
@@ -838,5 +882,65 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    fn request_as(caller: Option<&str>) -> HttpRequest {
+        let mut req = actix_web::test::TestRequest::default();
+        if let Some(caller) = caller {
+            req = req.insert_header(("X-User-ID", caller));
+        }
+        req.to_http_request()
+    }
+
+    #[test]
+    fn test_resolve_actor_uses_authenticated_caller() {
+        let caller = Uuid::new_v4();
+        let req = request_as(Some(&caller.to_string()));
+
+        assert_eq!(resolve_actor(&req, None, "owner_id").unwrap(), caller);
+        assert_eq!(
+            resolve_actor(&req, Some(caller), "owner_id").unwrap(),
+            caller
+        );
+    }
+
+    #[test]
+    fn test_resolve_actor_rejects_foreign_actor() {
+        let caller = Uuid::new_v4();
+        let victim = Uuid::new_v4();
+        let req = request_as(Some(&caller.to_string()));
+
+        for field in ["owner_id", "shared_by"] {
+            let err = resolve_actor(&req, Some(victim), field).unwrap_err();
+            assert!(matches!(err, ServiceError::Forbidden(ref m) if m.contains(field)));
+            assert_eq!(
+                err.error_response().status(),
+                actix_web::http::StatusCode::FORBIDDEN
+            );
+        }
+    }
+
+    #[test]
+    fn test_resolve_actor_requires_caller_identity() {
+        for req in [request_as(None), request_as(Some("not-a-uuid"))] {
+            let err = resolve_actor(&req, Some(Uuid::new_v4()), "owner_id").unwrap_err();
+            assert!(matches!(err, ServiceError::Unauthorized(_)));
+            assert_eq!(
+                err.error_response().status(),
+                actix_web::http::StatusCode::UNAUTHORIZED
+            );
+        }
+    }
+
+    #[test]
+    fn test_actor_fields_are_optional_in_requests() {
+        let folder: CreateFolderRequest = serde_json::from_str(r#"{"name":"Payroll"}"#).unwrap();
+        assert!(folder.owner_id.is_none());
+
+        let share: ShareFileRequest = serde_json::from_str(
+            r#"{"shared_with":"6f1c4c1e-8d43-4f53-9a3c-0c2d6f2f7d11","permission":"viewer"}"#,
+        )
+        .unwrap();
+        assert!(share.shared_by.is_none());
     }
 }

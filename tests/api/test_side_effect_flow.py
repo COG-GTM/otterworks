@@ -82,7 +82,7 @@ def test_file_share_eventually_creates_notification_and_audit_signal(api_client)
     share_response = api_client.client.post(
         f"/api/v1/files/{file_id}/share",
         headers=owner.auth_headers,
-        json={"shared_with": collaborator.id, "permission": "viewer", "shared_by": owner.id},
+        json={"shared_with": collaborator.id, "permission": "viewer"},
     )
     assert share_response.status_code == 201, share_response.text
 

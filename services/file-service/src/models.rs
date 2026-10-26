@@ -145,7 +145,10 @@ pub struct ListFoldersResponse {
 pub struct CreateFolderRequest {
     pub name: String,
     pub parent_id: Option<Uuid>,
-    pub owner_id: Uuid,
+    /// Legacy field: the owner is always the authenticated caller. Accepted
+    /// only when it names the caller.
+    #[serde(default)]
+    pub owner_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +172,10 @@ pub struct ShareFileRequest {
     pub shared_with: Option<Uuid>,
     pub shared_with_email: Option<String>,
     pub permission: SharePermission,
-    pub shared_by: Uuid,
+    /// Legacy field: the sharer is always the authenticated caller. Accepted
+    /// only when it names the caller.
+    #[serde(default)]
+    pub shared_by: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize)]
