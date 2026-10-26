@@ -10,8 +10,9 @@ service:
   port: 80
   targetPort: 8086
 
+# Cluster-internal by default: callers reach this service through the api-gateway.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod

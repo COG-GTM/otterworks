@@ -52,6 +52,7 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal"}
 HEADER_TRUSTING: dict[str, tuple[str, str, dict[str, str]]] = {
     "file-service": ("GET", "/api/v1/files", {}),
     "search-service": ("GET", "/api/v1/search/", {"q": "otterworks"}),
+    "notification-service": ("GET", "/api/v1/notifications", {}),
 }
 
 
