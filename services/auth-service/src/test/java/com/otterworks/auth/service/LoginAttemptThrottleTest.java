@@ -51,8 +51,7 @@ class LoginAttemptThrottleTest {
     assertThatThrownBy(() -> throttle.checkAllowed("a@otterworks.dev"))
         .isInstanceOf(LoginThrottledException.class)
         .satisfies(
-            ex ->
-                assertThat(((LoginThrottledException) ex).getRetryAfterSeconds()).isEqualTo(900));
+            ex -> assertThat(((LoginThrottledException) ex).getRetryAfterSeconds()).isEqualTo(900));
   }
 
   @Test
