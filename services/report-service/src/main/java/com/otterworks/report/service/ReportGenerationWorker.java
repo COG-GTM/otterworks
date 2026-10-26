@@ -14,7 +14,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -88,10 +87,6 @@ public class ReportGenerationWorker {
             // Fetch data based on category
             List<Map<String, Object>> data = fetchDataForCategory(
                     report.getCategory(), report.getDateFrom(), report.getDateTo(), params);
-            String ownerScope = params != null ? params.get(ReportService.OWNER_SCOPE_PARAM) : null;
-            if (ownerScope != null) {
-                data = restrictToUser(data, ownerScope);
-            }
 
             // Cap at max rows
             if (data.size() > appConfig.getMaxRows()) {
@@ -121,18 +116,6 @@ public class ReportGenerationWorker {
             report.setErrorMessage(e.getMessage());
             reportRepository.save(report);
         }
-    }
-
-    /** Keeps only rows that belong to {@code userId}; rows without a user id are dropped. */
-    static List<Map<String, Object>> restrictToUser(List<Map<String, Object>> data, String userId) {
-        List<Map<String, Object>> scoped = new ArrayList<>();
-        for (Map<String, Object> row : data) {
-            Object rowUser = row.containsKey("userId") ? row.get("userId") : row.get("user_id");
-            if (rowUser != null && userId.equals(String.valueOf(rowUser))) {
-                scoped.add(row);
-            }
-        }
-        return scoped;
     }
 
     private List<Map<String, Object>> fetchDataForCategory(

@@ -9,7 +9,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 
-public class ReportGenerationWorkerScopeTest {
+public class ReportDataFetcherScopeTest {
 
     @Test
     public void restrictToUserKeepsOnlyThatUsersRows() {
@@ -20,7 +20,7 @@ public class ReportGenerationWorkerScopeTest {
         data.add(row("user_id", "bob"));
         data.add(row("event_type", "no-user"));
 
-        List<Map<String, Object>> scoped = ReportGenerationWorker.restrictToUser(data, "mallory");
+        List<Map<String, Object>> scoped = ReportDataFetcher.restrictToUser(data, "mallory");
 
         assertEquals(2, scoped.size());
         assertEquals("mallory", scoped.get(0).get("userId"));
