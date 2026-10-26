@@ -566,7 +566,6 @@ paths:
               $ref: "#/components/schemas/DocumentFromTemplate"
             example:
               title: "Sprint Planning"
-              owner_id: "550e8400-e29b-41d4-a716-446655440000"
       responses:
         "201":
           description: Document created from template
@@ -574,6 +573,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: owner_id does not match the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "404":
           description: Template not found
           content:
@@ -909,7 +920,6 @@ components:
       type: object
       required:
         - title
-        - owner_id
       properties:
         title:
           type: string
@@ -918,6 +928,8 @@ components:
         owner_id:
           type: string
           format: uuid
+          nullable: true
+          description: Optional; must equal the authenticated caller. The owner is always taken from the JWT.
         folder_id:
           type: string
           format: uuid
