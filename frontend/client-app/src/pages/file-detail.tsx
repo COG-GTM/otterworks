@@ -56,7 +56,7 @@ function FileDetailContent() {
 
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [resolvedUsers, setResolvedUsers] = useState<Record<string, { name: string; email: string }>>({});
+  const [resolvedUsers, setResolvedUsers] = useState<Record<string, { name: string }>>({});
 
   useEffect(() => {
     if (!file?.sharedWith?.length) return;
@@ -68,13 +68,10 @@ function FileDetailContent() {
     Promise.allSettled(
       userIds.map((id) => authApi.lookupUserById(id))
     ).then((results) => {
-      const newUsers: Record<string, { name: string; email: string }> = {};
+      const newUsers: Record<string, { name: string }> = {};
       results.forEach((result, i) => {
         if (result.status === "fulfilled") {
-          newUsers[userIds[i]] = {
-            name: result.value.displayName || result.value.email,
-            email: result.value.email,
-          };
+          newUsers[userIds[i]] = { name: result.value.displayName };
         }
       });
       if (Object.keys(newUsers).length > 0) {
@@ -315,7 +312,7 @@ function FileDetailContent() {
                   {file.sharedWith.map((shared) => {
                     const resolved = resolvedUsers[shared.userId];
                     const displayName = resolved?.name || shared.name || shared.userId.slice(0, 8);
-                    const displayEmail = resolved?.email || shared.email;
+                    const displayEmail = shared.email || `ID ${shared.userId.slice(0, 8)}`;
                     return (
                       <div key={shared.userId} className="flex items-center gap-3">
                         <div
