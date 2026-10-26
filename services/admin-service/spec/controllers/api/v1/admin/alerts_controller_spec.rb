@@ -56,7 +56,7 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(1)
       expect(DevinSessionService).to have_received(:create_session).once
       expect(AlertIncidentBudget).to have_received(:allow?)
-        .with(alert_name: 'FileUploadFailed', affected_service: 'file-service', reporter_email: 'mallory@example.com')
+        .with(reporter_email: 'mallory@example.com')
         .exactly(3).times
     end
 

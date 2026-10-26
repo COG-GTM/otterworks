@@ -3,7 +3,7 @@ require 'rails_helper'
 RSpec.describe AlertIncidentBudget do
   let(:store) { {} }
   let(:redis) { instance_double(Redis, close: nil) }
-  let(:args) { { alert_name: 'FileUploadFailed', affected_service: 'file-service', reporter_email: 'm@example.com' } }
+  let(:args) { { reporter_email: 'm@example.com' } }
 
   before do
     allow(Redis).to receive(:new).and_return(redis)
@@ -26,7 +26,7 @@ RSpec.describe AlertIncidentBudget do
   it 'sets the window expiry only when the counter is created' do
     described_class.allow?(**args)
     expect(redis).to have_received(:set)
-      .with(a_string_starting_with('admin:alert_dedup_bypass:'), 0, ex: 3600, nx: true)
+      .with(a_string_starting_with('admin:alert_dedup_bypass:reporter:'), 0, ex: 3600, nx: true)
   end
 
   it 'does not put the raw reporter email in the Redis key' do

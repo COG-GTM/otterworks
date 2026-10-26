@@ -118,12 +118,8 @@ module Api
         def dedup_bypass_allowed?(labels, alert_name, affected_service, reporter_email)
           return false unless labels[:dedup].to_s == 'false'
 
-          allowed = AlertIncidentBudget.allow?(
-            alert_name: alert_name,
-            affected_service: affected_service,
-            reporter_email: reporter_email,
-          )
-          Rails.logger.warn("Alert #{alert_name} over dedup-bypass budget; deduplicating") unless allowed
+          allowed = AlertIncidentBudget.allow?(reporter_email: reporter_email)
+          Rails.logger.warn("Alert #{alert_name} (#{affected_service}) over dedup-bypass budget; deduping") unless allowed
           allowed
         end
 
