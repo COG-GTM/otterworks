@@ -2,7 +2,6 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
-import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
@@ -14,6 +13,12 @@ import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
+import {
+  LOG_REDACT_PATHS,
+  createYWebsocketConnectionHandler,
+  createYWebsocketUpgradeHandler,
+  selectSubprotocol,
+} from './ws-auth';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { setupWSConnection } = require('y-websocket/bin/utils');
@@ -27,6 +32,7 @@ const logger = pino({
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
   base: { service: 'collab-service' },
+  redact: { paths: LOG_REDACT_PATHS, censor: '[REDACTED]' },
 });
 
 const app = express();
@@ -128,45 +134,11 @@ const collabManager = setupCollaborationHandlers(
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
-const wss = new WebSocketServer({ noServer: true });
-wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
-  logger.info({ url: req.url }, 'y-websocket_client_connected');
-});
+const wss = new WebSocketServer({ noServer: true, handleProtocols: selectSubprotocol });
+wss.on('connection', createYWebsocketConnectionHandler(setupWSConnection, logger));
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
-httpServer.on('upgrade', (request, socket, head) => {
-  if (request.url?.startsWith('/socket.io')) {
-    // Socket.IO handles its own upgrades via its internal listener
-    return;
-  }
-
-  // JWT authentication for y-websocket connections
-  const url = new URL(request.url || '', `http://${request.headers.host}`);
-  const token =
-    url.searchParams.get('token') ||
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (!token) {
-    logger.warn('y-websocket_connection_rejected: no token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  try {
-    jwt.verify(token, config.jwt.secret);
-  } catch {
-    logger.warn('y-websocket_connection_rejected: invalid token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
-});
+httpServer.on('upgrade', createYWebsocketUpgradeHandler(wss, config.jwt.secret, logger));
 
 // Start presence cleanup with document eviction callback
 const presenceCleanupTimer = presenceHandler.startCleanupInterval(
