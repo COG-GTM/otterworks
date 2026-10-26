@@ -1,9 +1,9 @@
 """Share-link tokens for read-only document links.
 
 A share link is stateless: the token is an HMAC-SHA256 over the document id,
-keyed with a server-held secret, so any replica can validate a link without a
-shared lookup table while nobody without the key can derive one. Rotating the
-secret revokes every link minted under the previous key.
+keyed with the server-held SHARE_LINK_SECRET, so any replica can validate a link
+without a shared lookup table while nobody without the key can derive one.
+Rotating the secret revokes every link minted under the previous key.
 """
 
 from __future__ import annotations
@@ -17,9 +17,8 @@ import structlog
 logger = structlog.get_logger()
 
 SECRET_ENV = "SHARE_LINK_SECRET"
-LEGACY_SECRET_ENV = "SHARE_LINK_SALT"
 MIN_SECRET_LENGTH = 16
-# Formerly the source-visible default salt; never accepted as keying material.
+# The former source-visible default salt; never accepted as keying material.
 _PUBLIC_DEFAULT_SALT = "otterworks-share"
 _MESSAGE_PREFIX = "otterworks:share-link:v1:"
 
@@ -28,18 +27,23 @@ class ShareLinkNotConfiguredError(RuntimeError):
     """Raised when no usable share-link secret is configured."""
 
 
-def _configured_secret() -> str:
-    return os.environ.get(SECRET_ENV) or os.environ.get(LEGACY_SECRET_ENV) or ""
+def _usable(secret: str) -> bool:
+    return len(secret) >= MIN_SECRET_LENGTH and secret != _PUBLIC_DEFAULT_SALT
+
+
+def share_link_secret_configured() -> bool:
+    """Return True when SHARE_LINK_SECRET holds a usable key."""
+    return _usable(os.environ.get(SECRET_ENV, ""))
 
 
 class ShareLinkService:
     """Mints and validates read-only share tokens for documents."""
 
     def __init__(self, secret: str | None = None):
-        self._secret = _configured_secret() if secret is None else secret
+        self._secret = os.environ.get(SECRET_ENV, "") if secret is None else secret
 
     def _key(self) -> bytes:
-        if len(self._secret) < MIN_SECRET_LENGTH or self._secret == _PUBLIC_DEFAULT_SALT:
+        if not _usable(self._secret):
             raise ShareLinkNotConfiguredError(
                 f"{SECRET_ENV} must be set to a private value of at least "
                 f"{MIN_SECRET_LENGTH} characters"

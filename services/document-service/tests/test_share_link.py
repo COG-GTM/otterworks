@@ -5,7 +5,11 @@ import uuid
 
 import pytest
 
-from app.services.share_link import ShareLinkNotConfiguredError, ShareLinkService
+from app.services.share_link import (
+    ShareLinkNotConfiguredError,
+    ShareLinkService,
+    share_link_secret_configured,
+)
 
 DOC_ID = "11111111-1111-4111-8111-111111111111"
 
@@ -18,7 +22,7 @@ def _forged_md5_token(document_id: str) -> str:
 
 @pytest.fixture
 def service():
-    return ShareLinkService(secret="unit-test-share-secret-0123456789")
+    return ShareLinkService(secret="unit-test-share-secret-0123456789abcdef")
 
 
 def test_minted_token_verifies(service):
@@ -47,7 +51,7 @@ def test_offline_md5_derivation_is_rejected(service):
 
 
 def test_token_depends_on_the_secret(service):
-    other = ShareLinkService(secret="a-different-share-secret-9876543210")
+    other = ShareLinkService(secret="a-different-share-secret-9876543210fedcba")
     token = service.mint_token(DOC_ID)
     assert other.mint_token(DOC_ID) != token
     assert other.verify_token(DOC_ID, token) is False
@@ -61,7 +65,7 @@ def test_non_ascii_token_is_rejected_without_error(service):
     assert service.verify_token(DOC_ID, "\u00e9" * 64) is False
 
 
-@pytest.mark.parametrize("secret", ["", "too-short", "otterworks-share"])
+@pytest.mark.parametrize("secret", ["", "too-short", "otterworks-share", "x" * 15])
 def test_missing_weak_or_public_secret_fails_closed(secret):
     service = ShareLinkService(secret=secret)
     with pytest.raises(ShareLinkNotConfiguredError):
@@ -70,18 +74,25 @@ def test_missing_weak_or_public_secret_fails_closed(secret):
 
 
 def test_secret_is_read_from_environment(monkeypatch):
-    monkeypatch.setenv("SHARE_LINK_SECRET", "env-share-secret-abcdefghijkl")
-    expected = ShareLinkService(secret="env-share-secret-abcdefghijkl").mint_token(DOC_ID)
+    secret = "env-share-secret-abcdefghijklmnopqrstuvwxyz"
+    monkeypatch.setenv("SHARE_LINK_SECRET", secret)
+    expected = ShareLinkService(secret=secret).mint_token(DOC_ID)
     assert ShareLinkService().mint_token(DOC_ID) == expected
 
 
-def test_legacy_salt_env_is_accepted_only_when_private(monkeypatch):
+def test_legacy_salt_env_is_not_keying_material(monkeypatch):
     monkeypatch.delenv("SHARE_LINK_SECRET", raising=False)
-    monkeypatch.setenv("SHARE_LINK_SALT", "otterworks-share")
+    monkeypatch.setenv("SHARE_LINK_SALT", "private-legacy-salt-0123456789abcdef")
+    assert share_link_secret_configured() is False
     with pytest.raises(ShareLinkNotConfiguredError):
         ShareLinkService().mint_token(DOC_ID)
-    monkeypatch.setenv("SHARE_LINK_SALT", "private-legacy-salt-0123456789")
-    assert ShareLinkService().verify_token(DOC_ID, ShareLinkService().mint_token(DOC_ID))
+
+
+def test_secret_configured_reflects_environment(monkeypatch):
+    monkeypatch.setenv("SHARE_LINK_SECRET", "otterworks-share")
+    assert share_link_secret_configured() is False
+    monkeypatch.setenv("SHARE_LINK_SECRET", "env-share-secret-abcdefghijklmnopqrstuvwxyz")
+    assert share_link_secret_configured() is True
 
 
 @pytest.mark.asyncio
@@ -143,7 +154,6 @@ async def test_share_endpoints_fail_closed_without_secret(
     doc_id = created.json()["id"]
     headers = {"Authorization": "Bearer token", "X-User-ID": str(owner_id)}
     monkeypatch.delenv("SHARE_LINK_SECRET", raising=False)
-    monkeypatch.delenv("SHARE_LINK_SALT", raising=False)
 
     minted = await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
     assert minted.status_code == 503
