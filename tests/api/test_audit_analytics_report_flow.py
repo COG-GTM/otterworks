@@ -147,7 +147,6 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
             "reportName": f"API Flow Report {api_client.run_id}",
             "category": "USAGE_ANALYTICS",
             "reportType": "CSV",
-            "requestedBy": user.id,
             "dateFrom": api_client.iso_time(-7),
             "dateTo": api_client.iso_time(),
             "parameters": {"source": "api-flow-test"},
@@ -182,6 +181,58 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
     invalid_report = api_client.client.post(
         "/api/v1/reports",
         headers=user.auth_headers,
-        json={"category": "USAGE_ANALYTICS", "reportType": "CSV", "requestedBy": user.id},
+        json={"category": "USAGE_ANALYTICS", "reportType": "CSV"},
     )
     assert invalid_report.status_code in {400, 422}
+
+
+def test_report_access_is_scoped_to_its_owner(api_client):
+    owner = api_client.register_user("report-owner")
+    other = api_client.register_user("report-other")
+
+    create_response = api_client.client.post(
+        "/api/v1/reports",
+        headers=owner.auth_headers,
+        json={
+            "reportName": f"Owner Report {api_client.run_id}",
+            "category": "USAGE_ANALYTICS",
+            "reportType": "CSV",
+            "requestedBy": other.id,
+            "dateFrom": api_client.iso_time(-7),
+            "dateTo": api_client.iso_time(),
+        },
+    )
+    api_client.assert_gateway_route_available(create_response, "/api/v1/reports")
+    assert create_response.status_code == 202, create_response.text
+    report = create_response.json()
+    assert report["requestedBy"] == owner.id
+    report_id = report["id"]
+    api_client.created_reports.append(report_id)
+
+    for method, path in (
+        ("GET", f"/api/v1/reports/{report_id}"),
+        ("GET", f"/api/v1/reports/{report_id}/download"),
+        ("DELETE", f"/api/v1/reports/{report_id}"),
+    ):
+        response = api_client.client.request(method, path, headers=other.auth_headers)
+        assert response.status_code in {403, 404}, f"{method} {path}: {response.status_code}"
+
+    list_response = api_client.client.get(
+        "/api/v1/reports",
+        headers=other.auth_headers,
+        params={"userId": owner.id},
+    )
+    assert list_response.status_code == 200, list_response.text
+    assert all(r["requestedBy"] == other.id for r in list_response.json()["reports"])
+
+    for category in ("AUDIT_LOG", "COMPLIANCE", "USER_ACTIVITY"):
+        sensitive = api_client.client.post(
+            "/api/v1/reports",
+            headers=other.auth_headers,
+            json={"reportName": f"Sensitive {category}", "category": category, "reportType": "CSV"},
+        )
+        assert sensitive.status_code == 403, f"{category}: {sensitive.status_code}"
+
+    delete_response = api_client.client.delete(f"/api/v1/reports/{report_id}", headers=owner.auth_headers)
+    assert delete_response.status_code == 204, delete_response.text
+    api_client.created_reports.remove(report_id)

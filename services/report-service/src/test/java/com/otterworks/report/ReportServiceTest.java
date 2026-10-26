@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.report.model.ReportCategory;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportType;
+import com.otterworks.report.security.TestTokens;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +54,9 @@ public class ReportServiceTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    private static final String USER = TestTokens.bearer("test-user-001", "USER");
+    private static final String ADMIN = TestTokens.bearer("test-admin-001", "USER", "ADMIN");
+
     @Test
     public void healthEndpointShouldReturnOk() throws Exception {
         mockMvc.perform(get("/health"))
@@ -68,11 +72,11 @@ public class ReportServiceTest {
         request.setReportName("Test Usage Report");
         request.setCategory(ReportCategory.USAGE_ANALYTICS);
         request.setReportType(ReportType.PDF);
-        request.setRequestedBy("test-user-001");
         request.setDateFrom(new Date(System.currentTimeMillis() - 86400000L * 30)); // 30 days ago
         request.setDateTo(new Date());
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", USER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -90,9 +94,9 @@ public class ReportServiceTest {
         request.setReportName("Audit Log Export");
         request.setCategory(ReportCategory.AUDIT_LOG);
         request.setReportType(ReportType.CSV);
-        request.setRequestedBy("test-user-002");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -105,9 +109,9 @@ public class ReportServiceTest {
         request.setReportName("User Activity Summary");
         request.setCategory(ReportCategory.USER_ACTIVITY);
         request.setReportType(ReportType.EXCEL);
-        request.setRequestedBy("test-user-003");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -116,13 +120,15 @@ public class ReportServiceTest {
 
     @Test
     public void getReportNotFoundShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999"))
+        mockMvc.perform(get("/api/v1/reports/99999")
+                        .header("Authorization", USER))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void listReportsShouldReturnEmptyList() throws Exception {
         mockMvc.perform(get("/api/v1/reports")
+                        .header("Authorization", TestTokens.bearer("user-without-reports", "USER"))
                         .param("userId", "nonexistent-user"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
@@ -134,10 +140,10 @@ public class ReportServiceTest {
         ReportRequest request = new ReportRequest();
         request.setCategory(ReportCategory.AUDIT_LOG);
         request.setReportType(ReportType.PDF);
-        request.setRequestedBy("test-user");
         // Missing reportName — should fail validation
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("Authorization", USER)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -145,7 +151,8 @@ public class ReportServiceTest {
 
     @Test
     public void downloadNonExistentReportShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999/download"))
+        mockMvc.perform(get("/api/v1/reports/99999/download")
+                        .header("Authorization", USER))
                 .andExpect(status().isNotFound());
     }
 }
