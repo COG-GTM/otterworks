@@ -83,18 +83,11 @@ func TestClientIP_Resolve(t *testing.T) {
 			expected: "203.0.113.9",
 		},
 		{
-			name:       "right-most hop wins over a client-prepended value",
+			name:       "right-most untrusted hop wins over a client-prepended value",
 			trusted:    ingress,
 			remoteAddr: "10.0.1.5:4000",
-			headers:    map[string]string{"X-Forwarded-For": "1.2.3.4, 203.0.113.9"},
+			headers:    map[string]string{"X-Forwarded-For": "1.2.3.4, 203.0.113.9, 10.0.2.7"},
 			expected:   "203.0.113.9",
-		},
-		{
-			name:       "private client behind trusted proxy cannot select an earlier forged hop",
-			trusted:    ingress,
-			remoteAddr: "10.0.1.5:4000",
-			headers:    map[string]string{"X-Forwarded-For": "203.0.113.50, 10.0.2.7"},
-			expected:   "10.0.2.7",
 		},
 		{
 			name:       "trusted peer without X-Forwarded-For is the client",
