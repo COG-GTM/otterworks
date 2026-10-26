@@ -545,6 +545,8 @@ impl MetadataClient {
             .client
             .scan()
             .table_name(&self.shares_table)
+            // Used for authorization: a revoked share must stop granting access at once.
+            .consistent_read(true)
             .filter_expression("file_id = :fid AND shared_with = :uid")
             .expression_attribute_values(":fid", AttributeValue::S(file_id.to_string()))
             .expression_attribute_values(":uid", AttributeValue::S(shared_with.to_string()))
