@@ -2,6 +2,7 @@ package com.otterworks.auth.bootstrap;
 
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.UserRepository;
+import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,8 +53,16 @@ public class AdminBootstrap implements ApplicationRunner {
       return;
     }
     String normalizedEmail = email.trim();
-    if (userRepository.existsByEmail(normalizedEmail)) {
-      log.info("Bootstrap admin already exists: email={}", normalizedEmail);
+    Optional<User> existing = userRepository.findByEmail(normalizedEmail);
+    if (existing.isPresent()) {
+      if (existing.get().getRoles().contains(User.Role.ADMIN)) {
+        log.info("Bootstrap admin already exists: email={}", normalizedEmail);
+      } else {
+        log.error(
+            "Bootstrap admin not created: email={} belongs to a non-admin account;"
+                + " choose a different BOOTSTRAP_ADMIN_EMAIL",
+            normalizedEmail);
+      }
       return;
     }
 

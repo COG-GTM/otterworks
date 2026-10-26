@@ -6,6 +6,9 @@ import static org.mockito.Mockito.*;
 
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.UserRepository;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -43,8 +46,8 @@ class AdminBootstrapTest {
   }
 
   @Test
-  void run_whenUserExists_doesNotOverwrite() {
-    when(userRepository.existsByEmail(EMAIL)).thenReturn(true);
+  void run_whenAdminExists_doesNotOverwrite() {
+    when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(userWith(User.Role.ADMIN)));
 
     bootstrap(EMAIL, PASSWORD).run(null);
 
@@ -53,8 +56,27 @@ class AdminBootstrapTest {
   }
 
   @Test
+  void run_whenNonAdminOwnsEmail_doesNotPromote() {
+    User existing = userWith(User.Role.USER);
+    when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.of(existing));
+
+    bootstrap(EMAIL, PASSWORD).run(null);
+
+    verify(userRepository, never()).save(any());
+    verifyNoInteractions(passwordEncoder);
+    assertThat(existing.getRoles()).containsExactly(User.Role.USER);
+  }
+
+  private static User userWith(User.Role role) {
+    User user = new User();
+    user.setEmail(EMAIL);
+    user.setRoles(new HashSet<>(Set.of(role)));
+    return user;
+  }
+
+  @Test
   void run_withCredentials_createsAdmin() {
-    when(userRepository.existsByEmail(EMAIL)).thenReturn(false);
+    when(userRepository.findByEmail(EMAIL)).thenReturn(Optional.empty());
     when(passwordEncoder.encode(PASSWORD)).thenReturn("$2a$12$encoded");
 
     bootstrap(" " + EMAIL + " ", PASSWORD).run(null);
