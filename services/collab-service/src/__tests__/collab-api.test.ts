@@ -181,6 +181,20 @@ describe('collab REST API', () => {
         count: 1,
       });
       expect(presenceHandler.getActiveDocuments).not.toHaveBeenCalled();
+      expect(documentAccess.check).toHaveBeenCalledWith('doc-a', expect.any(String));
+    });
+
+    it('omits joined documents that document-service does not authorize', async () => {
+      access = 'denied';
+      const res = await get('/documents', token({ sub: 'owner-1', roles: ['USER'] }));
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ documents: [], count: 0 });
+    });
+
+    it('fails closed with 503 when document-service is unavailable', async () => {
+      access = 'unavailable';
+      const res = await get('/documents', token({ sub: 'owner-1', roles: ['USER'] }));
+      expect(res.status).toBe(503);
     });
 
     it('returns an empty list to users who are in no document', async () => {

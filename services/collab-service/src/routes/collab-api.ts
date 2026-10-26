@@ -44,12 +44,26 @@ export function createCollabApiRouter(options: CollabApiOptions): Router {
     res.json(presenceHandler.getDocumentPresence(documentId));
   });
 
-  // Admins see every open document; everyone else only the documents they are in.
-  router.get('/documents', (_req, res) => {
+  // Admins see every open document; everyone else only the documents they are in
+  // and that document-service authorizes them for (joining a room is not authorization).
+  router.get('/documents', async (req, res) => {
     const user = getRequestUser(res);
-    const activeDocuments = isAdmin(user)
-      ? presenceHandler.getActiveDocuments()
-      : presenceHandler.getActiveDocumentsForUser(user.userId);
+    if (isAdmin(user)) {
+      const activeDocuments = presenceHandler.getActiveDocuments();
+      res.json({ documents: activeDocuments, count: activeDocuments.length });
+      return;
+    }
+
+    const bearer = `Bearer ${extractBearerToken(req.headers.authorization)}`;
+    const candidates = presenceHandler.getActiveDocumentsForUser(user.userId);
+    const decisions = await Promise.all(
+      candidates.map(({ documentId }) => documentAccess.check(documentId, bearer)),
+    );
+    if (decisions.includes('unavailable')) {
+      res.status(503).json({ error: 'Document authorization unavailable' });
+      return;
+    }
+    const activeDocuments = candidates.filter((_doc, i) => decisions[i] === 'allowed');
     res.json({ documents: activeDocuments, count: activeDocuments.length });
   });
 
