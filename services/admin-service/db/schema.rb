@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
+ActiveRecord::Schema[7.1].define(version: 2024_01_01_000009) do
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
 
@@ -103,9 +103,11 @@ ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "closed_at"
+    t.string "source", default: "manual", null: false
     t.index ["affected_service"], name: "index_incidents_on_affected_service"
     t.index ["devin_session_id"], name: "index_incidents_on_devin_session_id", unique: true
     t.index ["severity"], name: "index_incidents_on_severity"
+    t.index ["source", "affected_service", "created_at"], name: "index_incidents_on_source_service_created_at"
     t.index ["status"], name: "index_incidents_on_status"
   end
 

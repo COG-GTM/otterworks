@@ -17,8 +17,16 @@ module Api
       #       }
       #     ]
       #   }
+      #
+      # Authentication is the shared ALERT_WEBHOOK_SECRET (X-Alert-Secret or
+      # Authorization: Bearer). The route skips JwtAuthenticator, so the
+      # secret is the only gate: when it is unset (or still the old public
+      # compose default) every request is rejected.
       class AlertsController < ApplicationController
         before_action :verify_alert_secret
+
+        PUBLIC_DEFAULT_SECRETS = %w[demo-alert-secret].freeze
+        DEFAULT_MAX_INCIDENTS_PER_SERVICE_PER_HOUR = 20
 
         SEVERITY_MAP = {
           'critical' => 'critical',
@@ -64,13 +72,18 @@ module Api
           # exists — unless the alert opts out with a `dedup=false` label, in
           # which case every firing alert opens its own incident.
           if labels[:dedup].to_s != 'false'
-            existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
-                               .first
+            existing = Incident.active.where(affected_service: affected_service).first
             if existing
               Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
               return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
             end
+          end
+
+          # Cap alert-created incidents (and so Devin sessions and Slack posts)
+          # per service, so `dedup=false` cannot open an unbounded number.
+          if incident_cap_reached?(affected_service)
+            Rails.logger.warn("Alert #{alert_name} skipped — incident cap reached for #{affected_service}")
+            return { skipped: true, reason: 'rate_limited' }
           end
 
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
@@ -81,6 +94,7 @@ module Api
             severity:         severity,
             status:           auto_investigate ? 'investigating' : 'open',
             affected_service: affected_service,
+            source:           Incident::SOURCE_ALERT,
             reporter_id:      nil, # system-generated
           )
 
@@ -114,11 +128,14 @@ module Api
           nil
         end
 
+        # Only incidents opened by an alert can be closed by one; incidents an
+        # operator filed by hand stay open until a human resolves them.
         def resolve_incident(affected_service, alert_name)
           return if affected_service.blank?
 
-          incident = Incident.where(affected_service: affected_service)
-                             .where(status: %w[open investigating])
+          incident = Incident.from_alerts.active
+                             .where(affected_service: affected_service)
+                             .order(:created_at)
                              .first
           return unless incident
 
@@ -138,15 +155,31 @@ module Api
           parts.join("\n\n")
         end
 
+        def incident_cap_reached?(affected_service)
+          cap = max_incidents_per_service_per_hour
+          Incident.from_alerts
+                  .where(affected_service: affected_service)
+                  .where('created_at > ?', 1.hour.ago)
+                  .count >= cap
+        end
+
+        def max_incidents_per_service_per_hour
+          value = Integer(ENV.fetch('ALERT_MAX_INCIDENTS_PER_SERVICE_PER_HOUR', ''), exception: false)
+          value&.positive? ? value : DEFAULT_MAX_INCIDENTS_PER_SERVICE_PER_HOUR
+        end
+
         def verify_alert_secret
-          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil)
-          return if expected.nil? # not configured → allow (dev/test)
+          expected = ENV.fetch('ALERT_WEBHOOK_SECRET', nil).to_s
+          if expected.empty? || PUBLIC_DEFAULT_SECRETS.include?(expected)
+            Rails.logger.error('Alert ingest rejected: ALERT_WEBHOOK_SECRET is not configured')
+            return render json: { error: 'Unauthorized' }, status: :unauthorized
+          end
 
           # Accept either X-Alert-Secret header or Authorization: Bearer <secret>
           # (Grafana webhook contact points send the token as a Bearer header)
           provided = request.headers['X-Alert-Secret'].presence ||
                      request.headers['Authorization'].to_s.delete_prefix('Bearer ').presence
-          return if provided == expected
+          return if provided && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
 
           render json: { error: 'Unauthorized' }, status: :unauthorized
         end
