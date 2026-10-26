@@ -35,9 +35,18 @@ public class CsvCellSanitizerTest {
         assertEquals("report.pdf", CsvCellSanitizer.sanitize("report.pdf"));
         assertEquals("alice@example.com", CsvCellSanitizer.sanitize("alice@example.com"));
         assertEquals("a=b", CsvCellSanitizer.sanitize("a=b"));
-        assertEquals(" =1+1", CsvCellSanitizer.sanitize(" =1+1"));
+        assertEquals("   ", CsvCellSanitizer.sanitize("   "));
+        assertEquals(" a=b", CsvCellSanitizer.sanitize(" a=b"));
         assertEquals("# OtterWorks Report: Q3", CsvCellSanitizer.sanitize("# OtterWorks Report: Q3"));
         assertEquals("", CsvCellSanitizer.sanitize(""));
+    }
+
+    @Test
+    public void formulaAfterLeadingWhitespaceIsEscaped() {
+        String[] payloads = {" =HYPERLINK(\"https://evil\")", "   @SUM(A1)", "\u00A0+1", "\u3000-1", " \t=1+1"};
+        for (String payload : payloads) {
+            assertEquals("'" + payload, CsvCellSanitizer.sanitize(payload));
+        }
     }
 
     @Test

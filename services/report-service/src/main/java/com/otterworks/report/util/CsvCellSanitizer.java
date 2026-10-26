@@ -30,7 +30,21 @@ public final class CsvCellSanitizer {
         if (value == null || value.isEmpty()) {
             return value == null ? "" : value;
         }
-        return isFormulaTrigger(value.charAt(0)) ? ESCAPE_PREFIX + value : value;
+        return needsEscape(value) ? ESCAPE_PREFIX + value : value;
+    }
+
+    /** Leading whitespace is skipped because spreadsheet imports may trim it before evaluating. */
+    private static boolean needsEscape(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (isFormulaTrigger(c)) {
+                return true;
+            }
+            if (!Character.isWhitespace(c) && !Character.isSpaceChar(c)) {
+                return false;
+            }
+        }
+        return false;
     }
 
     public static String[] sanitizeAll(String[] values) {
