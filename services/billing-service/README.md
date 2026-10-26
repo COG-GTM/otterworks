@@ -51,7 +51,10 @@ reset). Published deployments should leave the flag disabled.
 
 `make procs-up NS=<ns>` generates both secrets into the git-ignored
 `procs/.secrets/<ns>.env`; `make procs-parity` mints a short-lived admin token
-from it, and `make procs-token NS=<ns>` prints one for manual calls.
+from it, and `make procs-token NS=<ns>` prints one for manual calls. To accept
+platform sign-ins (tokens issued by auth-service) instead, export the same
+`JWT_SECRET` the platform stack uses before `make procs-up`; it then replaces the
+generated signing secret, and `procs-parity`/`procs-token` sign with it too.
 
 For the extracted target, a plan change with an already-scheduled later
 subscription preserves that later row. The response's `latest_*` fields always

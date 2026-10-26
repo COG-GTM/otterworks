@@ -13,7 +13,7 @@ PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(809
 PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
 PROCS_SECRETS = procs/.secrets/$(NS).env
-PROCS_LOAD_SECRETS = set -a && . ./$(PROCS_SECRETS) && set +a &&
+PROCS_LOAD_SECRETS = set -a && . ./$(PROCS_SECRETS) && set +a && export BILLING_SVC_JWT_SECRET="$${JWT_SECRET:-$$BILLING_SVC_JWT_SECRET}" &&
 PROCS_ENV = NS=$(NS) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
 procs-validate:
