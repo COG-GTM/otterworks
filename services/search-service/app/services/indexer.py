@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import requests
@@ -14,6 +15,12 @@ logger = structlog.get_logger()
 DOCUMENT_SERVICE_URL = "http://document-service:8083"
 FILE_SERVICE_URL = "http://file-service:8082"
 FETCH_TIMEOUT = 30
+
+
+def _file_service_headers() -> dict[str, str]:
+    """file-service lists files across owners only for the shared internal token."""
+    token = os.getenv("FILE_SERVICE_INTERNAL_TOKEN", "").strip()
+    return {"X-Internal-Token": token} if token else {}
 
 
 class Indexer:
@@ -148,6 +155,7 @@ class Indexer:
                 resp = requests.get(
                     f"{FILE_SERVICE_URL}/api/v1/files",
                     params={"page": page, "page_size": 100},
+                    headers=_file_service_headers(),
                     timeout=FETCH_TIMEOUT,
                 )
                 if resp.status_code != 200:

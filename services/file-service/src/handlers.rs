@@ -14,6 +14,7 @@ use crate::alerts;
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
+use crate::identity;
 use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
@@ -52,13 +53,7 @@ pub async fn upload_file(
     redis_cm: web::Data<redis::aio::ConnectionManager>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
-    // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
-    // Fall back to the multipart field for direct/internal callers.
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
+    let caller = identity::caller_id(req.headers())?;
 
     // Uploader's email, injected by api-gateway from the JWT; carried on
     // upload-failure alerts so admin-service can attribute the incident.
@@ -134,9 +129,12 @@ pub async fn upload_file(
         }
     }
 
-    let owner = header_owner_id
-        .or(owner_id)
-        .ok_or_else(|| ServiceError::BadRequest("owner_id is required".into()))?;
+    if owner_id.is_some_and(|requested| requested != caller) {
+        return Err(ServiceError::Forbidden(
+            "owner_id must match the authenticated caller".into(),
+        ));
+    }
+    let owner = caller;
 
     if file_bytes.is_empty() {
         return Err(ServiceError::BadRequest("file field is required".into()));
@@ -243,22 +241,6 @@ pub async fn get_file_metadata(
     }))
 }
 
-/// Resolve the effective owner_id for list operations.
-///
-/// Prefer the `X-User-ID` header injected by the api-gateway from the
-/// authenticated JWT. This prevents a caller from spoofing another user's
-/// `owner_id` via the query string. Fall back to `query.owner_id` only when
-/// no header is present (direct/internal callers).
-fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<Uuid> {
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
-
-    header_owner_id.or(query_owner_id)
-}
-
 pub async fn list_files(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
@@ -267,7 +249,11 @@ pub async fn list_files(
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner_id = identity::listing_owner(
+        req.headers(),
+        query.owner_id,
+        config.server.internal_token.as_deref(),
+    )?;
     let mut files = meta
         .list_files(query.folder_id, owner_id, include_trashed)
         .await?;
@@ -306,12 +292,7 @@ pub async fn list_shared_files(
     req: HttpRequest,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let user_id: Uuid = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| ServiceError::BadRequest("missing X-User-ID header".into()))?;
+    let user_id = identity::caller_id(req.headers())?;
 
     let shares = meta.list_shares_for_user(&user_id).await?;
 
@@ -351,8 +332,8 @@ pub async fn list_trashed(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta.list_trashed(owner_id).await?;
+    let owner_id = identity::owner_for_caller(req.headers(), query.owner_id)?;
+    let files = meta.list_trashed(Some(owner_id)).await?;
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
@@ -690,21 +671,23 @@ pub async fn list_folders(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let folders = meta.list_folders(query.parent_id, owner_id).await?;
+    let owner_id = identity::owner_for_caller(req.headers(), query.owner_id)?;
+    let folders = meta.list_folders(query.parent_id, Some(owner_id)).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
 
 pub async fn create_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let owner_id = identity::owner_for_caller(req.headers(), body.owner_id)?;
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
         name: body.name.clone(),
         parent_id: body.parent_id,
-        owner_id: body.owner_id,
+        owner_id,
         created_at: now,
         updated_at: now,
     };
@@ -764,12 +747,7 @@ pub async fn list_activity(
     meta: web::Data<MetadataClient>,
     query: web::Query<ActivityQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok())
-        .ok_or_else(|| ServiceError::BadRequest("missing owner context".into()))?;
+    let owner_id = identity::caller_id(req.headers())?;
 
     let limit = query.limit.unwrap_or(20).min(50) as usize;
 
