@@ -257,6 +257,14 @@ YAML
 add_secret() { SECRET_KV+=("$1" "$2"); }
 urlencode()  { jq -rn --arg s "$1" '$s|@uri'; }
 
+# Shared secret for the alert ingest webhook (file-service, notification-service
+# -> admin-service). admin-service rejects every alert without it. Reuse the
+# value already deployed so a redeploy does not break producers mid-rollout.
+existing_alert_secret() {
+  kubectl -n "$1" get secret admin-service-secrets \
+    -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true
+}
+
 # Build per-service Helm --set flags (EXTRA_ARGS) + secret pairs (SECRET_KV) for
 # a tenant. Requires these tenant-scoped globals to be set by the caller:
 #   T_REDIS_HOST, T_MEILI_URL, T_DB_NAME, T_WIRE_EVENTING (true/false)
@@ -324,7 +332,8 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=${DDB_VERSIONS}")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=${DDB_SHARES}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
-      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}") ;;
+      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}")
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET:?}" ;;
     document-service)
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_AWS_REGION=${AWS_REGION}")
@@ -338,7 +347,8 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=${DDB_NOTIF}")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${sns_topic}")
-      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${sqs_notif}") ;;
+      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${sqs_notif}")
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET:?}" ;;
     search-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
@@ -373,7 +383,8 @@ build_helm_args() {
       # the tenant's Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${T_REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
-      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
+      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}"
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET:?}" ;;
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")

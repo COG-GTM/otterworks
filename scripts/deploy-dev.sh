@@ -31,6 +31,13 @@ GOLDEN_HOST_SUFFIX="${GOLDEN_HOST_SUFFIX:-otterworks.app}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 # Rails (admin-service) session key. Stable value recommended across redeploys.
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# Shared secret for the alert ingest webhook (file-service, notification-service
+# -> admin-service). admin-service rejects every alert without it. Reuse the
+# value already deployed so a redeploy does not break producers mid-rollout.
+existing_alert_secret() {
+  kubectl -n "$1" get secret admin-service-secrets \
+    -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true
+}
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -358,7 +365,8 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_VERSIONS_TABLE=${DDB_VERSIONS}")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_SHARES_TABLE=${DDB_SHARES}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
-      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${SNS_TOPIC}") ;;
+      EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${SNS_TOPIC}")
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
     document-service)
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DOC_SVC_AWS_REGION=${AWS_REGION}")
@@ -372,7 +380,8 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       EXTRA_ARGS+=(--set-string "config.DYNAMODB_TABLE_NOTIFICATIONS=${DDB_NOTIF}")
       EXTRA_ARGS+=(--set-string "config.SNS_TOPIC_ARN=${SNS_TOPIC}")
-      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${SQS_NOTIF}") ;;
+      EXTRA_ARGS+=(--set-string "config.SQS_QUEUE_URL=${SQS_NOTIF}")
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
     search-service)
       EXTRA_ARGS+=(--set-string "config.AWS_REGION=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
@@ -398,7 +407,8 @@ build_helm_args() {
       # Settings (auto-investigate, Devin credentials) and chaos flags live in Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
-      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
+      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}"
+      add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")
@@ -506,6 +516,8 @@ load_infra_outputs
 # injected below, so require it here too — not only inside the Terraform block,
 # which is skipped on the --skip-terraform redeploy path.
 DB_PASSWORD="${DB_PASSWORD:?ERROR: DB_PASSWORD must be set (exported or via Terraform run) before deploying services}"
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(existing_alert_secret "${NAMESPACE}")}"
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 
 deploy_meilisearch
 

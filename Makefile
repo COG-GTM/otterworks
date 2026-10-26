@@ -58,12 +58,14 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 # --- Local Development ---
 
 infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
+	@./scripts/ensure-local-secrets.sh
 	docker compose -f docker-compose.infra.yml up -d
 
 infra-down: ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
 up: ## Start all services (add seed=1 to seed after start)
+	@./scripts/ensure-local-secrets.sh
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
  ifdef seed
 	@$(MAKE) --no-print-directory wait-for-db seed
