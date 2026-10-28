@@ -15,11 +15,23 @@ async function hasDisplayPermission(): Promise<boolean> {
   return requested.display === "granted";
 }
 
+// Android drops notifications posted to a channel that was never created.
+async function ensureUploadErrorChannel(): Promise<void> {
+  if (Capacitor.getPlatform() !== "android") return;
+  await LocalNotifications.createChannel({
+    id: UPLOAD_ERROR_CHANNEL_ID,
+    name: "Upload errors",
+    description: "Alerts when a file upload fails",
+    importance: 4,
+  });
+}
+
 // No-ops on web, where the surrounding UI already reports upload status.
 async function notify(title: string, body: string, channelId?: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     if (!(await hasDisplayPermission())) return;
+    if (channelId === UPLOAD_ERROR_CHANNEL_ID) await ensureUploadErrorChannel();
     await LocalNotifications.schedule({
       notifications: [{ id: ++notificationId, title, body, channelId }],
     });
