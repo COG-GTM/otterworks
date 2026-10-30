@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import javax.transaction.Transactional;
+import jakarta.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
