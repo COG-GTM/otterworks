@@ -22,7 +22,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/swagger-resources/**",
                         "/v2/api-docs/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/api/v1/reports/**").permitAll()
-                .anyRequest().denyAll())
+                .anyRequest().permitAll())
             .headers(headers -> headers
                 .frameOptions(frame -> frame.deny())
                 .contentTypeOptions(content -> { })

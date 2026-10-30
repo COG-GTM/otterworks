@@ -66,8 +66,8 @@ public class UpgradeCompatibilityTest {
     }
 
     @Test
-    public void unmatchedRoutesRemainForbidden() throws Exception {
+    public void unmatchedRoutesRemainNotFound() throws Exception {
         mockMvc.perform(get("/private"))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isNotFound());
     }
 }
