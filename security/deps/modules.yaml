@@ -15,16 +15,16 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules pin JDK 11: their recorded transcripts include the
-  # ${script:javascript:...} lookup, which only resolves while the JVM still ships
-  # Nashorn (JDK <= 14). Measured on a newer JDK the script case would report a
-  # behavior change that never happened, so an absent JDK 11 must read as unmeasured.
+  # Both Maven modules build on Spring Boot 3.3, which requires JDK 17. The recorded
+  # report-service transcript resolves ${script:javascript:...}; JDK 17 ships no
+  # Nashorn, so report-service puts standalone nashorn-core on its *test* classpath
+  # to keep that case measuring commons-text rather than the JDK.
   - id: report-service
     path: services/report-service
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
     # No wrapper in this module; the `mvn` on PATH is what ci.yml uses for it too.
     test: -B test
     cases: cases/report-service.json
@@ -33,9 +33,9 @@ modules:
     path: services/legacy-portal
     build: maven
     java_home:
-      - $JAVA_HOME_11_X64
-      - /usr/lib/jvm/java-11-openjdk-amd64
-    # Spring Boot 2.x, and it pins its own Maven (3.9.9) via the wrapper — the same
+      - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/java-17-openjdk-amd64
+    # It pins its own Maven (3.9.9) via the wrapper — the same
     # tool ci.yml builds it with. `mvn` is the fallback for a machine that cannot
     # reach the wrapper's distribution.
     tool:
