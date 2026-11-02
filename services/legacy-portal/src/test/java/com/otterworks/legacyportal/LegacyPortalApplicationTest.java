@@ -11,10 +11,14 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Full-context test: the whole modular monolith boots and every module's routes are wired. */
 @SpringBootTest
 @AutoConfigureMockMvc
+// Roll back MockMvc writes: the in-memory DB (DB_CLOSE_DELAY=-1) outlives this context and is
+// shared with the @DataJpaTest slices, which would otherwise see these rows.
+@Transactional
 class LegacyPortalApplicationTest {
 
     @Autowired private MockMvc mockMvc;
