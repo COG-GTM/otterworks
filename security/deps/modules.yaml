@@ -15,10 +15,10 @@
 # dependency tree, and the report names it. A module whose candidates all fail is
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
-  # Both Maven modules build on Spring Boot 3.3, which requires JDK 17. Note: the
-  # recorded report-service transcript resolves ${script:javascript:...}, which only
-  # works while the JVM ships Nashorn (JDK <= 14); on JDK 17 that case reports an
-  # error instead of the recorded value.
+  # Both Maven modules build on Spring Boot 3.3, which requires JDK 17. The recorded
+  # report-service transcript resolves ${script:javascript:...}; JDK 17 ships no
+  # Nashorn, so report-service puts standalone nashorn-core on its *test* classpath
+  # to keep that case measuring commons-text rather than the JDK.
   - id: report-service
     path: services/report-service
     build: maven

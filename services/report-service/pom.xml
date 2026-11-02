@@ -170,6 +170,16 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Test-only: JDK 15+ no longer bundles Nashorn. The dependency transcript
+             (security/deps) records the script: lookup as resolving, as it did on the
+             Java 8 runtime; this keeps that case measurable without putting a script
+             engine on the production classpath. -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.4</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
