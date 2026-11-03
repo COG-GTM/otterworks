@@ -47,7 +47,7 @@ implementation to a FastAPI asynchronous implementation while preserving all ext
 4. **MeiliSearch client integration** - Index names (`documents`, `files`), searchable/filterable
    attributes configuration, and all search parameters
 5. **Health/readiness checks** - `/health` returns `{"status": "alive", "service": "search-service"}`;
-   `/health/ready` pings MeiliSearch and returns 503 when unreachable
+   `/ready` (alias `/health/ready`) pings MeiliSearch and returns 503 when unreachable
 6. **Tenant isolation** - X-User-ID header scoping on all search endpoints
 
 ## Key Translation Points
@@ -391,7 +391,7 @@ async def readiness(request: Request):
    ```bash
    curl http://localhost:8087/health
    # {"status": "alive", "service": "search-service"}
-   curl http://localhost:8087/health/ready
+   curl http://localhost:8087/ready
    # {"ready": true} or {"ready": false, "reason": "meilisearch_unavailable"}
    ```
 

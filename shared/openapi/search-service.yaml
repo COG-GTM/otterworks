@@ -469,11 +469,35 @@ paths:
                 status: "alive"
                 service: "search-service"
 
-  /health/ready:
+  /ready:
     get:
       operationId: readinessCheck
       summary: Readiness check
-      description: Returns 200 if MeiliSearch is reachable, 503 otherwise.
+      description: Readiness probe. Returns 200 if MeiliSearch is reachable, 503 otherwise.
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+              example:
+                ready: true
+        "503":
+          description: MeiliSearch is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+              example:
+                ready: false
+                reason: "meilisearch_unavailable"
+
+  /health/ready:
+    get:
+      operationId: readinessCheckLegacy
+      summary: Readiness check
+      description: Alias of /ready, kept for backward compatibility.
       responses:
         "200":
           description: Service is ready

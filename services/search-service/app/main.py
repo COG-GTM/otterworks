@@ -87,7 +87,7 @@ def create_app(config: AppConfig | None = None) -> Flask:
 
     @app.after_request
     def _record_metrics(response):  # type: ignore[no-untyped-def]
-        if flask_request.path in ("/metrics", "/health"):
+        if flask_request.path in ("/metrics", "/health", "/ready", "/health/ready"):
             return response
         elapsed = time.monotonic() - g.get("start_time", time.monotonic())
         endpoint = flask_request.url_rule.rule if flask_request.url_rule else "unknown"

@@ -45,9 +45,10 @@ def health() -> tuple:
     }), 200
 
 
+@health_bp.route("/ready")
 @health_bp.route("/health/ready")
 def readiness() -> tuple:
-    """Readiness check — returns 503 if MeiliSearch is unreachable."""
+    """Readiness check (/ready, alias /health/ready) — 503 if MeiliSearch is unreachable."""
     search_service = current_app.config.get("SEARCH_SERVICE")
 
     healthy = False
