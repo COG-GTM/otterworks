@@ -4,6 +4,10 @@ This document describes 11 upgrade axes for migrating the report-service from it
 current legacy stack to a modern, supported baseline. Each axis lists the exact
 files, imports, and annotations that change, together with a verification step.
 
+> **Status:** axes 1 (Java 17), 2 (Spring Boot 3.3.13), 3 (jakarta), 5 (springdoc 2.6) and
+> 11 (Boot-managed Mockito 5) are done. The remaining axes are library upgrades that are
+> still open.
+
 ---
 
 ## Overview

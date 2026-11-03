@@ -45,7 +45,7 @@ make down
 | Service | Language | Framework | Port | Description |
 |---------|----------|-----------|------|-------------|
 | API Gateway | Go 1.22 | Chi | 8080 | Request routing, rate limiting, JWT validation |
-| Auth Service | Java 17 | Spring Boot 3 | 8081 | Authentication, authorization, user management |
+| Auth Service | Java 17 | Spring Boot 3.3 | 8081 | Authentication, authorization, user management |
 | File Service | Rust 1.77 | Actix-Web 4 | 8082 | File upload/download, S3 integration, versioning |
 | Document Service | Python 3.12 | FastAPI | 8083 | Document CRUD, version history, snapshots |
 | Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP) / 8085 (WS) | Real-time collaborative editing (CRDT via Yjs) |
@@ -54,9 +54,9 @@ make down
 | Analytics Service | Scala 3.4 | Akka HTTP | 8088 | Usage analytics, data aggregation |
 | Admin Service | Ruby 3.3 | Rails 7.1 | 8089 | Admin dashboard backend |
 | Audit Service | C# 12 | ASP.NET 8 | 8090 | Immutable audit trail, compliance |
-| Report Service *(legacy)* | Java 8 | Spring Boot 2.5 | 8091 | PDF/CSV/Excel report generation (tech-debt: upgrade target Java 17+, Spring Boot 3.2+) |
+| Report Service *(legacy)* | Java 17 | Spring Boot 3.3 | 8091 | PDF/CSV/Excel report generation |
 
-> **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
+> **Note:** The Report Service runs on Spring Boot 3.3 / Java 17 but still carries legacy libraries (JUnit 4, iText 5, Commons Lang 2, POI 4, RestTemplate). See `services/report-service/UPGRADE_GUIDE.md` for the remaining upgrade axes.
 
 ## Frontend Applications
 
@@ -170,7 +170,7 @@ otterworks/
 │   ├── analytics-service/ #   Scala / Akka HTTP
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
-│   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   └── report-service/    #   Java 17 / Spring Boot 3.3 (legacy libraries)
 ├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)

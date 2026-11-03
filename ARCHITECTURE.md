@@ -53,7 +53,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 
 ### 2. Auth Service (`services/auth-service/`)
 - **Language**: Java 17
-- **Framework**: Spring Boot 3.2, Spring Security 6
+- **Framework**: Spring Boot 3.3, Spring Security 6
 - **Database**: PostgreSQL (users, roles, sessions)
 - **Purpose**: User registration, login, JWT issuance/validation, OAuth2 integration, RBAC, MFA support. Integrates with AWS Cognito for identity federation.
 - **Port**: 8081
