@@ -23,7 +23,7 @@ from flask import jsonify, request
 
 logger = structlog.get_logger()
 
-PUBLIC_PREFIXES = ("/health", "/metrics")
+PUBLIC_PREFIXES = ("/health", "/ready", "/metrics")
 
 
 def require_auth(app):

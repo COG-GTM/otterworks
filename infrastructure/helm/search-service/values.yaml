@@ -34,7 +34,8 @@ resources:
     memory: 128Mi
 
 healthCheck:
-  path: /health
+  path: /health          # liveness: process is up (never contacts MeiliSearch)
+  readinessPath: /ready  # readiness: 503 while MeiliSearch is unreachable
   port: 8087
 
 monitoring:

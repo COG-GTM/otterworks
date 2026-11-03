@@ -233,7 +233,7 @@ class TestAdvancedSearchEndpoint:
 
 
 class TestHealthEndpoints:
-    """Tests for /health and /health/ready."""
+    """Tests for /health, /ready and /health/ready."""
 
     def test_health_liveness(self, openapi_spec: dict[str, Any]) -> None:
         """Liveness endpoint returns alive status."""
@@ -244,17 +244,18 @@ class TestHealthEndpoints:
         assert body["status"] == "alive"
         assert body["service"] == "search-service"
 
-    def test_health_readiness(self, openapi_spec: dict[str, Any]) -> None:
+    @pytest.mark.parametrize("path", ["/ready", "/health/ready"])
+    def test_health_readiness(self, openapi_spec: dict[str, Any], path: str) -> None:
         """Readiness endpoint returns valid schema (200 or 503)."""
-        resp = requests.get(f"{BASE_URL}/health/ready")
+        resp = requests.get(f"{BASE_URL}{path}")
         assert resp.status_code in (200, 503)
         body = resp.json()
         assert "ready" in body
         if resp.status_code == 200:
-            _validate_response(openapi_spec, body, "/health/ready", "get", "200")
+            _validate_response(openapi_spec, body, path, "get", "200")
             assert body["ready"] is True
         else:
-            _validate_response(openapi_spec, body, "/health/ready", "get", "503")
+            _validate_response(openapi_spec, body, path, "get", "503")
             assert body["ready"] is False
             assert body["reason"] == "meilisearch_unavailable"
 
@@ -355,6 +356,7 @@ class TestSpecCompleteness:
             "/api/v1/search/reindex",
             "/api/v1/search/analytics",
             "/health",
+            "/ready",
             "/health/ready",
             "/metrics",
         }
