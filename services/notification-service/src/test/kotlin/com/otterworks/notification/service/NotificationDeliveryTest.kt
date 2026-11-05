@@ -29,10 +29,20 @@ class NotificationDeliveryTest {
     private fun prefs(userId: String, vararg entries: Pair<String, List<DeliveryChannel>>) =
         NotificationPreference(userId = userId, channels = mapOf(*entries))
 
+    // processEvent keeps appending to the same deliveredVia list after the first save, so
+    // snapshot each saved notification at call time instead of capturing the live object.
+    private val saved = mutableListOf<Notification>()
+
+    init {
+        coEvery { repository.saveNotification(any()) } answers {
+            val n = firstArg<Notification>()
+            saved += n.copy(deliveredVia = n.deliveredVia.toList())
+        }
+    }
+
     private fun savedNotifications(): List<Notification> {
-        val saved = mutableListOf<Notification>()
-        coVerify(atLeast = 1) { repository.saveNotification(capture(saved)) }
-        return saved
+        coVerify(atLeast = 1) { repository.saveNotification(any()) }
+        return saved.toList()
     }
 
     private fun counter(name: String) = meterRegistry.counter(name).count()
@@ -165,10 +175,11 @@ class NotificationDeliveryTest {
         service.processEvent(fileShared)
 
         io.mockk.coVerifyOrder {
-            repository.saveNotification(match { it.deliveredVia.isEmpty() })
+            repository.saveNotification(any())
             webSocketManager.pushNotification("user-1", any())
-            repository.saveNotification(match { it.deliveredVia == listOf("push") })
+            repository.saveNotification(any())
         }
+        assertEquals(listOf(emptyList(), listOf("push")), savedNotifications().map { it.deliveredVia })
     }
 
     @Test
