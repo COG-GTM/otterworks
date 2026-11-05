@@ -51,6 +51,23 @@ async def test_get_document(client: AsyncClient, owner_id: uuid.UUID):
 async def test_get_document_not_found(client: AsyncClient):
     resp = await client.get(f"/api/v1/documents/{uuid.uuid4()}")
     assert resp.status_code == 404
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.json() == {"detail": "Document not found"}
+
+
+@pytest.mark.asyncio
+async def test_get_deleted_document_returns_404_json(client: AsyncClient, owner_id: uuid.UUID):
+    create_resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Gone", "content": "", "owner_id": str(owner_id)},
+    )
+    doc_id = create_resp.json()["id"]
+    assert (await client.delete(f"/api/v1/documents/{doc_id}")).status_code == 204
+
+    resp = await client.get(f"/api/v1/documents/{doc_id}")
+    assert resp.status_code == 404
+    assert resp.headers["content-type"] == "application/json"
+    assert resp.json() == {"detail": "Document not found"}
 
 
 @pytest.mark.asyncio
