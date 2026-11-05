@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.23"
     id("io.ktor.plugin") version "2.3.9"
     id("com.github.johnrengelman.shadow") version "8.1.1"
+    jacoco
 }
 
 group = "com.otterworks"
@@ -93,4 +94,41 @@ tasks.withType<Test> {
     listOf("ow.deps.cases", "ow.deps.observed").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
     }
+}
+
+tasks.test {
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+// Notification routing and delivery must stay covered; `gradle check` (run by CI) fails
+// if line coverage of these packages drops below the floor.
+tasks.jacocoTestCoverageVerification {
+    dependsOn(tasks.test)
+    violationRules {
+        rule {
+            element = "PACKAGE"
+            includes = listOf(
+                "com.otterworks.notification.service",
+                "com.otterworks.notification.routes",
+                "com.otterworks.notification.repository",
+                "com.otterworks.notification.websocket",
+            )
+            limit {
+                counter = "LINE"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.check {
+    dependsOn(tasks.jacocoTestCoverageVerification)
 }
