@@ -184,7 +184,31 @@ jobs:
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.6'
+      # check runs the unit tests, the JaCoCo report and the coverage floor in build.gradle.kts
       - run: gradle check --no-daemon
+      - name: Coverage summary
+        if: always()
+        run: |
+          report=build/reports/jacoco/test/jacocoTestReport.xml
+          [ -f "$report" ] || exit 0
+          python3 - "$report" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          print("### notification-service coverage\n\n| Package | Line coverage |\n|---|---|")
+          for pkg in root.findall("package"):
+              line = next((c for c in pkg.findall("counter") if c.get("type") == "LINE"), None)
+              if line is not None:
+                  covered, missed = int(line.get("covered")), int(line.get("missed"))
+                  print(f"| {pkg.get('name').replace('/', '.')} | {100 * covered / (covered + missed):.1f}% |")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notification-service-test-reports
+          path: |
+            services/notification-service/build/reports/tests/test
+            services/notification-service/build/reports/jacoco/test
+          if-no-files-found: ignore
 
   # Python - Search Service
   search-service:
