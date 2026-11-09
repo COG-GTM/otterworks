@@ -620,12 +620,31 @@ impl MetadataClient {
         for share in pending {
             // The owner may already have shared directly with this account;
             // keep that share rather than adding a duplicate.
-            if self
+            let has_direct_share = self
                 .find_existing_share(&share.file_id, user_id)
                 .await?
-                .is_some()
-            {
-                self.delete_share(&share.id).await?;
+                .is_some_and(|existing| existing.id != share.id);
+            if has_direct_share {
+                // Only drop the invite if it is still pending; a concurrent
+                // claim may have just activated it.
+                let result = self
+                    .client
+                    .delete_item()
+                    .table_name(&self.shares_table)
+                    .key("id", AttributeValue::S(share.id.to_string()))
+                    .condition_expression("#status = :pending")
+                    .expression_attribute_names("#status", "status")
+                    .expression_attribute_values(
+                        ":pending",
+                        AttributeValue::S(ShareStatus::Pending.to_string()),
+                    )
+                    .send()
+                    .await;
+                match result {
+                    Ok(_) => {}
+                    Err(e) if is_conditional_check_failed(&e) => {}
+                    Err(e) => return Err(ServiceError::DynamoError(e.to_string())),
+                }
                 continue;
             }
             // Conditional so an invite revoked since the scan stays revoked.
