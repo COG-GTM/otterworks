@@ -10,6 +10,7 @@ import { PresenceHandler } from '../handlers/presence';
 import { MetricsCollector } from '../metrics';
 import { createAuthMiddleware } from '../middleware/auth';
 import { RedisAdapter } from '../services/redis-adapter';
+import type { DocumentAccessChecker } from '../services/document-access';
 
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
@@ -50,6 +51,16 @@ const mockLogger = {
   level: 'info',
 } as never;
 
+// Users may only open documents they own: `<owner>__<name>` (or any doc without an owner prefix).
+const accessChecker: jest.Mocked<DocumentAccessChecker> = {
+  canAccess: jest.fn<Promise<boolean>, [string, string, string]>(
+    async (documentId, userId) => {
+      const [owner] = documentId.split('__');
+      return !documentId.includes('__') || owner === userId;
+    },
+  ),
+};
+
 describe('CollaborationManager', () => {
   let io: SocketIOServer;
   let httpServer: ReturnType<typeof createServer>;
@@ -77,6 +88,7 @@ describe('CollaborationManager', () => {
       documentStore,
       awareness,
       presenceHandler,
+      accessChecker,
       metrics,
       logger: mockLogger,
       persistIntervalMs: 600000, // long interval so it doesn't fire during tests
@@ -337,6 +349,182 @@ describe('CollaborationManager', () => {
       expect(leftData.userId).toBe('user-disc-2');
 
       client1.disconnect();
+    });
+  });
+
+  describe('Document Access Control', () => {
+    function join(
+      client: ClientSocket,
+      documentId: string,
+    ): Promise<{ success: boolean; error?: string }> {
+      return new Promise((resolve) => {
+        client.emit('join-document', { documentId }, resolve);
+      });
+    }
+
+    it('should pass the socket token to the access checker', async () => {
+      const client = await connectClient('owner-a', 'Alice');
+      const response = await join(client, 'owner-a__token-doc');
+
+      expect(response.success).toBe(true);
+      expect(accessChecker.canAccess).toHaveBeenCalledWith(
+        'owner-a__token-doc',
+        'owner-a',
+        expect.any(String),
+      );
+      expect(accessChecker.canAccess.mock.calls[0][2]).not.toBe('');
+      client.disconnect();
+    });
+
+    it("should reject joining another user's document without syncing state", async () => {
+      const owner = await connectClient('owner-a', 'Alice');
+      const intruder = await connectClient('mallory', 'Mallory');
+      expect((await join(owner, 'owner-a__secret')).success).toBe(true);
+
+      const synced = jest.fn();
+      intruder.on('sync-document', synced);
+      const joinedOnOwner = jest.fn();
+      owner.on('user-joined', joinedOnOwner);
+
+      const response = await join(intruder, 'owner-a__secret');
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(response).toEqual({ success: false, error: 'Access denied' });
+      expect(synced).not.toHaveBeenCalled();
+      expect(joinedOnOwner).not.toHaveBeenCalled();
+      expect(awareness.getUserDocument(intruder.id!)).toBeNull();
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('should not register a socket that disconnects during the access check', async () => {
+      let release!: (allowed: boolean) => void;
+      accessChecker.canAccess.mockImplementationOnce(
+        () => new Promise<boolean>((resolve) => (release = resolve)),
+      );
+      const client = await connectClient('owner-a', 'Alice');
+      const socketId = client.id!;
+      client.emit('join-document', { documentId: 'owner-a__slow' });
+      await new Promise((r) => setTimeout(r, 50));
+
+      client.disconnect();
+      await new Promise((r) => setTimeout(r, 50));
+      release(true);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(awareness.getUserDocument(socketId)).toBeNull();
+      expect(awareness.getDocumentUserCount('owner-a__slow')).toBe(0);
+    });
+
+    it('should reject malformed document ids', async () => {
+      const client = await connectClient('owner-a', 'Alice');
+      const response = await join(client, '../../etc');
+
+      expect(response).toEqual({ success: false, error: 'Invalid document id' });
+      expect(accessChecker.canAccess).not.toHaveBeenCalled();
+      client.disconnect();
+    });
+
+    it('should drop document updates from sockets that have not joined the document', async () => {
+      const owner = await connectClient('owner-a', 'Alice');
+      const intruder = await connectClient('mallory', 'Mallory');
+      expect((await join(owner, 'owner-a__wipe')).success).toBe(true);
+      // Intruder is joined to a different document of their own
+      expect((await join(intruder, 'mallory__mine')).success).toBe(true);
+
+      const receivedByOwner = jest.fn();
+      owner.on('document-update', receivedByOwner);
+      const errorPromise = new Promise<{ documentId: string; error: string }>((resolve) =>
+        intruder.on('document-update-error', resolve),
+      );
+
+      const tempDoc = new Y.Doc();
+      tempDoc.getText('content').insert(0, 'pwned');
+      intruder.emit('document-update', {
+        documentId: 'owner-a__wipe',
+        update: Buffer.from(Y.encodeStateAsUpdate(tempDoc)).toString('base64'),
+      });
+
+      const error = await errorPromise;
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(error.error).toBe('Not joined to document');
+      expect(receivedByOwner).not.toHaveBeenCalled();
+      expect(manager.getDocument('owner-a__wipe')!.getText('content').toString()).toBe(
+        '',
+      );
+      expect(mockRedis.set).not.toHaveBeenCalledWith(
+        expect.stringContaining('owner-a__wipe'),
+        expect.anything(),
+        expect.anything(),
+      );
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('should reject snapshot and history requests for documents the socket has not joined', async () => {
+      const owner = await connectClient('owner-a', 'Alice');
+      const intruder = await connectClient('mallory', 'Mallory');
+      expect((await join(owner, 'owner-a__history')).success).toBe(true);
+
+      const historyError = new Promise<{ error: string }>((resolve) =>
+        intruder.on('history-error', resolve),
+      );
+      const snapshotError = new Promise<{ error: string }>((resolve) =>
+        intruder.on('snapshot-error', resolve),
+      );
+      const history = jest.fn();
+      intruder.on('document-history', history);
+
+      intruder.emit('request-history', { documentId: 'owner-a__history' });
+      intruder.emit('request-snapshot', { documentId: 'owner-a__history' });
+
+      expect((await historyError).error).toBe('Not joined to document');
+      expect((await snapshotError).error).toBe('Not joined to document');
+      expect(history).not.toHaveBeenCalled();
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+
+      owner.disconnect();
+      intruder.disconnect();
+    });
+
+    it('should not relay comments or cursors into rooms the socket has not joined', async () => {
+      const owner = await connectClient('owner-a', 'Alice');
+      const intruder = await connectClient('mallory', 'Mallory');
+      expect((await join(owner, 'owner-a__comments')).success).toBe(true);
+      expect((await join(intruder, 'mallory__other')).success).toBe(true);
+
+      const relayed = jest.fn();
+      owner.on('comment-added', relayed);
+      owner.on('comment-deleted', relayed);
+      owner.on('cursor-update', relayed);
+
+      intruder.emit('comment-add', {
+        documentId: 'owner-a__comments',
+        comment: {
+          id: 'c1',
+          threadId: 't1',
+          content: 'spam',
+          rangeStart: 0,
+          rangeEnd: 1,
+        },
+      });
+      intruder.emit('comment-delete', {
+        documentId: 'owner-a__comments',
+        commentId: 'c1',
+      });
+      intruder.emit('cursor-update', {
+        documentId: 'owner-a__comments',
+        cursor: { index: 0, length: 0 },
+        selection: null,
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(relayed).not.toHaveBeenCalled();
+      owner.disconnect();
+      intruder.disconnect();
     });
   });
 

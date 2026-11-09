@@ -12,6 +12,7 @@ import { createAuthMiddleware } from './middleware/auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
+import { HttpDocumentAccessChecker, isValidDocumentId } from './services/document-access';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
 
@@ -32,6 +33,41 @@ const logger = pino({
 const app = express();
 const httpServer = createServer(app);
 const metrics = new MetricsCollector();
+const accessChecker = new HttpDocumentAccessChecker(
+  config.documentService.url,
+  logger,
+  config.documentService.timeoutMs,
+);
+
+interface HttpAuthLocals {
+  userId: string;
+  roles: string[];
+  token: string;
+}
+
+function requireHttpAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as jwt.JwtPayload;
+    if (!decoded.sub) throw new Error('missing sub');
+    res.locals.auth = {
+      userId: decoded.sub,
+      roles: Array.isArray(decoded.roles) ? decoded.roles : [],
+      token,
+    } satisfies HttpAuthLocals;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
 
 // Middleware
 app.use(helmet());
@@ -69,15 +105,31 @@ app.get('/metrics', async (_req, res) => {
 });
 
 // Presence endpoint
-app.get('/api/v1/collab/documents/:id/presence', (req, res) => {
+app.get('/api/v1/collab/documents/:id/presence', requireHttpAuth, async (req, res) => {
   const documentId = req.params.id;
+  const auth = res.locals.auth as HttpAuthLocals;
+  if (!(await accessChecker.canAccess(documentId, auth.userId, auth.token))) {
+    res.status(404).json({ error: 'Document not found' });
+    return;
+  }
   const presence = presenceHandler.getDocumentPresence(documentId);
   res.json(presence);
 });
 
 // Active documents listing
-app.get('/api/v1/collab/documents', (_req, res) => {
-  const activeDocuments = presenceHandler.getActiveDocuments();
+// Admins see every active document; other users only see documents they are in.
+app.get('/api/v1/collab/documents', requireHttpAuth, (_req, res) => {
+  const auth = res.locals.auth as HttpAuthLocals;
+  const isAdmin = auth.roles.some((role) => role.toLowerCase() === 'admin');
+  const activeDocuments = presenceHandler
+    .getActiveDocuments()
+    .filter(
+      ({ documentId }) =>
+        isAdmin ||
+        presenceHandler
+          .getDocumentPresence(documentId)
+          .users.some((u) => u.userId === auth.userId),
+    );
   res.json({ documents: activeDocuments, count: activeDocuments.length });
 });
 
@@ -121,6 +173,7 @@ const collabManager = setupCollaborationHandlers(
   documentStore,
   awareness,
   presenceHandler,
+  accessChecker,
   metrics,
   logger,
   config.persistence.intervalMs,
@@ -154,8 +207,11 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  let userId: string;
   try {
-    jwt.verify(token, config.jwt.secret);
+    const decoded = jwt.verify(token, config.jwt.secret) as jwt.JwtPayload;
+    if (!decoded.sub) throw new Error('missing sub');
+    userId = decoded.sub;
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -163,9 +219,38 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+  // Must match how y-websocket derives the room name from the request URL.
+  const docName = (request.url || '').slice(1).split('?')[0];
+  const documentId = docName.startsWith('document-')
+    ? docName.slice('document-'.length)
+    : '';
+  if (!isValidDocumentId(documentId)) {
+    logger.warn({ docName }, 'y-websocket_connection_rejected: invalid document');
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  accessChecker
+    .canAccess(documentId, userId, token)
+    .then((allowed) => {
+      if (!allowed) {
+        logger.warn(
+          { documentId, userId },
+          'y-websocket_connection_rejected: access denied',
+        );
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    })
+    .catch((err) => {
+      logger.error({ err, documentId }, 'y-websocket_access_check_failed');
+      socket.destroy();
+    });
 });
 
 // Start presence cleanup with document eviction callback
