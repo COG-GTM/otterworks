@@ -207,6 +207,7 @@ def post_issue_invoice(tenant_id: Annotated[UUID, Path()], request: BillingPerio
     try:
         with connect() as connection:
             repository = PostgresBillingRepository(connection)
+            repository.lock_credit_notes(tenant_id)
             finalized = finalize_rating(connection, tenant_id, request)
             lines = preview_lines(connection, tenant_id, request)
             issued = invoicing.issue(

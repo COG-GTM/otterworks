@@ -105,6 +105,12 @@ class PostgresBillingRepository:
             (tenant_id, period_start),
         )
 
+    def lock_credit_notes(self, tenant_id: UUID) -> None:
+        self.connection.execute(
+            "SELECT id FROM billing_svc.credit_notes WHERE tenant_id = %s FOR UPDATE",
+            (tenant_id,),
+        )
+
     def credit_notes(self, tenant_id: UUID) -> list[CreditNote]:
         return [
             CreditNote(row["id"], row["issued_on"], Decimal(row["remaining_amount"]))
