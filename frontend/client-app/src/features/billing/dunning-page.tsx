@@ -97,7 +97,7 @@ export default function BillingDunningPage() {
             <table className="mt-4 w-full text-left text-sm">
               <thead>
                 <tr className="text-gray-500">
-                  <th>Tenant</th><th>Invoice</th><th className="text-right">Total</th><th>Days overdue</th><th>Status</th>
+                  <th>Tenant</th><th>Invoice</th><th className="pr-6 text-right">Total</th><th>Days overdue</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -109,7 +109,7 @@ export default function BillingDunningPage() {
                       </Link>
                     </td>
                     <td>{row.invoice_id}</td>
-                    <td className="text-right">{formatMoney(row.total)}</td>
+                    <td className="pr-6 text-right">{formatMoney(row.total)}</td>
                     <td>{row.days_overdue}</td>
                     <td>{row.tenant_status}</td>
                   </tr>
