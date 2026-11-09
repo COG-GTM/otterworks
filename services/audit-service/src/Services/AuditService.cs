@@ -87,9 +87,13 @@ public class AuditService : IAuditService
         return report;
     }
 
-    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId)
+    public async Task<ResourceHistory> GetResourceHistoryAsync(string resourceId, string? restrictToUserId = null)
     {
         var events = await _repository.GetResourceHistoryAsync(resourceId);
+        if (restrictToUserId is not null)
+        {
+            events = events.Where(e => e.UserId == restrictToUserId).ToList();
+        }
 
         return new ResourceHistory
         {

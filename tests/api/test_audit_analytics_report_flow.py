@@ -6,13 +6,18 @@ pytestmark = pytest.mark.api_flow
 
 def test_audit_event_query_reports_export_and_archive(api_client):
     user = api_client.register_user("audit-flow")
+    other = api_client.register_user("audit-flow-other")
     resource_id = f"resource-{api_client.run_id}"
+
+    unauthenticated = api_client.client.get("/api/v1/audit/events")
+    assert unauthenticated.status_code == 401, unauthenticated.text
 
     create_response = api_client.client.post(
         "/api/v1/audit/events",
         headers=user.auth_headers,
         json={
-            "userId": user.id,
+            # The actor is taken from the verified token, not the body.
+            "userId": other.id,
             "action": "create",
             "resourceType": "document",
             "resourceId": resource_id,
@@ -22,9 +27,13 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     assert create_response.status_code == 201, create_response.text
     event = create_response.json()
     event_id = event["id"]
+    assert event["userId"] == user.id
 
     get_response = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=user.auth_headers)
     assert get_response.status_code == 200, get_response.text
+
+    other_get = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=other.auth_headers)
+    assert other_get.status_code == 404, other_get.text
 
     query_response = api_client.client.get(
         "/api/v1/audit/events",
@@ -34,11 +43,25 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     assert query_response.status_code == 200, query_response.text
     assert query_response.json()["total"] >= 1
 
+    cross_user_query = api_client.client.get(
+        "/api/v1/audit/events",
+        headers=other.auth_headers,
+        params={"user_id": user.id},
+    )
+    assert cross_user_query.status_code == 403, cross_user_query.text
+
     history_response = api_client.client.get(
         f"/api/v1/audit/resources/{resource_id}/history",
         headers=user.auth_headers,
     )
     assert history_response.status_code == 200, history_response.text
+
+    other_history = api_client.client.get(
+        f"/api/v1/audit/resources/{resource_id}/history",
+        headers=other.auth_headers,
+    )
+    assert other_history.status_code == 200, other_history.text
+    assert other_history.json()["totalEvents"] == 0
 
     user_report_response = api_client.client.get(
         f"/api/v1/audit/reports/user/{user.id}",
@@ -47,29 +70,30 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
+    cross_user_report = api_client.client.get(
+        f"/api/v1/audit/reports/user/{user.id}",
+        headers=other.auth_headers,
+        params={"period": "30d"},
+    )
+    assert cross_user_report.status_code == 403, cross_user_report.text
+
+    # Compliance, export and archive are admin-only; self-registered users are not admins.
     compliance_response = api_client.client.get(
         "/api/v1/audit/reports/compliance",
         headers=user.auth_headers,
         params={"period": "30d"},
     )
-    assert compliance_response.status_code == 200, compliance_response.text
+    assert compliance_response.status_code == 403, compliance_response.text
 
     export_response = api_client.client.get(
         "/api/v1/audit/export",
         headers=user.auth_headers,
         params={"format": "json"},
     )
-    assert export_response.status_code == 200, export_response.text
-
-    invalid_export = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "xml"},
-    )
-    assert invalid_export.status_code == 400
+    assert export_response.status_code == 403, export_response.text
 
     archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    assert archive_response.status_code == 403, archive_response.text
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):

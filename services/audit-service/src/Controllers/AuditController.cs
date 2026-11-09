@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -7,7 +9,8 @@ public static class AuditController
 {
     public static void MapAuditEndpoints(this WebApplication app)
     {
-        var group = app.MapGroup("/api/v1/audit");
+        // Non-admin callers only ever see their own events; compliance, export and archive are admin-only.
+        var group = app.MapGroup("/api/v1/audit").RequireAuthorization();
 
         group.MapPost("/events", RecordEvent)
             .WithName("RecordAuditEvent")
@@ -33,28 +36,37 @@ public static class AuditController
 
         group.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
+            .RequireAuthorization(AuditAuthentication.AdminPolicy)
             .Produces<ComplianceReport>(StatusCodes.Status200OK);
 
         group.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
+            .RequireAuthorization(AuditAuthentication.AdminPolicy)
             .Produces<ExportResult>(StatusCodes.Status200OK);
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
+            .RequireAuthorization(AuditAuthentication.AdminPolicy)
             .Produces<ArchiveResult>(StatusCodes.Status200OK);
     }
 
     private static async Task<IResult> RecordEvent(
         AuditEventRequest request,
+        ClaimsPrincipal user,
+        HttpContext httpContext,
         IAuditService auditService)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId) ||
-            string.IsNullOrWhiteSpace(request.Action) ||
+        if (string.IsNullOrWhiteSpace(request.Action) ||
             string.IsNullOrWhiteSpace(request.ResourceType) ||
             string.IsNullOrWhiteSpace(request.ResourceId))
         {
-            return Results.BadRequest(new { error = "UserId, Action, ResourceType, and ResourceId are required." });
+            return Results.BadRequest(new { error = "Action, ResourceType, and ResourceId are required." });
         }
+
+        // The actor and client metadata come from the verified request, never the body.
+        request.UserId = user.GetUserId()!;
+        request.IpAddress = GetClientIp(httpContext);
+        request.UserAgent = httpContext.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null;
 
         var response = await auditService.RecordEventAsync(request);
         return Results.Created($"/api/v1/audit/events/{response.Id}", response);
@@ -69,28 +81,51 @@ public static class AuditController
         DateTime? to,
         int? page,
         int? size,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
         var pageNumber = page ?? 1;
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
 
-        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
+        var userFilter = user_id;
+        if (!user.IsAuditAdmin())
+        {
+            var callerId = user.GetUserId()!;
+            if (!string.IsNullOrEmpty(user_id) && user_id != callerId)
+            {
+                return Results.Forbid();
+            }
+            userFilter = callerId;
+        }
+
+        var result = await auditService.QueryEventsAsync(userFilter, action, resource_type, resource, from, to, pageNumber, pageSize);
         return Results.Ok(result);
     }
 
     private static async Task<IResult> GetEvent(
         string id,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
         var result = await auditService.GetEventAsync(id);
-        return result is not null ? Results.Ok(result) : Results.NotFound(new { error = "Event not found." });
+        if (result is null || (!user.IsAuditAdmin() && result.UserId != user.GetUserId()))
+        {
+            return Results.NotFound(new { error = "Event not found." });
+        }
+        return Results.Ok(result);
     }
 
     private static async Task<IResult> GetUserActivityReport(
         string userId,
         string? period,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
+        if (!user.IsAuditAdmin() && userId != user.GetUserId())
+        {
+            return Results.Forbid();
+        }
+
         var reportPeriod = period ?? "30d";
         var report = await auditService.GetUserActivityReportAsync(userId, reportPeriod);
         return Results.Ok(report);
@@ -98,9 +133,11 @@ public static class AuditController
 
     private static async Task<IResult> GetResourceHistory(
         string resourceId,
+        ClaimsPrincipal user,
         IAuditService auditService)
     {
-        var history = await auditService.GetResourceHistoryAsync(resourceId);
+        var restrictTo = user.IsAuditAdmin() ? null : user.GetUserId();
+        var history = await auditService.GetResourceHistoryAsync(resourceId, restrictTo);
         return Results.Ok(history);
     }
 
@@ -138,5 +175,21 @@ public static class AuditController
     {
         var result = await auditService.ArchiveOldEventsAsync();
         return Results.Ok(result);
+    }
+
+    // The api-gateway's reverse proxy appends the address it received the request
+    // from, so the last X-Forwarded-For entry is the one a client cannot forge.
+    private static string? GetClientIp(HttpContext httpContext)
+    {
+        var forwarded = httpContext.Request.Headers["X-Forwarded-For"].ToString();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            var last = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+            if (!string.IsNullOrEmpty(last))
+            {
+                return last;
+            }
+        }
+        return httpContext.Connection.RemoteIpAddress?.ToString();
     }
 }
