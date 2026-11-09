@@ -1,0 +1,111 @@
+module: dunning
+rules:
+- id: DUNNING-001
+  statement: Overdue accounts are overdue invoices issued before the as-of date, oldest first, with days
+    overdue and tenant status.
+  source:
+    file: services/legacy-billing/db/procs/dunning.sql
+    lines:
+    - 1
+    - 18
+  inputs:
+  - as_of
+  outputs:
+  - tenant_id
+  - invoice_id
+  - total
+  - days_overdue
+  - tenant_status
+  confidence: high
+  scenarios:
+  - DUNNING-001
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: DUNNING-002
+  statement: Dunning attempts that fall on a weekend are scheduled for the following Monday.
+  source:
+    file: services/legacy-billing/db/procs/dunning.sql
+    lines:
+    - 37
+    - 42
+  inputs:
+  - as_of
+  outputs:
+  - scheduled_for
+  - status
+  confidence: high
+  scenarios:
+  - DUNNING-002
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: DUNNING-003
+  statement: Each overdue invoice receives the next attempt number after its existing attempts.
+  source:
+    file: services/legacy-billing/db/procs/dunning.sql
+    lines:
+    - 28
+    - 48
+  inputs:
+  - as_of
+  outputs:
+  - attempt_no
+  - scheduled_for
+  confidence: high
+  scenarios:
+  - DUNNING-003
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: DUNNING-004
+  statement: Active tenants with an invoice overdue at least 14 days are suspended along with their active
+    subscriptions.
+  source:
+    file: services/legacy-billing/db/procs/dunning.sql
+    lines:
+    - 53
+    - 77
+  inputs:
+  - as_of
+  outputs:
+  - status
+  - suspended_on
+  confidence: high
+  scenarios:
+  - DUNNING-004
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: DUNNING-005
+  statement: A suspension notification is written at most once per tenant and as-of date.
+  source:
+    file: services/legacy-billing/db/procs/dunning.sql
+    lines:
+    - 78
+    - 86
+  inputs:
+  - as_of
+  outputs:
+  - kind
+  confidence: high
+  scenarios:
+  - DUNNING-005
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
