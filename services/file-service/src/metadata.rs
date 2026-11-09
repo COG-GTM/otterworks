@@ -616,15 +616,43 @@ impl MetadataClient {
             pending.push(parse_file_share(&item)?);
         }
 
-        let claimed = pending.len();
+        let mut claimed = 0;
         for share in pending {
-            self.put_share(&FileShare {
-                shared_with: *user_id,
-                invited_email: None,
-                status: ShareStatus::Active,
-                ..share
-            })
-            .await?;
+            // The owner may already have shared directly with this account;
+            // keep that share rather than adding a duplicate.
+            if self
+                .find_existing_share(&share.file_id, user_id)
+                .await?
+                .is_some()
+            {
+                self.delete_share(&share.id).await?;
+                continue;
+            }
+            // Conditional so an invite revoked since the scan stays revoked.
+            let result = self
+                .client
+                .update_item()
+                .table_name(&self.shares_table)
+                .key("id", AttributeValue::S(share.id.to_string()))
+                .update_expression("SET shared_with = :uid, #status = :active REMOVE invited_email")
+                .condition_expression("attribute_exists(id) AND #status = :pending")
+                .expression_attribute_names("#status", "status")
+                .expression_attribute_values(":uid", AttributeValue::S(user_id.to_string()))
+                .expression_attribute_values(
+                    ":active",
+                    AttributeValue::S(ShareStatus::Active.to_string()),
+                )
+                .expression_attribute_values(
+                    ":pending",
+                    AttributeValue::S(ShareStatus::Pending.to_string()),
+                )
+                .send()
+                .await;
+            match result {
+                Ok(_) => claimed += 1,
+                Err(e) if is_conditional_check_failed(&e) => {}
+                Err(e) => return Err(ServiceError::DynamoError(e.to_string())),
+            }
         }
         Ok(claimed)
     }
