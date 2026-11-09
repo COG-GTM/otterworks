@@ -398,6 +398,25 @@ describe('CollaborationManager', () => {
       intruder.disconnect();
     });
 
+    it('should not register a socket that disconnects during the access check', async () => {
+      let release!: (allowed: boolean) => void;
+      accessChecker.canAccess.mockImplementationOnce(
+        () => new Promise<boolean>((resolve) => (release = resolve)),
+      );
+      const client = await connectClient('owner-a', 'Alice');
+      const socketId = client.id!;
+      client.emit('join-document', { documentId: 'owner-a__slow' });
+      await new Promise((r) => setTimeout(r, 50));
+
+      client.disconnect();
+      await new Promise((r) => setTimeout(r, 50));
+      release(true);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(awareness.getUserDocument(socketId)).toBeNull();
+      expect(awareness.getDocumentUserCount('owner-a__slow')).toBe(0);
+    });
+
     it('should reject malformed document ids', async () => {
       const client = await connectClient('owner-a', 'Alice');
       const response = await join(client, '../../etc');

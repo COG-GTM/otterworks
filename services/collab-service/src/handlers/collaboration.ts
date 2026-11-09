@@ -161,6 +161,12 @@ export class CollaborationManager {
       return;
     }
 
+    // The access check is async; the disconnect handler may already have run.
+    if (socket.disconnected) {
+      logger.debug({ documentId, socketId: socket.id }, 'join_document_socket_gone');
+      return;
+    }
+
     const room = `doc:${documentId}`;
 
     try {
