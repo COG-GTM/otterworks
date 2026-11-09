@@ -48,6 +48,9 @@ export default function BillingPlansPage() {
         <Link className="text-sm text-otter-700 hover:underline" to={`/billing/entitlement/${DEFAULT_TENANT}`}>
           View tenant entitlement
         </Link>
+        <Link className="text-sm text-otter-700 hover:underline" to="/billing/dunning">
+          Dunning
+        </Link>
       </header>
       {error && <BillingAlert message={error} onDismiss={() => setError("")} />}
       <button

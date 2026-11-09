@@ -23,7 +23,9 @@ fixtures for a namespace-specific verification run.
 The client Vite server proxies `/billing-api/*` to the extracted service. With
 the default `NS=dev` stack, run the client command above and open
 `http://localhost:3000/billing/plans`; no billing URL environment variable is
-required. Vite dev enables the billing routes by default. A preview build
+required. Per-tenant rating, invoice preview/issue and invoice lines live at
+`/billing/invoices/<tenant_id>`, and overdue accounts, dunning scheduling and
+suspension at `/billing/dunning`. Vite dev enables the billing routes by default. A preview build
 requires the explicit fixture flag:
 
 ```bash
