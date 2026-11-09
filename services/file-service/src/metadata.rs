@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
-use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission};
+use crate::models::{FileMetadata, FileShare, FileVersion, Folder, SharePermission, ShareStatus};
 
 /// Check if an AWS SDK error is a ConditionalCheckFailedException.
 fn is_conditional_check_failed<E: std::fmt::Debug>(
@@ -512,6 +512,10 @@ impl MetadataClient {
             "shared_with".into(),
             AttributeValue::S(share.shared_with.to_string()),
         );
+        if let Some(email) = &share.invited_email {
+            item.insert("invited_email".into(), AttributeValue::S(email.clone()));
+        }
+        item.insert("status".into(), AttributeValue::S(share.status.to_string()));
         item.insert(
             "permission".into(),
             AttributeValue::S(share.permission.to_string()),
@@ -582,6 +586,47 @@ impl MetadataClient {
             }
         }
         Ok(shares)
+    }
+
+    /// Turns pending invites addressed to `email` into active shares for the
+    /// account that now owns that address.
+    pub async fn claim_pending_shares(
+        &self,
+        email: &str,
+        user_id: &Uuid,
+    ) -> Result<usize, ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.shares_table)
+            .filter_expression("invited_email = :email AND #status = :pending")
+            .expression_attribute_names("#status", "status")
+            .expression_attribute_values(":email", AttributeValue::S(email.to_string()))
+            .expression_attribute_values(
+                ":pending",
+                AttributeValue::S(ShareStatus::Pending.to_string()),
+            )
+            .into_paginator()
+            .items()
+            .send();
+
+        let mut pending = Vec::new();
+        while let Some(item) = paginator.next().await {
+            let item = item.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            pending.push(parse_file_share(&item)?);
+        }
+
+        let claimed = pending.len();
+        for share in pending {
+            self.put_share(&FileShare {
+                shared_with: *user_id,
+                invited_email: None,
+                status: ShareStatus::Active,
+                ..share
+            })
+            .await?;
+        }
+        Ok(claimed)
     }
 
     pub async fn list_shares_by_owner(
@@ -761,6 +806,10 @@ fn parse_file_share(
         id: parse_uuid(&get_s(item, "id")?)?,
         file_id: parse_uuid(&get_s(item, "file_id")?)?,
         shared_with: parse_uuid(&get_s(item, "shared_with")?)?,
+        invited_email: get_optional_s(item, "invited_email"),
+        status: get_optional_s(item, "status")
+            .and_then(|s| ShareStatus::from_str_value(&s))
+            .unwrap_or_default(),
         permission,
         shared_by: parse_uuid(&get_s(item, "shared_by")?)?,
         created_at: parse_datetime(&get_s(item, "created_at")?)?,

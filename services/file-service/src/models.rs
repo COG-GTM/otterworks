@@ -57,9 +57,48 @@ pub struct FileShare {
     pub id: Uuid,
     pub file_id: Uuid,
     pub shared_with: Uuid,
+    /// Address of an invitee who has no OtterWorks account yet. Set only
+    /// while the share is a pending invite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invited_email: Option<String>,
+    #[serde(default)]
+    pub status: ShareStatus,
     pub permission: SharePermission,
     pub shared_by: Uuid,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ShareStatus {
+    #[default]
+    Active,
+    Pending,
+}
+
+impl std::fmt::Display for ShareStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShareStatus::Active => write!(f, "active"),
+            ShareStatus::Pending => write!(f, "pending"),
+        }
+    }
+}
+
+impl ShareStatus {
+    pub fn from_str_value(s: &str) -> Option<Self> {
+        match s {
+            "active" => Some(ShareStatus::Active),
+            "pending" => Some(ShareStatus::Pending),
+            _ => None,
+        }
+    }
+}
+
+/// Deterministic recipient id for an invitee without an account, so repeat
+/// invites to the same address resolve to the same share record.
+pub fn pending_invitee_id(email: &str) -> Uuid {
+    Uuid::new_v5(&Uuid::NAMESPACE_DNS, email.as_bytes())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

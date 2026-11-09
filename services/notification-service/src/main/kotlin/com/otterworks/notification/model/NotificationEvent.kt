@@ -34,6 +34,7 @@ data class SqsNotificationMessage(
     val fileId: String = "",
     val ownerId: String = "",
     val sharedWithUserId: String = "",
+    val sharedWithEmail: String = "",
     val documentId: String = "",
     val commentId: String = "",
     val userId: String = "",
