@@ -22,6 +22,8 @@ interface RawShareItem {
   id: string;
   fileId: string;
   sharedWith: string;
+  invitedEmail?: string;
+  status?: string;
   permission: string;
   sharedBy: string;
   createdAt: string;
@@ -67,7 +69,8 @@ function mapRawFile(raw: RawFileItem): FileItem {
       const mapped = (raw.sharedWith ?? []).map((s) => ({
         userId: s.sharedWith,
         name: "",
-        email: "",
+        email: s.invitedEmail ?? "",
+        status: s.status === "pending" ? ("pending" as const) : ("active" as const),
         permission: s.permission === "viewer" ? "view" as const : s.permission === "editor" ? "edit" as const : "view" as const,
       }));
       const seen = new Set<string>();
@@ -252,8 +255,8 @@ export const filesApi = {
     await apiClient.delete(`/folders/${id}`);
   },
   share: async (id: string, email: string, permission: "view" | "edit"): Promise<void> => {
-    // An email that doesn't resolve to an OtterWorks user is still sent to
-    // file-service (as shared_with_email), which decides whether to reject it.
+    // An email that doesn't resolve to an OtterWorks user is sent to
+    // file-service as shared_with_email and recorded as a pending invite.
     let userId: string | null = null;
     try {
       userId = (await authApi.lookupUser(email)).id;

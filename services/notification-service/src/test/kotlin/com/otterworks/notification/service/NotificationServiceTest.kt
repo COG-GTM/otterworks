@@ -154,6 +154,35 @@ class NotificationServiceTest {
     }
 
     @Test
+    fun `processEvent emails a pending invitee at the shared address`() = runTest {
+        val event = SqsNotificationMessage(
+            eventType = "file_shared",
+            fileId = "file-123",
+            ownerId = "owner-1",
+            sharedWithUserId = "invitee-id",
+            sharedWithEmail = "outside@example.com",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+
+        coEvery { repository.getPreferences("invitee-id") } returns NotificationPreference(userId = "invitee-id")
+        coEvery { emailSender.sendEmail(any(), any(), any()) } returns true
+
+        service.processEvent(event)
+
+        coVerify { emailSender.sendEmail("outside@example.com", any(), any()) }
+    }
+
+    @Test
+    fun `resolveEmailAddress falls back to the member address`() {
+        val event = SqsNotificationMessage(
+            eventType = "file_shared",
+            sharedWithUserId = "user-2",
+            timestamp = "2024-01-01T00:00:00Z",
+        )
+        assertEquals("user-2@otterworks.io", NotificationService.resolveEmailAddress(event, "user-2"))
+    }
+
+    @Test
     fun `processEvent skips email when not in preferences`() = runTest {
         val event = SqsNotificationMessage(
             eventType = "document_edited",

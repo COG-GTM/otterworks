@@ -127,3 +127,72 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_sharing_with_external_email_creates_pending_invite(api_client):
+    owner = api_client.register_user("file-owner")
+    invitee_email = api_client.unique_email("Outside-Invitee")
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("invite.txt", b"hello invitee", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    share_payload = {
+        "shared_with_email": invitee_email,
+        "permission": "viewer",
+        "shared_by": owner.id,
+    }
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share", headers=owner.auth_headers, json=share_payload
+    )
+    assert share_response.status_code == 201, share_response.text
+    share = share_response.json()["share"]
+    assert share["status"] == "pending"
+    assert share["invited_email"] == invitee_email.lower()
+
+    reshare_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share", headers=owner.auth_headers, json=share_payload
+    )
+    assert reshare_response.status_code == 200, reshare_response.text
+    assert reshare_response.json()["share"]["id"] == share["id"]
+
+    detail_response = api_client.client.get(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+    assert detail_response.status_code == 200, detail_response.text
+    pending = [s for s in detail_response.json()["shared_with"] if s["id"] == share["id"]]
+    assert len(pending) == 1
+    assert pending[0]["status"] == "pending"
+    assert pending[0]["invited_email"] == invitee_email.lower()
+
+    invalid_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={**share_payload, "shared_with_email": "not-an-email"},
+    )
+    assert invalid_response.status_code == 400, invalid_response.text
+
+    register_response = api_client.client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": invitee_email.lower(),
+            "password": "OtterworksTest123!",
+            "displayName": "Outside Invitee",
+        },
+    )
+    assert register_response.status_code == 201, register_response.text
+    invitee = register_response.json()
+    invitee_headers = {"Authorization": f"Bearer {invitee['accessToken']}"}
+
+    shared_response = api_client.client.get("/api/v1/files/shared", headers=invitee_headers)
+    assert shared_response.status_code == 200, shared_response.text
+    assert any(item["id"] == file_id for item in shared_response.json()["files"])
+
+    claimed_response = api_client.client.get(f"/api/v1/files/{file_id}", headers=owner.auth_headers)
+    claimed = [s for s in claimed_response.json()["shared_with"] if s["id"] == share["id"]]
+    assert claimed[0]["status"] == "active"
+    assert claimed[0]["shared_with"] == invitee["user"]["id"]
+    assert "invited_email" not in claimed[0]
