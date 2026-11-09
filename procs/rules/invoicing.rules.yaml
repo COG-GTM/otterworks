@@ -1,0 +1,121 @@
+module: invoicing
+rules:
+- id: INVOICE-001
+  statement: An invoice preview returns plan, usage, two equal tax halves at 8.25% and a credit line capped
+    at the rounded gross amount.
+  source:
+    file: services/legacy-billing/db/procs/invoicing.sql
+    lines:
+    - 1
+    - 60
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - line_no
+  - amount
+  - total
+  confidence: high
+  scenarios:
+  - INVOICE-001
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: INVOICE-002
+  statement: Tax-exempt tenants are previewed with zero tax lines.
+  source:
+    file: services/legacy-billing/db/procs/invoicing.sql
+    lines:
+    - 39
+    - 43
+  inputs:
+  - tenant_id
+  outputs:
+  - line_type
+  - tax_amount
+  confidence: high
+  scenarios:
+  - INVOICE-002
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: INVOICE-003
+  statement: Issuing consumes open credit notes oldest issue date first, then by id, until the applied
+    credit is exhausted.
+  source:
+    file: services/legacy-billing/db/procs/invoicing.sql
+    lines:
+    - 127
+    - 138
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - credit_notes.remaining_amount
+  confidence: high
+  scenarios:
+  - INVOICE-003
+  - INVOICE-004
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: INVOICE-004
+  statement: Issuing finalizes rating, upserts the issued invoice, replaces its lines and stores rounded
+    subtotal, tax and total net of credit.
+  source:
+    file: services/legacy-billing/db/procs/invoicing.sql
+    lines:
+    - 77
+    - 125
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - status
+  - subtotal
+  - tax
+  - total
+  confidence: high
+  scenarios:
+  - INVOICE-005
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: INVOICE-005
+  statement: Persisted invoice lines are returned in line-number order.
+  source:
+    file: services/legacy-billing/db/procs/invoicing.sql
+    lines:
+    - 62
+    - 75
+  inputs:
+  - invoice_id
+  outputs:
+  - line_no
+  - line_type
+  - description
+  - amount
+  confidence: high
+  scenarios:
+  - INVOICE-006
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.

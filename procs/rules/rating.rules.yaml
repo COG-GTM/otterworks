@@ -1,0 +1,152 @@
+module: rating
+rules:
+- id: RATING-001
+  statement: Usage rating sums the tenant's usage events whose UTC date falls in the period, against the
+    latest subscription overlapping the period.
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 31
+    - 46
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - used_units
+  - quota_units
+  confidence: high
+  scenarios:
+  - RATING-001
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: RATING-002
+  statement: Rollover from finalized periods starting in the prior three months is capped at twice the
+    plan's included units and reduces billable units.
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 48
+    - 57
+  inputs:
+  - tenant_id
+  - period_start
+  outputs:
+  - rollover_units
+  - billable_units
+  confidence: high
+  scenarios:
+  - RATING-002
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: RATING-003
+  statement: A subscription suspended inside the period prorates billable units and overage by the days
+    remaining from the suspension date.
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 62
+    - 72
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - billable_units
+  - overage_amount
+  confidence: high
+  scenarios:
+  - RATING-003
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: RATING-004
+  statement: 'Billable units are tiered: the first 101 units at the overage rate and the remainder at
+    1.5x, rounded half-up to cents.'
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 57
+    - 60
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - first_tier_units
+  - second_tier_units
+  - overage_amount
+  confidence: high
+  scenarios:
+  - RATING-004
+  - RATING-005
+  - RATING-006
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: RATING-005
+  statement: The usage summary groups in-period events by kind with event count and total units, ordered
+    by kind.
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 79
+    - 93
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - kind
+  - event_count
+  - units
+  confidence: high
+  scenarios:
+  - RATING-007
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
+- id: RATING-006
+  statement: Finalizing a period upserts the rating period and one rating result whose rollover is the
+    unused quota.
+  source:
+    file: services/legacy-billing/db/procs/rating.sql
+    lines:
+    - 95
+    - 139
+  inputs:
+  - tenant_id
+  - period_start
+  - period_end
+  outputs:
+  - used_units
+  - quota_units
+  - rollover_units
+  - billable_units
+  - overage_amount
+  confidence: high
+  scenarios:
+  - RATING-008
+  decision:
+    status: proposed
+    reviewer: devin
+    date: '2026-11-09'
+    note: Drafted from the legacy source and recorded transcripts; needs product-owner sign-off before
+      merge.
