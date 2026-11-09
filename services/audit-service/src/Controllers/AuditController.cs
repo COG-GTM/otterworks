@@ -177,8 +177,8 @@ public static class AuditController
         return Results.Ok(result);
     }
 
-    // The api-gateway's reverse proxy appends the address it received the request
-    // from, so the last X-Forwarded-For entry is the one a client cannot forge.
+    // Best-effort client address. The last X-Forwarded-For entry is the one set by the
+    // closest proxy (ingress-nginx in tenants); the api-gateway passes it through as-is.
     private static string? GetClientIp(HttpContext httpContext)
     {
         var forwarded = httpContext.Request.Headers["X-Forwarded-For"].ToString();
