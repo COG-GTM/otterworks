@@ -12,6 +12,7 @@ export interface AuthenticatedUser {
 
 export interface AuthenticatedSocket extends Socket {
   user?: AuthenticatedUser;
+  accessToken?: string;
 }
 
 interface JwtPayload {
@@ -45,6 +46,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
         displayName: decoded.name || decoded.display_name || 'Anonymous',
         roles: decoded.roles || [],
       };
+      (socket as AuthenticatedSocket).accessToken = token;
 
       logger.debug(
         { socketId: socket.id, userId: decoded.sub },
@@ -71,4 +73,8 @@ export function extractUserFromSocket(socket: Socket): AuthenticatedUser {
       roles: [],
     }
   );
+}
+
+export function extractTokenFromSocket(socket: Socket): string | undefined {
+  return (socket as AuthenticatedSocket).accessToken;
 }
