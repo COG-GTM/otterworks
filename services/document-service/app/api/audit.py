@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from app.api.identity import _extract_user_id, _jwt_claims
+from app.api.identity import _extract_user_id, _get_jwt_secret, _jwt_claims
 from app.services.audit_client import SERVICE_NAME, get_audit_client, utc_timestamp
 
 _MAX_FIELD = 512
@@ -75,9 +75,14 @@ class Auditor:
 
 def _capture_context(request: Request) -> AuditContext:
     verified = _extract_user_id(request)
-    user_id = str(verified) if verified else _clip(request.headers.get("X-User-ID"), 128)
+    # With JWT verification on, gateway identity headers are trusted only alongside a
+    # verified token, so a direct caller cannot attribute events to someone else.
+    trust_headers = bool(verified) or not _get_jwt_secret()
+    user_id = str(verified) if verified else None
+    if not user_id and trust_headers:
+        user_id = _clip(request.headers.get("X-User-ID"), 128)
     claims = _jwt_claims(request) or {}
-    email = request.headers.get("X-User-Email") or claims.get("email")
+    email = (request.headers.get("X-User-Email") if trust_headers else None) or claims.get("email")
     return AuditContext(
         user_id=user_id or "anonymous",
         actor_email=_clip(str(email), 256) if email else None,

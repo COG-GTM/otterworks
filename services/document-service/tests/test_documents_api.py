@@ -351,6 +351,20 @@ async def test_unauthenticated_request_is_audited_as_permission_denied(
 
 
 @pytest.mark.asyncio
+async def test_unverified_identity_headers_are_not_trusted_as_actor(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id)
+    forged = {**GATEWAY_HEADERS, "X-User-ID": str(owner_id), "X-User-Email": "victim@example.com"}
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", headers=forged, auth=None)
+    assert resp.status_code == 401
+
+    event = await audit_sink.only("permission.denied")
+    audit_sink.assert_request(
+        event, user_id="anonymous", outcome="denied", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert "actorEmail" not in event
+
+
+@pytest.mark.asyncio
 async def test_archived_export_read_is_audited(client, owner_id, audit_sink, monkeypatch, tmp_path):
     (tmp_path / "report.md").write_text("# archived body\n", encoding="utf-8")
     monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
