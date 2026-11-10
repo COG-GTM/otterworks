@@ -188,6 +188,18 @@ def _ref_name(schema: dict | None) -> str:
     return schema.get("type", "object")
 
 
+def _returns(op: dict) -> str:
+    """Schema of the first documented 2xx response; framework/binary bodies collapse to 'binary'."""
+    for code in sorted(c for c in op.get("responses", {}) if c.startswith("2")):
+        r = op["responses"][code]
+        schema = r.get("schema") or next(iter(r.get("content", {}).values()), {}).get("schema")
+        if schema:
+            name = _ref_name(schema)
+            binary = name in FRAMEWORK_MODELS or (schema.get("type") == "string" and schema.get("format") == "binary")
+            return "binary" if binary else name
+    return "-"
+
+
 def _prop_type(p: dict) -> str:
     if "$ref" in p:
         return _ref_name(p)
@@ -221,7 +233,7 @@ def api_summary(doc: dict) -> tuple[str, str]:
             rb = op.get("requestBody", {}).get("content", {})  # OpenAPI 3
             if rb:
                 body = _ref_name(next(iter(rb.values())).get("schema"))
-            ops.append(f"{method.upper()} {path}\n  params: {', '.join(params) or '-'}\n  body: {body}")
+            ops.append(f"{method.upper()} {path}\n  params: {', '.join(params) or '-'}\n  body: {body}\n  returns: {_returns(op)}")
             responses.append(f"{method.upper()} {path}: {' '.join(sorted(op.get('responses', {})))}")
     models = doc.get("definitions") or doc.get("components", {}).get("schemas", {})
     lines = ["# operations"] + ops + ["", "# models"]
@@ -257,6 +269,15 @@ def submit_and_wait(client: Client, body: dict, timeout: float = 60) -> dict:
 
 
 def capture(client: Client, out: Path) -> None:
+    created: list[int] = []
+    try:
+        _capture(client, out, created)
+    finally:
+        for report_id in created:  # leave no reports behind, even when the capture aborts
+            client.request("DELETE", f"/api/v1/reports/{report_id}")
+
+
+def _capture(client: Client, out: Path, created: list[int]) -> None:
     for sub in ("reports", "contract", "raw"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
@@ -281,6 +302,7 @@ def capture(client: Client, out: Path) -> None:
     metadata, info = {}, {}
     for fmt, body in REPORT_CASES.items():
         rep = submit_and_wait(client, body)
+        created.append(rep["id"])
         if rep["status"] != "COMPLETED":
             raise SystemExit(f"{fmt} report failed: {rep.get('errorMessage')}")
         status, headers, raw = client.request("GET", f"/api/v1/reports/{rep['id']}/download")
@@ -293,6 +315,7 @@ def capture(client: Client, out: Path) -> None:
                 "status": status,
                 "contentType": headers.get("content-type"),
                 "contentDisposition": FILE_TS.sub("_<TS>.", headers.get("content-disposition", "")),
+                "fileSizeMatchesDownload": bool(raw) and rep["fileSizeBytes"] == len(raw),
             },
         }
         info[fmt] = {"fileSizeBytes": rep["fileSizeBytes"], "downloadBytes": len(raw)}
@@ -300,6 +323,7 @@ def capture(client: Client, out: Path) -> None:
 
     # Behaviour: error paths and the upstream-unreachable path.
     failed = submit_and_wait(client, UPSTREAM_DOWN_CASE)
+    created.append(failed["id"])
     info["upstreamDown"] = {"errorMessage": mask(failed.get("errorMessage") or "")}
     write_json("reports/info.json", info)
     list_status, listing = client.json("GET", "/api/v1/reports")
@@ -320,6 +344,9 @@ def capture(client: Client, out: Path) -> None:
         "listFailed": client.request("GET", "/api/v1/reports?status=FAILED")[0],
         "upstreamDownReport": normalise_metadata(failed),
     }
+    deleted = created.pop(0)
+    behaviour["deleteReport"] = client.request("DELETE", f"/api/v1/reports/{deleted}")[0]
+    behaviour["getDeletedReport"] = client.request("GET", f"/api/v1/reports/{deleted}")[0]
     write_json("contract/behaviour.json", behaviour)
 
 
@@ -458,6 +485,10 @@ def main() -> int:
         print(f"comparing {out} against {BASELINE_DIR}")
         failures = diff_dirs(BASELINE_DIR, out)
         print(f"\n{'PASS' if not failures else 'FAIL'}: {failures} strict difference(s)")
+        if failures or args.out:
+            print(f"current capture kept in {out}")
+        else:
+            shutil.rmtree(out, ignore_errors=True)
         return 1 if failures else 0
 
     if args.cmd == "tests":

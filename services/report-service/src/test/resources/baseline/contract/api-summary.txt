@@ -2,21 +2,27 @@
 GET /api/v1/reports
   params: status:query:optional:string[COMPLETED,FAILED,GENERATING,PENDING], userId:query:optional:string
   body: -
+  returns: object
 POST /api/v1/reports
   params: -
   body: ReportRequest
+  returns: ReportResponse
 DELETE /api/v1/reports/{id}
   params: id:path:required:integer(int64)
   body: -
+  returns: -
 GET /api/v1/reports/{id}
   params: id:path:required:integer(int64)
   body: -
+  returns: ReportResponse
 GET /api/v1/reports/{id}/download
   params: id:path:required:integer(int64)
   body: -
+  returns: binary
 GET /health
   params: -
   body: -
+  returns: object
 
 # models
 ReportRequest

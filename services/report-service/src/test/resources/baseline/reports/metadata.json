@@ -3,6 +3,7 @@
     "download": {
       "contentDisposition": "attachment; filename=\"baseline_user_activity_<TS>.csv\"",
       "contentType": "text/csv",
+      "fileSizeMatchesDownload": true,
       "status": 200
     },
     "report": {
@@ -21,6 +22,7 @@
     "download": {
       "contentDisposition": "attachment; filename=\"baseline_user_activity_<TS>.pdf\"",
       "contentType": "application/pdf",
+      "fileSizeMatchesDownload": true,
       "status": 200
     },
     "report": {
@@ -39,6 +41,7 @@
     "download": {
       "contentDisposition": "attachment; filename=\"baseline_user_activity_<TS>.xlsx\"",
       "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "fileSizeMatchesDownload": true,
       "status": 200
     },
     "report": {

@@ -42,6 +42,8 @@ process_files_max_files gauge
 process_files_open_files gauge
 process_start_time_seconds gauge
 process_uptime_seconds gauge
+spring_data_repository_invocations_seconds summary
+spring_data_repository_invocations_seconds_max gauge
 system_cpu_count gauge
 system_cpu_usage gauge
 system_load_average_1m gauge

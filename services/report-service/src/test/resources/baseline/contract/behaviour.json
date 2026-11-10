@@ -1,8 +1,10 @@
 {
   "createEmptyBody": 400,
   "createMissingType": 400,
+  "deleteReport": 204,
   "deleteUnknownReport": 404,
   "downloadUnknownReport": 404,
+  "getDeletedReport": 404,
   "getUnknownReport": 404,
   "listByUser": 500,
   "listCompleted": {
