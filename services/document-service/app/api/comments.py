@@ -6,6 +6,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.audit import Auditor, get_auditor
 from app.db.session import get_db
 from app.schemas.document import CommentCreate, CommentResponse
 from app.services.document_service import DocumentService
@@ -51,12 +52,19 @@ async def delete_comment(
     document_id: UUID,
     comment_id: UUID,
     db: AsyncSession = Depends(get_db),
+    auditor: Auditor = Depends(get_auditor),
 ):
     """Delete a comment."""
     service = DocumentService(db)
     deleted = await service.delete_comment(document_id, comment_id)
+    details = {"documentId": str(document_id)}
     if not deleted:
+        auditor.record(
+            "delete", "comment", str(comment_id), outcome="failure",
+            details={**details, "reason": "not_found"},
+        )
         raise HTTPException(status_code=404, detail="Comment not found")
+    auditor.record("delete", "comment", str(comment_id), details=details)
     logger.info(
         "comment_deleted", document_id=str(document_id), comment_id=str(comment_id)
     )
