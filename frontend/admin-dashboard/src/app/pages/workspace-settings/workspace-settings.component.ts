@@ -53,8 +53,8 @@ const defaultWithinMax: ValidatorFn = (group: AbstractControl): ValidationErrors
 
         <mat-card-content>
           <p class="current-policy" data-testid="current-policy">
-            Current policy: links expire after <strong>{{ policy?.defaultDays }} days</strong> by default,
-            and can be set to at most <strong>{{ policy?.maxDays }} days</strong>.
+            Current policy: links expire after <strong>{{ policy?.defaultDays }} {{ policy?.defaultDays === 1 ? 'day' : 'days' }}</strong> by default,
+            and can be set to at most <strong>{{ policy?.maxDays }} {{ policy?.maxDays === 1 ? 'day' : 'days' }}</strong>.
             <span *ngIf="policy?.updatedAt" class="updated-at">
               Last updated {{ policy?.updatedAt | date:'medium' }}<span *ngIf="policy?.updatedBy"> by {{ policy?.updatedBy }}</span>.
             </span>

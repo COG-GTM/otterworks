@@ -68,6 +68,15 @@ describe('WorkspaceSettingsComponent (OTW-49)', () => {
       expect(el().querySelector('.updated-at')).toBeTruthy();
     });
 
+    it('When the policy is 1/1, Then the current policy uses the singular "day"', () => {
+      apiSpy.getWorkspaceSharePolicy.and.returnValue(of(makePolicy({ defaultDays: 1, maxDays: 1 })));
+      fixture.detectChanges();
+
+      const current = el().querySelector('[data-testid="current-policy"]')!.textContent!;
+      expect(current).toContain('1 day by default');
+      expect(current).not.toContain('1 days');
+    });
+
     it('When loading fails, Then an error with a retry is shown instead of the form', () => {
       apiSpy.getWorkspaceSharePolicy.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
       fixture.detectChanges();
