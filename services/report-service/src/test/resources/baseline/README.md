@@ -59,12 +59,25 @@ uv run scripts/baseline.py metrics --update               # rebuilds the image v
 
 ## Known legacy behaviour recorded here
 
-- **Known pre-existing bug, expected to change (LBG-23):** `GET /api/v1/reports?userId=...`
-  and `?status=FAILED` return **500** on PostgreSQL once a FAILED report exists (Hibernate
-  "Unable to access lob stream" on the `@Lob errorMessage` column). `behaviour.json` keeps the
-  legacy 500 (`listByUser`, `listFailed`). `known-differences.json` marks those keys, so
-  `compare` prints them as `KNOWN` and does not fail when they change. Any other difference in
-  the same file still fails. Once LBG-23 lands, re-capture `behaviour.json` and remove the entries.
+- **Fixed in LBG-23:** the legacy build returned **500** for `GET /api/v1/reports?userId=...`
+  and `?status=FAILED` on PostgreSQL once a FAILED report existed (Hibernate 5 "Unable to access
+  lob stream" on the `@Lob errorMessage` column). `errorMessage` is now mapped as plain `text`,
+  `behaviour.json` was re-captured with 200 for `listByUser` and `listFailed`, and
+  `known-differences.json` is empty.
+- **Legacy rows (LBG-23):** the Boot 2 build stored `error_message` as a large-object OID.
+  On startup `LegacyErrorMessageMigration` copies each message back into the column, one row at
+  a time (a row whose large object is not valid UTF-8 is skipped with a WARN and keeps its OID).
+  It never unlinks large objects; remove the orphans with `vacuumlo -v <database>` once every
+  instance runs the Boot 3 build.
+- **Deny by default (LBG-23):** Spring Security 6 denies requests that match no rule, so a path
+  no controller serves returns **403** instead of the legacy 404. `behaviour.json` records it as
+  `unknownPath: 403` (re-captured from the Boot 3 build).
+- **PDF wrapping (LBG-22):** `reports/pdf.txt` was re-captured in LBG-23 from the OpenPDF build.
+  The extracted text is identical, but OpenPDF wraps the `last_login` cell at the hyphen
+  (`2026-11-` / `10T…Z`) where iText 5 wrapped before the `Z`. The change came with the
+  iText 5 → OpenPDF swap in LBG-22 (the base-branch OpenPDF 1.3.43 jar shows it too), not
+  with Boot 3 or OpenPDF 2. `baseline.py` now masks a timestamp that wraps across lines as
+  `<TIMESTAMP>` too, so the wrapped `Z` is part of the mask.
 - `DependencyTranscriptEmitterTest` is skipped unless the dependency-remediation harness
   enables it.
 - `metrics.json` was captured with a Google Maven Central mirror injected into the builder

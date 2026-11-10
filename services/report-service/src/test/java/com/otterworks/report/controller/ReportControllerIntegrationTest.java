@@ -25,6 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -234,6 +235,29 @@ public class ReportControllerIntegrationTest {
     }
 
     // ---- Health endpoint ----
+
+    @Test
+    public void trailingSlashResolvesLikeBoot2() throws Exception {
+        long id = createReportAndReturnId("Trailing Slash Report",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV, "integration-user");
+
+        mockMvc.perform(get("/api/v1/reports/").param("userId", "integration-user"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reports", notNullValue()));
+        mockMvc.perform(get("/api/v1/reports/" + id + "/"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is((int) id)));
+        mockMvc.perform(get("/health/"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    public void securityHeadersArePreserved() throws Exception {
+        mockMvc.perform(get("/health"))
+                .andExpect(header().string("X-Frame-Options", "DENY"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("X-XSS-Protection", "1; mode=block"));
+    }
 
     @Test
     public void healthEndpointReturnsServiceMetadata() throws Exception {

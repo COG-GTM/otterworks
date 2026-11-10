@@ -1,16 +1,1 @@
-{
-  "contract/behaviour.json": {
-    "listByUser": {
-      "baseline": 500,
-      "status": "known pre-existing bug, expected to change",
-      "ticket": "LBG-23",
-      "reason": "Legacy Hibernate 5 on PostgreSQL throws 'Unable to access lob stream' reading @Lob errorMessage once a FAILED report is listed. LBG-23 (Hibernate 6 @Lob/errorMessage) fixes it."
-    },
-    "listFailed": {
-      "baseline": 500,
-      "status": "known pre-existing bug, expected to change",
-      "ticket": "LBG-23",
-      "reason": "Same @Lob errorMessage failure as listByUser, via GET /api/v1/reports?status=FAILED."
-    }
-  }
-}
+{}

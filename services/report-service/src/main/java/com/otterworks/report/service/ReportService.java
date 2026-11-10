@@ -11,11 +11,10 @@ import com.otterworks.report.util.ReportDateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import javax.transaction.Transactional;
 import java.io.File;
 import java.util.Date;
 import java.util.List;
@@ -25,8 +24,6 @@ import java.util.Optional;
  * Core report orchestration service.
  *
  * LEGACY PATTERNS:
- * - javax.transaction.Transactional (target: jakarta.transaction.Transactional
- *   or org.springframework.transaction.annotation.Transactional)
  * - java.util.Date throughout
  * - @Async delegated to ReportGenerationWorker (fire-and-forget, no error propagation)
  * - Manual JSON serialization for parameters
