@@ -8,6 +8,7 @@ import { Announcement } from '../models/announcement.model';
 import { ServiceHealth } from '../models/system-health.model';
 import { DashboardStats, AnalyticsReport, ChartDataPoint } from '../models/analytics.model';
 import { Incident } from '../models/incident.model';
+import { DEFAULT_SHARING_POLICY, SharingPolicy } from '../models/sharing-policy.model';
 
 // Service metadata not available from the health endpoint — kept here for display purposes
 const SERVICE_META: Record<string, { version: string; port: number; language: string; details: string }> = {
@@ -239,6 +240,25 @@ export class AdminApiService {
     return this.http.put<{ enabled: boolean }>(`${this.baseUrl}/admin/settings/auto_investigate`, { enabled });
   }
 
+  // ── Sharing policy ───────────────────────────────────────────────────────
+
+  getSharingPolicy(): Observable<SharingPolicy> {
+    return this.http.get<any>(`${this.baseUrl}/admin/sharing_policy`).pipe(
+      map(raw => this.mapSharingPolicy(raw)),
+    );
+  }
+
+  updateSharingPolicy(policy: SharingPolicy): Observable<SharingPolicy> {
+    const payload = {
+      default_expiry_days: policy.defaultExpiryDays,
+      min_expiry_days: policy.minExpiryDays,
+      max_expiry_days: policy.maxExpiryDays,
+    };
+    return this.http.put<any>(`${this.baseUrl}/admin/sharing_policy`, payload).pipe(
+      map(raw => this.mapSharingPolicy(raw ?? payload)),
+    );
+  }
+
   // ── Private mappers ──────────────────────────────────────────────────────
 
   private mapUser(raw: any): User {
@@ -430,6 +450,14 @@ export class AdminApiService {
     if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
+  }
+
+  private mapSharingPolicy(raw: any): SharingPolicy {
+    return {
+      defaultExpiryDays: raw?.default_expiry_days ?? DEFAULT_SHARING_POLICY.defaultExpiryDays,
+      minExpiryDays: raw?.min_expiry_days ?? DEFAULT_SHARING_POLICY.minExpiryDays,
+      maxExpiryDays: raw?.max_expiry_days ?? DEFAULT_SHARING_POLICY.maxExpiryDays,
+    };
   }
 
   private mapIncident(raw: any): Incident {
