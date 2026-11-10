@@ -1,0 +1,17 @@
+{
+  "csv": {
+    "downloadBytes": 2660,
+    "fileSizeBytes": 2660
+  },
+  "pdf": {
+    "downloadBytes": 4727,
+    "fileSizeBytes": 4727
+  },
+  "upstreamDown": {
+    "errorMessage": "org.springframework.web.client.ResourceAccessException: I/O error on GET request for \"http://analytics-service:8088/api/v1/analytics/events\": analytics-service: Temporary failure in name resolution; nested exception is java.net.UnknownHostException: analytics-service: Temporary failure in name resolution"
+  },
+  "xlsx": {
+    "downloadBytes": 6011,
+    "fileSizeBytes": 6011
+  }
+}

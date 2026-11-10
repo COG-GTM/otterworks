@@ -1,0 +1,6 @@
+GET /api/v1/reports: 200 401 403 404
+POST /api/v1/reports: 200 201 202 400 401 403 404
+DELETE /api/v1/reports/{id}: 200 204 401 403 404
+GET /api/v1/reports/{id}: 200 401 403 404
+GET /api/v1/reports/{id}/download: 200 401 403 404 409
+GET /health: 200 401 403 404
