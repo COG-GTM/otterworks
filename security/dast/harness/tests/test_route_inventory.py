@@ -235,8 +235,15 @@ def test_an_unreadable_middleware_is_not_an_empty_public_list(tmp_path: Path) ->
     assert gateway_public_paths(write(tmp_path / "other.go", "package middleware")) is None
 
 
-def test_the_repository_gateway_serves_only_login_and_register_anonymously() -> None:
+def test_the_repository_gateway_serves_only_login_register_and_folder_link_open_anonymously() -> None:
     exact, prefixes = gateway_public_paths()
-    assert exact == {"/api/v1/auth/login", "/api/v1/auth/register"}
+    # Opening a folder share link is anonymous by design (OTW-67): the raw token is the
+    # credential. Only the exact path is public; managing links still needs a JWT.
+    assert exact == {
+        "/api/v1/auth/login",
+        "/api/v1/auth/register",
+        "/api/v1/folder-share-links/shared",
+    }
+    assert "/api/v1/folder-share-links" not in exact
     assert "/api/v1/auth/refresh" not in exact
     assert "/metrics" in prefixes

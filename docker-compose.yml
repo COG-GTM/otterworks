@@ -168,6 +168,9 @@ services:
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      FILE_SERVICE_URL: http://file-service:8082
+      SHARING_POLICY_URL: http://admin-service:8089/api/v1/admin/sharing_policy
+      SHARE_LINK_SECRET: ${SHARE_LINK_SECRET:-otterworks-local-dev-share-link-secret-change-me}
     depends_on:
       postgres:
         condition: service_healthy
@@ -391,6 +394,7 @@ services:
       DATABASE_USER: otterworks
       DATABASE_PASSWORD: otterworks_dev
       SECRET_KEY_BASE: dev-secret-key-base-otterworks-change-in-production
+      AUDIT_EVENTS_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DEVIN_API_KEY: ${DEVIN_API_KEY:-}
       DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}

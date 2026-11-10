@@ -102,3 +102,47 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+// OTW-67: /api/v1/folder-share-links is proxied to document-service; the public /shared
+// view passes without a JWT and never carries a client-supplied identity.
+func TestProxyFolderShareLinksRoute(t *testing.T) {
+	var gotPath, gotQuery, gotUserID string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		gotUserID = r.Header.Get("X-User-ID")
+		w.WriteHeader(http.StatusGone)
+	}))
+	defer backend.Close()
+
+	prefix := "/api/v1/folder-share-links"
+	router := NewRouter(RouterConfig{
+		Routes: []Route{{Prefix: prefix, TargetURL: backend.URL}},
+		CBManager: NewCircuitBreakerManager(CircuitBreakerConfig{
+			MaxRequests: 1, Interval: time.Minute, Timeout: time.Minute, FailureRatio: 0.9,
+		}),
+		Logger: zerolog.Nop(),
+	})
+	handler := middleware.JWTAuth(middleware.JWTConfig{
+		Secret:              routerTestSecret,
+		PublicPath:          middleware.DefaultPublicPaths(),
+		PrefixPath:          middleware.DefaultPrefixPaths(),
+		ProtectedPrefixPath: []string{prefix},
+	})(router)
+
+	req := httptest.NewRequest(http.MethodGet, prefix+"/shared?token=t0k", nil)
+	req.Header.Set("X-User-ID", "spoofed")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusGone, rec.Code, "backend status must pass through")
+	assert.Equal(t, prefix+"/shared", gotPath)
+	assert.Equal(t, "token=t0k", gotQuery)
+	assert.Empty(t, gotUserID)
+
+	gotPath = ""
+	req = httptest.NewRequest(http.MethodPost, prefix, nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	assert.Empty(t, gotPath, "unauthenticated management calls must not reach the backend")
+}

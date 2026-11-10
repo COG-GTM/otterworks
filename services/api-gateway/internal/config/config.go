@@ -93,21 +93,22 @@ func Load() *Config {
 // ServiceRoutes returns a map of route prefix to backend service URL.
 func (c *Config) ServiceRoutes() map[string]string {
 	return map[string]string{
-		"/api/v1/auth":          c.AuthServiceURL,
-		"/api/v1/files":         c.FileServiceURL,
-		"/api/v1/folders":       c.FileServiceURL,
-		"/api/v1/documents":     c.DocumentServiceURL,
-		"/api/v1/templates":     c.DocumentServiceURL,
-		"/api/v1/collab":        c.CollabServiceURL,
-		"/socket.io":            c.CollabServiceURL,
-		"/api/v1/notifications": c.NotificationServiceURL,
-		"/api/v1/preferences":   c.NotificationServiceURL,
-		"/api/v1/search":        c.SearchServiceURL,
-		"/api/v1/analytics":     c.AnalyticsServiceURL,
-		"/api/v1/admin":         c.AdminServiceURL,
-		"/api/v1/audit":         c.AuditServiceURL,
-		"/api/v1/reports":       c.ReportServiceURL,
-		"/api/v1/settings":      c.AuthServiceURL,
+		"/api/v1/auth":               c.AuthServiceURL,
+		"/api/v1/files":              c.FileServiceURL,
+		"/api/v1/folders":            c.FileServiceURL,
+		"/api/v1/documents":          c.DocumentServiceURL,
+		"/api/v1/templates":          c.DocumentServiceURL,
+		"/api/v1/folder-share-links": c.DocumentServiceURL,
+		"/api/v1/collab":             c.CollabServiceURL,
+		"/socket.io":                 c.CollabServiceURL,
+		"/api/v1/notifications":      c.NotificationServiceURL,
+		"/api/v1/preferences":        c.NotificationServiceURL,
+		"/api/v1/search":             c.SearchServiceURL,
+		"/api/v1/analytics":          c.AnalyticsServiceURL,
+		"/api/v1/admin":              c.AdminServiceURL,
+		"/api/v1/audit":              c.AuditServiceURL,
+		"/api/v1/reports":            c.ReportServiceURL,
+		"/api/v1/settings":           c.AuthServiceURL,
 	}
 }
 

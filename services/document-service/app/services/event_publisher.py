@@ -38,10 +38,11 @@ class EventPublisher:
             self._client = boto3.client("sns", **kwargs)
         return self._client
 
-    async def publish(self, event_type: str, payload: dict[str, Any]) -> None:
+    async def publish(self, event_type: str, payload: dict[str, Any]) -> bool:
+        """Publish ``payload``; returns True only when it was delivered to SNS."""
         if not settings.sns_enabled:
             logger.info("sns_event_skipped", event_type=event_type)
-            return
+            return False
 
         message = {
             "event_type": event_type,
@@ -60,8 +61,10 @@ class EventPublisher:
                 },
             )
             logger.info("sns_event_published", event_type=event_type)
+            return True
         except Exception:
             logger.exception("sns_publish_failed", event_type=event_type)
+            return False
 
 
 event_publisher = EventPublisher()
