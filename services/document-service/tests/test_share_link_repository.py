@@ -113,6 +113,22 @@ async def test_mark_expired_is_set_once(links: ShareLinkRepository):
     assert _naive((await links.get(link.id)).expired_at) == _naive(first)
 
 
+async def test_mark_expired_keeps_first_detection_across_sessions(links: ShareLinkRepository):
+    """Given two workers loaded the same link before either marked it, When both detect
+    expiry, Then only the first records expired_at and the second reports False."""
+    from tests.conftest import TestingSessionLocal
+
+    link = await _create(links, expires_at=datetime.now(UTC) - timedelta(days=1))
+    first = datetime.now(UTC)
+    async with TestingSessionLocal() as s1, TestingSessionLocal() as s2:
+        worker_a, worker_b = ShareLinkRepository(s1), ShareLinkRepository(s2)
+        stale_a, stale_b = await worker_a.get(link.id), await worker_b.get(link.id)
+
+        assert await worker_a.mark_expired(stale_a, first) is True
+        assert await worker_b.mark_expired(stale_b, first + timedelta(hours=1)) is False
+        assert _naive(stale_b.expired_at) == _naive(first)
+
+
 async def test_new_workspace_policy_defaults_to_30_and_90(policies):
     """Given a new workspace, When its policy is read, Then default is 30 and max is 90."""
     policy = await policies.get("brand-new-workspace")

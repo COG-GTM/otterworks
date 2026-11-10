@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.share_link import (
@@ -121,10 +121,15 @@ class ShareLinkRepository:
         """Record when expiry was first detected. Returns False if already recorded."""
         if link.expired_at is not None:
             return False
-        link.expired_at = expired_at
+        result = await self.db.execute(
+            update(ShareLink)
+            .where(ShareLink.id == link.id, ShareLink.expired_at.is_(None))
+            .values(expired_at=expired_at)
+            .execution_options(synchronize_session=False)
+        )
         await self.db.commit()
         await self.db.refresh(link)
-        return True
+        return result.rowcount == 1
 
 
 class WorkspaceSharePolicyRepository:
