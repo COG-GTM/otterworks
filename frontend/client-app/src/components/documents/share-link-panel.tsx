@@ -76,8 +76,12 @@ function CopyButton({ text }: Readonly<{ text: string }>) {
   return (
     <button
       type="button"
-      onClick={() => {
-        navigator.clipboard?.writeText(text).catch(() => {});
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          return;
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}
