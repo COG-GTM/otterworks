@@ -1,5 +1,6 @@
 """Application configuration via pydantic-settings."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -21,6 +22,14 @@ class Settings(BaseSettings):
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
+
+    file_service_url: str = "http://file-service:8082"
+    file_service_timeout_seconds: float = 5.0
+    # Public web-client origin that serves /s/{token}; share link URLs are built from it.
+    public_app_url: str = Field(
+        default="http://localhost:3000",
+        validation_alias=AliasChoices("PUBLIC_APP_URL", "DOC_SVC_PUBLIC_APP_URL"),
+    )
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:4200"]
 

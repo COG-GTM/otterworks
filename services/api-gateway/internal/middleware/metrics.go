@@ -69,6 +69,8 @@ func normalizePath(path string) string {
 		return "/api/v1/files"
 	case len(path) >= len("/api/v1/documents") && path[:len("/api/v1/documents")] == "/api/v1/documents":
 		return "/api/v1/documents"
+	case len(path) >= len("/api/v1/share-links") && path[:len("/api/v1/share-links")] == "/api/v1/share-links":
+		return "/api/v1/share-links"
 	case len(path) >= len("/api/v1/collab") && path[:len("/api/v1/collab")] == "/api/v1/collab":
 		return "/api/v1/collab"
 	case len(path) >= len("/api/v1/notifications") && path[:len("/api/v1/notifications")] == "/api/v1/notifications":
