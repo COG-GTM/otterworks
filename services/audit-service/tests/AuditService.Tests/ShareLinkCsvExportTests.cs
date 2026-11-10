@@ -185,6 +185,9 @@ public class ShareLinkCsvExportTests
     [InlineData("-2+3", "'-2+3")]
     [InlineData("-7", "-7")]
     [InlineData("7d", "7d")]
+    [InlineData("\n=HYPERLINK(\"http://x\")", "'\n=HYPERLINK(\"http://x\")")]
+    [InlineData("  =1+1", "'  =1+1")]
+    [InlineData(" -7", " -7")]
     public void AC9_Csv_NeutralisesSpreadsheetFormulaValues(string value, string expected)
     {
         var evt = ShareEvent("e1", "share_link.expiry_changed", "share_link", "link-1", value, "x");

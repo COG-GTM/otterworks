@@ -56,9 +56,15 @@ public static class AuditCsvWriter
         return "\"" + safe.Replace("\"", "\"\"") + "\"";
     }
 
-    private static bool NeedsFormulaGuard(string value) =>
-        Array.IndexOf(FormulaPrefixes, value[0]) >= 0 &&
-        !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    private static bool NeedsFormulaGuard(string value)
+    {
+        var trimmed = value.TrimStart();
+        var startsLikeFormula = Array.IndexOf(FormulaPrefixes, value[0]) >= 0 ||
+            (trimmed.Length > 0 && Array.IndexOf(FormulaPrefixes, trimmed[0]) >= 0);
+
+        return startsLikeFormula &&
+            !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+    }
 
     private static string? Detail(AuditEvent e, string[] keys)
     {
