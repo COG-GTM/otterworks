@@ -134,6 +134,17 @@ def test_migration_upgrade_tolerates_tables_created_at_startup(
     assert "workspace_share_policies" not in _tables(db_path)
 
 
+def test_migration_offline_sql_generation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`alembic upgrade --sql` renders the 002 DDL without a database connection."""
+    cfg = _alembic_config(monkeypatch, tmp_path / "offline.db")
+    command.upgrade(cfg, "001:head", sql=True)
+    sql = capsys.readouterr().out
+    assert "CREATE TABLE folder_share_links" in sql
+    assert "CREATE TABLE workspace_share_policies" in sql
+
+
 async def test_policy_defaults_when_no_row(db_session: AsyncSession) -> None:
     repo = SharePolicyRepository(db_session)
 

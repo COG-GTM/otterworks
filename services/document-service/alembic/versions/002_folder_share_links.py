@@ -11,7 +11,7 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op
+from alembic import context, op
 
 revision: str = "002_folder_share_links"
 down_revision: str | None = "001"
@@ -22,7 +22,12 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     # The service's startup init_db() (Base.metadata.create_all) may already have
     # created these tables on a database stamped at 001; only create what is missing.
-    existing = set(sa.inspect(op.get_bind()).get_table_names())
+    # Offline (--sql) mode has no connection to inspect; emit the full DDL.
+    existing = (
+        set()
+        if context.is_offline_mode()
+        else set(sa.inspect(op.get_bind()).get_table_names())
+    )
     if "folder_share_links" not in existing:
         _create_folder_share_links()
     if "workspace_share_policies" not in existing:
