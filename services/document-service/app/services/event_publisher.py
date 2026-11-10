@@ -39,10 +39,10 @@ class EventPublisher:
         return self._client
 
     async def publish(self, event_type: str, payload: dict[str, Any]) -> bool:
-        """Publish ``payload``; returns False only when an enabled publish failed."""
+        """Publish ``payload``; returns True only when it was delivered to SNS."""
         if not settings.sns_enabled:
             logger.info("sns_event_skipped", event_type=event_type)
-            return True
+            return False
 
         message = {
             "event_type": event_type,
