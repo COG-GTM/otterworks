@@ -7,7 +7,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import comments, documents, health, share_links, templates
+from app.api import comments, documents, health, share_links, templates, workspace
 from app.config import settings
 from app.db.session import engine, init_db
 
@@ -69,3 +69,4 @@ app.include_router(documents.router, prefix="/api/v1/documents", tags=["document
 app.include_router(comments.router, prefix="/api/v1/documents", tags=["comments"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["templates"])
 app.include_router(share_links.router, prefix="/api/v1/share-links", tags=["share-links"])
+app.include_router(workspace.router, prefix="/api/v1/workspace", tags=["workspace"])
