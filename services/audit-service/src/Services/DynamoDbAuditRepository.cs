@@ -40,6 +40,15 @@ public class DynamoDbAuditRepository : IAuditRepository
         if (auditEvent.UserAgent is not null)
             item["UserAgent"] = new AttributeValue { S = auditEvent.UserAgent };
 
+        if (auditEvent.WorkspaceId is not null)
+            item["WorkspaceId"] = new AttributeValue { S = auditEvent.WorkspaceId };
+
+        if (auditEvent.OldValue is not null)
+            item["OldValue"] = new AttributeValue { S = auditEvent.OldValue };
+
+        if (auditEvent.NewValue is not null)
+            item["NewValue"] = new AttributeValue { S = auditEvent.NewValue };
+
         if (auditEvent.Details is not null && auditEvent.Details.Count > 0)
         {
             item["Details"] = new AttributeValue
@@ -336,6 +345,9 @@ public class DynamoDbAuditRepository : IAuditRepository
                 : DateTime.MinValue,
             IpAddress = item.TryGetValue("IpAddress", out var ip) ? ip.S : null,
             UserAgent = item.TryGetValue("UserAgent", out var ua) ? ua.S : null,
+            WorkspaceId = item.TryGetValue("WorkspaceId", out var ws) ? ws.S : null,
+            OldValue = item.TryGetValue("OldValue", out var oldValue) ? oldValue.S : null,
+            NewValue = item.TryGetValue("NewValue", out var newValue) ? newValue.S : null,
         };
 
         if (item.TryGetValue("Details", out var details) && details.M is not null)

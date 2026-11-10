@@ -127,14 +127,14 @@ public class S3AuditArchiver : IAuditArchiver
         };
     }
 
-    private static string ConvertToCsv(List<AuditEvent> events)
+    internal static string ConvertToCsv(List<AuditEvent> events)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent");
+        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent,WorkspaceId,OldValue,NewValue");
 
         foreach (var e in events)
         {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
+            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\",\"{Esc(e.WorkspaceId)}\",\"{Esc(e.OldValue)}\",\"{Esc(e.NewValue)}\"");
         }
 
         return sb.ToString();
