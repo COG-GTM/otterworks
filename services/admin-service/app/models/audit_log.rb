@@ -4,6 +4,7 @@ class AuditLog < ApplicationRecord
     feature_flag.created feature_flag.updated feature_flag.deleted
     config.updated announcement.created announcement.updated announcement.deleted
     quota.updated bulk.users_updated
+    sharing_policy.updated
   ].freeze
 
   validates :action, presence: true
