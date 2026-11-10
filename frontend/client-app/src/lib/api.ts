@@ -15,6 +15,8 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  SharePolicy,
+  DocumentShareLink,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -127,7 +129,7 @@ export const authApi = {
 
 // ── Helpers ───────────────────────────────────────────────────
 // Extract the user ID from the JWT stored in localStorage.
-function getOwnerIdFromJwt(): string | null {
+export function getOwnerIdFromJwt(): string | null {
   if (typeof window === "undefined") return null;
   const token = localStorage.getItem("otter_access_token");
   if (!token) return null;
@@ -377,6 +379,41 @@ export const documentsApi = {
       params: { page: 1, size: limit },
     });
     return data.items ?? [];
+  },
+};
+
+// ── Document share links ──────────────────────────────────────
+export const shareLinksApi = {
+  getPolicy: async (): Promise<SharePolicy> => {
+    const { data } = await apiClient.get<SharePolicy>("/documents/share-policy");
+    return data;
+  },
+  // Omitting expiresInDays lets document-service apply the workspace default.
+  create: async (documentId: string, expiresInDays?: number): Promise<DocumentShareLink> => {
+    const body = expiresInDays === undefined ? {} : { expires_in_days: expiresInDays };
+    const { data } = await apiClient.post<DocumentShareLink>(`/documents/${documentId}/share`, body);
+    return data;
+  },
+  list: async (documentId: string): Promise<DocumentShareLink[]> => {
+    const { data } = await apiClient.get<DocumentShareLink[]>(`/documents/${documentId}/share-links`);
+    return data ?? [];
+  },
+  updateExpiry: async (
+    documentId: string,
+    linkId: string,
+    expiresInDays: number
+  ): Promise<DocumentShareLink> => {
+    const { data } = await apiClient.patch<DocumentShareLink>(
+      `/documents/${documentId}/share-links/${linkId}`,
+      { expires_in_days: expiresInDays }
+    );
+    return data;
+  },
+  openShared: async (documentId: string, token: string): Promise<Document> => {
+    const { data } = await apiClient.get<Document>("/documents/shared", {
+      params: { document_id: documentId, token },
+    });
+    return data;
   },
 };
 

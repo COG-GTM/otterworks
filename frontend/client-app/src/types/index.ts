@@ -169,3 +169,23 @@ export interface SortConfig {
   field: SortField;
   direction: SortDirection;
 }
+
+export interface SharePolicy {
+  workspaceId: string;
+  defaultExpiryDays: number;
+  minExpiryDays: number;
+  maxExpiryDays: number;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+export interface DocumentShareLink {
+  id: string;
+  documentId: string;
+  token: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  workspaceId: string;
+  expired?: boolean;
+}
