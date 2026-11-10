@@ -8,12 +8,16 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.documents import _require_user_id
 from app.db.session import get_db
+from app.models.share_link import WorkspaceSharePolicy
 from app.schemas.share_policy import SharePolicyResponse, SharePolicyUpdate
 from app.services.share_link_repository import (
+    EffectiveSharePolicy,
     InvalidSharePolicyError,
     WorkspaceSharePolicyRepository,
 )
@@ -34,6 +38,32 @@ def _require_workspace_owner(request: Request) -> UUID:
     return user_id
 
 
+async def _lock_current_policy(db: AsyncSession, workspace_id: str) -> EffectiveSharePolicy:
+    """Read the policy in force with its row locked until the update commits.
+
+    An omitted ``max_days`` is filled from this read, so it must not race another owner's save.
+    A missing row is created at the built-in values first so there is always a row to lock;
+    the caller rolls it back with the lock if the update is rejected.
+    """
+    insert = postgresql.insert if db.get_bind().dialect.name == "postgresql" else sqlite.insert
+    created = await db.execute(
+        insert(WorkspaceSharePolicy)
+        .values(workspace_id=workspace_id)
+        .on_conflict_do_nothing(index_elements=["workspace_id"])
+    )
+    row = (
+        await db.execute(
+            select(WorkspaceSharePolicy)
+            .where(WorkspaceSharePolicy.workspace_id == workspace_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    if created.rowcount:
+        return EffectiveSharePolicy.builtin(workspace_id)
+    return EffectiveSharePolicy.from_row(row)
+
+
 @router.get("/share-policy", response_model=SharePolicyResponse)
 async def get_share_policy(request: Request, db: AsyncSession = Depends(get_db)):
     _require_user_id(request)
@@ -49,7 +79,7 @@ async def update_share_policy(
 ):
     workspace_id = resolve_workspace_id(request)
     repo = WorkspaceSharePolicyRepository(db)
-    old = await repo.get(workspace_id)
+    old = await _lock_current_policy(db, workspace_id)
     max_days = body.max_days if body.max_days is not None else old.max_days
     try:
         new = await repo.upsert(
@@ -59,6 +89,7 @@ async def update_share_policy(
             updated_by=user_id,
         )
     except InvalidSharePolicyError as exc:
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
