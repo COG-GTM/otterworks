@@ -19,7 +19,20 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _has_table(name: str) -> bool:
+    # app.db.session.init_db() runs create_all at service startup, so these tables
+    # may already exist when this revision is applied.
+    return sa.inspect(op.get_bind()).has_table(name)
+
+
 def upgrade() -> None:
+    if not _has_table("share_links"):
+        _create_share_links()
+    if not _has_table("workspace_share_policy"):
+        _create_workspace_share_policy()
+
+
+def _create_share_links() -> None:
     op.create_table(
         "share_links",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -49,6 +62,8 @@ def upgrade() -> None:
         ["created_by", "resource_id"],
     )
 
+
+def _create_workspace_share_policy() -> None:
     op.create_table(
         "workspace_share_policy",
         sa.Column("workspace_id", sa.Text(), primary_key=True),

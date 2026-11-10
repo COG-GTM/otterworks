@@ -226,3 +226,31 @@ async def test_upgrade_and_downgrade_leave_existing_tables_untouched(database_ur
 
     _alembic(database_url, "upgrade", "head")
     assert {"share_links", "workspace_share_policy"} <= set(await _schema(database_url))
+
+
+async def test_upgrade_succeeds_when_startup_already_created_tables(database_url: str):
+    """Given the service started at revision 001 (init_db ran create_all), When the
+    migration runs, Then it upgrades cleanly and keeps the existing tables."""
+    from app.models.share_link import ShareLink, WorkspaceSharePolicy
+
+    _alembic(database_url, "upgrade", "001")
+    engine = create_async_engine(database_url)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(
+                lambda c: ShareLink.metadata.create_all(
+                    c, tables=[ShareLink.__table__, WorkspaceSharePolicy.__table__]
+                )
+            )
+    finally:
+        await engine.dispose()
+
+    _alembic(database_url, "upgrade", "head")
+    schema = await _schema(database_url)
+    assert set(schema["share_links"]["columns"]) == SHARE_LINK_COLUMNS
+    assert set(schema["workspace_share_policy"]["columns"]) == POLICY_COLUMNS
+
+    _alembic(database_url, "downgrade", "001")
+    schema = await _schema(database_url)
+    assert "share_links" not in schema
+    assert "workspace_share_policy" not in schema
