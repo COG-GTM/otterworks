@@ -234,13 +234,13 @@ async def test_existing_links_keep_expiry_when_policy_changes(
         created_by=owner_id,
         expires_at=expires_at,
     )
-    before = (link.expires_at, link.expired_at)
+    link_id, before = link.id, (link.expires_at, link.expired_at)
 
     resp = await client.put(URL, json={"default_days": 3, "max_days": 7}, headers=owner_headers)
     assert resp.status_code == 200
 
     db_session.expire_all()
-    reloaded = await ShareLinkRepository(db_session).get(link.id)
+    reloaded = await ShareLinkRepository(db_session).get(link_id)
     assert (reloaded.expires_at, reloaded.expired_at) == before
 
 
