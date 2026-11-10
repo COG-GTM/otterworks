@@ -8,11 +8,13 @@ from uuid import UUID
 import jwt
 import redis as redis_lib
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentCreate,
@@ -23,8 +25,17 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
+from app.services.audit_client import AuditDeliveryError
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
+from app.services.expiring_share_links import (
+    ExpiringShareLinkService,
+    ExpiryOutOfBoundsError,
+    InvalidPolicyError,
+    LinkExpiredError,
+    is_expired,
+    link_to_dict,
+)
 from app.services.export_archive import ExportArchive
 from app.services.share_link import ShareLinkService
 
@@ -104,6 +115,56 @@ def _require_user_id(request: Request) -> UUID:
 def _ensure_owner(document: object, user_id: UUID) -> None:
     if getattr(document, "owner_id", None) != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+WORKSPACE_POLICY_ROLES = {"ADMIN", "OWNER"}
+
+
+def _jwt_claims(request: Request) -> dict:
+    auth_header = request.headers.get("Authorization")
+    secret = _get_jwt_secret()
+    if not (auth_header and auth_header.startswith("Bearer ") and secret):
+        return {}
+    try:
+        return jwt.decode(auth_header[len("Bearer "):], secret, algorithms=["HS256", "HS384"])
+    except jwt.PyJWTError:
+        return {}
+
+
+def _workspace_id(request: Request) -> str:
+    """Workspace scope for share-link policy; no workspace entity exists yet (OTW-82)."""
+    claim = _jwt_claims(request).get("workspace_id")
+    header = None if _get_jwt_secret() else request.headers.get("X-Workspace-ID")
+    return str(claim or header or settings.default_workspace_id)
+
+
+def _roles(request: Request) -> set[str]:
+    if _get_jwt_secret():
+        roles = _jwt_claims(request).get("roles") or []
+    else:
+        roles = (request.headers.get("X-User-Roles") or "").split(",")
+    return {str(r).strip().upper() for r in roles if str(r).strip()}
+
+
+class ShareLinkCreate(BaseModel):
+    expires_in_days: int | None = Field(default=None, ge=1)
+
+
+class ShareLinkExpiryUpdate(BaseModel):
+    expires_in_days: int = Field(ge=1)
+
+
+class SharePolicyUpdate(BaseModel):
+    default_expiry_days: int
+    min_expiry_days: int
+    max_expiry_days: int
+
+
+def _audit_unavailable(exc: AuditDeliveryError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Audit service unavailable; change was not saved",
+    )
 
 
 async def _do_create_document(
@@ -189,8 +250,23 @@ async def get_shared_document(
     token: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a document through its read-only share link."""
-    if not ShareLinkService().verify_token(str(document_id), token):
+    """Return a document through its read-only share link.
+
+    Persisted links expire (410, never extended); links minted before persisted
+    links existed are validated statelessly and are not retroactively expired.
+    """
+    links = ExpiringShareLinkService(db)
+    link = await links.find_by_token(document_id, token)
+    if link is not None:
+        if is_expired(link):
+            try:
+                await links.record_expired(link)
+            except AuditDeliveryError:
+                logger.error("share_link_expired_audit_failed", link_id=str(link.id))
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="This share link has expired"
+            )
+    elif not ShareLinkService().verify_token(str(document_id), token):
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
@@ -272,6 +348,40 @@ def _is_filtered(
         or sort != DEFAULT_SORT
         or direction != DEFAULT_DIRECTION
     )
+
+
+@router.get("/share-policy")
+async def get_share_policy(request: Request, db: AsyncSession = Depends(get_db)):
+    """Return the workspace's share-link expiry policy."""
+    _require_user_id(request)
+    policy = await ExpiringShareLinkService(db).get_policy(_workspace_id(request))
+    return policy.as_dict()
+
+
+@router.put("/share-policy")
+async def update_share_policy(
+    body: SharePolicyUpdate, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """Set the workspace default expiry and the bounds users may choose within."""
+    user_id = _require_user_id(request)
+    if not _roles(request) & WORKSPACE_POLICY_ROLES:
+        raise HTTPException(
+            status_code=403, detail="Only workspace owners can change the share policy"
+        )
+    try:
+        policy = await ExpiringShareLinkService(db).set_policy(
+            _workspace_id(request),
+            user_id,
+            body.default_expiry_days,
+            body.min_expiry_days,
+            body.max_expiry_days,
+        )
+    except InvalidPolicyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditDeliveryError as exc:
+        raise _audit_unavailable(exc) from exc
+    logger.info("share_policy_updated", workspace_id=policy.workspace_id)
+    return policy.as_dict()
 
 
 @router.get("/", response_model=DocumentListResponse)
@@ -460,22 +570,73 @@ async def restore_version(
     return document
 
 
+async def _owned_document(document_id: UUID, request: Request, db: AsyncSession) -> UUID:
+    user_id = _require_user_id(request)
+    document = await DocumentService(db).get(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    _ensure_owner(document, user_id)
+    return user_id
+
+
 @router.post("/{document_id}/share")
 async def create_share_link(
     document_id: UUID,
     request: Request,
+    body: ShareLinkCreate | None = Body(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mint a read-only share link for a document."""
-    user_id = _require_user_id(request)
-    service = DocumentService(db)
-    document = await service.get(document_id)
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(document, user_id)
-    token = ShareLinkService().mint_token(str(document_id))
-    logger.info("share_link_created", document_id=str(document_id))
-    return {"document_id": str(document_id), "token": token}
+    """Mint an expiring read-only share link (workspace default unless overridden)."""
+    user_id = await _owned_document(document_id, request, db)
+    try:
+        link = await ExpiringShareLinkService(db).create(
+            document_id,
+            _workspace_id(request),
+            user_id,
+            body.expires_in_days if body else None,
+        )
+    except ExpiryOutOfBoundsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditDeliveryError as exc:
+        raise _audit_unavailable(exc) from exc
+    logger.info("share_link_created", document_id=str(document_id), link_id=str(link.id))
+    return link_to_dict(link)
+
+
+@router.get("/{document_id}/share-links")
+async def list_share_links(
+    document_id: UUID, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """List a document's share links with their expiry."""
+    await _owned_document(document_id, request, db)
+    links = await ExpiringShareLinkService(db).list_for_document(document_id)
+    return [link_to_dict(link) for link in links]
+
+
+@router.patch("/{document_id}/share-links/{link_id}")
+async def update_share_link_expiry(
+    document_id: UUID,
+    link_id: UUID,
+    body: ShareLinkExpiryUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Change a link's expiry within the workspace bounds; expired links stay expired."""
+    user_id = await _owned_document(document_id, request, db)
+    service = ExpiringShareLinkService(db)
+    link = await service.get_link(document_id, link_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="Share link not found")
+    try:
+        link = await service.change_expiry(link, user_id, body.expires_in_days)
+    except LinkExpiredError as exc:
+        raise HTTPException(status_code=410, detail="This share link has expired") from exc
+    except ExpiryOutOfBoundsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except AuditDeliveryError as exc:
+        raise _audit_unavailable(exc) from exc
+    logger.info("share_link_expiry_changed", document_id=str(document_id), link_id=str(link_id))
+    return link_to_dict(link)
 
 
 @router.get("/{document_id}/export")
