@@ -43,6 +43,7 @@ describe('SidebarComponent', () => {
     expect(labels).toContain('Announcements');
     expect(labels).toContain('Storage Quotas');
     expect(labels).toContain('Analytics');
+    expect(labels).toContain('Workspace Settings');
   });
 
   it('should toggle collapsed state', () => {
