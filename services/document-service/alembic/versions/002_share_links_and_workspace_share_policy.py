@@ -22,6 +22,8 @@ depends_on: str | Sequence[str] | None = None
 def _has_table(name: str) -> bool:
     # app.db.session.init_db() runs create_all at service startup, so these tables
     # may already exist when this revision is applied.
+    if op.get_context().as_sql:
+        return False
     return sa.inspect(op.get_bind()).has_table(name)
 
 

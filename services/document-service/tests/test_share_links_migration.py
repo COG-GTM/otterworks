@@ -254,3 +254,19 @@ async def test_upgrade_succeeds_when_startup_already_created_tables(database_url
     schema = await _schema(database_url)
     assert "share_links" not in schema
     assert "workspace_share_policy" not in schema
+
+
+def test_offline_sql_generation_includes_new_tables():
+    """Given operators render the migration with `alembic upgrade --sql`, Then the SQL
+    for revision 002 is generated and creates both tables."""
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "001:002", "--sql"],
+        cwd=SERVICE_ROOT,
+        env={**os.environ, "DOC_SVC_DATABASE_URL": "postgresql+asyncpg://u:p@localhost/db"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "CREATE TABLE share_links" in result.stdout
+    assert "CREATE TABLE workspace_share_policy" in result.stdout
