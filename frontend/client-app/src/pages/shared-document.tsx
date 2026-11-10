@@ -1,5 +1,7 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 import { isAxiosError } from "axios";
 import { Clock, Lock } from "lucide-react";
 import { PageLoader } from "@/components/ui/loading-spinner";
@@ -15,6 +17,13 @@ function Notice({ title, message }: { title: string; message: string }) {
       </Link>
     </div>
   );
+}
+
+// Renders stored editor HTML through the TipTap schema (read-only), which drops
+// anything the editor itself would not allow, instead of injecting raw HTML.
+function ReadOnlyContent({ html }: { html: string }) {
+  const editor = useEditor({ extensions: [StarterKit], content: html, editable: false }, [html]);
+  return <EditorContent editor={editor} className="prose max-w-none text-gray-800" />;
 }
 
 export default function SharedDocumentPage() {
@@ -56,7 +65,9 @@ export default function SharedDocumentPage() {
         <Clock size={12} className="ml-3" /> Last edited {new Date(data.updatedAt).toLocaleString()}
       </div>
       <h1 className="text-3xl font-semibold text-gray-900">{data.title}</h1>
-      <article className="prose max-w-none whitespace-pre-wrap text-gray-800">{data.content}</article>
+      <article data-testid="shared-document-content">
+        <ReadOnlyContent html={data.content} />
+      </article>
     </div>
   );
 }
