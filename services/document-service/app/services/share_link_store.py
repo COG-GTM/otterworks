@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.sharing import DEFAULT_WORKSPACE_ID, ShareLink, WorkspaceSharePolicy
@@ -235,13 +235,23 @@ class ShareLinkStore:
         )
         return result.scalar_one_or_none()
 
+    async def _set_expiry_audited(self, link: ShareLink, value: bool) -> bool:
+        result = await self.db.execute(
+            update(ShareLink)
+            .where(ShareLink.id == link.id, ShareLink.expiry_audited.is_(not value))
+            .values(expiry_audited=value)
+        )
+        await self.db.commit()
+        return result.rowcount == 1
+
     async def mark_expired(self, link: ShareLink) -> bool:
         """Emit the one-time ``share_link.expired`` audit event for a link.
 
-        The link is only marked audited once delivery succeeds, so the sweep
-        retries events that audit-service did not accept.
+        The link is claimed with a conditional UPDATE so concurrent sweeps and
+        readers send at most one event; the claim is released if audit-service
+        does not accept the event, so a later sweep retries it.
         """
-        if link.expiry_audited or not is_expired(link):
+        if not is_expired(link) or not await self._set_expiry_audited(link, True):
             return False
         delivered = await self.audit.record(
             event="share_link.expired",
@@ -254,9 +264,8 @@ class ShareLinkStore:
             extra={"share_link_id": str(link.id)},
         )
         if not delivered:
+            await self._set_expiry_audited(link, False)
             return False
-        link.expiry_audited = True
-        await self.db.commit()
         return True
 
     async def sweep_expired(self) -> int:

@@ -300,3 +300,21 @@ async def test_workspace_header_cannot_select_another_policy(client, audit_event
     )
 
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_ac8_expiry_claim_prevents_duplicate_events(db_session, owner_id):
+    sink = RecordingSink()
+    store = ShareLinkStore(db_session, audit=AuditClient(sink))
+    from app.models.document import Document
+
+    doc = Document(title="d", content="", owner_id=owner_id)
+    db_session.add(doc)
+    await db_session.commit()
+    link = await store.create_link(doc.id, owner_id, expires_in_days=1)
+    link.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    assert await store.mark_expired(link) is True
+    assert await store.mark_expired(link) is False
+    assert [e["action"] for e in sink.events].count("share_link.expired") == 1
