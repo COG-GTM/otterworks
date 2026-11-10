@@ -196,6 +196,19 @@ describe("FolderShareDialog — existing links", () => {
     );
   });
 
+  it("keeps the new-link panel in sync when that link's expiry is changed", async () => {
+    mockApi({ links: [link("new-1", "active", { expires_at: "2026-12-10T10:00:00Z" })] });
+    renderDialog();
+    await expirySelect();
+    fireEvent.click(screen.getByRole("button", { name: /create link/i }));
+    const panel = await screen.findByTestId("created-link");
+    expect(panel).toHaveTextContent(formatExpiresAt("2026-12-10T10:00:00Z"));
+
+    const row = await screen.findByTestId("share-link-new-1");
+    fireEvent.change(within(row).getByLabelText("Change expiry"), { target: { value: "86400" } });
+    await waitFor(() => expect(panel).toHaveTextContent(formatExpiresAt("2026-12-01T10:00:00Z")));
+  });
+
   it("shows a message when the link already expired (409)", async () => {
     mockApi({ links });
     server.use(

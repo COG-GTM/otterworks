@@ -91,7 +91,12 @@ export function FolderShareDialog({ folderId, folderName, onClose }: FolderShare
     mutationFn: ({ linkId, value }: { linkId: string; value: string }) =>
       shareLinksApi.updateLink(linkId, toExpiryRequest(value)),
     onMutate: () => setError(null),
-    onSuccess: () => {
+    onSuccess: (updated) => {
+      setCreatedLink((prev) =>
+        prev && prev.id === updated.id
+          ? { ...prev, expiresAt: updated.expiresAt, status: updated.status }
+          : prev
+      );
       toast.success("Expiry updated");
       queryClient.invalidateQueries({ queryKey: linksKey });
     },
