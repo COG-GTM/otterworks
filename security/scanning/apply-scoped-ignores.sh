@@ -10,6 +10,7 @@ set -euo pipefail
 report="${1:?usage: apply-scoped-ignores.sh <trivy-report.json>}"
 config="${SCOPED_IGNORES:-$(dirname "${BASH_SOURCE[0]}")/trivy-scoped-ignores.json}"
 
+# shellcheck disable=SC2016  # jq variables, not shell expansions
 match='any($ign[]; .target == $t and .pkg == $v.PkgName
                   and .version == $v.InstalledVersion and .id == $v.VulnerabilityID)'
 
