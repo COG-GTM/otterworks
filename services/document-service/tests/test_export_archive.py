@@ -1,5 +1,7 @@
 """Tests for the export archive reader."""
 
+from pathlib import Path
+
 import pytest
 
 from app.services import export_archive
@@ -71,3 +73,54 @@ async def test_export_endpoint_404s_for_unreadable_file(client, monkeypatch, tmp
     resp = await client.get("/api/v1/documents/exports", params={"name": "locked.md"})
 
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "../secret.txt",
+        "reports/../../secret.txt",
+        "..\\secret.txt",
+        "/etc/passwd",
+        "reports/\x00.md",
+        ".",
+        "reports/..",
+    ],
+)
+def test_rejects_names_outside_archive(archive, tmp_path, name):
+    (tmp_path.parent / "secret.txt").write_text("secret", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        archive.read_export(name)
+
+
+def test_rejects_symlink_escaping_archive(archive, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = Path(archive.base_dir) / "link.md"
+    link.symlink_to(outside)
+
+    with pytest.raises(FileNotFoundError):
+        archive.read_export("link.md")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["../../../../etc/passwd", "/etc/passwd"])
+async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path, name):
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
+
+    resp = await client.get("/api/v1/documents/exports", params={"name": name})
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_export_endpoint_requires_authentication(client, monkeypatch, tmp_path):
+    (tmp_path / "report.md").write_text("# Report\n", encoding="utf-8")
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
+
+    resp = await client.get(
+        "/api/v1/documents/exports", params={"name": "report.md"}, auth=None
+    )
+
+    assert resp.status_code == 401
