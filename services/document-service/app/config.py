@@ -1,5 +1,6 @@
 """Application configuration via pydantic-settings."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -21,6 +22,12 @@ class Settings(BaseSettings):
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
+
+    audit_service_url: str = Field(
+        default="http://audit-service:8090",
+        validation_alias=AliasChoices("DOC_SVC_AUDIT_SERVICE_URL", "AUDIT_SERVICE_URL"),
+    )
+    share_expiry_sweep_seconds: int = 300
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:4200"]
 

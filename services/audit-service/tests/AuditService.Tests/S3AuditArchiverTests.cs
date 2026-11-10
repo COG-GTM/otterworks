@@ -81,6 +81,39 @@ public class S3AuditArchiverTests
     }
 
     [Fact]
+    public void ConvertToCsv_IncludesWorkspaceOldAndNewValueForShareLinkExpiryChanges()
+    {
+        // OTW-53 AC9: share-link expiry history is exportable as CSV with actor,
+        // workspace, resource, old value, new value and timestamp.
+        var ts = new DateTime(2026, 11, 10, 8, 0, 0, DateTimeKind.Utc);
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = "u1", Action = "share_link.expiry_changed", ResourceType = "document",
+                ResourceId = "d1", Timestamp = ts,
+                Details = new Dictionary<string, string>
+                {
+                    ["workspace_id"] = "default",
+                    ["old_value"] = "2026-11-17T08:00:00+00:00",
+                    ["new_value"] = "2026-11-24T08:00:00+00:00",
+                },
+            },
+            new() { Id = "e2", UserId = "u2", Action = "create", ResourceType = "doc", ResourceId = "d2", Timestamp = ts },
+        };
+
+        var csv = S3AuditArchiver.ConvertToCsv(events).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Equal("Id,Timestamp,UserId,Action,ResourceType,ResourceId,WorkspaceId,OldValue,NewValue,IpAddress,UserAgent", csv[0]);
+        Assert.Equal(
+            "\"e1\",\"2026-11-10T08:00:00.0000000Z\",\"u1\",\"share_link.expiry_changed\",\"document\",\"d1\",\"default\",\"2026-11-17T08:00:00+00:00\",\"2026-11-24T08:00:00+00:00\",\"\",\"\"",
+            csv[1]);
+        Assert.Equal(
+            "\"e2\",\"2026-11-10T08:00:00.0000000Z\",\"u2\",\"create\",\"doc\",\"d2\",\"\",\"\",\"\",\"\",\"\"",
+            csv[2]);
+    }
+
+    [Fact]
     public async Task ArchiveOldEventsAsync_WithEvents_ShouldUploadToGlacierAndDelete()
     {
         var olderThan = DateTime.UtcNow.AddDays(-90);

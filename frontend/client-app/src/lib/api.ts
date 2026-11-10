@@ -15,6 +15,8 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  ShareLink,
+  SharePolicy,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -368,6 +370,30 @@ export const documentsApi = {
   },
   share: async (id: string, users: SharedUser[]): Promise<void> => {
     await apiClient.post(`/documents/${id}/share`, { users });
+  },
+  createShareLink: async (
+    id: string,
+    expiry: { expiresInDays?: number; noExpiry?: boolean } = {},
+  ): Promise<ShareLink> => {
+    const { data } = await apiClient.post<ShareLink>(`/documents/${id}/share`, {
+      expires_in_days: expiry.expiresInDays ?? null,
+      no_expiry: expiry.noExpiry ?? false,
+    });
+    return data;
+  },
+  listShareLinks: async (id: string): Promise<ShareLink[]> => {
+    const { data } = await apiClient.get<ShareLink[]>(`/documents/${id}/share-links`);
+    return data;
+  },
+  getSharePolicy: async (): Promise<SharePolicy> => {
+    const { data } = await apiClient.get<SharePolicy>("/documents/share-policy");
+    return data;
+  },
+  getShared: async (id: string, token: string): Promise<Document> => {
+    const { data } = await apiClient.get<Document>("/documents/shared", {
+      params: { document_id: id, token },
+    });
+    return data;
   },
   restore: async (id: string): Promise<void> => {
     await apiClient.post(`/documents/${id}/restore`);

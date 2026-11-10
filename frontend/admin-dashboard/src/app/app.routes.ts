@@ -43,6 +43,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/quotas/quotas.component').then(m => m.QuotasComponent),
       },
       {
+        path: 'sharing',
+        loadComponent: () => import('./pages/sharing/sharing.component').then(m => m.SharingComponent),
+      },
+      {
         path: 'analytics',
         loadComponent: () => import('./pages/analytics/analytics.component').then(m => m.AnalyticsComponent),
       },
