@@ -15,7 +15,10 @@ export function expiryDayOptions(defaultDays: number, maxDays: number): number[]
     .sort((a, b) => a - b);
 }
 
-export function shareLinkUrl(link: Pick<ShareLink, "token">): string {
+// Prefer the server's absolute URL: in native/desktop builds window.location.origin is a
+// WebView or loopback address that recipients on other devices cannot open.
+export function shareLinkUrl(link: Pick<ShareLink, "token" | "url">): string {
+  if (link.url && /^https?:\/\//i.test(link.url)) return link.url;
   return `${window.location.origin}/s/${link.token}`;
 }
 
