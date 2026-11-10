@@ -2,6 +2,13 @@
 FROM maven:3.9-eclipse-temurin-17 AS builder
 
 WORKDIR /app
+# Resolve Maven Central through Google's mirror; repo.maven.apache.org rate-limits builders with HTTP 429.
+RUN mkdir -p /root/.m2 && printf '%s\n' \
+    '<settings><mirrors><mirror>' \
+    '<id>google-maven-central</id>' \
+    '<url>https://maven-central.storage-download.googleapis.com/maven2/</url>' \
+    '<mirrorOf>central</mirrorOf>' \
+    '</mirror></mirrors></settings>' > /root/.m2/settings.xml
 COPY pom.xml .
 # Download dependencies first for Docker layer caching
 RUN mvn dependency:go-offline -B
