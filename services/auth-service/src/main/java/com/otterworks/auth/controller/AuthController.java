@@ -75,7 +75,7 @@ public class AuthController {
 
   @GetMapping("/users/by-id/{id}")
   public ResponseEntity<UserLookupResponse> lookupUserById(@PathVariable UUID id) {
-    UserDTO user = userService.getProfile(id);
+    UserDTO user = userService.lookupById(id);
     return ResponseEntity.ok(UserLookupResponse.fromUserDTO(user));
   }
 

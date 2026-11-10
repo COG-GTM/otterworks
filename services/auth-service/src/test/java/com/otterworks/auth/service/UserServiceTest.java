@@ -151,8 +151,11 @@ class UserServiceTest {
     when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
     UpdateProfileRequest request = new UpdateProfileRequest();
     request.setEmail("new@otterworks.dev");
+    target.setEmailVerified(true);
 
     userService.updateProfile(target.getId(), request);
+
+    assertThat(target.isEmailVerified()).as("new address must be re-verified").isFalse();
 
     AuditEvent event = singleEvent();
     assertThat(event.getAction()).isEqualTo("auth.profile.email_change");
@@ -192,5 +195,19 @@ class UserServiceTest {
     userService.updateProfile(target.getId(), request);
 
     verifyNoInteractions(auditClient);
+  }
+
+  @Test
+  void lookupById_emitsDirectoryExport() {
+    when(userRepository.findById(target.getId())).thenReturn(Optional.of(target));
+
+    userService.lookupById(target.getId());
+
+    AuditEvent event = singleEvent();
+    assertThat(event.getAction()).isEqualTo("export");
+    assertThat(event.getResourceType()).isEqualTo("user_directory");
+    assertThat(event.getResourceId()).isEqualTo(target.getId().toString());
+    assertThat(event.getOutcome()).isEqualTo("success");
+    assertThat(event.getDetails()).containsEntry("query", "by_id");
   }
 }

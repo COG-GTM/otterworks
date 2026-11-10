@@ -74,6 +74,7 @@ public class UserService {
         throw new IllegalArgumentException("Email already registered");
       }
       user.setEmail(newEmail);
+      user.setEmailVerified(false);
     }
 
     user = userRepository.save(user);
@@ -126,6 +127,19 @@ public class UserService {
     }
     auditClient.emit(directoryExport("all", AuditEvent.OUTCOME_SUCCESS, details));
     return page;
+  }
+
+  @Transactional(readOnly = true)
+  public UserDTO lookupById(UUID userId) {
+    Optional<User> found = userRepository.findById(userId);
+    auditClient.emit(
+        directoryExport(
+            userId.toString(),
+            found.isPresent() ? AuditEvent.OUTCOME_SUCCESS : AuditEvent.OUTCOME_FAILURE,
+            Map.of("query", "by_id", "returned", found.isPresent() ? "1" : "0")));
+    return found
+        .map(UserDTO::fromEntity)
+        .orElseThrow(() -> new IllegalArgumentException("User not found"));
   }
 
   @Transactional(readOnly = true)

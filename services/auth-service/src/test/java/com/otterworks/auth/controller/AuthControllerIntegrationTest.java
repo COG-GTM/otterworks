@@ -617,6 +617,37 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
+  void updateProfile_shouldRejectBlankEmail() throws Exception {
+    String accessToken =
+        registerAndGetAccessToken("blank-email@otterworks.dev", "password123", "Blank");
+
+    mockMvc
+        .perform(
+            put("/api/v1/auth/profile")
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\": \"\"}"))
+        .andExpect(status().isBadRequest());
+    assertThat(userRepository.findByEmail("blank-email@otterworks.dev")).isPresent();
+  }
+
+  @Test
+  void audit_lookupUserById() throws Exception {
+    String accessToken =
+        registerAndGetAccessToken("audit-byid@otterworks.dev", "password123", "ById");
+    String id = userId("audit-byid@otterworks.dev");
+
+    mockMvc
+        .perform(
+            fromClient(get("/api/v1/auth/users/by-id/" + id), "req-export-byid")
+                .header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isOk());
+    JsonNode event = awaitAudit("export", "req-export-byid", "success");
+    assertThat(event.path("resourceType").asText()).isEqualTo("user_directory");
+    assertThat(event.path("resourceId").asText()).isEqualTo(id);
+  }
+
+  @Test
   void audit_adminRoleChange() throws Exception {
     String adminToken = createAdminAndLogin();
     createTestUser("audit-promote@otterworks.dev", "password123", "Promote");
