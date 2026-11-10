@@ -153,6 +153,21 @@ export function FolderShareLinkPanel({ folderId }: FolderShareLinkPanelProps) {
     );
   }
 
+  if (linksQuery.isError) {
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700"
+      >
+        <AlertCircle size={16} className="mt-0.5 flex-shrink-0 text-red-500" />
+        <span className="flex-1">Could not load this folder's existing links.</span>
+        <button onClick={() => linksQuery.refetch()} className="font-medium underline">
+          Retry
+        </button>
+      </div>
+    );
+  }
+
   const picker = (label: string) => (
     <div className="space-y-1.5">
       <label htmlFor="share-link-expiry" className="text-xs font-medium text-gray-500 uppercase tracking-wider">
