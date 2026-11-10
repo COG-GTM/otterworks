@@ -168,6 +168,7 @@ export class SidebarComponent {
     { label: 'System Health', icon: 'monitor_heart', route: '/health' },
     { label: 'Announcements', icon: 'campaign', route: '/announcements' },
     { label: 'Storage Quotas', icon: 'storage', route: '/quotas' },
+    { label: 'Sharing', icon: 'share', route: '/sharing' },
     { label: 'Incidents', icon: 'report_problem', route: '/incidents' },
     { label: 'Analytics', icon: 'bar_chart', route: '/analytics' },
   ];

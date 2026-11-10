@@ -148,4 +148,61 @@ describe('AdminApiService', () => {
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
   });
+
+  describe('Sharing policy API methods', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => httpMock.verify());
+
+    // US2 Scenario: Given no policy has been configured, Then the default is 30 days, the minimum is 1 day and the maximum is 90 days.
+    it('getSharingPolicy should GET the policy and map it', () => {
+      service.getSharingPolicy().subscribe(policy => {
+        expect(policy).toEqual({ defaultExpiryDays: 30, minExpiryDays: 1, maxExpiryDays: 90 });
+      });
+
+      const req = httpMock.expectOne('/api/v1/admin/sharing_policy');
+      expect(req.request.method).toBe('GET');
+      req.flush({ default_expiry_days: 30, min_expiry_days: 1, max_expiry_days: 90 });
+    });
+
+    it('getSharingPolicy should fall back to 30 / 1 / 90 for missing fields', () => {
+      service.getSharingPolicy().subscribe(policy => {
+        expect(policy).toEqual({ defaultExpiryDays: 30, minExpiryDays: 1, maxExpiryDays: 90 });
+      });
+      httpMock.expectOne('/api/v1/admin/sharing_policy').flush({});
+    });
+
+    // US2 Scenario: Given I am a workspace owner, When I set the default to D days, Then D must be between min and max, or 422.
+    it('updateSharingPolicy should PUT the contract payload', () => {
+      service.updateSharingPolicy({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 }).subscribe(policy => {
+        expect(policy).toEqual({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 });
+      });
+
+      const req = httpMock.expectOne('/api/v1/admin/sharing_policy');
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual({ default_expiry_days: 14, min_expiry_days: 7, max_expiry_days: 60 });
+      req.flush({ default_expiry_days: 14, min_expiry_days: 7, max_expiry_days: 60 });
+    });
+
+    it('updateSharingPolicy should keep submitted values the response omits', () => {
+      service.updateSharingPolicy({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 }).subscribe(policy => {
+        expect(policy).toEqual({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 });
+      });
+      httpMock.expectOne('/api/v1/admin/sharing_policy').flush({ default_expiry_days: 14 });
+    });
+
+    it('updateSharingPolicy should surface a 422 as an error', () => {
+      let status = 0;
+      service.updateSharingPolicy({ defaultExpiryDays: 95, minExpiryDays: 1, maxExpiryDays: 90 }).subscribe({
+        error: err => (status = err.status),
+      });
+      httpMock.expectOne('/api/v1/admin/sharing_policy').flush(
+        { error: 'invalid' }, { status: 422, statusText: 'Unprocessable Entity' });
+      expect(status).toBe(422);
+    });
+  });
 });
