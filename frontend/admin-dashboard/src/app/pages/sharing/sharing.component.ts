@@ -128,9 +128,9 @@ export function formatDuration(seconds: number): string {
         </mat-card-content>
       </mat-card>
 
-      <p *ngIf="!loading && form && !clientErrors.length" class="summary" data-test="summary">
+      <p *ngIf="!loading && policy" class="summary" data-test="summary">
         New links expire after {{ summary.default }} by default. Users can pick between {{ summary.min }} and
-        {{ summary.max }}{{ form.allowNever ? ', or no expiry' : '' }}.
+        {{ summary.max }}{{ policy.allowNever ? ', or no expiry' : '' }}.
       </p>
     </div>
   `,
@@ -194,7 +194,7 @@ export class SharingComponent implements OnInit {
   }
 
   get summary(): { default: string; min: string; max: string } {
-    const u = this.toUpdate(this.form!);
+    const u = this.policy!;
     return {
       default: formatDuration(u.defaultExpirySeconds),
       min: formatDuration(u.minExpirySeconds),

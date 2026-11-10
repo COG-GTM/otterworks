@@ -155,6 +155,7 @@ describe('SharingComponent', () => {
       expect(el('saved-message')).toBeNull();
       expect(component.policy).toEqual(DEFAULT_SHARE_POLICY);
       expect(component.dirty).toBeTrue();
+      expect(el('summary')!.textContent).toContain('after 30 days');
     });
 
     it('renders FastAPI field-error lists from a 422', async () => {
