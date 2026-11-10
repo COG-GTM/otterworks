@@ -118,6 +118,87 @@ public class DynamoDbAuditRepositoryTests
     }
 
     [Fact]
+    public async Task V2Event_RoundTripsThroughSaveAndGet()
+    {
+        var original = new AuditEvent
+        {
+            Id = "v2-id",
+            UserId = "user-1",
+            ActorEmail = "owner@example.com",
+            ActorType = "admin",
+            TenantId = "tenant-1",
+            Action = "permission.change",
+            ResourceType = "role",
+            ResourceId = "role-7",
+            Outcome = "denied",
+            Details = new Dictionary<string, string> { ["from"] = "USER", ["to"] = "ADMIN" },
+            IpAddress = "203.0.113.7",
+            UserAgent = "curl/8",
+            RequestId = "req-123",
+            ServiceName = "auth-service",
+            Timestamp = new DateTime(2026, 11, 10, 16, 0, 0, DateTimeKind.Utc),
+        };
+
+        Dictionary<string, AttributeValue>? stored = null;
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .Callback<PutItemRequest, CancellationToken>((req, _) => stored = req.Item)
+            .ReturnsAsync(new PutItemResponse());
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(() => new GetItemResponse { Item = stored, IsItemSet = true });
+
+        await _repository.SaveEventAsync(original);
+        var roundTripped = await _repository.GetEventAsync("v2-id");
+
+        Assert.NotNull(roundTripped);
+        Assert.Equal(original.UserId, roundTripped!.UserId);
+        Assert.Equal(original.ActorEmail, roundTripped.ActorEmail);
+        Assert.Equal(original.ActorType, roundTripped.ActorType);
+        Assert.Equal(original.TenantId, roundTripped.TenantId);
+        Assert.Equal(original.Action, roundTripped.Action);
+        Assert.Equal(original.ResourceType, roundTripped.ResourceType);
+        Assert.Equal(original.ResourceId, roundTripped.ResourceId);
+        Assert.Equal(original.Outcome, roundTripped.Outcome);
+        Assert.Equal(original.IpAddress, roundTripped.IpAddress);
+        Assert.Equal(original.UserAgent, roundTripped.UserAgent);
+        Assert.Equal(original.RequestId, roundTripped.RequestId);
+        Assert.Equal(original.ServiceName, roundTripped.ServiceName);
+        Assert.Equal(original.Timestamp, roundTripped.Timestamp.ToUniversalTime());
+        Assert.Equal(original.Details, roundTripped.Details);
+    }
+
+    [Fact]
+    public async Task QueryEventsAsync_V2Filters_ShouldApplyFilterExpression()
+    {
+        _mockDynamoDb
+            .Setup(d => d.ScanAsync(It.IsAny<ScanRequest>(), default))
+            .ReturnsAsync(new ScanResponse
+            {
+                Items = new List<Dictionary<string, AttributeValue>>(),
+                LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
+            });
+
+        await _repository.QueryEventsAsync(new AuditEventQuery
+        {
+            Action = "share.create",
+            Outcome = "denied",
+            ServiceName = "file-service",
+            TenantId = "tenant-1",
+        });
+
+        _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
+            req.FilterExpression.Contains("#act = :act") &&
+            req.FilterExpression.Contains("#outcome = :outcome") &&
+            req.FilterExpression.Contains("#servicename = :servicename") &&
+            req.FilterExpression.Contains("#tenantid = :tenantid") &&
+            req.ExpressionAttributeNames["#outcome"] == "Outcome" &&
+            req.ExpressionAttributeValues[":servicename"].S == "file-service" &&
+            req.ExpressionAttributeValues[":tenantid"].S == "tenant-1"),
+            default), Times.Once);
+    }
+
+    [Fact]
     public async Task QueryEventsAsync_ShouldReturnPaginatedResults()
     {
         var items = new List<Dictionary<string, AttributeValue>>
@@ -135,7 +216,7 @@ public class DynamoDbAuditRepositoryTests
                 LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
             });
 
-        var result = await _repository.QueryEventsAsync("user-1", null, null, null, null, null, 1, 2);
+        var result = await _repository.QueryEventsAsync(new AuditEventQuery { UserId = "user-1", Page = 1, PageSize = 2 });
 
         Assert.Equal(3, result.Total);
         Assert.Equal(2, result.Events.Count);
@@ -154,7 +235,7 @@ public class DynamoDbAuditRepositoryTests
                 LastEvaluatedKey = new Dictionary<string, AttributeValue>(),
             });
 
-        await _repository.QueryEventsAsync("user-1", "create", "document", "doc-1", null, null, 1, 20);
+        await _repository.QueryEventsAsync(new AuditEventQuery { UserId = "user-1", Action = "create", ResourceType = "document", ResourceId = "doc-1", Page = 1, PageSize = 20 });
 
         _mockDynamoDb.Verify(d => d.ScanAsync(It.Is<ScanRequest>(req =>
             req.FilterExpression != null &&

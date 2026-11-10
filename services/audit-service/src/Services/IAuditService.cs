@@ -6,7 +6,7 @@ public interface IAuditService
 {
     Task<AuditEventResponse> RecordEventAsync(AuditEventRequest request);
     Task<AuditEventResponse?> GetEventAsync(string id);
-    Task<AuditEventPage> QueryEventsAsync(string? userId, string? action, string? resourceType, string? resourceId, DateTime? from, DateTime? to, int page, int pageSize);
+    Task<AuditEventPage> QueryEventsAsync(AuditEventQuery query);
     Task<UserActivityReport> GetUserActivityReportAsync(string userId, string period);
     Task<ResourceHistory> GetResourceHistoryAsync(string resourceId);
     Task<ComplianceReport> GetComplianceReportAsync(string period);

@@ -6,70 +6,113 @@ pytestmark = pytest.mark.api_flow
 
 def test_audit_event_query_reports_export_and_archive(api_client):
     user = api_client.register_user("audit-flow")
+    admin = api_client.admin_headers()
     resource_id = f"resource-{api_client.run_id}"
+    event_body = {
+        "userId": user.id,
+        "actorEmail": user.email,
+        "actorType": "user",
+        "action": "share.create",
+        "resourceType": "document",
+        "resourceId": resource_id,
+        "outcome": "success",
+        "serviceName": "api-flow-test",
+        "sourceIp": "203.0.113.7",
+        "details": {"source": "api-flow-test"},
+    }
+
+    no_token = api_client.client.post("/api/v1/audit/events", headers=user.auth_headers, json=event_body)
+    assert no_token.status_code == 401, no_token.text
+
+    bad_action = api_client.client.post(
+        "/api/v1/audit/events",
+        headers={**user.auth_headers, **api_client.audit_ingest_headers()},
+        json={**event_body, "action": "create"},
+    )
+    assert bad_action.status_code == 400, bad_action.text
 
     create_response = api_client.client.post(
         "/api/v1/audit/events",
-        headers=user.auth_headers,
-        json={
-            "userId": user.id,
-            "action": "create",
-            "resourceType": "document",
-            "resourceId": resource_id,
-            "details": {"source": "api-flow-test"},
-        },
+        headers={**user.auth_headers, **api_client.audit_ingest_headers()},
+        json=event_body,
     )
     assert create_response.status_code == 201, create_response.text
     event = create_response.json()
     event_id = event["id"]
+    assert event["sourceIp"] == "203.0.113.7"
+    assert event["outcome"] == "success"
 
-    get_response = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=user.auth_headers)
+    non_admin_read = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=user.auth_headers)
+    assert non_admin_read.status_code == 403, non_admin_read.text
+
+    get_response = api_client.client.get(f"/api/v1/audit/events/{event_id}", headers=admin)
     assert get_response.status_code == 200, get_response.text
 
     query_response = api_client.client.get(
         "/api/v1/audit/events",
-        headers=user.auth_headers,
-        params={"user_id": user.id, "action": "create", "page": 1, "size": 10},
+        headers=admin,
+        params={
+            "user_id": user.id,
+            "action": "share.create",
+            "outcome": "success",
+            "serviceName": "api-flow-test",
+            "page": 1,
+            "size": 10,
+        },
     )
     assert query_response.status_code == 200, query_response.text
     assert query_response.json()["total"] >= 1
 
     history_response = api_client.client.get(
         f"/api/v1/audit/resources/{resource_id}/history",
-        headers=user.auth_headers,
+        headers=admin,
     )
     assert history_response.status_code == 200, history_response.text
 
     user_report_response = api_client.client.get(
         f"/api/v1/audit/reports/user/{user.id}",
-        headers=user.auth_headers,
+        headers=admin,
         params={"period": "30d"},
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
     compliance_response = api_client.client.get(
         "/api/v1/audit/reports/compliance",
-        headers=user.auth_headers,
+        headers=admin,
         params={"period": "30d"},
     )
     assert compliance_response.status_code == 200, compliance_response.text
 
     export_response = api_client.client.get(
         "/api/v1/audit/export",
-        headers=user.auth_headers,
+        headers=admin,
         params={"format": "json"},
     )
     assert export_response.status_code == 200, export_response.text
 
     invalid_export = api_client.client.get(
         "/api/v1/audit/export",
-        headers=user.auth_headers,
+        headers=admin,
         params={"format": "xml"},
     )
     assert invalid_export.status_code == 400
 
-    archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
+    archive_response = api_client.client.post("/api/v1/audit/archive", headers=admin)
     assert archive_response.status_code == 200, archive_response.text
+
+    def self_audit_events():
+        response = api_client.client.get(
+            "/api/v1/audit/events",
+            headers=admin,
+            params={"serviceName": "audit-service", "size": 100},
+        )
+        return response.json().get("events", []) if response.status_code == 200 else []
+
+    api_client.poll_until(
+        self_audit_events,
+        lambda events: {"export", "delete", "audit.report.read"} <= {e.get("action") for e in events},
+        description="audit-service self-audit events",
+    )
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):

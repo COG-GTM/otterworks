@@ -171,7 +171,7 @@ test: ## Run tests for all services
 	@echo "=== Search Service (Python) ===" && cd services/search-service && pytest
 	@echo "=== Analytics Service (Scala) ===" && cd services/analytics-service && sbt test
 	@echo "=== Admin Service (Ruby) ===" && cd services/admin-service && bundle exec rspec
-	@echo "=== Audit Service (C#) ===" && cd services/audit-service && dotnet test
+	@echo "=== Audit Service (C#) ===" && cd services/audit-service && dotnet test tests/AuditService.Tests
 	@echo "=== Web Frontend ===" && cd frontend/web-app && npm test
 	@echo "=== Admin Dashboard ===" && cd frontend/admin-dashboard && npm test
 

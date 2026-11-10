@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Mvc;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -11,36 +13,43 @@ public static class AuditController
 
         group.MapPost("/events", RecordEvent)
             .WithName("RecordAuditEvent")
+            .RequireAuthorization(AuditAuth.IngestPolicy)
             .Produces<AuditEventResponse>(StatusCodes.Status201Created)
-            .Produces(StatusCodes.Status400BadRequest);
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized);
 
-        group.MapGet("/events", QueryEvents)
+        var admin = group.MapGroup(string.Empty).RequireAuthorization(AuditAuth.AdminPolicy);
+
+        admin.MapGet("/events", QueryEvents)
             .WithName("QueryAuditEvents")
             .Produces<AuditEventPage>(StatusCodes.Status200OK);
 
-        group.MapGet("/events/{id}", GetEvent)
+        admin.MapGet("/events/{id}", GetEvent)
             .WithName("GetAuditEvent")
             .Produces<AuditEventResponse>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status404NotFound);
 
-        group.MapGet("/reports/user/{userId}", GetUserActivityReport)
+        admin.MapGet("/reports/user/{userId}", GetUserActivityReport)
             .WithName("GetUserActivityReport")
+            .WithMetadata(new SelfAuditMetadata(SelfAuditActions.UserReportRead, "user", "userId"))
             .Produces<UserActivityReport>(StatusCodes.Status200OK);
 
-        group.MapGet("/resources/{resourceId}/history", GetResourceHistory)
+        admin.MapGet("/resources/{resourceId}/history", GetResourceHistory)
             .WithName("GetResourceHistory")
             .Produces<ResourceHistory>(StatusCodes.Status200OK);
 
-        group.MapGet("/reports/compliance", GetComplianceReport)
+        admin.MapGet("/reports/compliance", GetComplianceReport)
             .WithName("GetComplianceReport")
             .Produces<ComplianceReport>(StatusCodes.Status200OK);
 
-        group.MapGet("/export", ExportAuditLog)
+        admin.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
+            .WithMetadata(new SelfAuditMetadata(SelfAuditActions.Export, "export_archive"))
             .Produces<ExportResult>(StatusCodes.Status200OK);
 
-        group.MapPost("/archive", ArchiveOldEvents)
+        admin.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
+            .WithMetadata(new SelfAuditMetadata(SelfAuditActions.Archive, "audit_log"))
             .Produces<ArchiveResult>(StatusCodes.Status200OK);
     }
 
@@ -48,12 +57,10 @@ public static class AuditController
         AuditEventRequest request,
         IAuditService auditService)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId) ||
-            string.IsNullOrWhiteSpace(request.Action) ||
-            string.IsNullOrWhiteSpace(request.ResourceType) ||
-            string.IsNullOrWhiteSpace(request.ResourceId))
+        var errors = AuditContract.Validate(request);
+        if (errors.Count > 0)
         {
-            return Results.BadRequest(new { error = "UserId, Action, ResourceType, and ResourceId are required." });
+            return Results.BadRequest(new { error = "Invalid audit event.", errors });
         }
 
         var response = await auditService.RecordEventAsync(request);
@@ -61,20 +68,10 @@ public static class AuditController
     }
 
     private static async Task<IResult> QueryEvents(
-        string? user_id,
-        string? action,
-        string? resource,
-        string? resource_type,
-        DateTime? from,
-        DateTime? to,
-        int? page,
-        int? size,
+        [AsParameters] AuditEventQueryParameters query,
         IAuditService auditService)
     {
-        var pageNumber = page ?? 1;
-        var pageSize = Math.Clamp(size ?? 20, 1, 100);
-
-        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
+        var result = await auditService.QueryEventsAsync(query.ToQuery());
         return Results.Ok(result);
     }
 
@@ -89,11 +86,25 @@ public static class AuditController
     private static async Task<IResult> GetUserActivityReport(
         string userId,
         string? period,
-        IAuditService auditService)
+        HttpContext context,
+        IAuditService auditService,
+        SelfAuditor selfAuditor)
     {
         var reportPeriod = period ?? "30d";
-        var report = await auditService.GetUserActivityReportAsync(userId, reportPeriod);
-        return Results.Ok(report);
+        var details = new Dictionary<string, string> { ["report"] = "user_activity", ["period"] = reportPeriod };
+        try
+        {
+            var report = await auditService.GetUserActivityReportAsync(userId, reportPeriod);
+            details["eventCount"] = report.TotalEvents.ToString();
+            await selfAuditor.RecordAsync(context, SelfAuditActions.UserReportRead, "user", userId, "success", details);
+            return Results.Ok(report);
+        }
+        catch (Exception ex)
+        {
+            details["error"] = ex.GetType().Name;
+            await selfAuditor.RecordAsync(context, SelfAuditActions.UserReportRead, "user", userId, "failure", details);
+            throw;
+        }
     }
 
     private static async Task<IResult> GetResourceHistory(
@@ -117,26 +128,114 @@ public static class AuditController
         string? format,
         DateTime? from,
         DateTime? to,
-        IAuditService auditService)
+        HttpContext context,
+        IAuditService auditService,
+        SelfAuditor selfAuditor)
     {
         var exportFormat = format ?? "json";
         var exportFrom = from ?? DateTime.UtcNow.AddDays(-30);
         var exportTo = to ?? DateTime.UtcNow;
+        var details = new Dictionary<string, string>
+        {
+            ["format"] = exportFormat,
+            ["from"] = exportFrom.ToString("O"),
+            ["to"] = exportTo.ToString("O"),
+        };
 
         if (!string.Equals(exportFormat, "csv", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(exportFormat, "json", StringComparison.OrdinalIgnoreCase))
         {
+            details["reason"] = "invalid_format";
+            await selfAuditor.RecordAsync(context, SelfAuditActions.Export, "export_archive", string.Empty, "failure", details);
             return Results.BadRequest(new { error = "Format must be 'csv' or 'json'." });
         }
 
-        var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat);
-        return Results.Ok(result);
+        try
+        {
+            var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat);
+            details["eventCount"] = result.EventCount.ToString();
+            await selfAuditor.RecordAsync(context, SelfAuditActions.Export, "export_archive", StripQuery(result.DownloadUrl), "success", details);
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            details["error"] = ex.GetType().Name;
+            await selfAuditor.RecordAsync(context, SelfAuditActions.Export, "export_archive", string.Empty, "failure", details);
+            throw;
+        }
     }
 
     private static async Task<IResult> ArchiveOldEvents(
-        IAuditService auditService)
+        HttpContext context,
+        IAuditService auditService,
+        SelfAuditor selfAuditor)
     {
-        var result = await auditService.ArchiveOldEventsAsync();
-        return Results.Ok(result);
+        try
+        {
+            var result = await auditService.ArchiveOldEventsAsync();
+            await selfAuditor.RecordAsync(context, SelfAuditActions.Archive, "audit_log", StripQuery(result.S3Location), "success",
+                new Dictionary<string, string>
+                {
+                    ["archivedCount"] = result.ArchivedCount.ToString(),
+                    ["archivedBefore"] = result.ArchivedBefore.ToString("O"),
+                    ["storageClass"] = result.StorageClass,
+                });
+            return Results.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            await selfAuditor.RecordAsync(context, SelfAuditActions.Archive, "audit_log", string.Empty, "failure",
+                new Dictionary<string, string> { ["error"] = ex.GetType().Name });
+            throw;
+        }
     }
+
+    // Presigned URLs carry a signature in the query string; it must never land in an audit record.
+    private static string StripQuery(string url)
+    {
+        var index = url.IndexOf('?');
+        return index < 0 ? url : url[..index];
+    }
+}
+
+public static class SelfAuditActions
+{
+    public const string Export = "export";
+    public const string Archive = "delete";
+    public const string UserReportRead = "audit.report.read";
+}
+
+public sealed class AuditEventQueryParameters
+{
+    [FromQuery(Name = "user_id")] public string? UserIdSnake { get; set; }
+    [FromQuery(Name = "userId")] public string? UserId { get; set; }
+    [FromQuery(Name = "action")] public string? Action { get; set; }
+    [FromQuery(Name = "outcome")] public string? Outcome { get; set; }
+    [FromQuery(Name = "resource")] public string? Resource { get; set; }
+    [FromQuery(Name = "resourceId")] public string? ResourceId { get; set; }
+    [FromQuery(Name = "resource_type")] public string? ResourceTypeSnake { get; set; }
+    [FromQuery(Name = "resourceType")] public string? ResourceType { get; set; }
+    [FromQuery(Name = "service_name")] public string? ServiceNameSnake { get; set; }
+    [FromQuery(Name = "serviceName")] public string? ServiceName { get; set; }
+    [FromQuery(Name = "tenant_id")] public string? TenantIdSnake { get; set; }
+    [FromQuery(Name = "tenantId")] public string? TenantId { get; set; }
+    [FromQuery(Name = "from")] public DateTime? From { get; set; }
+    [FromQuery(Name = "to")] public DateTime? To { get; set; }
+    [FromQuery(Name = "page")] public int? Page { get; set; }
+    [FromQuery(Name = "size")] public int? Size { get; set; }
+
+    public AuditEventQuery ToQuery() => new()
+    {
+        UserId = UserIdSnake ?? UserId,
+        Action = Action,
+        Outcome = Outcome,
+        ResourceId = Resource ?? ResourceId,
+        ResourceType = ResourceTypeSnake ?? ResourceType,
+        ServiceName = ServiceNameSnake ?? ServiceName,
+        TenantId = TenantIdSnake ?? TenantId,
+        From = From,
+        To = To,
+        Page = Math.Max(Page ?? 1, 1),
+        PageSize = Math.Clamp(Size ?? 20, 1, 100),
+    };
 }
