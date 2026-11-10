@@ -20,8 +20,10 @@ module Api
 
           policy = nil
           SharingPolicy.transaction do
-            policy = SharingPolicy.lock.find_by(workspace_id: SharingPolicy::DEFAULT_WORKSPACE_ID) ||
-                     SharingPolicy.for_workspace
+            # ON CONFLICT DO NOTHING makes concurrent first updates serialize on the row lock below
+            # instead of racing on the unique workspace_id index.
+            SharingPolicy.insert_all([{ workspace_id: SharingPolicy::DEFAULT_WORKSPACE_ID }], unique_by: :workspace_id)
+            policy = SharingPolicy.lock.find_by!(workspace_id: SharingPolicy::DEFAULT_WORKSPACE_ID)
             before = policy.to_policy
             policy.assign_attributes(changes)
             raise ActiveRecord::Rollback unless policy.valid?
