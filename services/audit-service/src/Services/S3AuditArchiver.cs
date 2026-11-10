@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -14,6 +13,8 @@ public class S3AuditArchiver : IAuditArchiver
     private readonly IAuditRepository _repository;
     private readonly AwsSettings _settings;
     private readonly ILogger<S3AuditArchiver> _logger;
+
+    private static readonly JsonSerializerOptions ExportJsonOptions = new() { WriteIndented = true };
 
     public S3AuditArchiver(
         IAmazonS3 s3Client,
@@ -37,13 +38,13 @@ public class S3AuditArchiver : IAuditArchiver
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
-            content = ConvertToCsv(events);
-            contentType = "text/csv";
+            content = AuditCsvWriter.Write(events, ExportJsonOptions);
+            contentType = AuditCsvWriter.ContentType;
             extension = "csv";
         }
         else
         {
-            content = JsonSerializer.Serialize(events, new JsonSerializerOptions { WriteIndented = true });
+            content = JsonSerializer.Serialize(events, ExportJsonOptions);
             contentType = "application/json";
             extension = "json";
         }
@@ -126,20 +127,4 @@ public class S3AuditArchiver : IAuditArchiver
             ArchivedBefore = olderThan,
         };
     }
-
-    private static string ConvertToCsv(List<AuditEvent> events)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent");
-
-        foreach (var e in events)
-        {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
-        }
-
-        return sb.ToString();
-    }
-
-    private static string Esc(string? value) =>
-        value?.Replace("\"", "\"\"") ?? string.Empty;
 }

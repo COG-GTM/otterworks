@@ -37,7 +37,8 @@ public static class AuditController
 
         group.MapGet("/export", ExportAuditLog)
             .WithName("ExportAuditLog")
-            .Produces<ExportResult>(StatusCodes.Status200OK);
+            .Produces<ExportResult>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest);
 
         group.MapPost("/archive", ArchiveOldEvents)
             .WithName("ArchiveOldEvents")
@@ -113,7 +114,7 @@ public static class AuditController
         return Results.Ok(report);
     }
 
-    private static async Task<IResult> ExportAuditLog(
+    internal static async Task<IResult> ExportAuditLog(
         string? format,
         DateTime? from,
         DateTime? to,
