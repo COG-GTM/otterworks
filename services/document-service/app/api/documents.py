@@ -102,6 +102,22 @@ def _extract_user_id(request: Request) -> UUID | None:
     return None
 
 
+def _workspace_id(request: Request) -> str:
+    """Workspace from the signed JWT ``workspace_id`` claim; never from client headers."""
+    auth_header = request.headers.get("Authorization", "")
+    secret = _get_jwt_secret()
+    if secret and auth_header.startswith("Bearer "):
+        try:
+            payload = jwt.decode(
+                auth_header[len("Bearer "):], secret, algorithms=["HS256", "HS384"]
+            )
+            if payload.get("workspace_id"):
+                return str(payload["workspace_id"])
+        except jwt.PyJWTError:
+            pass
+    return DEFAULT_WORKSPACE_ID
+
+
 def _require_user_id(request: Request) -> UUID:
     user_id = _extract_user_id(request)
     if not user_id:
@@ -499,7 +515,7 @@ async def create_share_link(
             user_id,
             expires_in_days=body.expires_in_days,
             no_expiry=body.no_expiry,
-            workspace_id=request.headers.get("X-Workspace-ID") or DEFAULT_WORKSPACE_ID,
+            workspace_id=_workspace_id(request),
         )
     except ExpiryPolicyError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

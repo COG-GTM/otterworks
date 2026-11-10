@@ -8,9 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.documents import _ensure_owner, _get_jwt_secret, _require_user_id
+from app.api.documents import (
+    _ensure_owner,
+    _get_jwt_secret,
+    _require_user_id,
+    _workspace_id,
+)
 from app.db.session import get_db
-from app.models.sharing import DEFAULT_WORKSPACE_ID, ShareLink
+from app.models.sharing import ShareLink
 from app.services.document_service import DocumentService
 from app.services.share_link_store import (
     ExpiryPolicyError,
@@ -50,10 +55,6 @@ class ShareLinkResponse(BaseModel):
     created_at: datetime
     expires_at: datetime | None
     expired: bool
-
-
-def _workspace_id(request: Request) -> str:
-    return request.headers.get("X-Workspace-ID") or DEFAULT_WORKSPACE_ID
 
 
 def _extract_roles(request: Request) -> set[str]:
