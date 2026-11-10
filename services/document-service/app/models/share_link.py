@@ -46,3 +46,12 @@ class WorkspaceSharePolicy(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
+
+
+class ShareLinkRollout(Base):
+    """Single row recording when expiring links shipped; older documents keep stateless links."""
+
+    __tablename__ = "share_link_rollout"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    legacy_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

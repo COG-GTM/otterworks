@@ -56,9 +56,15 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
+    op.create_table(
+        "share_link_rollout",
+        sa.Column("id", sa.Integer(), primary_key=True),
+        sa.Column("legacy_cutoff", sa.DateTime(timezone=True), nullable=False),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("share_link_rollout")
     op.drop_table("workspace_share_policies")
     op.drop_index("ix_share_links_document_id", table_name="share_links")
     op.drop_index("ix_share_links_token", table_name="share_links")

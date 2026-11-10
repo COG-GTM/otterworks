@@ -286,6 +286,23 @@ async def test_default_cutoff_is_the_first_persisted_link(client, owner_id):
     assert (await legacy(after)).status_code == 403
 
 
+async def test_rollout_pins_the_cutoff_before_any_link_exists(client, owner_id, db_session):
+    before = await _create_document(client, owner_id)
+    await ShareLinkStore(db_session).record_rollout()
+    await ShareLinkStore(db_session).record_rollout()
+    after = await _create_document(client, owner_id)
+
+    def legacy(doc_id):
+        return client.get(
+            "/api/v1/documents/shared",
+            params={"document_id": doc_id, "token": ShareLinkService().mint_token(doc_id)},
+            auth=bearer_auth(uuid.uuid4()),
+        )
+
+    assert (await legacy(before)).status_code == 200
+    assert (await legacy(after)).status_code == 403
+
+
 async def test_expiry_is_audited_once_when_a_request_and_the_sweep_race(
     client, owner_id, db_session, audit_events
 ):

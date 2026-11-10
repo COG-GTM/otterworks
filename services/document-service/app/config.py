@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     share_link_default_expiry_days: int = 7
     share_link_min_expiry_days: int = 1
     share_link_max_expiry_days: int = 30
-    # Unset: documents created before the first persisted share link keep stateless links.
+    # Unset: the cutoff is pinned when this release first starts (share_link_rollout).
     share_link_legacy_cutoff: datetime | None = None
     share_link_expiry_sweep_seconds: int = 300
 

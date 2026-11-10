@@ -46,6 +46,8 @@ async def sweep_expired_share_links() -> None:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
     await init_db()
+    async with async_session() as db:
+        await ShareLinkStore(db).record_rollout()
 
     if settings.otel_enabled:
         try:

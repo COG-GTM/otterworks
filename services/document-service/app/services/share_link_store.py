@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.document import Document
-from app.models.share_link import ShareLink, WorkspaceSharePolicy
+from app.models.share_link import ShareLink, ShareLinkRollout, WorkspaceSharePolicy
 from app.services.event_publisher import event_publisher
 
 MAX_EXPIRY_DAYS = 365
@@ -174,8 +174,19 @@ class ShareLinkStore:
         """Stateless links exist only for documents created before expiring links shipped."""
         cutoff = settings.share_link_legacy_cutoff
         if cutoff is None:
+            rollout = await self.db.get(ShareLinkRollout, 1)
+            cutoff = rollout.legacy_cutoff if rollout else None
+        if cutoff is None:
             cutoff = await self.db.scalar(select(func.min(ShareLink.created_at)))
         return cutoff is None or _as_utc(document.created_at) < _as_utc(cutoff)
+
+    async def record_rollout(self) -> None:
+        """Pin the legacy cutoff the first time a release with expiring links starts."""
+        if await self.db.get(ShareLinkRollout, 1) is not None:
+            return
+        first_link = await self.db.scalar(select(func.min(ShareLink.created_at)))
+        self.db.add(ShareLinkRollout(id=1, legacy_cutoff=first_link or datetime.now(UTC)))
+        await self.db.commit()
 
     async def record_expiry(self, link: ShareLink) -> None:
         """Audit a link's expiry exactly once, even when a request and the sweep race."""
