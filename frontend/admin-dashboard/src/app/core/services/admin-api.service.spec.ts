@@ -188,6 +188,13 @@ describe('AdminApiService', () => {
       req.flush({ default_expiry_days: 14, min_expiry_days: 7, max_expiry_days: 60 });
     });
 
+    it('updateSharingPolicy should keep submitted values the response omits', () => {
+      service.updateSharingPolicy({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 }).subscribe(policy => {
+        expect(policy).toEqual({ defaultExpiryDays: 14, minExpiryDays: 7, maxExpiryDays: 60 });
+      });
+      httpMock.expectOne('/api/v1/admin/sharing_policy').flush({ default_expiry_days: 14 });
+    });
+
     it('updateSharingPolicy should surface a 422 as an error', () => {
       let status = 0;
       service.updateSharingPolicy({ defaultExpiryDays: 95, minExpiryDays: 1, maxExpiryDays: 90 }).subscribe({

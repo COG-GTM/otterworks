@@ -255,7 +255,7 @@ export class AdminApiService {
       max_expiry_days: policy.maxExpiryDays,
     };
     return this.http.put<any>(`${this.baseUrl}/admin/sharing_policy`, payload).pipe(
-      map(raw => this.mapSharingPolicy(raw ?? payload)),
+      map(raw => this.mapSharingPolicy({ ...payload, ...(raw ?? {}) })),
     );
   }
 
