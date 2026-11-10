@@ -3,12 +3,15 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/audit"
 )
 
 type jwtClaimsKey struct{}
@@ -24,9 +27,10 @@ type JWTClaims struct {
 // JWTConfig holds configuration for JWT validation middleware.
 type JWTConfig struct {
 	Secret              string
-	PublicPath          []string // exact paths that skip JWT validation
-	PrefixPath          []string // prefix paths that skip JWT validation (e.g. /health, /metrics)
-	ProtectedPrefixPath []string // route prefixes that require JWT validation; empty means all non-public paths
+	PublicPath          []string      // exact paths that skip JWT validation
+	PrefixPath          []string      // prefix paths that skip JWT validation (e.g. /health, /metrics)
+	ProtectedPrefixPath []string      // route prefixes that require JWT validation; empty means all non-public paths
+	Audit               audit.Emitter // receives auth.token.rejected on every 401; nil disables
 }
 
 // DefaultPublicPaths returns the default set of exact-match paths that skip JWT validation.
@@ -67,19 +71,50 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 
 			tokenStr := extractBearerToken(r)
 			if tokenStr == "" {
+				auditTokenRejected(cfg.Audit, r, "missing_token")
 				writeJSONError(w, http.StatusUnauthorized, "missing or invalid authorization header")
 				return
 			}
 
 			claims, err := validateToken(tokenStr, cfg.Secret)
 			if err != nil {
+				auditTokenRejected(cfg.Audit, r, rejectionReason(err))
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
 			}
 
+			if st := getAuditState(r.Context()); st != nil {
+				st.claims = claims
+			}
 			ctx := context.WithValue(r.Context(), jwtClaimsKey{}, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
+	}
+}
+
+func auditTokenRejected(emitter audit.Emitter, r *http.Request, reason string) {
+	if emitter == nil {
+		return
+	}
+	e := newRequestEvent(r, ActionTokenRejected, nil)
+	e.Details["reason"] = reason
+	emitter.Emit(e)
+}
+
+// rejectionReason maps a validation error to a stable code; the token itself
+// and the raw error text never leave the gateway.
+func rejectionReason(err error) string {
+	switch {
+	case errors.Is(err, jwt.ErrTokenExpired):
+		return "expired_token"
+	case errors.Is(err, jwt.ErrTokenSignatureInvalid), errors.Is(err, jwt.ErrTokenUnverifiable):
+		return "invalid_signature"
+	case errors.Is(err, jwt.ErrTokenMalformed):
+		return "malformed_token"
+	case errors.Is(err, jwt.ErrTokenNotValidYet):
+		return "token_not_yet_valid"
+	default:
+		return "invalid_token"
 	}
 }
 

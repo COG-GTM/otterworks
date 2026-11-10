@@ -19,6 +19,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 
+	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/audit"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/config"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/health"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
@@ -61,16 +62,46 @@ func main() {
 		})
 	}
 
+	proxyTrust, err := middleware.NewProxyTrust(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("invalid TRUSTED_PROXY_CIDRS")
+	}
+
+	// Audit emission is asynchronous; denial events are capped per client IP.
+	var auditEmitter audit.Emitter = audit.Nop{}
+	var auditClient *audit.Client
+	if cfg.AuditEmitEnabled && cfg.AuditServiceURL != "" {
+		if cfg.AuditServiceToken == "" {
+			logger.Warn().Msg("AUDIT_SERVICE_TOKEN is not set; audit events are sent without X-Audit-Token")
+		}
+		auditClient = audit.New(audit.Config{
+			URL:         cfg.AuditServiceURL,
+			Token:       cfg.AuditServiceToken,
+			ServiceName: "api-gateway",
+			QueueSize:   cfg.AuditQueueSize,
+			Timeout:     cfg.AuditTimeout,
+			MaxRetries:  cfg.AuditMaxRetries,
+			Logger:      logger,
+		})
+		auditEmitter = audit.NewPerIPLimited(auditClient, cfg.AuditDenialsPerIPPerMinute, time.Minute)
+	}
+
 	// Create main router
 	r := chi.NewRouter()
 
 	// Global middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(middleware.ClientOriginMiddleware(proxyTrust))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Compress(5))
+
+	// Audit 403/429 on auth routes (wraps the rate limiter and JWT checks)
+	r.Use(middleware.AuditAuthDenials(middleware.AuthDenialAuditConfig{
+		Emitter:      auditEmitter,
+		PathPrefixes: middleware.DefaultAuthDenialPrefixes(),
+	}))
 
 	// Rate limiting
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS)
@@ -92,6 +123,7 @@ func main() {
 		PublicPath:          middleware.DefaultPublicPaths(),
 		PrefixPath:          middleware.DefaultPrefixPaths(),
 		ProtectedPrefixPath: routePrefixes(routes),
+		Audit:               auditEmitter,
 	}))
 
 	// Health check
@@ -137,6 +169,12 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("server forced to shutdown")
+	}
+
+	if auditClient != nil {
+		if err := auditClient.Close(ctx); err != nil {
+			logger.Warn().Err(err).Msg("audit queue not fully drained before shutdown")
+		}
 	}
 
 	if shutdownTracer != nil {

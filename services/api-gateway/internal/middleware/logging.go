@@ -41,6 +41,7 @@ func Logger(logger zerolog.Logger) func(http.Handler) http.Handler {
 				Int("bytes", ww.BytesWritten()).
 				Dur("latency_ms", duration).
 				Str("remote_addr", r.RemoteAddr).
+				Str("client_ip", ClientIP(r)).
 				Str("user_agent", r.UserAgent()).
 				Str("protocol", r.Proto).
 				Msg("request completed")
