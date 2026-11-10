@@ -20,7 +20,6 @@ import java.util.Date;
  *
  * LEGACY PATTERNS:
  * - java.util.Date fields (target: java.time.Instant / LocalDateTime)
- * - springdoc @Schema annotations (OpenAPI 3)
  * - No Lombok — uses manual getters/setters (verbose but explicit)
  */
 @Entity
@@ -110,7 +109,7 @@ public class Report {
     public Report() {
     }
 
-    // LEGACY: Manual getters and setters (verbose Java 8 style)
+    // LEGACY: Manual getters and setters (no Lombok, no records)
     // Modern approach would use records (Java 16+) or Lombok
 
     public Long getId() {

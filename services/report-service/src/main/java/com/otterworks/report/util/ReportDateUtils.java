@@ -19,8 +19,6 @@ import java.util.TimeZone;
  * 3. Commons Lang DateUtils/DateFormatUtils → java.time API (no external dep needed)
  * 4. Calendar manipulation → java.time.temporal.ChronoUnit / Period
  * 5. Manual timezone handling → ZoneId / ZoneOffset
- *
- * This class is a prime candidate for complete rewrite during Java 8→17 migration.
  */
 public final class ReportDateUtils {
 

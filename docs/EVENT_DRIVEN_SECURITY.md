@@ -132,9 +132,9 @@ Required GitHub Actions secrets:
 
 | Setting | Value | Source |
 |---------|-------|--------|
-| Trivy scanner | Trivy v0.62.2 | `.github/workflows/sast-auto-remediate.yml` |
+| Trivy scanner | Trivy v0.71.0 | `.github/workflows/sast-auto-remediate.yml` |
 | Trivy severity filter | CRITICAL, HIGH | `SEVERITY_THRESHOLD` env var |
-| Trivy excluded dirs | `services/report-service` | Legacy Java 8 service (separate upgrade track) |
+| Trivy scoped ignores | `security/scanning/trivy-scoped-ignores.json` | One finding per entry (file + package + version + CVE). Only report-service's planted commons-text 1.9 / CVE-2022-42889 for the dependency-remediation exercise (`security/deps`) |
 | Trivy suppressions | `.trivyignore` | Acknowledged CVEs with documented justification |
 | SonarCloud project key | `Cognition-Partner-Workshops_otterworks` | `sonar-project.properties` |
 | SonarCloud org | `cognition-partner-workshops` | `sonar-project.properties` |
@@ -153,7 +153,7 @@ Required GitHub Actions secrets:
 | analytics-service | Scala 3.4 | `build.sbt` | sbt dependencies |
 | admin-service | Ruby 3.3 | `Gemfile` | Bundler gems |
 | audit-service | C# 12 | `AuditService.csproj` | NuGet packages |
-| report-service | Java 8 | `pom.xml` | **Excluded** (legacy upgrade track) |
+| report-service | Java 17 | `pom.xml` | Maven dependencies (Spring Boot 3.5) |
 
 ## Extending to Snyk
 

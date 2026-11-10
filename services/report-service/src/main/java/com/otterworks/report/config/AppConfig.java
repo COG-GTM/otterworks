@@ -18,8 +18,7 @@ import java.time.Duration;
  * Application configuration — wires up RestTemplate and external service URLs.
  *
  * LEGACY PATTERNS:
- * - Uses RestTemplate (deprecated in Spring 5.x, removed path in 6.x)
- * - Uses Apache HttpClient 5 directly
+ * - Uses RestTemplate (maintenance mode; RestClient is the Spring 6.1+ successor)
  * - Manual connection pool management instead of reactive WebClient
  *
  * UPGRADE NOTES:
