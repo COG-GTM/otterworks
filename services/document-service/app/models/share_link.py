@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, Text, text
+from sqlalchemy import CheckConstraint, DateTime, Index, Integer, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -37,7 +37,10 @@ class ShareLink(Base):
     )
     token: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     resource_type: Mapped[str] = mapped_column(
-        Text, nullable=False, default=RESOURCE_TYPE_FOLDER
+        Text,
+        nullable=False,
+        default=RESOURCE_TYPE_FOLDER,
+        server_default=text(f"'{RESOURCE_TYPE_FOLDER}'"),
     )
     resource_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
@@ -45,7 +48,7 @@ class ShareLink(Base):
     workspace_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default=func.now()
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expired_at: Mapped[datetime | None] = mapped_column(
@@ -80,5 +83,9 @@ class WorkspaceSharePolicy(Base):
     )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        onupdate=_utcnow,
+        server_default=func.now(),
     )

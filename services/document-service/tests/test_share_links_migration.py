@@ -250,6 +250,19 @@ async def test_upgrade_succeeds_when_startup_already_created_tables(database_url
     assert set(schema["share_links"]["columns"]) == SHARE_LINK_COLUMNS
     assert set(schema["workspace_share_policy"]["columns"]) == POLICY_COLUMNS
 
+    is_pg = database_url.startswith("postgresql")
+    ids = {k: uuid.uuid4() if is_pg else uuid.uuid4().hex for k in ("id", "rid", "uid")}
+    await _execute(
+        database_url,
+        "INSERT INTO share_links (id, token, resource_id, workspace_id, created_by, "
+        "expires_at) VALUES (:id, 'startup-token', :rid, 'ws', :uid, CURRENT_TIMESTAMP)",
+        ids,
+    )
+    await _execute(database_url, "INSERT INTO workspace_share_policy (workspace_id) VALUES ('ws')")
+    assert await _execute(
+        database_url, "SELECT default_days, max_days FROM workspace_share_policy"
+    ) == [(30, 90)]
+
     _alembic(database_url, "downgrade", "001")
     schema = await _schema(database_url)
     assert "share_links" not in schema
