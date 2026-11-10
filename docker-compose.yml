@@ -492,6 +492,7 @@ services:
       Aws__S3ArchiveBucket: otterworks-audit-archive
       ASPNETCORE_URLS: http://+:8090
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      AUDIT_INGEST_TOKENS: ${AUDIT_INGEST_TOKENS:-otterworks-audit-dev-token}
     depends_on:
       localstack:
         condition: service_healthy

@@ -81,6 +81,38 @@ public class S3AuditArchiverTests
     }
 
     [Fact]
+    public async Task ExportAsync_WithCsvFormat_ShouldIncludeV2Columns()
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = "u1", ActorEmail = "a@x.io", ActorType = "user", TenantId = "t1",
+                Action = "auth.login.failure", ResourceType = "user", ResourceId = "u1", Outcome = "failure",
+                IpAddress = "10.0.0.1", RequestId = "req-1", ServiceName = "auth-service", Timestamp = DateTime.UtcNow,
+            },
+        };
+        string? body = null;
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((req, _) => body = req.ContentBody)
+            .ReturnsAsync(new PutObjectResponse());
+
+        await _archiver.ExportAsync(from, to, "csv");
+
+        Assert.NotNull(body);
+        var lines = body!.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Contains("Outcome", lines[0]);
+        Assert.Contains("ServiceName", lines[0]);
+        Assert.Contains("RequestId", lines[0]);
+        Assert.Contains("\"failure\"", lines[1]);
+        Assert.Contains("\"auth-service\"", lines[1]);
+        Assert.Contains("\"req-1\"", lines[1]);
+    }
+
+    [Fact]
     public async Task ArchiveOldEventsAsync_WithEvents_ShouldUploadToGlacierAndDelete()
     {
         var olderThan = DateTime.UtcNow.AddDays(-90);

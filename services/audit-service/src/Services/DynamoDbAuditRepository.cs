@@ -34,11 +34,14 @@ public class DynamoDbAuditRepository : IAuditRepository
             ["Timestamp"] = new AttributeValue { S = auditEvent.Timestamp.ToString("O") },
         };
 
-        if (auditEvent.IpAddress is not null)
-            item["IpAddress"] = new AttributeValue { S = auditEvent.IpAddress };
-
-        if (auditEvent.UserAgent is not null)
-            item["UserAgent"] = new AttributeValue { S = auditEvent.UserAgent };
+        AddOptional(item, "ActorEmail", auditEvent.ActorEmail);
+        AddOptional(item, "ActorType", auditEvent.ActorType);
+        AddOptional(item, "TenantId", auditEvent.TenantId);
+        AddOptional(item, "Outcome", auditEvent.Outcome);
+        AddOptional(item, "IpAddress", auditEvent.IpAddress);
+        AddOptional(item, "UserAgent", auditEvent.UserAgent);
+        AddOptional(item, "RequestId", auditEvent.RequestId);
+        AddOptional(item, "ServiceName", auditEvent.ServiceName);
 
         if (auditEvent.Details is not null && auditEvent.Details.Count > 0)
         {
@@ -78,10 +81,10 @@ public class DynamoDbAuditRepository : IAuditRepository
         return MapToAuditEvent(response.Item);
     }
 
-    public async Task<AuditEventPage> QueryEventsAsync(
-        string? userId, string? action, string? resourceType, string? resourceId,
-        DateTime? from, DateTime? to, int page, int pageSize)
+    public async Task<AuditEventPage> QueryEventsAsync(AuditEventQuery query)
     {
+        var (userId, action, resourceType, resourceId) = (query.UserId, query.Action, query.ResourceType, query.ResourceId);
+        var (from, to, page, pageSize) = (query.From, query.To, query.Page, query.PageSize);
         var filterExpressions = new List<string>();
         var expressionValues = new Dictionary<string, AttributeValue>();
         var expressionNames = new Dictionary<string, string>();
@@ -111,6 +114,10 @@ public class DynamoDbAuditRepository : IAuditRepository
             filterExpressions.Add("ResourceId = :rid");
             expressionValues[":rid"] = new AttributeValue { S = resourceId };
         }
+
+        AddEqualsFilter(filterExpressions, expressionValues, expressionNames, "Outcome", query.Outcome);
+        AddEqualsFilter(filterExpressions, expressionValues, expressionNames, "ServiceName", query.ServiceName);
+        AddEqualsFilter(filterExpressions, expressionValues, expressionNames, "TenantId", query.TenantId);
 
         if (from.HasValue)
         {
@@ -334,8 +341,14 @@ public class DynamoDbAuditRepository : IAuditRepository
             Timestamp = item.TryGetValue("Timestamp", out var ts) && DateTime.TryParse(ts.S, null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsedTs)
                 ? parsedTs
                 : DateTime.MinValue,
-            IpAddress = item.TryGetValue("IpAddress", out var ip) ? ip.S : null,
-            UserAgent = item.TryGetValue("UserAgent", out var ua) ? ua.S : null,
+            ActorEmail = GetOptional(item, "ActorEmail"),
+            ActorType = GetOptional(item, "ActorType"),
+            TenantId = GetOptional(item, "TenantId"),
+            Outcome = GetOptional(item, "Outcome"),
+            IpAddress = GetOptional(item, "IpAddress"),
+            UserAgent = GetOptional(item, "UserAgent"),
+            RequestId = GetOptional(item, "RequestId"),
+            ServiceName = GetOptional(item, "ServiceName"),
         };
 
         if (item.TryGetValue("Details", out var details) && details.M is not null)
@@ -346,5 +359,30 @@ public class DynamoDbAuditRepository : IAuditRepository
         }
 
         return auditEvent;
+    }
+
+    private static void AddOptional(Dictionary<string, AttributeValue> item, string name, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            item[name] = new AttributeValue { S = value };
+    }
+
+    private static string? GetOptional(Dictionary<string, AttributeValue> item, string name) =>
+        item.TryGetValue(name, out var value) ? value.S : null;
+
+    private static void AddEqualsFilter(
+        List<string> filters,
+        Dictionary<string, AttributeValue> values,
+        Dictionary<string, string> names,
+        string attribute,
+        string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return;
+
+        var key = attribute.ToLowerInvariant();
+        filters.Add($"#{key} = :{key}");
+        names[$"#{key}"] = attribute;
+        values[$":{key}"] = new AttributeValue { S = value };
     }
 }

@@ -25,22 +25,11 @@ public class AuditService : IAuditService
 
     public async Task<AuditEventResponse> RecordEventAsync(AuditEventRequest request)
     {
-        var auditEvent = new AuditEvent
-        {
-            Id = Guid.NewGuid().ToString(),
-            UserId = request.UserId,
-            Action = request.Action,
-            ResourceType = request.ResourceType,
-            ResourceId = request.ResourceId,
-            Details = request.Details,
-            IpAddress = request.IpAddress,
-            UserAgent = request.UserAgent,
-            Timestamp = DateTime.UtcNow,
-        };
+        var auditEvent = AuditContract.ToEntity(request);
 
         await _repository.SaveEventAsync(auditEvent);
-        _logger.LogInformation("Audit event recorded: {Action} on {ResourceType}/{ResourceId} by {UserId}",
-            auditEvent.Action, auditEvent.ResourceType, auditEvent.ResourceId, auditEvent.UserId);
+        _logger.LogInformation("Audit event recorded: {Action} ({Outcome}) on {ResourceType}/{ResourceId} by {UserId} from {ServiceName}",
+            auditEvent.Action, auditEvent.Outcome, auditEvent.ResourceType, auditEvent.ResourceId, auditEvent.UserId, auditEvent.ServiceName);
 
         return AuditEventResponse.FromEntity(auditEvent);
     }
@@ -51,11 +40,9 @@ public class AuditService : IAuditService
         return auditEvent is not null ? AuditEventResponse.FromEntity(auditEvent) : null;
     }
 
-    public async Task<AuditEventPage> QueryEventsAsync(
-        string? userId, string? action, string? resourceType, string? resourceId,
-        DateTime? from, DateTime? to, int page, int pageSize)
+    public async Task<AuditEventPage> QueryEventsAsync(AuditEventQuery query)
     {
-        return await _repository.QueryEventsAsync(userId, action, resourceType, resourceId, from, to, page, pageSize);
+        return await _repository.QueryEventsAsync(query);
     }
 
     public async Task<UserActivityReport> GetUserActivityReportAsync(string userId, string period)

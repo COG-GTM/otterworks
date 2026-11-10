@@ -130,11 +130,16 @@ public class S3AuditArchiver : IAuditArchiver
     private static string ConvertToCsv(List<AuditEvent> events)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent");
+        sb.AppendLine("Id,Timestamp,UserId,ActorEmail,ActorType,TenantId,Action,ResourceType,ResourceId,Outcome,IpAddress,UserAgent,RequestId,ServiceName");
 
         foreach (var e in events)
         {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
+            sb.AppendLine(string.Join(",", new[]
+            {
+                e.Id, e.Timestamp.ToString("O"), e.UserId, e.ActorEmail, e.ActorType, e.TenantId,
+                e.Action, e.ResourceType, e.ResourceId, e.Outcome, e.IpAddress, e.UserAgent,
+                e.RequestId, e.ServiceName,
+            }.Select(v => $"\"{Esc(v)}\"")));
         }
 
         return sb.ToString();

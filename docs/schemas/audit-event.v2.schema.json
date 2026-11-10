@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/COG-GTM/otterworks/docs/schemas/audit-event.v2.schema.json",
+  "title": "OtterWorks audit event (contract v2)",
+  "description": "Body of POST /api/v1/audit/events on audit-service. See docs/audit-events.md.",
+  "type": "object",
+  "required": ["userId", "action", "resourceType", "outcome", "serviceName"],
+  "properties": {
+    "userId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Actor id (gateway X-User-ID or the service's own JWT subject), or \"anonymous\"."
+    },
+    "actorEmail": { "type": "string", "description": "Actor email (gateway X-User-Email or JWT email claim)." },
+    "actorType": { "type": "string", "enum": ["user", "admin", "service", "anonymous"] },
+    "tenantId": { "type": "string" },
+    "action": {
+      "type": "string",
+      "description": "Dot-namespaced action, e.g. auth.login.success. The common single-word actions export and delete are also accepted.",
+      "anyOf": [
+        { "pattern": "^[a-z]+(\\.[a-z_]+)+$" },
+        { "enum": ["export", "delete"] }
+      ],
+      "examples": [
+        "auth.login.success", "auth.login.failure", "auth.logout", "auth.token.refresh",
+        "auth.token.refresh_denied", "auth.token.rejected", "auth.user.register", "auth.credential.change",
+        "permission.change", "permission.denied", "share.create", "share.revoke", "share.access",
+        "export", "delete"
+      ]
+    },
+    "resourceType": {
+      "type": "string",
+      "minLength": 1,
+      "examples": ["file", "document", "folder", "user", "role", "share_link", "export_archive", "audit_log"]
+    },
+    "resourceId": { "type": "string" },
+    "outcome": { "type": "string", "enum": ["success", "failure", "denied"] },
+    "details": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Flat string map of non-sensitive context. Never passwords, JWT/refresh/share tokens, credentials or file/document contents."
+    },
+    "ipAddress": { "type": "string", "description": "Client IP: first X-Forwarded-For entry, then X-Real-IP, then socket address." },
+    "sourceIp": { "type": "string", "description": "Alias of ipAddress. If both are sent, ipAddress wins." },
+    "userAgent": { "type": "string" },
+    "requestId": { "type": "string", "description": "The X-Request-ID of the originating request." },
+    "serviceName": { "type": "string", "minLength": 1, "description": "Emitting service, e.g. auth-service." },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 time of the action. Defaults to the time audit-service received the event."
+    }
+  },
+  "additionalProperties": true
+}

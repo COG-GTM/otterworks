@@ -1,7 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using Amazon.SimpleNotificationService;
-using Amazon.SimpleNotificationService.Model;
 using Amazon.SQS;
 using Amazon.SQS.Model;
 using Microsoft.Extensions.Options;
@@ -97,40 +93,7 @@ public class SnsConsumer : BackgroundService
     {
         try
         {
-            var snsMessage = TryParseSnsEnvelope(message.Body);
-            var eventBody = snsMessage ?? message.Body;
-
-            var fileEvent = JsonSerializer.Deserialize<FileEventMessage>(eventBody, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            });
-            if (fileEvent?.EventType == "file_shared")
-            {
-                var fileShareEvent = new AuditEvent
-                {
-                    Id = message.MessageId,
-                    UserId = fileEvent.OwnerId ?? "system",
-                    Action = "share",
-                    ResourceType = "file",
-                    ResourceId = fileEvent.FileId ?? string.Empty,
-                    Details = new Dictionary<string, string>
-                    {
-                        ["sharedWithUserId"] = fileEvent.SharedWithUserId ?? string.Empty,
-                    },
-                    Timestamp = fileEvent.Timestamp ?? DateTime.UtcNow,
-                };
-
-                await _repository.SaveEventAsync(fileShareEvent);
-                _logger.LogDebug("Processed file share SNS event for {FileId}", fileEvent.FileId);
-                await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
-                return;
-            }
-
-            var auditEvent = JsonSerializer.Deserialize<AuditEventMessage>(eventBody, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            });
-
+            var auditEvent = AuditMessageParser.Parse(message.Body, message.MessageId);
             if (auditEvent is null)
             {
                 _logger.LogWarning("Failed to deserialize audit event from message {MessageId}", message.MessageId);
@@ -138,22 +101,9 @@ public class SnsConsumer : BackgroundService
                 return;
             }
 
-            var entity = new AuditEvent
-            {
-                Id = message.MessageId,
-                UserId = auditEvent.UserId ?? "system",
-                Action = auditEvent.Action ?? "unknown",
-                ResourceType = auditEvent.ResourceType ?? "unknown",
-                ResourceId = auditEvent.ResourceId ?? string.Empty,
-                Details = auditEvent.Details,
-                IpAddress = auditEvent.IpAddress,
-                UserAgent = auditEvent.UserAgent,
-                Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
-            };
-
-            await _repository.SaveEventAsync(entity);
+            await _repository.SaveEventAsync(auditEvent);
             _logger.LogDebug("Processed SNS event: {Action} on {ResourceType}/{ResourceId}",
-                entity.Action, entity.ResourceType, entity.ResourceId);
+                auditEvent.Action, auditEvent.ResourceType, auditEvent.ResourceId);
 
             await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
         }
@@ -161,53 +111,5 @@ public class SnsConsumer : BackgroundService
         {
             _logger.LogError(ex, "Failed to process message {MessageId}", message.MessageId);
         }
-    }
-
-    private static string? TryParseSnsEnvelope(string body)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("Message", out var messageElement))
-            {
-                return messageElement.GetString();
-            }
-        }
-        catch (JsonException)
-        {
-            // Not an SNS envelope
-        }
-
-        return null;
-    }
-
-    private sealed class AuditEventMessage
-    {
-        public string? UserId { get; set; }
-        public string? Action { get; set; }
-        public string? ResourceType { get; set; }
-        public string? ResourceId { get; set; }
-        public Dictionary<string, string>? Details { get; set; }
-        public string? IpAddress { get; set; }
-        public string? UserAgent { get; set; }
-        public DateTime? Timestamp { get; set; }
-    }
-
-    private sealed class FileEventMessage
-    {
-        [JsonPropertyName("eventType")]
-        public string? EventType { get; set; }
-
-        [JsonPropertyName("fileId")]
-        public string? FileId { get; set; }
-
-        [JsonPropertyName("ownerId")]
-        public string? OwnerId { get; set; }
-
-        [JsonPropertyName("sharedWithUserId")]
-        public string? SharedWithUserId { get; set; }
-
-        [JsonPropertyName("timestamp")]
-        public DateTime? Timestamp { get; set; }
     }
 }

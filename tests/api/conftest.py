@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import json
 import os
 import time
 import uuid
@@ -11,6 +15,30 @@ import pytest
 
 
 DEFAULT_GATEWAY_URL = "http://localhost:8080"
+DEFAULT_JWT_SECRET = "otterworks-local-dev-jwt-secret-change-me-in-production"
+DEFAULT_AUDIT_SERVICE_TOKEN = "otterworks-audit-dev-token"
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def mint_admin_jwt(user_id: str, email: str) -> str:
+    """HS256 access token with the ADMIN role, signed with the stack's JWT_SECRET."""
+    now = int(time.time())
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "roles": ["USER", "ADMIN"],
+        "type": "access",
+        "iat": now,
+        "exp": now + 900,
+    }
+    signing_input = f"{_b64url(json.dumps(header).encode())}.{_b64url(json.dumps(payload).encode())}"
+    secret = os.getenv("JWT_SECRET", DEFAULT_JWT_SECRET).encode()
+    signature = hmac.new(secret, signing_input.encode(), hashlib.sha256).digest()
+    return f"{signing_input}.{_b64url(signature)}"
 
 
 @dataclass(frozen=True)
@@ -60,6 +88,14 @@ class ApiClient:
             access_token=data["accessToken"],
             refresh_token=data["refreshToken"],
         )
+
+    def admin_headers(self) -> dict[str, str]:
+        token = mint_admin_jwt(f"api-flow-admin-{self.run_id}", f"admin-{self.run_id}@example.test")
+        return {"Authorization": f"Bearer {token}"}
+
+    @staticmethod
+    def audit_ingest_headers() -> dict[str, str]:
+        return {"X-Audit-Token": os.getenv("AUDIT_SERVICE_TOKEN", DEFAULT_AUDIT_SERVICE_TOKEN)}
 
     def login_user(self, user: RegisteredUser) -> dict:
         response = self.client.post(

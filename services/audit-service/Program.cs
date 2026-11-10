@@ -2,8 +2,13 @@ using Amazon.DynamoDBv2;
 using Amazon.S3;
 using Amazon.SimpleNotificationService;
 using Amazon.SQS;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.IdentityModel.Tokens;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using OtterWorks.AuditService.Auth;
 using OtterWorks.AuditService.Config;
 using OtterWorks.AuditService.Controllers;
 using OtterWorks.AuditService.Middleware;
@@ -70,6 +75,52 @@ builder.Services.AddSingleton<IAuditRepository, DynamoDbAuditRepository>();
 builder.Services.AddSingleton<IAuditArchiver, S3AuditArchiver>();
 builder.Services.AddSingleton<IAuditService, OtterWorks.AuditService.Services.AuditService>();
 
+// Self-auditing of audit-service's own sensitive operations
+builder.Services.Configure<SelfAuditOptions>(_ => { });
+builder.Services.AddSingleton<SelfAuditor>();
+
+// AuthN/Z: X-Audit-Token for service ingest, admin JWTs (auth-service HMAC, JWT_SECRET) for reads.
+builder.Services.AddOptions<AuditIngestOptions>()
+    .Configure<IConfiguration>((options, config) =>
+        options.Tokens = AuditAuth.ParseTokens(config[AuditAuth.IngestTokensConfigKey]));
+
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, AuditIngestTokenHandler>(AuditAuth.IngestScheme, _ => { })
+    .AddJwtBearer();
+
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IConfiguration>((options, config) =>
+    {
+        var secret = config[AuditAuth.JwtSecretConfigKey];
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            RequireSignedTokens = true,
+            ValidAlgorithms = new[] { SecurityAlgorithms.HmacSha256, SecurityAlgorithms.HmacSha384, SecurityAlgorithms.HmacSha512 },
+            IssuerSigningKey = string.IsNullOrEmpty(secret)
+                ? null
+                : new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(secret)),
+            NameClaimType = "sub",
+            RoleClaimType = "roles",
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuditAuth.IngestPolicy, policy => policy
+        .AddAuthenticationSchemes(AuditAuth.IngestScheme)
+        .RequireAuthenticatedUser());
+    options.AddPolicy(AuditAuth.AdminPolicy, policy => policy
+        .AddAuthenticationSchemes(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .RequireAssertion(ctx => AuditAuth.IsAdmin(ctx.User)));
+});
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, DeniedAuditResultHandler>();
+
 // SNS/SQS Consumer background service
 builder.Services.AddHostedService<SnsConsumer>();
 
@@ -92,12 +143,27 @@ builder.Services.AddSingleton(Metrics.DefaultRegistry);
 
 var app = builder.Build();
 
+if (AuditAuth.ParseTokens(app.Configuration[AuditAuth.IngestTokensConfigKey]).Count == 0)
+{
+    Log.Warning("{Key} is not set: POST /api/v1/audit/events accepts unauthenticated writes. Set it to a comma-separated list of service ingest tokens.",
+        AuditAuth.IngestTokensConfigKey);
+}
+
+if (string.IsNullOrEmpty(app.Configuration[AuditAuth.JwtSecretConfigKey]))
+{
+    Log.Warning("{Key} is not set: admin read, export and archive endpoints will reject every request.",
+        AuditAuth.JwtSecretConfigKey);
+}
+
 // Middleware pipeline
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseMiddleware<RequestLoggingMiddleware>();
 
 // Prometheus metrics endpoint
 app.UseHttpMetrics();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Health check
 app.MapGet("/health", async (IAmazonDynamoDB dynamoDb) =>
@@ -131,6 +197,10 @@ app.MapGet("/metrics", async () =>
 app.MapAuditEndpoints();
 
 app.Run();
+
+public partial class Program
+{
+}
 
 // Health check implementation
 public class DynamoDbHealthCheck : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
