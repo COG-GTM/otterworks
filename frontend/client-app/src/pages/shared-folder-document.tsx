@@ -40,7 +40,7 @@ export default function SharedFolderDocumentPage() {
             <p className="text-xs text-gray-500">Last updated {formatRelativeTime(data.updatedAt)}</p>
           )}
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <ReadOnlyDocument content={data.content ?? ""} />
+            <ReadOnlyDocument content={data.content ?? ""} contentType={data.contentType} />
           </div>
         </article>
       ) : null}

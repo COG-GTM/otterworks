@@ -5,9 +5,9 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Documents are stored as editor HTML; plain-text/markdown bodies are shown line by line.
-export function toEditorHtml(content: string): string {
-  if (/<[a-z][\s\S]*>/i.test(content)) return content;
+// Editor-saved documents are HTML (they start with a tag); anything else is shown as escaped text, line by line.
+export function toEditorHtml(content: string, contentType?: string): string {
+  if (contentType === "text/html" || /^\s*<[a-z][\w-]*[\s/>]/i.test(content)) return content;
   return content
     .split(/\r?\n/)
     .map((line) => `<p>${escapeHtml(line)}</p>`)
@@ -15,11 +15,11 @@ export function toEditorHtml(content: string): string {
 }
 
 /** Renders document content through the editor schema (no raw HTML injection), never editable. */
-export function ReadOnlyDocument({ content }: { content: string }) {
+export function ReadOnlyDocument({ content, contentType }: { content: string; contentType?: string }) {
   const editor = useEditor(
     {
       extensions: [StarterKit],
-      content: toEditorHtml(content),
+      content: toEditorHtml(content, contentType),
       editable: false,
       editorProps: {
         attributes: {
@@ -29,7 +29,7 @@ export function ReadOnlyDocument({ content }: { content: string }) {
         },
       },
     },
-    [content]
+    [content, contentType]
   );
 
   return <EditorContent editor={editor} />;

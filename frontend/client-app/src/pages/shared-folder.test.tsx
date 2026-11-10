@@ -73,6 +73,7 @@ describe("Shared folder recipient view", () => {
     );
     renderRecipient(`/shared-folder/${TOKEN}/documents/d-3`);
     expect(await screen.findByText("line one")).toBeInTheDocument();
+    expect(screen.getByText("<img src=x onerror=alert(1)>")).toBeInTheDocument();
     expect(document.querySelector("img[src=x]")).toBeNull();
   });
 
