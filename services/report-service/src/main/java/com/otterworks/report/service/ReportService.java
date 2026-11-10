@@ -56,12 +56,12 @@ public class ReportService {
      * Create a new report request and start async generation.
      */
     @Transactional
-    public Report createReport(ReportRequest request) {
+    public Report createReport(ReportRequest request, String requestedBy) {
         Report report = new Report();
         report.setReportName(request.getReportName());
         report.setCategory(request.getCategory());
         report.setReportType(request.getReportType());
-        report.setRequestedBy(request.getRequestedBy());
+        report.setRequestedBy(requestedBy);
         report.setStatus(ReportStatus.PENDING);
         report.setCreatedAt(new Date()); // LEGACY: new Date() instead of Instant.now()
 
@@ -97,33 +97,29 @@ public class ReportService {
     }
 
     /**
-     * Get a report by ID.
+     * Get a report by ID, only if it belongs to the given user.
      */
-    public Optional<Report> getReport(Long id) {
-        return reportRepository.findById(id);
+    public Optional<Report> getReport(Long id, String ownerId) {
+        return reportRepository.findByIdAndRequestedBy(id, ownerId);
     }
 
     /**
-     * List all reports for a user.
+     * List a user's reports, optionally filtered by status.
      */
-    public List<Report> getReportsByUser(String userId) {
+    public List<Report> getReportsByUser(String userId, ReportStatus status) {
+        if (status != null) {
+            return reportRepository.findByRequestedByAndStatusOrderByCreatedAtDesc(userId, status);
+        }
         return reportRepository.findByRequestedByOrderByCreatedAtDesc(userId);
     }
 
     /**
-     * List reports by status.
-     */
-    public List<Report> getReportsByStatus(ReportStatus status) {
-        return reportRepository.findByStatusOrderByCreatedAtAsc(status);
-    }
-
-    /**
-     * Delete a report and its generated file.
+     * Delete a report and its generated file, only if it belongs to the given user.
      * File deletion is deferred to afterCommit to avoid inconsistency on rollback.
      */
     @Transactional
-    public boolean deleteReport(Long id) {
-        Optional<Report> optReport = reportRepository.findById(id);
+    public boolean deleteReport(Long id, String ownerId) {
+        Optional<Report> optReport = reportRepository.findByIdAndRequestedBy(id, ownerId);
         if (!optReport.isPresent()) {
             return false;
         }

@@ -4,6 +4,7 @@ import com.otterworks.report.model.Report;
 import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.model.ReportResponse;
 import com.otterworks.report.model.ReportStatus;
+import com.otterworks.report.security.CallerIdentity;
 import com.otterworks.report.service.ReportService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -19,6 +20,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -66,16 +69,24 @@ public class ReportController {
     @ApiOperation(value = "Create a new report", notes = "Submits a report generation request. The report is generated asynchronously.")
     @ApiResponses({
             @ApiResponse(code = 202, message = "Report request accepted"),
-            @ApiResponse(code = 400, message = "Invalid request")
+            @ApiResponse(code = 400, message = "Invalid request"),
+            @ApiResponse(code = 403, message = "Report category requires an administrator")
     })
     public ResponseEntity<ReportResponse> createReport(
+            @ApiParam(hidden = true) @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody ReportRequest request) {
+
+        CallerIdentity caller = CallerIdentity.from(jwt);
+        if (request.getCategory().requiresAdmin() && !caller.isAdmin()) {
+            logger.warn("Rejected {} report request from non-admin {}", request.getCategory(), caller.getUserId());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
 
         logger.info("Report request: name={}, category={}, type={}, by={}",
                 request.getReportName(), request.getCategory(),
-                request.getReportType(), request.getRequestedBy());
+                request.getReportType(), caller.getUserId());
 
-        Report report = reportService.createReport(request);
+        Report report = reportService.createReport(request, caller.getUserId());
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ReportResponse.fromEntity(report));
     }
@@ -84,35 +95,44 @@ public class ReportController {
     @ApiOperation(value = "Get report by ID", notes = "Returns the report metadata and status")
     @ApiResponses({
             @ApiResponse(code = 200, message = "Report found"),
+            @ApiResponse(code = 403, message = "Report category requires an administrator"),
             @ApiResponse(code = 404, message = "Report not found")
     })
     public ResponseEntity<ReportResponse> getReport(
+            @ApiParam(hidden = true) @AuthenticationPrincipal Jwt jwt,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> report = reportService.getReport(id);
+        CallerIdentity caller = CallerIdentity.from(jwt);
+        Optional<Report> report = reportService.getReport(id, caller.getUserId());
         if (!report.isPresent()) { // LEGACY: !isPresent() instead of isEmpty()
             return ResponseEntity.notFound().build();
+        }
+        if (!canRead(caller, report.get())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         return ResponseEntity.ok(ReportResponse.fromEntity(report.get()));
     }
 
     @GetMapping
-    @ApiOperation(value = "List reports", notes = "List reports filtered by user ID or status")
+    @ApiOperation(value = "List reports", notes = "List the caller's own reports, optionally filtered by status")
+    @ApiResponses({
+            @ApiResponse(code = 200, message = "The caller's reports"),
+            @ApiResponse(code = 403, message = "userId names a different user")
+    })
     public ResponseEntity<Map<String, Object>> listReports(
-            @ApiParam(value = "Filter by user ID")
+            @ApiParam(hidden = true) @AuthenticationPrincipal Jwt jwt,
+            @ApiParam(value = "Must be the caller's own user ID if given")
             @RequestParam(required = false) String userId,
             @ApiParam(value = "Filter by status")
             @RequestParam(required = false) ReportStatus status) {
 
-        List<Report> reports;
-        if (userId != null) {
-            reports = reportService.getReportsByUser(userId);
-        } else if (status != null) {
-            reports = reportService.getReportsByStatus(status);
-        } else {
-            reports = reportService.getReportsByStatus(ReportStatus.COMPLETED);
+        CallerIdentity caller = CallerIdentity.from(jwt);
+        if (userId != null && !userId.equals(caller.getUserId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
+
+        List<Report> reports = reportService.getReportsByUser(caller.getUserId(), status);
 
         List<ReportResponse> responses = reports.stream()
                 .map(ReportResponse::fromEntity)
@@ -130,19 +150,25 @@ public class ReportController {
     @ApiOperation(value = "Download a generated report", notes = "Returns the report file for download")
     @ApiResponses({
             @ApiResponse(code = 200, message = "Report file"),
+            @ApiResponse(code = 403, message = "Report category requires an administrator"),
             @ApiResponse(code = 404, message = "Report not found or not yet completed"),
             @ApiResponse(code = 409, message = "Report is still generating")
     })
     public ResponseEntity<Resource> downloadReport(
+            @ApiParam(hidden = true) @AuthenticationPrincipal Jwt jwt,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        Optional<Report> optReport = reportService.getReport(id);
+        CallerIdentity caller = CallerIdentity.from(jwt);
+        Optional<Report> optReport = reportService.getReport(id, caller.getUserId());
         if (!optReport.isPresent()) {
             return ResponseEntity.notFound().build();
         }
 
         Report report = optReport.get();
+        if (!canRead(caller, report)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
 
         if (report.getStatus() == ReportStatus.GENERATING || report.getStatus() == ReportStatus.PENDING) {
             return ResponseEntity.status(HttpStatus.CONFLICT).build();
@@ -186,10 +212,11 @@ public class ReportController {
             @ApiResponse(code = 404, message = "Report not found")
     })
     public ResponseEntity<Void> deleteReport(
+            @ApiParam(hidden = true) @AuthenticationPrincipal Jwt jwt,
             @ApiParam(value = "Report ID", required = true)
             @PathVariable Long id) {
 
-        boolean deleted = reportService.deleteReport(id);
+        boolean deleted = reportService.deleteReport(id, CallerIdentity.from(jwt).getUserId());
         if (!deleted) {
             return ResponseEntity.notFound().build();
         }
@@ -197,6 +224,10 @@ public class ReportController {
     }
 
     // ----- Private helpers -----
+
+    private boolean canRead(CallerIdentity caller, Report report) {
+        return report.getCategory() == null || !report.getCategory().requiresAdmin() || caller.isAdmin();
+    }
 
     private String getContentType(com.otterworks.report.model.ReportType reportType) {
         // LEGACY: switch without enhanced syntax
