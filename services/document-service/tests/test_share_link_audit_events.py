@@ -10,6 +10,7 @@ import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import jwt
@@ -178,7 +179,9 @@ async def _expire(db: AsyncSession, link_id: str) -> datetime:
 
 
 def _ts(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    # SQLite drops tzinfo from timestamptz columns; stored values are UTC.
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _recent(value: str) -> bool:
@@ -389,7 +392,7 @@ async def test_lifespan_starts_and_stops_sweep_only_when_enabled(monkeypatch):
 
     monkeypatch.setattr(main, "run_expiry_sweep_loop", _loop)
     monkeypatch.setattr(main, "init_db", _noop)
-    monkeypatch.setattr(main.engine, "dispose", _noop)
+    monkeypatch.setattr(main, "engine", SimpleNamespace(dispose=_noop))
 
     monkeypatch.setattr(main.settings, "share_link_expiry_sweep_interval_seconds", 42.0)
     async with main.lifespan(app):
