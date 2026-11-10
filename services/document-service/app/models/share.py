@@ -51,7 +51,8 @@ class FolderShareLink(Base):
         """Revoked wins over expired; a NULL ``expires_at`` never expires."""
         if self.revoked_at is not None:
             return "revoked"
-        if self.expires_at is not None and _as_aware(self.expires_at) <= _as_aware(now or _utcnow()):
+        now = _as_aware(now or _utcnow())
+        if self.expires_at is not None and _as_aware(self.expires_at) <= now:
             return "expired"
         return "active"
 
