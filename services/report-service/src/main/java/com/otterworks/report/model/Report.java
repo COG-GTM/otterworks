@@ -2,26 +2,23 @@ package com.otterworks.report.model;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Lob;
-import javax.persistence.Table;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
-import javax.validation.constraints.NotNull;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
+import jakarta.validation.constraints.NotNull;
 import java.util.Date;
 
 /**
  * JPA entity representing a generated report.
  *
  * LEGACY PATTERNS:
- * - javax.persistence.* (target: jakarta.persistence.*)
- * - javax.validation.* (target: jakarta.validation.*)
  * - java.util.Date fields (target: java.time.Instant / LocalDateTime)
  * - springdoc @Schema annotations (OpenAPI 3)
  * - No Lombok — uses manual getters/setters (verbose but explicit)
@@ -99,8 +96,9 @@ public class Report {
     @Schema(description = "Number of data rows in the report")
     private Integer rowCount;
 
-    @Lob
-    @Column(name = "error_message")
+    // Plain text, not @Lob: on PostgreSQL a @Lob String is stored as a large-object OID
+    // and can only be read inside a transaction (legacy 500 on the list endpoints).
+    @Column(name = "error_message", columnDefinition = "text")
     @Schema(description = "Error message if generation failed")
     private String errorMessage;
 

@@ -29,7 +29,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.validation.Valid;
+import jakarta.validation.Valid;
 import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
@@ -42,7 +42,6 @@ import java.util.stream.Collectors;
  * REST controller for report management.
  *
  * LEGACY PATTERNS:
- * - javax.validation.Valid (target: jakarta.validation.Valid)
  * - Commons IO FileUtils for file reading (target: Files.readAllBytes or streaming)
  * - ByteArrayResource loads entire file into memory (target: InputStreamResource for streaming)
  * - No pagination on list endpoint
@@ -99,10 +98,10 @@ public class ReportController {
     @GetMapping
     @Operation(summary = "List reports", description = "List reports filtered by user ID or status")
     public ResponseEntity<Map<String, Object>> listReports(
-            @Parameter(description = "Filter by user ID")
-            @RequestParam(required = false) String userId,
             @Parameter(description = "Filter by status")
-            @RequestParam(required = false) ReportStatus status) {
+            @RequestParam(required = false) ReportStatus status,
+            @Parameter(description = "Filter by user ID")
+            @RequestParam(required = false) String userId) {
 
         List<Report> reports;
         if (userId != null) {
