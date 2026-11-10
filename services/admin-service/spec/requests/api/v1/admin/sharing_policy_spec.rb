@@ -137,6 +137,15 @@ RSpec.describe 'Sharing policy API' do
         expect(response).to have_http_status(:ok)
         expect(AuditLog.by_action('sharing_policy.updated').count).to eq(0)
       end
+
+      it 'Then a PUT of the defaults before any policy is configured persists nothing' do
+        put_policy({ default_expiry_days: 30, min_expiry_days: 1, max_expiry_days: 90 })
+
+        expect(response).to have_http_status(:ok)
+        expect(json).to eq('default_expiry_days' => 30, 'min_expiry_days' => 1, 'max_expiry_days' => 90)
+        expect(SharingPolicy.count).to eq(0)
+        expect(AuditLog.by_action('sharing_policy.updated').count).to eq(0)
+      end
     end
 
     # US2 AC4: Given I am not a workspace owner, When I try to change the policy, Then I get 403.

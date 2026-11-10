@@ -27,7 +27,7 @@ module Api
             before = policy.to_policy
             policy.assign_attributes(changes)
             raise ActiveRecord::Rollback unless policy.valid?
-            next if policy.to_policy == before
+            raise ActiveRecord::Rollback if policy.to_policy == before
 
             policy.updated_by = current_user_id
             policy.save!
