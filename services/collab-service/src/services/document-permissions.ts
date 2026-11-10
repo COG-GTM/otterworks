@@ -64,6 +64,8 @@ export class DocumentServicePermissionChecker implements DocumentPermissionCheck
         redirect: 'error',
         signal: AbortSignal.timeout(this.timeoutMs),
       });
+      // Only the status matters; release the connection instead of buffering the body.
+      await res.body?.cancel().catch(() => undefined);
       return res.status;
     } catch (err) {
       this.logger.error(
