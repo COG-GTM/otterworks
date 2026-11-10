@@ -156,6 +156,33 @@ async def test_upsert_policy_inserts_then_updates(policies):
     assert await policies.get("ws-2") == EffectiveSharePolicy.builtin("ws-2")
 
 
+async def test_concurrent_first_policy_saves_both_succeed(policies, monkeypatch):
+    """Given a workspace with no policy row, When another request inserts it while this
+    request is saving, Then this save still succeeds instead of failing on the key."""
+    from tests.conftest import TestingSessionLocal
+
+    owner = uuid.uuid4()
+    async with TestingSessionLocal() as other_session:
+        orig_get = other_session.get
+        competed = False
+
+        async def get_then_compete(*args, **kwargs):
+            nonlocal competed
+            result = await orig_get(*args, **kwargs)
+            if not competed:
+                competed = True
+                await policies.upsert("ws-race", default_days=10, max_days=20, updated_by=owner)
+            return result
+
+        monkeypatch.setattr(other_session, "get", get_then_compete)
+        await WorkspaceSharePolicyRepository(other_session).upsert(
+            "ws-race", default_days=5, max_days=15, updated_by=owner
+        )
+
+    stored = await policies.get("ws-race")
+    assert (stored.default_days, stored.max_days) in {(5, 15), (10, 20)}
+
+
 @pytest.mark.parametrize(
     ("default_days", "max_days"), [(0, 90), (31, 30), (30, 91), (91, 91), (-5, -1)]
 )

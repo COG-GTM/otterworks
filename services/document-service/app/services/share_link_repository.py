@@ -5,9 +5,10 @@ from __future__ import annotations
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.share_link import (
@@ -151,13 +152,20 @@ class WorkspaceSharePolicyRepository:
         updated_by: uuid.UUID | None,
     ) -> EffectiveSharePolicy:
         validate_share_policy(default_days, max_days)
-        row = await self.db.get(WorkspaceSharePolicy, workspace_id)
-        if row is None:
-            row = WorkspaceSharePolicy(workspace_id=workspace_id)
-            self.db.add(row)
-        row.default_days = default_days
-        row.max_days = max_days
-        row.updated_by = updated_by
+        values = {
+            "default_days": default_days,
+            "max_days": max_days,
+            "updated_by": updated_by,
+            "updated_at": datetime.now(UTC),
+        }
+        dialect = self.db.get_bind().dialect.name
+        insert = postgresql.insert if dialect == "postgresql" else sqlite.insert
+        stmt = (
+            insert(WorkspaceSharePolicy)
+            .values(workspace_id=workspace_id, **values)
+            .on_conflict_do_update(index_elements=["workspace_id"], set_=values)
+        )
+        await self.db.execute(stmt)
         await self.db.commit()
-        await self.db.refresh(row)
+        row = await self.db.get(WorkspaceSharePolicy, workspace_id, populate_existing=True)
         return EffectiveSharePolicy.from_row(row)
