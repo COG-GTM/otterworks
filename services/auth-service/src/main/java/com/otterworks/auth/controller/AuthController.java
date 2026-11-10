@@ -75,7 +75,7 @@ public class AuthController {
 
   @GetMapping("/users/by-id/{id}")
   public ResponseEntity<UserLookupResponse> lookupUserById(@PathVariable UUID id) {
-    UserDTO user = userService.getProfile(id);
+    UserDTO user = userService.lookupById(id);
     return ResponseEntity.ok(UserLookupResponse.fromUserDTO(user));
   }
 
@@ -84,6 +84,13 @@ public class AuthController {
   public ResponseEntity<Page<UserDTO>> listUsers(Pageable pageable) {
     Page<UserDTO> users = userService.listUsers(pageable);
     return ResponseEntity.ok(users);
+  }
+
+  @PutMapping("/users/{id}/roles")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<UserDTO> updateRoles(
+      @PathVariable UUID id, @Valid @RequestBody UpdateRolesRequest request) {
+    return ResponseEntity.ok(userService.updateRoles(id, request.getRoles()));
   }
 
   @PostMapping("/logout")

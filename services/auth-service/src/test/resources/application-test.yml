@@ -18,6 +18,12 @@ jwt:
   access-token-expiry: 3600
   refresh-token-expiry: 2592000
 
+audit:
+  service-url:
+  token: test-audit-token
+  timeout-ms: 500
+  max-retries: 1
+
 management:
   endpoints:
     web:

@@ -71,6 +71,8 @@ services:
       SPRING_DATASOURCE_USERNAME: otterworks
       SPRING_DATASOURCE_PASSWORD: otterworks_dev
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      AUDIT_SERVICE_URL: http://audit-service:8090
+      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-audit-dev-token}
     depends_on:
       postgres:
         condition: service_healthy
