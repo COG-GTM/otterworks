@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -259,5 +260,59 @@ public class AuditServiceTests
             IpAddress = "10.0.0.1",
             UserAgent = "TestAgent",
         };
+    }
+
+    [Fact]
+    public async Task RecordEventAsync_ShouldPersistAndReturnWorkspaceIdOldValueAndNewValue()
+    {
+        var request = new AuditEventRequest
+        {
+            UserId = "user-1",
+            Action = "share_link_updated",
+            ResourceType = "share_link",
+            ResourceId = "link-1",
+            WorkspaceId = "default",
+            OldValue = JsonDocument.Parse("{\"expires_at\":\"2026-12-01T00:00:00Z\"}").RootElement,
+            NewValue = JsonDocument.Parse("{\"expires_at\":\"2027-01-01T00:00:00Z\"}").RootElement,
+        };
+
+        AuditEvent? saved = null;
+        _mockRepository
+            .Setup(r => r.SaveEventAsync(It.IsAny<AuditEvent>()))
+            .Callback<AuditEvent>(e => saved = e)
+            .Returns(Task.CompletedTask);
+
+        var result = await _service.RecordEventAsync(request);
+
+        Assert.NotNull(saved);
+        Assert.Equal("default", saved!.WorkspaceId);
+        Assert.Equal("2026-12-01T00:00:00Z", saved.OldValue!.Value.GetProperty("expires_at").GetString());
+        Assert.Equal("2027-01-01T00:00:00Z", saved.NewValue!.Value.GetProperty("expires_at").GetString());
+        Assert.Equal("default", result.WorkspaceId);
+        Assert.Equal("2026-12-01T00:00:00Z", result.OldValue!.Value.GetProperty("expires_at").GetString());
+        Assert.Equal("2027-01-01T00:00:00Z", result.NewValue!.Value.GetProperty("expires_at").GetString());
+    }
+
+    [Fact]
+    public async Task RecordEventAsync_WithoutNewFields_ShouldLeaveThemNull()
+    {
+        var request = new AuditEventRequest
+        {
+            UserId = "user-1",
+            Action = "create",
+            ResourceType = "document",
+            ResourceId = "doc-1",
+            OldValue = JsonDocument.Parse("null").RootElement,
+        };
+
+        _mockRepository
+            .Setup(r => r.SaveEventAsync(It.IsAny<AuditEvent>()))
+            .Returns(Task.CompletedTask);
+
+        var result = await _service.RecordEventAsync(request);
+
+        Assert.Null(result.WorkspaceId);
+        Assert.Null(result.OldValue);
+        Assert.Null(result.NewValue);
     }
 }

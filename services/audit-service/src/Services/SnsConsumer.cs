@@ -149,6 +149,9 @@ public class SnsConsumer : BackgroundService
                 IpAddress = auditEvent.IpAddress,
                 UserAgent = auditEvent.UserAgent,
                 Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
+                WorkspaceId = string.IsNullOrWhiteSpace(auditEvent.WorkspaceId) ? null : auditEvent.WorkspaceId,
+                OldValue = AuditValueJson.Normalize(auditEvent.OldValue),
+                NewValue = AuditValueJson.Normalize(auditEvent.NewValue),
             };
 
             await _repository.SaveEventAsync(entity);
@@ -191,6 +194,9 @@ public class SnsConsumer : BackgroundService
         public string? IpAddress { get; set; }
         public string? UserAgent { get; set; }
         public DateTime? Timestamp { get; set; }
+        public string? WorkspaceId { get; set; }
+        public JsonElement? OldValue { get; set; }
+        public JsonElement? NewValue { get; set; }
     }
 
     private sealed class FileEventMessage

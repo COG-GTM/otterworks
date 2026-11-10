@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OtterWorks.AuditService.Services;
 
 namespace OtterWorks.AuditService.Models;
@@ -13,6 +14,9 @@ public sealed class AuditEventResponse
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public DateTime Timestamp { get; set; }
+    public string? WorkspaceId { get; set; }
+    public JsonElement? OldValue { get; set; }
+    public JsonElement? NewValue { get; set; }
 
     public static AuditEventResponse FromEntity(AuditEvent entity) => new()
     {
@@ -25,5 +29,8 @@ public sealed class AuditEventResponse
         IpAddress = entity.IpAddress,
         UserAgent = entity.UserAgent,
         Timestamp = entity.Timestamp,
+        WorkspaceId = entity.WorkspaceId,
+        OldValue = entity.OldValue,
+        NewValue = entity.NewValue,
     };
 }

@@ -36,6 +36,9 @@ public class AuditService : IAuditService
             IpAddress = request.IpAddress,
             UserAgent = request.UserAgent,
             Timestamp = DateTime.UtcNow,
+            WorkspaceId = string.IsNullOrWhiteSpace(request.WorkspaceId) ? null : request.WorkspaceId,
+            OldValue = AuditValueJson.Normalize(request.OldValue),
+            NewValue = AuditValueJson.Normalize(request.NewValue),
         };
 
         await _repository.SaveEventAsync(auditEvent);

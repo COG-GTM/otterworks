@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace OtterWorks.AuditService.Services;
 
 public class AuditEvent
@@ -11,6 +13,9 @@ public class AuditEvent
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public DateTime Timestamp { get; set; }
+    public string? WorkspaceId { get; set; }
+    public JsonElement? OldValue { get; set; }
+    public JsonElement? NewValue { get; set; }
 }
 
 public class AuditEventPage

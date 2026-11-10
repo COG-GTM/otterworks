@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Logging;
@@ -125,5 +127,208 @@ public class S3AuditArchiverTests
 
         _mockS3.Verify(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default), Times.Never);
         _mockRepository.Verify(r => r.DeleteEventsAsync(It.IsAny<IEnumerable<string>>()), Times.Never);
+    }
+
+    private const string ExpectedCsvHeader =
+        "Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent,WorkspaceId,OldValue,NewValue";
+
+    private async Task<string> ExportAndCaptureBodyAsync(List<AuditEvent> events, string format)
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        string? body = null;
+
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((req, _) => body = req.ContentBody)
+            .ReturnsAsync(new PutObjectResponse());
+
+        await _archiver.ExportAsync(from, to, format);
+
+        Assert.NotNull(body);
+        return body!;
+    }
+
+    private static List<List<string>> ParseCsv(string csv)
+    {
+        var rows = new List<List<string>>();
+        var row = new List<string>();
+        var field = new StringBuilder();
+        var inQuotes = false;
+
+        for (var i = 0; i < csv.Length; i++)
+        {
+            var c = csv[i];
+            if (inQuotes)
+            {
+                if (c == '"' && i + 1 < csv.Length && csv[i + 1] == '"')
+                {
+                    field.Append('"');
+                    i++;
+                }
+                else if (c == '"')
+                {
+                    inQuotes = false;
+                }
+                else
+                {
+                    field.Append(c);
+                }
+            }
+            else if (c == '"')
+            {
+                inQuotes = true;
+            }
+            else if (c == ',')
+            {
+                row.Add(field.ToString());
+                field.Clear();
+            }
+            else if (c == '\n' || c == '\r')
+            {
+                if (c == '\r' && i + 1 < csv.Length && csv[i + 1] == '\n')
+                    i++;
+                row.Add(field.ToString());
+                field.Clear();
+                rows.Add(row);
+                row = new List<string>();
+            }
+            else
+            {
+                field.Append(c);
+            }
+        }
+
+        if (field.Length > 0 || row.Count > 0)
+        {
+            row.Add(field.ToString());
+            rows.Add(row);
+        }
+
+        return rows;
+    }
+
+    private static JsonElement Json(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    [Fact]
+    public async Task ExportAsync_Csv_HeaderHasExistingColumnsPlusWorkspaceIdOldValueNewValue()
+    {
+        var body = await ExportAndCaptureBodyAsync(new List<AuditEvent>(), "csv");
+
+        var header = body.Split(Environment.NewLine)[0];
+        Assert.Equal(ExpectedCsvHeader, header);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Csv_WritesWorkspaceIdAndCompactJsonOldAndNewValues()
+    {
+        var ts = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = "u1", Action = "share_link_updated", ResourceType = "share_link", ResourceId = "l1",
+                IpAddress = "10.0.0.1", UserAgent = "Agent/1.0", Timestamp = ts,
+                WorkspaceId = "default",
+                OldValue = Json("{ \"expires_at\" : \"2026-12-01T00:00:00Z\" }"),
+                NewValue = Json("{\n  \"expires_at\": null,\n  \"never\": true\n}"),
+            },
+        };
+
+        var rows = ParseCsv(await ExportAndCaptureBodyAsync(events, "csv"));
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(ExpectedCsvHeader.Split(','), rows[0]);
+        Assert.Equal(
+            new[]
+            {
+                "e1", ts.ToString("O"), "u1", "share_link_updated", "share_link", "l1", "10.0.0.1", "Agent/1.0",
+                "default", "{\"expires_at\":\"2026-12-01T00:00:00Z\"}", "{\"expires_at\":null,\"never\":true}",
+            },
+            rows[1]);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Csv_EscapesQuotesCommasAndNewlines()
+    {
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = "u1", Action = "update", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow,
+                UserAgent = "Mozilla/5.0 (X11, \"Linux\")",
+                WorkspaceId = "ws,\"quoted\"\nline2",
+                OldValue = Json("{\"title\":\"a, \\\"b\\\"\\nc\"}"),
+                NewValue = Json("\"plain, \\\"text\\\"\""),
+            },
+        };
+
+        var body = await ExportAndCaptureBodyAsync(events, "csv");
+        var rows = ParseCsv(body);
+
+        Assert.Contains("\"ws,\"\"quoted\"\"\nline2\"", body);
+        Assert.Contains("\"{\"\"title\"\":\"\"a, \\\"\"b\\\"\"\\nc\"\"}\"", body);
+        Assert.Equal(2, rows.Count);
+        Assert.Equal(11, rows[1].Count);
+        Assert.Equal("Mozilla/5.0 (X11, \"Linux\")", rows[1][7]);
+        Assert.Equal("ws,\"quoted\"\nline2", rows[1][8]);
+        Assert.Equal("a, \"b\"\nc", JsonDocument.Parse(rows[1][9]).RootElement.GetProperty("title").GetString());
+        Assert.Equal("plain, \"text\"", JsonDocument.Parse(rows[1][10]).RootElement.GetString());
+    }
+
+    [Fact]
+    public async Task ExportAsync_Csv_LeavesNewColumnsEmptyForLegacyEvents()
+    {
+        var events = new List<AuditEvent>
+        {
+            new() { Id = "e1", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = DateTime.UtcNow },
+        };
+
+        var rows = ParseCsv(await ExportAndCaptureBodyAsync(events, "csv"));
+
+        Assert.Equal(11, rows[1].Count);
+        Assert.Equal(string.Empty, rows[1][8]);
+        Assert.Equal(string.Empty, rows[1][9]);
+        Assert.Equal(string.Empty, rows[1][10]);
+    }
+
+    [Fact]
+    public async Task ExportAsync_Json_KeepsExistingFieldsAndAddsNullableNewFields()
+    {
+        var ts = new DateTime(2026, 11, 9, 12, 0, 0, DateTimeKind.Utc);
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "legacy", UserId = "u1", Action = "create", ResourceType = "doc", ResourceId = "d1", Timestamp = ts,
+                IpAddress = "10.0.0.1", UserAgent = "Agent", Details = new Dictionary<string, string> { ["k"] = "v" },
+            },
+            new()
+            {
+                Id = "share", UserId = "u2", Action = "share_link_created", ResourceType = "share_link", ResourceId = "l1", Timestamp = ts,
+                WorkspaceId = "default", NewValue = Json("{\"expires_at\":\"2026-12-09T12:00:00Z\"}"),
+            },
+        };
+
+        var body = await ExportAndCaptureBodyAsync(events, "json");
+        using var doc = JsonDocument.Parse(body);
+        var items = doc.RootElement.EnumerateArray().ToList();
+
+        Assert.Equal(2, items.Count);
+        var legacy = items[0];
+        Assert.Equal(
+            new[] { "Id", "UserId", "Action", "ResourceType", "ResourceId", "Details", "IpAddress", "UserAgent", "Timestamp", "WorkspaceId", "OldValue", "NewValue" },
+            legacy.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal("legacy", legacy.GetProperty("Id").GetString());
+        Assert.Equal("v", legacy.GetProperty("Details").GetProperty("k").GetString());
+        Assert.Equal(ts, legacy.GetProperty("Timestamp").GetDateTime());
+        Assert.Equal(JsonValueKind.Null, legacy.GetProperty("WorkspaceId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, legacy.GetProperty("OldValue").ValueKind);
+        Assert.Equal(JsonValueKind.Null, legacy.GetProperty("NewValue").ValueKind);
+
+        var share = items[1];
+        Assert.Equal("default", share.GetProperty("WorkspaceId").GetString());
+        Assert.Equal(JsonValueKind.Null, share.GetProperty("OldValue").ValueKind);
+        Assert.Equal("2026-12-09T12:00:00Z", share.GetProperty("NewValue").GetProperty("expires_at").GetString());
     }
 }

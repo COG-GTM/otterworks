@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Logging;
@@ -262,5 +263,95 @@ public class DynamoDbAuditRepositoryTests
             ["ResourceId"] = new AttributeValue { S = resourceId },
             ["Timestamp"] = new AttributeValue { S = DateTime.UtcNow.ToString("O") },
         };
+    }
+
+    [Fact]
+    public async Task SaveEventAsync_ShouldStoreWorkspaceIdAndCompactJsonValues()
+    {
+        var auditEvent = new AuditEvent
+        {
+            Id = "test-id",
+            UserId = "user-1",
+            Action = "share_link_updated",
+            ResourceType = "share_link",
+            ResourceId = "link-1",
+            Timestamp = DateTime.UtcNow,
+            WorkspaceId = "default",
+            OldValue = JsonDocument.Parse("{ \"expires_at\": \"2026-12-01T00:00:00Z\" }").RootElement,
+            NewValue = JsonDocument.Parse("{ \"never\": true }").RootElement,
+        };
+
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await _repository.SaveEventAsync(auditEvent);
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            req.Item["WorkspaceId"].S == "default" &&
+            req.Item["OldValue"].S == "{\"expires_at\":\"2026-12-01T00:00:00Z\"}" &&
+            req.Item["NewValue"].S == "{\"never\":true}"),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task SaveEventAsync_WithoutNewFields_ShouldNotIncludeThem()
+    {
+        var auditEvent = new AuditEvent
+        {
+            Id = "test-id",
+            UserId = "user-1",
+            Action = "create",
+            ResourceType = "document",
+            ResourceId = "doc-1",
+            Timestamp = DateTime.UtcNow,
+        };
+
+        _mockDynamoDb
+            .Setup(d => d.PutItemAsync(It.IsAny<PutItemRequest>(), default))
+            .ReturnsAsync(new PutItemResponse());
+
+        await _repository.SaveEventAsync(auditEvent);
+
+        _mockDynamoDb.Verify(d => d.PutItemAsync(It.Is<PutItemRequest>(req =>
+            !req.Item.ContainsKey("WorkspaceId") &&
+            !req.Item.ContainsKey("OldValue") &&
+            !req.Item.ContainsKey("NewValue")),
+            default), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetEventAsync_ShouldMapWorkspaceIdOldValueAndNewValue()
+    {
+        var item = CreateDynamoDbItem("test-id", "user-1", "share_link_updated", "share_link", "link-1");
+        item["WorkspaceId"] = new AttributeValue { S = "default" };
+        item["OldValue"] = new AttributeValue { S = "{\"expires_at\":\"2026-12-01T00:00:00Z\"}" };
+        item["NewValue"] = new AttributeValue { S = "{\"never\":true}" };
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        var result = await _repository.GetEventAsync("test-id");
+
+        Assert.NotNull(result);
+        Assert.Equal("default", result!.WorkspaceId);
+        Assert.Equal("2026-12-01T00:00:00Z", result.OldValue!.Value.GetProperty("expires_at").GetString());
+        Assert.True(result.NewValue!.Value.GetProperty("never").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetEventAsync_LegacyItem_ShouldLeaveNewFieldsNull()
+    {
+        var item = CreateDynamoDbItem("test-id", "user-1", "create", "document", "doc-1");
+        _mockDynamoDb
+            .Setup(d => d.GetItemAsync(It.IsAny<GetItemRequest>(), default))
+            .ReturnsAsync(new GetItemResponse { Item = item });
+
+        var result = await _repository.GetEventAsync("test-id");
+
+        Assert.NotNull(result);
+        Assert.Null(result!.WorkspaceId);
+        Assert.Null(result.OldValue);
+        Assert.Null(result.NewValue);
     }
 }

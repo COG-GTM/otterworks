@@ -40,6 +40,15 @@ public class DynamoDbAuditRepository : IAuditRepository
         if (auditEvent.UserAgent is not null)
             item["UserAgent"] = new AttributeValue { S = auditEvent.UserAgent };
 
+        if (!string.IsNullOrEmpty(auditEvent.WorkspaceId))
+            item["WorkspaceId"] = new AttributeValue { S = auditEvent.WorkspaceId };
+
+        if (AuditValueJson.ToCompactString(auditEvent.OldValue) is { } oldValue)
+            item["OldValue"] = new AttributeValue { S = oldValue };
+
+        if (AuditValueJson.ToCompactString(auditEvent.NewValue) is { } newValue)
+            item["NewValue"] = new AttributeValue { S = newValue };
+
         if (auditEvent.Details is not null && auditEvent.Details.Count > 0)
         {
             item["Details"] = new AttributeValue
@@ -336,6 +345,9 @@ public class DynamoDbAuditRepository : IAuditRepository
                 : DateTime.MinValue,
             IpAddress = item.TryGetValue("IpAddress", out var ip) ? ip.S : null,
             UserAgent = item.TryGetValue("UserAgent", out var ua) ? ua.S : null,
+            WorkspaceId = item.TryGetValue("WorkspaceId", out var ws) ? ws.S : null,
+            OldValue = item.TryGetValue("OldValue", out var ov) ? AuditValueJson.Parse(ov.S) : null,
+            NewValue = item.TryGetValue("NewValue", out var nv) ? AuditValueJson.Parse(nv.S) : null,
         };
 
         if (item.TryGetValue("Details", out var details) && details.M is not null)
