@@ -13,6 +13,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.document import Comment, Document, DocumentVersion, Template  # noqa: F401
+from app.models.share import FolderShareLink, WorkspaceSharePolicy  # noqa: F401
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 

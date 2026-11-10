@@ -1,5 +1,6 @@
 """Application configuration via pydantic-settings."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -21,6 +22,12 @@ class Settings(BaseSettings):
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
+
+    workspace_id: str = Field(
+        default="default",
+        validation_alias=AliasChoices("WORKSPACE_ID", "DOC_SVC_WORKSPACE_ID"),
+        max_length=64,
+    )
 
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:4200"]
 

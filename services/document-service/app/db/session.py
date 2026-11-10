@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 from app.db.base import Base
+from app.models import document, share  # noqa: F401  (register tables for create_all)
 
 engine = create_async_engine(
     settings.database_url,
