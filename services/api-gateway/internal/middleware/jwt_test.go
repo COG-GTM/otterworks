@@ -37,6 +37,7 @@ func TestJWTAuth_PublicPathsSkipValidation(t *testing.T) {
 		"/metrics",
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		"/api/v1/documents/shared",
 	}
 
 	for _, path := range publicPaths {

@@ -34,6 +34,8 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		// Share-link recipients are anonymous; document-service validates the link token.
+		"/api/v1/documents/shared",
 	}
 }
 
