@@ -108,6 +108,9 @@ func (c *Config) ServiceRoutes() map[string]string {
 		"/api/v1/audit":         c.AuditServiceURL,
 		"/api/v1/reports":       c.ReportServiceURL,
 		"/api/v1/settings":      c.AuthServiceURL,
+
+		// Exact sub-path: other /api/v1/workspace routes are not owned by document-service.
+		"/api/v1/workspace/share-policy": c.DocumentServiceURL,
 	}
 }
 
