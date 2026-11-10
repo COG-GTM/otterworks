@@ -208,6 +208,18 @@ async def test_given_link_expiry_changed_when_patch_succeeds_then_updated_event_
     assert _ts(event["newValue"]["expires_at"]) == _ts(resp.json()["expires_at"])
 
 
+async def test_given_patch_keeps_same_expiry_when_repeated_then_no_updated_event(
+    api_client: AsyncClient, published, folder_id
+):
+    """Given a PATCH that does not change the expiry, Then no updated event is sent."""
+    created = await _create(api_client, folder_id, expires_in_days=10)
+    first = await api_client.patch(f"{BASE}/{created['id']}", json={"expires_in_days": 20})
+    second = await api_client.patch(f"{BASE}/{created['id']}", json={"expires_in_days": 20})
+    assert first.status_code == second.status_code == 200
+    assert second.json()["expires_at"] == first.json()["expires_at"]
+    assert [t for t, _ in published].count("folder_share_link.updated") == 1
+
+
 async def test_given_link_revoked_when_delete_succeeds_then_revoked_event_sent(
     api_client: AsyncClient, published, owner_id, folder_id, db_session: AsyncSession
 ):
@@ -377,6 +389,16 @@ async def test_emit_never_raises_and_reports_failure(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(event_publisher_module.event_publisher, "publish", broken)
     assert await emit_share_link_event(ShareLinkEventType.CREATED, _link(), uuid.uuid4()) is False
+
+
+async def test_given_sns_disabled_when_publishing_then_not_reported_as_delivered(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Given SNS publishing is disabled, Then publish reports not delivered, so the expiry
+    sweep leaves expiry_audited_at null and the event is sent once SNS is enabled."""
+    monkeypatch.setattr(event_publisher_module.settings, "sns_enabled", False)
+    publisher = event_publisher_module.EventPublisher()
+    assert await publisher.publish("folder_share_link.expired", {}) is False
 
 
 def test_built_events_match_schema_for_every_link_event_type():

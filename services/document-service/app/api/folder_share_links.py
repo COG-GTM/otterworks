@@ -268,6 +268,9 @@ async def update_folder_share_link_expiry(
             detail="expires_in_days would set an expiry in the past",
         )
 
+    if new_expires_at == as_utc(link.expires_at):
+        return _to_response(link)
+
     old_value = _expiry_value(link)
     link = await service.set_expiry(link, new_expires_at)
     await emit_share_link_event(
