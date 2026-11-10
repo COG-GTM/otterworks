@@ -62,7 +62,8 @@ apiClient.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
       const url = error.config?.url || "";
-      if (!url.includes("/auth/")) {
+      // Public share-link pages must never bounce anonymous recipients to /login.
+      if (!url.includes("/auth/") && !url.includes("/shared-folders/")) {
         if (isVerifyingToken) {
           return Promise.reject(error);
         }
