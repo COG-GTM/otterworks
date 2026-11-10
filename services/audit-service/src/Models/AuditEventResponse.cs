@@ -12,6 +12,9 @@ public sealed class AuditEventResponse
     public Dictionary<string, string>? Details { get; set; }
     public string? IpAddress { get; set; }
     public string? UserAgent { get; set; }
+    public string? WorkspaceId { get; set; }
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
     public DateTime Timestamp { get; set; }
 
     public static AuditEventResponse FromEntity(AuditEvent entity) => new()
@@ -24,6 +27,9 @@ public sealed class AuditEventResponse
         Details = entity.Details,
         IpAddress = entity.IpAddress,
         UserAgent = entity.UserAgent,
+        WorkspaceId = entity.WorkspaceId,
+        OldValue = entity.OldValue,
+        NewValue = entity.NewValue,
         Timestamp = entity.Timestamp,
     };
 }
