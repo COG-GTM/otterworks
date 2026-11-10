@@ -134,7 +134,7 @@ export function FolderShareDialog({ folderId, folderName, onClose }: FolderShare
           role="dialog"
           aria-modal="true"
           aria-labelledby="folder-share-dialog-title"
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
