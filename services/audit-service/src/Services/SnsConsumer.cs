@@ -149,28 +149,31 @@ public class SnsConsumer : BackgroundService
 
     internal static AuditEvent? MapAuditEventMessage(string eventBody, string messageId)
     {
-        var auditEvent = JsonSerializer.Deserialize<AuditEventMessage>(eventBody, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-        });
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var outer = JsonSerializer.Deserialize<AuditEventMessage>(eventBody, options);
 
-        if (auditEvent is null)
+        if (outer is null)
             return null;
+
+        // Python services (EventPublisher) wrap fields as {"event_type", "timestamp", "payload": {...}}.
+        var inner = outer.Payload is { ValueKind: JsonValueKind.Object } payload
+            ? payload.Deserialize<AuditEventMessage>(options)
+            : null;
 
         return new AuditEvent
         {
             Id = messageId,
-            UserId = auditEvent.UserId ?? "system",
-            Action = auditEvent.Action ?? "unknown",
-            ResourceType = auditEvent.ResourceType ?? "unknown",
-            ResourceId = auditEvent.ResourceId ?? string.Empty,
-            Details = auditEvent.Details,
-            IpAddress = auditEvent.IpAddress,
-            UserAgent = auditEvent.UserAgent,
-            WorkspaceId = auditEvent.WorkspaceId ?? auditEvent.WorkspaceIdSnake,
-            OldValue = ToJsonString(auditEvent.OldValue ?? auditEvent.OldValueSnake),
-            NewValue = ToJsonString(auditEvent.NewValue ?? auditEvent.NewValueSnake),
-            Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
+            UserId = inner?.ResolvedUserId ?? outer.ResolvedUserId ?? "system",
+            Action = inner?.ResolvedAction ?? outer.ResolvedAction ?? "unknown",
+            ResourceType = inner?.ResolvedResourceType ?? outer.ResolvedResourceType ?? "unknown",
+            ResourceId = inner?.ResolvedResourceId ?? outer.ResolvedResourceId ?? string.Empty,
+            Details = inner?.Details ?? outer.Details,
+            IpAddress = inner?.ResolvedIpAddress ?? outer.ResolvedIpAddress,
+            UserAgent = inner?.ResolvedUserAgent ?? outer.ResolvedUserAgent,
+            WorkspaceId = inner?.ResolvedWorkspaceId ?? outer.ResolvedWorkspaceId,
+            OldValue = ToJsonString(inner?.ResolvedOldValue) ?? ToJsonString(outer.ResolvedOldValue),
+            NewValue = ToJsonString(inner?.ResolvedNewValue) ?? ToJsonString(outer.ResolvedNewValue),
+            Timestamp = inner?.Timestamp ?? outer.Timestamp ?? DateTime.UtcNow,
         };
     }
 
@@ -214,6 +217,28 @@ public class SnsConsumer : BackgroundService
         public JsonElement? OldValue { get; set; }
         public JsonElement? NewValue { get; set; }
         public DateTime? Timestamp { get; set; }
+        public JsonElement? Payload { get; set; }
+
+        [JsonPropertyName("user_id")]
+        public string? UserIdSnake { get; set; }
+
+        [JsonPropertyName("actor_id")]
+        public string? ActorIdSnake { get; set; }
+
+        [JsonPropertyName("event_type")]
+        public string? EventTypeSnake { get; set; }
+
+        [JsonPropertyName("resource_type")]
+        public string? ResourceTypeSnake { get; set; }
+
+        [JsonPropertyName("resource_id")]
+        public string? ResourceIdSnake { get; set; }
+
+        [JsonPropertyName("ip_address")]
+        public string? IpAddressSnake { get; set; }
+
+        [JsonPropertyName("user_agent")]
+        public string? UserAgentSnake { get; set; }
 
         [JsonPropertyName("workspace_id")]
         public string? WorkspaceIdSnake { get; set; }
@@ -223,6 +248,19 @@ public class SnsConsumer : BackgroundService
 
         [JsonPropertyName("new_value")]
         public JsonElement? NewValueSnake { get; set; }
+
+        public string? ResolvedUserId => UserId ?? UserIdSnake ?? ActorIdSnake;
+        public string? ResolvedAction => Action ?? EventTypeSnake;
+        public string? ResolvedResourceType => ResourceType ?? ResourceTypeSnake;
+        public string? ResolvedResourceId => ResourceId ?? ResourceIdSnake;
+        public string? ResolvedIpAddress => IpAddress ?? IpAddressSnake;
+        public string? ResolvedUserAgent => UserAgent ?? UserAgentSnake;
+        public string? ResolvedWorkspaceId => WorkspaceId ?? WorkspaceIdSnake;
+        public JsonElement? ResolvedOldValue => IsPresent(OldValue) ? OldValue : OldValueSnake;
+        public JsonElement? ResolvedNewValue => IsPresent(NewValue) ? NewValue : NewValueSnake;
+
+        private static bool IsPresent(JsonElement? value) =>
+            value is { ValueKind: not JsonValueKind.Undefined and not JsonValueKind.Null };
     }
 
     private sealed class FileEventMessage

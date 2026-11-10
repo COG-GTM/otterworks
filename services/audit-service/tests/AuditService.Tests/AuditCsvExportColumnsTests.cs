@@ -287,4 +287,29 @@ public class AuditCsvExportColumnsTests
         Assert.Null(entity.OldValue);
         Assert.Null(entity.NewValue);
     }
+
+    // Given a share-link audit event published by document-service's EventPublisher
+    // ({"event_type", "timestamp", "payload": {...}}), When consumed,
+    // Then the payload's workspace and old/new values are mapped so the CSV can include them.
+    [Fact]
+    public void SnsConsumer_MapsDocumentServiceEnvelopePayload()
+    {
+        var body = """
+            {"event_type":"share_link_expiry_changed","timestamp":"2026-11-03T12:00:00+00:00",
+             "payload":{"actor_id":"user-1","resource_type":"folder","resource_id":"folder-1",
+                        "workspace_id":"ws-42","old_value":{"expires_in_days":30},"new_value":{"expires_in_days":7}}}
+            """;
+
+        var entity = SnsConsumer.MapAuditEventMessage(body, "msg-4");
+
+        Assert.NotNull(entity);
+        Assert.Equal("share_link_expiry_changed", entity!.Action);
+        Assert.Equal("user-1", entity.UserId);
+        Assert.Equal("folder", entity.ResourceType);
+        Assert.Equal("folder-1", entity.ResourceId);
+        Assert.Equal("ws-42", entity.WorkspaceId);
+        Assert.Equal("{\"expires_in_days\":30}", entity.OldValue);
+        Assert.Equal("{\"expires_in_days\":7}", entity.NewValue);
+        Assert.Equal(new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc), entity.Timestamp.ToUniversalTime());
+    }
 }
