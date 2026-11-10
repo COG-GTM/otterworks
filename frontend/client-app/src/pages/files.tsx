@@ -61,6 +61,7 @@ function FileBrowserContent() {
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [shareFileId, setShareFileId] = useState<string | null>(null);
+  const [shareFolderId, setShareFolderId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
 
@@ -466,6 +467,7 @@ function FileBrowserContent() {
                     view={viewMode}
                     onDelete={(id) => deleteFolderMutation.mutate(id)}
                     onRename={(id, name) => renameFolderMutation.mutate({ id, name })}
+                    onShare={(id) => setShareFolderId(id)}
                     selected={selectedIds.has(folder.id)}
                     onSelect={toggleSelect}
                     selectionActive={selectionActive}
@@ -505,6 +507,19 @@ function FileBrowserContent() {
           )}
         </div>
       )}
+      {shareFolderId && (() => {
+        const shareFolder = folders.find((f) => f.id === shareFolderId);
+        if (!shareFolder) return null;
+        return (
+          <ShareDialog
+            resourceType="folder"
+            fileId={shareFolder.id}
+            fileName={shareFolder.name}
+            ownerId={shareFolder.ownerId}
+            onClose={() => setShareFolderId(null)}
+          />
+        );
+      })()}
       {shareFileId && (() => {
         const shareFile = files.find((f) => f.id === shareFileId);
         if (!shareFile) return null;

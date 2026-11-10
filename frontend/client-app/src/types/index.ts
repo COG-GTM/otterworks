@@ -169,3 +169,38 @@ export interface SortConfig {
   field: SortField;
   direction: SortDirection;
 }
+
+// ── Expiring folder share links (OTW-41) ────────────────────────
+export interface ShareLink {
+  id: string;
+  token: string;
+  url: string;
+  resourceType: "folder";
+  resourceId: string;
+  expiresAt: string;
+  createdAt: string;
+  expiredAt?: string | null;
+}
+
+export interface WorkspaceSharePolicy {
+  workspaceId: string;
+  defaultDays: number;
+  maxDays: number;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+}
+
+export interface SharedLinkFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  updatedAt: string;
+}
+
+export interface ResolvedShareLink {
+  resourceType: "folder";
+  folder: { id: string; name: string };
+  files: SharedLinkFile[];
+  expiresAt: string;
+}

@@ -5,16 +5,18 @@ import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
 import { filesApi } from "@/lib/api";
 import type { SharedUser } from "@/types";
+import { FolderShareLinkPanel } from "./folder-share-link-panel";
 
 interface ShareDialogProps {
   fileId: string;
   fileName: string;
+  resourceType?: "file" | "folder";
   ownerId?: string;
   ownerName?: string;
   ownerEmail?: string;
-  sharedWith: SharedUser[];
+  sharedWith?: SharedUser[];
   resolvedUsers?: Record<string, { name: string; email: string }>;
-  onShare: (email: string, permission: "view" | "edit") => Promise<void>;
+  onShare?: (email: string, permission: "view" | "edit") => Promise<void>;
   onClose: () => void;
   onPermissionChange?: (userId: string, permission: "view" | "edit") => Promise<void>;
   onRemoveAccess?: (userId: string) => Promise<void>;
@@ -25,10 +27,11 @@ type LinkAccess = "restricted" | "anyone";
 export function ShareDialog({
   fileId,
   fileName,
+  resourceType = "file",
   ownerId,
   ownerName,
   ownerEmail,
-  sharedWith,
+  sharedWith = [],
   resolvedUsers = {},
   onShare,
   onClose,
@@ -39,14 +42,16 @@ export function ShareDialog({
   const [permission, setPermission] = useState<"view" | "edit">("view");
   const [isSharing, setIsSharing] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [activeTab, setActiveTab] = useState<"people" | "link">("people");
+  const [activeTab, setActiveTab] = useState<"people" | "link">(
+    resourceType === "folder" ? "link" : "people"
+  );
   const [linkAccess, setLinkAccess] = useState<LinkAccess>("restricted");
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
 
   const handleShare = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || !onShare) return;
     setIsSharing(true);
     setShareError(null);
     try {
@@ -141,18 +146,20 @@ export function ShareDialog({
 
           {/* Tabs */}
           <div className="flex border-b border-gray-200">
-            <button
-              onClick={() => setActiveTab("people")}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition",
-                activeTab === "people"
-                  ? "text-otter-600 border-b-2 border-otter-600"
-                  : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              <UserPlus size={16} />
-              People
-            </button>
+            {resourceType === "file" && (
+              <button
+                onClick={() => setActiveTab("people")}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition",
+                  activeTab === "people"
+                    ? "text-otter-600 border-b-2 border-otter-600"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                <UserPlus size={16} />
+                People
+              </button>
+            )}
             <button
               onClick={() => setActiveTab("link")}
               className={cn(
@@ -169,7 +176,9 @@ export function ShareDialog({
 
           {/* Content */}
           <div className="px-6 py-5">
-            {activeTab === "people" ? (
+            {resourceType === "folder" ? (
+              <FolderShareLinkPanel folderId={fileId} />
+            ) : activeTab === "people" ? (
               <div className="space-y-4">
                 {shareError && (
                   <div
