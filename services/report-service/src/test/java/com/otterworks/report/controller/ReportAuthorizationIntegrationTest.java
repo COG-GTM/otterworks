@@ -123,7 +123,8 @@ public class ReportAuthorizationIntegrationTest {
     @Test
     public void sensitiveCategoriesRequireAnAdministrator() throws Exception {
         for (ReportCategory category : new ReportCategory[]{
-                ReportCategory.AUDIT_LOG, ReportCategory.COMPLIANCE, ReportCategory.USER_ACTIVITY}) {
+                ReportCategory.AUDIT_LOG, ReportCategory.COMPLIANCE, ReportCategory.USER_ACTIVITY,
+                ReportCategory.STORAGE_SUMMARY}) {
             String body = objectMapper.writeValueAsString(request(category, mallory));
 
             mockMvc.perform(post("/api/v1/reports")

@@ -19,8 +19,8 @@ public enum ReportCategory {
     /** Compliance and regulatory */
     COMPLIANCE;
 
-    /** Categories built from platform-wide audit or user data, restricted to administrators. */
+    /** Categories built from platform-wide audit or user activity data, restricted to administrators. */
     public boolean requiresAdmin() {
-        return this == AUDIT_LOG || this == COMPLIANCE || this == USER_ACTIVITY;
+        return this == AUDIT_LOG || this == COMPLIANCE || this == USER_ACTIVITY || this == STORAGE_SUMMARY;
     }
 }
