@@ -76,7 +76,7 @@ public class S3AuditArchiverTests
         Assert.Contains(".csv", result.DownloadUrl);
 
         _mockS3.Verify(s => s.PutObjectAsync(It.Is<PutObjectRequest>(req =>
-            req.ContentType == "text/csv"),
+            req.ContentType == AuditCsvWriter.ContentType),
             default), Times.Once);
     }
 
