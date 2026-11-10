@@ -23,7 +23,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
-import { filesApi, authApi } from "@/lib/api";
+import { filesApi, authApi, getOwnerIdFromJwt } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
 
@@ -118,7 +118,8 @@ function FileDetailContent() {
     );
   }
 
-  const isOwner = !!user?.id && file.ownerId === user.id;
+  const currentUserId = user?.id || getOwnerIdFromJwt();
+  const isOwner = !!currentUserId && file.ownerId === currentUserId;
   const isImage = file.mimeType.startsWith("image/");
   const isVideo = file.mimeType.startsWith("video/");
   const isPdf = file.mimeType === "application/pdf";

@@ -127,7 +127,7 @@ export const authApi = {
 
 // ── Helpers ───────────────────────────────────────────────────
 // Extract the user ID from the JWT stored in localStorage.
-function getOwnerIdFromJwt(): string | null {
+export function getOwnerIdFromJwt(): string | null {
   if (typeof window === "undefined") return null;
   const token = localStorage.getItem("otter_access_token");
   if (!token) return null;
