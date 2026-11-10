@@ -151,6 +151,11 @@ public class ReportAuthorizationIntegrationTest {
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/reports/" + id + "/download").header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(alice)))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(alice)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reports[*].id", not(hasItem((int) id))));
+        mockMvc.perform(get("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(alice, "ADMIN")))
+                .andExpect(jsonPath("$.reports[*].id", hasItem((int) id)));
         mockMvc.perform(get("/api/v1/reports/" + id).header(HttpHeaders.AUTHORIZATION, TestTokens.bearer(alice, "OWNER")))
                 .andExpect(status().isOk());
     }

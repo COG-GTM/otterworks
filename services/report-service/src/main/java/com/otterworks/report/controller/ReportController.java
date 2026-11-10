@@ -132,7 +132,9 @@ public class ReportController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        List<Report> reports = reportService.getReportsByUser(caller.getUserId(), status);
+        List<Report> reports = reportService.getReportsByUser(caller.getUserId(), status).stream()
+                .filter(report -> canRead(caller, report))
+                .collect(Collectors.toList());
 
         List<ReportResponse> responses = reports.stream()
                 .map(ReportResponse::fromEntity)
