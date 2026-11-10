@@ -72,7 +72,13 @@ public static class AuditController
         IAuditService auditService)
     {
         var result = await auditService.QueryEventsAsync(query.ToQuery());
-        return Results.Ok(result);
+        return Results.Ok(new
+        {
+            events = result.Events.Select(AuditEventResponse.FromEntity).ToList(),
+            total = result.Total,
+            page = result.Page,
+            pageSize = result.PageSize,
+        });
     }
 
     private static async Task<IResult> GetEvent(

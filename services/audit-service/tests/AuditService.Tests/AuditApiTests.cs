@@ -352,6 +352,27 @@ public class AuditApiTests
     }
 
     [Fact]
+    public async Task Query_ReturnsV2ResponseShapeWithSourceIp()
+    {
+        using var factory = new AuditApiFactory();
+        await factory.Repository.SaveEventAsync(new AuditEvent
+        {
+            Id = "e-1", UserId = "user-1", Action = "auth.login.success", ResourceType = "user",
+            Outcome = "success", ServiceName = "auth-service", IpAddress = "203.0.113.9", Timestamp = DateTime.UtcNow,
+        });
+
+        var response = await factory.CreateClient().SendAsync(Admin(HttpMethod.Get, "/api/v1/audit/events"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, body.GetProperty("total").GetInt32());
+        var evt = body.GetProperty("events")[0];
+        Assert.Equal("203.0.113.9", evt.GetProperty("sourceIp").GetString());
+        Assert.Equal("203.0.113.9", evt.GetProperty("ipAddress").GetString());
+        Assert.Equal("auth-service", evt.GetProperty("serviceName").GetString());
+    }
+
+    [Fact]
     public async Task Query_SupportsSnakeCaseFilters()
     {
         using var factory = new AuditApiFactory();
