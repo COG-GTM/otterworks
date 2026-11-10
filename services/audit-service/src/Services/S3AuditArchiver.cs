@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Amazon.S3;
 using Amazon.S3.Model;
@@ -27,9 +26,16 @@ public class S3AuditArchiver : IAuditArchiver
         _logger = logger;
     }
 
-    public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
+    public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format, IReadOnlyCollection<string>? resourceTypes)
     {
         var events = await _repository.GetEventsByDateRangeAsync(from, to);
+
+        if (resourceTypes is { Count: > 0 })
+        {
+            events = events
+                .Where(e => resourceTypes.Contains(e.ResourceType, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+        }
 
         string content;
         string contentType;
@@ -37,7 +43,7 @@ public class S3AuditArchiver : IAuditArchiver
 
         if (string.Equals(format, "csv", StringComparison.OrdinalIgnoreCase))
         {
-            content = ConvertToCsv(events);
+            content = AuditCsvWriter.Write(events);
             contentType = "text/csv";
             extension = "csv";
         }
@@ -70,6 +76,7 @@ public class S3AuditArchiver : IAuditArchiver
             DownloadUrl = downloadUrl,
             From = from,
             To = to,
+            ResourceTypes = resourceTypes is { Count: > 0 } ? resourceTypes.ToList() : null,
         };
     }
 
@@ -126,20 +133,4 @@ public class S3AuditArchiver : IAuditArchiver
             ArchivedBefore = olderThan,
         };
     }
-
-    private static string ConvertToCsv(List<AuditEvent> events)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent");
-
-        foreach (var e in events)
-        {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
-        }
-
-        return sb.ToString();
-    }
-
-    private static string Esc(string? value) =>
-        value?.Replace("\"", "\"\"") ?? string.Empty;
 }

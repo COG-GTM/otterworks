@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -117,6 +118,8 @@ public static class AuditController
         string? format,
         DateTime? from,
         DateTime? to,
+        string? resourceType,
+        [FromQuery(Name = "resource_type")] string? resourceTypeSnake,
         IAuditService auditService)
     {
         var exportFormat = format ?? "json";
@@ -129,8 +132,25 @@ public static class AuditController
             return Results.BadRequest(new { error = "Format must be 'csv' or 'json'." });
         }
 
-        var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat);
+        var resourceTypes = ParseResourceTypes(resourceType, resourceTypeSnake);
+        var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat, resourceTypes);
         return Results.Ok(result);
+    }
+
+    public static IReadOnlyCollection<string>? ParseResourceTypes(string? value, string? alias = null)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            value = alias;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var types = value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return types.Count > 0 ? types : null;
     }
 
     private static async Task<IResult> ArchiveOldEvents(
