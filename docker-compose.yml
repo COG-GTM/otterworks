@@ -113,6 +113,11 @@ services:
       DYNAMODB_TABLE: otterworks-file-metadata
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       SEARCH_SERVICE_URL: http://search-service:8087
+      # Shares, downloads, deletes and trash/restore are audited to
+      # audit-service; delivery is fire-and-forget, so file-service does not
+      # depend on audit-service being up.
+      AUDIT_SERVICE_URL: http://audit-service:8090
+      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-audit-dev-token}
       # Failed uploads fire a Grafana-style alert at admin-service's ingest
       # endpoint so each failure opens its own incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089
