@@ -23,7 +23,11 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
-from app.services.document_query_repository import DocumentQueryRepository
+from app.services.document_query_repository import (
+    DocumentQueryRepository,
+    InvalidSortError,
+    resolve_order_by,
+)
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
 from app.services.share_link import ShareLinkService
@@ -231,6 +235,10 @@ async def _do_filter_documents(
     db: AsyncSession,
 ) -> DocumentListResponse:
     await _maybe_inject_latency()
+    try:
+        resolve_order_by(sort, direction)
+    except InvalidSortError as exc:
+        raise HTTPException(status_code=400, detail="Invalid sort or direction") from exc
     repo = DocumentQueryRepository(db)
     filters = {
         "owner_id": str(owner_id) if owner_id else None,
@@ -248,7 +256,8 @@ async def _do_filter_documents(
             offset=(page - 1) * size,
         )
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid filter: {exc}") from exc
+        logger.warning("document_filter_query_failed", error=str(exc))
+        raise HTTPException(status_code=400, detail="Invalid filter") from exc
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(row) for row in rows],
         total=total,
