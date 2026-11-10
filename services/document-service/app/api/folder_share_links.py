@@ -83,7 +83,7 @@ async def _owned_folder(
 ) -> FolderInfo:
     """Return the folder if ``user_id`` owns it; 403 otherwise (including unknown folders)."""
     try:
-        folder = await files.get_folder(folder_id)
+        folder = await files.get_folder(folder_id, user_id)
     except FileServiceUnavailableError as exc:
         raise HTTPException(status_code=502, detail="file-service unavailable") from exc
     if folder is None or folder.owner_id != user_id:
@@ -210,7 +210,7 @@ async def open_shared_folder(
         )
 
     try:
-        folder = await files.get_folder(link.folder_id)
+        folder = await files.get_folder(link.folder_id, link.created_by)
         if folder is None:
             raise HTTPException(status_code=404, detail="link_not_found")
         folder_files = await files.list_folder_files(folder)

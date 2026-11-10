@@ -46,24 +46,27 @@ def _files_client(handler) -> FileServiceClient:
 async def test_us1_get_folder_reads_owner_from_file_service():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == f"/api/v1/folders/{FOLDER_ID}"
+        assert request.headers["X-User-ID"] == str(OWNER_ID)
         return httpx.Response(200, json={
             "id": str(FOLDER_ID), "name": "Specs", "parent_id": None,
             "owner_id": str(OWNER_ID), "created_at": "x", "updated_at": "x",
         })
 
-    folder = await _files_client(handler).get_folder(FOLDER_ID)
+    folder = await _files_client(handler).get_folder(FOLDER_ID, OWNER_ID)
     assert folder == FolderInfo(id=FOLDER_ID, name="Specs", owner_id=OWNER_ID)
 
 
-async def test_us1_get_folder_unknown_returns_none():
-    folder = await _files_client(lambda r: httpx.Response(404, json={})).get_folder(FOLDER_ID)
-    assert folder is None
+# US1 / unknown folder, or file-service refusing the caller, both mean "not owned".
+@pytest.mark.parametrize("code", [403, 404])
+async def test_us1_get_folder_unknown_or_refused_returns_none(code):
+    client = _files_client(lambda r: httpx.Response(code, json={}))
+    assert await client.get_folder(FOLDER_ID, uuid.uuid4()) is None
 
 
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200, json={"x": 1})])
 async def test_us1_get_folder_errors_raise_unavailable(response):
     with pytest.raises(FileServiceUnavailableError):
-        await _files_client(lambda r: response).get_folder(FOLDER_ID)
+        await _files_client(lambda r: response).get_folder(FOLDER_ID, OWNER_ID)
 
 
 async def test_us1_get_folder_unreachable_raises_unavailable():
@@ -71,15 +74,17 @@ async def test_us1_get_folder_unreachable_raises_unavailable():
         raise httpx.ConnectError("refused", request=request)
 
     with pytest.raises(FileServiceUnavailableError):
-        await _files_client(handler).get_folder(FOLDER_ID)
+        await _files_client(handler).get_folder(FOLDER_ID, OWNER_ID)
 
 
 # US1 / read-only view: every page of the folder's files is listed via GET /api/v1/files
 async def test_us1_list_folder_files_follows_pages():
     all_files = [_file(i) for i in range(150)]
     seen: list[dict] = []
+    requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
         params = dict(request.url.params)
         seen.append(params)
         page, size = int(params["page"]), int(params["page_size"])
@@ -93,6 +98,7 @@ async def test_us1_list_folder_files_follows_pages():
     assert len(files) == 150
     assert [p["page"] for p in seen] == ["1", "2"]
     assert all(p["folder_id"] == str(FOLDER_ID) and p["owner_id"] == str(OWNER_ID) for p in seen)
+    assert all(r.headers["X-User-ID"] == str(OWNER_ID) for r in requests)
     assert files[3].size == 3
     assert files[3].mime_type == "text/plain"
     assert files[3].updated_at.isoformat() == "2026-11-02T10:30:00.123456+00:00"

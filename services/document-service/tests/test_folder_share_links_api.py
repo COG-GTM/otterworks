@@ -42,11 +42,15 @@ class FakeFileService:
         self.folders: dict[uuid.UUID, FolderInfo] = {}
         self.files: dict[uuid.UUID, list[FolderFile]] = {}
         self.unavailable = False
+        self.acting_users: list[uuid.UUID] = []
 
     def add_folder(self, folder_id: uuid.UUID, owner_id: uuid.UUID, name: str = "Q4 Reports"):
         self.folders[folder_id] = FolderInfo(id=folder_id, name=name, owner_id=owner_id)
 
-    async def get_folder(self, folder_id: uuid.UUID) -> FolderInfo | None:
+    async def get_folder(
+        self, folder_id: uuid.UUID, acting_user_id: uuid.UUID
+    ) -> FolderInfo | None:
+        self.acting_users.append(acting_user_id)
         if self.unavailable:
             raise FileServiceUnavailableError("down")
         return self.folders.get(folder_id)
@@ -220,7 +224,7 @@ async def test_us1_only_keyed_hash_stored_and_token_returned_once(
 # US1 / Given a valid, unexpired token, When anyone opens the link,
 # Then they get a read-only view of F's contents.
 async def test_us1_valid_token_gives_read_only_view_of_folder(
-    api_client: AsyncClient, file_service: FakeFileService, folder_id
+    api_client: AsyncClient, file_service: FakeFileService, owner_id, folder_id
 ):
     file_id = uuid.uuid4()
     updated = datetime(2026, 11, 1, 12, 0, tzinfo=UTC)
@@ -230,9 +234,12 @@ async def test_us1_valid_token_gives_read_only_view_of_folder(
     ]
     created = await _create(api_client, folder_id)
 
+    file_service.acting_users.clear()
     resp = await api_client.get(f"{BASE}/shared", params={"token": created["token"]}, auth=None)
 
     assert resp.status_code == 200, resp.text
+    # Anonymous viewer: file-service is read on behalf of the link's creator (the owner).
+    assert file_service.acting_users == [owner_id]
     body = resp.json()
     assert body["folder"] == {"id": str(folder_id), "name": "Q4 Reports"}
     assert body["files"] == [{

@@ -58,16 +58,19 @@ class FileServiceClient:
             transport=self._transport,
         )
 
-    async def get_folder(self, folder_id: UUID) -> FolderInfo | None:
-        """Return the folder, or ``None`` if file-service does not know it."""
+    async def get_folder(self, folder_id: UUID, acting_user_id: UUID) -> FolderInfo | None:
+        """Return the folder as seen by ``acting_user_id``, or ``None`` if it is unknown
+        or file-service refuses that user."""
         try:
             async with self._client() as client:
-                resp = await client.get(f"/api/v1/folders/{folder_id}")
+                resp = await client.get(
+                    f"/api/v1/folders/{folder_id}", headers=_identity(acting_user_id)
+                )
         except httpx.HTTPError as exc:
             logger.warning("file_service_unreachable", error=str(exc))
             raise FileServiceUnavailableError("file-service unreachable") from exc
 
-        if resp.status_code == 404:
+        if resp.status_code in (403, 404):
             return None
         if resp.status_code != 200:
             logger.warning("file_service_folder_error", status=resp.status_code)
@@ -97,6 +100,7 @@ class FileServiceClient:
                             "page": page,
                             "page_size": FILES_PAGE_SIZE,
                         },
+                        headers=_identity(folder.owner_id),
                     )
                     if resp.status_code != 200:
                         logger.warning("file_service_files_error", status=resp.status_code)
@@ -114,6 +118,11 @@ class FileServiceClient:
             raise FileServiceUnavailableError("file-service unreachable") from exc
         except (ValueError, KeyError, TypeError) as exc:
             raise FileServiceUnavailableError("unexpected files payload") from exc
+
+
+def _identity(user_id: UUID) -> dict[str, str]:
+    # Same header the api-gateway sets from a validated JWT.
+    return {"X-User-ID": str(user_id)}
 
 
 def _parse_file(item: dict) -> FolderFile:
