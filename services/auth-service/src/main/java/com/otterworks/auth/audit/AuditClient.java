@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
@@ -105,11 +107,30 @@ public class AuditClient {
     }
     try {
       AuditEvent enriched = enrich(event, AuditRequestContext.current());
-      executor.execute(() -> deliver(enriched));
-    } catch (RejectedExecutionException e) {
-      recordFailure("queue_full", event, e);
+      if (AuditEvent.OUTCOME_SUCCESS.equals(enriched.getOutcome())
+          && TransactionSynchronizationManager.isSynchronizationActive()) {
+        // Success events describe a change, so only send them once it is committed.
+        // Failure/denied events go out immediately because their transaction rolls back.
+        TransactionSynchronizationManager.registerSynchronization(
+            new TransactionSynchronization() {
+              @Override
+              public void afterCommit() {
+                submit(enriched);
+              }
+            });
+      } else {
+        submit(enriched);
+      }
     } catch (RuntimeException e) {
       recordFailure("emit_error", event, e);
+    }
+  }
+
+  private void submit(AuditEvent event) {
+    try {
+      executor.execute(() -> deliver(event));
+    } catch (RejectedExecutionException e) {
+      recordFailure("queue_full", event, e);
     }
   }
 

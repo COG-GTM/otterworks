@@ -16,6 +16,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionSynchronizationUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -35,6 +38,9 @@ class AuditClientTest {
       client.shutdown();
     }
     RequestContextHolder.resetRequestAttributes();
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
   }
 
   private AuditClient newClient(String url, int timeoutMs) {
@@ -162,5 +168,50 @@ class AuditClientTest {
 
     request.addHeader("X-Forwarded-For", " 203.0.113.9 , 198.51.100.2");
     assertThat(AuditRequestContext.clientIp(request)).isEqualTo("203.0.113.9");
+  }
+
+  @Test
+  void emit_successInsideTransaction_isSentOnlyAfterCommit() throws Exception {
+    audit.stubFor(post(AuditClient.EVENTS_PATH).willReturn(aResponse().withStatus(201)));
+    AuditClient c = newClient(audit.baseUrl(), 1000);
+    TransactionSynchronizationManager.initSynchronization();
+
+    c.emit(loginEvent());
+    Thread.sleep(300);
+    audit.verify(0, postRequestedFor(urlEqualTo(AuditClient.EVENTS_PATH)));
+
+    TransactionSynchronizationUtils.triggerAfterCommit();
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> audit.verify(1, postRequestedFor(urlEqualTo(AuditClient.EVENTS_PATH))));
+  }
+
+  @Test
+  void emit_successInRolledBackTransaction_isNotSent() throws Exception {
+    audit.stubFor(post(AuditClient.EVENTS_PATH).willReturn(aResponse().withStatus(201)));
+    AuditClient c = newClient(audit.baseUrl(), 1000);
+    TransactionSynchronizationManager.initSynchronization();
+
+    c.emit(loginEvent());
+    TransactionSynchronizationUtils.triggerAfterCompletion(
+        TransactionSynchronization.STATUS_ROLLED_BACK);
+    Thread.sleep(300);
+
+    audit.verify(0, postRequestedFor(urlEqualTo(AuditClient.EVENTS_PATH)));
+  }
+
+  @Test
+  void emit_failureInsideTransaction_isSentImmediately() {
+    audit.stubFor(post(AuditClient.EVENTS_PATH).willReturn(aResponse().withStatus(201)));
+    AuditClient c = newClient(audit.baseUrl(), 1000);
+    TransactionSynchronizationManager.initSynchronization();
+
+    c.emit(loginEvent().toBuilder().action("auth.login.failure").outcome("failure").build());
+
+    await()
+        .atMost(Duration.ofSeconds(5))
+        .untilAsserted(
+            () -> audit.verify(1, postRequestedFor(urlEqualTo(AuditClient.EVENTS_PATH))));
   }
 }
