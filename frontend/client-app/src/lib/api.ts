@@ -450,7 +450,9 @@ export const folderShareLinksApi = {
 };
 
 export function folderShareUrl(token: string): string {
-  return `${window.location.origin}/shared/folders/${encodeURIComponent(token)}`;
+  // Native (Capacitor/Electron) origins are not reachable by recipients.
+  const base = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
+  return `${base.replace(/\/+$/, "")}/shared/folders/${encodeURIComponent(token)}`;
 }
 
 // ── Search ────────────────────────────────────────────────────
