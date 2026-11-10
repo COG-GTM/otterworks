@@ -7,10 +7,10 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.sql.DatabaseMetaData;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Inlines {@code reports.error_message} values written by the Boot 2 / Hibernate 5 build.
@@ -18,8 +18,10 @@ import java.util.List;
  * That build mapped the column as {@code @Lob}, so on PostgreSQL the {@code text} column
  * holds a large-object OID and the message lives in {@code pg_largeobject}. The entity now
  * reads the column as plain text, so on startup each such row gets its message copied back
- * into the column and the large object is unlinked. Rows already holding text are untouched;
- * a value is only treated as an OID when a large object with that OID exists.
+ * into the column. Rows already holding text are untouched; a value is only treated as an OID
+ * when a large object with that OID exists. Large objects are never unlinked: the orphans are
+ * left for an operator to remove with {@code vacuumlo}. Each row is updated on its own, so a
+ * row whose large object is not valid UTF-8 is skipped with a warning and keeps its OID.
  */
 @Component
 public class LegacyErrorMessageMigration implements InitializingBean {
@@ -27,17 +29,19 @@ public class LegacyErrorMessageMigration implements InitializingBean {
     private static final Logger logger = LoggerFactory.getLogger(LegacyErrorMessageMigration.class);
 
     private static final String LEGACY_ROWS =
-            "FROM reports r JOIN pg_largeobject_metadata m ON m.oid::text = r.error_message "
+            "SELECT r.id, r.error_message FROM reports r "
+                    + "JOIN pg_largeobject_metadata m ON m.oid::text = r.error_message "
                     + "WHERE r.error_message ~ '^[0-9]+$'";
 
+    private static final String INLINE_ROW =
+            "UPDATE reports SET error_message = convert_from(lo_get(?::oid), 'UTF8') "
+                    + "WHERE id = ? AND error_message = ?";
+
     private final JdbcTemplate jdbcTemplate;
-    private final TransactionTemplate transactionTemplate;
 
     // EntityManagerFactory is injected so Hibernate's schema update has run first.
-    public LegacyErrorMessageMigration(JdbcTemplate jdbcTemplate, TransactionTemplate transactionTemplate,
-                                       EntityManagerFactory entityManagerFactory) {
+    public LegacyErrorMessageMigration(JdbcTemplate jdbcTemplate, EntityManagerFactory entityManagerFactory) {
         this.jdbcTemplate = jdbcTemplate;
-        this.transactionTemplate = transactionTemplate;
     }
 
     @Override
@@ -49,24 +53,27 @@ public class LegacyErrorMessageMigration implements InitializingBean {
         if (!"PostgreSQL".equals(product)) {
             return;
         }
+        List<Map<String, Object>> rows;
         try {
-            Integer migrated = transactionTemplate.execute(status -> {
-                List<Long> oids = jdbcTemplate.queryForList("SELECT DISTINCT m.oid::bigint " + LEGACY_ROWS, Long.class);
-                if (oids.isEmpty()) {
-                    return 0;
-                }
-                int rows = jdbcTemplate.update("UPDATE reports r SET error_message = convert_from(lo_get(m.oid), 'UTF8') "
-                        + "FROM pg_largeobject_metadata m WHERE m.oid::text = r.error_message AND r.error_message ~ '^[0-9]+$'");
-                for (Long oid : oids) {
-                    jdbcTemplate.queryForObject("SELECT lo_unlink(?::oid)", Integer.class, oid);
-                }
-                return rows;
-            });
-            if (migrated != null && migrated > 0) {
-                logger.info("Inlined {} legacy large-object error_message value(s) in reports", migrated);
-            }
+            rows = jdbcTemplate.queryForList(LEGACY_ROWS);
         } catch (DataAccessException e) {
-            logger.warn("Could not inline legacy large-object error_message values: {}", e.getMessage());
+            logger.warn("Could not look up legacy large-object error_message values: {}", e.getMessage());
+            return;
+        }
+        int migrated = 0;
+        for (Map<String, Object> row : rows) {
+            Object id = row.get("id");
+            String oid = (String) row.get("error_message");
+            try {
+                migrated += jdbcTemplate.update(INLINE_ROW, oid, id, oid);
+            } catch (DataAccessException e) {
+                logger.warn("Skipped legacy error_message for report {} (large object {}): {}",
+                        id, oid, e.getMostSpecificCause().getMessage());
+            }
+        }
+        if (migrated > 0) {
+            logger.info("Inlined {} legacy large-object error_message value(s) in reports; "
+                    + "the large objects are kept (remove orphans with vacuumlo)", migrated);
         }
     }
 }

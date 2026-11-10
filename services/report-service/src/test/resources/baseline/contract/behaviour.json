@@ -31,6 +31,7 @@
     "status": 200
   },
   "listFailed": 200,
+  "unknownPath": 403,
   "upstreamDownReport": {
     "category": "USAGE_ANALYTICS",
     "dateFrom": "2026-01-01T00:00:00.000+00:00",

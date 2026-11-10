@@ -50,7 +50,8 @@ REPORT_CASES = {
 }
 UPSTREAM_DOWN_CASE = {"reportName": "Baseline Usage Analytics", "category": "USAGE_ANALYTICS", "reportType": "CSV"}
 
-ISO_TS = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?")
+# PDF table cells can wrap a timestamp across lines, so a newline may sit between its parts.
+ISO_TS = re.compile(r"\d{4}-\n?\d{2}-\n?\d{2}T\n?\d{2}:\n?\d{2}:\n?\d{2}(\.\d+)?(\n?(Z|[+-]\d{2}:?\d{2}))?")
 DISPLAY_TS = r"[A-Z][a-z]{2} \d{2}, \d{4} \d{2}:\d{2}"
 GENERATED_LINE = re.compile(r"(Generated:\s*)" + DISPLAY_TS)
 FILE_TS = re.compile(r"_\d{8}_\d{6}\.")
@@ -117,7 +118,7 @@ class Client:
 
 def mask(text: str) -> str:
     text = GENERATED_LINE.sub(r"\1<GENERATED>", text)
-    return ISO_TS.sub("<TIMESTAMP>", text)
+    return ISO_TS.sub(lambda m: "<TIMESTAMP>" + ("\n" if "\n" in m.group() else ""), text)
 
 
 def normalise_pdf(raw: bytes) -> str:
@@ -127,10 +128,8 @@ def normalise_pdf(raw: bytes) -> str:
     out = [f"pages: {len(reader.pages)}"]
     for i, page in enumerate(reader.pages, 1):
         out.append(f"--- page {i} ---")
-        for line in (page.extract_text() or "").splitlines():
-            line = " ".join(line.split())
-            if line:
-                out.append(mask(line))
+        lines = [" ".join(line.split()) for line in (page.extract_text() or "").splitlines()]
+        out.append(mask("\n".join(line for line in lines if line)))
     return "\n".join(out) + "\n"
 
 
@@ -343,6 +342,8 @@ def _capture(client: Client, out: Path, created: list[int]) -> None:
         "listByUser": client.request("GET", "/api/v1/reports?userId=baseline")[0],
         "listFailed": client.request("GET", "/api/v1/reports?status=FAILED")[0],
         "upstreamDownReport": normalise_metadata(failed),
+        # Path no controller or security rule matches: 404 on Boot 2, 403 since LBG-23 (deny by default).
+        "unknownPath": client.request("GET", "/does-not-exist")[0],
     }
     deleted = created.pop(0)
     behaviour["deleteReport"] = client.request("DELETE", f"/api/v1/reports/{deleted}")[0]
