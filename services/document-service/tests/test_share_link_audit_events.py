@@ -351,6 +351,28 @@ async def test_sweep_skips_link_another_worker_already_marked(db_session, sns, o
     assert sns.of_type("share_link_expired") == []
 
 
+async def test_sweep_does_not_expire_link_extended_after_it_was_listed(db_session, sns, owner_id):
+    repo = ShareLinkRepository(db_session)
+    link = await repo.create(
+        resource_id=uuid.uuid4(),
+        workspace_id="default",
+        created_by=owner_id,
+        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+    )
+    now = datetime.now(UTC)
+    async with TestingSessionLocal() as sweep_db:
+        sweep_repo = ShareLinkRepository(sweep_db)
+        (stale,) = await sweep_repo.list_unmarked_expired(now, limit=10)
+        async with TestingSessionLocal() as owner_db:
+            owner_repo = ShareLinkRepository(owner_db)
+            fresh = await owner_repo.get(link.id)
+            await owner_repo.update_expiry(fresh, now + timedelta(days=7))
+
+        assert await sweep_repo.mark_expired(stale, now) is False
+        assert stale.expired_at is None
+    assert sns.of_type("share_link_expired") == []
+
+
 def test_sweep_is_on_by_default_every_five_minutes():
     defaults = Settings()
     assert defaults.share_link_expiry_sweep_enabled is True
