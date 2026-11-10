@@ -169,3 +169,49 @@ export interface SortConfig {
   field: SortField;
   direction: SortDirection;
 }
+
+// ── Folder share links (OTW-63) ───────────────────────────────
+export type FolderShareLinkStatus = "active" | "expired" | "revoked";
+
+export interface FolderShareLink {
+  id: string;
+  folderId: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  status: FolderShareLinkStatus;
+}
+
+export interface CreatedFolderShareLink {
+  id: string;
+  folderId: string;
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface SharingPolicy {
+  defaultExpiryDays: number;
+  minExpiryDays: number;
+  maxExpiryDays: number;
+}
+
+export interface SharedFolderFile {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  updatedAt: string;
+}
+
+export interface SharedFolderView {
+  folder: { id: string; name: string };
+  files: SharedFolderFile[];
+  expiresAt: string;
+}
+
+export type SharedFolderResult =
+  | { status: "ok"; data: SharedFolderView }
+  | { status: "gone"; reason: "link_expired" | "link_revoked" }
+  | { status: "not_found" };
