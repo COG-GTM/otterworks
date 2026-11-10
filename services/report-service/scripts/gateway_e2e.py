@@ -12,7 +12,7 @@ Needs analytics-service to be unreachable so the USAGE_ANALYTICS report FAILS.
 
     uv run scripts/gateway_e2e.py [--url http://localhost:8080] [--out DIR]
 """
-import argparse, base64, hashlib, hmac, json, os, sys, time, urllib.error, urllib.request
+import argparse, base64, hashlib, hmac, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -82,11 +82,14 @@ while True:
     time.sleep(0.5)
 check("USAGE_ANALYTICS (analytics down) -> FAILED", rep["status"] == "FAILED", rep.get("errorMessage", "")[:90])
 st, _, _ = req("GET", f"/api/v1/reports/{fid}/download"); check("download FAILED report 404", st == 404, st)
-for path in ["/api/v1/reports?userId=" + USER, "/api/v1/reports/?userId=" + USER,
+Q_USER = urllib.parse.quote(USER, safe="")
+for path in ["/api/v1/reports?userId=" + Q_USER, "/api/v1/reports/?userId=" + Q_USER,
              "/api/v1/reports?status=FAILED", "/api/v1/reports/?status=FAILED", "/api/v1/reports", "/api/v1/reports/"]:
     st, _, b = req("GET", path)
     tot = json.loads(b).get("total") if st == 200 else b[:120]
     check(f"GET {path} 200", st == 200, f"{st} total={tot}")
+st, _, b = req("GET", "/api/v1/reports?userId=" + Q_USER)
+check("userId list contains the user's report", any(r["id"] == fid for r in json.loads(b)["reports"]))
 st, _, b = req("GET", "/api/v1/reports?status=FAILED")
 check("status=FAILED list contains failed report w/ errorMessage", any(r["id"] == fid and r.get("errorMessage") for r in json.loads(b)["reports"]))
 st, _, _ = req("POST", "/api/v1/reports", {"reportName": ""}); check("invalid body 400", st == 400, st)
