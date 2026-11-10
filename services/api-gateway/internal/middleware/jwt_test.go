@@ -321,3 +321,37 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
 }
+
+// OTW-67: anyone holding a folder share token may open it; managing links needs a JWT.
+func TestJWTAuth_FolderShareLinks(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:              testSecret,
+		PublicPath:          DefaultPublicPaths(),
+		PrefixPath:          DefaultPrefixPaths(),
+		ProtectedPrefixPath: []string{"/api/v1/folder-share-links"},
+	}
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{http.MethodGet, "/api/v1/folder-share-links/shared?token=abc", http.StatusOK},
+		{http.MethodPost, "/api/v1/folder-share-links", http.StatusUnauthorized},
+		{http.MethodGet, "/api/v1/folder-share-links?folder_id=f", http.StatusUnauthorized},
+		{http.MethodPatch, "/api/v1/folder-share-links/123", http.StatusUnauthorized},
+		{http.MethodDelete, "/api/v1/folder-share-links/123", http.StatusUnauthorized},
+		{http.MethodGet, "/api/v1/folder-share-links/shared/extra", http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, tc.want, rec.Code)
+		})
+	}
+}

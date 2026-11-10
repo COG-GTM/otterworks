@@ -34,6 +34,8 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		// Anyone holding a folder share token may open it; the token is the credential.
+		"/api/v1/folder-share-links/shared",
 	}
 }
 
