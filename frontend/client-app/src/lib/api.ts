@@ -15,6 +15,11 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  FolderShareLink,
+  CreatedFolderShareLink,
+  SharingPolicy,
+  SharedFolderResult,
+  SharedFolderView,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -379,6 +384,74 @@ export const documentsApi = {
     return data.items ?? [];
   },
 };
+
+// ── Folder share links ────────────────────────────────────────
+export const DEFAULT_SHARING_POLICY: SharingPolicy = {
+  defaultExpiryDays: 30,
+  minExpiryDays: 1,
+  maxExpiryDays: 90,
+};
+
+// Sharing policy is served by the management service (Rails) through the
+// gateway's /api/v1/admin route. Any failure falls back to the documented
+// 30/1/90 defaults; the document-service enforces the real bounds anyway.
+export const SHARING_POLICY_PATH = "/admin/sharing_policy";
+
+export const sharingPolicyApi = {
+  get: async (): Promise<SharingPolicy> => {
+    try {
+      const { data } = await apiClient.get<Partial<SharingPolicy>>(SHARING_POLICY_PATH);
+      const min = Number(data?.minExpiryDays);
+      const max = Number(data?.maxExpiryDays);
+      const def = Number(data?.defaultExpiryDays);
+      if (![min, max, def].every(Number.isInteger) || min < 1 || min > max || def < min || def > max) {
+        return DEFAULT_SHARING_POLICY;
+      }
+      return { defaultExpiryDays: def, minExpiryDays: min, maxExpiryDays: max };
+    } catch {
+      return DEFAULT_SHARING_POLICY;
+    }
+  },
+};
+
+export const folderShareLinksApi = {
+  create: async (folderId: string, expiresInDays?: number): Promise<CreatedFolderShareLink> => {
+    const body: Record<string, unknown> = { folder_id: folderId };
+    if (expiresInDays !== undefined) body.expires_in_days = expiresInDays;
+    const { data } = await apiClient.post<CreatedFolderShareLink>("/folder-share-links", body);
+    return data;
+  },
+  list: async (folderId: string): Promise<FolderShareLink[]> => {
+    const { data } = await apiClient.get<FolderShareLink[]>("/folder-share-links", {
+      params: { folder_id: folderId },
+    });
+    return Array.isArray(data) ? data : [];
+  },
+  revoke: async (id: string): Promise<void> => {
+    await apiClient.delete(`/folder-share-links/${encodeURIComponent(id)}`);
+  },
+  openShared: async (token: string): Promise<SharedFolderResult> => {
+    try {
+      const { data } = await apiClient.get<SharedFolderView>("/folder-share-links/shared", {
+        params: { token },
+      });
+      return { status: "ok", data: { ...data, files: data.files ?? [] } };
+    } catch (err) {
+      if (isAxiosError(err)) {
+        if (err.response?.status === 410) {
+          const detail = (err.response.data as { detail?: string } | undefined)?.detail;
+          return { status: "gone", reason: detail === "link_revoked" ? "link_revoked" : "link_expired" };
+        }
+        if (err.response?.status === 404) return { status: "not_found" };
+      }
+      throw err;
+    }
+  },
+};
+
+export function folderShareUrl(token: string): string {
+  return `${window.location.origin}/shared/folders/${encodeURIComponent(token)}`;
+}
 
 // ── Search ────────────────────────────────────────────────────
 export const searchApi = {

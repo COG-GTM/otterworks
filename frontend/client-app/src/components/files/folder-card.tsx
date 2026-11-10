@@ -233,7 +233,7 @@ function FolderMenu({
           className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
         >
           <Share2 size={14} />
-          Share
+          Share link
         </button>
         <button
           onClick={(e) => {
