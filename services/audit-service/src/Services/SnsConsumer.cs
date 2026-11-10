@@ -126,30 +126,14 @@ public class SnsConsumer : BackgroundService
                 return;
             }
 
-            var auditEvent = JsonSerializer.Deserialize<AuditEventMessage>(eventBody, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            });
+            var entity = MapAuditEventMessage(eventBody, message.MessageId);
 
-            if (auditEvent is null)
+            if (entity is null)
             {
                 _logger.LogWarning("Failed to deserialize audit event from message {MessageId}", message.MessageId);
                 await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
                 return;
             }
-
-            var entity = new AuditEvent
-            {
-                Id = message.MessageId,
-                UserId = auditEvent.UserId ?? "system",
-                Action = auditEvent.Action ?? "unknown",
-                ResourceType = auditEvent.ResourceType ?? "unknown",
-                ResourceId = auditEvent.ResourceId ?? string.Empty,
-                Details = auditEvent.Details,
-                IpAddress = auditEvent.IpAddress,
-                UserAgent = auditEvent.UserAgent,
-                Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
-            };
 
             await _repository.SaveEventAsync(entity);
             _logger.LogDebug("Processed SNS event: {Action} on {ResourceType}/{ResourceId}",
@@ -162,6 +146,42 @@ public class SnsConsumer : BackgroundService
             _logger.LogError(ex, "Failed to process message {MessageId}", message.MessageId);
         }
     }
+
+    internal static AuditEvent? MapAuditEventMessage(string eventBody, string messageId)
+    {
+        var auditEvent = JsonSerializer.Deserialize<AuditEventMessage>(eventBody, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+        });
+
+        if (auditEvent is null)
+            return null;
+
+        return new AuditEvent
+        {
+            Id = messageId,
+            UserId = auditEvent.UserId ?? "system",
+            Action = auditEvent.Action ?? "unknown",
+            ResourceType = auditEvent.ResourceType ?? "unknown",
+            ResourceId = auditEvent.ResourceId ?? string.Empty,
+            Details = auditEvent.Details,
+            IpAddress = auditEvent.IpAddress,
+            UserAgent = auditEvent.UserAgent,
+            WorkspaceId = auditEvent.WorkspaceId ?? auditEvent.WorkspaceIdSnake,
+            OldValue = ToJsonString(auditEvent.OldValue ?? auditEvent.OldValueSnake),
+            NewValue = ToJsonString(auditEvent.NewValue ?? auditEvent.NewValueSnake),
+            Timestamp = auditEvent.Timestamp ?? DateTime.UtcNow,
+        };
+    }
+
+    // Old/new values are stored as serialized JSON strings; publishers may send either a
+    // pre-serialized string or a raw JSON value.
+    private static string? ToJsonString(JsonElement? value) => value?.ValueKind switch
+    {
+        null or JsonValueKind.Undefined or JsonValueKind.Null => null,
+        JsonValueKind.String => value.Value.GetString(),
+        _ => value.Value.GetRawText(),
+    };
 
     private static string? TryParseSnsEnvelope(string body)
     {
@@ -190,7 +210,19 @@ public class SnsConsumer : BackgroundService
         public Dictionary<string, string>? Details { get; set; }
         public string? IpAddress { get; set; }
         public string? UserAgent { get; set; }
+        public string? WorkspaceId { get; set; }
+        public JsonElement? OldValue { get; set; }
+        public JsonElement? NewValue { get; set; }
         public DateTime? Timestamp { get; set; }
+
+        [JsonPropertyName("workspace_id")]
+        public string? WorkspaceIdSnake { get; set; }
+
+        [JsonPropertyName("old_value")]
+        public JsonElement? OldValueSnake { get; set; }
+
+        [JsonPropertyName("new_value")]
+        public JsonElement? NewValueSnake { get; set; }
     }
 
     private sealed class FileEventMessage

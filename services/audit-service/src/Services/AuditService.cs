@@ -35,6 +35,9 @@ public class AuditService : IAuditService
             Details = request.Details,
             IpAddress = request.IpAddress,
             UserAgent = request.UserAgent,
+            WorkspaceId = request.WorkspaceId,
+            OldValue = request.OldValue,
+            NewValue = request.NewValue,
             Timestamp = DateTime.UtcNow,
         };
 
