@@ -14,7 +14,9 @@ use chrono::{SecondsFormat, Utc};
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
 use serde::Serialize;
-use tokio::sync::mpsc;
+use std::sync::Arc;
+
+use tokio::sync::{mpsc, Semaphore};
 
 use crate::errors::ServiceError;
 use crate::middleware::RequestIdValue;
@@ -22,6 +24,9 @@ use crate::middleware::RequestIdValue;
 pub const SERVICE_NAME: &str = "file-service";
 const EVENTS_PATH: &str = "/api/v1/audit/events";
 const QUEUE_CAPACITY: usize = 1024;
+/// Caps concurrent deliveries so a stalled audit-service backs up into the
+/// bounded queue (and drops with `queue_full`) instead of piling up tasks.
+const MAX_IN_FLIGHT: usize = 64;
 const MAX_USER_AGENT_LEN: usize = 512;
 
 lazy_static! {
@@ -279,14 +284,18 @@ impl AuditEmitter {
         };
         let endpoint = format!("{}{}", base_url.trim_end_matches('/'), EVENTS_PATH);
         let (tx, mut rx) = mpsc::channel::<AuditEvent>(QUEUE_CAPACITY);
+        let in_flight = Arc::new(Semaphore::new(MAX_IN_FLIGHT));
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {
-                tokio::spawn(deliver(
-                    client.clone(),
-                    endpoint.clone(),
-                    config.clone(),
-                    event,
-                ));
+                let Ok(permit) = in_flight.clone().acquire_owned().await else {
+                    break;
+                };
+                let (client, endpoint, config) =
+                    (client.clone(), endpoint.clone(), config.clone());
+                tokio::spawn(async move {
+                    deliver(client, endpoint, config, event).await;
+                    drop(permit);
+                });
             }
         });
         Self { tx: Some(tx) }
@@ -433,6 +442,39 @@ mod tests {
         assert!(ctx(uuid::Uuid::new_v4().to_string()).is_not(&owner));
         assert!(ctx("not-a-uuid".into()).is_not(&owner));
         assert!(!AuditContext::default().is_not(&owner));
+    }
+
+    #[actix_rt::test]
+    async fn stalled_audit_service_caps_in_flight_deliveries() {
+        use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
+        let stalled = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(202).set_delay(Duration::from_secs(30)))
+            .mount(&stalled)
+            .await;
+        let emitter = AuditEmitter::start(AuditConfig {
+            url: Some(stalled.uri()),
+            token: None,
+            timeout: Duration::from_secs(30),
+            max_retries: 0,
+            retry_backoff: Duration::from_millis(1),
+        });
+        let dropped = || {
+            AUDIT_EMIT_FAILURES_TOTAL
+                .with_label_values(&["queue_full"])
+                .get()
+        };
+        let before = dropped();
+        let overflow = 100;
+        for _ in 0..(MAX_IN_FLIGHT + 1 + QUEUE_CAPACITY + overflow) {
+            emitter.emit(build_event(
+                &AuditContext::default(),
+                AuditRecord::new("export", "file", "f1"),
+                "success",
+            ));
+            tokio::task::yield_now().await;
+        }
+        assert!(dropped() - before >= overflow as u64);
     }
 
     #[test]
