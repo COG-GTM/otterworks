@@ -55,6 +55,13 @@ def _is_expired(link: ShareLink, now: datetime) -> bool:
     return _as_utc(link.expires_at) <= now
 
 
+def _owned_by(file: dict, owner_id: UUID) -> bool:
+    try:
+        return UUID(str(file.get("owner_id"))) == owner_id
+    except ValueError:
+        return False
+
+
 def _link_url(token: str) -> str:
     return f"{settings.public_app_url.rstrip('/')}/s/{token}"
 
@@ -201,9 +208,13 @@ async def resolve_share_link(
         logger.warning("share_link_file_service_error", error=str(exc))
         raise HTTPException(status_code=502, detail="file-service unavailable") from exc
 
+    # file-service does not stop other users moving their files into this folder, so
+    # only the files of the folder owner (verified when the link was created) are shared.
+    owned_files = [f for f in folder_files if _owned_by(f, link.created_by)]
+
     response.headers["Cache-Control"] = "no-store"
     return ResolvedShareLinkResponse.from_file_service(
-        folder, folder_files, _as_utc(link.expires_at)
+        folder, owned_files, _as_utc(link.expires_at)
     )
 
 
