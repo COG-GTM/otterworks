@@ -353,12 +353,23 @@ def _capture(client: Client, out: Path, created: list[int]) -> None:
 # ---------------------------------------------------------------------- compare
 
 
+def _known_only(rel: str, e: Path, a: Path, known: dict) -> list[str] | None:
+    """Top-level JSON keys that differ, if every one is listed in known-differences.json; else None."""
+    if rel not in known or not (e.exists() and a.exists()):
+        return None
+    ej, aj = json.loads(e.read_text()), json.loads(a.read_text())
+    changed = sorted(k for k in set(ej) | set(aj) if ej.get(k) != aj.get(k))
+    return changed if changed and all(k in known[rel] for k in changed) else None
+
+
 def diff_dirs(expected: Path, actual: Path) -> int:
     strict_failures = 0
+    known_file = expected / "known-differences.json"
+    known = json.loads(known_file.read_text()) if known_file.exists() else {}
     files = sorted({p.relative_to(expected).as_posix() for p in expected.rglob("*") if p.is_file()}
                    | {p.relative_to(actual).as_posix() for p in actual.rglob("*") if p.is_file()})
     for rel in files:
-        if rel.startswith("raw/") or rel.startswith("tests/") or rel in ("README.md", "metrics.json"):
+        if rel.startswith("raw/") or rel.startswith("tests/") or rel in ("README.md", "metrics.json", "known-differences.json"):
             continue
         e, a = expected / rel, actual / rel
         el = e.read_text().splitlines(keepends=True) if e.exists() else []
@@ -367,8 +378,13 @@ def diff_dirs(expected: Path, actual: Path) -> int:
             print(f"  same      {rel}")
             continue
         strict = rel in STRICT
-        strict_failures += strict
-        print(f"  {'DIFFERENT' if strict else 'changed  '} {rel}{'' if strict else '  (informational)'}")
+        known_keys = _known_only(rel, e, a, known) if strict else None
+        if known_keys:
+            for k in known_keys:
+                print(f"  KNOWN     {rel} {k}: {known[rel][k]['status']} ({known[rel][k]['ticket']})")
+        else:
+            strict_failures += strict
+            print(f"  {'DIFFERENT' if strict else 'changed  '} {rel}{'' if strict else '  (informational)'}")
         sys.stdout.writelines("      " + l for l in difflib.unified_diff(el, al, "baseline/" + rel, "current/" + rel, n=1))
         if al and not al[-1].endswith("\n"):
             print()

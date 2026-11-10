@@ -19,6 +19,7 @@ build against this directory with `scripts/baseline.py`.
 | `reports/xlsx.txt` | Every non-empty cell: coordinate, type, value | strict |
 | `reports/metadata.json` | `ReportResponse` + download headers per format, ids/timestamps removed | strict |
 | `reports/info.json` | File sizes, upstream error message | informational |
+| `known-differences.json` | Strict JSON keys expected to change, with the owning ticket; `compare` reports them as `KNOWN` | — |
 | `metrics.json` | Docker image size and time from container start to `/health` | `metrics` (prints deltas) |
 
 `compare` exits non-zero only on **strict** differences; informational files are diffed
@@ -58,10 +59,12 @@ uv run scripts/baseline.py metrics --update               # rebuilds the image v
 
 ## Known legacy behaviour recorded here
 
-- `GET /api/v1/reports?userId=...` and `?status=FAILED` return **500** on PostgreSQL once a
-  FAILED report exists (Hibernate "Unable to access lob stream" on the `@Lob errorMessage`
-  column outside a transaction). Recorded as-is; an upgrade that changes it shows up in
-  `behaviour.json`.
+- **Known pre-existing bug, expected to change (LBG-23):** `GET /api/v1/reports?userId=...`
+  and `?status=FAILED` return **500** on PostgreSQL once a FAILED report exists (Hibernate
+  "Unable to access lob stream" on the `@Lob errorMessage` column). `behaviour.json` keeps the
+  legacy 500 (`listByUser`, `listFailed`). `known-differences.json` marks those keys, so
+  `compare` prints them as `KNOWN` and does not fail when they change. Any other difference in
+  the same file still fails. Once LBG-23 lands, re-capture `behaviour.json` and remove the entries.
 - `DependencyTranscriptEmitterTest` is skipped unless the dependency-remediation harness
   enables it.
 - `metrics.json` was captured with a Google Maven Central mirror injected into the builder
