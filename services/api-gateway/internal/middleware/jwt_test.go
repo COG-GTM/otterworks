@@ -321,3 +321,33 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
 }
+
+func TestJWTAuth_SharedFolderRecipientRoutesArePublic(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:              testSecret,
+		PublicPath:          DefaultPublicPaths(),
+		PrefixPath:          DefaultPrefixPaths(),
+		ProtectedPrefixPath: []string{"/api/v1/documents"},
+	}
+
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := map[string]int{
+		"/api/v1/documents/shared-folders/tok":                    http.StatusOK,
+		"/api/v1/documents/shared-folders/tok/documents/some-doc": http.StatusOK,
+		"/api/v1/documents/shared-foldersX/tok":                   http.StatusUnauthorized,
+		"/api/v1/documents/folders/f1/share-links":                http.StatusUnauthorized,
+		"/api/v1/documents/share-links/l1":                        http.StatusUnauthorized,
+		"/api/v1/documents/shared":                                http.StatusUnauthorized,
+	}
+	for path, want := range cases {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, want, rec.Code, "unexpected status for %s", path)
+		})
+	}
+}

@@ -43,6 +43,9 @@ func DefaultPrefixPaths() []string {
 		"/health",
 		"/metrics",
 		"/socket.io",
+		// Folder share link recipients hold a capability token, not a JWT;
+		// document-service validates the token and returns only read-only data.
+		"/api/v1/documents/shared-folders",
 	}
 }
 
@@ -131,7 +134,7 @@ func isPublicPath(path string, exactPaths map[string]bool, prefixPaths []string)
 	if exactPaths[path] {
 		return true
 	}
-	// Prefix match only for operational paths (e.g. /health, /metrics)
+	// Prefix match for operational paths and public capability-token routes
 	for _, p := range prefixPaths {
 		if path == p || strings.HasPrefix(path, p+"/") {
 			return true

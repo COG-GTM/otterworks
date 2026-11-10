@@ -168,6 +168,9 @@ services:
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      DOC_SVC_FILE_SERVICE_URL: http://file-service:8082
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
+      SHARE_LINK_HMAC_KEY: ${SHARE_LINK_HMAC_KEY:-otterworks-local-dev-share-link-key-change-me}
     depends_on:
       postgres:
         condition: service_healthy
