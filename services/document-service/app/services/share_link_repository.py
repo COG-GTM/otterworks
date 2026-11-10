@@ -118,6 +118,16 @@ class ShareLinkRepository:
         await self.db.refresh(link)
         return link
 
+    async def list_unmarked_expired(self, now: datetime, *, limit: int) -> list[ShareLink]:
+        """Links past ``expires_at`` whose expiry has not been recorded yet, oldest first."""
+        result = await self.db.execute(
+            select(ShareLink)
+            .where(ShareLink.expires_at <= now, ShareLink.expired_at.is_(None))
+            .order_by(ShareLink.expires_at)
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     async def mark_expired(self, link: ShareLink, expired_at: datetime) -> bool:
         """Record when expiry was first detected. Returns False if already recorded."""
         if link.expired_at is not None:

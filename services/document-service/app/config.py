@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     sns_enabled: bool = False
 
+    # Periodic sweep recording expiry of folder share links past expires_at (OTW-46).
+    share_link_expiry_sweep_enabled: bool = True
+    share_link_expiry_sweep_interval_seconds: float = Field(default=300.0, gt=0)
+
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
 
