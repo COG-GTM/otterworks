@@ -72,6 +72,8 @@ export default function SharedDocumentPage() {
     queryKey: ["shared-document", documentId, token],
     queryFn: () => shareLinksApi.openShared(documentId, token),
     retry: false,
+    staleTime: 0,
+    gcTime: 0,
     enabled: hasLink,
   });
 
