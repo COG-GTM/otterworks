@@ -1,6 +1,6 @@
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, Subject, map } from 'rxjs';
+import { Injectable, isDevMode } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Observable, Subject, catchError, map, throwError } from 'rxjs';
 import { User, UserActivity } from '../models/user.model';
 import { AuditEvent } from '../models/audit.model';
 import { FeatureFlag } from '../models/feature-flag.model';
@@ -8,6 +8,8 @@ import { Announcement } from '../models/announcement.model';
 import { ServiceHealth } from '../models/system-health.model';
 import { DashboardStats, AnalyticsReport, ChartDataPoint } from '../models/analytics.model';
 import { Incident } from '../models/incident.model';
+import { SharePolicy, SharePolicyUpdate } from '../models/share-policy.model';
+import { MockSharePolicyBackend } from './mock-data/share-policy.mock';
 
 // Service metadata not available from the health endpoint — kept here for display purposes
 const SERVICE_META: Record<string, { version: string; port: number; language: string; details: string }> = {
@@ -34,6 +36,8 @@ export class AdminApiService {
   private readonly baseUrl = '/api/v1';
 
   readonly statsChanged$ = new Subject<void>();
+
+  private readonly mockSharePolicy = new MockSharePolicyBackend();
 
   constructor(private http: HttpClient) {}
 
@@ -239,6 +243,33 @@ export class AdminApiService {
     return this.http.put<{ enabled: boolean }>(`${this.baseUrl}/admin/settings/auto_investigate`, { enabled });
   }
 
+  // ── Workspace sharing policy (document-service) ─────────────────────────
+
+  getSharePolicy(): Observable<SharePolicy> {
+    return this.http.get<any>(`${this.baseUrl}/documents/share-policy`).pipe(
+      map(raw => this.mapSharePolicy(raw)),
+      catchError(err => this.isMissingEndpoint(err) ? this.mockSharePolicy.get() : throwError(() => err)),
+    );
+  }
+
+  updateSharePolicy(update: SharePolicyUpdate): Observable<SharePolicy> {
+    const payload = {
+      default_expiry_seconds: update.defaultExpirySeconds,
+      min_expiry_seconds: update.minExpirySeconds,
+      max_expiry_seconds: update.maxExpirySeconds,
+      allow_never: update.allowNever,
+    };
+    return this.http.put<any>(`${this.baseUrl}/documents/share-policy`, payload).pipe(
+      map(raw => this.mapSharePolicy(raw)),
+      catchError(err => this.isMissingEndpoint(err) ? this.mockSharePolicy.put(update, null) : throwError(() => err)),
+    );
+  }
+
+  /** Dev builds fall back to mock data while document-service does not serve the endpoint yet. */
+  private isMissingEndpoint(err: unknown): boolean {
+    return isDevMode() && err instanceof HttpErrorResponse && err.status === 404;
+  }
+
   // ── Private mappers ──────────────────────────────────────────────────────
 
   private mapUser(raw: any): User {
@@ -430,6 +461,18 @@ export class AdminApiService {
     if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
+  }
+
+  private mapSharePolicy(raw: any): SharePolicy {
+    return {
+      workspaceId: raw.workspace_id,
+      defaultExpirySeconds: raw.default_expiry_seconds,
+      minExpirySeconds: raw.min_expiry_seconds,
+      maxExpirySeconds: raw.max_expiry_seconds,
+      allowNever: !!raw.allow_never,
+      updatedBy: raw.updated_by ?? null,
+      updatedAt: raw.updated_at ?? null,
+    };
   }
 
   private mapIncident(raw: any): Incident {

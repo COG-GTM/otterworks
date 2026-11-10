@@ -31,6 +31,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/features/features.component').then(m => m.FeaturesComponent),
       },
       {
+        path: 'sharing',
+        loadComponent: () => import('./pages/sharing/sharing.component').then(m => m.SharingComponent),
+      },
+      {
         path: 'health',
         loadComponent: () => import('./pages/health/health.component').then(m => m.HealthComponent),
       },

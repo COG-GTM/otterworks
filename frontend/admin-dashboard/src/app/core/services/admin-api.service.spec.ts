@@ -148,4 +148,74 @@ describe('AdminApiService', () => {
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
   });
+
+  describe('Share policy API methods', () => {
+    let httpMock: HttpTestingController;
+    const raw = {
+      workspace_id: 'default', default_expiry_seconds: 604800, min_expiry_seconds: 3600,
+      max_expiry_seconds: 7776000, allow_never: false, updated_by: 'owner-1', updated_at: '2026-11-10T00:00:00Z',
+    };
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+      httpMock.verify();
+    });
+
+    it('getSharePolicy GETs /documents/share-policy and maps the response', () => {
+      service.getSharePolicy().subscribe(p => {
+        expect(p).toEqual({
+          workspaceId: 'default', defaultExpirySeconds: 604800, minExpirySeconds: 3600,
+          maxExpirySeconds: 7776000, allowNever: false, updatedBy: 'owner-1', updatedAt: '2026-11-10T00:00:00Z',
+        });
+      });
+      const req = httpMock.expectOne('/api/v1/documents/share-policy');
+      expect(req.request.method).toBe('GET');
+      req.flush(raw);
+    });
+
+    it('updateSharePolicy PUTs the contract body in snake_case', () => {
+      service.updateSharePolicy({
+        defaultExpirySeconds: 604800, minExpirySeconds: 3600, maxExpirySeconds: 7776000, allowNever: false,
+      }).subscribe(p => expect(p.maxExpirySeconds).toBe(7776000));
+      const req = httpMock.expectOne('/api/v1/documents/share-policy');
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual({
+        default_expiry_seconds: 604800, min_expiry_seconds: 3600, max_expiry_seconds: 7776000, allow_never: false,
+      });
+      req.flush(raw);
+    });
+
+    it('updateSharePolicy surfaces a 422 from the API', () => {
+      let status = 0;
+      service.updateSharePolicy({
+        defaultExpirySeconds: 604800, minExpirySeconds: 3600, maxExpirySeconds: 7776000, allowNever: false,
+      }).subscribe({ error: err => (status = err.status) });
+      httpMock.expectOne('/api/v1/documents/share-policy')
+        .flush({ detail: 'invalid' }, { status: 422, statusText: 'Unprocessable Entity' });
+      expect(status).toBe(422);
+    });
+
+    it('falls back to dev mock defaults while the endpoint is not deployed (404)', fakeAsync(() => {
+      let policy: any;
+      service.getSharePolicy().subscribe(p => (policy = p));
+      httpMock.expectOne('/api/v1/documents/share-policy').flush(null, { status: 404, statusText: 'Not Found' });
+      tick(300);
+      expect(policy.defaultExpirySeconds).toBe(2592000);
+      expect(policy.minExpirySeconds).toBe(3600);
+      expect(policy.maxExpirySeconds).toBe(31536000);
+      expect(policy.allowNever).toBeFalse();
+    }));
+
+    it('dev mock rejects invalid values with a 422', () => {
+      let status = 0;
+      service.updateSharePolicy({
+        defaultExpirySeconds: 3600, minExpirySeconds: 7200, maxExpirySeconds: 86400, allowNever: false,
+      }).subscribe({ error: err => (status = err.status) });
+      httpMock.expectOne('/api/v1/documents/share-policy').flush(null, { status: 404, statusText: 'Not Found' });
+      expect(status).toBe(422);
+    });
+  });
 });
