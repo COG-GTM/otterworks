@@ -18,11 +18,13 @@ from tests.conftest import TEST_JWT_SECRET
 
 
 class RecordingSink:
-    def __init__(self) -> None:
+    def __init__(self, fail: bool = False) -> None:
         self.events: list[dict] = []
+        self.fail = fail
 
-    async def send(self, event: dict) -> None:
+    async def send(self, event: dict) -> bool:
         self.events.append(event)
+        return not self.fail
 
 
 @pytest.fixture
@@ -261,3 +263,40 @@ async def test_ac8_expiry_emits_single_audit_event(db_session, owner_id):
     expired = [e for e in sink.events if e["action"] == "share_link.expired"]
     assert len(expired) == 1
     assert expired[0]["details"]["old_value"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_ac8_failed_expiry_audit_is_retried(db_session, owner_id):
+    sink = RecordingSink(fail=True)
+    store = ShareLinkStore(db_session, audit=AuditClient(sink))
+    from app.models.document import Document
+
+    doc = Document(title="d", content="", owner_id=owner_id)
+    db_session.add(doc)
+    await db_session.commit()
+    link = await store.create_link(doc.id, owner_id, expires_in_days=1)
+    link.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    assert await store.sweep_expired() == 0
+    assert link.expiry_audited is False
+    sink.fail = False
+    assert await store.sweep_expired() == 1
+    assert link.expiry_audited is True
+
+
+@pytest.mark.asyncio
+async def test_workspace_header_cannot_select_another_policy(client, audit_events):
+    await set_policy(
+        client, default_expiry_days=7, min_expiry_days=1, max_expiry_days=30,
+        allow_no_expiry=False,
+    )
+    doc_id = await make_doc(client)
+
+    resp = await client.post(
+        f"/api/v1/documents/{doc_id}/share",
+        json={"no_expiry": True},
+        headers={"X-Workspace-ID": "some-other-workspace"},
+    )
+
+    assert resp.status_code == 422

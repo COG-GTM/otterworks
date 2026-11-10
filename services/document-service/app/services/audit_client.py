@@ -14,16 +14,16 @@ logger = structlog.get_logger()
 
 
 class AuditSink(Protocol):
-    async def send(self, event: dict[str, Any]) -> None: ...
+    async def send(self, event: dict[str, Any]) -> bool | None: ...
 
 
 class HttpAuditSink:
     """POSTs events to audit-service ``/api/v1/audit/events``."""
 
-    async def send(self, event: dict[str, Any]) -> None:
+    async def send(self, event: dict[str, Any]) -> bool:
         if not settings.audit_service_url:
-            logger.info("audit_event_skipped", action=event.get("action"))
-            return
+            logger.warning("audit_event_skipped", action=event.get("action"))
+            return False
         url = f"{settings.audit_service_url.rstrip('/')}/api/v1/audit/events"
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
@@ -31,6 +31,8 @@ class HttpAuditSink:
                 resp.raise_for_status()
         except Exception:
             logger.exception("audit_event_delivery_failed", action=event.get("action"))
+            return False
+        return True
 
 
 class AuditClient:
@@ -48,7 +50,8 @@ class AuditClient:
         old_value: str | None,
         new_value: str | None,
         extra: dict[str, str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> bool:
+        """Send the event; return True when the sink confirmed delivery."""
         timestamp = datetime.now(UTC).isoformat()
         details = {
             "event": event,
@@ -66,8 +69,7 @@ class AuditClient:
             "details": details,
         }
         logger.info("audit_event_recorded", audit=details, actor_id=actor_id)
-        await self.sink.send(payload)
-        return payload
+        return (await self.sink.send(payload)) is not False
 
 
 audit_client = AuditClient()

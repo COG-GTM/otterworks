@@ -236,12 +236,14 @@ class ShareLinkStore:
         return result.scalar_one_or_none()
 
     async def mark_expired(self, link: ShareLink) -> bool:
-        """Emit the one-time ``share_link.expired`` audit event for a link."""
+        """Emit the one-time ``share_link.expired`` audit event for a link.
+
+        The link is only marked audited once delivery succeeds, so the sweep
+        retries events that audit-service did not accept.
+        """
         if link.expiry_audited or not is_expired(link):
             return False
-        link.expiry_audited = True
-        await self.db.commit()
-        await self.audit.record(
+        delivered = await self.audit.record(
             event="share_link.expired",
             actor_id="system",
             workspace_id=link.workspace_id,
@@ -251,6 +253,10 @@ class ShareLinkStore:
             new_value=f"expired at {_fmt(link.expires_at)}",
             extra={"share_link_id": str(link.id)},
         )
+        if not delivered:
+            return False
+        link.expiry_audited = True
+        await self.db.commit()
         return True
 
     async def sweep_expired(self) -> int:
