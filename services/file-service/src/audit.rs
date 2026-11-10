@@ -165,7 +165,7 @@ impl AuditContext {
     /// the previous unauthenticated behaviour.
     pub fn is_not(&self, owner: &uuid::Uuid) -> bool {
         match &self.user_id {
-            Some(id) => !id.eq_ignore_ascii_case(&owner.to_string()),
+            Some(id) => id.parse::<uuid::Uuid>().map_or(true, |id| id != *owner),
             None => false,
         }
     }
@@ -418,6 +418,21 @@ mod tests {
         assert_eq!(event.actor_type, "anonymous");
         assert_eq!(event.service_name, SERVICE_NAME);
         assert!(event.timestamp.ends_with('Z'));
+    }
+
+    #[test]
+    fn owner_match_accepts_any_uuid_form() {
+        let owner = uuid::Uuid::new_v4();
+        let ctx = |id: String| AuditContext {
+            user_id: Some(id),
+            ..AuditContext::default()
+        };
+        assert!(!ctx(owner.to_string()).is_not(&owner));
+        assert!(!ctx(owner.simple().to_string()).is_not(&owner));
+        assert!(!ctx(owner.to_string().to_uppercase()).is_not(&owner));
+        assert!(ctx(uuid::Uuid::new_v4().to_string()).is_not(&owner));
+        assert!(ctx("not-a-uuid".into()).is_not(&owner));
+        assert!(!AuditContext::default().is_not(&owner));
     }
 
     #[test]
