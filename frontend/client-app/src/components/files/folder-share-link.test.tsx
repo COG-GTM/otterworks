@@ -121,19 +121,23 @@ describe("OTW-48 Scenario 2: Given a link is created (POST /share-links)", () =>
 
     const url = (await screen.findByLabelText("Share link URL")) as HTMLInputElement;
     expect(posted).toEqual({ resource_type: "folder", resource_id: FOLDER_ID, expires_in_days: 30 });
-    expect(url.value).toBe("http://gateway/s/tok_abc123");
+    expect(url.value).toBe(`${window.location.origin}/s/tok_abc123`);
     expect(screen.getByTestId("share-link-expiry")).toHaveTextContent(
       `Expires on ${formatExpiry("2026-12-10T12:00:00Z")}`
     );
 
     fireEvent.click(screen.getByRole("button", { name: /copy link/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("http://gateway/s/tok_abc123"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/s/tok_abc123`));
   });
 
-  it("shareLinkUrl uses the server's absolute URL and falls back to this origin otherwise", () => {
-    expect(shareLinkUrl({ token: "t1", url: "https://app.example.com/s/t1" })).toBe("https://app.example.com/s/t1");
-    expect(shareLinkUrl({ token: "t1", url: "/s/t1" })).toBe(`${window.location.origin}/s/t1`);
-    expect(shareLinkUrl({ token: "t1", url: "" })).toBe(`${window.location.origin}/s/t1`);
+  it("shareLinkUrl uses this origin, or VITE_PUBLIC_APP_URL in native/desktop builds, never the API url", () => {
+    expect(shareLinkUrl({ token: "t1" })).toBe(`${window.location.origin}/s/t1`);
+    vi.stubEnv("VITE_PUBLIC_APP_URL", "https://app.example.com/");
+    try {
+      expect(shareLinkUrl({ token: "t1" })).toBe("https://app.example.com/s/t1");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("Given the existing-links lookup fails, Then an error with Retry is shown instead of Create link", async () => {
@@ -145,6 +149,27 @@ describe("OTW-48 Scenario 2: Given a link is created (POST /share-links)", () =>
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not load this folder's existing links/i);
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /create link/i })).not.toBeInTheDocument();
+  });
+
+  it("Given a link was just created, When the list refresh fails, Then the created link stays visible", async () => {
+    let created = false;
+    server.use(
+      policy(30, 90),
+      http.get(`${API}/share-links`, () =>
+        created ? HttpResponse.json({ detail: "boom" }, { status: 500 }) : HttpResponse.json([])
+      ),
+      http.post(`${API}/share-links`, () => {
+        created = true;
+        return HttpResponse.json(linkBody(), { status: 201 });
+      })
+    );
+    renderDialog();
+    await picker();
+    fireEvent.click(screen.getByRole("button", { name: /create link/i }));
+    expect(await screen.findByLabelText("Share link URL")).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByLabelText("Share link URL")).toBeInTheDocument();
+    expect(screen.queryByText(/could not load this folder's existing links/i)).not.toBeInTheDocument();
   });
 
   it("Then the owner can change the expiry within bounds (PATCH /share-links/{id})", async () => {

@@ -153,7 +153,7 @@ export function FolderShareLinkPanel({ folderId }: FolderShareLinkPanelProps) {
     );
   }
 
-  if (linksQuery.isError) {
+  if (linksQuery.isError && !link) {
     return (
       <div
         role="alert"
