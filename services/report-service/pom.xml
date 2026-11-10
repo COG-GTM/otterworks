@@ -27,8 +27,8 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
-        <springfox.version>3.0.0</springfox.version>
+        <!-- springdoc-openapi 1.7.x for Boot 2.x. Upgrade target: springdoc-openapi-starter-webmvc-ui 2.x (Boot 3) -->
+        <springdoc.version>1.7.0</springdoc.version>
         <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
         <poi.version>4.1.2</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
@@ -81,11 +81,11 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- LEGACY: SpringFox Swagger 2 (dead project, last release 2020) -->
+        <!-- OpenAPI 3 docs + Swagger UI -->
         <dependency>
-            <groupId>io.springfox</groupId>
-            <artifactId>springfox-boot-starter</artifactId>
-            <version>${springfox.version}</version>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-ui</artifactId>
+            <version>${springdoc.version}</version>
         </dependency>
 
         <!-- LEGACY: Apache POI 4.x for Excel generation -->
