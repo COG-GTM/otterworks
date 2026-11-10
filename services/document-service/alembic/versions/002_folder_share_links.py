@@ -52,7 +52,7 @@ def upgrade() -> None:
         sa.Column(
             "max_expiry_seconds", sa.Integer(), nullable=False, server_default="31536000"
         ),
-        sa.Column("allow_never", sa.Boolean(), nullable=False, server_default="false"),
+        sa.Column("allow_never", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("updated_by", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column(
             "updated_at",

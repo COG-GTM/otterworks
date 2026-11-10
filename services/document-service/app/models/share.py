@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, false, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -73,7 +73,7 @@ class WorkspaceSharePolicy(Base):
         Integer, nullable=False, default=MAX_EXPIRY_SECONDS, server_default=str(MAX_EXPIRY_SECONDS)
     )
     allow_never: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=DEFAULT_ALLOW_NEVER, server_default="false"
+        Boolean, nullable=False, default=DEFAULT_ALLOW_NEVER, server_default=false()
     )
     updated_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(
