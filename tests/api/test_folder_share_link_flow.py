@@ -386,6 +386,33 @@ def test_scenario_valid_link_lists_folder_read_only_and_nothing_can_be_written(a
     assert parse_ts(again.json()["expires_at"]) == parse_ts(link["expires_at"])
 
 
+def test_scenario_valid_link_lists_only_folder_owners_files_not_files_moved_in_by_others(api_client, owner):
+    """Scenario: Given a valid link to a folder, When another user moves their own file into
+    that folder and the link is opened, Then only the folder owner's files are listed."""
+    folder = api_client.create_folder(owner, f"Owner Folder {api_client.run_id}")
+    owners_file = api_client.upload_file(owner, folder["id"], "owners.txt", b"owner's file")
+    link = create_link_ok(api_client, owner, folder["id"])
+
+    other = api_client.register_user("share-link-other")
+    other_folder = api_client.create_folder(other, f"Other Folder {api_client.run_id}")
+    others_file = api_client.upload_file(other, other_folder["id"], "others.txt", b"not shared")
+    move = api_client.client.put(
+        f"/api/v1/files/{others_file['id']}/move",
+        headers=other.auth_headers,
+        json={"folder_id": folder["id"]},
+    )
+    if move.status_code in {403, 404, 422}:
+        pytest.skip(f"file-service refuses moves into another user's folder ({move.status_code})")
+    assert move.status_code == 200, move.text
+    assert move.json()["folder_id"] == folder["id"]
+
+    response = resolve(api_client, link["token"])
+    assert response.status_code == 200, response.text
+    listed = [f["id"] for f in response.json()["files"]]
+    assert others_file["id"] not in listed
+    assert listed == [owners_file["id"]]
+
+
 # --- Story 3: Expired links -----------------------------------------------------------------
 
 
