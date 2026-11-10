@@ -127,3 +127,107 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_file_and_folder_operations_are_restricted_to_owner(api_client):
+    owner = api_client.register_user("file-authz-owner")
+    viewer = api_client.register_user("file-authz-viewer")
+    stranger = api_client.register_user("file-authz-stranger")
+
+    folder_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": f"Private Folder {api_client.run_id}", "owner_id": owner.id},
+    )
+    api_client.assert_gateway_route_available(folder_response, "/api/v1/folders")
+    assert folder_response.status_code == 201, folder_response.text
+    folder_id = folder_response.json()["id"]
+    api_client.created_folders.append(folder_id)
+
+    upload_response = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=owner.auth_headers,
+        files={"file": ("private.txt", b"owner only", "text/plain")},
+    )
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["file"]["id"]
+    api_client.created_files.append(file_id)
+
+    # shared_by in the body is ignored; the share is attributed to the caller.
+    share_response = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": viewer.id, "permission": "viewer", "shared_by": stranger.id},
+    )
+    assert share_response.status_code == 201, share_response.text
+    assert share_response.json()["share"]["shared_by"] == owner.id
+
+    # A share recipient can read and download, and sees only their own share.
+    viewer_get = api_client.client.get(f"/api/v1/files/{file_id}", headers=viewer.auth_headers)
+    assert viewer_get.status_code == 200, viewer_get.text
+    assert [s["shared_with"] for s in viewer_get.json()["shared_with"]] == [viewer.id]
+    viewer_download = api_client.client.get(
+        f"/api/v1/files/{file_id}/download", headers=viewer.auth_headers
+    )
+    assert viewer_download.status_code == 200, viewer_download.text
+
+    # Neither the viewer nor a stranger can manage the file.
+    for user in (viewer, stranger):
+        h = user.auth_headers
+        attempts = [
+            api_client.client.delete(f"/api/v1/files/{file_id}", headers=h),
+            api_client.client.patch(f"/api/v1/files/{file_id}/rename", headers=h, json={"name": "pwned"}),
+            api_client.client.put(f"/api/v1/files/{file_id}/move", headers=h, json={"folder_id": None}),
+            api_client.client.post(f"/api/v1/files/{file_id}/trash", headers=h),
+            api_client.client.post(f"/api/v1/files/{file_id}/restore", headers=h),
+            api_client.client.post(
+                f"/api/v1/files/{file_id}/share",
+                headers=h,
+                json={"shared_with": user.id, "permission": "editor", "shared_by": owner.id},
+            ),
+            api_client.client.delete(f"/api/v1/files/{file_id}/share/{viewer.id}", headers=h),
+            api_client.client.get(f"/api/v1/folders/{folder_id}", headers=h),
+            api_client.client.put(f"/api/v1/folders/{folder_id}", headers=h, json={"name": "pwned"}),
+            api_client.client.delete(f"/api/v1/folders/{folder_id}", headers=h),
+        ]
+        for response in attempts:
+            assert response.status_code == 403, (response.request.method, response.request.url, response.text)
+
+    # A stranger cannot read the file at all.
+    for path in (f"/api/v1/files/{file_id}", f"/api/v1/files/{file_id}/download", f"/api/v1/files/{file_id}/versions"):
+        response = api_client.client.get(path, headers=stranger.auth_headers)
+        assert response.status_code == 403, (path, response.text)
+
+    # A stranger cannot move their own file into the owner's folder.
+    stranger_upload = api_client.client.post(
+        "/api/v1/files/upload",
+        headers=stranger.auth_headers,
+        files={"file": ("mine.txt", b"stranger", "text/plain")},
+    )
+    assert stranger_upload.status_code == 201, stranger_upload.text
+    stranger_file_id = stranger_upload.json()["file"]["id"]
+    move_into_foreign = api_client.client.put(
+        f"/api/v1/files/{stranger_file_id}/move",
+        headers=stranger.auth_headers,
+        json={"folder_id": folder_id},
+    )
+    assert move_into_foreign.status_code == 403, move_into_foreign.text
+    assert api_client.client.delete(
+        f"/api/v1/files/{stranger_file_id}", headers=stranger.auth_headers
+    ).status_code == 204
+
+    # The owner still has full control.
+    assert api_client.client.get(f"/api/v1/folders/{folder_id}", headers=owner.auth_headers).status_code == 200
+    rename = api_client.client.patch(
+        f"/api/v1/files/{file_id}/rename", headers=owner.auth_headers, json={"name": "renamed.txt"}
+    )
+    assert rename.status_code == 200, rename.text
+    unshare = api_client.client.delete(f"/api/v1/files/{file_id}/share/{viewer.id}", headers=owner.auth_headers)
+    assert unshare.status_code == 204, unshare.text
+    revoked = api_client.client.get(f"/api/v1/files/{file_id}/download", headers=viewer.auth_headers)
+    assert revoked.status_code == 403, revoked.text
+
+    assert api_client.client.delete(f"/api/v1/files/{file_id}", headers=owner.auth_headers).status_code == 204
+    api_client.created_files.remove(file_id)
+    assert api_client.client.delete(f"/api/v1/folders/{folder_id}", headers=owner.auth_headers).status_code == 204
+    api_client.created_folders.remove(folder_id)
