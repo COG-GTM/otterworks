@@ -102,3 +102,61 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+// OTW-45: a multi-segment prefix such as /api/v1/workspace/share-policy proxies the exact
+// path with the caller's Authorization header (document-service reads roles from it).
+func TestProxyWorkspaceSharePolicyRoute(t *testing.T) {
+	var gotPath, gotAuth, gotMethod string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	router := NewRouter(RouterConfig{
+		Routes: []Route{{Prefix: "/api/v1/workspace/share-policy", TargetURL: backend.URL}},
+		CBManager: NewCircuitBreakerManager(CircuitBreakerConfig{
+			MaxRequests:  1,
+			Interval:     time.Minute,
+			Timeout:      time.Minute,
+			FailureRatio: 0.9,
+		}),
+		Logger: zerolog.Nop(),
+	})
+	handler := middleware.JWTAuth(middleware.JWTConfig{
+		Secret:              routerTestSecret,
+		PublicPath:          middleware.DefaultPublicPaths(),
+		PrefixPath:          middleware.DefaultPrefixPaths(),
+		ProtectedPrefixPath: []string{"/api/v1/workspace/share-policy"},
+	})(router)
+
+	claims := middleware.JWTClaims{
+		UserID: "user-123",
+		Roles:  []string{"OWNER"},
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Subject:   "user-123",
+		},
+	}
+	tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+	require.NoError(t, err)
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		req := httptest.NewRequest(method, "/api/v1/workspace/share-policy", nil)
+		req.Header.Set("Authorization", "Bearer "+tokenStr)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code, method)
+		assert.Equal(t, method, gotMethod)
+		assert.Equal(t, "/api/v1/workspace/share-policy", gotPath)
+		assert.Equal(t, "Bearer "+tokenStr, gotAuth)
+	}
+
+	// Unauthenticated callers are rejected at the gateway.
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/workspace/share-policy", nil))
+	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}

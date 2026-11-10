@@ -1,5 +1,7 @@
 """OtterWorks Document Service - FastAPI application."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,9 +9,10 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import comments, documents, health, templates
+from app.api import comments, documents, health, share_links, templates, workspace
 from app.config import settings
-from app.db.session import engine, init_db
+from app.db.session import async_session, engine, init_db
+from app.services.share_link_expiry_sweep import run_expiry_sweep_loop
 
 logger = structlog.get_logger()
 
@@ -41,9 +44,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("opentelemetry_setup_failed")
 
+    sweep_task: asyncio.Task[None] | None = None
+    if settings.share_link_expiry_sweep_enabled:
+        sweep_task = asyncio.create_task(
+            run_expiry_sweep_loop(async_session, settings.share_link_expiry_sweep_interval_seconds)
+        )
+
     logger.info("document_service_started")
     yield
     logger.info("document_service_shutting_down")
+    if sweep_task is not None:
+        sweep_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweep_task
     await engine.dispose()
 
 
@@ -68,3 +81,5 @@ app.include_router(health.router)
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(comments.router, prefix="/api/v1/documents", tags=["comments"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["templates"])
+app.include_router(share_links.router, prefix="/api/v1/share-links", tags=["share-links"])
+app.include_router(workspace.router, prefix="/api/v1/workspace", tags=["workspace"])

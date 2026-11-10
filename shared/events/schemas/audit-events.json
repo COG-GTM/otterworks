@@ -73,6 +73,171 @@
         "reason": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
+    },
+    "ShareAuditPayload": {
+      "description": "Payload of the OTW-41 share audit events. Published by document-service's EventPublisher as {\"event_type\", \"timestamp\", \"payload\"}; keys are the snake_case keys audit-service's SnsConsumer reads from payload.",
+      "type": "object",
+      "required": [
+        "user_id",
+        "action",
+        "resource_type",
+        "resource_id",
+        "workspace_id",
+        "old_value",
+        "new_value",
+        "timestamp"
+      ],
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "description": "Actor user id (uuid), or \"system\" for detected expiry."
+        },
+        "action": {
+          "enum": [
+            "share_link_created",
+            "share_link_expiry_changed",
+            "share_link_expired",
+            "workspace_share_policy_changed"
+          ]
+        },
+        "resource_type": { "enum": ["folder", "workspace"] },
+        "resource_id": { "type": "string" },
+        "workspace_id": { "type": "string" },
+        "old_value": { "type": ["object", "null"] },
+        "new_value": { "type": ["object", "null"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "details": { "type": "object", "additionalProperties": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "ShareLinkCreatedEvent": {
+      "type": "object",
+      "required": ["event_type", "timestamp", "payload"],
+      "properties": {
+        "event_type": { "const": "share_link_created" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/definitions/ShareAuditPayload" },
+            {
+              "properties": {
+                "action": { "const": "share_link_created" },
+                "resource_type": { "const": "folder" },
+                "old_value": { "type": "null" },
+                "new_value": {
+                  "type": "object",
+                  "required": ["expires_at"],
+                  "properties": { "expires_at": { "type": "string", "format": "date-time" } },
+                  "additionalProperties": false
+                },
+                "details": { "required": ["share_link_id"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ShareLinkExpiryChangedEvent": {
+      "type": "object",
+      "required": ["event_type", "timestamp", "payload"],
+      "properties": {
+        "event_type": { "const": "share_link_expiry_changed" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/definitions/ShareAuditPayload" },
+            {
+              "properties": {
+                "action": { "const": "share_link_expiry_changed" },
+                "resource_type": { "const": "folder" },
+                "old_value": {
+                  "type": "object",
+                  "required": ["expires_at"],
+                  "properties": { "expires_at": { "type": "string", "format": "date-time" } },
+                  "additionalProperties": false
+                },
+                "new_value": {
+                  "type": "object",
+                  "required": ["expires_at"],
+                  "properties": { "expires_at": { "type": "string", "format": "date-time" } },
+                  "additionalProperties": false
+                },
+                "details": { "required": ["share_link_id"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ShareLinkExpiredEvent": {
+      "type": "object",
+      "required": ["event_type", "timestamp", "payload"],
+      "properties": {
+        "event_type": { "const": "share_link_expired" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/definitions/ShareAuditPayload" },
+            {
+              "properties": {
+                "action": { "const": "share_link_expired" },
+                "user_id": { "const": "system" },
+                "resource_type": { "const": "folder" },
+                "old_value": {
+                  "type": "object",
+                  "required": ["expires_at"],
+                  "properties": { "expires_at": { "type": "string", "format": "date-time" } },
+                  "additionalProperties": false
+                },
+                "new_value": {
+                  "type": "object",
+                  "required": ["expired_at"],
+                  "properties": { "expired_at": { "type": "string", "format": "date-time" } },
+                  "additionalProperties": false
+                },
+                "details": { "required": ["share_link_id"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "WorkspaceSharePolicyChangedEvent": {
+      "type": "object",
+      "required": ["event_type", "timestamp", "payload"],
+      "properties": {
+        "event_type": { "const": "workspace_share_policy_changed" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "payload": {
+          "allOf": [
+            { "$ref": "#/definitions/ShareAuditPayload" },
+            {
+              "properties": {
+                "action": { "const": "workspace_share_policy_changed" },
+                "resource_type": { "const": "workspace" },
+                "old_value": {
+                  "type": "object",
+                  "required": ["default_days", "max_days"],
+                  "properties": {
+                    "default_days": { "type": "integer", "minimum": 1, "maximum": 90 },
+                    "max_days": { "type": "integer", "minimum": 1, "maximum": 90 }
+                  },
+                  "additionalProperties": false
+                },
+                "new_value": {
+                  "type": "object",
+                  "required": ["default_days", "max_days"],
+                  "properties": {
+                    "default_days": { "type": "integer", "minimum": 1, "maximum": 90 },
+                    "max_days": { "type": "integer", "minimum": 1, "maximum": 90 }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   }
 }
