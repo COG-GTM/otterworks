@@ -5,6 +5,8 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
+from tests.conftest import CLIENT_IP, GATEWAY_HEADERS, REQUEST_ID
+
 
 @pytest.mark.asyncio
 async def test_add_comment(client: AsyncClient, owner_id: uuid.UUID):
@@ -87,3 +89,32 @@ async def test_delete_comment_not_found(client: AsyncClient, owner_id: uuid.UUID
         f"/api/v1/documents/{doc_id}/comments/{uuid.uuid4()}"
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_comment_is_audited(client: AsyncClient, owner_id: uuid.UUID, audit_sink):
+    doc_id = (
+        await client.post(
+            "/api/v1/documents/",
+            json={"title": "Doc", "content": "", "owner_id": str(owner_id)},
+        )
+    ).json()["id"]
+    comment_id = (
+        await client.post(
+            f"/api/v1/documents/{doc_id}/comments",
+            json={"author_id": str(uuid.uuid4()), "content": "private remark"},
+        )
+    ).json()["id"]
+
+    resp = await client.delete(
+        f"/api/v1/documents/{doc_id}/comments/{comment_id}", headers=GATEWAY_HEADERS
+    )
+    assert resp.status_code == 204
+
+    event = await audit_sink.only("delete")
+    audit_sink.assert_request(
+        event, user_id=str(owner_id), outcome="success", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert (event["resourceType"], event["resourceId"]) == ("comment", comment_id)
+    assert event["details"] == {"documentId": doc_id}
+    assert "private remark" not in audit_sink.requests[0].content.decode()

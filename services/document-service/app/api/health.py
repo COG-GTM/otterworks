@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.services.audit_client import emit_failures_total
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -37,4 +38,7 @@ async def metrics():
         "# HELP document_service_up Document Service is running\n"
         "# TYPE document_service_up gauge\n"
         "document_service_up 1\n"
+        "# HELP audit_emit_failures_total Audit events that could not be delivered\n"
+        "# TYPE audit_emit_failures_total counter\n"
+        f"audit_emit_failures_total {emit_failures_total()}\n"
     )

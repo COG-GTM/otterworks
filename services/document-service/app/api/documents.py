@@ -5,7 +5,6 @@ import os
 import random
 from uuid import UUID
 
-import jwt
 import redis as redis_lib
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -13,6 +12,8 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.audit import Auditor, get_auditor, record_permission_denied
+from app.api.identity import _extract_user_id
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentCreate,
@@ -65,44 +66,17 @@ async def _maybe_inject_latency() -> None:
         await asyncio.sleep(delay)
 
 
-def _get_jwt_secret() -> str:
-    return os.environ.get("JWT_SECRET", "")
-
-
-def _extract_user_id(request: Request) -> UUID | None:
-    """Extract user ID from the Authorization JWT."""
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
-        secret = _get_jwt_secret()
-        if secret:
-            try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
-                user_id_str = payload.get("user_id") or payload.get("sub")
-                if user_id_str:
-                    return UUID(str(user_id_str))
-            except (jwt.PyJWTError, ValueError):
-                pass
-        else:
-            forwarded_user_id = request.headers.get("X-User-ID")
-            if forwarded_user_id:
-                try:
-                    return UUID(str(forwarded_user_id))
-                except ValueError:
-                    pass
-
-    return None
-
-
-def _require_user_id(request: Request) -> UUID:
+def _require_user_id(request: Request, attempted: str) -> UUID:
     user_id = _extract_user_id(request)
     if not user_id:
+        record_permission_denied(request, "unauthenticated", attempted)
         raise HTTPException(status_code=401, detail="Authentication required")
     return user_id
 
 
-def _ensure_owner(document: object, user_id: UUID) -> None:
+def _ensure_owner(request: Request, document: object, user_id: UUID, attempted: str) -> None:
     if getattr(document, "owner_id", None) != user_id:
+        record_permission_denied(request, "not_owner", attempted)
         raise HTTPException(status_code=403, detail="Access denied")
 
 
@@ -174,13 +148,21 @@ async def search_documents(
 
 
 @router.get("/exports", response_class=PlainTextResponse)
-async def read_export(name: str = Query(..., min_length=1)):
+async def read_export(
+    name: str = Query(..., min_length=1),
+    auditor: Auditor = Depends(get_auditor),
+):
     """Return a previously rendered export from the export archive."""
     archive = ExportArchive()
     try:
-        return archive.read_export(name)
+        body = archive.read_export(name)
     except (OSError, UnicodeDecodeError) as exc:
+        auditor.record(
+            "export", "export_archive", name, outcome="failure", details={"reason": "not_found"}
+        )
         raise HTTPException(status_code=404, detail="Export not found") from exc
+    auditor.record("export", "export_archive", name)
+    return body
 
 
 @router.get("/shared", response_model=DocumentResponse)
@@ -188,13 +170,29 @@ async def get_shared_document(
     document_id: UUID,
     token: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
+    auditor: Auditor = Depends(get_auditor),
 ):
     """Return a document through its read-only share link."""
     if not ShareLinkService().verify_token(str(document_id), token):
+        auditor.record(
+            "share.access",
+            "share_link",
+            str(document_id),
+            outcome="denied",
+            details={"reason": "invalid_token"},
+        )
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
+        auditor.record(
+            "share.access",
+            "share_link",
+            str(document_id),
+            outcome="failure",
+            details={"reason": "not_found"},
+        )
         raise HTTPException(status_code=404, detail="Document not found")
+    auditor.record("share.access", "share_link", str(document_id))
     return document
 
 
@@ -346,12 +344,12 @@ async def get_document(
 ):
     """Get a document by ID."""
     await _maybe_inject_latency()
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "read")
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(document, user_id)
+    _ensure_owner(request, document, user_id, "read")
     return document
 
 
@@ -364,12 +362,12 @@ async def update_document(
 ):
     """Full replace of a document."""
     await _maybe_inject_latency()
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "update")
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(existing, user_id)
+    _ensure_owner(request, existing, user_id, "update")
     document = await service.update(document_id, body)
     logger.info("document_updated", document_id=str(document_id))
     return document
@@ -384,12 +382,12 @@ async def patch_document(
 ):
     """Partial update of a document."""
     await _maybe_inject_latency()
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "patch")
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(existing, user_id)
+    _ensure_owner(request, existing, user_id, "patch")
     document = await service.patch(document_id, body)
     logger.info("document_patched", document_id=str(document_id))
     return document
@@ -400,16 +398,22 @@ async def delete_document(
     document_id: UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    auditor: Auditor = Depends(get_auditor),
 ):
     """Delete a document (soft delete)."""
     await _maybe_inject_latency()
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "delete")
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
+        auditor.record(
+            "delete", "document", str(document_id), outcome="failure",
+            details={"reason": "not_found"},
+        )
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(existing, user_id)
+    _ensure_owner(request, existing, user_id, "delete")
     await service.delete(document_id)
+    auditor.record("delete", "document", str(document_id), details={"mode": "soft"})
     logger.info("document_deleted", document_id=str(document_id))
 
 
@@ -420,12 +424,12 @@ async def list_versions(
     db: AsyncSession = Depends(get_db),
 ):
     """List document versions."""
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "versions.list")
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(document, user_id)
+    _ensure_owner(request, document, user_id, "versions.list")
     versions = await service.list_versions(document_id)
     return versions
 
@@ -441,12 +445,12 @@ async def restore_version(
     db: AsyncSession = Depends(get_db),
 ):
     """Restore a document to a previous version."""
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "version.restore")
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Document or version not found")
-    _ensure_owner(existing, user_id)
+    _ensure_owner(request, existing, user_id, "version.restore")
     document = await service.restore_version(document_id, version_id)
     if not document:
         raise HTTPException(
@@ -465,15 +469,21 @@ async def create_share_link(
     document_id: UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    auditor: Auditor = Depends(get_auditor),
 ):
     """Mint a read-only share link for a document."""
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "share.create")
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
+        auditor.record(
+            "share.create", "share_link", str(document_id), outcome="failure",
+            details={"reason": "not_found"},
+        )
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(document, user_id)
+    _ensure_owner(request, document, user_id, "share.create")
     token = ShareLinkService().mint_token(str(document_id))
+    auditor.record("share.create", "share_link", str(document_id), details={"access": "read_only"})
     logger.info("share_link_created", document_id=str(document_id))
     return {"document_id": str(document_id), "token": token}
 
@@ -484,16 +494,22 @@ async def export_document(
     request: Request,
     format: str = Query("markdown", pattern="^(pdf|html|markdown)$"),  # noqa: A002
     db: AsyncSession = Depends(get_db),
+    auditor: Auditor = Depends(get_auditor),
 ):
     """Export a document in the requested format."""
-    user_id = _require_user_id(request)
+    user_id = _require_user_id(request, "export")
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
+        auditor.record(
+            "export", "document", str(document_id), outcome="failure",
+            details={"format": format, "reason": "not_found"},
+        )
         raise HTTPException(status_code=404, detail="Document not found")
-    _ensure_owner(document, user_id)
+    _ensure_owner(request, document, user_id, "export")
 
     body, content_type = service.export_document(document, format)
+    auditor.record("export", "document", str(document_id), details={"format": format})
     return PlainTextResponse(content=body, media_type=content_type)
 
 

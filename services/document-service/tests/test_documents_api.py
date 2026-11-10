@@ -3,9 +3,12 @@
 import os
 import uuid
 
+import httpx
 import jwt
 import pytest
 from httpx import AsyncClient
+
+from tests.conftest import CLIENT_IP, GATEWAY_HEADERS, REQUEST_ID
 
 TEST_JWT_SECRET = "test-jwt-secret-for-unit-tests-pad32"  # noqa: S105
 os.environ.setdefault("JWT_SECRET", TEST_JWT_SECRET)
@@ -281,3 +284,201 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+async def _create_doc(client: AsyncClient, owner_id: uuid.UUID, content: str = "Body") -> str:
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Audited", "content": content, "owner_id": str(owner_id)},
+    )
+    return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_export_is_audited_with_format(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id, content="confidential export body")
+    resp = await client.get(
+        f"/api/v1/documents/{doc_id}/export", params={"format": "html"}, headers=GATEWAY_HEADERS
+    )
+    assert resp.status_code == 200
+
+    event = await audit_sink.only("export")
+    audit_sink.assert_request(
+        event, user_id=str(owner_id), outcome="success", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert (event["resourceType"], event["resourceId"]) == ("document", doc_id)
+    assert event["details"] == {"format": "html"}
+    assert "confidential export body" not in audit_sink.requests[0].content.decode()
+
+
+@pytest.mark.asyncio
+async def test_non_owner_export_is_audited_as_permission_denied(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id)
+    intruder = uuid.uuid4()
+    resp = await client.get(
+        f"/api/v1/documents/{doc_id}/export",
+        headers={**GATEWAY_HEADERS, "Authorization": f"Bearer {_make_jwt(str(intruder))}"},
+    )
+    assert resp.status_code == 403
+
+    events = await audit_sink.events()
+    assert [e["action"] for e in events] == ["permission.denied"]
+    event = events[0]
+    audit_sink.assert_request(
+        event, user_id=str(intruder), outcome="denied", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert (event["resourceType"], event["resourceId"]) == ("document", doc_id)
+    assert event["details"]["reason"] == "not_owner"
+    assert event["details"]["attempted"] == "export"
+    assert event["details"]["route"] == "/api/v1/documents/{document_id}/export"
+
+
+@pytest.mark.asyncio
+async def test_unauthenticated_request_is_audited_as_permission_denied(
+    client, owner_id, audit_sink
+):
+    doc_id = await _create_doc(client, owner_id)
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", headers=GATEWAY_HEADERS, auth=None)
+    assert resp.status_code == 401
+
+    event = await audit_sink.only("permission.denied")
+    audit_sink.assert_request(
+        event, user_id="anonymous", outcome="denied", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert event["resourceId"] == doc_id
+    assert event["details"]["reason"] == "unauthenticated"
+    assert event["details"]["attempted"] == "delete"
+
+
+@pytest.mark.asyncio
+async def test_unverified_identity_headers_are_not_trusted_as_actor(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id)
+    forged = {**GATEWAY_HEADERS, "X-User-ID": str(owner_id), "X-User-Email": "victim@example.com"}
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", headers=forged, auth=None)
+    assert resp.status_code == 401
+
+    event = await audit_sink.only("permission.denied")
+    audit_sink.assert_request(
+        event, user_id="anonymous", outcome="denied", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert "actorEmail" not in event
+
+
+@pytest.mark.asyncio
+async def test_archived_export_read_is_audited(client, owner_id, audit_sink, monkeypatch, tmp_path):
+    (tmp_path / "report.md").write_text("# archived body\n", encoding="utf-8")
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
+
+    ok = await client.get(
+        "/api/v1/documents/exports", params={"name": "report.md"}, headers=GATEWAY_HEADERS
+    )
+    missing = await client.get(
+        "/api/v1/documents/exports", params={"name": "absent.md"}, headers=GATEWAY_HEADERS
+    )
+    assert (ok.status_code, missing.status_code) == (200, 404)
+
+    success, failure = await audit_sink.events()
+    expected = ((success, "success", "report.md"), (failure, "failure", "absent.md"))
+    for event, outcome, name in expected:
+        assert event["action"] == "export"
+        audit_sink.assert_request(
+            event, user_id=str(owner_id), outcome=outcome, ip=CLIENT_IP, request_id=REQUEST_ID
+        )
+        assert (event["resourceType"], event["resourceId"]) == ("export_archive", name)
+    assert "archived body" not in audit_sink.requests[0].content.decode()
+
+
+@pytest.mark.asyncio
+async def test_document_delete_is_audited(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id)
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", headers=GATEWAY_HEADERS)
+    assert resp.status_code == 204
+
+    event = await audit_sink.only("delete")
+    audit_sink.assert_request(
+        event, user_id=str(owner_id), outcome="success", ip=CLIENT_IP, request_id=REQUEST_ID
+    )
+    assert (event["resourceType"], event["resourceId"]) == ("document", doc_id)
+
+
+@pytest.mark.asyncio
+async def test_delete_of_missing_document_is_audited_as_failure(client, audit_sink):
+    missing = str(uuid.uuid4())
+    resp = await client.delete(f"/api/v1/documents/{missing}", headers=GATEWAY_HEADERS)
+    assert resp.status_code == 404
+
+    event = await audit_sink.only("delete")
+    assert (event["outcome"], event["resourceId"]) == ("failure", missing)
+    assert event["details"]["reason"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_request_id_is_generated_when_gateway_sends_none(client, owner_id, audit_sink):
+    doc_id = await _create_doc(client, owner_id)
+    await client.delete(f"/api/v1/documents/{doc_id}", headers={"X-Real-IP": "198.51.100.9"})
+
+    event = await audit_sink.only("delete")
+    assert uuid.UUID(event["requestId"])
+    assert event["ipAddress"] == "198.51.100.9"
+    assert audit_sink.requests[0].headers["X-Request-ID"] == event["requestId"]
+
+
+@pytest.mark.asyncio
+async def test_no_secrets_are_sent_to_audit_service(client, owner_id, audit_sink):
+    jwt_token = _make_jwt(str(owner_id))
+    headers = {**GATEWAY_HEADERS, "Authorization": f"Bearer {jwt_token}"}
+    doc_id = await _create_doc(client, owner_id, content="TOP-SECRET-DOCUMENT-BODY")
+    share_token = (
+        await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
+    ).json()["token"]
+    await client.get(
+        "/api/v1/documents/shared", params={"document_id": doc_id, "token": share_token}
+    )
+    await client.get(f"/api/v1/documents/{doc_id}/export", headers=headers)
+    await client.delete(f"/api/v1/documents/{doc_id}", headers=headers)
+
+    events = await audit_sink.events()
+    assert {e["action"] for e in events} == {"share.create", "share.access", "export", "delete"}
+    raw = b"".join(r.content for r in audit_sink.requests).decode()
+    for secret in (jwt_token, share_token, "TOP-SECRET-DOCUMENT-BODY", TEST_JWT_SECRET):
+        assert secret not in raw
+    forbidden = {"token", "password", "authorization", "content", "body", "jwt", "secret"}
+    for event in events:
+        keys = {k.lower() for k in event} | {k.lower() for k in event["details"]}
+        assert not keys & forbidden
+
+
+@pytest.mark.asyncio
+async def test_request_succeeds_when_audit_service_returns_5xx(client, owner_id, audit_sink):
+    from app.services import audit_client
+
+    audit_sink.respond = lambda _req: httpx.Response(503)
+    before = audit_client.emit_failures_total()
+    doc_id = await _create_doc(client, owner_id)
+
+    resp = await client.get(f"/api/v1/documents/{doc_id}/export", headers=GATEWAY_HEADERS)
+    assert resp.status_code == 200
+    assert "# Audited" in resp.text
+
+    await audit_sink.events()
+    assert len(audit_sink.requests) == audit_client.MAX_ATTEMPTS
+    assert audit_client.emit_failures_total() == before + 1
+    metrics = await client.get("/metrics")
+    assert f"audit_emit_failures_total {before + 1}" in metrics.text
+
+
+@pytest.mark.asyncio
+async def test_request_succeeds_when_audit_service_times_out(client, owner_id, audit_sink):
+    from app.services import audit_client
+
+    def _timeout(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("audit-service timed out", request=request)
+
+    audit_sink.respond = _timeout
+    before = audit_client.emit_failures_total()
+    doc_id = await _create_doc(client, owner_id)
+
+    resp = await client.delete(f"/api/v1/documents/{doc_id}", headers=GATEWAY_HEADERS)
+    assert resp.status_code == 204
+    await audit_sink.events()
+    assert audit_client.emit_failures_total() == before + 1
