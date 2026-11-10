@@ -33,6 +33,13 @@ jwt:
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
   refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:2592000}
 
+audit:
+  service-url: ${AUDIT_SERVICE_URL:}
+  token: ${AUDIT_SERVICE_TOKEN:}
+  timeout-ms: ${AUDIT_TIMEOUT_MS:2000}
+  max-retries: ${AUDIT_MAX_RETRIES:1}
+  queue-capacity: ${AUDIT_QUEUE_CAPACITY:1000}
+
 management:
   endpoints:
     web:

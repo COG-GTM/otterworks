@@ -1,5 +1,6 @@
 package com.otterworks.auth.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -10,4 +11,8 @@ public class UpdateProfileRequest {
 
   @Size(max = 500)
   private String avatarUrl;
+
+  @Email
+  @Size(max = 255)
+  private String email;
 }

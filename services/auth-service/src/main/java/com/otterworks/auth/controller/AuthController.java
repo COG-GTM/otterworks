@@ -86,6 +86,13 @@ public class AuthController {
     return ResponseEntity.ok(users);
   }
 
+  @PutMapping("/users/{id}/roles")
+  @PreAuthorize("hasRole('ADMIN')")
+  public ResponseEntity<UserDTO> updateRoles(
+      @PathVariable UUID id, @Valid @RequestBody UpdateRolesRequest request) {
+    return ResponseEntity.ok(userService.updateRoles(id, request.getRoles()));
+  }
+
   @PostMapping("/logout")
   public ResponseEntity<Void> logout(Authentication authentication) {
     UUID userId = UUID.fromString((String) authentication.getPrincipal());
