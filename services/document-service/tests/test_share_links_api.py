@@ -10,9 +10,11 @@ import jwt
 import pytest
 from sqlalchemy import select
 
+from app.config import settings
 from app.models.share_link import ShareLink
 from app.services import event_publisher as publisher_module
 from app.services.share_link import ShareLinkService
+from app.services.share_link_store import ShareLinkStore
 from tests.conftest import TEST_JWT_SECRET
 
 
@@ -223,7 +225,10 @@ async def test_ac7_policy_change_does_not_extend_expired_link(client, owner_id, 
     assert patch.status_code == 410
 
 
-async def test_ac8_pre_existing_stateless_links_are_not_expired(client, owner_id):
+async def test_ac8_pre_existing_stateless_links_are_not_expired(client, owner_id, monkeypatch):
+    monkeypatch.setattr(
+        settings, "share_link_legacy_cutoff", datetime.now(UTC) + timedelta(days=1)
+    )
     doc_id = await _create_document(client, owner_id)
     await _set_policy(client, default=1, minimum=1, maximum=1)
     legacy_token = ShareLinkService().mint_token(doc_id)
@@ -233,6 +238,36 @@ async def test_ac8_pre_existing_stateless_links_are_not_expired(client, owner_id
         auth=None,
     )
     assert resp.status_code == 200
+
+
+async def test_stateless_token_rejected_for_documents_created_after_cutoff(
+    client, owner_id, monkeypatch
+):
+    monkeypatch.setattr(
+        settings, "share_link_legacy_cutoff", datetime.now(UTC) - timedelta(days=1)
+    )
+    doc_id = await _create_document(client, owner_id)
+    resp = await client.get(
+        "/api/v1/documents/shared",
+        params={"document_id": doc_id, "token": ShareLinkService().mint_token(doc_id)},
+        auth=None,
+    )
+    assert resp.status_code == 403
+    assert "Secret body" not in resp.text
+
+
+async def test_ac10_sweep_audits_expired_links_that_were_never_opened(
+    client, owner_id, db_session, audit_events
+):
+    doc_id = await _create_document(client, owner_id)
+    expired = (await client.post(f"/api/v1/documents/{doc_id}/share")).json()
+    await client.post(f"/api/v1/documents/{doc_id}/share")
+    await _expire(db_session, expired["id"])
+
+    assert await ShareLinkStore(db_session).sweep_expired() == 1
+    assert await ShareLinkStore(db_session).sweep_expired() == 0
+    expiries = [e for e in audit_events if e["action"] == "share_link_expire"]
+    assert [e["resource_id"] for e in expiries] == [expired["id"]]
 
 
 async def test_unknown_token_is_rejected(client, owner_id):

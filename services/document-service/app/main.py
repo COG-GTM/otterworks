@@ -1,5 +1,7 @@
 """OtterWorks Document Service - FastAPI application."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import comments, documents, health, share_links, templates
 from app.config import settings
-from app.db.session import engine, init_db
+from app.db.session import async_session, engine, init_db
+from app.services.share_link_store import ShareLinkStore
 
 logger = structlog.get_logger()
 
@@ -27,6 +30,18 @@ structlog.configure(
 )
 
 
+async def sweep_expired_share_links() -> None:
+    while True:
+        try:
+            async with async_session() as db:
+                swept = await ShareLinkStore(db).sweep_expired()
+            if swept:
+                logger.info("share_link_expiry_sweep", expired=swept)
+        except Exception:
+            logger.exception("share_link_expiry_sweep_failed")
+        await asyncio.sleep(settings.share_link_expiry_sweep_seconds)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
@@ -41,9 +56,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("opentelemetry_setup_failed")
 
+    sweeper = asyncio.create_task(sweep_expired_share_links())
     logger.info("document_service_started")
     yield
     logger.info("document_service_shutting_down")
+    sweeper.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await sweeper
     await engine.dispose()
 
 
