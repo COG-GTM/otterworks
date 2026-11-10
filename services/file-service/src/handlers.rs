@@ -11,7 +11,7 @@ async fn chaos_active(cm: &mut redis::aio::ConnectionManager, flag: &str) -> boo
 }
 
 use crate::alerts;
-use crate::audit::{AuditContext, AuditEmitter, AuditRecord};
+use crate::audit::{build_event, AuditContext, AuditEmitter, AuditRecord};
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
@@ -660,7 +660,14 @@ pub async fn share_file(
         &req,
     )
     .await;
-    audit.record(&ctx, record, &result);
+    // A failed notification after the share was saved still granted access.
+    let share_persisted =
+        result.is_err() && record.details.get("notification").map(String::as_str) == Some("failed");
+    if share_persisted {
+        audit.emit(build_event(&ctx, record, "success"));
+    } else {
+        audit.record(&ctx, record, &result);
+    }
     result
 }
 
@@ -790,6 +797,9 @@ async fn share_file_inner(
             // on; otherwise event publishing stays fire-and-forget like the
             // other handlers, since the share is already persisted.
             if events.share_publish_forced() {
+                if recipient_known {
+                    record.detail("notification", "failed");
+                }
                 return Err(err);
             }
         }
@@ -1088,6 +1098,7 @@ mod audit_tests {
     struct Harness {
         aws: MockServer,
         audit: MockServer,
+        share_event_always_fail: bool,
     }
 
     impl Harness {
@@ -1102,6 +1113,7 @@ mod audit_tests {
             Self {
                 aws: MockServer::start().await,
                 audit,
+                share_event_always_fail: false,
             }
         }
 
@@ -1183,7 +1195,7 @@ mod audit_tests {
             };
             let sns = SnsConfig {
                 topic_arn: None,
-                share_event_always_fail: false,
+                share_event_always_fail: self.share_event_always_fail,
             };
             let events = EventPublisher::new(&sns, &aws_cfg).await;
             let config = AppConfig {
@@ -1343,6 +1355,39 @@ mod audit_tests {
         );
         assert_eq!(event["details"]["sharedWith"], grantee.to_string());
         assert_eq!(event["details"]["permission"], "viewer");
+    }
+
+    #[actix_rt::test]
+    async fn share_saved_but_notification_failed_is_audited_as_success() {
+        let mut h = Harness::new().await;
+        h.share_event_always_fail = true;
+        let (file_id, owner, grantee) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        h.file(file_id, owner).await;
+        h.shares(vec![]).await;
+        h.dynamo("PutItem", SHARES, json!({})).await;
+
+        let req = as_user(
+            test::TestRequest::post()
+                .uri(&format!("/api/v1/files/{file_id}/share"))
+                .set_json(share_body(grantee, owner, "viewer")),
+            owner,
+            "req-share-notify-fail",
+        );
+        let resp = h.send(req).await;
+        assert!(resp.status().is_server_error());
+        assert!(h.dynamo_ops().await.iter().any(|op| op == "PutItem"));
+
+        let event = &h.audit_events(1).await[0];
+        assert_event(
+            event,
+            "share.create",
+            owner,
+            "file",
+            file_id,
+            "success",
+            "req-share-notify-fail",
+        );
+        assert_eq!(event["details"]["notification"], "failed");
     }
 
     #[actix_rt::test]
