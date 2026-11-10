@@ -75,7 +75,7 @@ class DirtyErrorStateMatcher implements ErrorStateMatcher {
 
           <form [formGroup]="form" (ngSubmit)="save()" novalidate class="policy-form">
             <div class="fields">
-              <mat-form-field appearance="outline" *ngFor="let f of fields">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" *ngFor="let f of fields">
                 <mat-label>{{ f.label }}</mat-label>
                 <input matInput type="number" step="1" [min]="limits.floorDays" [max]="limits.ceilingDays"
                        [formControlName]="f.key" [errorStateMatcher]="errorMatcher" [attr.data-testid]="f.key">
@@ -131,7 +131,7 @@ class DirtyErrorStateMatcher implements ErrorStateMatcher {
     }
     .ac7-note mat-icon { flex-shrink: 0; }
     .fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-    .form-error { display: flex; align-items: center; gap: 6px; color: #c62828; font-size: 0.875rem; margin-top: 8px; }
+    .form-error { display: flex; align-items: center; gap: 6px; color: #c62828; font-size: 0.875rem; margin-top: 12px; }
     .form-error mat-icon { font-size: 18px; width: 18px; height: 18px; }
     .preview { color: #333; margin: 16px 0 0; }
     .error-banner {
@@ -148,7 +148,7 @@ export class WorkspaceSettingsComponent implements OnInit {
   readonly limits = SHARE_POLICY_LIMITS;
   readonly errorMatcher = new DirtyErrorStateMatcher();
   readonly fields: { key: ExpiryField; label: string; hint: string }[] = [
-    { key: 'defaultExpiryDays', label: 'Default expiry', hint: 'Applied when the creator does not pick an expiry' },
+    { key: 'defaultExpiryDays', label: 'Default expiry', hint: 'Used when the creator does not pick an expiry' },
     { key: 'minExpiryDays', label: 'Minimum expiry', hint: `At least ${SHARE_POLICY_LIMITS.floorDays} day` },
     { key: 'maxExpiryDays', label: 'Maximum expiry', hint: `At most ${SHARE_POLICY_LIMITS.ceilingDays} days` },
   ];
