@@ -17,5 +17,10 @@ public enum ReportCategory {
     /** System health and performance */
     SYSTEM_HEALTH,
     /** Compliance and regulatory */
-    COMPLIANCE
+    COMPLIANCE;
+
+    /** Categories built from platform-wide audit or user activity data, restricted to administrators. */
+    public boolean requiresAdmin() {
+        return this == AUDIT_LOG || this == COMPLIANCE || this == USER_ACTIVITY || this == STORAGE_SUMMARY;
+    }
 }

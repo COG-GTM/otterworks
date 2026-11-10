@@ -9,6 +9,7 @@ import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
@@ -47,6 +48,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 public class ReportServiceTest {
 
+    private static final String USER_ID = "test-user";
+    private static final String ADMIN = TestTokens.bearer(USER_ID, "ADMIN");
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -72,7 +76,7 @@ public class ReportServiceTest {
         request.setDateFrom(new Date(System.currentTimeMillis() - 86400000L * 30)); // 30 days ago
         request.setDateTo(new Date());
 
-        mockMvc.perform(post("/api/v1/reports")
+        mockMvc.perform(post("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -92,7 +96,7 @@ public class ReportServiceTest {
         request.setReportType(ReportType.CSV);
         request.setRequestedBy("test-user-002");
 
-        mockMvc.perform(post("/api/v1/reports")
+        mockMvc.perform(post("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -107,7 +111,7 @@ public class ReportServiceTest {
         request.setReportType(ReportType.EXCEL);
         request.setRequestedBy("test-user-003");
 
-        mockMvc.perform(post("/api/v1/reports")
+        mockMvc.perform(post("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -116,14 +120,14 @@ public class ReportServiceTest {
 
     @Test
     public void getReportNotFoundShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999"))
+        mockMvc.perform(get("/api/v1/reports/99999").header(HttpHeaders.AUTHORIZATION, ADMIN))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void listReportsShouldReturnEmptyList() throws Exception {
         mockMvc.perform(get("/api/v1/reports")
-                        .param("userId", "nonexistent-user"))
+                        .header(HttpHeaders.AUTHORIZATION, TestTokens.bearer("user-with-no-reports")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
                 .andExpect(jsonPath("$.total", is(0)));
@@ -137,7 +141,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user");
         // Missing reportName — should fail validation
 
-        mockMvc.perform(post("/api/v1/reports")
+        mockMvc.perform(post("/api/v1/reports").header(HttpHeaders.AUTHORIZATION, ADMIN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -145,7 +149,7 @@ public class ReportServiceTest {
 
     @Test
     public void downloadNonExistentReportShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999/download"))
+        mockMvc.perform(get("/api/v1/reports/99999/download").header(HttpHeaders.AUTHORIZATION, ADMIN))
                 .andExpect(status().isNotFound());
     }
 }
