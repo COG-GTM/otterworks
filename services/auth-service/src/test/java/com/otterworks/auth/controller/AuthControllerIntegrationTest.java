@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -262,6 +264,71 @@ class AuthControllerIntegrationTest {
                 .param("size", "10"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.content").isArray());
+  }
+
+  @Test
+  void login_shouldLockAccountAfterRepeatedFailures() throws Exception {
+    createTestUser("locked@otterworks.dev", "password123", "Locked User");
+
+    for (int i = 0; i < 5; i++) {
+      performLogin("locked@otterworks.dev", "wrongpassword")
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.message").value("Invalid credentials"));
+    }
+
+    performLogin("locked@otterworks.dev", "password123")
+        .andExpect(status().isLocked())
+        .andExpect(jsonPath("$.status").value(423))
+        .andExpect(jsonPath("$.message").value("Account temporarily locked, try again later"));
+
+    User user = userRepository.findByEmail("locked@otterworks.dev").orElseThrow();
+    assertThat(user.getFailedLoginAttempts()).isEqualTo(5);
+    assertThat(user.getLockedUntil()).isAfter(Instant.now());
+  }
+
+  @Test
+  void login_shouldSucceedAndResetCounterAfterLockoutExpires() throws Exception {
+    createTestUser("expired@otterworks.dev", "password123", "Expired Lock User");
+    User user = userRepository.findByEmail("expired@otterworks.dev").orElseThrow();
+    user.setFailedLoginAttempts(5);
+    user.setLockedUntil(Instant.now().minusSeconds(1));
+    userRepository.save(user);
+
+    performLogin("expired@otterworks.dev", "password123").andExpect(status().isOk());
+
+    User reloaded = userRepository.findByEmail("expired@otterworks.dev").orElseThrow();
+    assertThat(reloaded.getFailedLoginAttempts()).isZero();
+    assertThat(reloaded.getLockedUntil()).isNull();
+  }
+
+  @Test
+  void login_shouldResetCounterOnSuccessBeforeThreshold() throws Exception {
+    createTestUser("reset@otterworks.dev", "password123", "Reset User");
+
+    for (int i = 0; i < 4; i++) {
+      performLogin("reset@otterworks.dev", "wrongpassword").andExpect(status().isBadRequest());
+    }
+    performLogin("reset@otterworks.dev", "password123").andExpect(status().isOk());
+    performLogin("reset@otterworks.dev", "wrongpassword").andExpect(status().isBadRequest());
+
+    User user = userRepository.findByEmail("reset@otterworks.dev").orElseThrow();
+    assertThat(user.getFailedLoginAttempts()).isEqualTo(1);
+    assertThat(user.getLockedUntil()).isNull();
+  }
+
+  @Test
+  void login_shouldNeverLockUnknownEmail() throws Exception {
+    for (int i = 0; i < 7; i++) {
+      performLogin("ghost@otterworks.dev", "password123")
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.message").value("Invalid credentials"));
+    }
+  }
+
+  private ResultActions performLogin(String email, String password) throws Exception {
+    String body = String.format("{\"email\": \"%s\", \"password\": \"%s\"}", email, password);
+    return mockMvc.perform(
+        post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body));
   }
 
   private void createTestUser(String email, String password, String displayName) {

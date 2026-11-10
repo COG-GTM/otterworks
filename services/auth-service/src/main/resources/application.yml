@@ -33,6 +33,11 @@ jwt:
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
   refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:2592000}
 
+auth:
+  lockout:
+    max-attempts: ${AUTH_LOCKOUT_MAX_ATTEMPTS:5}
+    duration: ${AUTH_LOCKOUT_DURATION:15m}
+
 management:
   endpoints:
     web:

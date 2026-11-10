@@ -4,22 +4,27 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+import com.otterworks.auth.config.LockoutConfig;
 import com.otterworks.auth.dto.AuthResponse;
 import com.otterworks.auth.dto.ChangePasswordRequest;
 import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.dto.RegisterRequest;
 import com.otterworks.auth.entity.RefreshToken;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.AccountLockedException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,12 +37,24 @@ class AuthServiceTest {
   @Mock private JwtTokenProvider jwtTokenProvider;
   @Mock private RefreshTokenRepository refreshTokenRepository;
 
-  @InjectMocks private AuthService authService;
+  private static final Instant NOW = Instant.parse("2026-01-01T12:00:00Z");
 
+  private LockoutConfig lockoutConfig;
+  private AuthService authService;
   private User testUser;
 
   @BeforeEach
   void setUp() {
+    lockoutConfig = new LockoutConfig();
+    authService =
+        new AuthService(
+            userRepository,
+            passwordEncoder,
+            jwtTokenProvider,
+            refreshTokenRepository,
+            lockoutConfig,
+            Clock.fixed(NOW, ZoneOffset.UTC));
+
     testUser = new User();
     testUser.setId(UUID.randomUUID());
     testUser.setEmail("test@otterworks.dev");
@@ -99,7 +116,8 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("password123", testUser.getPasswordHash())).thenReturn(true);
     when(userRepository.save(any(User.class))).thenReturn(testUser);
     when(jwtTokenProvider.generateAccessToken(testUser)).thenReturn("access-token");
@@ -122,7 +140,8 @@ class AuthServiceTest {
     request.setEmail("nonexistent@otterworks.dev");
     request.setPassword("password123");
 
-    when(userRepository.findByEmail("nonexistent@otterworks.dev")).thenReturn(Optional.empty());
+    when(userRepository.findByEmailForUpdate("nonexistent@otterworks.dev"))
+        .thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(IllegalArgumentException.class)
@@ -135,12 +154,152 @@ class AuthServiceTest {
     request.setEmail("test@otterworks.dev");
     request.setPassword("wrongpassword");
 
-    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
     when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
 
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Invalid credentials");
+  }
+
+  @Test
+  void login_shouldIncrementFailedAttemptsOnWrongPassword() {
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(loginRequest("wrongpassword")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Invalid credentials");
+
+    assertThat(testUser.getFailedLoginAttempts()).isEqualTo(1);
+    assertThat(testUser.getLockedUntil()).isNull();
+    verify(userRepository).save(testUser);
+  }
+
+  @Test
+  void login_shouldLockAccountWhenFailedAttemptsReachThreshold() {
+    testUser.setFailedLoginAttempts(4);
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(loginRequest("wrongpassword")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Invalid credentials");
+
+    assertThat(testUser.getFailedLoginAttempts()).isEqualTo(5);
+    assertThat(testUser.getLockedUntil()).isEqualTo(NOW.plus(Duration.ofMinutes(15)));
+  }
+
+  @Test
+  void login_shouldUseConfiguredMaxAttemptsAndDuration() {
+    lockoutConfig.setMaxAttempts(3);
+    lockoutConfig.setDuration(Duration.ofMinutes(2));
+    testUser.setFailedLoginAttempts(2);
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(loginRequest("wrongpassword")))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    assertThat(testUser.getFailedLoginAttempts()).isEqualTo(3);
+    assertThat(testUser.getLockedUntil()).isEqualTo(NOW.plus(Duration.ofMinutes(2)));
+  }
+
+  @Test
+  void login_shouldRejectLockedAccountWithoutCheckingPassword() {
+    testUser.setFailedLoginAttempts(5);
+    testUser.setLockedUntil(NOW.plusSeconds(60));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+
+    assertThatThrownBy(() -> authService.login(loginRequest("password123")))
+        .isInstanceOf(AccountLockedException.class)
+        .hasMessage("Account temporarily locked, try again later");
+
+    verify(passwordEncoder, never()).matches(any(), any());
+    verify(userRepository, never()).save(any(User.class));
+    assertThat(testUser.getFailedLoginAttempts()).isEqualTo(5);
+  }
+
+  @Test
+  void login_shouldSucceedAndResetCounterAfterLockoutExpires() {
+    testUser.setFailedLoginAttempts(5);
+    testUser.setLockedUntil(NOW.minusSeconds(1));
+    stubSuccessfulLogin();
+
+    AuthResponse response = authService.login(loginRequest("password123"));
+
+    assertThat(response.getAccessToken()).isEqualTo("access-token");
+    assertThat(testUser.getFailedLoginAttempts()).isZero();
+    assertThat(testUser.getLockedUntil()).isNull();
+  }
+
+  @Test
+  void login_shouldStartFreshCountOnWrongPasswordAfterLockoutExpires() {
+    testUser.setFailedLoginAttempts(5);
+    testUser.setLockedUntil(NOW.minusSeconds(1));
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(loginRequest("wrongpassword")))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    assertThat(testUser.getFailedLoginAttempts()).isEqualTo(1);
+    assertThat(testUser.getLockedUntil()).isNull();
+  }
+
+  @Test
+  void login_shouldResetCounterOnSuccessBeforeThreshold() {
+    testUser.setFailedLoginAttempts(3);
+    stubSuccessfulLogin();
+
+    authService.login(loginRequest("password123"));
+
+    assertThat(testUser.getFailedLoginAttempts()).isZero();
+    assertThat(testUser.getLastLoginAt()).isEqualTo(NOW);
+  }
+
+  @Test
+  void login_shouldNeverLockForUnknownEmail() {
+    when(userRepository.findByEmailForUpdate("nonexistent@otterworks.dev"))
+        .thenReturn(Optional.empty());
+    LoginRequest request = new LoginRequest();
+    request.setEmail("nonexistent@otterworks.dev");
+    request.setPassword("password123");
+
+    for (int i = 0; i < 10; i++) {
+      assertThatThrownBy(() -> authService.login(request))
+          .isInstanceOf(IllegalArgumentException.class)
+          .isNotInstanceOf(AccountLockedException.class)
+          .hasMessage("Invalid credentials");
+    }
+    verify(userRepository, never()).save(any(User.class));
+  }
+
+  private LoginRequest loginRequest(String password) {
+    LoginRequest request = new LoginRequest();
+    request.setEmail("test@otterworks.dev");
+    request.setPassword(password);
+    return request;
+  }
+
+  private void stubSuccessfulLogin() {
+    when(userRepository.findByEmailForUpdate("test@otterworks.dev"))
+        .thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("password123", testUser.getPasswordHash())).thenReturn(true);
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    when(jwtTokenProvider.generateAccessToken(testUser)).thenReturn("access-token");
+    when(jwtTokenProvider.generateRefreshToken(testUser)).thenReturn("refresh-token");
+    when(jwtTokenProvider.extractJti("refresh-token")).thenReturn("jti-789");
+    when(jwtTokenProvider.getAccessTokenExpiry()).thenReturn(3600L);
+    when(jwtTokenProvider.getRefreshTokenExpiry()).thenReturn(2592000L);
+    when(refreshTokenRepository.save(any(RefreshToken.class)))
+        .thenAnswer(inv -> inv.getArgument(0));
   }
 
   @Test
