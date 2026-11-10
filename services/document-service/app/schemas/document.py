@@ -128,3 +128,10 @@ class DocumentFromTemplate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     owner_id: UUID
     folder_id: UUID | None = None
+
+
+class ShareLinkCreate(BaseModel):
+    """Optional expiry override when minting a share link (OTW-53)."""
+
+    expires_in_days: int | None = Field(default=None, ge=1)
+    no_expiry: bool = False

@@ -34,6 +34,8 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		// Read-only share-link resolution: the token is the credential (OTW-53).
+		"/api/v1/documents/shared",
 	}
 }
 

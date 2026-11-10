@@ -15,6 +15,7 @@ import {
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CollaborativeEditor } from "@/components/editor/collaborative-editor";
+import { ShareLinkSection } from "@/components/documents/share-link-section";
 import { UserPresenceAvatars } from "@/components/editor/user-presence-avatars";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -267,6 +268,7 @@ function DocumentEditorContent() {
           {shareStatus === "error" && (
             <p className="text-sm text-red-600">Failed to send invite. Please try again.</p>
           )}
+          <ShareLinkSection documentId={documentId} />
           <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
             <button
               onClick={() => {

@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.models.sharing import DEFAULT_WORKSPACE_ID
 from app.schemas.document import (
     DocumentCreate,
     DocumentFromTemplate,
@@ -22,11 +23,18 @@ from app.schemas.document import (
     DocumentResponse,
     DocumentUpdate,
     DocumentVersionResponse,
+    ShareLinkCreate,
 )
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
 from app.services.share_link import ShareLinkService
+from app.services.share_link_store import (
+    ExpiryPolicyError,
+    ShareLinkStore,
+    as_aware,
+    is_expired,
+)
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -189,8 +197,18 @@ async def get_shared_document(
     token: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a document through its read-only share link."""
-    if not ShareLinkService().verify_token(str(document_id), token):
+    """Return a document through its read-only share link.
+
+    Persisted links return 410 once expired. Stateless links minted before
+    OTW-53 have no expiry and keep working (no retroactive expiry).
+    """
+    store = ShareLinkStore(db)
+    link = await store.find_by_token(document_id, token)
+    if link is not None:
+        if is_expired(link):
+            await store.mark_expired(link)
+            raise HTTPException(status_code=410, detail="This share link has expired")
+    elif not ShareLinkService().verify_token(str(document_id), token):
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
@@ -464,18 +482,36 @@ async def restore_version(
 async def create_share_link(
     document_id: UUID,
     request: Request,
+    body: ShareLinkCreate | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Mint a read-only share link for a document."""
+    """Mint a read-only share link, applying the workspace expiry policy."""
     user_id = _require_user_id(request)
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     _ensure_owner(document, user_id)
-    token = ShareLinkService().mint_token(str(document_id))
-    logger.info("share_link_created", document_id=str(document_id))
-    return {"document_id": str(document_id), "token": token}
+    body = body or ShareLinkCreate()
+    try:
+        link = await ShareLinkStore(db).create_link(
+            document_id,
+            user_id,
+            expires_in_days=body.expires_in_days,
+            no_expiry=body.no_expiry,
+            workspace_id=request.headers.get("X-Workspace-ID") or DEFAULT_WORKSPACE_ID,
+        )
+    except ExpiryPolicyError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    logger.info("share_link_created", document_id=str(document_id), link_id=str(link.id))
+    expires_at = as_aware(link.expires_at)
+    return {
+        "document_id": str(document_id),
+        "link_id": str(link.id),
+        "token": link.token,
+        "created_at": as_aware(link.created_at).isoformat(),
+        "expires_at": expires_at.isoformat() if expires_at else None,
+    }
 
 
 @router.get("/{document_id}/export")

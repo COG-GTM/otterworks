@@ -42,6 +42,7 @@ describe('SidebarComponent', () => {
     expect(labels).toContain('System Health');
     expect(labels).toContain('Announcements');
     expect(labels).toContain('Storage Quotas');
+    expect(labels).toContain('Sharing Settings');
     expect(labels).toContain('Analytics');
   });
 

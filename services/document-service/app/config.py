@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
 
+    audit_service_url: str = ""
+    share_expiry_sweep_seconds: int = 300
+
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:4200"]
 
     model_config = {"env_prefix": "DOC_SVC_", "env_file": ".env", "extra": "ignore"}

@@ -8,6 +8,7 @@ import { Announcement } from '../models/announcement.model';
 import { ServiceHealth } from '../models/system-health.model';
 import { DashboardStats, AnalyticsReport, ChartDataPoint } from '../models/analytics.model';
 import { Incident } from '../models/incident.model';
+import { SharePolicy } from '../models/share-policy.model';
 
 // Service metadata not available from the health endpoint — kept here for display purposes
 const SERVICE_META: Record<string, { version: string; port: number; language: string; details: string }> = {
@@ -36,6 +37,33 @@ export class AdminApiService {
   readonly statsChanged$ = new Subject<void>();
 
   constructor(private http: HttpClient) {}
+
+  // ── Sharing (document-service, OTW-53) ─────────────────────────────────
+
+  getSharePolicy(): Observable<SharePolicy> {
+    return this.http.get<any>(`${this.baseUrl}/documents/share-policy`).pipe(
+      map(raw => this.mapSharePolicy(raw)),
+    );
+  }
+
+  updateSharePolicy(policy: SharePolicy): Observable<SharePolicy> {
+    return this.http.put<any>(`${this.baseUrl}/documents/share-policy`, {
+      default_expiry_days: policy.defaultExpiryDays,
+      min_expiry_days: policy.minExpiryDays,
+      max_expiry_days: policy.maxExpiryDays,
+      allow_no_expiry: policy.allowNoExpiry,
+    }).pipe(map(raw => this.mapSharePolicy(raw)));
+  }
+
+  private mapSharePolicy(raw: any): SharePolicy {
+    return {
+      workspaceId: raw.workspace_id,
+      defaultExpiryDays: raw.default_expiry_days ?? null,
+      minExpiryDays: raw.min_expiry_days ?? 1,
+      maxExpiryDays: raw.max_expiry_days ?? null,
+      allowNoExpiry: raw.allow_no_expiry ?? true,
+    };
+  }
 
   // ── Dashboard ────────────────────────────────────────────────────────────
 

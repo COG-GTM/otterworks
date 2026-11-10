@@ -1,5 +1,6 @@
 """OtterWorks Document Service - FastAPI application."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -7,9 +8,10 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import comments, documents, health, templates
+from app.api import comments, documents, health, sharing, templates
 from app.config import settings
-from app.db.session import engine, init_db
+from app.db.session import async_session, engine, init_db
+from app.services.share_link_store import ShareLinkStore
 
 logger = structlog.get_logger()
 
@@ -27,6 +29,19 @@ structlog.configure(
 )
 
 
+async def _share_expiry_sweep_loop() -> None:
+    """Emit share_link.expired audit events for links that expired since last run."""
+    while True:
+        await asyncio.sleep(settings.share_expiry_sweep_seconds)
+        try:
+            async with async_session() as db:
+                count = await ShareLinkStore(db).sweep_expired()
+            if count:
+                logger.info("share_links_expired", count=count)
+        except Exception:
+            logger.exception("share_expiry_sweep_failed")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
@@ -41,8 +56,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("opentelemetry_setup_failed")
 
+    sweep_task = None
+    if settings.share_expiry_sweep_seconds > 0:
+        sweep_task = asyncio.create_task(_share_expiry_sweep_loop())
+
     logger.info("document_service_started")
     yield
+    if sweep_task:
+        sweep_task.cancel()
     logger.info("document_service_shutting_down")
     await engine.dispose()
 
@@ -65,6 +86,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(sharing.router, prefix="/api/v1/documents", tags=["sharing"])
 app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
 app.include_router(comments.router, prefix="/api/v1/documents", tags=["comments"])
 app.include_router(templates.router, prefix="/api/v1/templates", tags=["templates"])

@@ -10,6 +10,7 @@ from alembic import context
 from app.config import settings
 from app.db.base import Base
 from app.models.document import Comment, Document, DocumentVersion, Template  # noqa: F401
+from app.models.sharing import ShareLink, WorkspaceSharePolicy  # noqa: F401
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

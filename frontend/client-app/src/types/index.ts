@@ -84,6 +84,23 @@ export interface Document {
   trashedAt?: string;
 }
 
+export interface ShareLink {
+  linkId: string;
+  documentId: string;
+  token: string;
+  createdAt: string;
+  expiresAt: string | null;
+  expired?: boolean;
+}
+
+export interface SharePolicy {
+  workspaceId: string;
+  defaultExpiryDays: number | null;
+  minExpiryDays: number;
+  maxExpiryDays: number | null;
+  allowNoExpiry: boolean;
+}
+
 export interface Collaborator {
   userId: string;
   name: string;
