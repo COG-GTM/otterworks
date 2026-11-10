@@ -11,6 +11,10 @@ import pytest
 
 
 DEFAULT_GATEWAY_URL = "http://localhost:8080"
+# Local docker compose defaults (docker-compose.infra.yml). Used only when the suite targets
+# the default local gateway; any other environment must opt in with the env vars below.
+DEFAULT_LOCAL_DATABASE_URL = "postgresql://otterworks:otterworks_dev@localhost:5432/otterworks"
+DEFAULT_LOCAL_S3_ENDPOINT = "http://localhost:4566"
 
 
 @dataclass(frozen=True)
@@ -135,6 +139,43 @@ class ApiClient:
         self.created_documents.append(document["id"])
         return document
 
+    def create_folder(self, user: RegisteredUser, name: str) -> dict[str, Any]:
+        response = self.client.post(
+            "/api/v1/folders",
+            headers=user.auth_headers,
+            json={"name": name, "owner_id": user.id},
+        )
+        assert response.status_code == 201, response.text
+        folder = response.json()
+        self.created_folders.append(folder["id"])
+        return folder
+
+    def upload_file(
+        self, user: RegisteredUser, folder_id: str, name: str, content: bytes
+    ) -> dict[str, Any]:
+        response = self.client.post(
+            "/api/v1/files/upload",
+            headers=user.auth_headers,
+            files={"file": (name, content, "text/plain")},
+            data={"folder_id": folder_id},
+        )
+        assert response.status_code == 201, response.text
+        file_metadata = response.json()["file"]
+        self.created_files.append(file_metadata["id"])
+        return file_metadata
+
+    def login_as(self, user: RegisteredUser) -> RegisteredUser:
+        """Log in again so the access token carries the user's current roles."""
+        data = self.login_user(user)
+        return RegisteredUser(
+            email=user.email,
+            password=user.password,
+            display_name=user.display_name,
+            id=user.id,
+            access_token=data["accessToken"],
+            refresh_token=data["refreshToken"],
+        )
+
     def cleanup(self) -> None:
         for report_id in reversed(self.created_reports):
             self.client.delete(f"/api/v1/reports/{report_id}")
@@ -158,6 +199,56 @@ def base_url() -> str:
 @pytest.fixture(scope="session")
 def run_id() -> str:
     return os.getenv("OTTERWORKS_API_TEST_RUN_ID", uuid.uuid4().hex[:10])
+
+
+def _is_local_gateway(base_url: str) -> bool:
+    return base_url == DEFAULT_GATEWAY_URL
+
+
+@pytest.fixture(scope="session")
+def database_url(base_url: str) -> str | None:
+    """Postgres DSN shared by auth-service and document-service, or None when unknown.
+
+    Defaults to the local docker compose database only when the suite targets the local
+    gateway, so a run against another environment never writes to a local database.
+    """
+    explicit = os.getenv("OTTERWORKS_API_DATABASE_URL")
+    if explicit:
+        return explicit
+    return DEFAULT_LOCAL_DATABASE_URL if _is_local_gateway(base_url) else None
+
+
+@pytest.fixture(scope="session")
+def s3_endpoint(base_url: str) -> str | None:
+    """S3 endpoint (LocalStack locally) where audit-service writes exports, or None."""
+    explicit = os.getenv("OTTERWORKS_API_S3_ENDPOINT")
+    if explicit:
+        return explicit.rstrip("/")
+    return DEFAULT_LOCAL_S3_ENDPOINT if _is_local_gateway(base_url) else None
+
+
+@pytest.fixture
+def otterworks_db(database_url: str | None) -> Iterator[Any]:
+    """Direct, autocommit connection to the services' Postgres database.
+
+    Only for test setup the public API intentionally cannot do (granting the workspace-owner
+    role, back-dating a link's expiry). Skips when no database is configured or reachable.
+    """
+    if not database_url:
+        pytest.skip(
+            "No database access: set OTTERWORKS_API_DATABASE_URL to run tests that need "
+            "direct database setup against a non-local gateway"
+        )
+    try:
+        import psycopg
+    except ImportError:
+        pytest.skip("psycopg is not installed (pip install -r tests/api/requirements.txt)")
+    try:
+        connection = psycopg.connect(database_url, autocommit=True, connect_timeout=3)
+    except psycopg.OperationalError as exc:
+        pytest.skip(f"OtterWorks database is not reachable at OTTERWORKS_API_DATABASE_URL: {exc}")
+    with connection:
+        yield connection
 
 
 @pytest.fixture
