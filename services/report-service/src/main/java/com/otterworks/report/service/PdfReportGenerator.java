@@ -14,7 +14,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import com.otterworks.report.model.Report;
 import com.otterworks.report.util.ReportDateUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,7 +34,6 @@ import java.util.LinkedHashSet;
  *
  * LEGACY PATTERNS:
  * - FileOutputStream for output (target: OutputStream abstraction or S3 upload)
- * - Commons Lang 2 StringUtils
  */
 @Component
 public class PdfReportGenerator {
@@ -153,7 +152,6 @@ public class PdfReportGenerator {
         if (StringUtils.isBlank(columnName)) {
             return "";
         }
-        // LEGACY: Commons Lang 2 StringUtils.capitalize
         return StringUtils.capitalize(columnName.replace("_", " "));
     }
 
