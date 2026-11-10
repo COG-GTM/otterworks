@@ -170,7 +170,7 @@ impl AuditContext {
     /// the previous unauthenticated behaviour.
     pub fn is_not(&self, owner: &uuid::Uuid) -> bool {
         match &self.user_id {
-            Some(id) => id.parse::<uuid::Uuid>().map_or(true, |id| id != *owner),
+            Some(id) => id.parse::<uuid::Uuid>() != Ok(*owner),
             None => false,
         }
     }
@@ -290,8 +290,7 @@ impl AuditEmitter {
                 let Ok(permit) = in_flight.clone().acquire_owned().await else {
                     break;
                 };
-                let (client, endpoint, config) =
-                    (client.clone(), endpoint.clone(), config.clone());
+                let (client, endpoint, config) = (client.clone(), endpoint.clone(), config.clone());
                 tokio::spawn(async move {
                     deliver(client, endpoint, config, event).await;
                     drop(permit);
