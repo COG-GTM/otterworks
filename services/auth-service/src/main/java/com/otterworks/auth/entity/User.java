@@ -8,8 +8,11 @@ import java.util.UUID;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.DynamicUpdate;
 
+// Writes only changed columns, so unrelated saves can't overwrite lockout state set concurrently.
 @Entity
+@DynamicUpdate
 @Table(name = "users")
 @Getter
 @Setter
