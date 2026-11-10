@@ -23,10 +23,10 @@ from app.schemas.document import (
     DocumentUpdate,
     DocumentVersionResponse,
 )
+from app.schemas.share_link import ShareLinkCreate, ShareLinkResponse
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
-from app.schemas.share_link import ShareLinkCreate, ShareLinkResponse
 from app.services.share_link import ShareLinkService
 from app.services.share_link_store import ExpiryOutOfBoundsError, ShareLinkStore, is_expired
 
