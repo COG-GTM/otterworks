@@ -12,6 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -186,7 +187,11 @@ class ShareLinkStore:
             return
         first_link = await self.db.scalar(select(func.min(ShareLink.created_at)))
         self.db.add(ShareLinkRollout(id=1, legacy_cutoff=first_link or datetime.now(UTC)))
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            # Another replica recorded the rollout first; its cutoff stands.
+            await self.db.rollback()
 
     async def record_expiry(self, link: ShareLink) -> None:
         """Audit a link's expiry exactly once, even when a request and the sweep race."""

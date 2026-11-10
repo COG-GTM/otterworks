@@ -11,11 +11,11 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.models.share_link import ShareLink
+from app.models.share_link import ShareLink, ShareLinkRollout
 from app.services import event_publisher as publisher_module
 from app.services.share_link import ShareLinkService
 from app.services.share_link_store import ShareLinkStore
-from tests.conftest import TEST_JWT_SECRET, bearer_auth
+from tests.conftest import TEST_JWT_SECRET, TestingSessionLocal, bearer_auth
 
 
 @pytest.fixture
@@ -301,6 +301,21 @@ async def test_rollout_pins_the_cutoff_before_any_link_exists(client, owner_id, 
 
     assert (await legacy(before)).status_code == 200
     assert (await legacy(after)).status_code == 403
+
+
+async def test_rollout_race_between_replicas_keeps_the_first_cutoff(db_session, monkeypatch):
+    await ShareLinkStore(db_session).record_rollout()
+    pinned = (await db_session.get(ShareLinkRollout, 1)).legacy_cutoff
+
+    async with TestingSessionLocal() as other_replica:
+        async def _not_yet_visible(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(other_replica, "get", _not_yet_visible)
+        await ShareLinkStore(other_replica).record_rollout()
+
+    db_session.expire_all()
+    assert (await db_session.get(ShareLinkRollout, 1)).legacy_cutoff == pinned
 
 
 async def test_expiry_is_audited_once_when_a_request_and_the_sweep_race(
