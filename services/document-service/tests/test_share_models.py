@@ -129,6 +129,13 @@ def test_migration_upgrade_tolerates_tables_created_at_startup(
     assert {"folder_share_links", "workspace_share_policies"} <= _tables(db_path)
 
     command.upgrade(cfg, "head")
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    uniques = sa.inspect(engine).get_unique_constraints("folder_share_links")
+    engine.dispose()
+    assert {"name": "uq_folder_share_links_token_hash", "column_names": ["token_hash"]} in [
+        {"name": u["name"], "column_names": u["column_names"]} for u in uniques
+    ]
+
     command.downgrade(cfg, "001")
     assert "folder_share_links" not in _tables(db_path)
     assert "workspace_share_policies" not in _tables(db_path)

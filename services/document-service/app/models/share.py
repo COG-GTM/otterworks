@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, DateTime, Integer, String, false, func
+from sqlalchemy import Boolean, DateTime, Integer, String, UniqueConstraint, false, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,11 +28,14 @@ def _as_aware(value: datetime) -> datetime:
 
 class FolderShareLink(Base):
     __tablename__ = "folder_share_links"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_folder_share_links_token_hash"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     folder_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
     )
