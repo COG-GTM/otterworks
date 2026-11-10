@@ -138,6 +138,7 @@ func main() {
 		CBManager:     cbManager,
 		Logger:        logger,
 		EnableTracing: true,
+		Audit:         auditEmitter,
 	})
 	r.Mount("/", proxyRouter)
 

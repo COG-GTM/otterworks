@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -150,6 +152,7 @@ func newGatewayStack(t *testing.T, routes []Route, emitter audit.Emitter, truste
 			MaxRequests: 1, Interval: time.Minute, Timeout: time.Minute, FailureRatio: 0.9,
 		}),
 		Logger: zerolog.Nop(),
+		Audit:  emitter,
 	})
 	prefixes := make([]string, 0, len(routes))
 	for _, r := range routes {
@@ -226,7 +229,7 @@ func TestProxyStripsClientAuditToken(t *testing.T) {
 	backend, got := headerCapturingBackend(t, http.StatusOK)
 	handler := newGatewayStack(t, []Route{{Prefix: "/api/v1/audit", TargetURL: backend.URL}}, audit.Nop{})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/audit/events", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/audit/events", nil)
 	req.Header.Set("Authorization", "Bearer "+validToken(t))
 	req.Header.Set("X-Audit-Token", "guessed-token")
 	rec := httptest.NewRecorder()
@@ -311,6 +314,124 @@ func TestAuditServiceFailureDoesNotAffectProxiedResponses(t *testing.T) {
 			if name == "hangs" {
 				release()
 			}
+		})
+	}
+}
+
+type eventRecorder struct {
+	mu     sync.Mutex
+	events []audit.Event
+}
+
+func (r *eventRecorder) Emit(e audit.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, e)
+}
+
+func (r *eventRecorder) all() []audit.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]audit.Event(nil), r.events...)
+}
+
+func countingBackend(t *testing.T) (*httptest.Server, *atomic.Int32) {
+	t.Helper()
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+func TestProxyBlocksClientAuditIngest(t *testing.T) {
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/audit/events"},
+		{http.MethodPost, "/api/v1/audit/events/"},
+		{http.MethodPost, "/api/v1/audit/EVENTS"},
+		{http.MethodPost, "/api/v1/audit/./events"},
+		{http.MethodPost, "/api/v1/audit/x/../events"},
+		{"post", "/api/v1/audit/events"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			backend, hits := countingBackend(t)
+			rec := &eventRecorder{}
+			handler := newGatewayStack(t, []Route{{Prefix: "/api/v1/audit", TargetURL: backend.URL}}, rec, "10.0.0.0/8")
+
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"userId":"victim","action":"auth.login.success","resourceType":"user","outcome":"success","serviceName":"auth-service"}`))
+			req.RemoteAddr = "10.0.0.5:443"
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+validToken(t))
+			req.Header.Set("X-Forwarded-For", "198.51.100.9")
+			req.Header.Set("X-Request-ID", "forge-1")
+			req.Header.Set("User-Agent", "forger/1.0")
+			req.Header.Set("X-Audit-Token", "otterworks-audit-dev-token")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusForbidden, w.Code)
+			assert.Zero(t, hits.Load(), "forged event must not reach audit-service")
+
+			events := rec.all()
+			require.Len(t, events, 1)
+			e := events[0]
+			assert.Equal(t, middleware.ActionPermissionDenied, e.Action)
+			assert.Equal(t, "user-123", e.UserID)
+			assert.Equal(t, audit.ActorUser, e.ActorType)
+			assert.Equal(t, "api_route", e.ResourceType)
+			assert.Equal(t, tc.path, e.ResourceID)
+			assert.Equal(t, audit.OutcomeDenied, e.Outcome)
+			assert.Equal(t, "198.51.100.9", e.IPAddress)
+			assert.Equal(t, "forger/1.0", e.UserAgent)
+			assert.Equal(t, "forge-1", e.RequestID)
+			assert.Equal(t, "client_audit_ingest", e.Details["reason"])
+			assert.Equal(t, "403", e.Details["status"])
+
+			raw, err := json.Marshal(e)
+			require.NoError(t, err)
+			for _, secret := range []string{validToken(t), "otterworks-audit-dev-token", "victim", "auth.login.success"} {
+				assert.NotContains(t, string(raw), secret)
+			}
+		})
+	}
+}
+
+func TestProxyUnauthenticatedAuditIngestIsRejectedBeforeProxying(t *testing.T) {
+	backend, hits := countingBackend(t)
+	rec := &eventRecorder{}
+	handler := newGatewayStack(t, []Route{{Prefix: "/api/v1/audit", TargetURL: backend.URL}}, rec)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/audit/events", strings.NewReader(`{}`)))
+
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Zero(t, hits.Load())
+	require.Len(t, rec.all(), 1)
+	assert.Equal(t, middleware.ActionTokenRejected, rec.all()[0].Action)
+}
+
+func TestProxyKeepsAuditReadRoutes(t *testing.T) {
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/audit/events"},
+		{http.MethodGet, "/api/v1/audit/events/evt-1"},
+		{http.MethodGet, "/api/v1/audit/reports/compliance"},
+		{http.MethodPost, "/api/v1/audit/archive"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			backend, hits := countingBackend(t)
+			rec := &eventRecorder{}
+			handler := newGatewayStack(t, []Route{{Prefix: "/api/v1/audit", TargetURL: backend.URL}}, rec)
+
+			req := httptest.NewRequest(tc.method, tc.path, nil)
+			req.Header.Set("Authorization", "Bearer "+validToken(t))
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.EqualValues(t, 1, hits.Load())
+			assert.Empty(t, rec.all())
 		})
 	}
 }

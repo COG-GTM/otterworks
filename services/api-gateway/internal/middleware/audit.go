@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -146,4 +147,42 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n]
+}
+
+// ActionPermissionDenied is emitted when the gateway refuses a request outright.
+const ActionPermissionDenied = "permission.denied"
+
+// AuditIngestPath is audit-service's write endpoint. Services post to it
+// directly over the internal network; it is never a client-facing route.
+const AuditIngestPath = "/api/v1/audit/events"
+
+// BlockClientAuditIngest rejects client writes to AuditIngestPath with 403 so
+// forged events cannot be relayed through the gateway, and audits the attempt
+// as permission.denied. Read routes under /api/v1/audit are left untouched.
+// Matching is case-insensitive and dot-segment normalised because
+// audit-service's ASP.NET routing is.
+func BlockClientAuditIngest(emitter audit.Emitter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !isAuditIngest(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if emitter != nil {
+				e := newRequestEvent(r, ActionPermissionDenied, GetJWTClaims(r.Context()))
+				e.Details["reason"] = "client_audit_ingest"
+				e.Details["status"] = strconv.Itoa(http.StatusForbidden)
+				e.Details["enforcedBy"] = "api-gateway"
+				emitter.Emit(e)
+			}
+			writeJSONError(w, http.StatusForbidden, "audit events cannot be submitted through the gateway")
+		})
+	}
+}
+
+func isAuditIngest(r *http.Request) bool {
+	if !strings.EqualFold(r.Method, http.MethodPost) {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSuffix(path.Clean("/"+r.URL.Path), "/"), AuditIngestPath)
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/audit"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
@@ -26,11 +27,14 @@ type RouterConfig struct {
 	CBManager     *CircuitBreakerManager
 	Logger        zerolog.Logger
 	EnableTracing bool
+	// Audit receives permission.denied for blocked client audit-ingest writes; nil disables.
+	Audit audit.Emitter
 }
 
 // NewRouter creates a chi router with all service routes mounted.
 func NewRouter(cfg RouterConfig) chi.Router {
 	r := chi.NewRouter()
+	r.Use(middleware.BlockClientAuditIngest(cfg.Audit))
 
 	for _, route := range cfg.Routes {
 		route := route // capture loop var
