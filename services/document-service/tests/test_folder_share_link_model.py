@@ -164,6 +164,7 @@ def test_us4_status_reflects_expiry_and_revocation() -> None:
     assert at_boundary.status_at(NOW) is FolderShareLinkStatus.EXPIRED
     assert revoked.status_at(NOW) is FolderShareLinkStatus.REVOKED
     assert revoked_and_expired.status_at(NOW) is FolderShareLinkStatus.REVOKED
+    assert revoked.status_at(NOW - timedelta(days=2)) is FolderShareLinkStatus.ACTIVE
 
 
 def test_us4_status_treats_naive_timestamps_as_utc() -> None:

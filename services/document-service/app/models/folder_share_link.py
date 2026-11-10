@@ -67,9 +67,9 @@ class FolderShareLink(Base):
 
     def status_at(self, now: datetime | None = None) -> FolderShareLinkStatus:
         """Link status at ``now``; revocation wins over expiry."""
-        if self.revoked_at is not None:
-            return FolderShareLinkStatus.REVOKED
         now = _as_utc(now) if now is not None else _utcnow()
+        if self.revoked_at is not None and _as_utc(self.revoked_at) <= now:
+            return FolderShareLinkStatus.REVOKED
         if _as_utc(self.expires_at) <= now:
             return FolderShareLinkStatus.EXPIRED
         return FolderShareLinkStatus.ACTIVE
