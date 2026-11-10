@@ -167,6 +167,7 @@ services:
       DOC_SVC_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
+      DOC_SVC_AUDIT_SERVICE_URL: http://audit-service:8090
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       postgres:
