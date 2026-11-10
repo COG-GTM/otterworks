@@ -24,6 +24,9 @@ Rails.application.routes.draw do
         # System Configuration
         resources :config, only: %i[index show update]
 
+        # Folder share-link expiry policy (org-wide; workspace 'default')
+        resource :sharing_policy, only: %i[show update]
+
         # Audit Log Viewer
         resources :audit_logs, only: %i[index show], path: 'audit-logs'
 
