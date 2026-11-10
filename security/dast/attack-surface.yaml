@@ -43,6 +43,15 @@ routes:
       - list filters (title, content_type, sort, direction) never reach SQL unescaped
       - GET /api/v1/documents/exports only serves files inside the export archive root
       - GET /api/v1/documents/shared only accepts tokens that cannot be derived offline
+  - prefix: /api/v1/folder-share-links
+    service: document-service
+    auth: bearer JWT
+    public:
+      - GET /api/v1/folder-share-links/shared
+    expect:
+      - only the folder owner can create, list, change or revoke a folder's links
+      - listings never contain the raw token or its hash
+      - GET /api/v1/folder-share-links/shared returns 404 for unknown tokens and 410 for expired or revoked ones
   - prefix: /api/v1/files
     service: file-service
     auth: bearer JWT
