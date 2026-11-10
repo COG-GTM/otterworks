@@ -19,19 +19,11 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def _has_table(name: str) -> bool:
-    # app.db.session.init_db() runs create_all at service startup, so these tables
-    # may already exist when this revision is applied.
-    if op.get_context().as_sql:
-        return False
-    return sa.inspect(op.get_bind()).has_table(name)
-
-
 def upgrade() -> None:
-    if not _has_table("share_links"):
-        _create_share_links()
-    if not _has_table("workspace_share_policy"):
-        _create_workspace_share_policy()
+    # IF NOT EXISTS: app.db.session.init_db() runs create_all at service startup, so
+    # these tables may already exist when this revision is applied (online or --sql).
+    _create_share_links()
+    _create_workspace_share_policy()
 
 
 def _create_share_links() -> None:
@@ -55,13 +47,19 @@ def _create_share_links() -> None:
         sa.CheckConstraint(
             "resource_type IN ('folder')", name="ck_share_links_resource_type"
         ),
+        if_not_exists=True,
     )
-    op.create_index("ix_share_links_resource_id", "share_links", ["resource_id"])
-    op.create_index("ix_share_links_workspace_id", "share_links", ["workspace_id"])
+    op.create_index(
+        "ix_share_links_resource_id", "share_links", ["resource_id"], if_not_exists=True
+    )
+    op.create_index(
+        "ix_share_links_workspace_id", "share_links", ["workspace_id"], if_not_exists=True
+    )
     op.create_index(
         "ix_share_links_created_by_resource_id",
         "share_links",
         ["created_by", "resource_id"],
+        if_not_exists=True,
     )
 
 
@@ -82,6 +80,7 @@ def _create_workspace_share_policy() -> None:
             "1 <= default_days AND default_days <= max_days AND max_days <= 90",
             name="ck_workspace_share_policy_days",
         ),
+        if_not_exists=True,
     )
 
 

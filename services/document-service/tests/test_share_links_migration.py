@@ -271,7 +271,7 @@ async def test_upgrade_succeeds_when_startup_already_created_tables(database_url
 
 def test_offline_sql_generation_includes_new_tables():
     """Given operators render the migration with `alembic upgrade --sql`, Then the SQL
-    for revision 002 is generated and creates both tables."""
+    for revision 002 is generated and creates both tables only if startup has not."""
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "001:002", "--sql"],
         cwd=SERVICE_ROOT,
@@ -281,5 +281,6 @@ def test_offline_sql_generation_includes_new_tables():
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "CREATE TABLE share_links" in result.stdout
-    assert "CREATE TABLE workspace_share_policy" in result.stdout
+    assert "CREATE TABLE IF NOT EXISTS share_links" in result.stdout
+    assert "CREATE TABLE IF NOT EXISTS workspace_share_policy" in result.stdout
+    assert "CREATE INDEX IF NOT EXISTS ix_share_links_resource_id" in result.stdout
