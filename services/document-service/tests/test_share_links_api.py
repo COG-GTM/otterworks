@@ -400,6 +400,20 @@ async def test_resolve_lists_folder_read_only_without_auth(client, files, folder
         assert "owner_id" not in item and "s3_key" not in item
 
 
+async def test_resolve_lists_only_files_owned_by_link_creator(client, files, folder_id):
+    """Another user's file moved into the shared folder is not exposed by the link."""
+    intruder = dict(files.files[folder_id][0])
+    intruder.update(id=str(uuid.uuid4()), name="planted.pdf", owner_id=str(uuid.uuid4()))
+    unowned = dict(files.files[folder_id][0])
+    unowned.update(id=str(uuid.uuid4()), name="no-owner.pdf", owner_id=None)
+    files.files[folder_id] += [intruder, unowned]
+
+    token = (await _create(client, folder_id)).json()["token"]
+    resp = await client.get(f"{BASE}/resolve/{token}", auth=None)
+    assert resp.status_code == 200
+    assert [f["name"] for f in resp.json()["files"]] == ["report-0.pdf", "report-1.pdf"]
+
+
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
 async def test_resolve_route_accepts_no_writes(client, files, folder_id, method):
     token = (await _create(client, folder_id)).json()["token"]
