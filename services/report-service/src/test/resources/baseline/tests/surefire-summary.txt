@@ -1,0 +1,9 @@
+# surefire results, java.version=1.8.0_504
+com.otterworks.report.ReportServiceTest	passed=8	failed=0	skipped=0
+com.otterworks.report.controller.ReportControllerIntegrationTest	passed=16	failed=0	skipped=0
+com.otterworks.report.deps.DependencyTranscriptEmitterTest	passed=0	failed=0	skipped=1
+com.otterworks.report.service.CsvReportGeneratorTest	passed=6	failed=0	skipped=0
+com.otterworks.report.service.ExcelReportGeneratorTest	passed=9	failed=0	skipped=0
+com.otterworks.report.service.PdfReportGeneratorTest	passed=5	failed=0	skipped=0
+com.otterworks.report.service.ReportHeaderRendererTest	passed=5	failed=0	skipped=0
+TOTAL	passed=49	failed=0	skipped=1	tests=50

@@ -1,0 +1,10 @@
+{
+  "capturedFrom": "docker compose build report-service (legacy Dockerfile: maven:3.8.7-eclipse-temurin-8 -> eclipse-temurin:8-jre)",
+  "host": "Devin VM, Docker 2026-11-10",
+  "imageSizeBytes": 172715842,
+  "imageSizeMB": 172.7,
+  "startupSecondsToHealth": 6.4,
+  "runtimeJava": "openjdk version \"1.8.0_512\"",
+  "imageDiskUsage": "535MB",
+  "springStartedInSeconds": 5.138
+}
