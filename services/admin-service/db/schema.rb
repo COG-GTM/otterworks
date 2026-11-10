@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_10_000001) do
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
 
@@ -76,6 +76,18 @@ ActiveRecord::Schema[7.1].define(version: 2024_01_01_000008) do
     t.datetime "updated_at", null: false
     t.index ["enabled"], name: "index_feature_flags_on_enabled"
     t.index ["name"], name: "index_feature_flags_on_name", unique: true
+  end
+
+  create_table "sharing_policies", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "workspace_id", default: "default", null: false
+    t.integer "default_expiry_days", default: 30, null: false
+    t.integer "min_expiry_days", default: 1, null: false
+    t.integer "max_expiry_days", default: 90, null: false
+    t.uuid "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["workspace_id"], name: "index_sharing_policies_on_workspace_id", unique: true
+    t.check_constraint "min_expiry_days >= 1 AND max_expiry_days <= 90 AND min_expiry_days <= max_expiry_days AND default_expiry_days >= min_expiry_days AND default_expiry_days <= max_expiry_days", name: "sharing_policies_expiry_bounds"
   end
 
   create_table "storage_quotas", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
