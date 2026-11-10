@@ -1,6 +1,6 @@
 """Application configuration via pydantic-settings."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from pydantic_settings import BaseSettings
 
@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     share_link_default_expiry_days: int = 7
     share_link_min_expiry_days: int = 1
     share_link_max_expiry_days: int = 30
-    share_link_legacy_cutoff: datetime = datetime(2026, 11, 10, tzinfo=UTC)
+    # Unset: documents created before the first persisted share link keep stateless links.
+    share_link_legacy_cutoff: datetime | None = None
     share_link_expiry_sweep_seconds: int = 300
 
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"

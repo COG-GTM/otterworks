@@ -32,7 +32,6 @@ from app.services.share_link_store import (
     ExpiryOutOfBoundsError,
     ShareLinkStore,
     is_expired,
-    is_legacy_shareable,
 )
 
 logger = structlog.get_logger()
@@ -192,6 +191,7 @@ async def read_export(name: str = Query(..., min_length=1)):
 
 @router.get("/shared", response_model=DocumentResponse)
 async def get_shared_document(
+    request: Request,
     document_id: UUID,
     token: str = Query(..., min_length=1),
     db: AsyncSession = Depends(get_db),
@@ -205,14 +205,16 @@ async def get_shared_document(
             raise HTTPException(status_code=410, detail="Share link has expired")
         document = await DocumentService(db).get(document_id)
     else:
-        # Stateless links only exist for documents created before expiring links shipped.
         document = await DocumentService(db).get(document_id)
         if (
             document is None
-            or not is_legacy_shareable(document)
+            or not await store.is_legacy_shareable(document)
             or not ShareLinkService().verify_token(str(document_id), token)
         ):
             raise HTTPException(status_code=403, detail="Invalid share token")
+        # Stateless links are derivable from the document id, so they keep their
+        # pre-existing requirement of a signed-in caller.
+        _require_user_id(request)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     return document

@@ -11,7 +11,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -36,10 +36,6 @@ def _as_utc(value: datetime) -> datetime:
 
 def is_expired(link: ShareLink, now: datetime | None = None) -> bool:
     return _as_utc(link.expires_at) <= (now or datetime.now(UTC))
-
-
-def is_legacy_shareable(document: Document) -> bool:
-    return _as_utc(document.created_at) < _as_utc(settings.share_link_legacy_cutoff)
 
 
 def validate_policy(default_days: int, min_days: int, max_days: int) -> None:
@@ -174,12 +170,24 @@ class ShareLinkStore:
             await self.record_expiry(link)
         return len(links)
 
+    async def is_legacy_shareable(self, document: Document) -> bool:
+        """Stateless links exist only for documents created before expiring links shipped."""
+        cutoff = settings.share_link_legacy_cutoff
+        if cutoff is None:
+            cutoff = await self.db.scalar(select(func.min(ShareLink.created_at)))
+        return cutoff is None or _as_utc(document.created_at) < _as_utc(cutoff)
+
     async def record_expiry(self, link: ShareLink) -> None:
-        """Audit a link's expiry exactly once."""
-        if link.expiry_audited:
-            return
-        link.expiry_audited = True
+        """Audit a link's expiry exactly once, even when a request and the sweep race."""
+        claimed = await self.db.execute(
+            update(ShareLink)
+            .where(ShareLink.id == link.id, ShareLink.expiry_audited.is_(False))
+            .values(expiry_audited=True)
+            .execution_options(synchronize_session=False)
+        )
         await self.db.commit()
+        if claimed.rowcount != 1:
+            return
         await self._audit(
             "share_link_expire", "share_link", str(link.id), None,
             old_value="active", new_value="expired",

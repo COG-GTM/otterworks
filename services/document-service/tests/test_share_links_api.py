@@ -15,7 +15,7 @@ from app.models.share_link import ShareLink
 from app.services import event_publisher as publisher_module
 from app.services.share_link import ShareLinkService
 from app.services.share_link_store import ShareLinkStore
-from tests.conftest import TEST_JWT_SECRET
+from tests.conftest import TEST_JWT_SECRET, bearer_auth
 
 
 @pytest.fixture
@@ -235,9 +235,23 @@ async def test_ac8_pre_existing_stateless_links_are_not_expired(client, owner_id
     resp = await client.get(
         "/api/v1/documents/shared",
         params={"document_id": doc_id, "token": legacy_token},
-        auth=None,
+        auth=bearer_auth(uuid.uuid4()),
     )
     assert resp.status_code == 200
+
+
+async def test_stateless_tokens_still_require_a_signed_in_caller(client, owner_id, monkeypatch):
+    monkeypatch.setattr(
+        settings, "share_link_legacy_cutoff", datetime.now(UTC) + timedelta(days=1)
+    )
+    doc_id = await _create_document(client, owner_id)
+    resp = await client.get(
+        "/api/v1/documents/shared",
+        params={"document_id": doc_id, "token": ShareLinkService().mint_token(doc_id)},
+        auth=None,
+    )
+    assert resp.status_code == 401
+    assert "Secret body" not in resp.text
 
 
 async def test_stateless_token_rejected_for_documents_created_after_cutoff(
@@ -250,10 +264,42 @@ async def test_stateless_token_rejected_for_documents_created_after_cutoff(
     resp = await client.get(
         "/api/v1/documents/shared",
         params={"document_id": doc_id, "token": ShareLinkService().mint_token(doc_id)},
-        auth=None,
+        auth=bearer_auth(uuid.uuid4()),
     )
     assert resp.status_code == 403
     assert "Secret body" not in resp.text
+
+
+async def test_default_cutoff_is_the_first_persisted_link(client, owner_id):
+    before = await _create_document(client, owner_id)
+    await client.post(f"/api/v1/documents/{before}/share")
+    after = await _create_document(client, owner_id)
+
+    def legacy(doc_id):
+        return client.get(
+            "/api/v1/documents/shared",
+            params={"document_id": doc_id, "token": ShareLinkService().mint_token(doc_id)},
+            auth=bearer_auth(uuid.uuid4()),
+        )
+
+    assert (await legacy(before)).status_code == 200
+    assert (await legacy(after)).status_code == 403
+
+
+async def test_expiry_is_audited_once_when_a_request_and_the_sweep_race(
+    client, owner_id, db_session, audit_events
+):
+    doc_id = await _create_document(client, owner_id)
+    link = (await client.post(f"/api/v1/documents/{doc_id}/share")).json()
+    await _expire(db_session, link["id"])
+    store = ShareLinkStore(db_session)
+    stale = await db_session.get(ShareLink, uuid.UUID(link["id"]))
+
+    await store.sweep_expired()
+    await store.record_expiry(stale)
+
+    expiries = [e for e in audit_events if e["action"] == "share_link_expire"]
+    assert len(expiries) == 1
 
 
 async def test_ac10_sweep_audits_expired_links_that_were_never_opened(
