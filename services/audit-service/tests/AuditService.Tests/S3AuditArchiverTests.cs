@@ -43,7 +43,7 @@ public class S3AuditArchiverTests
         _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
 
-        var result = await _archiver.ExportAsync(from, to, "json");
+        var result = await _archiver.ExportAsync(from, to, "json", null);
 
         Assert.Equal("json", result.Format);
         Assert.Equal(1, result.EventCount);
@@ -69,7 +69,7 @@ public class S3AuditArchiverTests
         _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
         _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default)).ReturnsAsync(new PutObjectResponse());
 
-        var result = await _archiver.ExportAsync(from, to, "csv");
+        var result = await _archiver.ExportAsync(from, to, "csv", null);
 
         Assert.Equal("csv", result.Format);
         Assert.Equal(1, result.EventCount);

@@ -10,6 +10,6 @@ public interface IAuditService
     Task<UserActivityReport> GetUserActivityReportAsync(string userId, string period);
     Task<ResourceHistory> GetResourceHistoryAsync(string resourceId);
     Task<ComplianceReport> GetComplianceReportAsync(string period);
-    Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format);
+    Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format, IReadOnlyCollection<string>? resourceTypes);
     Task<ArchiveResult> ArchiveOldEventsAsync();
 }

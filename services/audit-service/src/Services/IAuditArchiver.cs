@@ -4,6 +4,6 @@ namespace OtterWorks.AuditService.Services;
 
 public interface IAuditArchiver
 {
-    Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format);
+    Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format, IReadOnlyCollection<string>? resourceTypes);
     Task<ArchiveResult> ArchiveOldEventsAsync(DateTime olderThan);
 }

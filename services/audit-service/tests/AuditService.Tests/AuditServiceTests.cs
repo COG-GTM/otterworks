@@ -211,13 +211,29 @@ public class AuditServiceTests
             To = to,
         };
 
-        _mockArchiver.Setup(a => a.ExportAsync(from, to, "json")).ReturnsAsync(expected);
+        _mockArchiver.Setup(a => a.ExportAsync(from, to, "json", null)).ReturnsAsync(expected);
 
-        var result = await _service.ExportAsync(from, to, "json");
+        var result = await _service.ExportAsync(from, to, "json", null);
 
         Assert.Equal("json", result.Format);
         Assert.Equal(10, result.EventCount);
         Assert.Equal("s3://bucket/key.json", result.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task ExportAsync_WithResourceTypeFilter_ShouldPassFilterToArchiver()
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var types = new[] { "share_link", "share_policy" };
+        _mockArchiver
+            .Setup(a => a.ExportAsync(from, to, "csv", types))
+            .ReturnsAsync(new ExportResult { Format = "csv", EventCount = 4, ResourceTypes = types.ToList() });
+
+        var result = await _service.ExportAsync(from, to, "csv", types);
+
+        Assert.Equal(4, result.EventCount);
+        _mockArchiver.Verify(a => a.ExportAsync(from, to, "csv", types), Times.Once);
     }
 
     [Fact]

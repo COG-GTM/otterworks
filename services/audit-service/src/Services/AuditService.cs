@@ -141,9 +141,9 @@ public class AuditService : IAuditService
         return report;
     }
 
-    public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
+    public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format, IReadOnlyCollection<string>? resourceTypes)
     {
-        return await _archiver.ExportAsync(from, to, format);
+        return await _archiver.ExportAsync(from, to, format, resourceTypes);
     }
 
     public async Task<ArchiveResult> ArchiveOldEventsAsync()

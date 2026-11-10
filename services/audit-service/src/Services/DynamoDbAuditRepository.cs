@@ -46,7 +46,9 @@ public class DynamoDbAuditRepository : IAuditRepository
             {
                 M = auditEvent.Details.ToDictionary(
                     kvp => kvp.Key,
-                    kvp => new AttributeValue { S = kvp.Value })
+                    kvp => kvp.Value is null
+                        ? new AttributeValue { NULL = true }
+                        : new AttributeValue { S = kvp.Value })
             };
         }
 
