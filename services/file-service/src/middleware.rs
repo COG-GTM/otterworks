@@ -1,5 +1,5 @@
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
-use actix_web::Error;
+use actix_web::{Error, HttpMessage};
 use futures_util::future::{ok, LocalBoxFuture, Ready};
 use std::task::{Context, Poll};
 use uuid::Uuid;
@@ -35,6 +35,11 @@ pub fn render_metrics() -> String {
 }
 
 // -- Request ID Middleware --
+
+/// The request id (forwarded `X-Request-ID` or generated), stored in the
+/// request extensions for handlers.
+#[derive(Clone, Debug)]
+pub struct RequestIdValue(pub String);
 
 pub struct RequestId;
 
@@ -80,6 +85,8 @@ where
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
+        req.extensions_mut()
+            .insert(RequestIdValue(request_id.clone()));
 
         let method = req.method().to_string();
         let path = req
