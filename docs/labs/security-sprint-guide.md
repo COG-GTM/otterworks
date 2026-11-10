@@ -19,7 +19,7 @@ This runs four scan types in sequence:
 | pip-audit | search-service | Python dependency advisories |
 | bundle-audit | admin-service | Ruby gem advisories |
 
-**Note:** report-service is intentionally excluded from scans. It is a legacy Java 8 service earmarked for a separate framework upgrade exercise and is not in scope for this sprint.
+**Note:** report-service (Java 17 / Spring Boot 3.5) is scanned like every other service. Its commons-text 1.9 finding (CVE-2022-42889) is the planted CVE for the separate dependency-remediation exercise and is not in scope for this sprint. CI suppresses it for `services/report-service/pom.xml` only, through `security/scanning/trivy-scoped-ignores.json`. A local `trivy fs` run still shows it unless you pass the JSON report through `bash security/scanning/apply-scoped-ignores.sh <report.json>`.
 
 ## Understanding Trivy Output
 

@@ -1,0 +1,12 @@
+{
+  "description": "Trivy findings suppressed for one exact (target, package, installed version, vulnerability) tuple. .trivyignore can only match a CVE id repo-wide, so anything that must stay visible elsewhere goes here instead. Applied to Trivy JSON output by apply-scoped-ignores.sh in security-scan.yml and sast-auto-remediate.yml.",
+  "ignores": [
+    {
+      "target": "services/report-service/pom.xml",
+      "pkg": "org.apache.commons:commons-text",
+      "version": "1.9",
+      "id": "CVE-2022-42889",
+      "reason": "Planted CVE under test for the dependency-cve-remediation exercise. commons-text 1.9 is pinned on purpose; remediations land on demo branches, never here. See security/deps/advisory.yaml and .agents/skills/dependency-cve-remediation/SKILL.md."
+    }
+  ]
+}

@@ -34,10 +34,10 @@ jobs:
       - name: Scan pull request head
         run: |
           trivy fs . --severity CRITICAL,HIGH \
-            --skip-dirs services/report-service \
             --ignorefile .trivyignore \
             --offline-scan \
             --format json --output trivy-head.json
+          bash security/scanning/apply-scoped-ignores.sh trivy-head.json
 
       - name: Scan merge base
         env:
@@ -49,11 +49,12 @@ jobs:
           (
             cd ../otterworks-base
             trivy fs . --severity CRITICAL,HIGH \
-            --skip-dirs services/report-service \
             --ignorefile .trivyignore \
             --offline-scan \
             --format json --output "$GITHUB_WORKSPACE/trivy-base.json"
           )
+          # Filter the base with the head's scoped ignores so both sides are compared alike.
+          bash security/scanning/apply-scoped-ignores.sh trivy-base.json
 
       - name: Fail only on newly introduced vulnerabilities
         run: |
@@ -185,11 +186,11 @@ jobs:
         run: |
           set +e
           trivy fs . --severity CRITICAL,HIGH \
-            --skip-dirs services/report-service \
             --ignorefile .trivyignore \
             --offline-scan \
             --format json --output trivy.json
           rc=$?
+          bash security/scanning/apply-scoped-ignores.sh trivy.json
           set -e
           count="$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy.json 2>/dev/null || echo 0)"
           echo "### Trivy full baseline: ${count} findings" >> "$GITHUB_STEP_SUMMARY"

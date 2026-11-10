@@ -1,6 +1,9 @@
 # OtterWorks Trivy Ignore List
 # These CVEs are acknowledged and tracked for remediation in future upgrade cycles.
-# report-service is excluded via skip-dirs (intentional legacy Java 8 service for upgrade exercise).
+# report-service is scanned. Its planted commons-text 1.9 finding (CVE-2022-42889, the
+# dependency-remediation demo, see security/deps) is suppressed for that one pom only in
+# security/scanning/trivy-scoped-ignores.json, not here: an id listed in this file is
+# ignored repo-wide.
 
 # --- etl/airflow: requires Airflow 2.9+ upgrade (major version) ---
 CVE-2024-39877

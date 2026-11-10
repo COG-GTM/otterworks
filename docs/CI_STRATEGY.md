@@ -22,7 +22,7 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 | analytics-service | Scala/Java 17 (sbt) | `sbt compile`, `sbt test` | Passing |
 | admin-service | Ruby 3.3 (Rails) | `db:schema:load`, `rspec` (with Postgres service container) | **Fixed** (was failing due to missing `table_name`) |
 | audit-service | C# / .NET 8 | `dotnet restore`, `dotnet build`, `dotnet test` | Passing |
-| report-service | Java 8 (Maven) — **LEGACY** | `mvn compile`, `mvn test`, `mvn package` | Passing |
+| report-service | Java 17 (Maven), Spring Boot 3.5 | `mvn compile`, `mvn test`, `mvn package` | Passing |
 | web-app | Node.js 20 (Next.js) | `npm ci`, `npm run lint`, `npm test`, `npm run build` | Passing |
 | admin-dashboard | Node.js 20 (Angular) | `npm ci`, `npm run lint \|\| true`, `npm test \|\| true`, `npm run build` | Passing |
 | infrastructure | Terraform 1.7 | `terraform fmt -check`, `terraform init`, `terraform validate` | Passing |
@@ -33,7 +33,7 @@ Uses `dorny/paths-filter` for **change detection** — only services with modifi
 
 | Job | Tool | Purpose |
 |-----|------|---------|
-| `dependency-scan` | Trivy v0.36.0 | Scans filesystem for CRITICAL/HIGH CVEs. Skips `report-service` (legacy). Uses `.trivyignore` for acknowledged CVEs. |
+| `dependency-scan` | Trivy v0.71.0 | Scans filesystem for CRITICAL/HIGH CVEs, including `report-service`. Uses `.trivyignore` for acknowledged CVEs and `security/scanning/trivy-scoped-ignores.json` for single-file suppressions. |
 | `secret-scan` | Gitleaks v8.21.2 | Full-history secret detection with redaction. |
 | `sast` | Semgrep | Static analysis with OWASP Top 10, default, and security-audit rulesets. |
 
@@ -56,7 +56,7 @@ After PR #31 (this PR):
 ### Immediate (No Changes Required)
 1. **Change detection is working well** — Only affected services are built on PRs, keeping CI fast (~2-5 min per service vs 30+ min for full monorepo build).
 2. **Security scanning is comprehensive** — Trivy + Gitleaks + Semgrep covers dependencies, secrets, and static analysis.
-3. **Legacy service isolation** — Report service (Java 8) is correctly skipped by Trivy since it's intentionally outdated for upgrade exercises.
+3. **No skipped services** — Report service (Java 17 / Spring Boot 3.5) is scanned like every other service. Its planted commons-text 1.9 CVE for the dependency-remediation exercise is suppressed for that one `pom.xml` only, so the same CVE anywhere else still fails the scan.
 
 ### Short-Term Improvements
 1. **Add `concurrency` groups** to cancel stale CI runs when new commits are pushed:
@@ -92,6 +92,14 @@ After PR #31 (this PR):
 | CVE-2026-33658 | activestorage (Rails) | Requires Rails 7.2+ upgrade |
 
 These are tracked in `.trivyignore` and should be resolved when the admin-service is upgraded to Rails 7.2+.
+
+### Scoped suppressions (`security/scanning/trivy-scoped-ignores.json`)
+
+`.trivyignore` matches a CVE id everywhere in the repo. Findings that must stay visible elsewhere are suppressed per file instead: `security/scanning/apply-scoped-ignores.sh` removes a finding from Trivy's JSON only when the target file, package, installed version and CVE all match, and logs each removal.
+
+| CVE | Package | File | Reason |
+|-----|---------|------|--------|
+| CVE-2022-42889 | commons-text 1.9 | `services/report-service/pom.xml` | Planted CVE under test for the dependency-remediation exercise (`security/deps`, `.agents/skills/dependency-cve-remediation/SKILL.md`) |
 
 ## Running CI Locally
 

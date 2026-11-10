@@ -316,7 +316,7 @@ jobs:
       - run: npm test || true
       - run: npm run build
 
-  # Java 17 / Maven - Report Service (LEGACY Spring Boot 2.5)
+  # Java 17 / Maven - Report Service (Spring Boot 3.5)
   report-service:
     needs: detect-changes
     if: needs.detect-changes.outputs.report-service == 'true'
