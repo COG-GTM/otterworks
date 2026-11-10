@@ -15,11 +15,11 @@ export function expiryDayOptions(defaultDays: number, maxDays: number): number[]
     .sort((a, b) => a - b);
 }
 
-// Prefer the server's absolute URL: in native/desktop builds window.location.origin is a
-// WebView or loopback address that recipients on other devices cannot open.
-export function shareLinkUrl(link: Pick<ShareLink, "token" | "url">): string {
-  if (link.url && /^https?:\/\//i.test(link.url)) return link.url;
-  return `${window.location.origin}/s/${link.token}`;
+// Native/desktop builds run on a WebView or loopback origin, so they must set
+// VITE_PUBLIC_APP_URL to the public web client origin that serves /s/:token.
+export function shareLinkUrl(link: Pick<ShareLink, "token">): string {
+  const base = (import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin).replace(/\/+$/, "");
+  return `${base}/s/${link.token}`;
 }
 
 export function formatExpiry(iso: string): string {
