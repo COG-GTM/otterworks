@@ -18,7 +18,8 @@ import { CollaborativeEditor } from "@/components/editor/collaborative-editor";
 import { UserPresenceAvatars } from "@/components/editor/user-presence-avatars";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import { documentsApi } from "@/lib/api";
+import { ShareLinkPanel } from "@/components/documents/share-link-panel";
+import { documentsApi, getOwnerIdFromJwt } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 
 export default function DocumentEditorPage() {
@@ -114,6 +115,7 @@ function DocumentEditorContent() {
   }
 
   const displayTitle = isTitleEditing ? title : document.title;
+  const isOwner = !!document.ownerId && document.ownerId === getOwnerIdFromJwt();
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -267,19 +269,25 @@ function DocumentEditorContent() {
           {shareStatus === "error" && (
             <p className="text-sm text-red-600">Failed to send invite. Please try again.</p>
           )}
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                setShareCopied(true);
-                setTimeout(() => setShareCopied(false), 2000);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-            >
-              {shareCopied ? <Check size={14} /> : <Copy size={14} />}
-              {shareCopied ? "Copied!" : "Copy link"}
-            </button>
-          </div>
+          {isOwner ? (
+            <div className="pt-3 border-t border-gray-100">
+              <ShareLinkPanel documentId={documentId} />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  setShareCopied(true);
+                  setTimeout(() => setShareCopied(false), 2000);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+              >
+                {shareCopied ? <Check size={14} /> : <Copy size={14} />}
+                {shareCopied ? "Copied!" : "Copy link"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
