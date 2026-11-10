@@ -514,6 +514,20 @@ async def test_file_service_client_pages_through_folder_files():
         assert "x-user-id" not in request.headers
 
 
+async def test_file_service_client_drops_rows_repeated_across_pages():
+    folder = uuid.uuid4()
+    first = [{"id": str(uuid.uuid4()), "name": f"a{i}"} for i in range(100)]
+    shifted = [first[-1], {"id": str(uuid.uuid4()), "name": "b0"}]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params["page"])
+        return httpx.Response(200, json={"files": first if page == 1 else shifted, "total": 102})
+
+    result = await _client_with(handler).list_folder_files(folder)
+    ids = [f["id"] for f in result]
+    assert len(ids) == len(set(ids)) == 101
+
+
 async def test_file_service_client_folder_lookup():
     folder = uuid.uuid4()
 

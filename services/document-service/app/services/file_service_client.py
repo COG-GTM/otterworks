@@ -52,6 +52,7 @@ class FileServiceClient:
         and never runs its per-owner demo seeding.
         """
         files: list[dict[str, Any]] = []
+        seen_ids: set[Any] = set()
         page = 1
         async with self._client() as client:
             while True:
@@ -66,9 +67,13 @@ class FileServiceClient:
                 )
                 body = self._json(response)
                 batch = body.get("files") or []
-                files.extend(batch)
+                # Offset paging can repeat a row if the folder changes between pages.
+                for item in batch:
+                    if item.get("id") not in seen_ids:
+                        seen_ids.add(item.get("id"))
+                        files.append(item)
                 total = int(body.get("total", len(files)))
-                if not batch or len(files) >= total:
+                if not batch or len(files) >= total or page * FILE_PAGE_SIZE >= total:
                     return files
                 page += 1
 
