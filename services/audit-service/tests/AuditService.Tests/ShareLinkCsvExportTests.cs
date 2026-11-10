@@ -245,6 +245,21 @@ public class ShareLinkCsvExportTests
             Assert.Equal(expected, result);
     }
 
+    [Theory]
+    [InlineData(null, "share_link")]
+    [InlineData("", "share_link")]
+    [InlineData("  ", "share_link")]
+    public void AC9_ParseResourceTypes_FallsBackToSnakeCaseAliasWhenCamelCaseIsBlank(string? camel, string snake)
+    {
+        Assert.Equal(new[] { "share_link" }, AuditController.ParseResourceTypes(camel, snake));
+    }
+
+    [Fact]
+    public void AC9_ParseResourceTypes_PrefersCamelCaseWhenBothAreSet()
+    {
+        Assert.Equal(new[] { "share_policy" }, AuditController.ParseResourceTypes("share_policy", "share_link"));
+    }
+
     [Fact]
     public async Task AC9_SaveEvent_WithNullDetailValue_StoresDynamoNull()
     {

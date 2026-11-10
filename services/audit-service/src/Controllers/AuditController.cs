@@ -132,13 +132,16 @@ public static class AuditController
             return Results.BadRequest(new { error = "Format must be 'csv' or 'json'." });
         }
 
-        var resourceTypes = ParseResourceTypes(resourceType ?? resourceTypeSnake);
+        var resourceTypes = ParseResourceTypes(resourceType, resourceTypeSnake);
         var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat, resourceTypes);
         return Results.Ok(result);
     }
 
-    public static IReadOnlyCollection<string>? ParseResourceTypes(string? value)
+    public static IReadOnlyCollection<string>? ParseResourceTypes(string? value, string? alias = null)
     {
+        if (string.IsNullOrWhiteSpace(value))
+            value = alias;
+
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
