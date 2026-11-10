@@ -28,6 +28,17 @@ type Config struct {
 	// Rate limiting
 	RateLimitRPS int
 
+	// Client origin: proxies whose X-Forwarded-For / X-Real-IP are believed
+	TrustedProxyCIDRs []string
+
+	// Audit emission to audit-service (AuditServiceURL)
+	AuditEmitEnabled           bool
+	AuditServiceToken          string
+	AuditQueueSize             int
+	AuditTimeout               time.Duration
+	AuditMaxRetries            int
+	AuditDenialsPerIPPerMinute int
+
 	// JWT
 	JWTSecret string
 
@@ -41,10 +52,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -73,6 +84,15 @@ func Load() *Config {
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
 		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+
+		TrustedProxyCIDRs: getEnvList("TRUSTED_PROXY_CIDRS", []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128", "fc00::/7"}),
+
+		AuditEmitEnabled:           getEnvBool("AUDIT_EMIT_ENABLED", true),
+		AuditServiceToken:          getEnv("AUDIT_SERVICE_TOKEN", ""),
+		AuditQueueSize:             getEnvInt("AUDIT_QUEUE_SIZE", 1024),
+		AuditTimeout:               time.Duration(getEnvInt("AUDIT_EMIT_TIMEOUT_MS", 2000)) * time.Millisecond,
+		AuditMaxRetries:            getEnvInt("AUDIT_EMIT_MAX_RETRIES", 2),
+		AuditDenialsPerIPPerMinute: getEnvInt("AUDIT_DENIALS_PER_IP_PER_MINUTE", 20),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
@@ -141,4 +161,29 @@ func getEnvSlice(key string, fallback []string) []string {
 		return strings.Split(val, ",")
 	}
 	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+	}
+	return fallback
+}
+
+// getEnvList is like getEnvSlice but an explicitly empty value yields an empty
+// list (e.g. TRUSTED_PROXY_CIDRS="" trusts no proxy).
+func getEnvList(key string, fallback []string) []string {
+	val, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	var out []string
+	for _, v := range strings.Split(val, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

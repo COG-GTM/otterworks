@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,4 +322,133 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
+}
+
+func newAuditedJWTChain(t *testing.T, emitter *recordingEmitter, trustedCIDRs ...string) http.Handler {
+	t.Helper()
+	trust, err := NewProxyTrust(trustedCIDRs)
+	require.NoError(t, err)
+	jwtMW := JWTAuth(JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+		Audit:      emitter,
+	})
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	return RequestID(ClientOriginMiddleware(trust)(jwtMW(inner)))
+}
+
+func TestJWTAuth_401EmitsTokenRejected(t *testing.T) {
+	cases := []struct {
+		name   string
+		header string
+		reason string
+	}{
+		{"missing", "", "missing_token"},
+		{"malformed", "Bearer not-a-jwt", "malformed_token"},
+		{"bad_signature", "Bearer " + generateTestToken(t, "wrong-secret", JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{Subject: "user-1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+		}), "invalid_signature"},
+		{"expired", "Bearer " + generateTestToken(t, testSecret, JWTClaims{
+			RegisteredClaims: jwt.RegisteredClaims{Subject: "user-1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(-time.Hour))},
+		}), "expired_token"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			emitter := &recordingEmitter{}
+			handler := newAuditedJWTChain(t, emitter)
+
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/files/abc?share_token=s3cr3t", nil)
+			req.RemoteAddr = "203.0.113.7:51234"
+			req.Header.Set("User-Agent", "otter-test/1.0")
+			req.Header.Set("X-Request-ID", "req-401")
+			if tc.header != "" {
+				req.Header.Set("Authorization", tc.header)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			events := emitter.all()
+			require.Len(t, events, 1)
+			e := events[0]
+			assert.Equal(t, "auth.token.rejected", e.Action)
+			assert.Equal(t, "anonymous", e.UserID)
+			assert.Equal(t, "anonymous", e.ActorType)
+			assert.Equal(t, "api_route", e.ResourceType)
+			assert.Equal(t, "/api/v1/files/abc", e.ResourceID)
+			assert.Equal(t, "denied", e.Outcome)
+			assert.Equal(t, "203.0.113.7", e.IPAddress)
+			assert.Equal(t, "otter-test/1.0", e.UserAgent)
+			assert.Equal(t, "req-401", e.RequestID)
+			assert.Equal(t, tc.reason, e.Details["reason"])
+			assert.Equal(t, "GET", e.Details["method"])
+		})
+	}
+}
+
+func TestJWTAuth_TokenRejectedUsesTrustedForwardedClientIP(t *testing.T) {
+	emitter := &recordingEmitter{}
+	handler := newAuditedJWTChain(t, emitter, "10.0.0.0/8")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+	req.RemoteAddr = "10.1.2.3:443"
+	req.Header.Set("X-Forwarded-For", "198.51.100.20")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	require.Len(t, emitter.all(), 1)
+	assert.Equal(t, "198.51.100.20", emitter.all()[0].IPAddress)
+	assert.NotEmpty(t, emitter.all()[0].RequestID, "a generated request ID is attached")
+}
+
+func TestJWTAuth_ValidTokenAndPublicPathsEmitNothing(t *testing.T) {
+	emitter := &recordingEmitter{}
+	handler := newAuditedJWTChain(t, emitter)
+
+	token := generateTestToken(t, testSecret, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+	})
+	for _, path := range []string{"/health", "/metrics", "/api/v1/auth/login"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Empty(t, emitter.all())
+}
+
+func TestJWTAuth_TokenRejectedEventCarriesNoSecrets(t *testing.T) {
+	emitter := &recordingEmitter{}
+	handler := newAuditedJWTChain(t, emitter)
+
+	// Correctly signed for another secret, so the full token reaches validation and is rejected.
+	token := generateTestToken(t, "attacker-secret", JWTClaims{
+		Email:            "victim@example.com",
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour))},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload?token=share-tok-123&password=hunter2",
+		strings.NewReader(`{"password":"hunter2","refreshToken":"refresh-tok-456"}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Cookie", "session=cookie-secret")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	require.Len(t, emitter.all(), 1)
+	raw, err := json.Marshal(emitter.all()[0])
+	require.NoError(t, err)
+	payload := string(raw)
+	for _, secret := range []string{token, strings.Split(token, ".")[1], "hunter2", "share-tok-123", "refresh-tok-456", "cookie-secret", "attacker-secret", testSecret, "victim@example.com"} {
+		assert.NotContains(t, payload, secret)
+	}
+	var fields map[string]any
+	require.NoError(t, json.Unmarshal(raw, &fields))
+	for _, forbidden := range []string{"password", "token", "authorization", "refreshToken", "body"} {
+		assert.NotContains(t, fields, forbidden)
+	}
 }

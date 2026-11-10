@@ -30,6 +30,8 @@ services:
       ANALYTICS_SERVICE_URL: http://analytics-service:8088
       ADMIN_SERVICE_URL: http://admin-service:8089
       AUDIT_SERVICE_URL: http://audit-service:8090
+      AUDIT_SERVICE_TOKEN: ${AUDIT_SERVICE_TOKEN:-otterworks-audit-dev-token}
+      TRUSTED_PROXY_CIDRS: 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       REPORT_SERVICE_URL: http://report-service:8091
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:

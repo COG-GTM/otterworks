@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"encoding/json"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -71,6 +70,9 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := extractIP(r)
 		if !rl.Allow(ip) {
+			if st := getAuditState(r.Context()); st != nil {
+				st.deniedBy = "api-gateway"
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -84,12 +86,7 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func extractIP(r *http.Request) string {
-	// chimw.RealIP has already set r.RemoteAddr to the client IP
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return ClientIP(r)
 }
 
 // cleanup periodically removes stale buckets to prevent memory leaks.

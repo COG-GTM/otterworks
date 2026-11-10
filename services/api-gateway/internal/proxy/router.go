@@ -5,11 +5,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/audit"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
@@ -21,15 +23,18 @@ type Route struct {
 
 // RouterConfig holds configuration for the reverse proxy router.
 type RouterConfig struct {
-	Routes         []Route
-	CBManager      *CircuitBreakerManager
-	Logger         zerolog.Logger
-	EnableTracing  bool
+	Routes        []Route
+	CBManager     *CircuitBreakerManager
+	Logger        zerolog.Logger
+	EnableTracing bool
+	// Audit receives permission.denied for blocked client audit-ingest writes; nil disables.
+	Audit audit.Emitter
 }
 
 // NewRouter creates a chi router with all service routes mounted.
 func NewRouter(cfg RouterConfig) chi.Router {
 	r := chi.NewRouter()
+	r.Use(middleware.BlockClientAuditIngest(cfg.Audit))
 
 	for _, route := range cfg.Routes {
 		route := route // capture loop var
@@ -71,6 +76,9 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		// client-supplied values must never reach the backends.
 		req.Header.Del("X-User-ID")
 		req.Header.Del("X-User-Email")
+		// The audit ingest token is service-to-service only; never relay a client's.
+		req.Header.Del("X-Audit-Token")
+		setOriginHeaders(req)
 		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
 			userID := claims.Subject
 			if userID == "" {
@@ -123,5 +131,29 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				"reason":  "circuit breaker open",
 			})
 		}
+	}
+}
+
+// setOriginHeaders rewrites the forwarding headers so downstream audit
+// emitters can trust them: the first X-Forwarded-For entry and X-Real-IP are
+// the client address resolved against the trusted-proxy CIDRs, and the
+// request ID is always present. httputil.ReverseProxy appends the directly
+// connected peer to X-Forwarded-For after the director runs.
+func setOriginHeaders(req *http.Request) {
+	origin := middleware.GetClientOrigin(req)
+
+	req.Header.Del("X-Real-IP")
+	if origin.IP != "" {
+		req.Header.Set("X-Real-IP", origin.IP)
+	}
+
+	if len(origin.Forwarded) > 0 {
+		req.Header.Set("X-Forwarded-For", strings.Join(origin.Forwarded, ", "))
+	} else {
+		req.Header.Del("X-Forwarded-For")
+	}
+
+	if id := middleware.GetRequestID(req.Context()); id != "" {
+		req.Header.Set("X-Request-ID", id)
 	}
 }
