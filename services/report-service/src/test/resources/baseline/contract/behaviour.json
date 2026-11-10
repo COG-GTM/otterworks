@@ -1,0 +1,43 @@
+{
+  "createEmptyBody": 400,
+  "createMissingType": 400,
+  "deleteUnknownReport": 404,
+  "downloadUnknownReport": 404,
+  "getUnknownReport": 404,
+  "listByUser": 500,
+  "listCompleted": {
+    "itemKeys": [
+      "category",
+      "completedAt",
+      "createdAt",
+      "dateFrom",
+      "dateTo",
+      "downloadUrl",
+      "errorMessage",
+      "fileSizeBytes",
+      "id",
+      "reportName",
+      "reportType",
+      "requestedBy",
+      "rowCount",
+      "status"
+    ],
+    "keys": [
+      "reports",
+      "total"
+    ],
+    "status": 200
+  },
+  "listFailed": 500,
+  "upstreamDownReport": {
+    "category": "USAGE_ANALYTICS",
+    "dateFrom": "2026-01-01T00:00:00.000+00:00",
+    "dateTo": "2026-01-31T00:00:00.000+00:00",
+    "downloadUrl": null,
+    "reportName": "Baseline Usage Analytics",
+    "reportType": "CSV",
+    "requestedBy": "baseline",
+    "rowCount": null,
+    "status": "FAILED"
+  }
+}

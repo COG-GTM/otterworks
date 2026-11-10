@@ -1,0 +1,9 @@
+{
+  "body": {
+    "app": {
+      "name": "OtterWorks Report Service",
+      "version": "0.1.0"
+    }
+  },
+  "status": 200
+}

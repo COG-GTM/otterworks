@@ -1,0 +1,458 @@
+{
+  "document": {
+    "basePath": "/",
+    "definitions": {
+      "InputStream": {
+        "title": "InputStream",
+        "type": "object"
+      },
+      "ReportRequest": {
+        "description": "Request to generate a new report",
+        "properties": {
+          "category": {
+            "description": "Category of data to include",
+            "enum": [
+              "AUDIT_LOG",
+              "COLLABORATION_METRICS",
+              "COMPLIANCE",
+              "STORAGE_SUMMARY",
+              "SYSTEM_HEALTH",
+              "USAGE_ANALYTICS",
+              "USER_ACTIVITY"
+            ],
+            "type": "string"
+          },
+          "dateFrom": {
+            "description": "Start of reporting period",
+            "format": "date-time",
+            "type": "string"
+          },
+          "dateTo": {
+            "description": "End of reporting period",
+            "format": "date-time",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Additional parameters for report generation",
+            "type": "object"
+          },
+          "reportName": {
+            "description": "Human-readable name for the report",
+            "example": "Monthly Usage Report",
+            "type": "string"
+          },
+          "reportType": {
+            "description": "Output format",
+            "enum": [
+              "CSV",
+              "EXCEL",
+              "PDF"
+            ],
+            "example": "PDF",
+            "type": "string"
+          },
+          "requestedBy": {
+            "description": "User ID requesting the report",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "reportName",
+          "reportType",
+          "requestedBy"
+        ],
+        "title": "ReportRequest",
+        "type": "object"
+      },
+      "ReportResponse": {
+        "description": "Report metadata response",
+        "properties": {
+          "category": {
+            "description": "Report category",
+            "type": "string"
+          },
+          "completedAt": {
+            "description": "Completion timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "Request timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "dateFrom": {
+            "description": "Data start date",
+            "format": "date-time",
+            "type": "string"
+          },
+          "dateTo": {
+            "description": "Data end date",
+            "format": "date-time",
+            "type": "string"
+          },
+          "downloadUrl": {
+            "description": "Download URL",
+            "type": "string"
+          },
+          "errorMessage": {
+            "description": "Error message if failed",
+            "type": "string"
+          },
+          "fileSizeBytes": {
+            "description": "File size in bytes",
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Report ID",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reportName": {
+            "description": "Report name",
+            "type": "string"
+          },
+          "reportType": {
+            "description": "Output format",
+            "type": "string"
+          },
+          "requestedBy": {
+            "description": "Who requested it",
+            "type": "string"
+          },
+          "rowCount": {
+            "description": "Number of rows",
+            "format": "int32",
+            "type": "integer"
+          },
+          "status": {
+            "description": "Generation status",
+            "type": "string"
+          }
+        },
+        "title": "ReportResponse",
+        "type": "object"
+      },
+      "Resource": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "file": {
+            "type": "file"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "inputStream": {
+            "$ref": "#/definitions/InputStream"
+          },
+          "open": {
+            "type": "boolean"
+          },
+          "readable": {
+            "type": "boolean"
+          },
+          "uri": {
+            "format": "uri",
+            "type": "string"
+          },
+          "url": {
+            "format": "url",
+            "type": "string"
+          }
+        },
+        "title": "Resource",
+        "type": "object"
+      }
+    },
+    "host": "<HOST>",
+    "info": {
+      "contact": {
+        "email": "engineering@otterworks.example.com",
+        "name": "OtterWorks Engineering"
+      },
+      "description": "Legacy report generation service for PDF, CSV, and Excel exports",
+      "title": "OtterWorks Report Service API",
+      "version": "0.1.0"
+    },
+    "paths": {
+      "/api/v1/reports": {
+        "get": {
+          "description": "List reports filtered by user ID or status",
+          "operationId": "listReportsUsingGET",
+          "parameters": [
+            {
+              "description": "Filter by status",
+              "enum": [
+                "COMPLETED",
+                "FAILED",
+                "GENERATING",
+                "PENDING"
+              ],
+              "in": "query",
+              "name": "status",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "description": "Filter by user ID",
+              "in": "query",
+              "name": "userId",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "schema": {
+                "additionalProperties": {
+                  "type": "object"
+                },
+                "type": "object"
+              }
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            }
+          },
+          "summary": "List reports",
+          "tags": [
+            "Reports"
+          ]
+        },
+        "post": {
+          "consumes": [
+            "application/json"
+          ],
+          "description": "Submits a report generation request. The report is generated asynchronously.",
+          "operationId": "createReportUsingPOST",
+          "parameters": [
+            {
+              "description": "request",
+              "in": "body",
+              "name": "request",
+              "required": true,
+              "schema": {
+                "$ref": "#/definitions/ReportRequest"
+              }
+            }
+          ],
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "schema": {
+                "$ref": "#/definitions/ReportResponse"
+              }
+            },
+            "201": {
+              "description": "Created"
+            },
+            "202": {
+              "description": "Report request accepted"
+            },
+            "400": {
+              "description": "Invalid request"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            }
+          },
+          "summary": "Create a new report",
+          "tags": [
+            "Reports"
+          ]
+        }
+      },
+      "/api/v1/reports/{id}": {
+        "delete": {
+          "description": "Deletes the report record and its generated file",
+          "operationId": "deleteReportUsingDELETE",
+          "parameters": [
+            {
+              "description": "Report ID",
+              "format": "int64",
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK"
+            },
+            "204": {
+              "description": "Report deleted"
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Report not found"
+            }
+          },
+          "summary": "Delete a report",
+          "tags": [
+            "Reports"
+          ]
+        },
+        "get": {
+          "description": "Returns the report metadata and status",
+          "operationId": "getReportUsingGET",
+          "parameters": [
+            {
+              "description": "Report ID",
+              "format": "int64",
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "Report found",
+              "schema": {
+                "$ref": "#/definitions/ReportResponse"
+              }
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Report not found"
+            }
+          },
+          "summary": "Get report by ID",
+          "tags": [
+            "Reports"
+          ]
+        }
+      },
+      "/api/v1/reports/{id}/download": {
+        "get": {
+          "description": "Returns the report file for download",
+          "operationId": "downloadReportUsingGET",
+          "parameters": [
+            {
+              "description": "Report ID",
+              "format": "int64",
+              "in": "path",
+              "name": "id",
+              "required": true,
+              "type": "integer"
+            }
+          ],
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "Report file",
+              "schema": {
+                "$ref": "#/definitions/Resource"
+              }
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Report not found or not yet completed"
+            },
+            "409": {
+              "description": "Report is still generating"
+            }
+          },
+          "summary": "Download a generated report",
+          "tags": [
+            "Reports"
+          ]
+        }
+      },
+      "/health": {
+        "get": {
+          "operationId": "healthUsingGET",
+          "produces": [
+            "*/*"
+          ],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "schema": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            },
+            "401": {
+              "description": "Unauthorized"
+            },
+            "403": {
+              "description": "Forbidden"
+            },
+            "404": {
+              "description": "Not Found"
+            }
+          },
+          "summary": "health",
+          "tags": [
+            "health-controller"
+          ]
+        }
+      }
+    },
+    "swagger": "2.0",
+    "tags": [
+      {
+        "description": "Report generation and management",
+        "name": "Reports"
+      },
+      {
+        "description": "Health Controller",
+        "name": "health-controller"
+      }
+    ]
+  },
+  "path": "/v2/api-docs"
+}

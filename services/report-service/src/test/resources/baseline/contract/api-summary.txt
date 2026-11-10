@@ -1,0 +1,44 @@
+# operations
+GET /api/v1/reports
+  params: status:query:optional:string[COMPLETED,FAILED,GENERATING,PENDING], userId:query:optional:string
+  body: -
+POST /api/v1/reports
+  params: -
+  body: ReportRequest
+DELETE /api/v1/reports/{id}
+  params: id:path:required:integer(int64)
+  body: -
+GET /api/v1/reports/{id}
+  params: id:path:required:integer(int64)
+  body: -
+GET /api/v1/reports/{id}/download
+  params: id:path:required:integer(int64)
+  body: -
+GET /health
+  params: -
+  body: -
+
+# models
+ReportRequest
+  category: string[AUDIT_LOG,COLLABORATION_METRICS,COMPLIANCE,STORAGE_SUMMARY,SYSTEM_HEALTH,USAGE_ANALYTICS,USER_ACTIVITY] (required)
+  dateFrom: string(date-time)
+  dateTo: string(date-time)
+  parameters: object
+  reportName: string (required)
+  reportType: string[CSV,EXCEL,PDF] (required)
+  requestedBy: string (required)
+ReportResponse
+  category: string
+  completedAt: string(date-time)
+  createdAt: string(date-time)
+  dateFrom: string(date-time)
+  dateTo: string(date-time)
+  downloadUrl: string
+  errorMessage: string
+  fileSizeBytes: integer(int64)
+  id: integer(int64)
+  reportName: string
+  reportType: string
+  requestedBy: string
+  rowCount: integer(int32)
+  status: string
