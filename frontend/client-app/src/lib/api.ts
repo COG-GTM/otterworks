@@ -15,6 +15,9 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  ShareLink,
+  WorkspaceSharePolicy,
+  ResolvedShareLink,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -154,6 +157,54 @@ function normalizeFileItem(raw: Record<string, unknown>): FileItem {
     versions: (raw.versions ?? []) as FileItem["versions"],
   } as FileItem;
 }
+
+// ── Expiring folder share links (document-service) ────────────
+export const shareLinksApi = {
+  getPolicy: async (): Promise<WorkspaceSharePolicy> => {
+    const { data } = await apiClient.get<WorkspaceSharePolicy>("/workspace/share-policy");
+    return data;
+  },
+  listForResource: async (resourceId: string): Promise<ShareLink[]> => {
+    const { data } = await apiClient.get<
+      ShareLink[] | { shareLinks?: ShareLink[]; links?: ShareLink[]; items?: ShareLink[] }
+    >("/share-links", { params: { resource_id: resourceId } });
+    if (Array.isArray(data)) return data;
+    return data.shareLinks ?? data.links ?? data.items ?? [];
+  },
+  createFolderLink: async (folderId: string, expiresInDays?: number): Promise<ShareLink> => {
+    const { data } = await apiClient.post<ShareLink>("/share-links", {
+      resource_type: "folder",
+      resource_id: folderId,
+      ...(expiresInDays !== undefined ? { expires_in_days: expiresInDays } : {}),
+    });
+    return data;
+  },
+  updateExpiry: async (id: string, expiresInDays: number): Promise<ShareLink> => {
+    const { data } = await apiClient.patch<ShareLink>(`/share-links/${id}`, {
+      expires_in_days: expiresInDays,
+    });
+    return data;
+  },
+  resolve: async (token: string): Promise<ResolvedShareLink> => {
+    const { data } = await apiClient.get<Record<string, unknown>>(
+      `/share-links/resolve/${encodeURIComponent(token)}`
+    );
+    const folder = (data.folder ?? {}) as Record<string, unknown>;
+    const files = (data.files ?? []) as Array<Record<string, unknown>>;
+    return {
+      resourceType: "folder",
+      folder: { id: String(folder.id ?? ""), name: String(folder.name ?? "") },
+      files: files.map((f) => ({
+        id: String(f.id ?? ""),
+        name: String(f.name ?? ""),
+        mimeType: String(f.mimeType ?? f.contentType ?? ""),
+        size: Number(f.sizeBytes ?? f.size ?? 0),
+        updatedAt: String(f.updatedAt ?? f.createdAt ?? ""),
+      })),
+      expiresAt: String(data.expiresAt ?? ""),
+    };
+  },
+};
 
 // ── Files ─────────────────────────────────────────────────────
 export const filesApi = {
