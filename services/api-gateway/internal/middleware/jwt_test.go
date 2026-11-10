@@ -321,3 +321,33 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
 }
+
+// OTW-44: the folder share-link resolve route is public; the token is the credential.
+// Every other /api/v1/share-links route still needs a valid JWT.
+func TestJWTAuth_ShareLinkResolveIsPublic(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:              testSecret,
+		PublicPath:          DefaultPublicPaths(),
+		PrefixPath:          DefaultPrefixPaths(),
+		ProtectedPrefixPath: []string{"/api/v1/share-links"},
+	}
+
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := map[string]int{
+		"/api/v1/share-links/resolve/some-token":                   http.StatusOK,
+		"/api/v1/share-links":                                      http.StatusUnauthorized,
+		"/api/v1/share-links/2b1d5d0e-1111-4111-8111-111111111111": http.StatusUnauthorized,
+		"/api/v1/share-links/resolver":                             http.StatusUnauthorized,
+	}
+	for path, want := range cases {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, want, rec.Code, "path %s", path)
+		})
+	}
+}

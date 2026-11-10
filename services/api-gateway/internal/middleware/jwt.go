@@ -38,11 +38,13 @@ func DefaultPublicPaths() []string {
 }
 
 // DefaultPrefixPaths returns paths where any sub-path also skips JWT validation.
+// /api/v1/share-links/resolve/{token} is public: the unguessable token is the credential.
 func DefaultPrefixPaths() []string {
 	return []string{
 		"/health",
 		"/metrics",
 		"/socket.io",
+		"/api/v1/share-links/resolve",
 	}
 }
 
@@ -131,7 +133,7 @@ func isPublicPath(path string, exactPaths map[string]bool, prefixPaths []string)
 	if exactPaths[path] {
 		return true
 	}
-	// Prefix match only for operational paths (e.g. /health, /metrics)
+	// Prefix match for operational paths (e.g. /health, /metrics) and token-authenticated routes
 	for _, p := range prefixPaths {
 		if path == p || strings.HasPrefix(path, p+"/") {
 			return true
