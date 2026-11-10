@@ -204,6 +204,7 @@ def test_folder_share_link_status() -> None:
     assert link.status_at(now) == "expired"
     link.expires_at = (now - timedelta(seconds=1)).replace(tzinfo=None)  # SQLite returns naive
     assert link.status_at(now) == "expired"
+    assert link.status_at(now.replace(tzinfo=None)) == "expired"  # naive "now" is UTC
     link.revoked_at = now
     assert link.status_at(now) == "revoked"
 
