@@ -64,4 +64,40 @@ class EventPublisher:
             logger.exception("sns_publish_failed", event_type=event_type)
 
 
+    async def publish_audit(
+        self,
+        *,
+        action: str,
+        resource_type: str,
+        resource_id: str,
+        user_id: str,
+        details: dict[str, str],
+    ) -> None:
+        """Publish a flat audit event in the shape audit-service consumes."""
+        message = {
+            "eventType": "share_link_audit",
+            "userId": user_id,
+            "action": action,
+            "resourceType": resource_type,
+            "resourceId": resource_id,
+            "details": details,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        logger.info("audit_event", **message)
+        if not settings.sns_enabled:
+            return
+        try:
+            client = self._get_client()
+            await asyncio.to_thread(
+                client.publish,
+                TopicArn=settings.sns_topic_arn,
+                Message=json.dumps(message, cls=_UUIDEncoder),
+                MessageAttributes={
+                    "event_type": {"DataType": "String", "StringValue": "share_link_audit"}
+                },
+            )
+        except Exception:
+            logger.exception("sns_audit_publish_failed", action=action)
+
+
 event_publisher = EventPublisher()

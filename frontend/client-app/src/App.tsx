@@ -16,6 +16,7 @@ import RecentPage from "@/pages/recent";
 import SearchPage from "@/pages/search";
 import SettingsPage from "@/pages/settings";
 import SharedPage from "@/pages/shared";
+import SharedLinkPage from "@/pages/shared-link";
 import StarredPage from "@/pages/starred";
 import TrashPage from "@/pages/trash";
 import TermsPage from "@/pages/terms";
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/shared" element={<SharedPage />} />
+          <Route path="/s/:documentId" element={<SharedLinkPage />} />
           <Route path="/starred" element={<StarredPage />} />
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/terms" element={<TermsPage />} />

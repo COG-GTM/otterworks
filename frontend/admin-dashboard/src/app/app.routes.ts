@@ -27,6 +27,10 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/audit/audit.component').then(m => m.AuditComponent),
       },
       {
+        path: 'sharing',
+        loadComponent: () => import('./pages/sharing/sharing.component').then(m => m.SharingComponent),
+      },
+      {
         path: 'features',
         loadComponent: () => import('./pages/features/features.component').then(m => m.FeaturesComponent),
       },

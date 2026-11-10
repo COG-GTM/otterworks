@@ -8,7 +8,7 @@ from uuid import UUID
 import jwt
 import redis as redis_lib
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,9 @@ from app.schemas.document import (
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
+from app.schemas.share_link import ShareLinkCreate, ShareLinkResponse
 from app.services.share_link import ShareLinkService
+from app.services.share_link_store import ExpiryOutOfBoundsError, ShareLinkStore, is_expired
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -190,7 +192,13 @@ async def get_shared_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Return a document through its read-only share link."""
-    if not ShareLinkService().verify_token(str(document_id), token):
+    store = ShareLinkStore(db)
+    link = await store.find_by_token(document_id, token)
+    if link is not None:
+        if is_expired(link):
+            await store.record_expiry(link)
+            raise HTTPException(status_code=410, detail="Share link has expired")
+    elif not ShareLinkService().verify_token(str(document_id), token):
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
@@ -460,22 +468,27 @@ async def restore_version(
     return document
 
 
-@router.post("/{document_id}/share")
+@router.post("/{document_id}/share", response_model=ShareLinkResponse)
 async def create_share_link(
     document_id: UUID,
     request: Request,
+    body: ShareLinkCreate | None = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Mint a read-only share link for a document."""
+    """Create a read-only share link that expires per the workspace policy."""
     user_id = _require_user_id(request)
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     _ensure_owner(document, user_id)
-    token = ShareLinkService().mint_token(str(document_id))
-    logger.info("share_link_created", document_id=str(document_id))
-    return {"document_id": str(document_id), "token": token}
+    expires_in_days = body.expires_in_days if body else None
+    try:
+        link = await ShareLinkStore(db).create_link(document_id, user_id, expires_in_days)
+    except ExpiryOutOfBoundsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    logger.info("share_link_created", document_id=str(document_id), link_id=str(link.id))
+    return ShareLinkResponse.model_validate(link)
 
 
 @router.get("/{document_id}/export")

@@ -130,15 +130,18 @@ public class S3AuditArchiver : IAuditArchiver
     private static string ConvertToCsv(List<AuditEvent> events)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,IpAddress,UserAgent");
+        sb.AppendLine("Id,Timestamp,UserId,Action,ResourceType,ResourceId,Workspace,OldValue,NewValue,IpAddress,UserAgent");
 
         foreach (var e in events)
         {
-            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
+            sb.AppendLine($"\"{Esc(e.Id)}\",\"{e.Timestamp:O}\",\"{Esc(e.UserId)}\",\"{Esc(e.Action)}\",\"{Esc(e.ResourceType)}\",\"{Esc(e.ResourceId)}\",\"{Esc(Detail(e, "workspace"))}\",\"{Esc(Detail(e, "oldValue"))}\",\"{Esc(Detail(e, "newValue"))}\",\"{Esc(e.IpAddress)}\",\"{Esc(e.UserAgent)}\"");
         }
 
         return sb.ToString();
     }
+
+    private static string? Detail(AuditEvent e, string key) =>
+        e.Details != null && e.Details.TryGetValue(key, out var value) ? value : null;
 
     private static string Esc(string? value) =>
         value?.Replace("\"", "\"\"") ?? string.Empty;

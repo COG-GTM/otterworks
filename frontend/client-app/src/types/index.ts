@@ -68,6 +68,23 @@ export interface SharedUser {
   permission: "view" | "edit" | "admin";
 }
 
+export interface SharePolicy {
+  workspaceId: string;
+  defaultExpiryDays: number;
+  minExpiryDays: number;
+  maxExpiryDays: number;
+}
+
+export interface ShareLink {
+  id: string;
+  documentId: string;
+  token: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
 export interface Document {
   id: string;
   title: string;

@@ -29,6 +29,13 @@ const PRIORITY_TO_SEVERITY: Record<string, string> = {
   low: 'info', medium: 'warning', critical: 'critical', high: 'maintenance',
 };
 
+export interface SharePolicy {
+  workspace_id: string;
+  default_expiry_days: number;
+  min_expiry_days: number;
+  max_expiry_days: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminApiService {
   private readonly baseUrl = '/api/v1';
@@ -36,6 +43,16 @@ export class AdminApiService {
   readonly statsChanged$ = new Subject<void>();
 
   constructor(private http: HttpClient) {}
+
+  // ── Workspace share policy ───────────────────────────────────────────────
+
+  getSharePolicy(): Observable<SharePolicy> {
+    return this.http.get<SharePolicy>(`${this.baseUrl}/documents/share-policy`);
+  }
+
+  updateSharePolicy(policy: Omit<SharePolicy, 'workspace_id'>): Observable<SharePolicy> {
+    return this.http.put<SharePolicy>(`${this.baseUrl}/documents/share-policy`, policy);
+  }
 
   // ── Dashboard ────────────────────────────────────────────────────────────
 

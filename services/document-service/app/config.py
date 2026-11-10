@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     sns_enabled: bool = False
 
+    workspace_id: str = "default"
+    share_link_default_expiry_days: int = 7
+    share_link_min_expiry_days: int = 1
+    share_link_max_expiry_days: int = 30
+
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
 

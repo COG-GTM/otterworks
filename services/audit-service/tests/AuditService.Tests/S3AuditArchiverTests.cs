@@ -81,6 +81,42 @@ public class S3AuditArchiverTests
     }
 
     [Fact]
+    public async Task ExportAsync_WithCsvFormat_IncludesShareLinkExpiryChangeColumns()
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = "u1", Action = "share_link_expiry_change", ResourceType = "share_link",
+                ResourceId = "l1", Timestamp = DateTime.UtcNow,
+                Details = new Dictionary<string, string>
+                {
+                    ["workspace"] = "default",
+                    ["oldValue"] = "2026-11-17T00:00:00+00:00",
+                    ["newValue"] = "2026-11-12T00:00:00+00:00",
+                },
+            },
+        };
+
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        PutObjectRequest? captured = null;
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((req, _) => captured = req)
+            .ReturnsAsync(new PutObjectResponse());
+
+        await _archiver.ExportAsync(from, to, "csv");
+
+        Assert.NotNull(captured);
+        var lines = captured!.ContentBody.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(
+            "Id,Timestamp,UserId,Action,ResourceType,ResourceId,Workspace,OldValue,NewValue,IpAddress,UserAgent",
+            lines[0].TrimEnd('\r'));
+        Assert.Contains("\"share_link_expiry_change\",\"share_link\",\"l1\",\"default\",\"2026-11-17T00:00:00+00:00\",\"2026-11-12T00:00:00+00:00\"", lines[1]);
+    }
+
+    [Fact]
     public async Task ArchiveOldEventsAsync_WithEvents_ShouldUploadToGlacierAndDelete()
     {
         var olderThan = DateTime.UtcNow.AddDays(-90);

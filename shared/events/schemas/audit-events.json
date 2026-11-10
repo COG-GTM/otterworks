@@ -74,5 +74,30 @@
         "timestamp": { "type": "string", "format": "date-time" }
       }
     }
-  }
+  },
+    "ShareLinkAuditEvent": {
+      "type": "object",
+      "description": "Share-link lifecycle audit event published by document-service (OTW-20), in the flat shape audit-service consumes.",
+      "required": ["eventType", "userId", "action", "resourceType", "resourceId", "details", "timestamp"],
+      "properties": {
+        "eventType": { "const": "share_link_audit" },
+        "userId": { "type": "string", "description": "Actor user id, or \"system\" for expiry" },
+        "action": { "enum": ["share_link_create", "share_link_expiry_change", "share_link_expire", "share_policy_update"] },
+        "resourceType": { "enum": ["share_link", "workspace"] },
+        "resourceId": { "type": "string" },
+        "details": {
+          "type": "object",
+          "required": ["workspace", "oldValue", "newValue"],
+          "properties": {
+            "workspace": { "type": "string" },
+            "oldValue": { "type": "string" },
+            "newValue": { "type": "string" },
+            "document_id": { "type": "string" },
+            "expires_at": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": { "type": "string" }
+        },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    }
 }

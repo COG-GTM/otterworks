@@ -165,6 +165,7 @@ export class SidebarComponent {
     { label: 'Users', icon: 'people', route: '/users' },
     { label: 'Audit Logs', icon: 'history', route: '/audit' },
     { label: 'Feature Flags', icon: 'toggle_on', route: '/features' },
+    { label: 'Share Links', icon: 'link', route: '/sharing' },
     { label: 'System Health', icon: 'monitor_heart', route: '/health' },
     { label: 'Announcements', icon: 'campaign', route: '/announcements' },
     { label: 'Storage Quotas', icon: 'storage', route: '/quotas' },

@@ -8,8 +8,6 @@ import {
   Save,
   Clock,
   Users,
-  Copy,
-  Check,
   X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
@@ -18,6 +16,7 @@ import { CollaborativeEditor } from "@/components/editor/collaborative-editor";
 import { UserPresenceAvatars } from "@/components/editor/user-presence-avatars";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { ShareLinkPanel } from "@/components/documents/share-link-panel";
 import { documentsApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 
@@ -40,7 +39,6 @@ function DocumentEditorContent() {
   const [isTitleEditing, setIsTitleEditing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
-  const [shareCopied, setShareCopied] = useState(false);
   const [shareStatus, setShareStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [hasContent, setHasContent] = useState(false);
   const latestContentRef = useRef<string | null>(null);
@@ -267,19 +265,7 @@ function DocumentEditorContent() {
           {shareStatus === "error" && (
             <p className="text-sm text-red-600">Failed to send invite. Please try again.</p>
           )}
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                setShareCopied(true);
-                setTimeout(() => setShareCopied(false), 2000);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
-            >
-              {shareCopied ? <Check size={14} /> : <Copy size={14} />}
-              {shareCopied ? "Copied!" : "Copy link"}
-            </button>
-          </div>
+          <ShareLinkPanel documentId={documentId} />
         </div>
       )}
 
