@@ -249,3 +249,23 @@ async def test_policy_is_scoped_per_workspace(client, owner_id, audit_events):
     )
     assert acme.json()["default_expiry_days"] == 3
     assert other.json()["default_expiry_days"] == 7
+
+
+@pytest.mark.asyncio
+async def test_ac8_expiry_recorded_once_even_with_stale_reads(
+    client, doc_id, db_session, audit_events
+):
+    link = (await client.post(f"/api/v1/documents/{doc_id}/share")).json()
+    row = await db_session.get(ShareLink, uuid.UUID(link["id"]))
+    row.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    service = esl.ExpiringShareLinkService(db_session)
+    # Two readers that both loaded the link before either recorded the expiry.
+    stale = await service.find_by_token(uuid.UUID(doc_id), link["token"])
+    db_session.expunge(stale)
+    await service.record_expired(stale)
+    assert stale.expired_recorded_at is None
+    await service.record_expired(stale)
+
+    assert [e["action"] for e in audit_events].count("share_link.expired") == 1

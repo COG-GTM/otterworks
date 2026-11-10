@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -240,8 +240,13 @@ class ExpiringShareLinkService:
         """Audit the first time an expired link is enforced."""
         if link.expired_recorded_at is not None:
             return
-        link.expired_recorded_at = _now()
-        await self.db.flush()
+        claimed = await self.db.execute(
+            update(ShareLink)
+            .where(ShareLink.id == link.id, ShareLink.expired_recorded_at.is_(None))
+            .values(expired_recorded_at=_now())
+        )
+        if claimed.rowcount == 0:
+            return
         await self._audit_or_rollback(
             actor_id=str(link.created_by),
             action="share_link.expired",
