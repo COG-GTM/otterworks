@@ -394,6 +394,7 @@ services:
       DATABASE_USER: otterworks
       DATABASE_PASSWORD: otterworks_dev
       SECRET_KEY_BASE: dev-secret-key-base-otterworks-change-in-production
+      AUDIT_EVENTS_SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DEVIN_API_KEY: ${DEVIN_API_KEY:-}
       DEVIN_ORG_ID: ${DEVIN_ORG_ID:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}

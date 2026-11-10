@@ -73,6 +73,145 @@
         "reason": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" }
       }
+    },
+    "AuditActor": {
+      "type": "object",
+      "description": "Who caused the event. type=system (id null) for events raised by scheduled jobs.",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["user", "system"] },
+        "id": { "type": ["string", "null"], "format": "uuid" }
+      }
+    },
+    "FolderShareLinkResource": {
+      "type": "object",
+      "required": ["type", "folderId", "linkId"],
+      "properties": {
+        "type": { "const": "folder_share_link" },
+        "folderId": { "type": "string", "format": "uuid" },
+        "linkId": { "type": "string", "format": "uuid" }
+      }
+    },
+    "SharingPolicyResource": {
+      "type": "object",
+      "required": ["type", "workspaceId"],
+      "properties": {
+        "type": { "const": "sharing_policy" },
+        "workspaceId": { "type": "string" }
+      }
+    },
+    "FolderShareLinkExpiryValue": {
+      "type": "object",
+      "required": ["expires_at"],
+      "properties": {
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FolderShareLinkRevocationValue": {
+      "type": "object",
+      "required": ["revoked_at"],
+      "properties": {
+        "revoked_at": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "FolderShareLinkStatusValue": {
+      "type": "object",
+      "required": ["status", "expires_at"],
+      "properties": {
+        "status": { "enum": ["active", "expired"] },
+        "expires_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SharingPolicyValue": {
+      "type": "object",
+      "required": ["default_expiry_days", "min_expiry_days", "max_expiry_days"],
+      "properties": {
+        "default_expiry_days": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "min_expiry_days": { "type": "integer", "minimum": 1, "maximum": 90 },
+        "max_expiry_days": { "type": "integer", "minimum": 1, "maximum": 90 }
+      }
+    },
+    "FolderShareLinkCreatedEvent": {
+      "type": "object",
+      "description": "A folder share link was created.",
+      "required": ["eventType", "auditId", "actor", "workspaceId", "resource", "oldValue", "newValue", "timestamp"],
+      "properties": {
+        "eventType": { "const": "folder_share_link.created" },
+        "auditId": { "type": "string", "format": "uuid" },
+        "actor": { "$ref": "#/definitions/AuditActor" },
+        "workspaceId": { "type": "string" },
+        "resource": { "$ref": "#/definitions/FolderShareLinkResource" },
+        "oldValue": { "type": "null" },
+        "newValue": { "$ref": "#/definitions/FolderShareLinkExpiryValue" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FolderShareLinkUpdatedEvent": {
+      "type": "object",
+      "description": "A folder share link's expiry was changed by its owner.",
+      "required": ["eventType", "auditId", "actor", "workspaceId", "resource", "oldValue", "newValue", "timestamp"],
+      "properties": {
+        "eventType": { "const": "folder_share_link.updated" },
+        "auditId": { "type": "string", "format": "uuid" },
+        "actor": { "$ref": "#/definitions/AuditActor" },
+        "workspaceId": { "type": "string" },
+        "resource": { "$ref": "#/definitions/FolderShareLinkResource" },
+        "oldValue": { "$ref": "#/definitions/FolderShareLinkExpiryValue" },
+        "newValue": { "$ref": "#/definitions/FolderShareLinkExpiryValue" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FolderShareLinkRevokedEvent": {
+      "type": "object",
+      "description": "A folder share link was revoked. The link record is kept.",
+      "required": ["eventType", "auditId", "actor", "workspaceId", "resource", "oldValue", "newValue", "timestamp"],
+      "properties": {
+        "eventType": { "const": "folder_share_link.revoked" },
+        "auditId": { "type": "string", "format": "uuid" },
+        "actor": { "$ref": "#/definitions/AuditActor" },
+        "workspaceId": { "type": "string" },
+        "resource": { "$ref": "#/definitions/FolderShareLinkResource" },
+        "oldValue": { "$ref": "#/definitions/FolderShareLinkRevocationValue" },
+        "newValue": { "$ref": "#/definitions/FolderShareLinkRevocationValue" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "FolderShareLinkExpiredEvent": {
+      "type": "object",
+      "description": "A folder share link reached expires_at. Emitted exactly once per link by the expiry sweep (actor is system). timestamp is the link's expires_at; auditId is derived from the link id so a re-delivery overwrites rather than duplicates.",
+      "required": ["eventType", "auditId", "actor", "workspaceId", "resource", "oldValue", "newValue", "timestamp"],
+      "properties": {
+        "eventType": { "const": "folder_share_link.expired" },
+        "auditId": { "type": "string", "format": "uuid" },
+        "actor": {
+          "type": "object",
+          "required": ["type", "id"],
+          "properties": {
+            "type": { "const": "system" },
+            "id": { "type": "null" }
+          }
+        },
+        "workspaceId": { "type": "string" },
+        "resource": { "$ref": "#/definitions/FolderShareLinkResource" },
+        "oldValue": { "$ref": "#/definitions/FolderShareLinkStatusValue" },
+        "newValue": { "$ref": "#/definitions/FolderShareLinkStatusValue" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "SharingPolicyChangedEvent": {
+      "type": "object",
+      "description": "The workspace folder share-link expiry policy changed. Applies to new links only.",
+      "required": ["eventType", "auditId", "actor", "workspaceId", "resource", "oldValue", "newValue", "timestamp"],
+      "properties": {
+        "eventType": { "const": "folder_share_link.policy_changed" },
+        "auditId": { "type": "string", "format": "uuid" },
+        "actor": { "$ref": "#/definitions/AuditActor" },
+        "workspaceId": { "type": "string" },
+        "resource": { "$ref": "#/definitions/SharingPolicyResource" },
+        "oldValue": { "$ref": "#/definitions/SharingPolicyValue" },
+        "newValue": { "$ref": "#/definitions/SharingPolicyValue" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   }
 }

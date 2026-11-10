@@ -19,6 +19,8 @@ module Api
           end
 
           policy = nil
+          before = nil
+          changed = false
           SharingPolicy.transaction do
             # ON CONFLICT DO NOTHING makes concurrent first updates serialize on the row lock below
             # instead of racing on the unique workspace_id index.
@@ -32,7 +34,9 @@ module Api
             policy.updated_by = current_user_id
             policy.save!
             record_audit!(policy, before)
+            changed = true
           end
+          publish_policy_changed(policy, before) if changed
 
           if policy.errors.any?
             render json: { error: 'Validation failed', details: policy.errors.full_messages },
@@ -58,6 +62,16 @@ module Api
             changes_made: { workspace_id: policy.workspace_id, before: before, after: policy.to_policy },
             ip_address: request.remote_ip,
             user_agent: request.user_agent
+          )
+        end
+
+        # Sent after commit so audit-service never records a change that was rolled back.
+        def publish_policy_changed(policy, before)
+          AuditEventPublisher.publish_policy_changed(
+            workspace_id: policy.workspace_id,
+            actor_id: current_user_id,
+            old_value: before,
+            new_value: policy.to_policy
           )
         end
       end

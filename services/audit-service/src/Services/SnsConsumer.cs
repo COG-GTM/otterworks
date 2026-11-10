@@ -100,6 +100,21 @@ public class SnsConsumer : BackgroundService
             var snsMessage = TryParseSnsEnvelope(message.Body);
             var eventBody = snsMessage ?? message.Body;
 
+            if (ShareLinkAuditEventMapper.TryMap(eventBody, out var shareLinkEvent))
+            {
+                // auditId is the record key, so a re-delivered event overwrites instead of duplicating.
+                if (string.IsNullOrEmpty(shareLinkEvent.Id))
+                {
+                    shareLinkEvent.Id = message.MessageId;
+                }
+
+                await _repository.SaveEventAsync(shareLinkEvent);
+                _logger.LogDebug("Processed {Action} SNS event for {ResourceType}/{ResourceId}",
+                    shareLinkEvent.Action, shareLinkEvent.ResourceType, shareLinkEvent.ResourceId);
+                await _sqsClient.DeleteMessageAsync(_queueUrl, message.ReceiptHandle, ct);
+                return;
+            }
+
             var fileEvent = JsonSerializer.Deserialize<FileEventMessage>(eventBody, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,

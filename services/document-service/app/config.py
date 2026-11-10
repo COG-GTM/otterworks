@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     sns_enabled: bool = False
 
+    # Folder share-link expiry audit sweep; 0 disables the background loop.
+    share_link_expiry_sweep_interval_seconds: int = 300
+    share_link_expiry_sweep_batch_size: int = 100
+
     otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_enabled: bool = False
 

@@ -1,5 +1,7 @@
 """OtterWorks Document Service - FastAPI application."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,7 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import comments, documents, folder_share_links, health, templates
 from app.config import settings
-from app.db.session import engine, init_db
+from app.db.session import async_session, engine, init_db
+from app.services.folder_share_link_expiry_sweep import run_expiry_sweep_loop
 
 logger = structlog.get_logger()
 
@@ -41,9 +44,23 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             logger.exception("opentelemetry_setup_failed")
 
+    sweep_task: asyncio.Task[None] | None = None
+    if settings.share_link_expiry_sweep_interval_seconds > 0:
+        sweep_task = asyncio.create_task(
+            run_expiry_sweep_loop(
+                async_session,
+                settings.share_link_expiry_sweep_interval_seconds,
+                settings.share_link_expiry_sweep_batch_size,
+            )
+        )
+
     logger.info("document_service_started")
     yield
     logger.info("document_service_shutting_down")
+    if sweep_task is not None:
+        sweep_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await sweep_task
     await engine.dispose()
 
 
