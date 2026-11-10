@@ -41,6 +41,10 @@
         <guava.version>28.0-jre</guava.version>
         <!-- Commons Text 1.9 — report banner/footer interpolation -->
         <commons-text.version>1.9</commons-text.version>
+        <!-- Mockito 4.11 is the last line that runs on Java 8; Mockito 5 lands with LBG-23 (Java 17).
+             Overrides the Boot 2.5 BOM (3.9.0 / 1.10.22) so mockito-core and mockito-junit-jupiter stay aligned. -->
+        <mockito.version>4.11.0</mockito.version>
+        <byte-buddy.version>1.12.19</byte-buddy.version>
     </properties>
 
     <dependencies>
@@ -155,25 +159,11 @@
             <version>4.6</version>
         </dependency>
 
-        <!-- Testing -->
-        <!-- LEGACY: JUnit 4 (not JUnit 5/Jupiter). Upgrade target: junit-jupiter -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-            <scope>test</scope>
-        </dependency>
+        <!-- Testing (JUnit 5 / Jupiter via spring-boot-starter-test) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-            <!-- Exclude JUnit 5 to force JUnit 4 usage -->
-            <exclusions>
-                <exclusion>
-                    <groupId>org.junit.jupiter</groupId>
-                    <artifactId>junit-jupiter</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>com.h2database</groupId>
@@ -183,7 +173,11 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>3.12.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
