@@ -179,6 +179,7 @@ export function ShareLinkPanel({ documentId }: Readonly<{ documentId: string }>)
 
   const create = useMutation({
     mutationFn: (expiresInDays?: number) => shareLinksApi.create(documentId, expiresInDays),
+    onMutate: () => setCreated(null),
     onSuccess: (link) => {
       setError(null);
       setCreated(link);

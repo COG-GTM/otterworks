@@ -75,6 +75,25 @@ describe("ShareLinkPanel", () => {
     expect(created).toHaveTextContent(/Expires Nov 17, 2026/);
   });
 
+  it("AC3: a failed create clears the previously created link", async () => {
+    usePolicyAndLinks();
+    let calls = 0;
+    server.use(
+      http.post(`${API}/${DOC_ID}/share`, () => {
+        calls += 1;
+        return calls === 1
+          ? HttpResponse.json(link({ id: "new" }))
+          : HttpResponse.json({ detail: "expires_in_days must be between 1 and 30" }, { status: 422 });
+      })
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Create link" }));
+    expect(await screen.findByTestId("created-share-link")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
+    expect(await screen.findByText(/between 1 and 30/)).toBeInTheDocument();
+    expect(screen.queryByTestId("created-share-link")).not.toBeInTheDocument();
+  });
+
   it("AC2: the picker only offers values within the workspace min and max", async () => {
     usePolicyAndLinks();
     renderPanel();
