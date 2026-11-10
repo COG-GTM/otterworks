@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from alembic import command
 from alembic import config as alembic_config
 from app.config import Settings
+from app.db.base import Base
 from app.models.share import FolderShareLink, WorkspaceSharePolicy
 from app.services.share_audit import (
     SHARE_AUDIT_EVENT_TYPES,
@@ -112,6 +113,25 @@ def test_migration_upgrade_creates_tables_and_downgrade_removes_them(
     assert "folder_share_links" in _tables(db_path)
     command.downgrade(cfg, "base")
     assert _tables(db_path) <= {"alembic_version"}
+
+
+def test_migration_upgrade_tolerates_tables_created_at_startup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Service started on a 001 database: init_db() already created the share tables."""
+    db_path = tmp_path / "startup.db"
+    cfg = _alembic_config(monkeypatch, db_path)
+    command.upgrade(cfg, "001")
+
+    engine = sa.create_engine(f"sqlite:///{db_path}")
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    assert {"folder_share_links", "workspace_share_policies"} <= _tables(db_path)
+
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "001")
+    assert "folder_share_links" not in _tables(db_path)
+    assert "workspace_share_policies" not in _tables(db_path)
 
 
 async def test_policy_defaults_when_no_row(db_session: AsyncSession) -> None:

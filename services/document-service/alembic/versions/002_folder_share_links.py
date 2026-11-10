@@ -20,6 +20,16 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # The service's startup init_db() (Base.metadata.create_all) may already have
+    # created these tables on a database stamped at 001; only create what is missing.
+    existing = set(sa.inspect(op.get_bind()).get_table_names())
+    if "folder_share_links" not in existing:
+        _create_folder_share_links()
+    if "workspace_share_policies" not in existing:
+        _create_workspace_share_policies()
+
+
+def _create_folder_share_links() -> None:
     op.create_table(
         "folder_share_links",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -42,6 +52,8 @@ def upgrade() -> None:
         "ix_folder_share_links_folder_id", "folder_share_links", ["folder_id"]
     )
 
+
+def _create_workspace_share_policies() -> None:
     op.create_table(
         "workspace_share_policies",
         sa.Column("workspace_id", sa.String(64), primary_key=True),
