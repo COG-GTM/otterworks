@@ -9,8 +9,13 @@ const PRESET_DAYS = [1, 7, 14, 30, 90];
 const DEFAULT = "default";
 const NEVER = "never";
 
+// Native (Capacitor) builds run on a device-local origin, so links must use the public web URL.
+function publicWebOrigin(): string {
+  return (import.meta.env.VITE_PUBLIC_WEB_URL as string | undefined)?.replace(/\/$/, "") || window.location.origin;
+}
+
 export function shareLinkUrl(link: ShareLink): string {
-  return `${window.location.origin}/s/${link.documentId}?token=${encodeURIComponent(link.token)}`;
+  return `${publicWebOrigin()}/s/${link.documentId}?token=${encodeURIComponent(link.token)}`;
 }
 
 export function formatExpiry(expiresAt: string | null): string {
