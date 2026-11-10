@@ -8,6 +8,9 @@ import { Announcement } from '../models/announcement.model';
 import { ServiceHealth } from '../models/system-health.model';
 import { DashboardStats, AnalyticsReport, ChartDataPoint } from '../models/analytics.model';
 import { Incident } from '../models/incident.model';
+import {
+  SHARE_POLICY_DEFAULT_DAYS, SHARE_POLICY_MAX_DAYS, WorkspaceSharePolicy, WorkspaceSharePolicyUpdate,
+} from '../models/share-policy.model';
 
 // Service metadata not available from the health endpoint — kept here for display purposes
 const SERVICE_META: Record<string, { version: string; port: number; language: string; details: string }> = {
@@ -239,6 +242,21 @@ export class AdminApiService {
     return this.http.put<{ enabled: boolean }>(`${this.baseUrl}/admin/settings/auto_investigate`, { enabled });
   }
 
+  // ── Workspace sharing policy ─────────────────────────────────────────────
+
+  getWorkspaceSharePolicy(): Observable<WorkspaceSharePolicy> {
+    return this.http.get<any>(`${this.baseUrl}/workspace/share-policy`).pipe(
+      map(raw => this.mapSharePolicy(raw)),
+    );
+  }
+
+  updateWorkspaceSharePolicy(update: WorkspaceSharePolicyUpdate): Observable<WorkspaceSharePolicy> {
+    const payload = { default_days: update.defaultDays, max_days: update.maxDays };
+    return this.http.put<any>(`${this.baseUrl}/workspace/share-policy`, payload).pipe(
+      map(raw => this.mapSharePolicy(raw)),
+    );
+  }
+
   // ── Private mappers ──────────────────────────────────────────────────────
 
   private mapUser(raw: any): User {
@@ -430,6 +448,16 @@ export class AdminApiService {
     if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
+  }
+
+  private mapSharePolicy(raw: any): WorkspaceSharePolicy {
+    return {
+      workspaceId: raw?.workspace_id ?? '',
+      defaultDays: raw?.default_days ?? SHARE_POLICY_DEFAULT_DAYS,
+      maxDays: raw?.max_days ?? SHARE_POLICY_MAX_DAYS,
+      updatedAt: raw?.updated_at ?? null,
+      updatedBy: raw?.updated_by ?? null,
+    };
   }
 
   private mapIncident(raw: any): Incident {

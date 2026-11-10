@@ -148,4 +148,66 @@ describe('AdminApiService', () => {
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
   });
+
+  // OTW-49 (parent OTW-41): workspace sharing policy API contract.
+  describe('workspace share policy (OTW-49)', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+      httpMock.verify();
+    });
+
+    it('Given a workspace owner opens settings, When the policy is fetched, Then GET /api/v1/workspace/share-policy is mapped', () => {
+      service.getWorkspaceSharePolicy().subscribe(policy => {
+        expect(policy).toEqual({
+          workspaceId: 'default', defaultDays: 30, maxDays: 90, updatedAt: null, updatedBy: null,
+        });
+      });
+
+      const req = httpMock.expectOne('/api/v1/workspace/share-policy');
+      expect(req.request.method).toBe('GET');
+      req.flush({ workspace_id: 'default', default_days: 30, max_days: 90, updated_at: null, updated_by: null });
+    });
+
+    it('Given a new workspace with no stored values, When the policy is fetched, Then it falls back to 30/90', () => {
+      service.getWorkspaceSharePolicy().subscribe(policy => {
+        expect(policy.defaultDays).toBe(30);
+        expect(policy.maxDays).toBe(90);
+      });
+
+      httpMock.expectOne('/api/v1/workspace/share-policy').flush({ workspace_id: 'ws-1' });
+    });
+
+    it('Given a valid default and maximum, When saved, Then PUT /api/v1/workspace/share-policy sends snake_case days', () => {
+      service.updateWorkspaceSharePolicy({ defaultDays: 14, maxDays: 60 }).subscribe(policy => {
+        expect(policy.defaultDays).toBe(14);
+        expect(policy.maxDays).toBe(60);
+        expect(policy.updatedBy).toBe('a0000000-0000-0000-0000-000000000001');
+      });
+
+      const req = httpMock.expectOne('/api/v1/workspace/share-policy');
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual({ default_days: 14, max_days: 60 });
+      req.flush({
+        workspace_id: 'default', default_days: 14, max_days: 60,
+        updated_at: '2026-11-10T00:00:00Z', updated_by: 'a0000000-0000-0000-0000-000000000001',
+      });
+    });
+
+    it('Given an out-of-range value, When the API responds 422, Then the error reaches the caller', () => {
+      let status = 0;
+      service.updateWorkspaceSharePolicy({ defaultDays: 30, maxDays: 91 }).subscribe({
+        next: () => fail('expected an error'),
+        error: err => (status = err.status),
+      });
+
+      httpMock.expectOne('/api/v1/workspace/share-policy')
+        .flush({ detail: 'max_days must be <= 90' }, { status: 422, statusText: 'Unprocessable Entity' });
+      expect(status).toBe(422);
+    });
+  });
 });
