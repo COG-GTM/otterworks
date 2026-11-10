@@ -15,6 +15,12 @@ import type {
   UserSettings,
   PaginatedResponse,
   SharedUser,
+  SharePolicy,
+  FolderShareLink,
+  CreatedFolderShareLink,
+  ShareExpiryRequest,
+  SharedFolder,
+  SharedFolderDocument,
 } from "@/types";
 
 // Shape after the axios camelCase interceptor transforms the file-service response
@@ -377,6 +383,53 @@ export const documentsApi = {
       params: { page: 1, size: limit },
     });
     return data.items ?? [];
+  },
+};
+
+// ── Folder share links (document-service) ─────────────────────
+const enc = encodeURIComponent;
+
+export const shareLinksApi = {
+  getPolicy: async (): Promise<SharePolicy> => {
+    const { data } = await apiClient.get<SharePolicy>("/documents/share-policy");
+    return data;
+  },
+  listFolderLinks: async (folderId: string): Promise<FolderShareLink[]> => {
+    const { data } = await apiClient.get<{ items?: FolderShareLink[] }>(
+      `/documents/folders/${enc(folderId)}/share-links`
+    );
+    return data.items ?? [];
+  },
+  createFolderLink: async (
+    folderId: string,
+    expiry: ShareExpiryRequest
+  ): Promise<CreatedFolderShareLink> => {
+    const { data } = await apiClient.post<CreatedFolderShareLink>(
+      `/documents/folders/${enc(folderId)}/share-links`,
+      expiry
+    );
+    return data;
+  },
+  updateLink: async (linkId: string, expiry: ShareExpiryRequest): Promise<FolderShareLink> => {
+    const { data } = await apiClient.patch<FolderShareLink>(
+      `/documents/share-links/${enc(linkId)}`,
+      expiry
+    );
+    return data;
+  },
+  revokeLink: async (linkId: string): Promise<void> => {
+    await apiClient.delete(`/documents/share-links/${enc(linkId)}`);
+  },
+  // Recipient endpoints are public: they work without a session.
+  getSharedFolder: async (token: string): Promise<SharedFolder> => {
+    const { data } = await apiClient.get<SharedFolder>(`/documents/shared-folders/${enc(token)}`);
+    return { ...data, documents: data.documents ?? [] };
+  },
+  getSharedDocument: async (token: string, documentId: string): Promise<SharedFolderDocument> => {
+    const { data } = await apiClient.get<SharedFolderDocument>(
+      `/documents/shared-folders/${enc(token)}/documents/${enc(documentId)}`
+    );
+    return data;
   },
 };
 

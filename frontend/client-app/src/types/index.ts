@@ -169,3 +169,55 @@ export interface SortConfig {
   field: SortField;
   direction: SortDirection;
 }
+
+// ── Folder share links (OTW-29) ───────────────────────────────
+// Shapes after the axios camelCase interceptor (wire format is snake_case).
+export interface SharePolicy {
+  workspaceId: string;
+  defaultExpirySeconds: number;
+  minExpirySeconds: number;
+  maxExpirySeconds: number;
+  allowNever: boolean;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+export type ShareLinkStatus = "active" | "expired" | "revoked";
+
+export interface FolderShareLink {
+  id: string;
+  folderId: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt?: string | null;
+  status: ShareLinkStatus;
+}
+
+export interface CreatedFolderShareLink extends FolderShareLink {
+  token: string;
+  url: string;
+}
+
+export type ShareExpiryRequest = { expires_in_seconds: number } | { never: true };
+
+export interface SharedFolderDocumentSummary {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
+export interface SharedFolder {
+  folderId: string;
+  expiresAt: string | null;
+  documents: SharedFolderDocumentSummary[];
+}
+
+export interface SharedFolderDocument {
+  id: string;
+  title: string;
+  content: string;
+  contentType?: string;
+  folderId?: string | null;
+  updatedAt: string;
+}
