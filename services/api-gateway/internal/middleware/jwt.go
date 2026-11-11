@@ -13,6 +13,13 @@ import (
 
 type jwtClaimsKey struct{}
 
+const (
+	// RefreshPath accepts the browser's HttpOnly refresh cookie in place of a bearer
+	// token, since the access token lives only in page memory and is gone on reload.
+	RefreshPath       = "/api/v1/auth/refresh"
+	RefreshCookieName = "otter_refresh_token"
+)
+
 // JWTClaims represents the claims extracted from a validated JWT.
 type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
@@ -34,9 +41,6 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
-		// Authenticated by the HttpOnly refresh cookie (or refresh token) in auth-service,
-		// not by an access token: the browser no longer holds a usable access token on reload.
-		"/api/v1/auth/refresh",
 	}
 }
 
@@ -69,6 +73,9 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 			}
 
 			tokenStr := extractBearerToken(r)
+			if tokenStr == "" && r.URL.Path == RefreshPath {
+				tokenStr = extractRefreshCookie(r)
+			}
 			if tokenStr == "" {
 				writeJSONError(w, http.StatusUnauthorized, "missing or invalid authorization header")
 				return
@@ -104,6 +111,14 @@ func extractBearerToken(r *http.Request) string {
 		return ""
 	}
 	return parts[1]
+}
+
+func extractRefreshCookie(r *http.Request) string {
+	cookie, err := r.Cookie(RefreshCookieName)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
 }
 
 func validateToken(tokenStr, secret string) (*JWTClaims, error) {

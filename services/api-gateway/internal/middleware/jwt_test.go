@@ -37,7 +37,6 @@ func TestJWTAuth_PublicPathsSkipValidation(t *testing.T) {
 		"/metrics",
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
-		"/api/v1/auth/refresh",
 	}
 
 	for _, path := range publicPaths {
@@ -321,4 +320,50 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
+}
+
+func TestJWTAuth_RefreshAcceptsRefreshCookieOnly(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	valid := generateTestToken(t, testSecret, JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+	forged := generateTestToken(t, "wrong-secret", JWTClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "user-123",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+
+	cases := []struct {
+		name   string
+		path   string
+		cookie string
+		want   int
+	}{
+		{"refresh without credentials", RefreshPath, "", http.StatusUnauthorized},
+		{"refresh with valid cookie", RefreshPath, valid, http.StatusOK},
+		{"refresh with forged cookie", RefreshPath, forged, http.StatusUnauthorized},
+		{"cookie is not accepted on other routes", "/api/v1/files/list", valid, http.StatusUnauthorized},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			if tc.cookie != "" {
+				req.AddCookie(&http.Cookie{Name: RefreshCookieName, Value: tc.cookie})
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assert.Equal(t, tc.want, rec.Code)
+		})
+	}
 }
