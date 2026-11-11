@@ -60,10 +60,16 @@ Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legac
 ### On-prem with a real PostgreSQL (Docker Compose)
 
 ```bash
+export DB_PASSWORD="$(openssl rand -base64 24)"   # required; there is no default password
 docker compose -f docker-compose.onprem.yml up --build
 curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v
 ```
+
+`DB_PASSWORD` must be set: Compose refuses to start without it, and the `postgres` Spring
+profile requires `SPRING_DATASOURCE_PASSWORD` (no committed fallback). PostgreSQL only applies
+the password when it first initializes the `legacy-portal-db-data` volume, so reuse the same
+value across restarts or run `down -v` before changing it.
 
 This brings up PostgreSQL alongside the app; the three schemas are created by
 [`scripts/initdb.sql`](scripts/initdb.sql). This stack is intentionally separate from the
