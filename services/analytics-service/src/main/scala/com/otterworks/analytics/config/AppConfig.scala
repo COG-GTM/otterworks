@@ -1,6 +1,6 @@
 package com.otterworks.analytics.config
 
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigException, ConfigFactory}
 
 /** Typed configuration wrapper for the analytics service. */
 final case class AppConfig(
@@ -51,18 +51,26 @@ object AppConfig:
         else None
     )
 
-    val pg = analytics.getConfig("postgres")
-    val postgres = PostgresConfig(
-      url = pg.getString("url"),
-      user = pg.getString("user"),
-      password = pg.getString("password"),
-      maxPoolSize = pg.getInt("max-pool-size")
-    )
-
     val repository = RepositoryConfig(
       backend =
         if analytics.hasPath("repository.backend") then analytics.getString("repository.backend")
         else "postgres"
+    )
+
+    val pg = analytics.getConfig("postgres")
+    val password =
+      if pg.hasPath("password") && pg.getString("password").nonEmpty then pg.getString("password")
+      else if repository.isPostgres then
+        throw new ConfigException.Missing(
+          pg.origin(),
+          "analytics.postgres.password (set POSTGRES_PASSWORD or DATABASE_PASSWORD)"
+        )
+      else ""
+    val postgres = PostgresConfig(
+      url = pg.getString("url"),
+      user = pg.getString("user"),
+      password = password,
+      maxPoolSize = pg.getInt("max-pool-size")
     )
 
     val server = ServerConfig(
