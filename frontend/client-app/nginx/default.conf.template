@@ -7,6 +7,19 @@ server {
     listen 3000;
     server_name _;
 
+    # Recover the real client from the in-cluster proxy in front of this one
+    # (shared ingress-nginx), so $remote_addr is the end user rather than the
+    # ingress pod and each user gets their own api-gateway rate-limit bucket.
+    # X-Forwarded-For is only honoured from private/loopback peers.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from 127.0.0.0/8;
+    set_real_ip_from ::1/128;
+    set_real_ip_from fc00::/7;
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+
     root /usr/share/nginx/html;
     index index.html;
 
@@ -25,7 +38,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;

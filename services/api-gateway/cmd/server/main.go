@@ -66,7 +66,7 @@ func main() {
 
 	// Global middleware stack
 	r.Use(middleware.RequestID)
-	r.Use(chimw.RealIP)
+	r.Use(middleware.RealIP(middleware.ParseCIDRs(cfg.TrustedProxyCIDRs)))
 	r.Use(middleware.Metrics)
 	r.Use(middleware.Logger(logger))
 	r.Use(chimw.Recoverer)

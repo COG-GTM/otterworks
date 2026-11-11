@@ -28,6 +28,9 @@ type Config struct {
 	// Rate limiting
 	RateLimitRPS int
 
+	// Proxies whose X-Forwarded-For / X-Real-IP headers are trusted
+	TrustedProxyCIDRs []string
+
 	// JWT
 	JWTSecret string
 
@@ -73,6 +76,10 @@ func Load() *Config {
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
 		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+
+		TrustedProxyCIDRs: getEnvSlice("TRUSTED_PROXY_CIDRS", []string{
+			"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128", "fc00::/7",
+		}),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
