@@ -39,39 +39,59 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
-  void register_shouldCreateUserAndReturnTokens() throws Exception {
+  void register_shouldCreateUserWithoutIssuingTokens() throws Exception {
     String body =
         """
         {"email": "newuser@otterworks.dev", "password": "password123", "displayName": "New User"}
         """;
 
-    MvcResult result =
-        mockMvc
-            .perform(
-                post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.accessToken").isNotEmpty())
-            .andExpect(jsonPath("$.refreshToken").isNotEmpty())
-            .andExpect(jsonPath("$.tokenType").value("Bearer"))
-            .andExpect(jsonPath("$.user.email").value("newuser@otterworks.dev"))
-            .andReturn();
-
-    assertThat(userRepository.existsByEmail("newuser@otterworks.dev")).isTrue();
-  }
-
-  @Test
-  void register_shouldRejectDuplicateEmail() throws Exception {
-    createTestUser("duplicate@otterworks.dev", "password123", "Duplicate User");
-
-    String body =
-        """
-        {"email": "duplicate@otterworks.dev", "password": "password123", "displayName": "Dup User"}
-        """;
-
     mockMvc
         .perform(
             post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-        .andExpect(status().isBadRequest());
+        .andExpect(status().isAccepted())
+        .andExpect(jsonPath("$.message").value(AuthController.REGISTER_ACCEPTED))
+        .andExpect(jsonPath("$.accessToken").doesNotExist())
+        .andExpect(jsonPath("$.user").doesNotExist());
+
+    assertThat(userRepository.existsByEmail("newuser@otterworks.dev")).isTrue();
+    loginAndGetAccessToken("newuser@otterworks.dev", "password123");
+  }
+
+  @Test
+  void register_shouldNotRevealWhetherEmailIsRegistered() throws Exception {
+    createTestUser("duplicate@otterworks.dev", "password123", "Duplicate User");
+
+    MvcResult fresh =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {"email": "fresh@otterworks.dev", "password": "attacker-pw1", "displayName": "Probe"}
+                        """))
+            .andReturn();
+    MvcResult existing =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        """
+                        {"email": "duplicate@otterworks.dev", "password": "attacker-pw1", "displayName": "Probe"}
+                        """))
+            .andReturn();
+
+    assertThat(existing.getResponse().getStatus())
+        .isEqualTo(fresh.getResponse().getStatus())
+        .isEqualTo(202);
+    assertThat(existing.getResponse().getContentAsString())
+        .isEqualTo(fresh.getResponse().getContentAsString());
+
+    User owner = userRepository.findByEmail("duplicate@otterworks.dev").orElseThrow();
+    assertThat(owner.getDisplayName()).isEqualTo("Duplicate User");
+    assertThat(passwordEncoder.matches("password123", owner.getPasswordHash())).isTrue();
+    assertThat(passwordEncoder.matches("attacker-pw1", owner.getPasswordHash())).isFalse();
   }
 
   @Test
@@ -199,18 +219,15 @@ class AuthControllerIntegrationTest {
         """
         {"email": "refresh@otterworks.dev", "password": "password123", "displayName": "Refresh User"}
         """;
-    MvcResult registerResult =
-        mockMvc
-            .perform(
-                post("/api/v1/auth/register")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(registerBody))
-            .andExpect(status().isCreated())
-            .andReturn();
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(registerBody))
+        .andExpect(status().isAccepted());
 
-    JsonNode registerJson =
-        objectMapper.readTree(registerResult.getResponse().getContentAsString());
-    String refreshToken = registerJson.get("refreshToken").asText();
+    String refreshToken =
+        login("refresh@otterworks.dev", "password123").get("refreshToken").asText();
 
     mockMvc
         .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + refreshToken))
@@ -280,14 +297,28 @@ class AuthControllerIntegrationTest {
             "{\"email\": \"%s\", \"password\": \"%s\", \"displayName\": \"%s\"}",
             email, password, displayName);
 
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isAccepted());
+
+    return loginAndGetAccessToken(email, password);
+  }
+
+  private String loginAndGetAccessToken(String email, String password) throws Exception {
+    return login(email, password).get("accessToken").asText();
+  }
+
+  private JsonNode login(String email, String password) throws Exception {
+    String body = String.format("{\"email\": \"%s\", \"password\": \"%s\"}", email, password);
+
     MvcResult result =
         mockMvc
             .perform(
-                post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-            .andExpect(status().isCreated())
+                post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
             .andReturn();
 
-    JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
-    return json.get("accessToken").asText();
+    return objectMapper.readTree(result.getResponse().getContentAsString());
   }
 }

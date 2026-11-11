@@ -35,9 +35,10 @@ namespace OtterWorks.Desktop.Services
 
         public async Task<AuthResponse> RegisterAsync(string displayName, string email, string password)
         {
+            // Register never says whether the email was new, so sign in to get tokens.
             var body = new RegisterRequest { DisplayName = displayName, Email = email, Password = password };
-            return await PostAsync<AuthResponse>("/auth/register", body, authenticated: false)
-                .ConfigureAwait(false);
+            await PostAsync<object>("/auth/register", body, authenticated: false).ConfigureAwait(false);
+            return await LoginAsync(email, password).ConfigureAwait(false);
         }
 
         public async Task<AuthResponse> LoginAsync(string email, string password)

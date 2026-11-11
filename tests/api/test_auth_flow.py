@@ -63,11 +63,27 @@ def test_auth_validation_and_protected_routes(api_client):
         "/api/v1/auth/register",
         json={
             "email": user.email,
-            "password": user.password,
+            "password": "AttackerChosen123!",
             "displayName": user.display_name,
         },
     )
-    assert duplicate.status_code in {400, 409}
+    fresh = api_client.client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": api_client.unique_email("fresh-auth-flow"),
+            "password": "AttackerChosen123!",
+            "displayName": user.display_name,
+        },
+    )
+    # Registration must not reveal whether an email already has an account.
+    assert duplicate.status_code == fresh.status_code == 202, duplicate.text
+    assert duplicate.json() == fresh.json()
+    api_client.login_user(user)
+    hijack = api_client.client.post(
+        "/api/v1/auth/login",
+        json={"email": user.email, "password": "AttackerChosen123!"},
+    )
+    assert hijack.status_code in {400, 401}
 
     invalid_login = api_client.client.post(
         "/api/v1/auth/login",

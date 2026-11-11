@@ -2,6 +2,7 @@ package com.otterworks.auth.service;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 import com.otterworks.auth.dto.AuthResponse;
@@ -47,7 +48,7 @@ class AuthServiceTest {
   }
 
   @Test
-  void register_shouldCreateUserAndReturnTokens() {
+  void register_shouldCreateUserWithoutIssuingTokens() {
     RegisterRequest request = new RegisterRequest();
     request.setEmail("new@otterworks.dev");
     request.setPassword("password123");
@@ -62,25 +63,21 @@ class AuthServiceTest {
               u.setId(UUID.randomUUID());
               return u;
             });
-    when(jwtTokenProvider.generateAccessToken(any(User.class))).thenReturn("access-token");
-    when(jwtTokenProvider.generateRefreshToken(any(User.class))).thenReturn("refresh-token");
-    when(jwtTokenProvider.extractJti("refresh-token")).thenReturn("jti-123");
-    when(jwtTokenProvider.getAccessTokenExpiry()).thenReturn(3600L);
-    when(jwtTokenProvider.getRefreshTokenExpiry()).thenReturn(2592000L);
-    when(refreshTokenRepository.save(any(RefreshToken.class)))
-        .thenAnswer(inv -> inv.getArgument(0));
 
-    AuthResponse response = authService.register(request);
+    authService.register(request);
 
-    assertThat(response.getAccessToken()).isEqualTo("access-token");
-    assertThat(response.getRefreshToken()).isEqualTo("refresh-token");
-    assertThat(response.getTokenType()).isEqualTo("Bearer");
-    verify(userRepository).save(any(User.class));
-    verify(refreshTokenRepository).save(any(RefreshToken.class));
+    verify(userRepository)
+        .save(
+            argThat(
+                u ->
+                    u.getEmail().equals("new@otterworks.dev")
+                        && u.getPasswordHash().equals("$2a$12$encoded")
+                        && u.getDisplayName().equals("New User")));
+    verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
   }
 
   @Test
-  void register_shouldThrowWhenEmailExists() {
+  void register_shouldSilentlyIgnoreExistingEmail() {
     RegisterRequest request = new RegisterRequest();
     request.setEmail("existing@otterworks.dev");
     request.setPassword("password123");
@@ -88,9 +85,11 @@ class AuthServiceTest {
 
     when(userRepository.existsByEmail("existing@otterworks.dev")).thenReturn(true);
 
-    assertThatThrownBy(() -> authService.register(request))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Email already registered");
+    assertThatCode(() -> authService.register(request)).doesNotThrowAnyException();
+
+    verify(passwordEncoder).encode("password123");
+    verify(userRepository, never()).save(any(User.class));
+    verifyNoInteractions(jwtTokenProvider, refreshTokenRepository);
   }
 
   @Test

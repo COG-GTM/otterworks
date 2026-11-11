@@ -40,21 +40,28 @@ public class AuthService {
     this.refreshTokenRepository = refreshTokenRepository;
   }
 
+  /**
+   * Registers a new account. The outcome is deliberately not reported to the caller: registering an
+   * email that already has an account is a silent no-op, so the public register endpoint cannot be
+   * used to discover which emails are registered. The password is hashed on both paths so the two
+   * do not differ in timing either. Callers sign in through {@link #login} afterwards.
+   */
   @Transactional
-  public AuthResponse register(RegisterRequest request) {
+  public void register(RegisterRequest request) {
+    String passwordHash = passwordEncoder.encode(request.getPassword());
     if (userRepository.existsByEmail(request.getEmail())) {
-      throw new IllegalArgumentException("Email already registered");
+      log.info("Registration attempted for an existing account");
+      return;
     }
 
     User user = new User();
     user.setEmail(request.getEmail());
-    user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    user.setPasswordHash(passwordHash);
     user.setDisplayName(request.getDisplayName());
     user.setRoles(Set.of(User.Role.USER));
     user = userRepository.save(user);
 
     log.info("User registered: email={}", user.getEmail());
-    return buildAuthResponse(user);
   }
 
   @Transactional

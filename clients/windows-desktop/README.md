@@ -12,7 +12,7 @@ through the API gateway using `HttpClient`.
 
 ## Features
 
-- **Register** — display name, email, password → `POST /auth/register`
+- **Register** — display name, email, password → `POST /auth/register`, then `POST /auth/login`
 - **Login** — email, password → `POST /auth/login`, with a link between the two screens
 - **Documents list** — `GET /documents` (Bearer token), with a friendly empty state
 - **Create document** — a *New* box → `POST /documents { title }` → list refreshes
@@ -161,8 +161,8 @@ Base URL: `http://localhost:8080/api/v1`. All non-auth calls send `Authorization
 
 | Method & path        | Request                                             | Response (shape)                                        |
 |----------------------|-----------------------------------------------------|---------------------------------------------------------|
-| `POST /auth/register`| `{ displayName, email, password }`                  | `{ accessToken, refreshToken, tokenType, expiresIn, user }` (camelCase) |
-| `POST /auth/login`   | `{ email, password }`                               | same as register                                        |
+| `POST /auth/register`| `{ displayName, email, password }`                  | `202 { message }` — identical whether or not the email already exists |
+| `POST /auth/login`   | `{ email, password }`                               | `{ accessToken, refreshToken, tokenType, expiresIn, user }` (camelCase) |
 | `GET /documents`     | query `page`, `size`                                | `{ items:[…], total, page, size, pages }` (snake_case)  |
 | `POST /documents`    | `{ title }`                                         | created document object (snake_case)                    |
 | `GET /files`         | query `page`, `page_size`                           | `{ files:[…], total, page, page_size }` (snake_case)    |
