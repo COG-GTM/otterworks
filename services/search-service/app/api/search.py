@@ -15,7 +15,7 @@ logger = structlog.get_logger()
 
 search_bp = Blueprint("search", __name__)
 
-# MeiliSearch's default ``maxTotalHits``; pages beyond it are always empty.
+# MeiliSearch's default ``maxTotalHits``; pages starting beyond it are always empty.
 MAX_TOTAL_HITS = 1000
 
 _redis_client: redis_lib.Redis | None = None
@@ -58,7 +58,7 @@ def search_documents() -> tuple:
         page_size = max(1, min(100, int(request.args.get("size", 20))))
     except (ValueError, TypeError):
         return jsonify({"error": "Invalid page or size parameter"}), 400
-    if page * page_size > MAX_TOTAL_HITS:
+    if (page - 1) * page_size >= MAX_TOTAL_HITS:
         return jsonify({"error": "Invalid page or size parameter"}), 400
     doc_type = request.args.get("type")
     owner_id = request.headers.get("X-User-ID", "").strip() or None

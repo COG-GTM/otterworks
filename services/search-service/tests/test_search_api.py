@@ -107,9 +107,15 @@ class TestSearchEndpoint:
         mock_meilisearch_client.index.return_value.search.assert_not_called()
 
     def test_search_last_allowed_page(self, client, mock_meilisearch_client):
-        """The last page within maxTotalHits is still served."""
-        response = client.get("/api/v1/search/?q=test&page=50&size=20")
+        """A final partial page that starts within maxTotalHits is still served."""
+        response = client.get("/api/v1/search/?q=test&page=11&size=99")
         assert response.status_code == 200
+
+    def test_search_page_starting_at_max_total_hits(self, client, mock_meilisearch_client):
+        """A page whose offset reaches maxTotalHits is rejected."""
+        response = client.get("/api/v1/search/?q=test&page=51&size=20")
+        assert response.status_code == 400
+        mock_meilisearch_client.index.return_value.search.assert_not_called()
 
 
 class TestSuggestEndpoint:
