@@ -27,15 +27,19 @@ func ParseTrustedProxies(entries []string) ([]netip.Prefix, error) {
 		if err != nil {
 			return nil, err
 		}
+		if p.Addr().Is4In6() && p.Bits() >= 96 {
+			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+		}
 		prefixes = append(prefixes, p.Masked())
 	}
 	return prefixes, nil
 }
 
 // ClientIP replaces chimw.RealIP. It rewrites r.RemoteAddr from X-Real-IP or
-// X-Forwarded-For only when the TCP peer is a trusted proxy, and takes the
-// right-most X-Forwarded-For hop that is not itself trusted, so a client cannot
-// choose the address the rate limiter keys on. True-Client-IP is never honoured.
+// X-Forwarded-For only when the TCP peer is a trusted proxy, and then takes the
+// right-most X-Forwarded-For hop (the one that proxy appended), so a client
+// cannot choose the address the rate limiter keys on. A single proxy layer
+// (ingress-nginx) is assumed. True-Client-IP is never honoured.
 func ClientIP(trusted []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,18 +57,15 @@ func resolveClientIP(r *http.Request, trusted []netip.Prefix) (string, bool) {
 		return "", false
 	}
 
+	// Only the immediate proxy is trusted, so only the hop it appended (the
+	// right-most) is used; anything to its left is client-supplied.
 	if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
 		hops := strings.Split(strings.Join(xff, ","), ",")
-		for i := len(hops) - 1; i >= 0; i-- {
-			hop, ok := parseAddr(strings.TrimSpace(hops[i]))
-			if !ok {
-				return "", false
-			}
-			if !isTrusted(hop, trusted) {
-				return hop.String(), true
-			}
+		hop, ok := parseAddr(strings.TrimSpace(hops[len(hops)-1]))
+		if !ok {
+			return "", false
 		}
-		return "", false
+		return hop.String(), true
 	}
 
 	if xrip, ok := parseAddr(strings.TrimSpace(r.Header.Get("X-Real-IP"))); ok {

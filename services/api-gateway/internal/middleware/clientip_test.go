@@ -10,7 +10,7 @@ import (
 )
 
 func TestClientIP(t *testing.T) {
-	trusted, err := ParseTrustedProxies([]string{"10.0.0.0/8", "127.0.0.1"})
+	trusted, err := ParseTrustedProxies([]string{"10.0.0.0/8", "127.0.0.1", "::ffff:192.168.0.0/112"})
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -44,10 +44,16 @@ func TestClientIP(t *testing.T) {
 			expected:   "198.51.100.9",
 		},
 		{
-			name:       "trusted peer takes right-most untrusted X-Forwarded-For hop",
+			name:       "trusted peer takes right-most X-Forwarded-For hop",
 			remoteAddr: "10.1.2.3:4000",
-			headers:    map[string]string{"X-Forwarded-For": "6.6.6.6, 198.51.100.9, 10.4.4.4"},
+			headers:    map[string]string{"X-Forwarded-For": "6.6.6.6, 198.51.100.9"},
 			expected:   "198.51.100.9",
+		},
+		{
+			name:       "private client appended by proxy is not skipped for a forged hop",
+			remoteAddr: "10.1.2.3:4000",
+			headers:    map[string]string{"X-Forwarded-For": "6.6.6.6, 10.4.4.4"},
+			expected:   "10.4.4.4",
 		},
 		{
 			name:       "X-Forwarded-For takes precedence over X-Real-IP",
@@ -62,10 +68,10 @@ func TestClientIP(t *testing.T) {
 			expected:   "10.1.2.3:4000",
 		},
 		{
-			name:       "all-trusted X-Forwarded-For leaves peer address",
-			remoteAddr: "10.1.2.3:4000",
-			headers:    map[string]string{"X-Forwarded-For": "10.9.9.9", "X-Real-IP": "6.6.6.6"},
-			expected:   "10.1.2.3:4000",
+			name:       "IPv4-mapped trusted CIDR matches IPv4 peer",
+			remoteAddr: "192.168.5.5:4000",
+			headers:    map[string]string{"X-Real-IP": "198.51.100.9"},
+			expected:   "198.51.100.9",
 		},
 		{
 			name:       "bare trusted IP entry",
