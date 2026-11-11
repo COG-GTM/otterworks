@@ -3,7 +3,7 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, getTenant } from "@/lib/control";
 import { activeRunnerJob, createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { secondsToTtl } from "@/lib/util";
+import { isValidImageTag, secondsToTtl } from "@/lib/util";
 import type { RedeployRequest } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,15 +21,20 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const id = params?.id;
   if (!id) return error(400, "missing id");
 
+  const body = (await req.json().catch(() => ({}))) as RedeployRequest;
+  const imageTag =
+    typeof body.image_tag === "string" && body.image_tag.trim() ? body.image_tag.trim() : undefined;
+  if (body.image_tag != null && typeof body.image_tag !== "string") {
+    return error(400, "invalid image_tag");
+  }
+  if (imageTag !== undefined && !isValidImageTag(imageTag)) return error(400, "invalid image_tag");
+
   const tenant = await getTenant(id);
   if (!tenant) return error(404, "not found");
   if (tenant.status === "draining" || tenant.status === "free") {
     return error(409, `tenant '${id}' is ${tenant.status}; check it out before redeploying`);
   }
 
-  const body = (await req.json().catch(() => ({}))) as RedeployRequest;
-  const imageTag =
-    typeof body.image_tag === "string" && body.image_tag.trim() ? body.image_tag.trim() : undefined;
   const requestedBranch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : undefined;
 

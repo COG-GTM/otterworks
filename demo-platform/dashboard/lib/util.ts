@@ -14,6 +14,13 @@ export function isValidId(id: string): boolean {
   return /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/.test(id);
 }
 
+// Docker tag grammar. The tag is handed to `helm --set`, whose parser treats
+// `,` `=` `[` `{` as syntax, so anything outside the grammar is rejected rather
+// than escaped.
+export function isValidImageTag(tag: string): boolean {
+  return /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(tag);
+}
+
 // A perpetual tenant still carries a real expires_at, ten years out. The
 // reaper skips it on `persistent`, so this is only a second line of defence:
 // if that check ever regresses, the tenant survives rather than being torn

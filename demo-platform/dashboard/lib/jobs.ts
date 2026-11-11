@@ -1,6 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
+import { isValidImageTag } from "@/lib/util";
 
 export type RunnerAction = "deploy" | "teardown" | "inject";
 
@@ -55,7 +56,10 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   if (input.branch) plain.push({ name: "TENANT_BRANCH", value: input.branch });
   if (env.repoHttpsUrl) plain.push({ name: "REPO_HTTPS_URL", value: env.repoHttpsUrl });
   if (input.tier) plain.push({ name: "TIER", value: input.tier });
-  if (input.imageTag) plain.push({ name: "IMAGE_TAG", value: input.imageTag });
+  if (input.imageTag) {
+    if (!isValidImageTag(input.imageTag)) throw new Error(`invalid image tag '${input.imageTag}'`);
+    plain.push({ name: "IMAGE_TAG", value: input.imageTag });
+  }
   if (input.ttl) plain.push({ name: "TTL", value: input.ttl });
   if (input.scenario) plain.push({ name: "SCENARIO", value: input.scenario });
   if (input.redeploy) plain.push({ name: "REDEPLOY", value: "true" });
