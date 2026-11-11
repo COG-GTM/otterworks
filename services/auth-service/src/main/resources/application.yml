@@ -33,6 +33,11 @@ jwt:
   access-token-expiry: ${JWT_ACCESS_TOKEN_EXPIRY:3600}
   refresh-token-expiry: ${JWT_REFRESH_TOKEN_EXPIRY:2592000}
 
+auth:
+  refresh-cookie:
+    # Browsers treat http://localhost as a secure context, so Secure cookies work in local dev.
+    secure: ${AUTH_REFRESH_COOKIE_SECURE:true}
+
 management:
   endpoints:
     web:

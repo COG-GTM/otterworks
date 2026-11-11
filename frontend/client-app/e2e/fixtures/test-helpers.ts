@@ -44,8 +44,9 @@ export async function expectDashboard(page: Page) {
   });
 }
 
-/** Clear auth tokens from localStorage so the next test starts logged-out */
+/** Drop the HttpOnly refresh cookie (and any legacy stored tokens) so the next test starts logged-out */
 export async function clearAuth(page: Page) {
+  await page.context().clearCookies();
   await page.evaluate(() => {
     localStorage.removeItem("otter_access_token");
     localStorage.removeItem("otter_refresh_token");

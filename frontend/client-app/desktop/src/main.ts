@@ -11,7 +11,7 @@ import { startAppServer, AppServer } from "./server";
 // Environment:
 //   API_GATEWAY_URL     gateway the /api/v1 proxy targets (default http://localhost:8080)
 //   OTTER_DESKTOP_PORT  preferred local port (default 34117; fixed so
-//                       localStorage auth tokens survive restarts)
+//                       the HttpOnly refresh-token cookie survives restarts)
 //   ELECTRON_START_URL  skip the embedded server and load this URL instead
 //                       (e.g. http://localhost:3000 for Vite HMR development)
 

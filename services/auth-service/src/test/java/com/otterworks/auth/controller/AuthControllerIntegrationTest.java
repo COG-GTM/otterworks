@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import jakarta.servlet.http.Cookie;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -217,6 +218,81 @@ class AuthControllerIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.accessToken").isNotEmpty())
         .andExpect(jsonPath("$.refreshToken").isNotEmpty());
+  }
+
+  @Test
+  void login_shouldSetRefreshTokenAsHttpOnlySecureSameSiteCookie() throws Exception {
+    createTestUser("cookie@otterworks.dev", "password123", "Cookie User");
+
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        "{\"email\": \"cookie@otterworks.dev\", \"password\": \"password123\"}"))
+            .andExpect(status().isOk())
+            .andReturn();
+
+    String setCookie = result.getResponse().getHeader("Set-Cookie");
+    assertThat(setCookie)
+        .startsWith("otter_refresh_token=")
+        .contains("HttpOnly", "Secure", "SameSite=Strict", "Path=/api/v1/auth", "Max-Age=2592000");
+  }
+
+  @Test
+  void refresh_withCookie_shouldRotateCookieAndOmitRefreshTokenFromBody() throws Exception {
+    MvcResult registerResult =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        "{\"email\": \"cookie-refresh@otterworks.dev\", \"password\": \"password123\", \"displayName\": \"Cookie Refresh\"}"))
+            .andExpect(status().isCreated())
+            .andReturn();
+    Cookie original = registerResult.getResponse().getCookie("otter_refresh_token");
+    assertThat(original).isNotNull();
+    assertThat(original.isHttpOnly()).isTrue();
+
+    MvcResult refreshResult =
+        mockMvc
+            .perform(post("/api/v1/auth/refresh").cookie(original))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accessToken").isNotEmpty())
+            .andExpect(jsonPath("$.refreshToken").doesNotExist())
+            .andReturn();
+
+    Cookie rotated = refreshResult.getResponse().getCookie("otter_refresh_token");
+    assertThat(rotated).isNotNull();
+    assertThat(rotated.isHttpOnly()).isTrue();
+    assertThat(rotated.getValue()).isNotEmpty().isNotEqualTo(original.getValue());
+
+    // The rotated-out cookie value is revoked.
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").cookie(original))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void refresh_withoutCookieOrHeader_shouldBeUnauthorized() throws Exception {
+    mockMvc.perform(post("/api/v1/auth/refresh")).andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void logout_shouldClearRefreshCookie() throws Exception {
+    String accessToken =
+        registerAndGetAccessToken("cookie-logout@otterworks.dev", "password123", "Cookie Logout");
+
+    MvcResult result =
+        mockMvc
+            .perform(post("/api/v1/auth/logout").header("Authorization", "Bearer " + accessToken))
+            .andExpect(status().isNoContent())
+            .andReturn();
+
+    assertThat(result.getResponse().getHeader("Set-Cookie"))
+        .startsWith("otter_refresh_token=;")
+        .contains("Max-Age=0", "HttpOnly", "Path=/api/v1/auth");
   }
 
   @Test

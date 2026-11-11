@@ -1,5 +1,6 @@
-import axios from "axios";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 import { Capacitor } from "@capacitor/core";
+import { getAccessToken, setAccessToken } from "./auth-token";
 
 // ── snake_case → camelCase helpers ────────────────────────────
 function snakeToCamel(s: string): string {
@@ -41,16 +42,43 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
-  if (typeof window !== "undefined") {
-    const token = localStorage.getItem("otter_access_token");
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-let isVerifyingToken = false;
+let refreshInFlight: Promise<string | null> | null = null;
+
+// Exchanges the HttpOnly refresh cookie for a new in-memory access token. Uses bare
+// axios so no (possibly stale) Authorization header is attached; concurrent callers
+// share one request because auth-service rotates the refresh token on every use.
+export function refreshAccessToken(): Promise<string | null> {
+  if (!refreshInFlight) {
+    refreshInFlight = axios
+      .post<{ accessToken?: string }>(`${API_BASE_URL}/auth/refresh`, null, {
+        withCredentials: true,
+      })
+      .then(({ data }) => {
+        const token = data?.accessToken ?? null;
+        setAccessToken(token);
+        return token;
+      })
+      .catch(() => {
+        setAccessToken(null);
+        return null;
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
+
+const NO_REFRESH_PATHS = ["/auth/login", "/auth/register", "/auth/refresh"];
+
+type RetriableConfig = InternalAxiosRequestConfig & { _authRetried?: boolean };
 
 apiClient.interceptors.response.use(
   (response) => {
@@ -60,29 +88,17 @@ apiClient.interceptors.response.use(
     return response;
   },
   async (error) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
-      const url = error.config?.url || "";
-      if (!url.includes("/auth/")) {
-        if (isVerifyingToken) {
-          return Promise.reject(error);
+    const config = error.config as RetriableConfig | undefined;
+    if (error.response?.status === 401 && config && typeof window !== "undefined") {
+      const url = config.url || "";
+      if (!config._authRetried && !NO_REFRESH_PATHS.some((p) => url.includes(p))) {
+        config._authRetried = true;
+        const token = await refreshAccessToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+          return apiClient(config);
         }
-        isVerifyingToken = true;
-        try {
-          await axios.get(`${API_BASE_URL}/auth/profile`, {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("otter_access_token")}`,
-            },
-          });
-        } catch (verifyError: unknown) {
-          const status = (verifyError as { response?: { status?: number } })?.response?.status;
-          if (status === 401) {
-            localStorage.removeItem("otter_access_token");
-            localStorage.removeItem("otter_refresh_token");
-            window.location.href = "/login";
-          }
-        } finally {
-          isVerifyingToken = false;
-        }
+        window.location.href = "/login";
       }
     }
     return Promise.reject(error);
