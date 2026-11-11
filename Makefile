@@ -12,7 +12,7 @@ PROCS_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(5543
 PROCS_APP_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(8096 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_DB_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(56432 + $(PROCS_PORT_OFFSET))")
 PROCS_TARGET_PORT = $(shell test -n "$(PROCS_PORT_OFFSET)" && python3 -c "print(12096 + $(PROCS_PORT_OFFSET))")
-PROCS_SERVICE_TOKEN ?= procs-local-$(NS)
+PROCS_SERVICE_TOKEN ?= $(shell test -n "$(NS)" && mkdir -p .procs && f=.procs/$(NS).service-token && { test -s $$f || (umask 077 && python3 -c "import secrets; print(secrets.token_urlsafe(32))" > $$f); } && cat $$f)
 PROCS_ENV = NS=$(NS) BILLING_SVC_SERVICE_TOKEN=$(PROCS_SERVICE_TOKEN) PROCS_DB_PORT=$(PROCS_DB_PORT) PROCS_APP_PORT=$(PROCS_APP_PORT) PROCS_TARGET_DB_PORT=$(PROCS_TARGET_DB_PORT) PROCS_TARGET_PORT=$(PROCS_TARGET_PORT)
 
 procs-validate:

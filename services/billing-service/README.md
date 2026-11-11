@@ -44,11 +44,15 @@ Missing or invalid credentials return `401`. `POST /internal/reset` requires
 both `BILLING_SVC_ALLOW_INTERNAL_RESET=true` and the service token. The plan
 catalog (`GET /api/plans`) is not tenant data and stays public.
 
-`make procs-up` / `make procs-parity` pass a per-namespace
-`BILLING_SVC_SERVICE_TOKEN` (override with `PROCS_SERVICE_TOKEN=...`). To use
-the billing screens through the Vite proxy, start the dev server with
-`BILLING_SERVICE_TOKEN=<the same token>`; the proxy adds the header server-side
-so the token never reaches the browser bundle.
+`make procs-up` / `make procs-parity` pass a random per-namespace
+`BILLING_SVC_SERVICE_TOKEN`, generated once into `.procs/<NS>.service-token`
+(git-ignored; override with `PROCS_SERVICE_TOKEN=...`). To use the billing
+screens through the Vite proxy, start the dev server with
+`BILLING_SERVICE_TOKEN=$(cat .procs/<NS>.service-token)`; the proxy adds the
+header server-side so the token never reaches the browser bundle, and it only
+forwards `/billing-api/api/*`, so `/internal/*` is never reachable through it.
+Pointing the client directly at the service with `VITE_BILLING_SERVICE_URL`
+skips the proxy, so tenant screens get `401` there.
 
 For the extracted target, a plan change with an already-scheduled later
 subscription preserves that later row. The response's `latest_*` fields always
@@ -61,7 +65,7 @@ HTTP 409 with an explicit conflict detail instead of leaking a 500; this is
 target-side error handling, not an additional parity rule.
 
 When using the workshop client with the default disposable stack, the Vite
-development proxy forwards `/billing-api/*` to the service on port `12109`.
+development proxy forwards `/billing-api/api/*` to the service on port `12109`.
 The billing screens are part of this local parity fixture only. Vite dev
 enables their routes by default; a preview requires building with
 `VITE_ENABLE_BILLING_FIXTURE=true` and then running `npm run start`. The
