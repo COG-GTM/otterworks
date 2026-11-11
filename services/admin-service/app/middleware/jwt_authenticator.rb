@@ -2,6 +2,10 @@ class JwtAuthenticator
   # Highest privilege first; used to pick one role when a token carries several.
   ROLE_PRECEDENCE = %w[owner super_admin admin editor viewer user].freeze
 
+  # auth-service signs refresh tokens with the same key; only access tokens
+  # may authenticate a request.
+  ACCESS_TOKEN_TYPE = 'access'.freeze
+
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
   def initialize(app)
@@ -56,7 +60,13 @@ class JwtAuthenticator
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
     decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
-    decoded.first
+    payload = decoded.first
+    unless payload['type'] == ACCESS_TOKEN_TYPE
+      Rails.logger.warn('JWT authentication failed: token is not an access token')
+      return nil
+    end
+
+    payload
   rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
     nil

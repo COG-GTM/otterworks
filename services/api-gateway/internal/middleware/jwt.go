@@ -13,11 +13,19 @@ import (
 
 type jwtClaimsKey struct{}
 
+// Token `type` claims issued by auth-service. Access and refresh tokens share
+// the signing key, so the type decides what a token may be used for.
+const (
+	AccessTokenType  = "access"
+	RefreshTokenType = "refresh"
+)
+
 // JWTClaims represents the claims extracted from a validated JWT.
 type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -27,6 +35,7 @@ type JWTConfig struct {
 	PublicPath          []string // exact paths that skip JWT validation
 	PrefixPath          []string // prefix paths that skip JWT validation (e.g. /health, /metrics)
 	ProtectedPrefixPath []string // route prefixes that require JWT validation; empty means all non-public paths
+	RefreshPath         []string // exact paths that require a refresh token instead of an access token
 }
 
 // DefaultPublicPaths returns the default set of exact-match paths that skip JWT validation.
@@ -34,6 +43,13 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+	}
+}
+
+// DefaultRefreshPaths returns the exact paths that take a refresh token as their bearer.
+func DefaultRefreshPaths() []string {
+	return []string{
+		"/api/v1/auth/refresh",
 	}
 }
 
@@ -51,6 +67,10 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 	exactPaths := make(map[string]bool, len(cfg.PublicPath))
 	for _, p := range cfg.PublicPath {
 		exactPaths[p] = true
+	}
+	refreshPaths := make(map[string]bool, len(cfg.RefreshPath))
+	for _, p := range cfg.RefreshPath {
+		refreshPaths[p] = true
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -71,7 +91,18 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := validateToken(tokenStr, cfg.Secret)
+			if refreshPaths[r.URL.Path] {
+				// auth-service checks revocation; a refresh token never becomes
+				// the request identity, so no claims are forwarded.
+				if _, err := validateToken(tokenStr, cfg.Secret, RefreshTokenType); err != nil {
+					writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims, err := validateToken(tokenStr, cfg.Secret, AccessTokenType)
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
 				return
@@ -103,7 +134,7 @@ func extractBearerToken(r *http.Request) string {
 	return parts[1]
 }
 
-func validateToken(tokenStr, secret string) (*JWTClaims, error) {
+func validateToken(tokenStr, secret, tokenType string) (*JWTClaims, error) {
 	claims := &JWTClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -121,6 +152,10 @@ func validateToken(tokenStr, secret string) (*JWTClaims, error) {
 	// Check expiration
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	if claims.Type != tokenType {
+		return nil, fmt.Errorf("token type %q is not accepted here", claims.Type)
 	}
 
 	return claims, nil

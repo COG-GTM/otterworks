@@ -108,6 +108,7 @@ describe('CollaborationManager', () => {
         name: displayName,
         email: `${userId}@test.com`,
         roles: ['user'],
+        type: 'access',
       });
 
       const client = clientIO(`http://localhost:${PORT}`, {
@@ -139,6 +140,34 @@ describe('CollaborationManager', () => {
     it('should reject connections with an invalid token', (done) => {
       const client = clientIO(`http://localhost:${PORT}`, {
         auth: { token: 'invalid-token-value' },
+        transports: ['websocket'],
+      });
+
+      client.on('connect_error', (err) => {
+        expect(err.message).toContain('Invalid or expired token');
+        client.disconnect();
+        done();
+      });
+    });
+
+    it('should reject connections with a refresh token', (done) => {
+      const client = clientIO(`http://localhost:${PORT}`, {
+        auth: {
+          token: createToken({ sub: 'user-refresh-test', jti: 'jti-1', type: 'refresh' }),
+        },
+        transports: ['websocket'],
+      });
+
+      client.on('connect_error', (err) => {
+        expect(err.message).toContain('Invalid or expired token');
+        client.disconnect();
+        done();
+      });
+    });
+
+    it('should reject connections with an untyped token', (done) => {
+      const client = clientIO(`http://localhost:${PORT}`, {
+        auth: { token: createToken({ sub: 'user-untyped-test' }) },
         transports: ['websocket'],
       });
 

@@ -37,13 +37,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     String token = extractToken(request);
     if (token != null) {
       try {
-        Claims claims = jwtTokenProvider.validateAndGetClaims(token);
-
-        String tokenType = claims.get("type", String.class);
-        if ("refresh".equals(tokenType)) {
-          filterChain.doFilter(request, response);
-          return;
-        }
+        Claims claims = jwtTokenProvider.validateAccessTokenAndGetClaims(token);
 
         String userId = claims.getSubject();
         @SuppressWarnings("unchecked")
