@@ -8,6 +8,9 @@ import (
 	"time"
 )
 
+// DefaultMaxBuckets bounds the limiter's memory when no explicit cap is set.
+const DefaultMaxBuckets = 100000
+
 // TokenBucket implements a per-IP token bucket rate limiter.
 type TokenBucket struct {
 	tokens     float64
@@ -18,18 +21,30 @@ type TokenBucket struct {
 
 // RateLimiter manages per-IP token buckets.
 type RateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*TokenBucket
-	rps     int
-	now     func() time.Time // for testing
+	mu         sync.Mutex
+	buckets    map[string]*TokenBucket
+	rps        int
+	maxBuckets int
+	lastPrune  time.Time
+	now        func() time.Time // for testing
 }
 
 // NewRateLimiter creates a rate limiter with the specified requests per second limit.
 func NewRateLimiter(rps int) *RateLimiter {
+	return NewRateLimiterWithCap(rps, DefaultMaxBuckets)
+}
+
+// NewRateLimiterWithCap creates a rate limiter that tracks at most maxBuckets
+// client addresses at once.
+func NewRateLimiterWithCap(rps, maxBuckets int) *RateLimiter {
+	if maxBuckets <= 0 {
+		maxBuckets = DefaultMaxBuckets
+	}
 	rl := &RateLimiter{
-		buckets: make(map[string]*TokenBucket),
-		rps:     rps,
-		now:     time.Now,
+		buckets:    make(map[string]*TokenBucket),
+		rps:        rps,
+		maxBuckets: maxBuckets,
+		now:        time.Now,
 	}
 	go rl.cleanup()
 	return rl
@@ -43,6 +58,12 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	now := rl.now()
 	bucket, exists := rl.buckets[ip]
 	if !exists {
+		if len(rl.buckets) >= rl.maxBuckets {
+			rl.pruneRefilled(now)
+			if len(rl.buckets) >= rl.maxBuckets {
+				return false
+			}
+		}
 		bucket = &TokenBucket{
 			tokens:     float64(rl.rps),
 			maxTokens:  float64(rl.rps),
@@ -66,6 +87,21 @@ func (rl *RateLimiter) Allow(ip string) bool {
 	return false
 }
 
+// pruneRefilled drops buckets that have been idle long enough to refill
+// completely; such a bucket is indistinguishable from a new one, so removing it
+// never loosens the limit. It runs at most once per second while the map is full.
+func (rl *RateLimiter) pruneRefilled(now time.Time) {
+	if now.Sub(rl.lastPrune) < time.Second {
+		return
+	}
+	rl.lastPrune = now
+	for ip, b := range rl.buckets {
+		if b.tokens+now.Sub(b.lastRefill).Seconds()*b.refillRate >= b.maxTokens {
+			delete(rl.buckets, ip)
+		}
+	}
+}
+
 // Handler returns an HTTP middleware that rate-limits by client IP.
 func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +120,7 @@ func (rl *RateLimiter) Handler(next http.Handler) http.Handler {
 }
 
 func extractIP(r *http.Request) string {
-	// chimw.RealIP has already set r.RemoteAddr to the client IP
+	// ClientIP has already set r.RemoteAddr to the client IP
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr

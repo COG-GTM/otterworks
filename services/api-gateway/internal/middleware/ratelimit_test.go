@@ -85,7 +85,7 @@ func TestExtractIP(t *testing.T) {
 			expected:   "10.0.0.1",
 		},
 		{
-			name:       "Uses RemoteAddr set by chimw.RealIP",
+			name:       "Uses RemoteAddr set by ClientIP",
 			remoteAddr: "203.0.113.50:1234",
 			expected:   "203.0.113.50",
 		},
@@ -99,4 +99,44 @@ func TestExtractIP(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestRateLimiter_BucketCap(t *testing.T) {
+	rl := NewRateLimiterWithCap(5, 3)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	assert.True(t, rl.Allow("10.0.0.1"))
+	assert.True(t, rl.Allow("10.0.0.2"))
+	assert.True(t, rl.Allow("10.0.0.3"))
+
+	// Map is full of active buckets: a new address is refused, not tracked.
+	assert.False(t, rl.Allow("10.0.0.4"))
+	assert.Len(t, rl.buckets, 3)
+
+	// Known addresses keep working.
+	assert.True(t, rl.Allow("10.0.0.1"))
+
+	// Once existing buckets have refilled they are pruned to make room.
+	rl.now = func() time.Time { return now.Add(2 * time.Second) }
+	assert.True(t, rl.Allow("10.0.0.4"))
+	assert.LessOrEqual(t, len(rl.buckets), 3)
+}
+
+func TestRateLimiter_BucketCapDoesNotResetActiveLimits(t *testing.T) {
+	rl := NewRateLimiterWithCap(2, 2)
+	now := time.Now()
+	rl.now = func() time.Time { return now }
+
+	assert.True(t, rl.Allow("10.0.0.1"))
+	assert.True(t, rl.Allow("10.0.0.1"))
+	assert.False(t, rl.Allow("10.0.0.1"))
+
+	rl.now = func() time.Time { return now.Add(1100 * time.Millisecond) }
+	assert.True(t, rl.Allow("10.0.0.2"))
+	assert.True(t, rl.Allow("10.0.0.3")) // prunes refilled 10.0.0.1
+
+	// 10.0.0.2 was just used, so it was not pruned and is still limited.
+	assert.True(t, rl.Allow("10.0.0.2"))
+	assert.False(t, rl.Allow("10.0.0.2"))
 }
