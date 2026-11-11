@@ -39,6 +39,10 @@ import java.time.Duration
 
 private val logger = KotlinLogging.logger {}
 
+// Clients only send small control messages ("ping"); larger frames are rejected
+// before they are buffered.
+const val MAX_WEBSOCKET_FRAME_SIZE: Long = 64 * 1024L
+
 fun main() {
     val config = AppConfig.load()
 
@@ -74,7 +78,7 @@ fun Application.configurePlugins(config: AppConfig = AppConfig.load()) {
     install(WebSockets) {
         pingPeriodMillis = 30000
         timeoutMillis = 15000
-        maxFrameSize = Long.MAX_VALUE
+        maxFrameSize = MAX_WEBSOCKET_FRAME_SIZE
         masking = false
     }
 
