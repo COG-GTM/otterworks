@@ -340,6 +340,10 @@ export async function putReaperConfig(
   return { ...cfg, updatedAt: now, updatedBy };
 }
 
+// Audit items carry the table's TTL attribute so DynamoDB prunes them; without
+// it the append-only AUDIT# partitions grow forever and every Scan pays for them.
+export const AUDIT_RETENTION_SECONDS = 90 * 24 * 60 * 60;
+
 export async function appendAudit(evt: Omit<AuditEvent, "ts"> & { ts?: number }): Promise<void> {
   const ts = evt.ts ?? Date.now();
   await doc().send(
@@ -352,6 +356,7 @@ export async function appendAudit(evt: Omit<AuditEvent, "ts"> & { ts?: number })
         action: evt.action,
         detail: evt.detail,
         ts,
+        ttl: Math.floor(ts / 1000) + AUDIT_RETENTION_SECONDS,
       },
     }),
   );

@@ -33,7 +33,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const rate = checkRateLimit(ip);
   if (!rate.allowed) {
-    await audit("login_fail", ip, "rate_limited");
+    // No audit write here: rejected requests are unbounded and anonymous, so a
+    // durable write per 429 would let anyone grow the control table at will.
+    // Failures that reach the passcode check are capped by the limiter.
     return NextResponse.json(
       { error: "too many attempts" },
       { status: 429, headers: { "Retry-After": String(Math.ceil(rate.retryAfterMs / 1000)) } },

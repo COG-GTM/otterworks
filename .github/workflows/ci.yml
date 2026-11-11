@@ -390,6 +390,8 @@ jobs:
         working-directory: demo-platform/dashboard
       - run: npm run lint
         working-directory: demo-platform/dashboard
+      - run: npm test
+        working-directory: demo-platform/dashboard
       # Scoped to the control plane. `scripts/` has a backlog of findings that
       # would make this gate permanently red, and so ignored; widen it once
       # that is cleared.
