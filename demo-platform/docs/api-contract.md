@@ -20,7 +20,8 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
 - `POST /api/tenants/checkout` `{ id?, branch, owner, tier?, ttl?, image_tag?, persistent? }` →
   atomic lock (409 if taken), upsert `TENANT#`, enqueue a **deploy runner Job**, status
   `deploying`. Returns the `Tenant`. `ttl: "never"` and `persistent: true` mean the same thing
-  and are accepted only for an id in `PERPETUAL_TENANT_IDS` (403 otherwise).
+  and are accepted only for an id in `PERPETUAL_TENANT_IDS` (403 otherwise). Any other `ttl`
+  above `MAX_TTL_SECONDS` (default 7d) is refused with 400.
 - `POST /api/tenants/:id/redeploy` `{ branch?, image_tag? }` → enqueue a **deploy runner Job**
   for a tenant that is already checked out. This is the CD entry point. Keeps the owner, the
   branch and the **remaining TTL** — a push must never extend an environment's life. 409 if the
@@ -28,9 +29,10 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
   if a deploy is already running for it.
 - `POST /api/tenants/:id/checkin` → enqueue **teardown runner Job**, status `draining`.
   409 for a persistent tenant; clear the flag first (there is deliberately no force flag).
-- `POST /api/tenants/:id/extend` `{ ttl }` → bump `expires_at`.
+- `POST /api/tenants/:id/extend` `{ ttl }` → bump `expires_at` to now + `ttl`. 400 if `ttl`
+  exceeds `MAX_TTL_SECONDS` (default 7d) or is perpetual (`never`).
 - `POST /api/tenants/:id/persist` `{ persistent, ttl? }` → mark a tenant perpetual, or return it
-  to the TTL regime with `ttl` (default `24h`). Setting the flag is allowed only for an id in
+  to the TTL regime with `ttl` (default `24h`, capped at `MAX_TTL_SECONDS`). Setting the flag is allowed only for an id in
   `PERPETUAL_TENANT_IDS`; clearing it is always allowed. The flag and `expires_at` are written
   in one update.
 - `POST /api/tenants/:id/inject` `{ scenario }` → drive the bug catalog via a runner Job.

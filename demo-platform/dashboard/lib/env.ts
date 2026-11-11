@@ -1,3 +1,5 @@
+import { DEFAULT_MAX_TTL_SECONDS, NEVER_TTL_SECONDS } from "./util";
+
 // Centralised, typed access to runtime configuration. Nothing here reads a
 // secret's value into logs; callers only ever compare/sign with them.
 
@@ -73,6 +75,14 @@ export const env = {
       .map((s) => s.trim())
       .filter(Boolean);
     return new Set(list);
+  },
+  // Cap on any non-perpetual tenant's TTL. An unparseable value, or one that
+  // reaches the perpetual threshold, falls back to the default rather than
+  // lifting the cap.
+  get maxTtlSeconds(): number {
+    const raw = process.env.MAX_TTL_SECONDS;
+    const n = raw ? Number(raw) : NaN;
+    return Number.isInteger(n) && n > 0 && n < NEVER_TTL_SECONDS ? n : DEFAULT_MAX_TTL_SECONDS;
   },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;

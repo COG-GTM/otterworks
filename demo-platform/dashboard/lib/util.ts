@@ -24,6 +24,27 @@ export function isNeverTtl(ttl: string): boolean {
   return ttl.trim().toLowerCase() === "never";
 }
 
+// The longest TTL any non-perpetual tenant may be given (checkout, extend, or
+// clearing the perpetual flag). Without it, a ttl one day short of `never`
+// would be accepted and leave a tenant the reaper will not collect for a
+// decade. Override with MAX_TTL_SECONDS.
+export const DEFAULT_MAX_TTL_SECONDS = 7 * 86400;
+
+export type TtlCheck =
+  | { ok: true; seconds: number }
+  | { ok: false; reason: "invalid" | "perpetual" | "too_long" };
+
+// Parse a caller-supplied TTL for a tenant that is *not* perpetual. "never"
+// (or anything at least as long) is "perpetual": only /persist, for an id in
+// PERPETUAL_TENANT_IDS, may grant that. Anything above maxSeconds is refused.
+export function checkTtl(ttl: string, maxSeconds: number): TtlCheck {
+  const seconds = ttlToSeconds(ttl);
+  if (seconds === null) return { ok: false, reason: "invalid" };
+  if (seconds >= NEVER_TTL_SECONDS) return { ok: false, reason: "perpetual" };
+  if (seconds > maxSeconds) return { ok: false, reason: "too_long" };
+  return { ok: true, seconds };
+}
+
 // Parse a compact TTL (e.g. "8h", "30m", "2d") into seconds. Defaults unit to
 // hours when omitted. "never" means perpetual. Returns null on invalid input.
 export function ttlToSeconds(ttl: string): number | null {
