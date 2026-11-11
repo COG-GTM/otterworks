@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import io
+
+import pytest
+
 from app.api.search import MAX_SEARCH_BODY_BYTES, MAX_TAG_LENGTH, MAX_TAGS
 from app.services import meilisearch_client
 from app.services.meilisearch_client import MAX_ANALYTICS_ENTRIES, MAX_QUERY_LENGTH
@@ -189,6 +193,36 @@ class TestAdvancedSearchEndpoint:
             content_type="application/json",
         )
         assert response.status_code == 413
+
+    def test_advanced_search_rejects_oversized_chunked_body(self, client, mock_meilisearch_client):
+        """Streamed bodies without Content-Length are capped as well."""
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.reset_mock()
+        body = b'{"q": "' + b"A" * (MAX_SEARCH_BODY_BYTES * 2) + b'"}'
+        response = client.post(
+            "/api/v1/search/advanced",
+            input_stream=io.BytesIO(body),
+            content_type="application/json",
+            environ_overrides={"wsgi.input_terminated": True},
+        )
+        assert response.status_code == 413
+        mock_index.search.assert_not_called()
+
+    @pytest.mark.parametrize("body", [[], False, 0, ""])
+    def test_advanced_search_rejects_falsy_non_object_body(self, client, mock_meilisearch_client, body):
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.reset_mock()
+        response = client.post("/api/v1/search/advanced", json=body)
+        assert response.status_code == 400
+        mock_index.search.assert_not_called()
+
+    def test_index_endpoint_not_subject_to_search_body_cap(self, client):
+        """The search body cap must not apply to indexing payloads."""
+        response = client.post(
+            "/api/v1/search/index/document",
+            json={"id": "doc-big", "title": "Big", "content": "x" * (MAX_SEARCH_BODY_BYTES * 2)},
+        )
+        assert response.status_code != 413
 
     def test_advanced_search_rejects_too_many_tags(self, client):
         response = client.post(

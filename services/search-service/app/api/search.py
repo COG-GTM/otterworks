@@ -7,6 +7,7 @@ import os
 import redis as redis_lib
 import structlog
 from flask import Blueprint, current_app, jsonify, request
+from flask.wrappers import Request
 
 from app.api.health import SEARCH_COUNT
 from app.services.meilisearch_client import (
@@ -42,6 +43,19 @@ def _chaos_active(key: str) -> bool:
         return bool(_get_redis().exists(key))
     except Exception:
         return False
+
+
+class SearchRequest(Request):
+    """Request class that caps body size for search endpoints.
+
+    Applies to streamed (chunked) bodies too, which carry no Content-Length.
+    """
+
+    @property
+    def max_content_length(self) -> int | None:  # type: ignore[override]
+        if self.blueprint == search_bp.name:
+            return MAX_SEARCH_BODY_BYTES
+        return super().max_content_length
 
 
 @search_bp.before_request
@@ -158,7 +172,9 @@ def advanced_search() -> tuple:
     JSON body: {q, type, tags, date_from, date_to, page, size}
     owner_id is always derived from X-User-ID for tenant isolation.
     """
-    data = request.get_json() or {}
+    data = request.get_json()
+    if data is None:
+        data = {}
     if not isinstance(data, dict):
         return jsonify({"error": "Request body must be a JSON object"}), 400
 
