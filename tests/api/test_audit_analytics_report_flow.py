@@ -74,27 +74,30 @@ def test_audit_event_query_reports_export_and_archive(api_client):
 
 def test_analytics_event_ingestion_queries_and_export(api_client):
     user = api_client.register_user("analytics-flow")
+    other = api_client.register_user("analytics-flow-other")
     resource_id = f"analytics-resource-{api_client.run_id}"
 
-    track_response = api_client.client.post(
-        "/api/v1/analytics/events",
-        headers=user.auth_headers,
-        json={
-            "eventType": "document_viewed",
-            "userId": user.id,
-            "resourceId": resource_id,
-            "resourceType": "document",
-            "metadata": {"source": "api-flow-test"},
-        },
-    )
+    def track(as_user, user_id, event_type="document.viewed"):
+        return api_client.client.post(
+            "/api/v1/analytics/events",
+            headers=as_user.auth_headers,
+            json={
+                "eventType": event_type,
+                "userId": user_id,
+                "resourceId": resource_id,
+                "resourceType": "document",
+                "metadata": {"source": "api-flow-test"},
+            },
+        )
+
+    track_response = track(user, user.id)
     assert track_response.status_code in {200, 201, 202}, track_response.text
 
-    dashboard_response = api_client.client.get(
-        "/api/v1/analytics/dashboard",
-        headers=user.auth_headers,
-        params={"period": "7d"},
-    )
-    assert dashboard_response.status_code == 200, dashboard_response.text
+    forged_response = track(user, other.id)
+    assert forged_response.status_code == 403, forged_response.text
+
+    bad_type_response = track(user, user.id, event_type="=cmd|' /C calc'!A0")
+    assert bad_type_response.status_code == 400, bad_type_response.text
 
     activity_response = api_client.client.get(
         f"/api/v1/analytics/users/{user.id}/activity",
@@ -102,25 +105,11 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
     )
     assert activity_response.status_code == 200, activity_response.text
 
-    document_stats_response = api_client.client.get(
-        f"/api/v1/analytics/documents/{resource_id}/stats",
+    other_activity_response = api_client.client.get(
+        f"/api/v1/analytics/users/{other.id}/activity",
         headers=user.auth_headers,
     )
-    assert document_stats_response.status_code == 200, document_stats_response.text
-
-    top_content_response = api_client.client.get(
-        "/api/v1/analytics/top-content",
-        headers=user.auth_headers,
-        params={"type": "documents", "period": "7d", "limit": 5},
-    )
-    assert top_content_response.status_code == 200, top_content_response.text
-
-    active_users_response = api_client.client.get(
-        "/api/v1/analytics/active-users",
-        headers=user.auth_headers,
-        params={"period": "daily"},
-    )
-    assert active_users_response.status_code == 200, active_users_response.text
+    assert other_activity_response.status_code == 403, other_activity_response.text
 
     storage_response = api_client.client.get(
         "/api/v1/analytics/storage",
@@ -129,12 +118,26 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
     )
     assert storage_response.status_code == 200, storage_response.text
 
-    export_response = api_client.client.get(
-        "/api/v1/analytics/export",
+    other_storage_response = api_client.client.get(
+        "/api/v1/analytics/storage",
         headers=user.auth_headers,
-        params={"format": "json", "period": "7d"},
+        params={"user_id": other.id},
     )
-    assert export_response.status_code == 200, export_response.text
+    assert other_storage_response.status_code == 403, other_storage_response.text
+
+    # Org-wide views are admin-only.
+    for path, params in [
+        ("/api/v1/analytics/dashboard", {"period": "7d"}),
+        (f"/api/v1/analytics/documents/{resource_id}/stats", None),
+        ("/api/v1/analytics/top-content", {"type": "documents", "period": "7d", "limit": 5}),
+        ("/api/v1/analytics/active-users", {"period": "daily"}),
+        ("/api/v1/analytics/export", {"format": "json", "period": "7d"}),
+    ]:
+        response = api_client.client.get(path, headers=user.auth_headers, params=params)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
+
+    unauthenticated = api_client.client.get(f"/api/v1/analytics/users/{user.id}/activity")
+    assert unauthenticated.status_code == 401, unauthenticated.text
 
 
 def test_report_generation_lifecycle_and_gateway_route(api_client):

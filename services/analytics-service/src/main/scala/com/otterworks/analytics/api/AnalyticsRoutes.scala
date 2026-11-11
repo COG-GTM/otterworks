@@ -19,14 +19,17 @@ import java.time.Instant
  *   GET /api/v1/analytics/active-users
  *   GET /api/v1/analytics/storage
  *   GET /api/v1/analytics/export
+ *
+ * Every route requires a verified access token. Per-user views are limited
+ * to the caller (admins may view anyone); org-wide views are admin-only.
  */
-class AnalyticsRoutes(analyticsService: AnalyticsService):
+class AnalyticsRoutes(analyticsService: AnalyticsService, auth: AuthDirectives):
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics") {
     concat(
       // Dashboard Summary
       path("dashboard") {
-        get {
+        (get & auth.adminOnly) { _ =>
           parameters("period".withDefault("7d")) { period =>
             onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
               complete(summary)
@@ -38,7 +41,7 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // User Activity
       pathPrefix("users") {
         path(Segment / "activity") { userId =>
-          get {
+          (get & auth.selfOrAdmin(userId)) { _ =>
             onSuccess(analyticsService.getUserActivity(userId)) { activity =>
               complete(activity)
             }
@@ -49,7 +52,7 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Document Analytics
       pathPrefix("documents") {
         path(Segment / "stats") { documentId =>
-          get {
+          (get & auth.adminOnly) { _ =>
             onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
               complete(stats)
             }
@@ -59,7 +62,7 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
 
       // Top Content
       path("top-content") {
-        get {
+        (get & auth.adminOnly) { _ =>
           parameters(
             "type".withDefault("documents"),
             "period".withDefault("7d"),
@@ -74,7 +77,7 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
 
       // Active Users
       path("active-users") {
-        get {
+        (get & auth.adminOnly) { _ =>
           parameters("period".withDefault("daily")) { period =>
             onSuccess(analyticsService.getActiveUsers(period)) { response =>
               complete(response)
@@ -85,10 +88,13 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
 
       // Storage Usage
       path("storage") {
-        get {
-          parameters("user_id".optional) { userId =>
-            onSuccess(analyticsService.getStorageUsage(userId)) { response =>
-              complete(response)
+        (get & auth.authenticated) { user =>
+          parameters("user_id".optional) { requested =>
+            val userId = if user.isAdmin then requested else requested.orElse(Some(user.userId))
+            authorize(user.isAdmin || userId.contains(user.userId)) {
+              onSuccess(analyticsService.getStorageUsage(userId)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -96,7 +102,7 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
 
       // Export Report
       path("export") {
-        get {
+        (get & auth.adminOnly) { _ =>
           parameters(
             "format".withDefault("json"),
             "period".withDefault("7d")
@@ -123,11 +129,6 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       val headers = List("event_id", "event_type", "user_id", "resource_id", "resource_type", "timestamp")
       val headerLine = headers.mkString(",")
       val rows = data.map { row =>
-        headers.map(h => escapeCsvField(row.getOrElse(h, ""))).mkString(",")
+        headers.map(h => Csv.textField(row.getOrElse(h, ""))).mkString(",")
       }
       (headerLine :: rows).mkString("\n") + "\n"
-
-  private def escapeCsvField(value: String): String =
-    if value.contains(",") || value.contains("\"") || value.contains("\n") then
-      "\"" + value.replace("\"", "\"\"") + "\""
-    else value

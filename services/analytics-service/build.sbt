@@ -31,6 +31,11 @@ lazy val root = project
       // Schema migrations (Flyway bundles PostgreSQL support in the 9.x line)
       "org.flywaydb" % "flyway-core" % "9.22.3",
 
+      // JWT verification (same library/version auth-service signs with)
+      "io.jsonwebtoken" % "jjwt-api" % "0.12.5",
+      "io.jsonwebtoken" % "jjwt-impl" % "0.12.5" % Runtime,
+      "io.jsonwebtoken" % "jjwt-jackson" % "0.12.5" % Runtime,
+
       // AWS SDK
       "software.amazon.awssdk" % "s3" % "2.25.6",
       "software.amazon.awssdk" % "sqs" % "2.25.6",

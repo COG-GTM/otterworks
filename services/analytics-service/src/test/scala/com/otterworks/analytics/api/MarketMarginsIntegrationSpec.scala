@@ -138,13 +138,13 @@ class MarketMarginsIntegrationSpec
   private def routes =
     val (_, r, svc) = requireStack()
     akka.http.scaladsl.server.Directives.concat(
-      MarginRoutes(svc, r).routes,
-      MarketIngestRoutes(svc, r).routes,
+      MarginRoutes(svc, r, TestTokens.auth).routes,
+      MarketIngestRoutes(svc, r, TestTokens.auth).routes,
     )
 
   "GET /api/v1/analytics/margins" should "return KPIs and ~40 formula-consistent rows (AC-03/BDD-03)" in {
     requireStack()
-    Get("/api/v1/analytics/margins") ~> routes ~> check {
+    Get("/api/v1/analytics/margins") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val body = responseAs[MarginsResponse]
       body.rows should have size 40
@@ -162,22 +162,22 @@ class MarketMarginsIntegrationSpec
 
   "GET series/prices/status endpoints" should "return filtered ordered data (AC-04/BDD-04)" in {
     requireStack()
-    Get("/api/v1/analytics/market/series") ~> routes ~> check {
+    Get("/api/v1/analytics/market/series") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       responseAs[JsValue].asJsObject.fields("series").convertTo[List[MarketSeries]] should have size 7
     }
-    Get("/api/v1/analytics/market/prices?series_code=SALMON_NOK_KG&from=2025-01-01&to=2025-01-31") ~> routes ~> check {
+    Get("/api/v1/analytics/market/prices?series_code=SALMON_NOK_KG&from=2025-01-01&to=2025-01-31") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val prices = responseAs[JsValue].asJsObject.fields("prices").convertTo[List[PricePoint]]
       prices should have size 31
       prices.map(_.priceDate) shouldBe prices.map(_.priceDate).sorted
       all(prices.map(_.priceDate)) should (be >= "2025-01-01" and be <= "2025-01-31")
     }
-    Get("/api/v1/analytics/margins/series?sku=SLM-001&from=2025-01-01&to=2025-01-31") ~> routes ~> check {
+    Get("/api/v1/analytics/margins/series?sku=SLM-001&from=2025-01-01&to=2025-01-31") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       responseAs[MarginSeriesResponse].points should have size 31
     }
-    Get("/api/v1/analytics/market/status") ~> routes ~> check {
+    Get("/api/v1/analytics/market/status") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val s = responseAs[MarketStatus]
       s.source shouldBe "synthetic"
@@ -187,7 +187,7 @@ class MarketMarginsIntegrationSpec
 
   "GET /margins/export?format=csv" should "return CSV matching the grid (AC-10)" in {
     requireStack()
-    Get("/api/v1/analytics/margins/export?format=csv") ~> routes ~> check {
+    Get("/api/v1/analytics/margins/export?format=csv") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val csv = responseAs[String]
       csv.linesIterator.next() shouldBe
@@ -208,7 +208,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = Some("integration test manual pull")
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, request.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, request.toJson.compactPrint)) ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 3
@@ -223,7 +223,7 @@ class MarketMarginsIntegrationSpec
       30.seconds
     )
     manual shouldBe 3L
-    Get("/api/v1/analytics/market/status") ~> routes ~> check {
+    Get("/api/v1/analytics/market/status") ~> TestTokens.admin() ~> routes ~> check {
       responseAs[MarketStatus].source shouldBe "manual_pull"
     }
   }
@@ -239,7 +239,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = None
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, allInvalid.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, allInvalid.toJson.compactPrint)) ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.BadRequest
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 0
@@ -253,7 +253,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = None
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, mixed.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, mixed.toJson.compactPrint)) ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 1
@@ -267,7 +267,7 @@ class MarketMarginsIntegrationSpec
     val tomorrow = LocalDate.now().plusDays(1).toString
     Await.result(repo.upsertManualPrice("SUGAR_USD_KG", tomorrow, BigDecimal("0.52")), 30.seconds)
     Await.result(svc.recompute(Set("SUGAR_USD_KG"), Some(tomorrow)), 30.seconds)
-    Get("/api/v1/analytics/margins") ~> routes ~> check {
+    Get("/api/v1/analytics/margins") ~> TestTokens.admin() ~> routes ~> check {
       status shouldBe StatusCodes.OK
       responseAs[MarginsResponse].rows should have size 40
     }
