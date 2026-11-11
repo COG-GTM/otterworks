@@ -5,18 +5,21 @@ default: &default
   host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
   port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
   username: <%= ENV.fetch("DATABASE_USER", "otterworks") %>
-  password: <%= ENV.fetch("DATABASE_PASSWORD", "otterworks") %>
 
 development:
   <<: *default
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "otterworks") %>
   database: admin_service_development
 
 test:
   <<: *default
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "otterworks") %>
   database: admin_service_test
 
 production:
   <<: *default
+  # ERB is rendered for every environment, so only raise when booting production.
+  password: <%= ENV.fetch("DATABASE_PASSWORD") { raise "DATABASE_PASSWORD must be set in production" if Rails.env.production? } %>
   # Tenant deploys provision one shared per-tenant database (otterworks_<id>)
   # rather than a per-service one; this branch is only ever deployed to the
   # coggtm tenant, hence the default.
