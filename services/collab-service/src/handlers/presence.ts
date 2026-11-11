@@ -8,6 +8,14 @@ export interface PresenceInfo {
   count: number;
 }
 
+export type PublicUserAwareness = Omit<UserAwareness, 'email'>;
+
+export interface PublicPresenceInfo {
+  documentId: string;
+  users: PublicUserAwareness[];
+  count: number;
+}
+
 export class PresenceHandler {
   private awareness: AwarenessService;
   private logger: Logger;
@@ -24,6 +32,21 @@ export class PresenceHandler {
       users,
       count: users.length,
     };
+  }
+
+  getPublicDocumentPresence(documentId: string): PublicPresenceInfo {
+    const users = this.awareness
+      .getDocumentUsers(documentId)
+      .map(({ email: _email, ...rest }) => rest);
+    return { documentId, users, count: users.length };
+  }
+
+  getActiveDocumentsForUser(
+    userId: string,
+  ): Array<{ documentId: string; userCount: number }> {
+    return this.getActiveDocuments().filter(({ documentId }) =>
+      this.awareness.getDocumentUsers(documentId).some((user) => user.userId === userId),
+    );
   }
 
   getActiveDocuments(): Array<{ documentId: string; userCount: number }> {
