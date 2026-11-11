@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from unittest.mock import patch
 
 import jwt
 import pytest
@@ -255,6 +256,21 @@ async def test_create_document_via_jwt_hs384(client: AsyncClient):
         json={"title": "HS384 Doc"},
         headers={"Authorization": f"Bearer {token}"},
     )
+    assert resp.status_code == 201
+    assert resp.json()["owner_id"] == str(user_id)
+
+
+@pytest.mark.asyncio
+async def test_create_document_via_jwt_hs512(client: AsyncClient):
+    """auth-service signs HS512 when JWT_SECRET is >= 64 bytes (e.g. `openssl rand -hex 32`)."""
+    user_id = uuid.uuid4()
+    token = jwt.encode({"sub": str(user_id)}, "a" * 64, algorithm="HS512")
+    with patch("app.api.documents._get_jwt_secret", return_value="a" * 64):
+        resp = await client.post(
+            "/api/v1/documents/",
+            json={"title": "HS512 Doc"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
     assert resp.status_code == 201
     assert resp.json()["owner_id"] == str(user_id)
 
