@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: otterworks_dev
       POSTGRES_DB: otterworks
     ports:
-    - 5432:5432
+    - 127.0.0.1:5432:5432
     volumes:
     - postgres_data:/var/lib/postgresql/data
     - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
@@ -29,7 +29,7 @@ services:
     image: redis:7-alpine
     container_name: otterworks-redis
     ports:
-    - 6379:6379
+    - 127.0.0.1:6379:6379
     command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
     healthcheck:
       test:
@@ -57,7 +57,7 @@ services:
       # re-hydrates them on boot from a seed dump when one is present.
       PERSISTENCE: '1'
     ports:
-    - 4566:4566
+    - 127.0.0.1:4566:4566
     volumes:
     - localstack_data:/var/lib/localstack
     - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
@@ -80,7 +80,7 @@ services:
       MEILI_ENV: development
       MEILI_NO_ANALYTICS: 'true'
     ports:
-    - 7700:7700
+    - 127.0.0.1:7700:7700
     volumes:
     - meilisearch_data:/meili_data
     healthcheck:
@@ -101,10 +101,8 @@ services:
     - --config.file=/etc/prometheus/prometheus.yml
     - --storage.tsdb.path=/prometheus
     - --storage.tsdb.retention.time=15d
-    - --web.enable-lifecycle
-    - --web.enable-admin-api
     ports:
-    - 9090:9090
+    - 127.0.0.1:9090:9090
     volumes:
     - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
@@ -131,16 +129,16 @@ services:
     container_name: otterworks-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: otterworks
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required - run scripts/ensure-local-env.sh}
       GF_USERS_ALLOW_SIGN_UP: 'false'
       GF_SERVER_ROOT_URL: http://localhost:3001
       # Unified alerting (Grafana 8+ default; explicit for clarity)
       GF_UNIFIED_ALERTING_ENABLED: 'true'
       GF_ALERTING_ENABLED: 'false'
       # Secret sent to the admin-service alert webhook
-      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:?ALERT_WEBHOOK_SECRET is required - run scripts/ensure-local-env.sh}
     ports:
-    - 3001:3000
+    - 127.0.0.1:3001:3000
     volumes:
     - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
     - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
@@ -173,10 +171,10 @@ services:
       MEMORY_MAX_TRACES: '50000'
       METRICS_STORAGE_TYPE: prometheus
     ports:
-    - 16686:16686
-    - 4317:4317
-    - 4318:4318
-    - 14269:14269
+    - 127.0.0.1:16686:16686
+    - 127.0.0.1:4317:4317
+    - 127.0.0.1:4318:4318
+    - 127.0.0.1:14269:14269
     healthcheck:
       test:
       - CMD
@@ -199,12 +197,12 @@ services:
     command:
     - --config=/etc/otelcol/config.yml
     ports:
-    - 4327:4317
-    - 4328:4318
-    - 8888:8888
-    - 8889:8889
-    - 13133:13133
-    - 55679:55679
+    - 127.0.0.1:4327:4317
+    - 127.0.0.1:4328:4318
+    - 127.0.0.1:8888:8888
+    - 127.0.0.1:8889:8889
+    - 127.0.0.1:13133:13133
+    - 127.0.0.1:55679:55679
     volumes:
     - ./observability/otel/otel-collector-config.yml:/etc/otelcol/config.yml:ro
     depends_on:
@@ -230,7 +228,7 @@ services:
     image: fluent/fluent-bit:3.0
     container_name: otterworks-fluent-bit
     ports:
-    - 2020:2020
+    - 127.0.0.1:2020:2020
     volumes:
     - ./observability/logging/fluentbit-config.yml:/fluent-bit/etc/fluent-bit.conf:ro
     - ./observability/logging/parsers.conf:/fluent-bit/etc/parsers.conf:ro

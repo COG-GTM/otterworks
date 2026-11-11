@@ -57,22 +57,25 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # --- Local Development ---
 
-infra-up: ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
+local-env: ## Generate the gitignored .env with random local secrets (JWT_SECRET etc.) if missing
+	@./scripts/ensure-local-env.sh
+
+infra-up: local-env ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
 	docker compose -f docker-compose.infra.yml up -d
 
-infra-down: ## Stop local infrastructure
+infra-down: local-env ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
-up: ## Start all services (add seed=1 to seed after start)
+up: local-env ## Start all services (add seed=1 to seed after start)
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
  ifdef seed
 	@$(MAKE) --no-print-directory wait-for-db seed
  endif
 
-down: ## Stop all application services
+down: local-env ## Stop all application services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml down
 
-build: ## Build all service images
+build: local-env ## Build all service images
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml build
 
 seed: ## Seed development data (services must be running)
@@ -85,7 +88,7 @@ wait-for-db: ## Wait for Postgres to accept connections
 		sleep 1; \
 	done; echo "Timed out waiting for Postgres" && exit 1
 
-logs: ## Tail logs for all services
+logs: local-env ## Tail logs for all services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml logs -f
 
 # --- App Dev Targets ---
@@ -98,7 +101,7 @@ COMPOSE := docker compose -f docker-compose.infra.yml -f docker-compose.yml
 # otherwise default to :8085, which only matches the k8s dev environment.
 COLLAB_WS_URL := ws://localhost:8084
 
-dev-backend: ## Start the Dockerized backend (all services except the frontend containers)
+dev-backend: local-env ## Start the Dockerized backend (all services except the frontend containers)
 	$(COMPOSE) up -d $$($(COMPOSE) config --services | grep -vE '^(web-app|admin-dashboard)$$')
 	@echo "Backend up - API gateway on http://localhost:8080 (fresh DB? run: make seed)"
 
@@ -186,6 +189,9 @@ test-coverage: ## Run tests with coverage for all services
 
 test-api-flows: ## Run black-box API flow tests against the local API gateway
 	UV_PROJECT_ENVIRONMENT=.venv uv run python -m pytest tests/api
+
+test-compose-config: ## Check the compose files commit no secrets and bind ports to localhost
+	uv run --python '>=3.11' --with pytest --with pyyaml python -m pytest tests/config -q
 
 test-api-flows-collect: ## Collect black-box API flow tests without running them
 	UV_PROJECT_ENVIRONMENT=.venv uv run python -m pytest tests/api --collect-only -q

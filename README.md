@@ -14,7 +14,10 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
-# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
+# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack).
+# The first run writes random JWT_SECRET, SECRET_KEY_BASE, ALERT_WEBHOOK_SECRET, CHAOS_SECRET
+# and GRAFANA_ADMIN_PASSWORD into the gitignored .env (scripts/ensure-local-env.sh);
+# the compose files have no defaults for them and refuse to start without them.
 make infra-up
 
 # Start all application services (builds images on first run)
@@ -112,7 +115,7 @@ All observability services run locally via `docker-compose.infra.yml`.
 
 | Tool | URL | Purpose |
 |------|-----|---------|
-| Grafana | http://localhost:3001 | Dashboards and metrics visualization (admin / otterworks) |
+| Grafana | http://localhost:3001 | Dashboards and metrics visualization (`admin` / `GRAFANA_ADMIN_PASSWORD` from `.env`) |
 | Prometheus | http://localhost:9090 | Metrics collection and alerting rules |
 | Jaeger | http://localhost:16686 | Distributed tracing UI |
 | MeiliSearch | http://localhost:7700 | Search engine dashboard |
