@@ -23,10 +23,23 @@ and the datasource. That is exactly what makes this a good decomposition candida
 |---|---|---|---|
 | Announcements | `com.otterworks.legacyportal.announcements` | `announcements` | `GET/POST /api/announcements`, `GET /api/announcements/{id}`, `POST /api/announcements/{id}/publish` |
 | User Preferences | `com.otterworks.legacyportal.userpreferences` | `user_preferences` | `GET /api/preferences/{userId}`, `PUT /api/preferences/{userId}` |
-| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
+| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback[?userId=]`, `GET /api/feedback/average-rating` |
 
 Shared, non-domain plumbing lives in `com.otterworks.legacyportal.common` (health endpoint,
-exception handling).
+exception handling) and `com.otterworks.legacyportal.security` (authentication).
+
+## Authentication
+
+Every `/api/**` route requires `Authorization: Bearer <access token>` issued by auth-service. The
+portal verifies the token's HMAC signature with the same secret auth-service signs with, supplied as
+`JWT_SECRET` (it refuses to start without it). Refresh tokens are rejected. Only `/health` and
+`/actuator/health`/`info` are anonymous.
+
+- The token subject is the caller's user id: `POST /api/feedback` records feedback under it (any
+  `userId` in the body is ignored) and `GET /api/feedback` returns the caller's own feedback.
+- The `ADMIN` role (from the token's `roles` claim) is required to create or publish announcements,
+  to list drafts (`publishedOnly=false`), to read a draft by id, and to read another user's feedback
+  via `GET /api/feedback?userId=`.
 
 ### Why it's an obvious decomposition candidate
 
@@ -50,7 +63,7 @@ cd services/legacy-portal
 ### Local / on a VM (embedded H2, self-contained)
 
 ```bash
-./scripts/run-onprem.sh
+JWT_SECRET=<auth-service's JWT secret> ./scripts/run-onprem.sh
 curl http://localhost:8095/health          # {"status":"UP","service":"legacy-portal"}
 curl http://localhost:8095/actuator/health
 ```
@@ -60,7 +73,7 @@ Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legac
 ### On-prem with a real PostgreSQL (Docker Compose)
 
 ```bash
-docker compose -f docker-compose.onprem.yml up --build
+JWT_SECRET=<auth-service's JWT secret> docker compose -f docker-compose.onprem.yml up --build
 curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v
 ```

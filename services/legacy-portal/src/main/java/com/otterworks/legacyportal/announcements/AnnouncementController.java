@@ -2,11 +2,16 @@ package com.otterworks.legacyportal.announcements;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import com.otterworks.legacyportal.security.PortalRoles;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,25 +33,35 @@ public class AnnouncementController {
 
     @GetMapping
     public List<AnnouncementResponse> list(
-            @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly) {
+            @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly,
+            Authentication authentication) {
+        if (!publishedOnly && !PortalRoles.isAdmin(authentication)) {
+            throw new AccessDeniedException("only admins may list draft announcements");
+        }
         List<Announcement> announcements =
                 publishedOnly ? service.listPublished() : service.listAll();
         return announcements.stream().map(AnnouncementResponse::from).collect(Collectors.toList());
     }
 
     @GetMapping("/{id}")
-    public AnnouncementResponse get(@PathVariable Long id) {
-        return AnnouncementResponse.from(service.get(id));
+    public AnnouncementResponse get(@PathVariable Long id, Authentication authentication) {
+        Announcement announcement = service.get(id);
+        if (!announcement.isPublished() && !PortalRoles.isAdmin(authentication)) {
+            throw new NoSuchElementException("announcement " + id + " not found");
+        }
+        return AnnouncementResponse.from(announcement);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public AnnouncementResponse create(@Valid @RequestBody CreateAnnouncementRequest request) {
         return AnnouncementResponse.from(
                 service.create(request.getTitle(), request.getBody(), request.isPublished()));
     }
 
     @PostMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
     public AnnouncementResponse publish(@PathVariable Long id) {
         return AnnouncementResponse.from(service.publish(id));
     }
