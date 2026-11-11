@@ -7,7 +7,13 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -56,7 +62,6 @@ class UserLookupRateLimiterTest {
 
     for (int i = 0; i < 3; i++) {
       limiter.checkEmailLookup(prober);
-      limiter.recordEmailMiss(prober);
     }
 
     assertThatThrownBy(() -> limiter.checkEmailLookup(prober))
@@ -79,12 +84,64 @@ class UserLookupRateLimiterTest {
         new UserLookupRateLimiter(100, 100, 60, 1, 900, new MutableClock());
     Authentication prober = user("prober");
     limiter.checkEmailLookup(prober);
-    limiter.recordEmailMiss(prober);
 
     assertThatThrownBy(() -> limiter.checkEmailLookup(prober))
         .isInstanceOf(RateLimitExceededException.class);
     assertThatCode(() -> limiter.checkIdLookup(prober)).doesNotThrowAnyException();
     assertThatCode(() -> limiter.checkEmailLookup(user("someone-else"))).doesNotThrowAnyException();
+  }
+
+  @Test
+  void hits_areRefunded_soOnlyMissesSpendTheMissBudget() {
+    UserLookupRateLimiter limiter =
+        new UserLookupRateLimiter(100, 100, 60, 2, 900, new MutableClock());
+    Authentication sharer = user("sharer");
+
+    for (int i = 0; i < 10; i++) {
+      limiter.checkEmailLookup(sharer);
+      limiter.refundEmailMiss(sharer);
+    }
+    limiter.checkEmailLookup(sharer);
+    limiter.checkEmailLookup(sharer);
+
+    assertThatThrownBy(() -> limiter.checkEmailLookup(sharer))
+        .isInstanceOf(RateLimitExceededException.class);
+  }
+
+  @Test
+  void concurrentLookups_cannotExceedMissBudget() throws Exception {
+    UserLookupRateLimiter limiter =
+        new UserLookupRateLimiter(100, 100, 60, 10, 900, new MutableClock());
+    Authentication prober = user("prober");
+    int threads = 20;
+    CountDownLatch start = new CountDownLatch(1);
+    ExecutorService pool = Executors.newFixedThreadPool(threads);
+    AtomicInteger admitted = new AtomicInteger();
+    try {
+      List<Future<?>> futures = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
+        futures.add(
+            pool.submit(
+                () -> {
+                  start.await();
+                  try {
+                    limiter.checkEmailLookup(prober);
+                    admitted.incrementAndGet();
+                  } catch (RateLimitExceededException ignored) {
+                    // expected once the budget is spent
+                  }
+                  return null;
+                }));
+      }
+      start.countDown();
+      for (Future<?> f : futures) {
+        f.get();
+      }
+    } finally {
+      pool.shutdownNow();
+    }
+
+    assertThat(admitted.get()).isEqualTo(10);
   }
 
   @Test
@@ -108,7 +165,7 @@ class UserLookupRateLimiterTest {
     Authentication admin = admin("admin");
     for (int i = 0; i < 5; i++) {
       limiter.checkEmailLookup(admin);
-      limiter.recordEmailMiss(admin);
+      limiter.refundEmailMiss(admin);
       limiter.checkIdLookup(admin);
     }
   }

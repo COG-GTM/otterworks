@@ -57,24 +57,34 @@ public class UserLookupRateLimiter {
     this.clock = clock;
   }
 
+  /**
+   * Admits an email lookup and provisionally charges it to the miss budget, so concurrent requests
+   * cannot all pass before their misses are counted. Call {@link #refundEmailMiss} when it matches.
+   */
   public void checkEmailLookup(Authentication authentication) {
     if (isAdmin(authentication)) {
       return;
     }
     long now = clock.millis();
     String principal = authentication.getName();
-    rejectIfExhausted(emailMissLimit, principal, now);
     consume(emailLimit, principal, now);
+    reserve(emailMissLimit, principal, now);
   }
 
-  /** Charges a lookup that matched no user against the caller's miss budget. */
-  public void recordEmailMiss(Authentication authentication) {
+  /**
+   * Returns the provisional miss charge taken by {@link #checkEmailLookup} for a lookup that hit.
+   */
+  public void refundEmailMiss(Authentication authentication) {
     if (isAdmin(authentication)) {
       return;
     }
     long now = clock.millis();
-    windows.compute(
-        emailMissLimit.key(authentication.getName()), (k, w) -> next(emailMissLimit, w, now));
+    windows.computeIfPresent(
+        emailMissLimit.key(authentication.getName()),
+        (k, w) ->
+            now - w.start < w.windowMillis && w.count > 0
+                ? new Window(w.start, w.count - 1, w.windowMillis)
+                : w);
   }
 
   public void checkIdLookup(Authentication authentication) {
@@ -92,10 +102,20 @@ public class UserLookupRateLimiter {
     }
   }
 
-  private void rejectIfExhausted(Limit limit, String principal, long now) {
-    Window window = windows.get(limit.key(principal));
-    if (window != null && now - window.start < limit.windowMillis && window.count >= limit.max) {
-      throw new RateLimitExceededException(retryAfterSeconds(limit, window, now));
+  private void reserve(Limit limit, String principal, long now) {
+    evictExpired(now);
+    Window[] exhausted = new Window[1];
+    windows.compute(
+        limit.key(principal),
+        (k, w) -> {
+          if (w != null && now - w.start < limit.windowMillis && w.count >= limit.max) {
+            exhausted[0] = w;
+            return w;
+          }
+          return next(limit, w, now);
+        });
+    if (exhausted[0] != null) {
+      throw new RateLimitExceededException(retryAfterSeconds(limit, exhausted[0], now));
     }
   }
 
