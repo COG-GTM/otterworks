@@ -4,13 +4,12 @@ import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import jakarta.servlet.http.Cookie;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import jakarta.servlet.http.Cookie;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -230,7 +229,8 @@ class AuthControllerIntegrationTest {
             .perform(
                 post("/api/v1/auth/login")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"email\": \"cookie@otterworks.dev\", \"password\": \"password123\"}"))
+                    .content(
+                        "{\"email\": \"cookie@otterworks.dev\", \"password\": \"password123\"}"))
             .andExpect(status().isOk())
             .andReturn();
 
