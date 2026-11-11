@@ -112,6 +112,10 @@ branch_tenant_id() {
 }
 tenant_db_name()   { printf 'otterworks_%s' "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g; s/^_*//; s/_*$//')"; }
 
+# Docker tag grammar. Image tags reach `helm --set`, whose parser treats
+# `,` `=` `[` `{` as syntax, so a tag outside it could set other chart values.
+valid_image_tag() { [[ "$1" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; }
+
 require_bins() {
   for bin in "$@"; do
     command -v "$bin" >/dev/null 2>&1 || { err "$bin not found"; exit 1; }
