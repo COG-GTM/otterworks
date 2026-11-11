@@ -95,7 +95,7 @@ instead of the local stack.
 | Control | Service | File |
 |---|---|---|
 | JWT validation, public/protected path lists | api-gateway (Go) | `services/api-gateway/internal/middleware/jwt.go` |
-| Identity forwarding to backends (`X-User-ID`) | api-gateway (Go) | `services/api-gateway/internal/proxy/router.go` (`proxy.Director`) |
+| Identity forwarding to backends (`X-User-ID`) | api-gateway (Go) | `services/api-gateway/internal/proxy/router.go` (`setIdentityHeaders`, called from `ReverseProxy.Rewrite`) |
 | Global middleware stack (where a new one is registered) | api-gateway (Go) | `services/api-gateway/cmd/server/main.go` |
 | CORS allowlist | api-gateway (Go) | `services/api-gateway/internal/middleware/cors.go` |
 | Per-IP rate limiting | api-gateway (Go) | `services/api-gateway/internal/middleware/ratelimit.go` |

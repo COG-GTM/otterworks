@@ -2,9 +2,11 @@ package proxy
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -59,30 +61,16 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		cfg.Logger.Fatal().Err(err).Str("target", route.TargetURL).Msg("invalid proxy target URL")
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
-
-	// Wrap the default director to forward authenticated user identity.
-	// The auth-service issues JWTs with the user ID in the standard "sub" claim
-	// (claims.Subject). Fall back to the custom "user_id" claim for compatibility.
-	defaultDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		defaultDirector(req)
-		// Identity headers are derived from the validated JWT only;
-		// client-supplied values must never reach the backends.
-		req.Header.Del("X-User-ID")
-		req.Header.Del("X-User-Email")
-		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
-			userID := claims.Subject
-			if userID == "" {
-				userID = claims.UserID
-			}
-			if userID != "" {
-				req.Header.Set("X-User-ID", userID)
-			}
-			if claims.Email != "" {
-				req.Header.Set("X-User-Email", claims.Email)
-			}
-		}
+	// Rewrite (not the deprecated Director) runs after hop-by-hop header
+	// removal, so a client cannot strip the identity headers set here by
+	// naming them in its Connection header.
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = pr.In.Host
+			preserveForwardedHeaders(pr)
+			setIdentityHeaders(pr.Out)
+		},
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -123,5 +111,44 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				"reason":  "circuit breaker open",
 			})
 		}
+	}
+}
+
+// preserveForwardedHeaders keeps the forwarding headers of upstream proxies and
+// appends the client IP to X-Forwarded-For, as the Director-based proxy did.
+func preserveForwardedHeaders(pr *httputil.ProxyRequest) {
+	for _, h := range []string{"Forwarded", "X-Forwarded-Host", "X-Forwarded-Proto"} {
+		if v, ok := pr.In.Header[h]; ok {
+			pr.Out.Header[h] = v
+		}
+	}
+	if clientIP, _, err := net.SplitHostPort(pr.In.RemoteAddr); err == nil {
+		if prior := pr.In.Header.Values("X-Forwarded-For"); len(prior) > 0 {
+			clientIP = strings.Join(prior, ", ") + ", " + clientIP
+		}
+		pr.Out.Header.Set("X-Forwarded-For", clientIP)
+	}
+}
+
+// setIdentityHeaders forwards the authenticated user identity derived from the
+// validated JWT only; client-supplied values must never reach the backends.
+// The auth-service issues JWTs with the user ID in the standard "sub" claim
+// (claims.Subject). Fall back to the custom "user_id" claim for compatibility.
+func setIdentityHeaders(out *http.Request) {
+	out.Header.Del("X-User-ID")
+	out.Header.Del("X-User-Email")
+	claims := middleware.GetJWTClaims(out.Context())
+	if claims == nil {
+		return
+	}
+	userID := claims.Subject
+	if userID == "" {
+		userID = claims.UserID
+	}
+	if userID != "" {
+		out.Header.Set("X-User-ID", userID)
+	}
+	if claims.Email != "" {
+		out.Header.Set("X-User-Email", claims.Email)
 	}
 }
