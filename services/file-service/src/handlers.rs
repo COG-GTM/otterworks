@@ -52,13 +52,7 @@ pub async fn upload_file(
     redis_cm: web::Data<redis::aio::ConnectionManager>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, ServiceError> {
-    // Prefer owner_id from X-User-ID header (injected by api-gateway from JWT).
-    // Fall back to the multipart field for direct/internal callers.
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
+    let owner = require_user_id(&req)?;
 
     // Uploader's email, injected by api-gateway from the JWT; carried on
     // upload-failure alerts so admin-service can attribute the incident.
@@ -73,7 +67,6 @@ pub async fn upload_file(
     let mut file_bytes = BytesMut::new();
     let mut file_name = String::from("unnamed");
     let mut content_type = String::from("application/octet-stream");
-    let mut owner_id: Option<Uuid> = None;
     let mut folder_id: Option<Uuid> = None;
 
     while let Some(item) = payload.next().await {
@@ -103,19 +96,6 @@ pub async fn upload_file(
                     }
                 }
             }
-            "owner_id" => {
-                let mut value = BytesMut::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    value.extend_from_slice(&data);
-                }
-                let s = String::from_utf8_lossy(&value).to_string();
-                owner_id = Some(
-                    s.trim()
-                        .parse::<Uuid>()
-                        .map_err(|e| ServiceError::BadRequest(format!("invalid owner_id: {e}")))?,
-                );
-            }
             "folder_id" => {
                 let mut value = BytesMut::new();
                 while let Some(chunk) = field.next().await {
@@ -133,10 +113,6 @@ pub async fn upload_file(
             _ => {}
         }
     }
-
-    let owner = header_owner_id
-        .or(owner_id)
-        .ok_or_else(|| ServiceError::BadRequest("owner_id is required".into()))?;
 
     if file_bytes.is_empty() {
         return Err(ServiceError::BadRequest("file field is required".into()));
@@ -243,20 +219,12 @@ pub async fn get_file_metadata(
     }))
 }
 
-/// Resolve the effective owner_id for list operations.
-///
-/// Prefer the `X-User-ID` header injected by the api-gateway from the
-/// authenticated JWT. This prevents a caller from spoofing another user's
-/// `owner_id` via the query string. Fall back to `query.owner_id` only when
-/// no header is present (direct/internal callers).
-fn resolve_owner_id(req: &HttpRequest, query_owner_id: Option<Uuid>) -> Option<Uuid> {
-    let header_owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok());
-
-    header_owner_id.or(query_owner_id)
+/// The caller's identity, taken only from the `X-User-ID` header the
+/// api-gateway sets from the validated JWT. Client-supplied `owner_id`
+/// values are never trusted.
+fn require_user_id(req: &HttpRequest) -> Result<Uuid, ServiceError> {
+    middleware::user_id_from_headers(req.headers())
+        .ok_or_else(|| ServiceError::Unauthorized(middleware::MISSING_IDENTITY.into()))
 }
 
 pub async fn list_files(
@@ -267,20 +235,19 @@ pub async fn list_files(
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
-    let owner_id = resolve_owner_id(&req, query.owner_id);
+    let owner = require_user_id(&req)?;
     let mut files = meta
-        .list_files(query.folder_id, owner_id, include_trashed)
+        .list_files(query.folder_id, Some(owner), include_trashed)
         .await?;
     // Seeding is only considered when the listing comes back empty, so the
     // common non-empty case costs no extra metadata reads.
-    if files.is_empty() && config.server.seed_demo_docs {
-        if let Some(owner) = owner_id {
-            if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
-                files = meta
-                    .list_files(query.folder_id, owner_id, include_trashed)
-                    .await?;
-            }
-        }
+    if files.is_empty()
+        && config.server.seed_demo_docs
+        && crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await
+    {
+        files = meta
+            .list_files(query.folder_id, Some(owner), include_trashed)
+            .await?;
     }
 
     let page = query.page.unwrap_or(1).max(1);
@@ -306,12 +273,7 @@ pub async fn list_shared_files(
     req: HttpRequest,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let user_id: Uuid = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| ServiceError::BadRequest("missing X-User-ID header".into()))?;
+    let user_id = require_user_id(&req)?;
 
     let shares = meta.list_shares_for_user(&user_id).await?;
 
@@ -351,8 +313,8 @@ pub async fn list_trashed(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFilesQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let files = meta.list_trashed(owner_id).await?;
+    let owner = require_user_id(&req)?;
+    let files = meta.list_trashed(Some(owner)).await?;
 
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).min(100);
@@ -690,21 +652,23 @@ pub async fn list_folders(
     meta: web::Data<MetadataClient>,
     query: web::Query<ListFoldersQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = resolve_owner_id(&req, query.owner_id);
-    let folders = meta.list_folders(query.parent_id, owner_id).await?;
+    let owner = require_user_id(&req)?;
+    let folders = meta.list_folders(query.parent_id, Some(owner)).await?;
     Ok(HttpResponse::Ok().json(ListFoldersResponse { folders }))
 }
 
 pub async fn create_folder(
+    req: HttpRequest,
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    let owner = require_user_id(&req)?;
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
         name: body.name.clone(),
         parent_id: body.parent_id,
-        owner_id: body.owner_id,
+        owner_id: owner,
         created_at: now,
         updated_at: now,
     };
@@ -764,12 +728,7 @@ pub async fn list_activity(
     meta: web::Data<MetadataClient>,
     query: web::Query<ActivityQuery>,
 ) -> Result<HttpResponse, ServiceError> {
-    let owner_id = req
-        .headers()
-        .get("X-User-ID")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.trim().parse::<Uuid>().ok())
-        .ok_or_else(|| ServiceError::BadRequest("missing owner context".into()))?;
+    let owner_id = require_user_id(&req)?;
 
     let limit = query.limit.unwrap_or(20).min(50) as usize;
 
