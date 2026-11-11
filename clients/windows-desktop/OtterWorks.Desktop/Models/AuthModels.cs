@@ -26,7 +26,7 @@ namespace OtterWorks.Desktop.Models
     }
 
     /// <summary>
-    /// Response body for /auth/register and /auth/login. Auth payloads are camelCase.
+    /// Response body for /auth/login. Auth payloads are camelCase.
     /// </summary>
     public class AuthResponse
     {

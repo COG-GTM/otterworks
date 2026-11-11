@@ -92,11 +92,9 @@ export const authApi = {
   },
   register: async (credentials: RegisterCredentials): Promise<AuthTokens> => {
     const { displayName, email, password } = credentials;
-    const { data } = await apiClient.post<AuthTokens>("/auth/register", {
-      displayName,
-      email,
-      password,
-    });
+    // Register never says whether the email was new, so sign in to get tokens.
+    await apiClient.post("/auth/register", { displayName, email, password });
+    const { data } = await apiClient.post<AuthTokens>("/auth/login", { email, password });
     return data;
   },
   getProfile: async (): Promise<User> => {

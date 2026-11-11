@@ -4,7 +4,9 @@ import com.otterworks.auth.dto.*;
 import com.otterworks.auth.service.AuthService;
 import com.otterworks.auth.service.UserService;
 import jakarta.validation.Valid;
+import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -17,6 +19,9 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
+  static final String REGISTER_ACCEPTED =
+      "Registration received. If the email can be registered, sign in with these credentials.";
+
   private final AuthService authService;
   private final UserService userService;
 
@@ -26,9 +31,13 @@ public class AuthController {
   }
 
   @PostMapping("/register")
-  public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
-    AuthResponse response = authService.register(request);
-    return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
+    try {
+      authService.register(request);
+    } catch (DataIntegrityViolationException raceWithConcurrentRegistration) {
+      // The email was registered between the existence check and the insert; same outcome.
+    }
+    return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("message", REGISTER_ACCEPTED));
   }
 
   @PostMapping("/login")

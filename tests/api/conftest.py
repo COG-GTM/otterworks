@@ -49,8 +49,13 @@ class ApiClient:
             "displayName": f"{prefix} {self.run_id}",
         }
         response = self.client.post("/api/v1/auth/register", json=payload)
-        assert response.status_code == 201, response.text
-        data = response.json()
+        assert response.status_code == 202, response.text
+        login = self.client.post(
+            "/api/v1/auth/login",
+            json={"email": payload["email"], "password": password},
+        )
+        assert login.status_code == 200, login.text
+        data = login.json()
         user = data["user"]
         return RegisteredUser(
             email=payload["email"],

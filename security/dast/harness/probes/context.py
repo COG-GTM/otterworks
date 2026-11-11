@@ -167,18 +167,29 @@ class ScanContext:
             )
         except httpx.HTTPError as exc:
             raise SeedError(f"could not reach registration for {identity.email}: {exc}") from exc
-        if response.status_code not in (200, 201):
+        if response.status_code not in (200, 201, 202):
             raise SeedError(
                 f"could not register {identity.email}: {response.status_code} {response.text[:200]}"
+            )
+        # Registration does not say whether the account was created (that would make it an
+        # email-enumeration oracle), so the identity comes from signing in afterwards.
+        try:
+            response = self.login_response(identity.email, identity.password)
+        except httpx.HTTPError as exc:
+            raise SeedError(f"could not sign in as {identity.email}: {exc}") from exc
+        if response.status_code != 200:
+            raise SeedError(
+                f"could not sign in as {identity.email}: "
+                f"{response.status_code} {response.text[:200]}"
             )
         try:
             body = response.json()
         except ValueError as exc:
             raise SeedError(
-                f"registration for {identity.email} returned a non-JSON body: {response.text[:200]}"
+                f"sign-in for {identity.email} returned a non-JSON body: {response.text[:200]}"
             ) from exc
         if not isinstance(body, dict):
-            raise SeedError(f"registration for {identity.email} returned {type(body).__name__}")
+            raise SeedError(f"sign-in for {identity.email} returned {type(body).__name__}")
         identity.access_token = body.get("accessToken", "")
         # A JSON null (or a string, or a list) under "user" would make .get() an
         # AttributeError, which is not a SeedError and would leave the harness exiting 1
@@ -186,7 +197,7 @@ class ScanContext:
         user = body.get("user")
         identity.user_id = str(user.get("id", "")) if isinstance(user, dict) else ""
         if not identity.access_token or not identity.user_id:
-            raise SeedError(f"registration for {identity.email} returned no usable identity")
+            raise SeedError(f"sign-in for {identity.email} returned no usable identity")
 
     def login_response(self, email: str, password: str) -> httpx.Response:
         """The raw login response, for probes that must tell a refusal from a 429/5xx."""
