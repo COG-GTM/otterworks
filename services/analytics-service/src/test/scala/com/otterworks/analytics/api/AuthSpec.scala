@@ -71,6 +71,15 @@ class AuthSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest:
     Get("/me") ~> bearer(untyped) ~> route ~> check { status shouldBe StatusCodes.Unauthorized }
   }
 
+  it should "use the secret verbatim, as auth-service does" in {
+    val padded = Secret + "\n"
+    val paddedRoute = Route.seal(path("me")(AuthDirectives(JwtAuthenticator(Some(padded))).authenticated(u => complete(u.userId))))
+    val key = Keys.hmacShaKeyFor(padded.getBytes(StandardCharsets.UTF_8))
+    Get("/me") ~> bearer(token("user-1", signingKey = key)) ~> paddedRoute ~> check {
+      status shouldBe StatusCodes.OK
+    }
+  }
+
   it should "reject everything when no secret is configured" in {
     val closed = Route.seal(path("me")(AuthDirectives(JwtAuthenticator(None)).authenticated(_ => complete("ok"))))
     Get("/me") ~> user("user-1") ~> closed ~> check { status shouldBe StatusCodes.Unauthorized }

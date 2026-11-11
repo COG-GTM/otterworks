@@ -29,7 +29,7 @@ class JwtAuthenticator(secret: Option[String]):
   private val logger = LoggerFactory.getLogger(getClass)
 
   private val parser: Option[JwtParser] =
-    secret.map(_.trim).filter(_.nonEmpty).flatMap { s =>
+    secret.filter(_.trim.nonEmpty).flatMap { s =>
       Try(Jwts.parser().verifyWith(Keys.hmacShaKeyFor(s.getBytes(StandardCharsets.UTF_8))).build())
         .fold(
           ex =>
