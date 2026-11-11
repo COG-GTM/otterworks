@@ -145,6 +145,35 @@ class UserLookupRateLimiterTest {
   }
 
   @Test
+  void missBudgetRejections_doNotSpendTheRequestBudget() {
+    MutableClock clock = new MutableClock();
+    UserLookupRateLimiter limiter = new UserLookupRateLimiter(3, 100, 900, 1, 900, clock);
+    Authentication prober = user("prober");
+    limiter.checkEmailLookup(prober);
+
+    for (int i = 0; i < 10; i++) {
+      assertThatThrownBy(() -> limiter.checkEmailLookup(prober))
+          .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    clock.advance(Duration.ofSeconds(900));
+    assertThatCode(() -> limiter.checkEmailLookup(prober)).doesNotThrowAnyException();
+  }
+
+  @Test
+  void requestBudgetRejections_doNotSpendTheMissBudget() {
+    UserLookupRateLimiter limiter =
+        new UserLookupRateLimiter(1, 100, 60, 2, 900, new MutableClock());
+    Authentication caller = user("caller");
+    limiter.checkEmailLookup(caller);
+    limiter.refundEmailMiss(caller);
+    for (int i = 0; i < 5; i++) {
+      assertThatThrownBy(() -> limiter.checkEmailLookup(caller))
+          .isInstanceOf(RateLimitExceededException.class);
+    }
+  }
+
+  @Test
   void requestBudget_resetsAfterWindow() {
     MutableClock clock = new MutableClock();
     UserLookupRateLimiter limiter = new UserLookupRateLimiter(2, 2, 60, 10, 900, clock);

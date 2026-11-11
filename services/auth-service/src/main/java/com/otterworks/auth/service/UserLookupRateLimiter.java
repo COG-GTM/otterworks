@@ -67,8 +67,13 @@ public class UserLookupRateLimiter {
     }
     long now = clock.millis();
     String principal = authentication.getName();
-    consume(emailLimit, principal, now);
     reserve(emailMissLimit, principal, now);
+    try {
+      consume(emailLimit, principal, now);
+    } catch (RateLimitExceededException e) {
+      refundEmailMiss(authentication);
+      throw e;
+    }
   }
 
   /**
