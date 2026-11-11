@@ -4,6 +4,17 @@ class JwtAuthenticator
 
   EXCLUDED_PATHS = %w[/health /metrics /api/v1/admin/alerts/ingest /api/v1/admin/chaos].freeze
 
+  class MissingSecretError < StandardError; end
+
+  # No hardcoded fallback: a committed default would let anyone who has read the
+  # repo mint admin tokens. Only the test suite may use its secrets.yml value.
+  def self.secret
+    Rails.application.credentials.jwt_secret.presence ||
+      ENV['JWT_SECRET'].presence ||
+      (Rails.env.test? && Rails.application.secrets.jwt_secret.presence) ||
+      raise(MissingSecretError, 'JWT_SECRET is not set')
+  end
+
   def initialize(app)
     @app = app
   end
@@ -52,13 +63,16 @@ class JwtAuthenticator
   end
 
   def decode_token(token)
-    secret = Rails.application.credentials.jwt_secret || ENV.fetch('JWT_SECRET', Rails.application.secrets.jwt_secret)
+    secret = self.class.secret
     # auth-service signs with HS512 (jjwt picks the algorithm from the key
     # length), so every real user token is rejected without it in this list.
     decoded = JWT.decode(token, secret, true, algorithms: %w[HS256 HS384 HS512])
     decoded.first
   rescue JWT::DecodeError, JWT::ExpiredSignature, JWT::VerificationError => e
     Rails.logger.warn("JWT authentication failed: #{e.message}")
+    nil
+  rescue MissingSecretError => e
+    Rails.logger.error("JWT authentication unavailable: #{e.message}; rejecting all tokens")
     nil
   end
 
