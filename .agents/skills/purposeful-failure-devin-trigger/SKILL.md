@@ -94,8 +94,8 @@ so out of the box `DevinSessionService` no-ops on tenants. Options:
   change for dashboard-deployed tenants (fork CD runs its own copy of the scripts,
   so for a fork-CD-deployed tenant the fork branch is enough).
 - GitHub Actions cannot talk to EKS: the OIDC role
-  (`demo-platform/infra/terraform/iam_github_actions.tf`) has ECR push + dashboard
-  passcode only, by design. Don't design workflows that run helm/kubectl from CI
+  (`demo-platform/infra/terraform/iam_github_actions.tf`) has ECR push only, and the
+  dashboard is reached via its OIDC-authenticated `/api/cd/sync`, by design. Don't design workflows that run helm/kubectl from CI
   without changing that role.
 
 ## Step 5 — Verify live

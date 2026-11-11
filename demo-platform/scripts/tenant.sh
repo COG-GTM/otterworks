@@ -29,6 +29,12 @@
 # TENANT_PREFIX namespaces the ids `sync` derives, so that a fork of this repo
 # drives its own environments off branch names identical to this one's.
 #
+# Inside GitHub Actions (id-token: write), `sync` needs no passcode and no AWS
+# credentials: it requests a GitHub OIDC token for CD_OIDC_AUDIENCE and calls
+# /api/cd/sync, which takes the repository and branch from the signed token and
+# can only touch the tenant that branch maps to. The token travels in a 0600
+# header file, never on argv.
+#
 # Examples:
 #   tenant.sh checkout derek                   # -> workshop-derek, 8h
 #   tenant.sh checkout derek workshop-derek 24h
@@ -45,6 +51,7 @@ DEFAULT_TTL="${DEFAULT_TTL:-8h}"
 # Long enough to span a few days' work, short enough that an abandoned branch
 # stops costing anything on its own.
 CD_TTL="${CD_TTL:-72h}"
+CD_OIDC_AUDIENCE="${CD_OIDC_AUDIENCE:-otterworks-demo-ops}"
 
 log()  { echo "[tenant] $*"; }
 fail() { echo "[tenant] ERROR: $*" >&2; exit 1; }
@@ -54,8 +61,9 @@ for bin in curl jq; do
 done
 
 JAR="$(mktemp)"
-chmod 600 "${JAR}"
-cleanup() { rm -f "${JAR}"; }
+HDR="$(mktemp)"
+chmod 600 "${JAR}" "${HDR}"
+cleanup() { rm -f "${JAR}" "${HDR}"; }
 trap cleanup EXIT
 
 # ------------------------------------------------------------------------------
@@ -90,6 +98,40 @@ login() {
     401) fail "passcode rejected by ${OPS_HOST}" ;;
     429) fail "rate limited by ${OPS_HOST} -- too many failed logins, wait and retry" ;;
     *)   fail "login to ${OPS_HOST} returned HTTP ${code}" ;;
+  esac
+}
+
+# CD from GitHub Actions: authenticate with the workflow's OIDC token. The
+# dashboard derives the tenant from the token's repository and branch, so the
+# branch argument is only checked against it.
+cd_sync_oidc() {
+  local branch="$1" image_tag="$2" token out code
+
+  [ "${GITHUB_REF_NAME:-}" = "${branch}" ] ||
+    fail "OIDC sync can only ship the running workflow's branch (${GITHUB_REF_NAME:-unset}), not '${branch}'"
+
+  # printf is a builtin, so neither bearer value ever appears in a process argv.
+  printf 'Authorization: bearer %s\n' "${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" > "${HDR}"
+  token="$(curl -sS --fail -H @"${HDR}" \
+             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$(jq -rn --arg a "${CD_OIDC_AUDIENCE}" '$a|@uri')" |
+             jq -r '.value // empty')" || fail "cannot obtain a GitHub OIDC token (is id-token: write granted?)"
+  [ -n "${token}" ] || fail "GitHub returned an empty OIDC token"
+  printf 'Authorization: Bearer %s\n' "${token}" > "${HDR}"
+
+  out="$(jq -nc --arg img "${image_tag}" 'if $img == "" then {} else {image_tag:$img} end' |
+           curl -sS -w '\n%{http_code}' -H @"${HDR}" -X POST "${OPS_HOST}/api/cd/sync" \
+                -H 'content-type: application/json' --data-binary @-)"
+  : > "${HDR}"
+
+  code="$(printf '%s' "${out}" | tail -n1)"
+  out="$(printf '%s' "${out}" | sed '$d')"
+
+  case "${code}" in
+    201) log "created tenant for '${branch}'"
+         printf '%s' "${out}" | jq -c '.tenant // .' | table ;;
+    202) warn_if_degraded "${out}" || fail "tenant for '${branch}' is reserved but not deploying -- check the runner" ;;
+    2*)  log "redeploying from ${branch}: $(printf '%s' "${out}" | jq -r '.job // "accepted"')" ;;
+    *)   fail "POST /api/cd/sync returned HTTP ${code}: $(printf '%s' "${out}" | jq -r '.error // .' 2>/dev/null || printf '%s' "${out}")" ;;
   esac
 }
 
@@ -266,6 +308,12 @@ case "${cmd}" in
             sed 's/[^a-z0-9-]/-/g; s/-\{2,\}/-/g; s/^-*//; s/-*$//' |
             cut -c1-40 | sed 's/-*$//')"
     [ -n "${id}" ] || fail "cannot derive a tenant id from branch '${branch}'"
+
+    if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+      cd_sync_oidc "${branch}" "${image_tag}"
+      log "watch with: tenant.sh status ${id}"
+      exit 0
+    fi
 
     login
     existing="$(api_get_optional "/api/tenants/${id}")"
