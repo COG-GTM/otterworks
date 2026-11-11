@@ -174,7 +174,12 @@ class PostgresMetricsRepositorySpec extends AnyFlatSpec with Matchers with Scala
       AnalyticsEvent("x05", EventType.StorageReleased, "user-2", "file-2", "file", Map("bytes" -> "99999999999999999999"), at(15)),
       AnalyticsEvent("x06", EventType.StorageAllocated, "user-3", "file-4", "file", Map.empty, at(16)),
       AnalyticsEvent("x07", EventType.FileDownloaded, "user-2", "file-2", "file", Map.empty, at(17)),
-      AnalyticsEvent("x08", EventType.FileDownloaded, "user-3", "file-2", "file", Map.empty, at(17))
+      AnalyticsEvent("x08", EventType.FileDownloaded, "user-3", "file-2", "file", Map.empty, at(17)),
+      AnalyticsEvent("x09", EventType.StorageAllocated, "user-1", "file-5", "file", Map("bytes" -> "\u0000"), at(18)),
+      AnalyticsEvent("x10", EventType.StorageAllocated, "user-1", "file-6", "file",
+        Map("note" -> "a\u0000b", "bytes" -> "11"), at(18)),
+      AnalyticsEvent("x11", EventType.StorageAllocated, "user-2", "file-7", "file", Map("bytes" -> ("9" * 200000)), at(19)),
+      AnalyticsEvent("x12", EventType.StorageAllocated, "user-2", "file-8", "file", Map("bytes" -> "\u0661\u0662\u0663"), at(19))
     )
     val events = seed ++ extra
     events.foreach(e => Await.result(pg.storeEvent(e), 10.seconds))

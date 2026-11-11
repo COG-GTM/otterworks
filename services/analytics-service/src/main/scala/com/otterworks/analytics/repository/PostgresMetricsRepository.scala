@@ -69,15 +69,14 @@ class PostgresMetricsRepository(db: AnalyticsDb)(using ec: ExecutionContext) ext
   // Total of a set of signed Long byte counts; wraps on overflow like Long addition in MetricsAggregator.
   private def wrappedSum(total: BigDecimal): Long = total.bigDecimal.toBigInteger.longValue
 
-  /**
-   * `metadata.bytes` as a BIGINT, or 0 when absent or not a valid Long — the
-   * SQL equivalent of `Try(metadata("bytes").toLong).getOrElse(0L)`.
-   */
+  // `\u0000` is valid JSON text but rejected by jsonb; it can never be part of a byte count.
+  private val MetadataBytes = """(replace(metadata, '\u0000', '\ufffd')::jsonb ->> 'bytes')"""
+
+  /** `metadata.bytes` as a BIGINT, or 0 when absent or invalid — the SQL equivalent of [[MetricsAggregator.parseBytes]]. */
   private val BytesExpr =
-    """CASE WHEN (metadata::jsonb ->> 'bytes') ~ '^[+-]?[0-9]+$'
-         THEN CASE WHEN (metadata::jsonb ->> 'bytes')::numeric
-                        BETWEEN -9223372036854775808 AND 9223372036854775807
-                   THEN (metadata::jsonb ->> 'bytes')::bigint ELSE 0 END
+    s"""CASE WHEN $MetadataBytes ~ '^[+-]?[0-9]{1,19}$$'
+         THEN CASE WHEN $MetadataBytes::numeric BETWEEN -9223372036854775808 AND 9223372036854775807
+                   THEN $MetadataBytes::bigint ELSE 0 END
          ELSE 0 END"""
 
   private def storageTotal(userId: Option[String]): DBIO[Long] =

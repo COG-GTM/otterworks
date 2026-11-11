@@ -37,6 +37,15 @@ object MetricsAggregator:
   /** Clamp a caller-supplied top-content limit into `[0, MaxTopContentLimit]`. */
   def boundedTopContentLimit(limit: Int): Int = Math.max(0, Math.min(limit, MaxTopContentLimit))
 
+  private val ByteCount = "[+-]?[0-9]{1,19}".r
+
+  /** A `bytes` metadata value as a Long: ASCII decimal digits only, otherwise 0. */
+  def parseBytes(raw: String): Long =
+    if ByteCount.matches(raw) then raw.toLongOption.getOrElse(0L) else 0L
+
+  /** The `bytes` metadata of an event, or 0 when absent or invalid. */
+  def eventBytes(e: AnalyticsEvent): Long = e.metadata.get("bytes").fold(0L)(parseBytes)
+
   /** Resource types included in a top-content listing for the given content type. */
   def topContentResourceTypes(contentType: String): Set[String] = contentType match
     case "documents" => Set("document")
@@ -54,7 +63,7 @@ object MetricsAggregator:
       storageUsedBytes = Math.max(0L, events
         .filter(e => e.eventType == EventType.StorageAllocated || e.eventType == EventType.StorageReleased)
         .foldLeft(0L) { (acc, e) =>
-          val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+          val bytes = eventBytes(e)
           if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
         }),
       collabSessions = filtered.count(_.eventType == EventType.CollabSessionStarted).toLong,
@@ -163,7 +172,7 @@ object MetricsAggregator:
     )
 
     val totalBytes = storageEvents.foldLeft(0L) { (acc, e) =>
-      val bytes = scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+      val bytes = eventBytes(e)
       if e.eventType == EventType.StorageAllocated then acc + bytes else acc - bytes
     }
 
@@ -174,7 +183,7 @@ object MetricsAggregator:
       .filter(e => e.eventType == EventType.StorageAllocated)
       .groupBy(_.resourceType)
       .map { case (rt, evts) =>
-        rt -> evts.flatMap(_.metadata.get("bytes").flatMap(s => scala.util.Try(s.toLong).toOption)).sum
+        rt -> evts.map(eventBytes).sum
       }
       .toMap
 
