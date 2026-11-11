@@ -104,6 +104,14 @@ def extract(payload: Any, spec: dict[str, Any]) -> Any:
     return normalize(value, spec.get("type"))
 
 
+def request_headers() -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    token = os.getenv("BILLING_SVC_SERVICE_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def request_json(
     base_url: str,
     method: str,
@@ -121,7 +129,7 @@ def request_json(
             method,
             f"{parsed.path.rstrip('/')}{path}",
             body=data,
-            headers={"Content-Type": "application/json"},
+            headers=request_headers(),
         )
         response = connection.getresponse()
         raw = response.read()
@@ -230,7 +238,12 @@ def reset_target(base_url: str) -> tuple[bool, str]:
     except (http.client.HTTPException, OSError) as error:
         return False, f"target unreachable during reset: {error}"
     if status != 204:
-        if status in {403, 404}:
+        if status in {401, 403}:
+            return False, (
+                f"target reset refused with HTTP {status}: {payload}; "
+                "set BILLING_SVC_SERVICE_TOKEN to the target's service token"
+            )
+        if status == 404:
             return False, (
                 f"target reset refused with HTTP {status}: {payload}; "
                 "enable BILLING_SVC_ALLOW_INTERNAL_RESET for disposable stacks"

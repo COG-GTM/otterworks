@@ -54,6 +54,7 @@ services:
     environment:
       BILLING_SVC_DATABASE_URL: postgresql://billing_svc:billing_svc@billing-service-db:5432/billing_svc_${NS:-dev}
       BILLING_SVC_ALLOW_INTERNAL_RESET: "true"
+      BILLING_SVC_SERVICE_TOKEN: ${BILLING_SVC_SERVICE_TOKEN:?set BILLING_SVC_SERVICE_TOKEN (make procs-up sets it)}
     ports:
       - "127.0.0.1:${PROCS_TARGET_PORT:-8097}:8097"
     healthcheck:
