@@ -10,6 +10,7 @@ import com.otterworks.notification.consumer.SqsConsumer
 import com.otterworks.notification.plugins.configureMonitoring
 import io.micrometer.core.instrument.MeterRegistry
 import com.otterworks.notification.repository.NotificationRepository
+import com.otterworks.notification.routes.CallerIdentityResolver
 import com.otterworks.notification.routes.configureRouting
 import com.otterworks.notification.service.EmailSender
 import com.otterworks.notification.service.NotificationService
@@ -48,6 +49,9 @@ fun main() {
 }
 
 fun Application.module(config: AppConfig = AppConfig.load()) {
+    if (config.jwtSecret == null) {
+        logger.warn { "JWT_SECRET is not set: trusting the gateway's X-User-ID header and refusing WebSocket connections" }
+    }
     val prometheusRegistry = configureMonitoring()
     configurePlugins(config)
     configureDependencyInjection(config, prometheusRegistry)
@@ -132,6 +136,7 @@ fun Application.configureDependencyInjection(
                 }
 
                 singleOf(::WebSocketManager)
+                single { CallerIdentityResolver(config.jwtSecret) }
 
                 single { NotificationRepository(get<DynamoDbClient>(), get<AppConfig>()) }
                 single { EmailSender(get<SesClient>(), get<AppConfig>()) }

@@ -250,6 +250,9 @@ services:
       SNS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:otterworks-events
       DYNAMODB_TABLE_NOTIFICATIONS: otterworks-notifications
       DYNAMODB_TABLE_PREFERENCES: otterworks-notification-preferences
+      # Shared with api-gateway/auth-service: callers must present a valid
+      # access token, so identity cannot be forged when the published port is hit directly.
+      JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
       # Consumer failures fire a Grafana-style alert at admin-service's ingest
       # endpoint so a sustained failure opens an incident + Devin session.
       ADMIN_SERVICE_URL: http://admin-service:8089

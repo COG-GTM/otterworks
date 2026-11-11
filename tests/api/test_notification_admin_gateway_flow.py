@@ -7,13 +7,13 @@ pytestmark = pytest.mark.api_flow
 def test_notification_listing_read_preferences_and_route_gaps(api_client):
     user = api_client.register_user("notification-flow")
 
-    missing_user_response = api_client.client.get("/api/v1/notifications", headers=user.auth_headers)
-    assert missing_user_response.status_code == 400
+    anonymous_response = api_client.client.get("/api/v1/notifications", params={"user_id": user.id})
+    assert anonymous_response.status_code == 401
 
     list_response = api_client.client.get(
         "/api/v1/notifications",
         headers=user.auth_headers,
-        params={"user_id": user.id, "page": 1, "page_size": 20},
+        params={"page": 1, "page_size": 20},
     )
     assert list_response.status_code == 200, list_response.text
     data = list_response.json()
@@ -23,7 +23,7 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     unread_response = api_client.client.get(
         "/api/v1/notifications/unread-count",
         headers=user.auth_headers,
-        params={"user_id": user.id},
+        params={"user_id": "someone-else"},
     )
     assert unread_response.status_code == 200, unread_response.text
     assert unread_response.json()["userId"] == user.id
@@ -31,7 +31,6 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     mark_all_response = api_client.client.put(
         "/api/v1/notifications/read-all",
         headers=user.auth_headers,
-        params={"user_id": user.id},
     )
     assert mark_all_response.status_code == 200, mark_all_response.text
     assert "markedCount" in mark_all_response.json()
@@ -45,7 +44,6 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     preferences_get = api_client.client.get(
         "/api/v1/preferences",
         headers=user.auth_headers,
-        params={"user_id": user.id},
     )
     api_client.assert_gateway_route_available(preferences_get, "/api/v1/preferences")
     assert preferences_get.status_code == 200, preferences_get.text
@@ -56,6 +54,13 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
         json={"userId": user.id, "eventType": "document_edited", "channels": ["IN_APP"]},
     )
     assert preferences_put.status_code == 204, preferences_put.text
+
+    other_user_put = api_client.client.put(
+        "/api/v1/preferences",
+        headers=user.auth_headers,
+        json={"userId": "someone-else", "eventType": "document_edited", "channels": ["EMAIL"]},
+    )
+    assert other_user_put.status_code == 403, other_user_put.text
 
 
 def test_admin_health_users_features_and_permissions(api_client):

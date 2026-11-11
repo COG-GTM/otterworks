@@ -90,7 +90,7 @@ def test_file_share_eventually_creates_notification_and_audit_signal(api_client)
         response = api_client.client.get(
             "/api/v1/notifications",
             headers=collaborator.auth_headers,
-            params={"user_id": collaborator.id, "page": 1, "page_size": 20},
+            params={"page": 1, "page_size": 20},
         )
         if response.status_code != 200:
             return []
