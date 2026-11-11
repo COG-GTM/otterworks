@@ -237,6 +237,20 @@ describe('CollaborationManager limits', () => {
     expect(mockRedis.lpush).toHaveBeenCalledTimes(1);
   });
 
+  it('does not rate-limit a snapshot retry after a failed attempt', async () => {
+    const client = await connect('size-user-7');
+    await join(client, 'doc-snap-retry');
+    mockRedis.lpush.mockRejectedValueOnce(new Error('redis down'));
+    const failed = new Promise<{ error: string }>((resolve) =>
+      client.once('snapshot-error', resolve),
+    );
+    client.emit('request-snapshot', { documentId: 'doc-snap-retry' });
+    expect((await failed).error).toBe('Failed to create snapshot');
+    const created = new Promise((resolve) => client.once('snapshot-created', resolve));
+    client.emit('request-snapshot', { documentId: 'doc-snap-retry' });
+    await created;
+  });
+
   it('caps the number of documents a user can hold open', async () => {
     const a = await connect('size-user-5');
     const b = await connect('size-user-5');

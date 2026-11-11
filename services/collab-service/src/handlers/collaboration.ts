@@ -496,6 +496,8 @@ export class CollaborationManager {
       socket.to(room).emit('snapshot-created', snapshot);
     } catch (err) {
       logger.error({ err, documentId }, 'create_snapshot_failed');
+      if (lastSnapshot === undefined) this.lastSnapshotAt.delete(documentId);
+      else this.lastSnapshotAt.set(documentId, lastSnapshot);
       socket.emit('snapshot-error', {
         documentId,
         error: 'Failed to create snapshot',
