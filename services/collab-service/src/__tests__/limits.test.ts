@@ -250,6 +250,15 @@ describe('CollaborationManager limits', () => {
     expect((await join(c, 'doc-cap-1')).success).toBe(true);
     expect((await join(b, 'doc-cap-4')).success).toBe(true);
   });
+
+  it('lets a socket rejoin its current document while the user is at the cap', async () => {
+    const a = await connect('size-user-6');
+    expect((await join(a, 'doc-rejoin')).success).toBe(true);
+    jest
+      .spyOn(AwarenessService.prototype, 'getUserDocumentIds')
+      .mockReturnValueOnce(new Set(['other-1', 'other-2']));
+    expect((await join(a, 'doc-rejoin')).success).toBe(true);
+  });
 });
 
 describe('YWebsocketGuard', () => {

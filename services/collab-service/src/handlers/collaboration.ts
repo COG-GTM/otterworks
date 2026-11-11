@@ -128,7 +128,11 @@ export class CollaborationManager {
 
     try {
       const openDocs = awareness.getUserDocumentIds(user.userId, socket.id);
-      if (!openDocs.has(documentId) && openDocs.size >= this.limits.maxDocumentsPerUser) {
+      if (
+        awareness.getUserDocument(socket.id) !== documentId &&
+        !openDocs.has(documentId) &&
+        openDocs.size >= this.limits.maxDocumentsPerUser
+      ) {
         logger.warn(
           { documentId, userId: user.userId, socketId: socket.id },
           'join_document_rejected: too many open documents',
