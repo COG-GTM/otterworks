@@ -81,6 +81,9 @@ build: local-env ## Build all service images
 seed: ## Seed development data (services must be running)
 	uv run scripts/seed.py
 
+admin-password: ## Set the seeded admin@otterworks.dev password to ADMIN_PASSWORD from .env
+	@./scripts/set-admin-password.sh
+
 wait-for-db: ## Wait for Postgres to accept connections
 	@echo "Waiting for Postgres to be healthy..."
 	@for i in $$(seq 1 30); do \

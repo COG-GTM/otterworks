@@ -15,13 +15,16 @@ Individual service development may also require the language toolchains listed i
 
 ```bash
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack).
-# The first run writes random JWT_SECRET, SECRET_KEY_BASE, ALERT_WEBHOOK_SECRET, CHAOS_SECRET
-# and GRAFANA_ADMIN_PASSWORD into the gitignored .env (scripts/ensure-local-env.sh);
+# The first run writes random JWT_SECRET, SECRET_KEY_BASE, ALERT_WEBHOOK_SECRET, CHAOS_SECRET,
+# GRAFANA_ADMIN_PASSWORD and ADMIN_PASSWORD into the gitignored .env (scripts/ensure-local-env.sh);
 # the compose files have no defaults for them and refuse to start without them.
 make infra-up
 
 # Start all application services (builds images on first run)
 make up
+
+# Admin dashboard login: admin@otterworks.dev / ADMIN_PASSWORD from .env
+make admin-password
 
 # Open the app
 open http://localhost:3000        # Web App (React / Next.js)

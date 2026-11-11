@@ -198,6 +198,7 @@ initialize: |
   # screen empty. Best-effort: a seed failure must not sink the build.
   for i in $(seq 1 90); do [ "$(docker inspect -f '{{.State.Health.Status}}' otterworks-admin-service 2>/dev/null)" = healthy ] && break; sleep 2; done
   docker exec otterworks-admin-service bundle exec rails db:seed || echo "WARN: admin-service db:seed failed; admin dashboard will show empty tables."
+  ./scripts/set-admin-password.sh || echo "WARN: could not set the admin@otterworks.dev password."
 
   # LocalStack community does not persist S3, so bake the objects in for localstack-restore.sh.
   docker exec otterworks-localstack sh -lc \
@@ -231,9 +232,9 @@ knowledge:
     contents: |
       `make up` serves the Angular dashboard at http://localhost:4200 from the prebuilt nginx
       container - no dev server needed. Login goes through auth-service
-      (POST /api/v1/auth/login) and only ADMIN/OWNER accounts get in; the Flyway-seeded
-      admin is admin@otterworks.dev / Admin123!. Data comes from admin-service's tables, seeded
-      at init. To re-seed:
+      (POST /api/v1/auth/login) and only ADMIN/OWNER accounts get in: sign in as
+      admin@otterworks.dev with ADMIN_PASSWORD from the repo's .env (set by
+      `make admin-password`). Data comes from admin-service's tables, seeded at init. To re-seed:
         docker exec otterworks-admin-service bundle exec rails db:seed
       `make dev-admin` (HMR) is NOT pre-warmed - the first run pays a full Angular `npm ci`.
   - name: run android app
