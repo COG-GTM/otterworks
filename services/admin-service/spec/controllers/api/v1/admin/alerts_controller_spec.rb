@@ -1,6 +1,8 @@
 require 'rails_helper'
 
 RSpec.describe Api::V1::Admin::AlertsController do
+  include ActiveSupport::Testing::TimeHelpers
+
   before do
     allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(true)
     allow(DevinSessionService).to receive(:create_session).and_return(nil)
@@ -44,6 +46,61 @@ RSpec.describe Api::V1::Admin::AlertsController do
       post :ingest, params: { alerts: [firing_alert] }
       post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
       expect(Incident.count).to eq(2)
+    end
+
+    it 'rejects payloads with more alerts than the per-request cap' do
+      alerts = Array.new(described_class::MAX_ALERTS_PER_REQUEST + 1) { firing_alert(labels: { dedup: 'false' }) }
+      post :ingest, params: { alerts: alerts }, as: :json
+      expect(response).to have_http_status(413)
+      expect(Incident.count).to eq(0)
+      expect(DevinSessionService).not_to have_received(:create_session)
+    end
+
+    it 'accepts payloads at the per-request cap' do
+      alerts = Array.new(described_class::MAX_ALERTS_PER_REQUEST) { firing_alert }
+      post :ingest, params: { alerts: alerts }, as: :json
+      expect(response).to have_http_status(:ok)
+      expect(Incident.count).to eq(1)
+    end
+
+    it 'stops honoring dedup=false once the per-service budget is spent' do
+      limit = described_class::DEDUP_BYPASS_LIMIT
+      (limit + 3).times do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      expect(Incident.where(affected_service: 'file-service').count).to eq(limit)
+      expect(DevinSessionService).to have_received(:create_session).exactly(limit).times
+      expect(response.parsed_body['incidents'].first['reason']).to eq('duplicate')
+    end
+
+    it 'budgets dedup=false per service' do
+      described_class::DEDUP_BYPASS_LIMIT.times do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false', affected_service: 'auth-service' })] }
+      expect(Incident.where(affected_service: 'auth-service').count).to eq(1)
+    end
+
+    it 'restores the dedup=false budget once the window passes' do
+      described_class::DEDUP_BYPASS_LIMIT.times do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      travel(described_class::DEDUP_BYPASS_WINDOW + 1.second) do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      expect(Incident.count).to eq(described_class::DEDUP_BYPASS_LIMIT + 1)
+    end
+
+    it 'serializes the budget check and insert under a per-service advisory lock' do
+      statements = []
+      callback = ->(*, payload) { statements << payload[:sql] }
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      lock_index = statements.index { |sql| sql.include?('pg_advisory_xact_lock') }
+      insert_index = statements.index { |sql| sql.start_with?('INSERT INTO "incidents"') }
+      expect(lock_index).not_to be_nil
+      expect(lock_index).to be < insert_index
     end
 
     it 'rejects payloads without an alerts array' do
