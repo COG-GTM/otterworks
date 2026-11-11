@@ -280,8 +280,16 @@ tenant_irsa_policy() {
 # Create the tenant's DynamoDB table <shared>-t-<id> with the shared table's
 # key schema and indexes, so the services see the shape they expect.
 clone_ddb_table() {
-  local src="$1" dst="$2" id="$3" desc input ttl
-  aws dynamodb describe-table --table-name "${dst}" --region "${AWS_REGION}" >/dev/null 2>&1 && return 0
+  local src="$1" dst="$2" id="$3" desc input ttl status
+  status="$(aws dynamodb describe-table --table-name "${dst}" --region "${AWS_REGION}" \
+    --query 'Table.TableStatus' --output text 2>/dev/null || true)"
+  case "${status}" in
+    "") ;;
+    # A teardown moments ago (id checked out again) leaves the table DELETING;
+    # wait it out rather than adopt a table that is about to vanish.
+    DELETING) aws dynamodb wait table-not-exists --table-name "${dst}" --region "${AWS_REGION}" || return 1 ;;
+    *) aws dynamodb wait table-exists --table-name "${dst}" --region "${AWS_REGION}"; return $? ;;
+  esac
   desc="$(aws dynamodb describe-table --table-name "${src}" --region "${AWS_REGION}" --output json)" || return 1
   input="$(printf '%s' "${desc}" | jq --arg n "${dst}" --arg id "$(sanitize_id "${id}")" '
     def idx: [.[] | {IndexName, KeySchema, Projection}];
