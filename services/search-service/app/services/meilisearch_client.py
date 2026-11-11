@@ -176,7 +176,7 @@ class MeiliSearchService:
                 result = index.search(query, search_params)
             except meilisearch.errors.MeilisearchApiError as exc:
                 logger.warning("search_filter_error", index=index_name, error=str(exc))
-                raise ValueError(f"Invalid search filter: {exc}") from exc
+                raise ValueError("Invalid search request") from exc
             total += result["estimatedTotalHits"]
             for hit in result["hits"]:
                 all_hits.append(self._parse_hit(hit, index_name))

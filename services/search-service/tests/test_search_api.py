@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from unittest.mock import MagicMock
+
+from meilisearch.errors import MeilisearchApiError
+
 
 class TestSearchEndpoint:
     """Tests for GET /api/v1/search/."""
@@ -70,6 +75,47 @@ class TestSearchEndpoint:
         """Search with non-numeric page returns 400."""
         response = client.get("/api/v1/search/?q=test&page=not-a-number")
         assert response.status_code == 400
+
+    def test_search_meilisearch_error_not_disclosed(self, client, mock_meilisearch_client):
+        """A MeiliSearch API error yields a generic 400 without backend details."""
+        meili_response = MagicMock()
+        meili_response.status_code = 400
+        meili_response.text = json.dumps(
+            {
+                "message": "Attribute `secret_attr` is not filterable on index `otterworks-internal`.",
+                "code": "invalid_search_filter",
+                "type": "invalid_request",
+                "link": "https://docs.meilisearch.com/errors#invalid_search_filter",
+            }
+        )
+        mock_index = mock_meilisearch_client.index.return_value
+        mock_index.search.side_effect = MeilisearchApiError("boom", meili_response)
+
+        response = client.get("/api/v1/search/?q=test")
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "Invalid search request"}
+        body = response.get_data(as_text=True)
+        for leaked in ("secret_attr", "otterworks-internal", "invalid_search_filter", "meilisearch"):
+            assert leaked not in body
+
+    def test_search_page_beyond_max_total_hits(self, client, mock_meilisearch_client):
+        """Pages past MeiliSearch's maxTotalHits are rejected before querying."""
+        response = client.get("/api/v1/search/?q=test&page=1000000000000000000000000000")
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "Invalid page or size parameter"}
+        mock_meilisearch_client.index.return_value.search.assert_not_called()
+
+    def test_search_last_allowed_page(self, client, mock_meilisearch_client):
+        """A final partial page that starts within maxTotalHits is still served."""
+        response = client.get("/api/v1/search/?q=test&page=11&size=99")
+        assert response.status_code == 200
+
+    def test_search_page_starting_at_max_total_hits(self, client, mock_meilisearch_client):
+        """A page whose offset reaches maxTotalHits is rejected."""
+        response = client.get("/api/v1/search/?q=test&page=51&size=20")
+        assert response.status_code == 400
+        mock_meilisearch_client.index.return_value.search.assert_not_called()
 
 
 class TestSuggestEndpoint:
