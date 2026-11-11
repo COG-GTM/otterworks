@@ -37,9 +37,9 @@ object MetricsAggregator:
   /** Clamp a caller-supplied top-content limit into `[0, MaxTopContentLimit]`. */
   def boundedTopContentLimit(limit: Int): Int = Math.max(0, Math.min(limit, MaxTopContentLimit))
 
-  private val ByteCount = "[+-]?[0-9]{1,19}".r
+  private val ByteCount = "[+-]?0*[0-9]{1,19}".r
 
-  /** A `bytes` metadata value as a Long: ASCII decimal digits only, otherwise 0. */
+  /** A `bytes` metadata value as a Long: ASCII decimal digits (leading zeros allowed), otherwise 0. */
   def parseBytes(raw: String): Long =
     if ByteCount.matches(raw) then raw.toLongOption.getOrElse(0L) else 0L
 

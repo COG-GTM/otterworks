@@ -70,7 +70,8 @@ class PostgresMetricsRepository(db: AnalyticsDb)(using ec: ExecutionContext) ext
   private def wrappedSum(total: BigDecimal): Long = total.bigDecimal.toBigInteger.longValue
 
   // `\u0000` is valid JSON text but rejected by jsonb; it can never be part of a byte count.
-  private val MetadataBytes = """(replace(metadata, '\u0000', '\ufffd')::jsonb ->> 'bytes')"""
+  private val MetadataBytes =
+    """regexp_replace(replace(metadata, '\u0000', '\ufffd')::jsonb ->> 'bytes', '^([+-]?)0*([0-9]{1,19})$', '\1\2')"""
 
   /** `metadata.bytes` as a BIGINT, or 0 when absent or invalid — the SQL equivalent of [[MetricsAggregator.parseBytes]]. */
   private val BytesExpr =
