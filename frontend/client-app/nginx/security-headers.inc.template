@@ -1,0 +1,15 @@
+# Baseline browser security headers for every web-app response.
+#
+# nginx drops inherited add_header directives in any block that declares its
+# own, so every location that uses add_header must include this file again.
+# Rendered by the nginx entrypoint's envsubst into /etc/nginx/conf.d/ (the .inc
+# suffix keeps it out of the http-level conf.d/*.conf glob).
+#
+# CSP_STORAGE_ORIGINS: origins serving presigned file URLs (previews, downloads).
+# CSP_COLLAB_ORIGINS:  WebSocket origins of the collaborative editor.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: ${CSP_STORAGE_ORIGINS}; media-src 'self' blob: ${CSP_STORAGE_ORIGINS}; font-src 'self' data:; connect-src 'self' ${CSP_STORAGE_ORIGINS} ${CSP_COLLAB_ORIGINS}; frame-src 'self' ${CSP_STORAGE_ORIGINS}; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+add_header X-Frame-Options "DENY" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+# Empty unless the request arrived over TLS, in which case nginx omits it.
+add_header Strict-Transport-Security $hsts_header always;
