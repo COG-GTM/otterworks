@@ -21,22 +21,20 @@ export interface CsrfRejection {
 }
 
 /**
- * Origins allowed to make state-changing requests. DASHBOARD_ORIGIN
- * (comma-separated, e.g. https://ops.otterworks.app) pins them explicitly;
- * unset falls back to the request's own Host, which a browser always sets to
- * the dashboard and a cross-origin page cannot override.
+ * The request's own Host is always an allowed origin: a browser sets Host to
+ * the URL it is talking to, which a cross-origin page cannot override, and it
+ * covers access via kubectl port-forward (http://localhost:<port>).
+ * DASHBOARD_ORIGIN (comma-separated, e.g. https://ops.otterworks.app) adds
+ * origins explicitly, for proxies that rewrite Host.
  */
-function allowedOrigins(headers: Headers): Set<string> | null {
-  const raw = process.env.DASHBOARD_ORIGIN;
-  if (raw && raw.trim()) {
-    return new Set(
-      raw
-        .split(",")
-        .map((s) => s.trim().replace(/\/+$/, "").toLowerCase())
-        .filter(Boolean),
-    );
-  }
-  return headers.get("host") ? null : new Set();
+function explicitOrigins(): Set<string> {
+  const raw = process.env.DASHBOARD_ORIGIN || "";
+  return new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim().replace(/\/+$/, "").toLowerCase())
+      .filter(Boolean),
+  );
 }
 
 function originAllowed(origin: string, headers: Headers): boolean {
@@ -47,9 +45,9 @@ function originAllowed(origin: string, headers: Headers): boolean {
     return false; // includes the opaque "null" origin
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-  const allowed = allowedOrigins(headers);
-  if (allowed) return allowed.has(parsed.origin.toLowerCase());
-  return parsed.host.toLowerCase() === (headers.get("host") || "").toLowerCase();
+  const host = (headers.get("host") || "").toLowerCase();
+  if (host && parsed.host.toLowerCase() === host) return true;
+  return explicitOrigins().has(parsed.origin.toLowerCase());
 }
 
 function isJson(contentType: string | null): boolean {

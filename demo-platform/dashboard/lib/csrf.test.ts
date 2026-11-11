@@ -78,18 +78,24 @@ describe("csrfRejection", () => {
     expect(csrfRejection(req("POST", { "content-type": "application/json" }))).toBeNull();
   });
 
-  it("pins allowed origins to DASHBOARD_ORIGIN when set", () => {
-    process.env.DASHBOARD_ORIGIN = "https://ops.otterworks.app/, http://localhost:3000";
+  it("adds DASHBOARD_ORIGIN origins without dropping the request's own Host", () => {
+    process.env.DASHBOARD_ORIGIN = "https://ops.otterworks.app/, https://ops-alt.otterworks.app";
     expect(csrfRejection(req("POST", browserSameOrigin))).toBeNull();
-    expect(
-      csrfRejection(req("POST", { ...browserSameOrigin, origin: "http://localhost:3000" })),
-    ).toBeNull();
-    // Host alone no longer decides: a matching Host with an unlisted origin is refused.
+    // Listed origin behind a proxy that rewrote Host.
     expect(
       csrfRejection({
         method: "POST",
-        headers: new Headers({ ...browserSameOrigin, host: "evil.example", origin: "https://evil.example" }),
-      })?.status,
-    ).toBe(403);
+        headers: new Headers({ ...browserSameOrigin, host: "dashboard:3000", origin: "https://ops-alt.otterworks.app" }),
+      }),
+    ).toBeNull();
+    // kubectl port-forward: the browser's Origin matches the Host it is talking to.
+    expect(
+      csrfRejection({
+        method: "POST",
+        headers: new Headers({ ...browserSameOrigin, host: "localhost:3000", origin: "http://localhost:3000" }),
+      }),
+    ).toBeNull();
+    // A tenant page is still refused.
+    expect(csrfRejection(req("POST", { ...browserSameOrigin, origin: TENANT }))?.status).toBe(403);
   });
 });
