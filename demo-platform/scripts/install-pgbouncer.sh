@@ -61,17 +61,32 @@ kubectl create namespace "${NS}" --dry-run=client -o yaml | kubectl apply -f -
 # not lock every tenant out. Built with jq from the environment and applied on
 # stdin, so no password lands in a file, an argv, or the shell history.
 log "writing userlist Secret (credential stays on stdin)..."
-existing="$(kubectl -n "${NS}" get secret pgbouncer-auth -o json 2>/dev/null \
-  | jq -r '.data["userlist.txt"] // empty | @base64d' 2>/dev/null || true)"
-# shellcheck disable=SC2016  # jq program
-PGB_EXISTING="${existing}" PGB_USER="${DB_USER}" PGB_PASSWORD="${DB_PASSWORD}" jq -n --arg ns "${NS}" '
-  ($ENV.PGB_EXISTING | split("\n")
-     | map(select(length > 0 and (startswith("\"" + $ENV.PGB_USER + "\" ") | not)))) as $tenants
-  | {
-      apiVersion: "v1", kind: "Secret", type: "Opaque",
-      metadata: { name: "pgbouncer-auth", namespace: $ns, labels: { app: "pgbouncer" } },
-      stringData: { "userlist.txt": ((["\"" + $ENV.PGB_USER + "\" \"" + $ENV.PGB_PASSWORD + "\""] + $tenants) | join("\n") + "\n") }
-    }' | kubectl apply -f - >/dev/null
+# Read-modify-replace keyed on resourceVersion: a tenant deploy adding its
+# login between our read and write makes the replace fail and retry, instead of
+# being silently overwritten. Dropping the last-applied annotation also drops
+# the plaintext copy of the master password kubectl apply used to leave there.
+# shellcheck disable=SC2016  # jq programs
+PGB_MERGE='
+  .data["userlist.txt"] |= (
+    (. // "" | @base64d) | split("\n")
+    | map(select(length > 0 and (startswith("\"" + $ENV.PGB_USER + "\" ") | not)))
+    | (["\"" + $ENV.PGB_USER + "\" \"" + $ENV.PGB_PASSWORD + "\""] + .)
+    | join("\n") + "\n" | @base64)
+  | .metadata.labels.app = "pgbouncer"
+  | del(.metadata.managedFields, .metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"])'
+written=false
+for attempt in 1 2 3 4 5; do
+  current="$(kubectl -n "${NS}" get secret pgbouncer-auth -o json 2>/dev/null || true)"
+  [ -n "${current}" ] || current="$(jq -n --arg ns "${NS}" \
+    '{apiVersion: "v1", kind: "Secret", type: "Opaque", metadata: {name: "pgbouncer-auth", namespace: $ns}, data: {}}')"
+  if printf '%s' "${current}" | PGB_USER="${DB_USER}" PGB_PASSWORD="${DB_PASSWORD}" jq "${PGB_MERGE}" \
+       | if printf '%s' "${current}" | jq -e '.metadata.resourceVersion' >/dev/null; then
+           kubectl replace -f - >/dev/null; else kubectl create -f - >/dev/null; fi; then
+    written=true; break
+  fi
+  sleep "$((attempt * 2))"
+done
+[ "${written}" = true ] || { echo "ERROR: could not write the pgbouncer-auth Secret" >&2; exit 1; }
 
 # PgBouncer reads its config only at startup (the userlist is re-read on RELOAD,
 # which deploy-tenant.sh issues after adding a tenant), and a ConfigMap
