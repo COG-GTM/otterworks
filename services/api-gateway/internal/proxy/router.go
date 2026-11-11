@@ -68,6 +68,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
+			preserveRawQuery(pr, target)
 			preserveForwardedHeaders(pr)
 			setIdentityHeaders(pr.Out)
 		},
@@ -111,6 +112,24 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				"reason":  "circuit breaker open",
 			})
 		}
+	}
+}
+
+// preserveRawQuery undoes Rewrite's removal of unparsable query parameters
+// (e.g. "q=red;blue"), forwarding the query verbatim as the Director-based
+// proxy did. The gateway never parses the form, so nothing it checked differs
+// from what the backend receives.
+func preserveRawQuery(pr *httputil.ProxyRequest, target *url.URL) {
+	if pr.In.Form != nil {
+		return
+	}
+	switch {
+	case target.RawQuery == "":
+		pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	case pr.In.URL.RawQuery == "":
+		pr.Out.URL.RawQuery = target.RawQuery
+	default:
+		pr.Out.URL.RawQuery = target.RawQuery + "&" + pr.In.URL.RawQuery
 	}
 }
 

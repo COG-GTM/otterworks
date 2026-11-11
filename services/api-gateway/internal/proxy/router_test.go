@@ -155,7 +155,7 @@ func TestProxyPreservesHostAndForwardingHeaders(t *testing.T) {
 		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "http://api.otterworks.test/api/v1/files/list?page=2", nil)
+	req := httptest.NewRequest(http.MethodGet, "http://api.otterworks.test/api/v1/files/list?q=red;blue&page=2", nil)
 	req.RemoteAddr = "10.0.0.7:5555"
 	req.Header.Set("Authorization", "Bearer "+tokenStr)
 	req.Header.Set("X-Forwarded-For", "203.0.113.9")
@@ -170,5 +170,5 @@ func TestProxyPreservesHostAndForwardingHeaders(t *testing.T) {
 	assert.Equal(t, "https", gotXFProto)
 	assert.Equal(t, "app.otterworks.test", gotXFHost)
 	assert.Equal(t, "/api/v1/files/list", gotPath)
-	assert.Equal(t, "page=2", gotQuery)
+	assert.Equal(t, "q=red;blue&page=2", gotQuery, "query must be forwarded verbatim")
 }
