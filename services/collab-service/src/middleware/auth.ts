@@ -24,6 +24,19 @@ interface JwtPayload {
   exp?: number;
 }
 
+export function verifyAccessToken(token: string, jwtSecret: string): AuthenticatedUser {
+  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  if (!decoded.sub) {
+    throw new Error('Token has no subject');
+  }
+  return {
+    userId: decoded.sub,
+    email: decoded.email || '',
+    displayName: decoded.name || decoded.display_name || 'Anonymous',
+    roles: decoded.roles || [],
+  };
+}
+
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
   return (socket: Socket, next: (err?: ExtendedError) => void): void => {
     const token =
@@ -37,17 +50,11 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
-
-      (socket as AuthenticatedSocket).user = {
-        userId: decoded.sub,
-        email: decoded.email || '',
-        displayName: decoded.name || decoded.display_name || 'Anonymous',
-        roles: decoded.roles || [],
-      };
+      const user = verifyAccessToken(token, jwtSecret);
+      (socket as AuthenticatedSocket).user = user;
 
       logger.debug(
-        { socketId: socket.id, userId: decoded.sub },
+        { socketId: socket.id, userId: user.userId },
         'connection_authenticated',
       );
       next();
