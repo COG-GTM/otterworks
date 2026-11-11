@@ -20,7 +20,8 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
 - `POST /api/tenants/checkout` `{ id?, branch, owner, tier?, ttl?, image_tag?, persistent? }` →
   atomic lock (409 if taken), upsert `TENANT#`, enqueue a **deploy runner Job**, status
   `deploying`. Returns the `Tenant`. `ttl: "never"` and `persistent: true` mean the same thing
-  and are accepted only for an id in `PERPETUAL_TENANT_IDS` (403 otherwise).
+  and are accepted only for an id in `PERPETUAL_TENANT_IDS` (403 otherwise). `branch` must be
+  `workshop-<id>` or `demo-<id>` (`main` only for a perpetual id); 400 otherwise.
 - `POST /api/tenants/:id/redeploy` `{ branch?, image_tag? }` → enqueue a **deploy runner Job**
   for a tenant that is already checked out. This is the CD entry point. Keeps the owner, the
   branch and the **remaining TTL** — a push must never extend an environment's life. 409 if the

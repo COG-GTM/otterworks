@@ -3,7 +3,14 @@ import { withSession, json, error } from "@/lib/api";
 import { appendAudit, checkout } from "@/lib/control";
 import { createRunnerJob } from "@/lib/jobs";
 import { env } from "@/lib/env";
-import { isNeverTtl, isValidId, randomIdSuffix, sanitizeId, ttlToSeconds } from "@/lib/util";
+import {
+  isNeverTtl,
+  isTenantBranch,
+  isValidId,
+  randomIdSuffix,
+  sanitizeId,
+  ttlToSeconds,
+} from "@/lib/util";
 import type { CheckoutRequest, TenantTier } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -19,6 +26,9 @@ export const POST = withSession(async (req: NextRequest, { actor }) => {
   const owner = typeof body.owner === "string" && body.owner.trim() ? body.owner.trim() : actor;
   const branch =
     typeof body.branch === "string" && body.branch.trim() ? body.branch.trim() : `workshop-${id}`;
+  if (!isTenantBranch(branch, id, env.perpetualTenantIds.has(id))) {
+    return error(400, `branch must be workshop-${id} or demo-${id}`);
+  }
   const tier: TenantTier = body.tier === "B" ? "B" : "A";
   const imageTag = typeof body.image_tag === "string" && body.image_tag ? body.image_tag : undefined;
 

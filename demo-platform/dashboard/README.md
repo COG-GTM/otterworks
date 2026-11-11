@@ -42,7 +42,9 @@ Mutating actions never touch AWS/k8s from the web pod's request path beyond crea
 Kubernetes Job. Each Job (`deploy-<id>-<epoch>`, `teardown-<id>-<epoch>`, `inject-bug-<id>-<epoch>`)
 runs the repo's `scripts/deploy-tenant.sh` / `teardown-tenant.sh` / `inject-bug.sh` from the
 `RUNNER_IMAGE`, carrying `CONTROL_TABLE` / `TENANT_ID` / `TENANT_BRANCH` etc. as env. Secrets
-are referenced via `secretKeyRef` (never placed on argv).
+are referenced via `secretKeyRef` (never placed on argv). The runner only executes the scripts
+bundled in its image; `TENANT_BRANCH` must be `workshop-<id>` / `demo-<id>` (or `main` for a
+perpetual tenant) and only selects which CI-built images to deploy.
 
 ## Docker
 
