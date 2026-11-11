@@ -13,11 +13,15 @@ import (
 
 type jwtClaimsKey struct{}
 
+// RefreshTokenPath is the only route that accepts a refresh token as its bearer credential.
+const RefreshTokenPath = "/api/v1/auth/refresh"
+
 // JWTClaims represents the claims extracted from a validated JWT.
 type JWTClaims struct {
 	UserID string   `json:"user_id,omitempty"`
 	Email  string   `json:"email,omitempty"`
 	Roles  []string `json:"roles,omitempty"`
+	Type   string   `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -74,6 +78,10 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 			claims, err := validateToken(tokenStr, cfg.Secret)
 			if err != nil {
 				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+				return
+			}
+			if claims.Type == "refresh" && r.URL.Path != RefreshTokenPath {
+				writeJSONError(w, http.StatusUnauthorized, "refresh token cannot be used as access token")
 				return
 			}
 
