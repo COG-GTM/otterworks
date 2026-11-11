@@ -10,6 +10,11 @@ ENV_FILE="${1:-.env}"
 
 umask 077
 touch "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+# Appends below must start on their own line.
+if [ -s "$ENV_FILE" ] && [ -n "$(tail -c1 "$ENV_FILE")" ]; then
+  echo >>"$ENV_FILE"
+fi
 
 ensure() {
   local name="$1" bytes="$2"
