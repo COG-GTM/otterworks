@@ -14,11 +14,34 @@ import java.time.Instant
  * S3 + Apache Iceberg lakehouse: the "before" (this durable store) and the
  * "after" (the lakehouse) must agree on every summary below.
  *
- * Events are expected in insertion order (oldest first); callers that read
- * from a database MUST return rows ordered by their monotonic insertion id so
- * that group-wise "first seen" semantics match the in-memory list.
+ * Events are expected in insertion order (oldest first). The PostgreSQL store
+ * computes the same results in SQL; it reproduces the "first seen" and
+ * tie-breaking semantics here by ordering on the monotonic insertion id.
+ *
+ * Response sizes are bounded: top-content `limit` is clamped to
+ * [[MaxTopContentLimit]], active-users lists at most [[MaxActiveUsers]] users
+ * (`count` still reports the total), and exports return at most
+ * [[MaxExportRows]] rows (newest first) from a window of at most 90 days.
  */
 object MetricsAggregator:
+
+  /** Upper bound on `limit` for top-content listings. */
+  val MaxTopContentLimit: Int = 100
+  /** Upper bound on the number of users listed by active-users. */
+  val MaxActiveUsers: Int = 1000
+  /** Upper bound on the number of rows returned by a single export. */
+  val MaxExportRows: Int = 10000
+  /** Number of recent events included in a user activity feed. */
+  val RecentEventsLimit: Int = 20
+
+  /** Clamp a caller-supplied top-content limit into `[0, MaxTopContentLimit]`. */
+  def boundedTopContentLimit(limit: Int): Int = Math.max(0, Math.min(limit, MaxTopContentLimit))
+
+  /** Resource types included in a top-content listing for the given content type. */
+  def topContentResourceTypes(contentType: String): Set[String] = contentType match
+    case "documents" => Set("document")
+    case "files"     => Set("file")
+    case _           => Set("document", "file")
 
   def dashboardSummary(events: Seq[AnalyticsEvent], period: String): DashboardSummary =
     val cutoff = periodToCutoff(period)
@@ -40,7 +63,7 @@ object MetricsAggregator:
 
   def userActivity(events: Seq[AnalyticsEvent], userId: String): UserActivity =
     val userEvents = events.filter(_.userId == userId)
-    val recent = userEvents.sortBy(_.timestamp)(using Ordering[Instant].reverse).take(20)
+    val recent = userEvents.sortBy(_.timestamp)(using Ordering[Instant].reverse).take(RecentEventsLimit)
     UserActivity(
       userId = userId,
       totalEvents = userEvents.size.toLong,
@@ -78,27 +101,28 @@ object MetricsAggregator:
 
   def topContent(events: Seq[AnalyticsEvent], contentType: String, period: String, limit: Int): TopContentResponse =
     val cutoff = periodToCutoff(period)
-    val resourceTypeFilter = contentType match
-      case "documents" => Set("document")
-      case "files"     => Set("file")
-      case _           => Set("document", "file")
+    val resourceTypeFilter = topContentResourceTypes(contentType)
 
-    val filtered = events
-      .filter(e => e.timestamp.isAfter(cutoff) && resourceTypeFilter.contains(e.resourceType))
+    val filtered = events.zipWithIndex
+      .filter { case (e, _) => e.timestamp.isAfter(cutoff) && resourceTypeFilter.contains(e.resourceType) }
 
-    val grouped = filtered.groupBy(_.resourceId)
+    // Ties on eventCount are broken by first appearance so the ordering is deterministic.
+    val grouped = filtered.groupBy(_._1.resourceId)
     val items = grouped.toList
-      .map { case (resourceId, resourceEvents) =>
-        ContentItem(
+      .map { case (resourceId, indexed) =>
+        val resourceEvents = indexed.map(_._1)
+        val item = ContentItem(
           resourceId = resourceId,
           resourceType = resourceEvents.head.resourceType,
           title = resourceEvents.head.metadata.getOrElse("title", resourceId),
           eventCount = resourceEvents.size.toLong,
           uniqueUsers = resourceEvents.map(_.userId).distinct.size.toLong
         )
+        (item, indexed.head._2)
       }
-      .sortBy(-_.eventCount)
-      .take(limit)
+      .sortBy { case (item, firstIndex) => (-item.eventCount, firstIndex) }
+      .map(_._1)
+      .take(boundedTopContentLimit(limit))
 
     TopContentResponse(
       period = period,
@@ -108,22 +132,25 @@ object MetricsAggregator:
 
   def activeUsers(events: Seq[AnalyticsEvent], period: String): ActiveUsersResponse =
     val cutoff = periodToCutoff(period)
-    val filtered = events.filter(_.timestamp.isAfter(cutoff))
-    val grouped = filtered.groupBy(_.userId)
+    val filtered = events.zipWithIndex.filter(_._1.timestamp.isAfter(cutoff))
+    val grouped = filtered.groupBy(_._1.userId)
     val users = grouped.toList
-      .map { case (userId, userEvents) =>
-        ActiveUser(
+      .map { case (userId, indexed) =>
+        val userEvents = indexed.map(_._1)
+        val user = ActiveUser(
           userId = userId,
           eventCount = userEvents.size.toLong,
           lastActiveAt = userEvents.maxBy(_.timestamp).timestamp.toString
         )
+        (user, indexed.head._2)
       }
-      .sortBy(-_.eventCount)
+      .sortBy { case (user, firstIndex) => (-user.eventCount, firstIndex) }
+      .map(_._1)
 
     ActiveUsersResponse(
       period = period,
       count = users.size.toLong,
-      users = users
+      users = users.take(MaxActiveUsers)
     )
 
   def storageUsage(events: Seq[AnalyticsEvent], userId: Option[String]): StorageUsageResponse =
@@ -164,6 +191,7 @@ object MetricsAggregator:
     events
       .filter(_.timestamp.isAfter(cutoff))
       .sortBy(_.timestamp)(using Ordering[Instant].reverse)
+      .take(MaxExportRows)
       .map { e =>
         Map(
           "event_id" -> e.eventId,

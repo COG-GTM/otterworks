@@ -161,3 +161,66 @@ class PostgresMetricsRepositorySpec extends AnyFlatSpec with Matchers with Scala
     val pg2 = new PostgresMetricsRepository(database)
     pg2.getEventCount.futureValue shouldBe before
   }
+
+  it should "reconcile with the in-memory store for out-of-window events, ties and odd byte counts" in {
+    val database = requireDb()
+    val pg = new PostgresMetricsRepository(database)
+    val old = Instant.now().truncatedTo(ChronoUnit.MICROS).minus(200, ChronoUnit.DAYS)
+    val extra = List(
+      AnalyticsEvent("x01", EventType.DocumentViewed, "user-9", "doc-9", "document", Map("title" -> "Old"), old),
+      AnalyticsEvent("x02", EventType.StorageAllocated, "user-9", "file-9", "file", Map("bytes" -> "4096"), old),
+      AnalyticsEvent("x03", EventType.StorageAllocated, "user-1", "file-3", "file", Map("bytes" -> "abc"), at(13)),
+      AnalyticsEvent("x04", EventType.StorageAllocated, "user-1", "doc-1", "document", Map("bytes" -> "+7"), at(14)),
+      AnalyticsEvent("x05", EventType.StorageReleased, "user-2", "file-2", "file", Map("bytes" -> "99999999999999999999"), at(15)),
+      AnalyticsEvent("x06", EventType.StorageAllocated, "user-3", "file-4", "file", Map.empty, at(16)),
+      AnalyticsEvent("x07", EventType.FileDownloaded, "user-2", "file-2", "file", Map.empty, at(17)),
+      AnalyticsEvent("x08", EventType.FileDownloaded, "user-3", "file-2", "file", Map.empty, at(17))
+    )
+    val events = seed ++ extra
+    events.foreach(e => Await.result(pg.storeEvent(e), 10.seconds))
+    val mem = new InMemoryMetricsRepository(PostgresConfig("", "", "", 1))
+    events.foreach(e => Await.result(mem.storeEvent(e), 10.seconds))
+
+    for period <- List("7d", "30d", "90d", "daily", "weekly", "monthly", "bogus") do
+      pg.getDashboardSummary(period).futureValue shouldBe mem.getDashboardSummary(period).futureValue
+      pg.getActiveUsers(period).futureValue shouldBe mem.getActiveUsers(period).futureValue
+      pg.getExportData(period).futureValue shouldBe mem.getExportData(period).futureValue
+      for ct <- List("documents", "files", "all"); limit <- List(-1, 0, 1, 2, 10, 1000) do
+        pg.getTopContent(ct, period, limit).futureValue shouldBe mem.getTopContent(ct, period, limit).futureValue
+
+    for user <- List("user-1", "user-2", "user-3", "user-9") do
+      pg.getUserActivity(user).futureValue shouldBe mem.getUserActivity(user).futureValue
+      pg.getStorageUsage(Some(user)).futureValue shouldBe mem.getStorageUsage(Some(user)).futureValue
+    pg.getStorageUsage(None).futureValue shouldBe mem.getStorageUsage(None).futureValue
+    for doc <- List("doc-1", "doc-9", "file-2") do
+      pg.getDocumentStats(doc).futureValue shouldBe mem.getDocumentStats(doc).futureValue
+
+    pg.getDashboardSummary("90d").futureValue.totalEvents shouldBe (events.size - 2).toLong
+  }
+
+  it should "bound the size of export, top-content and active-users responses" in {
+    val database = requireDb()
+    val pg = new PostgresMetricsRepository(database)
+    val rows = MetricsAggregator.MaxExportRows + 50
+    val recent = (Instant.now().minusSeconds(60).getEpochSecond) * 1000000000L
+    Await.result(
+      database.database.run(
+        sqlu"""INSERT INTO analytics_events
+                 (event_id, event_type, user_id, resource_id, resource_type, metadata, occurred_at)
+               SELECT 'bulk-' || g, ${EventType.DocumentViewed}, 'user-' || g, 'doc-' || g, 'document', '{}',
+                      ${recent} + g
+               FROM generate_series(1, ${rows}) AS g"""
+      ),
+      60.seconds
+    )
+
+    val exported = pg.getExportData("7d").futureValue
+    exported.size shouldBe MetricsAggregator.MaxExportRows
+    exported.head("event_id") shouldBe s"bulk-$rows"
+
+    pg.getTopContent("documents", "7d", Int.MaxValue).futureValue.items.size shouldBe MetricsAggregator.MaxTopContentLimit
+
+    val active = pg.getActiveUsers("7d").futureValue
+    active.count shouldBe rows.toLong
+    active.users.size shouldBe MetricsAggregator.MaxActiveUsers
+  }
