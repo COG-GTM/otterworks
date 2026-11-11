@@ -7,13 +7,22 @@ import os
 import redis as redis_lib
 import structlog
 from flask import Blueprint, current_app, jsonify, request
+from flask.wrappers import Request
 
 from app.api.health import SEARCH_COUNT
-from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
+from app.services.meilisearch_client import (
+    MAX_QUERY_LENGTH,
+    MeiliSearchService,
+    get_search_analytics,
+)
 
 logger = structlog.get_logger()
 
 search_bp = Blueprint("search", __name__)
+
+MAX_SEARCH_BODY_BYTES = 64 * 1024
+MAX_TAGS = 50
+MAX_TAG_LENGTH = 128
 
 _redis_client: redis_lib.Redis | None = None
 
@@ -34,6 +43,44 @@ def _chaos_active(key: str) -> bool:
         return bool(_get_redis().exists(key))
     except Exception:
         return False
+
+
+class SearchRequest(Request):
+    """Request class that caps body size for search endpoints.
+
+    Applies to streamed (chunked) bodies too, which carry no Content-Length.
+    """
+
+    @property
+    def max_content_length(self) -> int | None:  # type: ignore[override]
+        if self.blueprint == search_bp.name:
+            return MAX_SEARCH_BODY_BYTES
+        return super().max_content_length
+
+
+@search_bp.before_request
+def _limit_request_body() -> tuple | None:
+    """Reject oversized search request bodies before they are parsed."""
+    if request.content_length is not None and request.content_length > MAX_SEARCH_BODY_BYTES:
+        return jsonify({"error": "Request body too large"}), 413
+    return None
+
+
+def _query_too_long_error() -> tuple:
+    return jsonify({"error": f"Query parameter 'q' must be at most {MAX_QUERY_LENGTH} characters"}), 400
+
+
+def _validate_tags(tags: object) -> str | None:
+    """Return an error message if ``tags`` is not a bounded list of strings."""
+    if tags is None:
+        return None
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+        return "'tags' must be a list of strings"
+    if len(tags) > MAX_TAGS:
+        return f"'tags' must contain at most {MAX_TAGS} items"
+    if any(len(t) > MAX_TAG_LENGTH for t in tags):
+        return f"Each tag must be at most {MAX_TAG_LENGTH} characters"
+    return None
 
 
 def _get_service() -> MeiliSearchService:
@@ -60,6 +107,8 @@ def search_documents() -> tuple:
 
     if not query:
         return jsonify({"error": "Query parameter 'q' is required"}), 400
+    if len(query) > MAX_QUERY_LENGTH:
+        return _query_too_long_error()
 
     try:
         service = _get_service()
@@ -123,12 +172,23 @@ def advanced_search() -> tuple:
     JSON body: {q, type, tags, date_from, date_to, page, size}
     owner_id is always derived from X-User-ID for tenant isolation.
     """
-    data = request.get_json() or {}
+    data = request.get_json()
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
 
     query = data.get("q")
+    if query is not None and not isinstance(query, str):
+        return jsonify({"error": "Query parameter 'q' must be a string"}), 400
+    if query and len(query) > MAX_QUERY_LENGTH:
+        return _query_too_long_error()
     doc_type = data.get("type")
     owner_id = request.headers.get("X-User-ID", "").strip() or None
     tags = data.get("tags")
+    tags_error = _validate_tags(tags)
+    if tags_error:
+        return jsonify({"error": tags_error}), 400
     date_from = data.get("date_from")
     date_to = data.get("date_to")
     try:

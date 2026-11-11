@@ -12,7 +12,7 @@ from flask_cors import CORS
 
 from app.api.health import REQUEST_COUNT, REQUEST_LATENCY, health_bp
 from app.api.index import index_bp
-from app.api.search import search_bp
+from app.api.search import SearchRequest, search_bp
 from app.config import AppConfig
 from app.middleware.auth import require_auth
 from app.services.meilisearch_client import MeiliSearchService
@@ -56,6 +56,7 @@ def create_app(config: AppConfig | None = None) -> Flask:
     configure_logging(config.log_level)
 
     app = Flask(__name__)
+    app.request_class = SearchRequest
     CORS(app, origins=["http://localhost:3000", "http://localhost:4200"])
 
     # Store config on the app

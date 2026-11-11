@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from typing import Any
 
 import meilisearch
@@ -17,27 +18,34 @@ logger = structlog.get_logger()
 FILES_INDEX = "files"
 DOCUMENTS_INDEX = "documents"
 
+MAX_ANALYTICS_ENTRIES = 10000
+MAX_QUERY_LENGTH = 512
+
 # In-memory analytics store
 _analytics_lock = threading.Lock()
 _search_analytics: dict[str, Any] = {
-    "queries": [],
+    "queries": deque(maxlen=MAX_ANALYTICS_ENTRIES),
     "total_searches": 0,
     "total_results": 0,
 }
 
-MAX_ANALYTICS_ENTRIES = 10000
-
 
 def record_search_analytics(query: str, result_count: int) -> None:
-    """Record a search query for analytics purposes."""
+    """Record a search query for analytics purposes.
+
+    Stored queries are truncated to ``MAX_QUERY_LENGTH`` characters so the
+    bounded store also has a bounded memory footprint.
+    """
     with _analytics_lock:
         _search_analytics["queries"].append(
-            {"query": query, "result_count": result_count, "timestamp": time.time()}
+            {
+                "query": str(query)[:MAX_QUERY_LENGTH],
+                "result_count": result_count,
+                "timestamp": time.time(),
+            }
         )
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
-        if len(_search_analytics["queries"]) > MAX_ANALYTICS_ENTRIES:
-            _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
 
 def get_search_analytics() -> AnalyticsData:
