@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+using OtterWorks.AuditService.Config;
 using OtterWorks.AuditService.Models;
 using OtterWorks.AuditService.Services;
 
@@ -67,15 +69,21 @@ public static class AuditController
         string? resource_type,
         DateTime? from,
         DateTime? to,
-        int? page,
+        string? cursor,
         int? size,
         IAuditService auditService)
     {
-        var pageNumber = page ?? 1;
         var pageSize = Math.Clamp(size ?? 20, 1, 100);
 
-        var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, pageNumber, pageSize);
-        return Results.Ok(result);
+        try
+        {
+            var result = await auditService.QueryEventsAsync(user_id, action, resource_type, resource, from, to, cursor, pageSize);
+            return Results.Ok(result);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     private static async Task<IResult> GetEvent(
@@ -117,7 +125,8 @@ public static class AuditController
         string? format,
         DateTime? from,
         DateTime? to,
-        IAuditService auditService)
+        IAuditService auditService,
+        IOptions<AuditQuerySettings> limits)
     {
         var exportFormat = format ?? "json";
         var exportFrom = from ?? DateTime.UtcNow.AddDays(-30);
@@ -128,6 +137,13 @@ public static class AuditController
         {
             return Results.BadRequest(new { error = "Format must be 'csv' or 'json'." });
         }
+
+        if (exportFrom > exportTo)
+            return Results.BadRequest(new { error = "'from' must not be later than 'to'." });
+
+        var maxDays = limits.Value.MaxExportRangeDays;
+        if ((exportTo - exportFrom).TotalDays > maxDays)
+            return Results.BadRequest(new { error = $"Export range must not exceed {maxDays} days." });
 
         var result = await auditService.ExportAsync(exportFrom, exportTo, exportFormat);
         return Results.Ok(result);

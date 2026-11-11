@@ -59,9 +59,28 @@ table_exists otterworks-file-metadata || awslocal dynamodb create-table \
 
 table_exists otterworks-audit-events || awslocal dynamodb create-table \
   --table-name otterworks-audit-events \
-  --attribute-definitions AttributeName=id,AttributeType=S \
+  --attribute-definitions \
+    AttributeName=id,AttributeType=S \
+    AttributeName=user_id,AttributeType=S \
+    AttributeName=timestamp,AttributeType=S \
+    AttributeName=date_partition,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH \
+  --global-secondary-indexes \
+    '[{"IndexName":"user-index","KeySchema":[{"AttributeName":"user_id","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"timestamp-index","KeySchema":[{"AttributeName":"date_partition","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' \
   --billing-mode PAY_PER_REQUEST
+
+# A persisted (pre-GSI) audit table is not recreated above; add any missing index.
+ensure_audit_gsi() {
+  local index="$1" hash="$2"
+  awslocal dynamodb describe-table --table-name otterworks-audit-events \
+    --query "Table.GlobalSecondaryIndexes[?IndexName=='${index}'].IndexName" --output text | grep -q "$index" && return 0
+  awslocal dynamodb update-table --table-name otterworks-audit-events \
+    --attribute-definitions AttributeName="$hash",AttributeType=S AttributeName=timestamp,AttributeType=S \
+    --global-secondary-index-updates \
+    "[{\"Create\":{\"IndexName\":\"${index}\",\"KeySchema\":[{\"AttributeName\":\"${hash}\",\"KeyType\":\"HASH\"},{\"AttributeName\":\"timestamp\",\"KeyType\":\"RANGE\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}}]"
+}
+ensure_audit_gsi user-index user_id
+ensure_audit_gsi timestamp-index date_partition
 
 table_exists otterworks-notifications || awslocal dynamodb create-table \
   --table-name otterworks-notifications \

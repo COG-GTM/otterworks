@@ -38,6 +38,10 @@ public class ReportDataFetcher {
 
     private static final Logger logger = LoggerFactory.getLogger(ReportDataFetcher.class);
 
+    private static final int AUDIT_PAGE_SIZE = 100;
+    private static final int AUDIT_MAX_PAGES = 20;
+    private static final int AUDIT_MAX_EVENTS = 1000;
+
     private final RestTemplate restTemplate;
     private final AppConfig appConfig;
 
@@ -107,18 +111,36 @@ public class ReportDataFetcher {
 
         try {
             return dataCache.get(cacheKey, () -> {
-                String url = appConfig.getAuditServiceUrl() + "/api/v1/audit/events"
+                String baseUrl = appConfig.getAuditServiceUrl() + "/api/v1/audit/events"
                         + "?from=" + ReportDateUtils.toIsoString(dateFrom)
-                        + "&to=" + ReportDateUtils.toIsoString(dateTo);
+                        + "&to=" + ReportDateUtils.toIsoString(dateTo)
+                        + "&size=" + AUDIT_PAGE_SIZE;
 
-                logger.info("Fetching audit data from: {}", url);
+                logger.info("Fetching audit data from: {}", baseUrl);
 
+                // Audit pages are cursor-based and may be empty while more data remains,
+                // so follow nextCursor (bounded) instead of reading only the first page.
                 // Let RestClientException propagate so fallback data is NOT cached.
-                ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-                if (response.getBody() != null && response.getBody().containsKey("events")) {
-                    return (List<Map<String, Object>>) response.getBody().get("events");
+                List<Map<String, Object>> events = new ArrayList<>();
+                String cursor = null;
+                for (int page = 0; page < AUDIT_MAX_PAGES && events.size() < AUDIT_MAX_EVENTS; page++) {
+                    String url = cursor == null ? baseUrl : baseUrl + "&cursor=" + cursor;
+                    ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+                    Map body = response.getBody();
+                    if (body == null) {
+                        break;
+                    }
+                    Object pageEvents = body.get("events");
+                    if (pageEvents instanceof List) {
+                        events.addAll((List<Map<String, Object>>) pageEvents);
+                    }
+                    Object next = body.get("nextCursor");
+                    cursor = next instanceof String && !((String) next).isEmpty() ? (String) next : null;
+                    if (cursor == null) {
+                        break;
+                    }
                 }
-                return Collections.emptyList();
+                return events.size() > AUDIT_MAX_EVENTS ? events.subList(0, AUDIT_MAX_EVENTS) : events;
             });
         } catch (ExecutionException e) {
             logger.error("Failed to fetch audit data, using sample data: {}", e.getMessage());

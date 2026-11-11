@@ -27,6 +27,7 @@ builder.Host.UseSerilog();
 // Configuration
 var awsSection = builder.Configuration.GetSection("Aws");
 builder.Services.Configure<AwsSettings>(awsSection);
+builder.Services.Configure<AuditQuerySettings>(builder.Configuration.GetSection("AuditQuery"));
 var awsSettings = awsSection.Get<AwsSettings>() ?? new AwsSettings();
 
 // AWS SDK clients
