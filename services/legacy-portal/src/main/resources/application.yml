@@ -19,6 +19,12 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
 
+# Every /api/** route requires an OtterWorks access token (Authorization: Bearer <jwt>) signed
+# with the platform's shared JWT_SECRET. The portal refuses to start without one.
+legacy-portal:
+  security:
+    jwt-secret: ${JWT_SECRET:}
+
 management:
   endpoints:
     web:

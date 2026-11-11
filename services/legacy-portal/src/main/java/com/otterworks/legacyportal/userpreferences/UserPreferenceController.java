@@ -1,8 +1,11 @@
 package com.otterworks.legacyportal.userpreferences;
 
+import com.otterworks.legacyportal.security.CurrentUser;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -20,20 +23,45 @@ public class UserPreferenceController {
         this.service = service;
     }
 
+    @GetMapping("/me")
+    public PreferenceResponse getMine(Authentication authentication) {
+        return PreferenceResponse.from(service.getOrDefault(CurrentUser.id(authentication)));
+    }
+
+    @PutMapping("/me")
+    public PreferenceResponse updateMine(
+            Authentication authentication, @Valid @RequestBody UpdatePreferenceRequest request) {
+        return save(CurrentUser.id(authentication), request);
+    }
+
     @GetMapping("/{userId}")
-    public PreferenceResponse get(@PathVariable String userId) {
-        return PreferenceResponse.from(service.getOrDefault(userId));
+    public PreferenceResponse get(@PathVariable String userId, Authentication authentication) {
+        return PreferenceResponse.from(service.getOrDefault(requireSelf(userId, authentication)));
     }
 
     @PutMapping("/{userId}")
     public PreferenceResponse update(
-            @PathVariable String userId, @Valid @RequestBody UpdatePreferenceRequest request) {
+            @PathVariable String userId,
+            Authentication authentication,
+            @Valid @RequestBody UpdatePreferenceRequest request) {
+        return save(requireSelf(userId, authentication), request);
+    }
+
+    private PreferenceResponse save(String userId, UpdatePreferenceRequest request) {
         return PreferenceResponse.from(
                 service.save(
                         userId,
                         request.getTheme(),
                         request.getLocale(),
                         request.isEmailNotifications()));
+    }
+
+    private static String requireSelf(String userId, Authentication authentication) {
+        String caller = CurrentUser.id(authentication);
+        if (!caller.equals(userId)) {
+            throw new AccessDeniedException("preferences belong to another user");
+        }
+        return caller;
     }
 
     public static class UpdatePreferenceRequest {

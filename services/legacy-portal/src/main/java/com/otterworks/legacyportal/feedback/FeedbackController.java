@@ -1,5 +1,6 @@
 package com.otterworks.legacyportal.feedback;
 
+import com.otterworks.legacyportal.security.CurrentUser;
 import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,6 +10,8 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,14 +32,23 @@ public class FeedbackController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public FeedbackResponse submit(@Valid @RequestBody SubmitFeedbackRequest request) {
+    public FeedbackResponse submit(
+            Authentication authentication, @Valid @RequestBody SubmitFeedbackRequest request) {
         return FeedbackResponse.from(
-                service.submit(request.getUserId(), request.getRating(), request.getMessage()));
+                service.submit(
+                        CurrentUser.id(authentication), request.getRating(), request.getMessage()));
     }
 
+    /** The caller's own feedback; admins may read another user's with {@code ?userId=}. */
     @GetMapping
-    public List<FeedbackResponse> listForUser(@RequestParam String userId) {
-        return service.listForUser(userId).stream()
+    public List<FeedbackResponse> listForUser(
+            Authentication authentication, @RequestParam(required = false) String userId) {
+        String caller = CurrentUser.id(authentication);
+        String target = userId == null ? caller : userId;
+        if (!target.equals(caller) && !CurrentUser.isAdmin(authentication)) {
+            throw new AccessDeniedException("feedback belongs to another user");
+        }
+        return service.listForUser(target).stream()
                 .map(FeedbackResponse::from)
                 .collect(Collectors.toList());
     }
@@ -48,10 +60,6 @@ public class FeedbackController {
 
     public static class SubmitFeedbackRequest {
 
-        @NotBlank
-        @Size(max = 100)
-        private String userId;
-
         @Min(1)
         @Max(5)
         private int rating;
@@ -59,14 +67,6 @@ public class FeedbackController {
         @NotBlank
         @Size(max = 2000)
         private String message;
-
-        public String getUserId() {
-            return userId;
-        }
-
-        public void setUserId(String userId) {
-            this.userId = userId;
-        }
 
         public int getRating() {
             return rating;

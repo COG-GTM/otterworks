@@ -7,6 +7,10 @@
 #   sudo cp deploy/legacy-portal.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now legacy-portal
 #
+# Required: /etc/legacy-portal.env must set JWT_SECRET (the OtterWorks token signing secret,
+# at least 32 bytes). Every /api/** route requires a bearer token signed with it, and the
+# portal refuses to start without it.
+#
 # Optional PostgreSQL backend (defaults to embedded H2):
 #   /etc/legacy-portal.env with:
 #     SPRING_PROFILES_ACTIVE=postgres

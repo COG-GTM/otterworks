@@ -22,11 +22,20 @@ and the datasource. That is exactly what makes this a good decomposition candida
 | Context | Package | Schema | Routes |
 |---|---|---|---|
 | Announcements | `com.otterworks.legacyportal.announcements` | `announcements` | `GET/POST /api/announcements`, `GET /api/announcements/{id}`, `POST /api/announcements/{id}/publish` |
-| User Preferences | `com.otterworks.legacyportal.userpreferences` | `user_preferences` | `GET /api/preferences/{userId}`, `PUT /api/preferences/{userId}` |
-| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback?userId=`, `GET /api/feedback/average-rating` |
+| User Preferences | `com.otterworks.legacyportal.userpreferences` | `user_preferences` | `GET/PUT /api/preferences/me`, `GET/PUT /api/preferences/{userId}` (caller's own id only) |
+| Feedback | `com.otterworks.legacyportal.feedback` | `feedback` | `POST /api/feedback`, `GET /api/feedback` (`?userId=` admins only), `GET /api/feedback/average-rating` |
 
 Shared, non-domain plumbing lives in `com.otterworks.legacyportal.common` (health endpoint,
-exception handling).
+exception handling) and `com.otterworks.legacyportal.security` (authentication).
+
+## Authentication
+
+Every `/api/**` route requires an OtterWorks access token — the JWT auth-service issues at
+`/api/v1/auth/login` — as `Authorization: Bearer <token>`. The portal validates it with the
+platform's shared `JWT_SECRET` (it refuses to start without one) and takes the caller's user id
+from the token subject, never from the URL or body. Creating and publishing announcements, and
+seeing drafts, require the `ADMIN` or `OWNER` role. `/health`, `/actuator/health` and
+`/actuator/info` stay public.
 
 ### Why it's an obvious decomposition candidate
 
@@ -50,6 +59,7 @@ cd services/legacy-portal
 ### Local / on a VM (embedded H2, self-contained)
 
 ```bash
+export JWT_SECRET=...   # the OtterWorks token signing secret
 ./scripts/run-onprem.sh
 curl http://localhost:8095/health          # {"status":"UP","service":"legacy-portal"}
 curl http://localhost:8095/actuator/health
@@ -60,6 +70,7 @@ Or under systemd on the VM — see [`deploy/legacy-portal.service`](deploy/legac
 ### On-prem with a real PostgreSQL (Docker Compose)
 
 ```bash
+export JWT_SECRET=...
 docker compose -f docker-compose.onprem.yml up --build
 curl http://localhost:8095/health
 docker compose -f docker-compose.onprem.yml down -v

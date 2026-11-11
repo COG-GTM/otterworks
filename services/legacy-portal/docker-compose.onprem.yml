@@ -7,6 +7,7 @@
 # of the golden app's cluster deployment.
 #
 #   Usage (from services/legacy-portal/):
+#     export JWT_SECRET=...   # the OtterWorks token signing secret; /api/** requires its tokens
 #     docker compose -f docker-compose.onprem.yml up --build
 #     curl http://localhost:8095/health
 #     docker compose -f docker-compose.onprem.yml down -v
@@ -40,6 +41,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://legacy-portal-db:5432/legacyportal
       SPRING_DATASOURCE_USERNAME: legacyportal
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-legacyportal}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET to the OtterWorks token signing secret}
     ports:
       - "8095:8095"
     healthcheck:
