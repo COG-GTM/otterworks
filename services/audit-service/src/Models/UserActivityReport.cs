@@ -10,4 +10,5 @@ public sealed class UserActivityReport
     public DateTime? FirstActivity { get; set; }
     public DateTime? LastActivity { get; set; }
     public List<AuditEventResponse> RecentEvents { get; set; } = new();
+    public bool Truncated { get; set; }
 }

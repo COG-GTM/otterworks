@@ -17,6 +17,13 @@ public class AuditEventPage
 {
     public List<AuditEvent> Events { get; set; } = new();
     public int Total { get; set; }
-    public int Page { get; set; }
     public int PageSize { get; set; }
+    public string? NextCursor { get; set; }
+    public bool HasMore => NextCursor is not null;
+}
+
+public class AuditEventBatch
+{
+    public List<AuditEvent> Events { get; set; } = new();
+    public bool Truncated { get; set; }
 }

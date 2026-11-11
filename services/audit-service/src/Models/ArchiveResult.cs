@@ -6,4 +6,5 @@ public sealed class ArchiveResult
     public string S3Location { get; set; } = string.Empty;
     public DateTime ArchivedBefore { get; set; }
     public string StorageClass { get; set; } = "GLACIER";
+    public bool HasMore { get; set; }
 }

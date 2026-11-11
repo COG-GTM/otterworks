@@ -7,4 +7,5 @@ public sealed class ExportResult
     public string DownloadUrl { get; set; } = string.Empty;
     public DateTime From { get; set; }
     public DateTime To { get; set; }
+    public bool Truncated { get; set; }
 }

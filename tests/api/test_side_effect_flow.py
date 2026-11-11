@@ -106,7 +106,7 @@ def test_file_share_eventually_creates_notification_and_audit_signal(api_client)
         response = api_client.client.get(
             "/api/v1/audit/events",
             headers=owner.auth_headers,
-            params={"resource": file_id, "page": 1, "size": 20},
+            params={"resource": file_id, "size": 20},
         )
         if response.status_code != 200:
             return []

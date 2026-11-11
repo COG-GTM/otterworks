@@ -13,23 +13,27 @@ public class S3AuditArchiver : IAuditArchiver
     private readonly IAmazonS3 _s3Client;
     private readonly IAuditRepository _repository;
     private readonly AwsSettings _settings;
+    private readonly AuditQuerySettings _limits;
     private readonly ILogger<S3AuditArchiver> _logger;
 
     public S3AuditArchiver(
         IAmazonS3 s3Client,
         IAuditRepository repository,
         IOptions<AwsSettings> settings,
+        IOptions<AuditQuerySettings> limits,
         ILogger<S3AuditArchiver> logger)
     {
         _s3Client = s3Client;
         _repository = repository;
         _settings = settings.Value;
+        _limits = limits.Value;
         _logger = logger;
     }
 
     public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
     {
-        var events = await _repository.GetEventsByDateRangeAsync(from, to);
+        var batch = await _repository.GetEventsByDateRangeAsync(from, to, _limits.MaxReportEvents);
+        var events = batch.Events;
 
         string content;
         string contentType;
@@ -70,12 +74,15 @@ public class S3AuditArchiver : IAuditArchiver
             DownloadUrl = downloadUrl,
             From = from,
             To = to,
+            Truncated = batch.Truncated,
         };
     }
 
     public async Task<ArchiveResult> ArchiveOldEventsAsync(DateTime olderThan)
     {
-        var events = await _repository.GetEventsByDateRangeAsync(DateTime.MinValue, olderThan);
+        var batch = await _repository.GetEventsByDateRangeAsync(
+            olderThan.AddDays(-_limits.ArchiveLookbackDays), olderThan, _limits.ArchiveBatchSize, oldestFirst: true);
+        var events = batch.Events;
 
         if (events.Count == 0)
         {
@@ -124,6 +131,7 @@ public class S3AuditArchiver : IAuditArchiver
             ArchivedCount = deletedCount,
             S3Location = s3Location,
             ArchivedBefore = olderThan,
+            HasMore = batch.Truncated,
         };
     }
 
