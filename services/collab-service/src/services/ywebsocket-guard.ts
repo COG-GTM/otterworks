@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'http';
 import type { Logger } from 'pino';
 import type { RawData, WebSocket } from 'ws';
+import * as decoding from 'lib0/decoding';
 import type * as Y from 'yjs';
 import type { CollabLimits } from '../config';
 import { DocumentSizeTracker } from './document-size-tracker';
@@ -34,6 +35,28 @@ function rawDataLength(data: RawData): number {
   return data.byteLength;
 }
 
+// y-protocols message types: only sync step 2 and sync updates add content
+// to the document; sync step 1 and awareness messages do not.
+const MESSAGE_SYNC = 0;
+const SYNC_STEP_2 = 1;
+const SYNC_UPDATE = 2;
+
+export function growsDocument(data: RawData): boolean {
+  const bytes = Array.isArray(data)
+    ? Buffer.concat(data)
+    : data instanceof ArrayBuffer
+      ? new Uint8Array(data)
+      : data;
+  try {
+    const decoder = decoding.createDecoder(bytes);
+    if (decoding.readVarUint(decoder) !== MESSAGE_SYNC) return false;
+    const step = decoding.readVarUint(decoder);
+    return step === SYNC_STEP_2 || step === SYNC_UPDATE;
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Wraps y-websocket's setupWSConnection with per-document size caps, per-user
  * room caps and eviction of idle documents (y-websocket keeps them forever
@@ -65,9 +88,10 @@ export class YWebsocketGuard {
     const guardedOn: OnFn = (event, listener) => {
       if (event !== 'message') return originalOn(event, listener);
       return originalOn('message', (...args: unknown[]) => {
-        const size = rawDataLength(args[0] as RawData);
+        const data = args[0] as RawData;
+        const size = rawDataLength(data);
         const doc = docs.get(docName);
-        if (doc && !this.tracker.fits(docName, doc, size)) {
+        if (doc && growsDocument(data) && !this.tracker.fits(docName, doc, size)) {
           logger.warn(
             { docName, userId, size, limit: this.tracker.limit },
             'y-websocket_document_size_limit_exceeded',

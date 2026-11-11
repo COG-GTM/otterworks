@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken';
 import * as Y from 'yjs';
 import * as encoding from 'lib0/encoding';
 import * as syncProtocol from 'y-protocols/sync';
+import * as awarenessProtocol from 'y-protocols/awareness';
 import { CollaborationManager } from '../handlers/collaboration';
 import { DocumentStore } from '../services/document-store';
 import { AwarenessService } from '../services/awareness';
@@ -21,6 +22,7 @@ import {
   WS_CLOSE_MESSAGE_TOO_BIG,
   YWebsocketGuard,
   docNameFromUrl,
+  growsDocument,
 } from '../services/ywebsocket-guard';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -361,6 +363,44 @@ describe('YWebsocketGuard', () => {
     expect(await closed).toBe(WS_CLOSE_MESSAGE_TOO_BIG);
     const doc = yDocs.get('yws-growth');
     if (doc) expect(Y.encodeStateAsUpdate(doc).byteLength).toBeLessThanOrEqual(8192);
+  });
+
+  it('keeps sync step 1 and awareness working on a nearly full document', async () => {
+    const ws = await open('yws-full', 'u6');
+    ws.send(syncUpdateMessage(textUpdate(8000)));
+    await new Promise((r) => setTimeout(r, 100));
+    const serverDoc = yDocs.get('yws-full');
+    expect(serverDoc.getText('content').length).toBe(8000);
+
+    const clientDoc = new Y.Doc();
+    const awareness = new awarenessProtocol.Awareness(clientDoc);
+    awareness.setLocalState({ user: 'a'.repeat(1000) });
+    const awarenessMsg = encoding.createEncoder();
+    encoding.writeVarUint(awarenessMsg, 1);
+    encoding.writeVarUint8Array(
+      awarenessMsg,
+      awarenessProtocol.encodeAwarenessUpdate(awareness, [clientDoc.clientID]),
+    );
+    const step1 = encoding.createEncoder();
+    encoding.writeVarUint(step1, 0);
+    syncProtocol.writeSyncStep1(step1, clientDoc);
+    awareness.destroy();
+
+    let closed = false;
+    ws.on('close', () => (closed = true));
+    ws.send(encoding.toUint8Array(awarenessMsg));
+    ws.send(encoding.toUint8Array(step1));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(closed).toBe(false);
+    expect(serverDoc.awareness.getStates().has(clientDoc.clientID)).toBe(true);
+  });
+
+  it('only size-checks messages that can grow the document', () => {
+    const update = Buffer.from(syncUpdateMessage(textUpdate(10)));
+    expect(growsDocument(update)).toBe(true);
+    expect(growsDocument(Buffer.from([1, 0]))).toBe(false);
+    expect(growsDocument(Buffer.from([0, 0, 0]))).toBe(false);
+    expect(growsDocument(Buffer.from([]))).toBe(true);
   });
 
   it('rejects frames larger than maxPayload', async () => {
