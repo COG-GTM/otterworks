@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 // What a tenant gets back when it stops being perpetual. Long enough for
 // whoever cleared the flag to finish what they were doing, short enough that
 // forgetting to check it in still costs a day rather than forever.
-const UNPERSIST_TTL = "24h";
+const UNPERSIST_TTL_SECONDS = 24 * 3600;
 
 export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   const id = params?.id;
@@ -38,10 +38,16 @@ export const POST = withSession(async (req: NextRequest, { actor, params }) => {
   if (body.persistent) {
     ttlSeconds = NEVER_TTL_SECONDS;
   } else {
-    const ttl = typeof body.ttl === "string" && body.ttl.trim() ? body.ttl.trim() : UNPERSIST_TTL;
-    const check = checkTtl(ttl, env.maxTtlSeconds);
-    if (!check.ok) return error(400, "invalid ttl");
-    ttlSeconds = check.seconds;
+    const requested = typeof body.ttl === "string" && body.ttl.trim() ? body.ttl.trim() : null;
+    if (requested === null) {
+      // The default must never be refused: clearing the flag without a ttl
+      // (as `tenant.sh persist` does) has to work under any configured cap.
+      ttlSeconds = Math.min(UNPERSIST_TTL_SECONDS, env.maxTtlSeconds);
+    } else {
+      const check = checkTtl(requested, env.maxTtlSeconds);
+      if (!check.ok) return error(400, "invalid ttl");
+      ttlSeconds = check.seconds;
+    }
   }
 
   const expiresAt = await setPersistent(id, body.persistent, ttlSeconds);
