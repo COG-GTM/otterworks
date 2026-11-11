@@ -26,7 +26,11 @@ type Config struct {
 	ReportServiceURL       string
 
 	// Rate limiting
-	RateLimitRPS int
+	RateLimitRPS        int
+	RateLimitMaxBuckets int
+
+	// Proxies whose X-Forwarded-For / X-Real-IP headers are honoured
+	TrustedProxyCIDRs []string
 
 	// JWT
 	JWTSecret string
@@ -72,7 +76,10 @@ func Load() *Config {
 		AuditServiceURL:        getEnv("AUDIT_SERVICE_URL", "http://audit-service:8090"),
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
-		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitRPS:        getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitMaxBuckets: getEnvInt("RATE_LIMIT_MAX_BUCKETS", 100000),
+
+		TrustedProxyCIDRs: getEnvSlice("TRUSTED_PROXY_CIDRS", defaultTrustedProxyCIDRs()),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
@@ -88,6 +95,17 @@ func Load() *Config {
 		CBTimeout:      time.Duration(getEnvInt("CB_TIMEOUT_SECONDS", 30)) * time.Second,
 		CBFailureRatio: getEnvFloat("CB_FAILURE_RATIO", 0.6),
 	}
+}
+
+// defaultTrustedProxyCIDRs trusts the private ranges only inside Kubernetes,
+// where the chart's NetworkPolicy admits traffic solely from ingress-nginx,
+// monitoring and same-namespace pods. Elsewhere (e.g. docker-compose publishing
+// :8080 directly) no peer is trusted, so forwarding headers are ignored.
+func defaultTrustedProxyCIDRs() []string {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "fc00::/7", "::1/128"}
+	}
+	return nil
 }
 
 // ServiceRoutes returns a map of route prefix to backend service URL.
