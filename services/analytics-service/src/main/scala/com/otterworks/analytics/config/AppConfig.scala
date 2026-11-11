@@ -9,7 +9,8 @@ final case class AppConfig(
     aws: AwsConfig,
     postgres: PostgresConfig,
     repository: RepositoryConfig,
-    server: ServerConfig
+    server: ServerConfig,
+    auth: AuthConfig
 )
 
 final case class S3Config(dataLakeBucket: String)
@@ -27,6 +28,9 @@ final case class RepositoryConfig(backend: String):
   def isPostgres: Boolean = backend.trim.toLowerCase == "postgres"
 
 final case class ServerConfig(host: String, port: Int)
+
+/** HMAC secret shared with auth-service / api-gateway for verifying access tokens. */
+final case class AuthConfig(jwtSecret: Option[String])
 
 object AppConfig:
   def load(): AppConfig =
@@ -70,4 +74,10 @@ object AppConfig:
       port = if analytics.hasPath("server.port") then analytics.getInt("server.port") else 8088
     )
 
-    AppConfig(s3, sqs, aws, postgres, repository, server)
+    val auth = AuthConfig(
+      jwtSecret =
+        if analytics.hasPath("auth.jwt-secret") then Some(analytics.getString("auth.jwt-secret")).filter(_.trim.nonEmpty)
+        else None
+    )
+
+    AppConfig(s3, sqs, aws, postgres, repository, server, auth)

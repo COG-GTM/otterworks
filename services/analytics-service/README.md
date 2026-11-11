@@ -47,7 +47,8 @@ At startup an idempotent seeder loads the deterministic synthetic baseline
 bundled from `testdata/market-series` (see the README there for the CSV
 contract) and extends every series to "today" with a seeded random walk.
 
-Endpoints (all behind the API-gateway JWT — no extra auth):
+Endpoints (admin-only: the service verifies the caller's bearer access token
+itself with `JWT_SECRET` and requires an `ADMIN`/`OWNER` role):
 
 - `GET /api/v1/analytics/margins` — KPIs + per-SKU margin rows
 - `GET /api/v1/analytics/margins/series?sku=|category=&from=&to=`

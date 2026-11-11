@@ -14,10 +14,12 @@ import com.otterworks.analytics.service.MarginService
  *   GET /api/v1/analytics/margins
  *   GET /api/v1/analytics/margins/series?sku=&category=&from=&to=
  *   GET /api/v1/analytics/margins/export?format=csv
+ *
+ * Supplier cost and margin data: admin-only.
  */
-class MarginRoutes(marginService: MarginService, repo: MarketRepository):
+class MarginRoutes(marginService: MarginService, repo: MarketRepository, auth: AuthDirectives):
 
-  val routes: Route = pathPrefix("api" / "v1" / "analytics" / "margins") {
+  val routes: Route = (pathPrefix("api" / "v1" / "analytics" / "margins") & auth.adminOnly) { _ =>
     concat(
       pathEndOrSingleSlash {
         get {
@@ -60,15 +62,8 @@ class MarginRoutes(marginService: MarginService, repo: MarketRepository):
       "commodity_cost_usd", "freight_cost_usd", "overhead_cost_usd", "cogs_usd", "margin_pct"
     )
     val lines = rows.map { r =>
-      List(
-        r.sku, r.name, r.category, r.supplier, r.listPriceUsd.toString,
-        r.commodityCostUsd.toString, r.freightCostUsd.toString, r.overheadCostUsd.toString,
-        r.cogsUsd.toString, r.marginPct.toString
-      ).map(escapeCsvField).mkString(",")
+      (List(r.sku, r.name, r.category, r.supplier).map(Csv.textField) ++ List(
+        r.listPriceUsd, r.commodityCostUsd, r.freightCostUsd, r.overheadCostUsd, r.cogsUsd, r.marginPct
+      ).map(_.toString)).mkString(",")
     }
     (headers.mkString(",") :: lines).mkString("\n") + "\n"
-
-  private def escapeCsvField(value: String): String =
-    if value.contains(",") || value.contains("\"") || value.contains("\n") then
-      "\"" + value.replace("\"", "\"\"") + "\""
-    else value

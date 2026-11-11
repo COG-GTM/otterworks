@@ -18,14 +18,14 @@ import spray.json.*
  *   GET  /api/v1/analytics/market/status
  *   POST /api/v1/analytics/market/observations   (manual Trading Economics pulls)
  *
- * Authentication is enforced by the API gateway's JWT middleware; requests
- * reaching this service have already presented a valid bearer token.
+ * Market prices feed margin computation: admin-only, verified in-service from
+ * the caller's access token (not just at the gateway).
  */
-class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository):
+class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository, auth: AuthDirectives):
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  val routes: Route = pathPrefix("api" / "v1" / "analytics" / "market") {
+  val routes: Route = (pathPrefix("api" / "v1" / "analytics" / "market") & auth.adminOnly) { _ =>
     concat(
       path("series") {
         get {

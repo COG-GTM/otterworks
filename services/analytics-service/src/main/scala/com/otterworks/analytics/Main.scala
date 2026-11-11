@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
-import com.otterworks.analytics.api.{AnalyticsRoutes, EventRoutes, HealthRoutes, MarginRoutes, MarketIngestRoutes}
+import com.otterworks.analytics.api.{AnalyticsRoutes, AuthDirectives, EventRoutes, HealthRoutes, JwtAuthenticator, MarginRoutes, MarketIngestRoutes}
 import com.otterworks.analytics.batch.MarketSeeder
 import com.otterworks.analytics.config.AppConfig
 import com.otterworks.analytics.db.AnalyticsDb
@@ -47,6 +47,11 @@ object Main:
         system.log.info("Analytics using in-memory metrics store (per configuration)")
         (new InMemoryMetricsRepository(config.postgres), None)
 
+    val authenticator = JwtAuthenticator(config.auth.jwtSecret)
+    if !authenticator.isConfigured then
+      system.log.warn("JWT_SECRET is not set; every analytics API request will be rejected with 401")
+    val auth = AuthDirectives(authenticator)
+
     val analyticsService = AnalyticsService(repository)
     val eventProcessor = EventProcessor(config, analyticsService)
 
@@ -62,8 +67,8 @@ object Main:
           case ex: Exception =>
             system.log.warn(s"Market baseline seed failed: ${ex.getMessage}")
         concat(
-          MarginRoutes(marginService, marketRepository).routes,
-          MarketIngestRoutes(marginService, marketRepository).routes,
+          MarginRoutes(marginService, marketRepository, auth).routes,
+          MarketIngestRoutes(marginService, marketRepository, auth).routes,
         )
       case None =>
         pathPrefix("api" / "v1" / "analytics" / ("margins" | "market")) {
@@ -74,8 +79,8 @@ object Main:
 
     // Build routes
     val healthRoutes = HealthRoutes(analyticsService)
-    val analyticsRoutes = AnalyticsRoutes(analyticsService)
-    val eventRoutes = EventRoutes(analyticsService)
+    val analyticsRoutes = AnalyticsRoutes(analyticsService, auth)
+    val eventRoutes = EventRoutes(analyticsService, auth)
 
     val routes: Route = concat(
       healthRoutes.routes,
