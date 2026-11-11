@@ -2,7 +2,7 @@
 # Sets the password of the Flyway-seeded admin (admin@otterworks.dev) to ADMIN_PASSWORD
 # from the gitignored .env, so no admin credential is committed to the repo.
 # Changing the password revokes the account's refresh tokens. Waits for auth-service's
-# migrations to create the account.
+# migrations to create the account and its refresh_tokens table.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,7 +18,7 @@ fi
 psql() { docker exec -i "$PG_CONTAINER" psql -U otterworks -d otterworks -v ON_ERROR_STOP=1 -qtA "$@"; }
 
 for _ in $(seq 1 90); do
-  if [ "$(psql -c "SELECT count(*) FROM users WHERE email = '$ADMIN_EMAIL'" 2>/dev/null)" = "1" ]; then
+  if [ "$(psql -c "SELECT count(*) FROM users WHERE email = '$ADMIN_EMAIL' AND to_regclass('refresh_tokens') IS NOT NULL" 2>/dev/null)" = "1" ]; then
     # The password travels on stdin as a psql variable, never on a command line.
     pw="${ADMIN_PASSWORD//\\/\\\\}"
     pw="${pw//\'/\\\'}"
