@@ -283,6 +283,40 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
+  void lookupByEmail_shouldMatchNormalizedEmailExactly() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+    createTestUser("recipient@otterworks.dev", "password123", "Recipient");
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "  Recipient@OtterWorks.dev ")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.displayName").value("Recipient"));
+
+    MvcResult partial =
+        mockMvc
+            .perform(
+                get("/api/v1/auth/users/lookup")
+                    .param("email", "recipient")
+                    .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound())
+            .andReturn();
+    MvcResult unknown =
+        mockMvc
+            .perform(
+                get("/api/v1/auth/users/lookup")
+                    .param("email", "ghost@otterworks.dev")
+                    .header("Authorization", "Bearer " + token))
+            .andExpect(status().isNotFound())
+            .andReturn();
+    assertThat(objectMapper.readTree(partial.getResponse().getContentAsString()).get("message"))
+        .isEqualTo(
+            objectMapper.readTree(unknown.getResponse().getContentAsString()).get("message"));
+  }
+
+  @Test
   void lookupByEmail_unknownEmailShouldReturnGenericNotFound() throws Exception {
     String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
 

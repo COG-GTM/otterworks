@@ -60,8 +60,13 @@ public class UserService {
 
   @Transactional(readOnly = true)
   public UserLookupResponse lookupByEmail(String email) {
+    String normalized = email == null ? "" : email.trim();
+    if (normalized.isEmpty() || normalized.indexOf('@') < 1) {
+      throw new UserLookupNotFoundException();
+    }
     return userRepository
-        .findByEmail(email.trim())
+        .findByEmail(normalized)
+        .or(() -> userRepository.findFirstByEmailIgnoreCase(normalized))
         .map(user -> UserLookupResponse.fromUserDTO(UserDTO.fromEntity(user)))
         .orElseThrow(UserLookupNotFoundException::new);
   }
