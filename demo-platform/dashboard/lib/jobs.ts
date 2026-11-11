@@ -1,6 +1,7 @@
 import * as k8s from "@kubernetes/client-node";
 import { batch } from "@/lib/k8s";
 import { env } from "@/lib/env";
+import { isTenantBranch } from "@/lib/util";
 
 export type RunnerAction = "deploy" | "teardown" | "inject";
 
@@ -21,12 +22,7 @@ export interface RunnerJobInput {
 // Secret keys the runner needs at runtime. These are referenced via
 // envFrom/valueFrom (never placed on argv) so the passcode / DB password / AWS
 // creds are not exposed in the Job spec's command line.
-const RUNNER_SECRET_ENV_KEYS = [
-  "DB_PASSWORD",
-  "JWT_SECRET",
-  "SECRET_KEY_BASE",
-  "GITHUB_TOKEN",
-] as const;
+const RUNNER_SECRET_ENV_KEYS = ["DB_PASSWORD", "JWT_SECRET", "SECRET_KEY_BASE"] as const;
 
 function jobName(action: RunnerAction, id: string, epoch: number): string {
   // Contract: deploy-<id>-<epoch> / teardown-<id>-<epoch>; inject uses inject-bug.
@@ -40,9 +36,16 @@ export function jobNamePrefixes(id: string): string[] {
 
 function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
   // The runner image ENTRYPOINT (entrypoint.sh) dispatches on OP and does the
-  // branch checkout + control-table status/audit writes. We drive it purely
-  // through env — never by overriding the container command — so that plumbing
-  // always runs. Env names must match the entrypoint contract exactly.
+  // control-table status/audit writes. We drive it purely through env — never
+  // by overriding the container command — so that plumbing always runs. Env
+  // names must match the entrypoint contract exactly.
+  //
+  // The runner only ever executes the scripts baked into its image; the branch
+  // is data (it picks the tenant's CI-built images) and is never checked out.
+  const perpetualAllowed = env.perpetualTenantIds.has(input.tenantId);
+  if (input.branch && !isTenantBranch(input.branch, input.tenantId, perpetualAllowed)) {
+    throw new Error(`invalid branch '${input.branch}' for tenant '${input.tenantId}'`);
+  }
   const plain: k8s.V1EnvVar[] = [
     { name: "OP", value: input.action },
     { name: "CONTROL_TABLE", value: env.controlTable },
@@ -53,7 +56,6 @@ function buildEnv(input: RunnerJobInput): k8s.V1EnvVar[] {
     { name: "ACTOR", value: "dashboard" },
   ];
   if (input.branch) plain.push({ name: "TENANT_BRANCH", value: input.branch });
-  if (env.repoHttpsUrl) plain.push({ name: "REPO_HTTPS_URL", value: env.repoHttpsUrl });
   if (input.tier) plain.push({ name: "TIER", value: input.tier });
   if (input.imageTag) plain.push({ name: "IMAGE_TAG", value: input.imageTag });
   if (input.ttl) plain.push({ name: "TTL", value: input.ttl });

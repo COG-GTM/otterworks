@@ -14,6 +14,19 @@ export function isValidId(id: string): boolean {
   return /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/.test(id);
 }
 
+// A tenant is deployed from its own branch: workshop-<id> / demo-<id> (the id
+// may carry a TENANT_PREFIX, see tenant.sh sync), or main for a perpetual
+// tenant. The branch only selects which CI-built images the runner prefers.
+const TENANT_BRANCH_RE = /^(workshop|demo)[-/]([A-Za-z0-9][A-Za-z0-9._-]{0,99})$/;
+
+export function isTenantBranch(branch: string, id: string, perpetualAllowed: boolean): boolean {
+  if (branch === "main") return perpetualAllowed;
+  const rest = TENANT_BRANCH_RE.exec(branch)?.[2];
+  if (!rest) return false;
+  const suffix = sanitizeId(rest);
+  return suffix !== "" && (id === suffix || id.endsWith(`-${suffix}`));
+}
+
 // A perpetual tenant still carries a real expires_at, ten years out. The
 // reaper skips it on `persistent`, so this is only a second line of defence:
 // if that check ever regresses, the tenant survives rather than being torn

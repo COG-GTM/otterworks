@@ -37,12 +37,6 @@ perpetualHostSuffix: otterworks.app
 # Placeholder — override at deploy: --set runnerImage=<registry>/otterworks/demo-runner:<tag>
 runnerImage: REGISTRY/otterworks/demo-runner:latest
 
-# Optional: HTTPS clone URL of this repo. When set (together with a githubToken
-# in the Secret), runner Jobs fetch the participant branch workshop-<id> for
-# code-level variants. Empty -> runner uses the image's bundled golden tree and
-# variants rely on --image-tag. Not committed with a real value on purpose.
-repoHttpsUrl: ""
-
 serviceAccount:
   name: demo-ops-dashboard
   # IRSA role name; defaults to otterworks-demo-ops-dashboard-<environment>.
@@ -109,6 +103,3 @@ secret:
   dbPassword: ""
   jwtSecret: ""
   secretKeyBase: ""
-  # Optional: token used by runner Jobs to fetch participant branches (needs
-  # repoHttpsUrl set). Scope to repo read-only. Omit to use the bundled tree.
-  githubToken: ""

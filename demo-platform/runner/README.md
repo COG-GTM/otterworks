@@ -5,6 +5,10 @@ operation, and that the reaper CronJob runs with `OP=reap`. It carries the repo
 plus `bash / git / aws-cli v2 / kubectl / helm / terraform / jq / psql` and is
 thin glue over the existing scripts in `../../scripts`.
 
+The runner executes **only** the scripts and charts baked into the image. It
+never checks out a tenant branch: the Job holds platform-wide credentials, so
+deploy tooling changes ship by rebuilding this image from upstream `main`.
+
 ## Build (from the repo root)
 
 The build context must be the repo root so `scripts/` + `demo-platform/` are
@@ -30,7 +34,8 @@ docker push <registry>/otterworks/demo-runner:<tag>
 
 Non-secret (control-plane metadata): `OP`, `TENANT_ID`, `TIER`, `TTL`,
 `IMAGE_TAG`, `HOST_SUFFIX` (default `demo.otterworks.app`), `SCENARIO`,
-`TENANT_BRANCH`, `CONTROL_TABLE` (default `otterworks-demo-control`),
+`TENANT_BRANCH` (data only: picks the tenant's CI-built images; never checked
+out), `CONTROL_TABLE` (default `otterworks-demo-control`),
 `AWS_REGION`, `EKS_CLUSTER` (default `otterworks-dev`), `ACTOR`.
 
 Secrets (from Kubernetes Secret refs — **env only, never argv**): `DB_PASSWORD`,

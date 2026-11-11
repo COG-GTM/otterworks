@@ -58,8 +58,8 @@ RUN curl -fsSL -o /tmp/terraform.zip \
   && chmod +x /usr/local/bin/terraform \
   && terraform version
 
-# The repo (scripts/ + demo-platform/) — the runner checks out the requested
-# branch at runtime via entrypoint.sh (TENANT_BRANCH).
+# The repo (scripts/ + demo-platform/). This bundled tree is the ONLY code the
+# runner executes; it never checks out a tenant branch at runtime.
 WORKDIR /workspace
 COPY . /workspace
 
