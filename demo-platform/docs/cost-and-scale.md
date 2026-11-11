@@ -210,10 +210,11 @@ connections track concurrent queries rather than tenant count, capped globally a
 without complaint, so the isolation model itself scales; the constraint is
 connections, not databases.
 
-**IAM trust-policy churn.** Editing shared role trust policies on every
-deploy/teardown races and throttles under concurrent tenant operations. The
-`otterworks-*` wildcard trust rule already covers every tenant namespace, so
-per-tenant trust edits are unnecessary and are skipped.
+**IAM roles per tenant.** Shared role trust policies are never edited per
+tenant (that raced and throttled under concurrent tenant operations). Each
+tenant instead gets three small roles of its own, created at deploy and deleted
+at teardown; the account's IAM role quota (1,000 by default) bounds tenants at
+roughly 300.
 
 **Control-plane state.** Tenant state lives in a DynamoDB table that is
 independent of the cluster, so a cluster rebuild does not lose the tenant

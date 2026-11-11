@@ -51,7 +51,7 @@ pub async fn maybe_seed_demo_docs(meta: &MetadataClient, s3: &S3Client, owner_id
     let mut seeded = false;
     for (name, mime_type, content) in DEMO_DOCS {
         let file_id = Uuid::new_v5(&SEED_NAMESPACE, format!("{owner_id}/{name}").as_bytes());
-        let s3_key = format!("files/{owner_id}/{file_id}");
+        let s3_key = s3.file_key(owner_id, file_id);
         let bytes = bytes::Bytes::from_static(content.as_bytes());
 
         if let Err(e) = s3.upload_object(&s3_key, bytes, mime_type).await {

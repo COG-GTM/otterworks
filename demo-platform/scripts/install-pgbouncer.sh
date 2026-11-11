@@ -56,24 +56,26 @@ RDS_HOST="${RDS_HOST%%:*}"
 kubectl create namespace "${NS}" --dry-run=client -o yaml | kubectl apply -f -
 
 # PgBouncer's auth_file, in its own format: "user" "password", one per line.
-# Applied as YAML on stdin so the password never lands in a file, an argv, or
-# the shell history. stringData, so no base64 step handles it either.
+# The master line is rewritten here; tenant lines (one per tenant DB role,
+# maintained by deploy/teardown-tenant.sh) are carried over so a reinstall does
+# not lock every tenant out. Built with jq from the environment and applied on
+# stdin, so no password lands in a file, an argv, or the shell history.
 log "writing userlist Secret (credential stays on stdin)..."
-kubectl apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: pgbouncer-auth
-  namespace: ${NS}
-  labels: { app: pgbouncer }
-type: Opaque
-stringData:
-  userlist.txt: |
-    "${DB_USER}" "${DB_PASSWORD}"
-EOF
+existing="$(kubectl -n "${NS}" get secret pgbouncer-auth -o json 2>/dev/null \
+  | jq -r '.data["userlist.txt"] // empty | @base64d' 2>/dev/null || true)"
+# shellcheck disable=SC2016  # jq program
+PGB_EXISTING="${existing}" PGB_USER="${DB_USER}" PGB_PASSWORD="${DB_PASSWORD}" jq -n --arg ns "${NS}" '
+  ($ENV.PGB_EXISTING | split("\n")
+     | map(select(length > 0 and (startswith("\"" + $ENV.PGB_USER + "\" ") | not)))) as $tenants
+  | {
+      apiVersion: "v1", kind: "Secret", type: "Opaque",
+      metadata: { name: "pgbouncer-auth", namespace: $ns, labels: { app: "pgbouncer" } },
+      stringData: { "userlist.txt": ((["\"" + $ENV.PGB_USER + "\" \"" + $ENV.PGB_PASSWORD + "\""] + $tenants) | join("\n") + "\n") }
+    }' | kubectl apply -f - >/dev/null
 
-# PgBouncer reads its config and userlist only at startup, and a ConfigMap or
-# Secret changing underneath a running pod restarts nothing. Without this the
+# PgBouncer reads its config only at startup (the userlist is re-read on RELOAD,
+# which deploy-tenant.sh issues after adding a tenant), and a ConfigMap
+# changing underneath a running pod restarts nothing. Without this the
 # pods keep serving the previous pool sizes, or authenticating with a rotated
 # password, until something unrelated happens to restart them. Checksum the
 # rendered config as well as the credential: pool_mode and the connection caps

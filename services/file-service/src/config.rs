@@ -27,6 +27,10 @@ pub struct AwsConfig {
     pub region: String,
     pub endpoint_url: Option<String>,
     pub s3_bucket: String,
+    /// Prepended to every object key this service writes. Tenants on the shared
+    /// bucket get `tenants/<id>/`, which is the only prefix their IAM role can
+    /// touch. Empty for the golden app.
+    pub s3_key_prefix: String,
     pub dynamodb_table: String,
     pub dynamodb_folders_table: String,
     pub dynamodb_versions_table: String,
@@ -84,12 +88,24 @@ fn parse_bool(raw: &str, default: bool) -> bool {
     }
 }
 
+/// Normalize an S3 key prefix to either "" or "<segments>/" with no leading
+/// slash, so callers can concatenate it with a key without doubling slashes.
+pub fn normalize_key_prefix(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}/")
+    }
+}
+
 impl AwsConfig {
     pub fn from_env() -> Self {
         Self {
             region: env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".into()),
             endpoint_url: env::var("AWS_ENDPOINT_URL").ok(),
             s3_bucket: env::var("S3_BUCKET").unwrap_or_else(|_| "otterworks-files".into()),
+            s3_key_prefix: normalize_key_prefix(&env::var("S3_KEY_PREFIX").unwrap_or_default()),
             dynamodb_table: env::var("DYNAMODB_TABLE")
                 .unwrap_or_else(|_| "otterworks-file-metadata".into()),
             dynamodb_folders_table: env::var("DYNAMODB_FOLDERS_TABLE")
@@ -115,7 +131,15 @@ impl SnsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_bool, parse_bool_env};
+    use super::{normalize_key_prefix, parse_bool, parse_bool_env};
+
+    #[test]
+    fn normalize_key_prefix_handles_empty_and_slashes() {
+        assert_eq!(normalize_key_prefix(""), "");
+        assert_eq!(normalize_key_prefix("  /  "), "");
+        assert_eq!(normalize_key_prefix("tenants/a01"), "tenants/a01/");
+        assert_eq!(normalize_key_prefix("/tenants/a01/"), "tenants/a01/");
+    }
 
     #[test]
     fn parse_bool_accepts_true_and_one() {

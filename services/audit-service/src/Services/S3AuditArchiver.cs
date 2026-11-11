@@ -27,6 +27,15 @@ public class S3AuditArchiver : IAuditArchiver
         _logger = logger;
     }
 
+    private string KeyPrefix
+    {
+        get
+        {
+            var trimmed = (_settings.S3KeyPrefix ?? string.Empty).Trim().Trim('/');
+            return trimmed.Length == 0 ? string.Empty : trimmed + "/";
+        }
+    }
+
     public async Task<ExportResult> ExportAsync(DateTime from, DateTime to, string format)
     {
         var events = await _repository.GetEventsByDateRangeAsync(from, to);
@@ -48,7 +57,7 @@ public class S3AuditArchiver : IAuditArchiver
             extension = "json";
         }
 
-        var key = $"audit-exports/{from:yyyy-MM-dd}_{to:yyyy-MM-dd}_{Guid.NewGuid():N}.{extension}";
+        var key = KeyPrefix + $"audit-exports/{from:yyyy-MM-dd}_{to:yyyy-MM-dd}_{Guid.NewGuid():N}.{extension}";
 
         var putRequest = new PutObjectRequest
         {
@@ -89,7 +98,7 @@ public class S3AuditArchiver : IAuditArchiver
         }
 
         var content = JsonSerializer.Serialize(events, new JsonSerializerOptions { WriteIndented = true });
-        var key = $"audit-archive/{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
+        var key = KeyPrefix + $"audit-archive/{olderThan:yyyy-MM-dd}/{Guid.NewGuid():N}.json";
 
         var putRequest = new PutObjectRequest
         {

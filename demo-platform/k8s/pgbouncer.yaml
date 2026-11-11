@@ -34,7 +34,7 @@ data:
     listen_port = 6432
     unix_socket_dir =
     auth_type = scram-sha-256
-    auth_file = /etc/pgbouncer/userlist.txt
+    auth_file = /etc/pgbouncer/auth/userlist.txt
 
     # Transaction pooling: a server connection is held for the length of a
     # transaction, not a session, which is what lets a few dozen server
@@ -58,12 +58,12 @@ data:
     reserve_pool_size = 2
     reserve_pool_timeout = 3
 
-    # The actual ceiling. Every service connects as the same RDS master user, so
-    # a per-user cap is a global cap: 25 per replica x 2 replicas = 50 server
-    # connections here, plus 30 from the session pooler below = 80, under the
-    # ~112 a db.t3.micro allows and leaving room for psql, deploy jobs and RDS's
-    # own reserved superuser slots. This is the number to revisit when the
-    # instance is resized -- not default_pool_size.
+    # Per-user ceiling. Each tenant now connects as its own role, so this caps
+    # one tenant (and the golden app's master user), not the pooler as a whole:
+    # a tenant's transaction pool is also bounded by default_pool_size +
+    # reserve_pool_size per replica. The instance-wide ceiling is RDS's own
+    # max_connections (~112 on a db.t3.micro); revisit both when tenant counts
+    # or the instance size change.
     max_user_connections = 25
 
     # Idle tenants are the normal state here (the reaper scales them to zero),
@@ -128,7 +128,7 @@ data:
     listen_port = 6433
     unix_socket_dir =
     auth_type = scram-sha-256
-    auth_file = /etc/pgbouncer/userlist.txt
+    auth_file = /etc/pgbouncer/auth/userlist.txt
     pool_mode = session
     max_client_conn = 500
     default_pool_size = 15
@@ -190,7 +190,7 @@ spec:
           ports: [{ containerPort: 6432, name: pgbouncer }]
           volumeMounts:
             - { name: config, mountPath: /etc/pgbouncer/pgbouncer.ini, subPath: pgbouncer.ini, readOnly: true }
-            - { name: userlist, mountPath: /etc/pgbouncer/userlist.txt, subPath: userlist.txt, readOnly: true }
+            - { name: userlist, mountPath: /etc/pgbouncer/auth, readOnly: true }
           readinessProbe:
             tcpSocket: { port: 6432 }
             initialDelaySeconds: 2
@@ -214,7 +214,7 @@ spec:
           ports: [{ containerPort: 6433, name: pgb-session }]
           volumeMounts:
             - { name: config, mountPath: /etc/pgbouncer/pgbouncer-session.ini, subPath: pgbouncer-session.ini, readOnly: true }
-            - { name: userlist, mountPath: /etc/pgbouncer/userlist.txt, subPath: userlist.txt, readOnly: true }
+            - { name: userlist, mountPath: /etc/pgbouncer/auth, readOnly: true }
           readinessProbe:
             tcpSocket: { port: 6433 }
             initialDelaySeconds: 2

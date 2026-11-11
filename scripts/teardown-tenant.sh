@@ -7,8 +7,11 @@
 #      via an in-cluster job (the Devin VM has no direct VPC access to RDS)
 #   2. deletes the namespace otterworks-<ID> (all Helm releases, Redis, Meili,
 #      config/secrets, ingress, quota, netpol) in one shot
-#   3. removes the tenant's service-account subs from the shared IRSA role trust
-#      policies (reverse of deploy-tenant's ensure_irsa_trust)
+#   3. drops the tenant's Postgres login role and its pgbouncer userlist entry
+#   4. deletes the tenant's IAM roles and DynamoDB tables (reverse of
+#      deploy-tenant's ensure_tenant_aws_resources)
+#   5. removes any legacy per-namespace subs older deploys added to the shared
+#      IRSA role trust policies
 #
 # Usage:
 #   ./scripts/teardown-tenant.sh <ATTENDEE_ID> [--keep-db] [--keep-trust]
@@ -58,34 +61,38 @@ else
     warn "Namespace deletion timed out; it may still be terminating."
 fi
 
+load_infra_outputs
+AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "")}"
+
 # --- Step 2: drop the per-tenant database (now that no pods are connected) ---
 # Runs regardless of whether the namespace still existed: the drop Job executes
 # in ${SYSTEM_NAMESPACE}, not the tenant namespace, so it works even after the
 # reaper has removed the tenant namespace (the reaper does NOT drop DBs).
 if [ "${KEEP_DB}" = false ] && [ -n "${DB_PASSWORD:-}" ]; then
-  load_infra_outputs
   if [ -n "${RDS_HOST}" ]; then
-    log "Dropping per-tenant database ${T_DB_NAME} (in-cluster job in ${SYSTEM_NAMESPACE})..."
+    log "Dropping per-tenant database ${T_DB_NAME} and its role (in-cluster job in ${SYSTEM_NAMESPACE})..."
     kubectl get ns "${SYSTEM_NAMESPACE}" >/dev/null 2>&1 || kubectl create ns "${SYSTEM_NAMESPACE}" >/dev/null 2>&1 || true
-    drop_tenant_db "${T_DB_NAME}" "${SYSTEM_NAMESPACE}" || \
-      warn "  check RDS manually for ${T_DB_NAME}."
+    drop_tenant_db "${T_DB_NAME}" "${SYSTEM_NAMESPACE}" "$(tenant_db_role "${ATTENDEE_ID}")" || \
+      warn "  check RDS manually for ${T_DB_NAME} / $(tenant_db_role "${ATTENDEE_ID}")."
+  fi
+  if kubectl -n "${PGBOUNCER_NAMESPACE:-otterworks-platform}" get secret pgbouncer-auth >/dev/null 2>&1; then
+    PGB_PASSWORD="" pgbouncer_userlist_set "$(tenant_db_role "${ATTENDEE_ID}")" || \
+      warn "  could not remove $(tenant_db_role "${ATTENDEE_ID}") from the pgbouncer-auth userlist."
   fi
 elif [ "${KEEP_DB}" = false ]; then
   warn "DB_PASSWORD not set; skipping DB drop. Set it or drop ${T_DB_NAME} manually."
 fi
 
-# --- Step 3: remove this tenant's subs from the shared IRSA role trust policies ---
+# --- Step 3: per-tenant IAM roles + DynamoDB tables ---
+if [ -n "${AWS_ACCOUNT_ID}" ]; then
+  log "Deleting per-tenant IAM roles and DynamoDB tables..."
+  delete_tenant_aws_resources "${ATTENDEE_ID}"
+fi
+
+# --- Step 4: remove legacy subs from the shared IRSA role trust policies ---
 remove_irsa_trust() {
-  local d="${REPO_ROOT}/infrastructure/terraform"
-  terraform -chdir="$d" init -input=false >/dev/null 2>&1 || true
-  local irsa_json; irsa_json="$(terraform -chdir="$d" output -json irsa_role_arns 2>/dev/null || echo "{}")"
-  local oidc_url; oidc_url="$(terraform -chdir="${REPO_ROOT}/platform/terraform" output -raw oidc_provider_url 2>/dev/null || echo "")"
-  # In-cluster fall back to the EKS API for the OIDC issuer (see deploy-tenant.sh).
-  if [ -z "${oidc_url}" ]; then
-    oidc_url="$(aws eks describe-cluster --name "${EKS_CLUSTER}" --region "${AWS_REGION}" \
-      --query 'cluster.identity.oidc.issuer' --output text 2>/dev/null || echo "")"
-  fi
-  oidc_url="${oidc_url#https://}"
+  local irsa_json="${IRSA_JSON:-}"; [ -n "${irsa_json}" ] || irsa_json="{}"
+  local oidc_url; oidc_url="$(resolve_oidc_url)"
   [ -n "${oidc_url}" ] || { warn "OIDC URL unavailable; skipping IRSA trust cleanup."; return 0; }
   local svc role sub
   for svc in $(echo "${irsa_json}" | jq -r 'keys[]'); do
@@ -94,12 +101,9 @@ remove_irsa_trust() {
     local doc; doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "")"
     [ -n "${doc}" ] || continue
     # Remove ONLY legacy per-tenant statements that pin this exact sub via
-    # StringEquals (added by older deploys). Statements without a
-    # StringEquals[:sub] — notably the shared Terraform-managed StringLike
-    # wildcard statement that grants every otterworks-* namespace — MUST be left
-    # untouched; stripping it would break AWS access for the golden app and all
-    # other tenants. The current deploy relies on that wildcard and adds no
-    # per-tenant StringEquals statement, so this is normally a no-op.
+    # StringEquals (added by older deploys). Every other statement -- notably
+    # the Terraform-managed golden-namespace trust -- is left untouched. The
+    # current deploy uses per-tenant roles instead, so this is normally a no-op.
     local new; new="$(echo "${doc}" | jq --arg sub "${sub}" --arg url "${oidc_url}" '
       .Statement |= map(
         if (.Condition.StringEquals[$url+":sub"] // null) != null then
@@ -115,7 +119,7 @@ remove_irsa_trust() {
   done
 }
 if [ "${KEEP_TRUST}" = false ]; then
-  log "Cleaning tenant service-account subs from shared IRSA role trust policies..."
+  log "Cleaning legacy tenant service-account subs from shared IRSA role trust policies..."
   remove_irsa_trust
 fi
 
