@@ -258,8 +258,8 @@ export const filesApi = {
     try {
       userId = (await authApi.lookupUser(email)).id;
     } catch (err) {
-      // auth-service reports an unknown email as 400 "User not found with
-      // email: ..."; other lookup failures are rethrown.
+      // auth-service reports an unknown email as 400 "User not found"; other
+      // lookup failures are rethrown.
       const isUserNotFound =
         isAxiosError(err) &&
         (err.response?.status === 404 ||

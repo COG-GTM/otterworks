@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog/log"
 )
 
 type jwtClaimsKey struct{}
@@ -73,7 +74,8 @@ func JWTAuth(cfg JWTConfig) func(http.Handler) http.Handler {
 
 			claims, err := validateToken(tokenStr, cfg.Secret)
 			if err != nil {
-				writeJSONError(w, http.StatusUnauthorized, fmt.Sprintf("invalid token: %v", err))
+				log.Warn().Err(err).Str("path", r.URL.Path).Msg("JWT validation failed")
+				writeJSONError(w, http.StatusUnauthorized, "invalid or expired token")
 				return
 			}
 

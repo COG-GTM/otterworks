@@ -6,6 +6,7 @@ import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.dto.RegisterRequest;
 import com.otterworks.auth.entity.RefreshToken;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.BadRequestException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
@@ -43,7 +44,7 @@ public class AuthService {
   @Transactional
   public AuthResponse register(RegisterRequest request) {
     if (userRepository.existsByEmail(request.getEmail())) {
-      throw new IllegalArgumentException("Email already registered");
+      throw new BadRequestException("Email already registered");
     }
 
     User user = new User();
@@ -62,10 +63,10 @@ public class AuthService {
     User user =
         userRepository
             .findByEmail(request.getEmail())
-            .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+            .orElseThrow(() -> new BadRequestException("Invalid credentials"));
 
     if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-      throw new IllegalArgumentException("Invalid credentials");
+      throw new BadRequestException("Invalid credentials");
     }
 
     user.setLastLoginAt(Instant.now());
@@ -83,10 +84,10 @@ public class AuthService {
     RefreshToken storedToken =
         refreshTokenRepository
             .findByTokenIdAndRevokedFalse(jti)
-            .orElseThrow(() -> new IllegalArgumentException("Invalid or revoked refresh token"));
+            .orElseThrow(() -> new BadRequestException("Invalid or revoked refresh token"));
 
     if (storedToken.getExpiresAt().isBefore(Instant.now())) {
-      throw new IllegalArgumentException("Refresh token expired");
+      throw new BadRequestException("Refresh token expired");
     }
 
     storedToken.setRevoked(true);
@@ -95,7 +96,7 @@ public class AuthService {
     User user =
         userRepository
             .findById(UUID.fromString(userId))
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            .orElseThrow(() -> new BadRequestException("User not found"));
 
     log.info("Token refreshed for user: {}", user.getEmail());
     return buildAuthResponse(user);
@@ -106,10 +107,10 @@ public class AuthService {
     User user =
         userRepository
             .findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            .orElseThrow(() -> new BadRequestException("User not found"));
 
     if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPasswordHash())) {
-      throw new IllegalArgumentException("Current password is incorrect");
+      throw new BadRequestException("Current password is incorrect");
     }
 
     user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));

@@ -248,7 +248,8 @@ async def _do_filter_documents(
             offset=(page - 1) * size,
         )
     except SQLAlchemyError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid filter: {exc}") from exc
+        logger.warning("document_filter_failed", error=str(exc))
+        raise HTTPException(status_code=400, detail="Invalid filter parameters") from exc
     return DocumentListResponse(
         items=[DocumentResponse.model_validate(row) for row in rows],
         total=total,

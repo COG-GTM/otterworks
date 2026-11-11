@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -320,4 +321,53 @@ func TestGetJWTClaims_NilContext(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	claims := GetJWTClaims(req.Context())
 	assert.Nil(t, claims)
+}
+
+func TestJWTAuth_InvalidTokenResponseHidesValidationDetail(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	validClaims := JWTClaims{
+		UserID: "user-123",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+		},
+	}
+	expiredClaims := JWTClaims{
+		UserID: "user-123",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
+		},
+	}
+	noneToken, err := jwt.NewWithClaims(jwt.SigningMethodNone, validClaims).
+		SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	tokens := map[string]string{
+		"malformed":    "invalid-token-string",
+		"wrong_secret": generateTestToken(t, "wrong-secret", validClaims),
+		"expired":      generateTestToken(t, testSecret, expiredClaims),
+		"alg_none":     noneToken,
+	}
+
+	for name, tokenStr := range tokens {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+			req.Header.Set("Authorization", "Bearer "+tokenStr)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+			var body map[string]string
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+			assert.Equal(t, map[string]string{"error": "invalid or expired token"}, body)
+		})
+	}
 }
