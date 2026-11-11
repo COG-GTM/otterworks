@@ -317,6 +317,29 @@ class AuthControllerIntegrationTest {
   }
 
   @Test
+  void lookupByEmail_ambiguousCaseVariantsShouldNotPickAnAccount() throws Exception {
+    String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
+    createTestUser("Twin@otterworks.dev", "password123", "Upper Twin");
+    createTestUser("twin@otterworks.dev", "password123", "Lower Twin");
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "TWIN@otterworks.dev")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.message").value("User not found"));
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .param("email", "Twin@otterworks.dev")
+                .header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.displayName").value("Upper Twin"));
+  }
+
+  @Test
   void lookupByEmail_unknownEmailShouldReturnGenericNotFound() throws Exception {
     String token = registerAndGetAccessToken("sharer@otterworks.dev", "password123", "Sharer");
 
