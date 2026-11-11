@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession, UnauthorizedError } from "@/lib/session";
 import { env } from "@/lib/env";
+import { csrfRejection } from "@/lib/csrf";
 
 export function json<T>(data: T, init?: number | ResponseInit): NextResponse {
   const responseInit = typeof init === "number" ? { status: init } : init;
@@ -12,8 +13,9 @@ export function error(status: number, message: string): NextResponse {
 }
 
 /**
- * Wrap an authenticated /api route handler. Enforces requireSession() (defense
- * in depth alongside middleware) and translates known errors to status codes.
+ * Wrap an authenticated /api route handler. Enforces the CSRF gate and
+ * requireSession() (defense in depth alongside middleware) and translates
+ * known errors to status codes.
  * The `actor` passed to the handler comes only from the signed session.
  */
 export function withSession(
@@ -23,6 +25,9 @@ export function withSession(
     req: NextRequest,
     routeCtx: { params: Promise<Record<string, string>> },
   ) => {
+    const rejection = csrfRejection(req);
+    if (rejection) return error(rejection.status, rejection.error);
+
     let actor: string;
     try {
       const session = requireSession(req);

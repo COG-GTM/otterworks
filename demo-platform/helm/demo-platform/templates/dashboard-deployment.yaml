@@ -47,6 +47,10 @@ spec:
               value: {{ .Values.platformNamespace | quote }}
             - name: RUNNER_IMAGE
               value: {{ .Values.runnerImage | quote }}
+            {{- if .Values.dashboard.host }}
+            - name: DASHBOARD_ORIGIN
+              value: {{ printf "https://%s" .Values.dashboard.host | quote }}
+            {{- end }}
             - name: HOST_SUFFIX
               value: {{ .Values.hostSuffix | quote }}
             - name: PERPETUAL_TENANT_IDS
