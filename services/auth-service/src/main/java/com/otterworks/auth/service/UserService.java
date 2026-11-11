@@ -3,6 +3,7 @@ package com.otterworks.auth.service;
 import com.otterworks.auth.dto.UpdateProfileRequest;
 import com.otterworks.auth.dto.UserDTO;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.BadRequestException;
 import com.otterworks.auth.repository.UserRepository;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -28,7 +29,7 @@ public class UserService {
     User user =
         userRepository
             .findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            .orElseThrow(() -> new BadRequestException("User not found"));
     return UserDTO.fromEntity(user);
   }
 
@@ -37,7 +38,7 @@ public class UserService {
     User user =
         userRepository
             .findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            .orElseThrow(() -> new BadRequestException("User not found"));
 
     if (request.getDisplayName() != null) {
       user.setDisplayName(request.getDisplayName());
@@ -61,6 +62,6 @@ public class UserService {
     return userRepository
         .findByEmail(email)
         .map(UserDTO::fromEntity)
-        .orElseThrow(() -> new IllegalArgumentException("User not found with email: " + email));
+        .orElseThrow(() -> new BadRequestException("User not found"));
   }
 }

@@ -1,6 +1,7 @@
 package com.otterworks.auth.security;
 
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.BadRequestException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -66,7 +67,7 @@ public class JwtTokenProvider {
     Claims claims = validateAndGetClaims(token);
     String type = claims.get("type", String.class);
     if ("refresh".equals(type)) {
-      throw new IllegalArgumentException("Refresh token cannot be used as access token");
+      throw new BadRequestException("Refresh token cannot be used as access token");
     }
     return claims.getSubject();
   }
@@ -75,7 +76,7 @@ public class JwtTokenProvider {
     Claims claims = validateAndGetClaims(token);
     String type = claims.get("type", String.class);
     if (!"refresh".equals(type)) {
-      throw new IllegalArgumentException("Token is not a refresh token");
+      throw new BadRequestException("Token is not a refresh token");
     }
     return claims.getSubject();
   }

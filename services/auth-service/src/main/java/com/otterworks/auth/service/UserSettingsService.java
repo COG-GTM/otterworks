@@ -4,6 +4,7 @@ import com.otterworks.auth.dto.UpdateSettingsRequest;
 import com.otterworks.auth.dto.UserSettingsDTO;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.entity.UserSettings;
+import com.otterworks.auth.exception.BadRequestException;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.repository.UserSettingsRepository;
 import java.util.UUID;
@@ -63,7 +64,7 @@ public class UserSettingsService {
     User user =
         userRepository
             .findById(userId)
-            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+            .orElseThrow(() -> new BadRequestException("User not found"));
     UserSettings settings = new UserSettings();
     settings.setUser(user);
     return settingsRepository.save(settings);

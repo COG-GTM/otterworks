@@ -19,9 +19,15 @@ public class GlobalExceptionHandler {
 
   private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+  @ExceptionHandler(BadRequestException.class)
+  public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
+    return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+  }
+
   @ExceptionHandler(IllegalArgumentException.class)
   public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
-    return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    log.warn("Rejected request with invalid argument: {}", ex.getMessage());
+    return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid request");
   }
 
   @ExceptionHandler(MethodArgumentNotValidException.class)

@@ -96,3 +96,19 @@ async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_filter_error_does_not_leak_database_detail(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Quarterly Report")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"sort": "nonexistent_col", "direction": "asc"},
+        auth=None,
+    )
+
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "Invalid filter parameters"}
