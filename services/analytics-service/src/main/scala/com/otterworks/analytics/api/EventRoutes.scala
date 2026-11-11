@@ -50,13 +50,15 @@ class EventRoutes(analyticsService: AnalyticsService, auth: AuthDirectives):
   }
 
 object EventRoutes:
-  val MaxFieldLength = 256
+  // Match analytics_events.resource_id VARCHAR(128) / resource_type VARCHAR(64).
+  val MaxResourceIdLength = 128
+  val MaxResourceTypeLength = 64
   val MaxMetadataEntries = 32
   val MaxMetadataKeyLength = 64
   val MaxMetadataValueLength = 1024
 
   private def withinLimits(request: TrackEventRequest, metadata: Map[String, String]): Boolean =
-    request.resourceId.length <= MaxFieldLength &&
-      request.resourceType.length <= MaxFieldLength &&
+    request.resourceId.length <= MaxResourceIdLength &&
+      request.resourceType.length <= MaxResourceTypeLength &&
       metadata.size <= MaxMetadataEntries &&
       metadata.forall((k, v) => k.length <= MaxMetadataKeyLength && v.length <= MaxMetadataValueLength)

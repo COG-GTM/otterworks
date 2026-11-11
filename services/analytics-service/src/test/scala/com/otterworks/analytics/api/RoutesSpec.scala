@@ -213,10 +213,10 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
   private def sealRoute(routes: Route): Route = Route.seal(routes)
 
-  private def eventEntity(userId: String, eventType: String = "document.created", resourceId: String = "doc-1") =
+  private def eventEntity(userId: String, eventType: String = "document.created", resourceId: String = "doc-1", resourceType: String = "document") =
     HttpEntity(
       ContentTypes.`application/json`,
-      TrackEventRequest(eventType, userId, resourceId, "document", None).toJson.compactPrint
+      TrackEventRequest(eventType, userId, resourceId, resourceType, None).toJson.compactPrint
     )
 
   "Analytics routes" should "reject requests without a verified token" in {
@@ -244,8 +244,19 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     Post("/api/v1/analytics/events", eventEntity("user-1", eventType = "=cmd|' /C calc'!A0")) ~> user("user-1") ~> sealRoute(eventRoutes.routes) ~> check {
       status shouldBe StatusCodes.BadRequest
     }
-    Post("/api/v1/analytics/events", eventEntity("user-1", resourceId = "x" * 1000)) ~> user("user-1") ~> sealRoute(eventRoutes.routes) ~> check {
-      status shouldBe StatusCodes.BadRequest
+    Seq(
+      eventEntity("user-1", resourceId = "x" * (EventRoutes.MaxResourceIdLength + 1)),
+      eventEntity("user-1", resourceType = "x" * (EventRoutes.MaxResourceTypeLength + 1))
+    ).foreach { entity =>
+      Post("/api/v1/analytics/events", entity) ~> user("user-1") ~> sealRoute(eventRoutes.routes) ~> check {
+        status shouldBe StatusCodes.BadRequest
+      }
+    }
+    Post(
+      "/api/v1/analytics/events",
+      eventEntity("user-1", resourceId = "x" * EventRoutes.MaxResourceIdLength, resourceType = "x" * EventRoutes.MaxResourceTypeLength)
+    ) ~> user("user-1") ~> sealRoute(eventRoutes.routes) ~> check {
+      status shouldBe StatusCodes.Accepted
     }
   }
 
