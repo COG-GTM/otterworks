@@ -104,7 +104,10 @@ api() {
              curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}" \
                   -H 'content-type: application/json' --data-binary @-)"
   else
-    out="$(curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}")"
+    # The dashboard's CSRF gate requires application/json on every mutation,
+    # bodyless ones included.
+    out="$(curl -sS -w '\n%{http_code}' -b "${JAR}" -X "${method}" "${OPS_HOST}${path}" \
+                -H 'content-type: application/json')"
   fi
 
   code="$(printf '%s' "${out}" | tail -n1)"
