@@ -27,11 +27,26 @@ module Api
           'info'     => 'low',
         }.freeze
 
+        # Legitimate senders post one alert per request (Grafana groups rarely
+        # exceed a handful); anything larger is rejected outright so a single
+        # request cannot fan out into many incidents and Devin sessions.
+        MAX_ALERTS_PER_REQUEST = 10
+
+        # `dedup=false` is a client-supplied label, so the number of incidents it
+        # may open per service is budgeted. Once a service has opened this many
+        # incidents within the window, further alerts fall back to normal dedup.
+        DEDUP_BYPASS_LIMIT  = ENV.fetch('ALERT_DEDUP_BYPASS_LIMIT', 5).to_i
+        DEDUP_BYPASS_WINDOW = ENV.fetch('ALERT_DEDUP_BYPASS_WINDOW_SECONDS', 600).to_i.seconds
+
         # POST /api/v1/admin/alerts/ingest
         def ingest
           alerts = params[:alerts]
           unless alerts.is_a?(Array)
             return render json: { error: 'Missing alerts array' }, status: :bad_request
+          end
+          if alerts.size > MAX_ALERTS_PER_REQUEST
+            return render json: { error: "Too many alerts (max #{MAX_ALERTS_PER_REQUEST} per request)" },
+                          status: 413
           end
 
           processed = alerts.map { |alert| process_alert(alert) }.compact
@@ -61,9 +76,9 @@ module Api
           return nil if affected_service.blank?
 
           # Deduplicate: skip if an active incident for this service already
-          # exists — unless the alert opts out with a `dedup=false` label, in
-          # which case every firing alert opens its own incident.
-          if labels[:dedup].to_s != 'false'
+          # exists — unless the alert opts out with a `dedup=false` label and the
+          # service still has dedup-bypass budget left.
+          unless dedup_bypass_allowed?(labels, affected_service, alert_name)
             existing = Incident.where(affected_service: affected_service)
                                .where(status: %w[open investigating])
                                .first
@@ -112,6 +127,19 @@ module Api
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("Failed to create incident from alert #{alert_name}: #{e.message}")
           nil
+        end
+
+        def dedup_bypass_allowed?(labels, affected_service, alert_name)
+          return false unless labels[:dedup].to_s == 'false'
+
+          recent = Incident.where(affected_service: affected_service)
+                           .where(created_at: DEDUP_BYPASS_WINDOW.ago..)
+                           .count
+          return true if recent < DEDUP_BYPASS_LIMIT
+
+          Rails.logger.warn("Alert #{alert_name} dedup=false ignored — #{affected_service} opened #{recent} " \
+                            "incident(s) in the last #{DEDUP_BYPASS_WINDOW.inspect}")
+          false
         end
 
         def resolve_incident(affected_service, alert_name)
