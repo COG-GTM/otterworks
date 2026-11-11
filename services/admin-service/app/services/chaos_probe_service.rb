@@ -42,34 +42,84 @@ class ChaosProbeService
     },
   }.freeze
 
-  # Starts a background probe thread for the given service.
-  # The thread self-terminates when the Redis key no longer exists.
-  def self.start(service:, redis_key:)
-    probe_config = SERVICE_PROBES[service]
-    return unless probe_config
+  # Probes are deduplicated per service and capped globally, so repeated
+  # triggers cannot pile up threads (and amplified internal traffic).
+  MAX_CONCURRENT_PROBES = 4
 
-    Thread.new do
-      Thread.current.report_on_exception = true
-      Rails.logger.info("[ChaosProbe] Started for #{service}")
-      redis = Redis.new(
-        url: ServiceEnv.redis_url,
-        timeout: 2
-      )
+  @probes = {}
+  @registry_mutex = Mutex.new
 
-      iterations = 0
-      loop do
-        break unless redis.exists?(redis_key)
+  class << self
+    # Starts a background probe thread for the given service unless one is
+    # already running for it or the global cap is reached. Returns the probe
+    # thread for the service, or nil when no probe runs.
+    # The thread self-terminates when the Redis key no longer exists.
+    def start(service:, redis_key:)
+      probe_config = SERVICE_PROBES[service]
+      return unless probe_config
 
-        PROBE_BATCH.times { fire_probe(probe_config) }
-        iterations += 1
-        sleep PROBE_INTERVAL
+      @registry_mutex.synchronize do
+        @probes.select! { |_, thread| thread.alive? }
+        existing = @probes[service]
+        return existing if existing
+
+        if @probes.size >= MAX_CONCURRENT_PROBES
+          Rails.logger.warn("[ChaosProbe] Not starting probe for #{service}: #{MAX_CONCURRENT_PROBES} probes running")
+          return
+        end
+
+        @probes[service] = spawn_probe(service, redis_key, probe_config)
       end
+    end
 
-      Rails.logger.info("[ChaosProbe] Stopped for #{service} after #{iterations} iterations")
-    rescue StandardError => e
-      Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
-    ensure
-      redis&.close
+    def active_probe_count
+      @registry_mutex.synchronize { @probes.count { |_, thread| thread.alive? } }
+    end
+
+    private
+
+    def spawn_probe(service, redis_key, probe_config)
+      Thread.new do
+        Thread.current.report_on_exception = true
+        Rails.logger.info("[ChaosProbe] Started for #{service}")
+        redis = Redis.new(
+          url: ServiceEnv.redis_url,
+          timeout: 2
+        )
+
+        iterations = 0
+        loop do
+          break if deregister_if_inactive(service, redis_key, redis)
+
+          PROBE_BATCH.times { fire_probe(probe_config) }
+          iterations += 1
+          sleep PROBE_INTERVAL
+        end
+
+        Rails.logger.info("[ChaosProbe] Stopped for #{service} after #{iterations} iterations")
+      rescue StandardError => e
+        Rails.logger.error("[ChaosProbe] Thread error for #{service}: #{e.class} - #{e.message}")
+      ensure
+        deregister(service)
+        redis&.close
+      end
+    end
+
+    # Checks the chaos key and deregisters under the registry lock, so a
+    # concurrent trigger either sees this probe keep running or starts a new one.
+    def deregister_if_inactive(service, redis_key, redis)
+      @registry_mutex.synchronize do
+        next false if redis.exists?(redis_key)
+
+        @probes.delete(service) if @probes[service] == Thread.current
+        true
+      end
+    end
+
+    def deregister(service)
+      @registry_mutex.synchronize do
+        @probes.delete(service) if @probes[service] == Thread.current
+      end
     end
   end
 
