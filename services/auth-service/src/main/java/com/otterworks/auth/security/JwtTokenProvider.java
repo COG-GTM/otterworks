@@ -18,6 +18,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class JwtTokenProvider {
 
+  public static final String TYPE_CLAIM = "type";
+  public static final String ACCESS_TOKEN_TYPE = "access";
+  public static final String REFRESH_TOKEN_TYPE = "refresh";
+
   private final SecretKey key;
   private final long accessTokenExpiry;
   private final long refreshTokenExpiry;
@@ -38,7 +42,7 @@ public class JwtTokenProvider {
         .claim("email", user.getEmail())
         .claim("name", user.getDisplayName())
         .claim("roles", user.getRoles().stream().map(Enum::name).collect(Collectors.toList()))
-        .claim("type", "access")
+        .claim(TYPE_CLAIM, ACCESS_TOKEN_TYPE)
         .issuedAt(Date.from(now))
         .expiration(Date.from(now.plus(accessTokenExpiry, ChronoUnit.SECONDS)))
         .signWith(key)
@@ -51,7 +55,7 @@ public class JwtTokenProvider {
     return Jwts.builder()
         .subject(user.getId().toString())
         .id(jti)
-        .claim("type", "refresh")
+        .claim(TYPE_CLAIM, REFRESH_TOKEN_TYPE)
         .issuedAt(Date.from(now))
         .expiration(Date.from(now.plus(refreshTokenExpiry, ChronoUnit.SECONDS)))
         .signWith(key)
@@ -62,19 +66,21 @@ public class JwtTokenProvider {
     return Jwts.parser().verifyWith(key).build().parseSignedClaims(token).getPayload();
   }
 
-  public String validateTokenAndGetUserId(String token) {
+  public Claims validateAccessTokenAndGetClaims(String token) {
     Claims claims = validateAndGetClaims(token);
-    String type = claims.get("type", String.class);
-    if ("refresh".equals(type)) {
-      throw new IllegalArgumentException("Refresh token cannot be used as access token");
+    if (!ACCESS_TOKEN_TYPE.equals(claims.get(TYPE_CLAIM, String.class))) {
+      throw new IllegalArgumentException("Token is not an access token");
     }
-    return claims.getSubject();
+    return claims;
+  }
+
+  public String validateTokenAndGetUserId(String token) {
+    return validateAccessTokenAndGetClaims(token).getSubject();
   }
 
   public String validateRefreshTokenAndGetUserId(String token) {
     Claims claims = validateAndGetClaims(token);
-    String type = claims.get("type", String.class);
-    if (!"refresh".equals(type)) {
+    if (!REFRESH_TOKEN_TYPE.equals(claims.get(TYPE_CLAIM, String.class))) {
       throw new IllegalArgumentException("Token is not a refresh token");
     }
     return claims.getSubject();

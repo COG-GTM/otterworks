@@ -20,8 +20,21 @@ interface JwtPayload {
   name?: string;
   display_name?: string;
   roles?: string[];
+  type?: string;
   iat?: number;
   exp?: number;
+}
+
+const ACCESS_TOKEN_TYPE = 'access';
+
+// auth-service signs refresh tokens with the same key, so only tokens typed
+// as access tokens may open a collaboration connection.
+export function verifyAccessToken(token: string, jwtSecret: string): JwtPayload {
+  const decoded = jwt.verify(token, jwtSecret);
+  if (typeof decoded === 'string' || decoded.type !== ACCESS_TOKEN_TYPE) {
+    throw new Error('Token is not an access token');
+  }
+  return decoded as JwtPayload;
 }
 
 export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
@@ -37,7 +50,7 @@ export function createAuthMiddleware(jwtSecret: string, logger: Logger) {
     }
 
     try {
-      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+      const decoded = verifyAccessToken(token, jwtSecret);
 
       (socket as AuthenticatedSocket).user = {
         userId: decoded.sub,
