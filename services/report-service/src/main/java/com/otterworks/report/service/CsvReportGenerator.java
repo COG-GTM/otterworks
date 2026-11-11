@@ -16,6 +16,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Generates CSV reports using OpenCSV 4.6.
@@ -34,6 +35,8 @@ import java.util.Set;
 public class CsvReportGenerator {
 
     private static final Logger logger = LoggerFactory.getLogger(CsvReportGenerator.class);
+
+    private static final Pattern PLAIN_NUMBER = Pattern.compile("[+-]?\\d+(\\.\\d+)?([eE][+-]?\\d+)?");
 
     private final ReportHeaderRenderer headerRenderer;
 
@@ -72,15 +75,15 @@ public class CsvReportGenerator {
                 bannerVars.put("periodTo", ReportDateUtils.toDisplayString(report.getDateTo()));
                 bannerVars.put("rows", String.valueOf(data.size()));
 
-                writer.writeNext(new String[]{headerRenderer.title(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.generated(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.period(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.rows(bannerVars)});
-                writer.writeNext(new String[]{headerRenderer.footer()});
-                writer.writeNext(new String[]{""});
+                writeRow(writer, headerRenderer.title(bannerVars));
+                writeRow(writer, headerRenderer.generated(bannerVars));
+                writeRow(writer, headerRenderer.period(bannerVars));
+                writeRow(writer, headerRenderer.rows(bannerVars));
+                writeRow(writer, headerRenderer.footer());
+                writeRow(writer, "");
 
                 // Write header row
-                writer.writeNext(header);
+                writeRow(writer, header);
 
                 // Write data rows
                 for (Map<String, Object> row : data) {
@@ -90,13 +93,40 @@ public class CsvReportGenerator {
                         Object value = row.get(col);
                         values[i++] = value != null ? value.toString() : "";
                     }
-                    writer.writeNext(values);
+                    writeRow(writer, values);
                 }
             }
         }
 
         logger.info("Generated CSV report: {} ({} bytes)", outputFile.getAbsolutePath(), outputFile.length());
         return outputFile;
+    }
+
+    private static void writeRow(CSVWriter writer, String... cells) {
+        String[] escaped = new String[cells.length];
+        for (int i = 0; i < cells.length; i++) {
+            escaped[i] = escapeCell(cells[i]);
+        }
+        writer.writeNext(escaped);
+    }
+
+    /**
+     * Neutralizes spreadsheet formula injection (OWASP "CSV Injection"): a cell
+     * starting with =, +, -, @, tab, carriage return or line feed is prefixed with a single
+     * quote so spreadsheet applications treat it as text. Plain numbers such as
+     * -42 or +3.5 are left untouched.
+     */
+    static String escapeCell(String value) {
+        if (value == null || value.isEmpty()) {
+            return value;
+        }
+        char first = value.charAt(0);
+        boolean formulaTrigger = first == '=' || first == '+' || first == '-' || first == '@'
+                || first == '\t' || first == '\r' || first == '\n';
+        if (!formulaTrigger || PLAIN_NUMBER.matcher(value).matches()) {
+            return value;
+        }
+        return "'" + value;
     }
 
     private String buildFileName(Report report, String extension) {
