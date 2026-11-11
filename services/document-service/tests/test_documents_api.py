@@ -276,6 +276,20 @@ async def test_create_document_via_jwt_hs512(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_refresh_token_rejected(client: AsyncClient):
+    """Refresh tokens cannot be used as document credentials."""
+    token = jwt.encode(
+        {"sub": str(uuid.uuid4()), "type": "refresh"}, TEST_JWT_SECRET, algorithm="HS384"
+    )
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Refresh Doc"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_create_document_x_user_id_header_ignored(client: AsyncClient):
     """X-User-Id header alone is not trusted (prevents identity spoofing)."""
     user_id = uuid.uuid4()
