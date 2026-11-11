@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 
 import redis as redis_lib
@@ -9,6 +10,7 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import _extract_bearer_token
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -39,6 +41,18 @@ def _chaos_active(key: str) -> bool:
 def _get_service() -> MeiliSearchService:
     """Get the shared MeiliSearchService from app config."""
     return current_app.config["SEARCH_SERVICE"]
+
+
+def _caller_id() -> str | None:
+    """Return the gateway-authenticated caller's user id, if any."""
+    return request.headers.get("X-User-ID", "").strip() or None
+
+
+def _is_service_caller() -> bool:
+    """Return True if the request carries the configured service token."""
+    service_token = current_app.config["APP_CONFIG"].auth.service_token
+    token = _extract_bearer_token()
+    return bool(service_token and token) and hmac.compare_digest(token, service_token)
 
 
 @search_bp.route("/", methods=["GET"], strict_slashes=False)
@@ -85,9 +99,12 @@ def suggest() -> tuple:
     """Autocomplete suggestions based on prefix.
 
     Query params: q (required, min 2 chars)
+    Suggestions are drawn only from the caller's own documents and files
+    (``X-User-ID`` set by the API gateway).
     """
     prefix = request.args.get("q", "")
-    if not prefix or len(prefix) < 2:
+    owner_id = _caller_id()
+    if not prefix or len(prefix) < 2 or not owner_id:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
     # CHAOS: when this flag is active the ranking-score enrichment path runs.
@@ -97,7 +114,7 @@ def suggest() -> tuple:
     # KeyError and crashes the handler with a 500.
     if _chaos_active("chaos:search-service:suggest_500"):
         service = _get_service()
-        raw_suggestions = service.suggest(prefix)
+        raw_suggestions = service.suggest(prefix, owner_id)
         if not raw_suggestions:
             # Simulate the same KeyError that fires when results exist but
             # _rankingScore is missing — ensures chaos fires even with an
@@ -109,7 +126,7 @@ def suggest() -> tuple:
 
     try:
         service = _get_service()
-        suggestions = service.suggest(prefix)
+        suggestions = service.suggest(prefix, owner_id)
         return jsonify({"suggestions": suggestions, "query": prefix}), 200
     except Exception:
         logger.exception("suggest_failed", prefix=prefix)
@@ -159,9 +176,20 @@ def advanced_search() -> tuple:
 
 @search_bp.route("/analytics", methods=["GET"])
 def search_analytics() -> tuple:
-    """Search analytics: popular queries, zero-result queries."""
+    """Search analytics: popular queries, zero-result queries.
+
+    Gateway-authenticated users see only their own queries. The
+    platform-wide aggregate is reserved for trusted internal callers
+    presenting the service token.
+    """
+    owner_id = _caller_id()
+    if _is_service_caller():
+        owner_id = None
+    elif not owner_id:
+        return jsonify({"error": "forbidden"}), 403
+
     try:
-        analytics = get_search_analytics()
+        analytics = get_search_analytics(owner_id)
         return jsonify(analytics.to_dict()), 200
     except Exception:
         logger.exception("analytics_failed")
