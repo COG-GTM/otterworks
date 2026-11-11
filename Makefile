@@ -63,7 +63,7 @@ env: ## Generate per-checkout random secrets (JWT_SECRET, SECRET_KEY_BASE, ...) 
 infra-up: env ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
 	docker compose -f docker-compose.infra.yml up -d
 
-infra-down: ## Stop local infrastructure
+infra-down: env ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
 up: env ## Start all services (add seed=1 to seed after start)
@@ -72,7 +72,7 @@ up: env ## Start all services (add seed=1 to seed after start)
 	@$(MAKE) --no-print-directory wait-for-db seed
  endif
 
-down: ## Stop all application services
+down: env ## Stop all application services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml down
 
 build: env ## Build all service images
@@ -101,7 +101,7 @@ COMPOSE := docker compose -f docker-compose.infra.yml -f docker-compose.yml
 # otherwise default to :8085, which only matches the k8s dev environment.
 COLLAB_WS_URL := ws://localhost:8084
 
-dev-backend: ## Start the Dockerized backend (all services except the frontend containers)
+dev-backend: env ## Start the Dockerized backend (all services except the frontend containers)
 	$(COMPOSE) up -d $$($(COMPOSE) config --services | grep -vE '^(web-app|admin-dashboard)$$')
 	@echo "Backend up - API gateway on http://localhost:8080 (fresh DB? run: make seed)"
 
