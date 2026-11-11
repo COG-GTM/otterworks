@@ -518,3 +518,33 @@ describe('createYWebsocketPersistence', () => {
     expect(store.saveDocumentState).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('createYWebsocketPersistence unsaved buffer', () => {
+  it('drops the oldest unsaved states once the buffer cap is exceeded', async () => {
+    const store = {
+      getDocumentState: jest.fn().mockResolvedValue(null),
+      saveDocumentState: jest.fn().mockRejectedValue(new Error('redis down')),
+    };
+    const stateSize = Y.encodeStateAsUpdate(textDoc(1000)).byteLength;
+    const persistence = createYWebsocketPersistence(store, mockLogger, stateSize * 2);
+
+    for (const name of ['doc-a', 'doc-b', 'doc-c']) {
+      await persistence.writeState(name, textDoc(1000));
+    }
+
+    const restored = async (name: string): Promise<number> => {
+      const doc = new Y.Doc();
+      await persistence.bindState(name, doc);
+      return doc.getText('content').length;
+    };
+    expect(await restored('doc-a')).toBe(0);
+    expect(await restored('doc-b')).toBe(1000);
+    expect(await restored('doc-c')).toBe(1000);
+  });
+});
+
+function textDoc(length: number): Y.Doc {
+  const doc = new Y.Doc();
+  doc.getText('content').insert(0, 'x'.repeat(length));
+  return doc;
+}

@@ -40,21 +40,42 @@ export interface YWebsocketPersistence {
  * Writes for the same document are serialized and a reload waits for them, so a
  * reconnect during a save never starts from stale state. A state whose write
  * failed is kept in memory and merged into the next load (or retried by
- * `drain`) instead of being lost when y-websocket destroys the document.
+ * `drain`) instead of being lost when y-websocket destroys the document. That
+ * buffer is capped at `maxUnsavedBytes`; beyond it the oldest states are dropped.
  */
 export function createYWebsocketPersistence(
   store: Pick<DocumentStore, 'getDocumentState' | 'saveDocumentState'>,
   logger: Logger,
+  maxUnsavedBytes = 64 * 1024 * 1024,
 ): YWebsocketPersistence {
   const writes = new Map<string, Promise<void>>();
   const unsaved = new Map<string, Uint8Array>();
+  let unsavedBytes = 0;
+
+  const forget = (docName: string): void => {
+    const state = unsaved.get(docName);
+    if (!state) return;
+    unsaved.delete(docName);
+    unsavedBytes -= state.byteLength;
+  };
+
+  const keep = (docName: string, state: Uint8Array): void => {
+    forget(docName);
+    unsaved.set(docName, state);
+    unsavedBytes += state.byteLength;
+    for (const name of unsaved.keys()) {
+      if (unsavedBytes <= maxUnsavedBytes) break;
+      forget(name);
+      logger.error({ docName: name }, 'y-websocket_unsaved_state_dropped');
+    }
+  };
 
   const save = async (docName: string, state: Uint8Array): Promise<void> => {
     try {
       await store.saveDocumentState(docName, Buffer.from(state));
-      unsaved.delete(docName);
+      forget(docName);
     } catch (err) {
-      unsaved.set(docName, state);
+      keep(docName, state);
       logger.error({ err, docName }, 'y-websocket_persist_state_failed');
     }
   };
