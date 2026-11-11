@@ -75,29 +75,37 @@ module Api
           return nil unless status == 'firing'
           return nil if affected_service.blank?
 
-          # Deduplicate: skip if an active incident for this service already
-          # exists — unless the alert opts out with a `dedup=false` label and the
-          # service still has dedup-bypass budget left.
-          unless dedup_bypass_allowed?(labels, affected_service, alert_name)
-            existing = Incident.where(affected_service: affected_service)
-                               .where(status: %w[open investigating])
-                               .first
-            if existing
-              Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
-              return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
-            end
-          end
-
           auto_investigate = AdminSettingsService.auto_investigate_enabled?
 
-          incident = Incident.create!(
-            title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
-            description:      build_description(alert_name, description, labels, annotations),
-            severity:         severity,
-            status:           auto_investigate ? 'investigating' : 'open',
-            affected_service: affected_service,
-            reporter_id:      nil, # system-generated
-          )
+          # The dedup/budget check and the insert run under a per-service lock so
+          # concurrent alerts cannot each pass the check and overshoot the budget.
+          existing = nil
+          incident = nil
+          with_service_lock(affected_service) do
+            # Deduplicate: skip if an active incident for this service already
+            # exists — unless the alert opts out with a `dedup=false` label and
+            # the service still has dedup-bypass budget left.
+            unless dedup_bypass_allowed?(labels, affected_service, alert_name)
+              existing = Incident.where(affected_service: affected_service)
+                                 .where(status: %w[open investigating])
+                                 .first
+            end
+            next if existing
+
+            incident = Incident.create!(
+              title:            summary.presence || "#{alert_name}: #{affected_service} alert firing",
+              description:      build_description(alert_name, description, labels, annotations),
+              severity:         severity,
+              status:           auto_investigate ? 'investigating' : 'open',
+              affected_service: affected_service,
+              reporter_id:      nil, # system-generated
+            )
+          end
+
+          if existing
+            Rails.logger.info("Alert #{alert_name} skipped — incident #{existing.id} already open for #{affected_service}")
+            return { skipped: true, incident_id: existing.id, reason: 'duplicate' }
+          end
 
           session_result = nil
           if auto_investigate
@@ -127,6 +135,14 @@ module Api
         rescue ActiveRecord::RecordInvalid => e
           Rails.logger.error("Failed to create incident from alert #{alert_name}: #{e.message}")
           nil
+        end
+
+        def with_service_lock(affected_service)
+          Incident.transaction do
+            key = Incident.connection.quote("alerts_ingest:#{affected_service}")
+            Incident.connection.execute("SELECT pg_advisory_xact_lock(hashtext(#{key}))")
+            yield
+          end
         end
 
         def dedup_bypass_allowed?(labels, affected_service, alert_name)

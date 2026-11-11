@@ -91,6 +91,18 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(described_class::DEDUP_BYPASS_LIMIT + 1)
     end
 
+    it 'serializes the budget check and insert under a per-service advisory lock' do
+      statements = []
+      callback = ->(*, payload) { statements << payload[:sql] }
+      ActiveSupport::Notifications.subscribed(callback, 'sql.active_record') do
+        post :ingest, params: { alerts: [firing_alert(labels: { dedup: 'false' })] }
+      end
+      lock_index = statements.index { |sql| sql.include?('pg_advisory_xact_lock') }
+      insert_index = statements.index { |sql| sql.start_with?('INSERT INTO "incidents"') }
+      expect(lock_index).not_to be_nil
+      expect(lock_index).to be < insert_index
+    end
+
     it 'rejects payloads without an alerts array' do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)
