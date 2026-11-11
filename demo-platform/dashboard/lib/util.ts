@@ -24,7 +24,13 @@ export function isTenantBranch(branch: string, id: string, perpetualAllowed: boo
   const rest = TENANT_BRANCH_RE.exec(branch)?.[2];
   if (!rest) return false;
   const suffix = sanitizeId(rest);
-  return suffix !== "" && (id === suffix || id.endsWith(`-${suffix}`));
+  if (suffix === "") return false;
+  if (id === suffix) return true;
+  // A prefixed id is sanitized (and truncated) as a whole, as tenant.sh does it.
+  for (let i = id.indexOf("-"); i > 0; i = id.indexOf("-", i + 1)) {
+    if (sanitizeId(`${id.slice(0, i)}-${rest}`) === id) return true;
+  }
+  return false;
 }
 
 // A perpetual tenant still carries a real expires_at, ten years out. The
