@@ -67,4 +67,12 @@ describe("web-app nginx security headers", () => {
       expect(dockerfile).toMatch(new RegExp(`^ENV ${name}=`, "m"));
     }
   });
+
+  it("allowlists storage origins by exact host, not a shared-domain wildcard", () => {
+    const origins = dockerfile.match(/^ENV CSP_STORAGE_ORIGINS="([^"]*)"/m)?.[1] ?? "";
+    expect(origins).not.toBe("");
+    for (const origin of origins.split(/\s+/)) {
+      expect(origin).toMatch(/^https:\/\/[^*\s]+$/);
+    }
+  });
 });

@@ -22,6 +22,8 @@ HEALTHCHECK --interval=10s --timeout=3s CMD wget -q -O /dev/null http://127.0.0.
 ENV API_GATEWAY_URL=http://api-gateway:8080
 
 # Extra Content-Security-Policy sources (space-separated), substituted into
-# nginx/security-headers.inc.template at container start.
-ENV CSP_STORAGE_ORIGINS="https://*.amazonaws.com"
+# nginx/security-headers.inc.template at container start. Storage origins name
+# the file bucket exactly: a *.amazonaws.com wildcard would let injected script
+# send tokens to any attacker-owned bucket.
+ENV CSP_STORAGE_ORIGINS="https://otterworks-files-dev.s3.amazonaws.com https://otterworks-files-dev.s3.us-east-1.amazonaws.com"
 ENV CSP_COLLAB_ORIGINS="ws://localhost:8084 ws://localhost:8085 wss://localhost:8085"
