@@ -34,6 +34,9 @@ func DefaultPublicPaths() []string {
 	return []string{
 		"/api/v1/auth/login",
 		"/api/v1/auth/register",
+		// Authenticated by the HttpOnly refresh cookie (or refresh token) in auth-service,
+		// not by an access token: the browser no longer holds a usable access token on reload.
+		"/api/v1/auth/refresh",
 	}
 }
 
