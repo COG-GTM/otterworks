@@ -17,6 +17,9 @@ const billingProxy = {
     target: process.env.BILLING_SERVICE_URL || "http://localhost:12109",
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/billing-api/, ""),
+    headers: process.env.BILLING_SERVICE_TOKEN
+      ? { Authorization: `Bearer ${process.env.BILLING_SERVICE_TOKEN}` }
+      : undefined,
   },
 };
 

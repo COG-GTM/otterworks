@@ -25,13 +25,30 @@ legacy before-state. `POST /internal/reset` applies the migration, truncates
 the `billing_svc` schema, and reseeds it so the parity harness can isolate
 every scenario.
 
-The reset endpoint is disabled by default. Disposable local/CI Compose stacks
+The reset endpoint is disabled by default and always requires the service token. Disposable local/CI Compose stacks
 enable it with `BILLING_SVC_ALLOW_INTERNAL_RESET=true`; published deployments
 should leave the setting disabled.
 
-The HTTP endpoints are intentionally unauthenticated in this parity fixture.
-Authentication and tenant scoping are out of scope here; an extraction that
-ships for real must add both at the edge before exposing these endpoints.
+## Authentication
+
+Tenant routes (`/api/tenants/{tenant_id}/...`) require
+`Authorization: Bearer <token>` and the service fails closed when nothing is
+configured:
+
+- an HS256 JWT signed with `BILLING_SVC_JWT_SECRET`, carrying `sub`, `exp` and a
+  `tenant_id` claim that must equal the path's `tenant_id` (otherwise `403`);
+- or the trusted-caller token `BILLING_SVC_SERVICE_TOKEN`, which may act on any
+  tenant (used by the parity harness).
+
+Missing or invalid credentials return `401`. `POST /internal/reset` requires
+both `BILLING_SVC_ALLOW_INTERNAL_RESET=true` and the service token. The plan
+catalog (`GET /api/plans`) is not tenant data and stays public.
+
+`make procs-up` / `make procs-parity` pass a per-namespace
+`BILLING_SVC_SERVICE_TOKEN` (override with `PROCS_SERVICE_TOKEN=...`). To use
+the billing screens through the Vite proxy, start the dev server with
+`BILLING_SERVICE_TOKEN=<the same token>`; the proxy adds the header server-side
+so the token never reaches the browser bundle.
 
 For the extracted target, a plan change with an already-scheduled later
 subscription preserves that later row. The response's `latest_*` fields always

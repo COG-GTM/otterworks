@@ -170,9 +170,11 @@ The `/billing-api` proxy is used by the dev server and by that flagged preview.
 Builds without the flag leave the routes unregistered. The billing screens are
 local parity-fixture pages only: they are not deployed through the normal
 client, Helm, or EKS paths.
-The fixture deliberately has no authentication because the procedures have no
-notion of a caller; a real extraction must add authentication and tenant
-scoping at the edge.
+Tenant routes require a bearer token: a `BILLING_SVC_JWT_SECRET`-signed JWT
+whose `tenant_id` claim matches the path, or the trusted
+`BILLING_SVC_SERVICE_TOKEN`; `/internal/reset` also needs the service token.
+The Make targets pass a per-namespace token (`PROCS_SERVICE_TOKEN`); start the
+Vite server with `BILLING_SERVICE_TOKEN=<token>` so the proxy injects it.
 
 ## Clean run reversion
 
