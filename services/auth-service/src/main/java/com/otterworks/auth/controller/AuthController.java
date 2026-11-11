@@ -1,6 +1,7 @@
 package com.otterworks.auth.controller;
 
 import com.otterworks.auth.dto.*;
+import com.otterworks.auth.exception.UserLookupNotFoundException;
 import com.otterworks.auth.service.AuthService;
 import com.otterworks.auth.service.UserLookupRateLimiter;
 import com.otterworks.auth.service.UserService;
@@ -75,7 +76,15 @@ public class AuthController {
   public ResponseEntity<UserLookupResponse> lookupUser(
       Authentication authentication, @RequestParam String email) {
     lookupRateLimiter.checkEmailLookup(authentication);
-    UserLookupResponse user = userService.lookupByEmail(email);
+    UserLookupResponse user;
+    try {
+      user = userService.lookupByEmail(email);
+    } catch (UserLookupNotFoundException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      lookupRateLimiter.refundEmailMiss(authentication);
+      throw e;
+    }
     lookupRateLimiter.refundEmailMiss(authentication);
     return ResponseEntity.ok(user);
   }
