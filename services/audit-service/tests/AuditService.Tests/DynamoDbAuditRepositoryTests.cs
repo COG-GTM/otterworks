@@ -242,6 +242,16 @@ public class DynamoDbAuditRepositoryTests
     }
 
     [Fact]
+    public async Task QueryEventsAsync_WithUserAndRangeAboveLimit_ShouldThrow()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.QueryEventsAsync(
+            "user-1", null, null, null, new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), null, null, 20));
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.QueryEventsAsync(
+            "user-1", null, null, null, new DateTime(1, 1, 1), new DateTime(9999, 12, 31), null, 20));
+        _mockDynamoDb.Verify(d => d.QueryAsync(It.IsAny<QueryRequest>(), default), Times.Never);
+    }
+
+    [Fact]
     public async Task QueryEventsAsync_WithCursorForAnotherUser_ShouldThrow()
     {
         _mockDynamoDb

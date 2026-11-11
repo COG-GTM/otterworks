@@ -145,8 +145,8 @@ public class DynamoDbAuditRepository : IAuditRepository
     {
         DateTime? rangeFrom = from.HasValue ? ToUtc(from.Value) : null;
         DateTime? rangeTo = to.HasValue ? ToUtc(to.Value) : null;
-        if (rangeFrom > rangeTo)
-            throw new ArgumentException("'from' must not be later than 'to'.");
+        if (rangeFrom.HasValue)
+            (rangeFrom, rangeTo) = NormalizeRange(rangeFrom.Value, rangeTo ?? DateTime.UtcNow);
 
         var state = AuditCursor.Decode(cursor);
         if (state?.Partition is not null)
