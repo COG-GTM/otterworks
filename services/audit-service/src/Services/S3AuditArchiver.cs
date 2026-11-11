@@ -140,6 +140,17 @@ public class S3AuditArchiver : IAuditArchiver
         return sb.ToString();
     }
 
-    private static string Esc(string? value) =>
-        value?.Replace("\"", "\"\"") ?? string.Empty;
+    private static readonly char[] FormulaTriggerChars = ['=', '+', '-', '@', '\t', '\r'];
+
+    private static string Esc(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // Prefix formula-trigger characters so spreadsheet apps treat the cell as text (CWE-1236).
+        var neutralized = Array.IndexOf(FormulaTriggerChars, value[0]) >= 0 ? "'" + value : value;
+        return neutralized.Replace("\"", "\"\"");
+    }
 }
