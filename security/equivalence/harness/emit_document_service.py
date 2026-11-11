@@ -30,6 +30,7 @@ from typing import Any
 from uuid import UUID
 
 HARNESS_VERSION = 1
+FIXTURE_JWT_SECRET = "ow-equivalence-fixture-jwt-secret-0123456789abcdef"  # noqa: S105
 
 # The emitter is executed from the module directory so the application package
 # imports; sys.path[0] is the harness directory, not the working directory.
@@ -217,7 +218,10 @@ async def share_link_http_roundtrip(fixture: Fixture, args: dict[str, Any]) -> d
     """Mint a share link over HTTP and read the document back through it."""
     document_id = args["document_id"]
     owner_id = args["owner_id"]
-    headers = {"Authorization": "Bearer fixture", "X-User-ID": owner_id}
+    import jwt
+
+    token = jwt.encode({"sub": owner_id}, FIXTURE_JWT_SECRET, algorithm="HS256")
+    headers = {"Authorization": f"Bearer {token}"}
     async with AppClient(fixture) as client:
         minted = await client.post(
             f"/api/v1/documents/{document_id}/share", headers=headers
@@ -329,6 +333,7 @@ async def main() -> int:
     spec = json.loads(args.cases.read_text(encoding="utf-8"))
     seed = json.loads(args.seed.read_text(encoding="utf-8"))
 
+    os.environ["JWT_SECRET"] = FIXTURE_JWT_SECRET
     for key, value in spec.get("env", {}).items():
         os.environ[key] = value
 
