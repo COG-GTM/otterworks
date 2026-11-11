@@ -101,10 +101,10 @@ Replaces the current TTL reaper (which deletes namespaces but **leaves orphan DB
 - Runs on the schedule stored in `CONFIG#reaper` (editable from the dashboard).
 - For each expired/checked-in tenant, performs **idempotent, retry-safe** teardown of **all** its resources:
   1. namespace `otterworks-<id>` (pods/Redis/Meili/ingress)
-  2. RDS database `otterworks_<id>`
+  2. RDS database `otterworks_<id>` and its login role `otterworks_<id>_app`
   3. S3 objects under the tenant prefix in every shared bucket
   4. DynamoDB items with the tenant partition key in every shared table
-  5. IAM/IRSA trust entries (only legacy exact-match; keep the shared wildcard)
+  5. per-tenant IAM roles + DynamoDB tables, and legacy exact-match trust entries on the shared roles
   6. Route53 records (external-dns handles ingress records automatically)
   7. control-table status → `free`; append audit event
 - **Orphan sweeper:** independently lists live namespaces / DBs / S3 prefixes / Dynamo partitions

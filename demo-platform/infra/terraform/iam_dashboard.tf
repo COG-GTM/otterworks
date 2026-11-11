@@ -201,13 +201,56 @@ data "aws_iam_policy_document" "dashboard" {
     }
   }
 
-  # Teardown maintains IRSA trust on the shared per-service roles (add/remove the
-  # tenant namespace SA). Scoped to the otterworks-* service roles only.
+  # Teardown strips legacy per-namespace statements older deploys added to the
+  # shared per-service roles' trust. Scoped to the otterworks-* service roles.
   statement {
     sid       = "TenantIrsaTrust"
     effect    = "Allow"
     actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
     resources = ["arn:aws:iam::${local.account_id}:role/otterworks-*"]
+  }
+
+  # Deploy/teardown mint and delete each tenant's own IRSA roles
+  # (otterworks-t-<hash>-<svc>). Creating one is allowed only with the tenant
+  # boundary attached, so the runner cannot mint a role broader than tenant
+  # scope; it cannot remove or swap the boundary afterwards.
+  statement {
+    sid       = "TenantRoleCreate"
+    effect    = "Allow"
+    actions   = ["iam:CreateRole", "iam:PutRolePolicy"]
+    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-t-*"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PermissionsBoundary"
+      values   = [aws_iam_policy.tenant_boundary.arn]
+    }
+  }
+  statement {
+    sid    = "TenantRoleManage"
+    effect = "Allow"
+    actions = [
+      "iam:GetRole", "iam:TagRole", "iam:UpdateAssumeRolePolicy",
+      "iam:DeleteRolePolicy", "iam:DeleteRole", "iam:ListRolePolicies",
+    ]
+    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-t-*"]
+  }
+
+  # Per-tenant DynamoDB tables (<shared table>-t-<id>), cloned from the shared
+  # tables' schema at deploy and deleted at teardown.
+  statement {
+    sid    = "TenantTables"
+    effect = "Allow"
+    actions = [
+      "dynamodb:CreateTable", "dynamodb:DeleteTable", "dynamodb:DescribeTable",
+      "dynamodb:TagResource", "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive",
+    ]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/${var.shared_dynamodb_table_prefix}*-t-*"]
+  }
+  statement {
+    sid       = "SharedTableSchemaRead"
+    effect    = "Allow"
+    actions   = ["dynamodb:DescribeTimeToLive"]
+    resources = ["arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/${var.shared_dynamodb_table_prefix}*"]
   }
 
   # deploy/teardown resolve shared RDS/S3/DynamoDB coordinates by reading the
@@ -269,4 +312,45 @@ resource "aws_iam_role_policy" "dashboard" {
   name   = "control-plane"
   role   = aws_iam_role.dashboard.id
   policy = data.aws_iam_policy_document.dashboard.json
+}
+
+# Upper bound for every per-tenant IRSA role the runner creates: tenant object
+# prefixes in the shared buckets and per-tenant tables, nothing else. Each
+# role's own inline policy narrows this to one tenant.
+data "aws_iam_policy_document" "tenant_boundary" {
+  statement {
+    sid    = "TenantTables"
+    effect = "Allow"
+    actions = [
+      "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem",
+      "dynamodb:Query", "dynamodb:Scan", "dynamodb:BatchWriteItem",
+    ]
+    resources = [
+      "arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/${var.shared_dynamodb_table_prefix}*-t-*",
+      "arn:aws:dynamodb:${var.aws_region}:${local.account_id}:table/${var.shared_dynamodb_table_prefix}*-t-*/index/*",
+    ]
+  }
+  statement {
+    sid       = "TenantObjects"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = ["arn:aws:s3:::${var.shared_s3_bucket_prefix}*/tenants/*"]
+  }
+  statement {
+    sid       = "TenantPrefixList"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::${var.shared_s3_bucket_prefix}*"]
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["tenants/*"]
+    }
+  }
+}
+
+resource "aws_iam_policy" "tenant_boundary" {
+  name        = "otterworks-tenant-workload-boundary"
+  description = "Permissions boundary for per-tenant OtterWorks IRSA roles"
+  policy      = data.aws_iam_policy_document.tenant_boundary.json
 }

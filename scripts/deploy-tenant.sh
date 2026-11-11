@@ -11,7 +11,10 @@
 #   - namespace otterworks-<ID> (TTL-labeled for the reaper)
 #   - ResourceQuota + LimitRange + a namespace NetworkPolicy
 #   - per-tenant in-cluster Redis + MeiliSearch (chaos/session/search isolation)
-#   - a per-tenant RDS database otterworks_<ID> (Postgres data isolation)
+#   - a per-tenant RDS database otterworks_<ID>, owned by a per-tenant login
+#     role that is the only DB credential tenant services receive
+#   - per-tenant DynamoDB tables and IRSA roles scoped to them and to the
+#     tenant's S3 prefix (tenants/<ID>/) in the shared buckets
 #   - all 11 backends + 2 frontends via Helm (replicas=1), frontends on the
 #     SHARED ingress (ClusterIP + one Ingress), NOT one LoadBalancer per tenant
 #
@@ -193,66 +196,74 @@ spec:
               kubernetes.io/metadata.name: monitoring
 YAML
 
-# ---------- IRSA trust: allow this tenant namespace to assume the shared roles ----------
-ensure_irsa_trust() {
-  local d="${REPO_ROOT}/infrastructure/terraform"
-  local oidc_url; oidc_url="$(terraform -chdir="${REPO_ROOT}/platform/terraform" output -raw oidc_provider_url 2>/dev/null || echo "")"
-  # In-cluster the platform/terraform state isn't initialized; fall back to the
-  # cluster's OIDC issuer via the EKS API (the runner IRSA role has
-  # eks:DescribeCluster). Without this the per-namespace trust is skipped and
-  # tenant pods can't assume the shared roles (AWS ops fail).
-  if [ -z "${oidc_url}" ]; then
-    oidc_url="$(aws eks describe-cluster --name "${EKS_CLUSTER}" --region "${AWS_REGION}" \
-      --query 'cluster.identity.oidc.issuer' --output text 2>/dev/null || echo "")"
-  fi
-  oidc_url="${oidc_url#https://}"
-  [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; skipping IRSA trust update (IRSA may fail for ${NS})"; return 0; }
-  local svc role sub
-  for svc in $(echo "${IRSA_JSON}" | jq -r 'keys[]'); do
-    role="otterworks-${svc}-dev"
-    sub="system:serviceaccount:${NS}:${svc}"
-    local doc; doc="$(aws iam get-role --role-name "${role}" --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "")"
-    [ -n "${doc}" ] || { warn "role ${role} not found; skipping"; continue; }
-    # Skip if the sub is already trusted — either an exact StringEquals entry or
-    # a StringLike wildcard (e.g. the Terraform-managed "otterworks-*" pattern)
-    # that already matches this namespace. Checking only StringEquals would make
-    # us append a redundant statement on every deploy and bloat the trust policy
-    # (IAM trust docs cap at 2048/4096 chars) until deploys start failing.
-    local trusted already=false pat
-    trusted="$(echo "${doc}" | jq -r --arg url "${oidc_url}" '
-      [ .Statement[]?.Condition
-        | (.StringEquals[$url+":sub"], .StringLike[$url+":sub"])
-        | select(. != null)
-        | if type=="array" then .[] else . end ] | .[]' 2>/dev/null)"
-    while IFS= read -r pat; do
-      [ -n "${pat}" ] || continue
-      # shellcheck disable=SC2254  # glob-match the exact sub against trust patterns
-      case "${sub}" in ${pat}) already=true; break ;; esac
-    done <<EOF
-${trusted}
-EOF
-    [ "${already}" = true ] && continue
-    # Append an AssumeRoleWithWebIdentity statement scoped to this namespace SA.
-    local new; new="$(echo "${doc}" | jq --arg sub "${sub}" --arg url "${oidc_url}" '
-      .Statement += [{
-        Effect: "Allow",
-        Action: "sts:AssumeRoleWithWebIdentity",
-        Principal: (.Statement[0].Principal),
-        Condition: { StringEquals: { ($url+":sub"): $sub, ($url+":aud"): "sts.amazonaws.com" } }
-      }]')"
-    aws iam update-assume-role-policy --role-name "${role}" --policy-document "${new}" >/dev/null \
-      && log "  IRSA trust: ${role} now trusts ${sub}" \
-      || warn "  failed to update trust for ${role}"
-  done
-}
-log "Ensuring shared IRSA roles trust the tenant namespace service accounts..."
-ensure_irsa_trust
+# ---------- Per-tenant AWS identity (tables + IRSA roles) ----------
+# The shared otterworks-<svc>-dev roles trust only the golden namespace. This
+# tenant gets its own DynamoDB tables and one role per AWS-using service, each
+# trusted by exactly one service account here and scoped to this tenant's S3
+# prefix and tables. Services not in TENANT_AWS_SERVICES get no AWS identity.
+T_SID="$(sanitize_id "${ATTENDEE_ID}")"
+T_S3_PREFIX="$(tenant_s3_prefix "${ATTENDEE_ID}")"
+T_DDB_FILE_META="$(tenant_ddb_table "${DDB_FILE_META}" "${T_SID}")"
+T_DDB_FOLDERS="$(tenant_ddb_table "${DDB_FOLDERS}" "${T_SID}")"
+T_DDB_VERSIONS="$(tenant_ddb_table "${DDB_VERSIONS}" "${T_SID}")"
+T_DDB_SHARES="$(tenant_ddb_table "${DDB_SHARES}" "${T_SID}")"
+T_DDB_NOTIF="$(tenant_ddb_table "${DDB_NOTIF}" "${T_SID}")"
+T_DDB_AUDIT="$(tenant_ddb_table "${DDB_AUDIT}" "${T_SID}")"
+T_IRSA_JSON="{}"
+if [ -n "${S3_FILE_BUCKET}" ]; then
+  log "Ensuring per-tenant DynamoDB tables and IRSA roles..."
+  ensure_tenant_aws_resources "${ATTENDEE_ID}" || { err "per-tenant AWS resources failed; aborting"; exit 1; }
+else
+  warn "Terraform outputs unavailable; tenant services get no AWS identity."
+fi
 
-# ---------- Per-tenant RDS database (Postgres data isolation) ----------
+# ---------- Per-tenant RDS database + login role (Postgres data isolation) ----------
+# Services get T_DB_USER/T_DB_PASSWORD, a role that owns only this tenant's
+# database. The master credential (DB_USER/DB_PASSWORD) is used here, by the
+# runner, to create the database and role, and never leaves the init Job.
+T_DB_USER="$(tenant_db_role "${ATTENDEE_ID}")"
+T_DB_PASSWORD="$(kubectl -n "${NS}" get secret tenant-db-credentials -o json 2>/dev/null \
+  | jq -r '.data.password // empty | @base64d' 2>/dev/null || true)"
+# Reused across redeploys: a --profile core redeploy leaves the other services
+# running on the password they already have.
+[ -n "${T_DB_PASSWORD}" ] || T_DB_PASSWORD="$(openssl rand -hex 24)"
+
+apply_tenant_db_credentials() {
+  local user_b64 pw_b64
+  user_b64="$(printf '%s' "${T_DB_USER}" | base64 | tr -d '\n')"
+  pw_b64="$(printf '%s' "${T_DB_PASSWORD}" | base64 | tr -d '\n')"
+  kubectl -n "${NS}" apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tenant-db-credentials
+type: Opaque
+data:
+  username: ${user_b64}
+  password: ${pw_b64}
+EOF
+}
+
+# Pod IPs of the shared pooler, so the init Job can RELOAD each replica and
+# confirm the new role authenticates through it.
+pgbouncer_pod_ips() {
+  [ "${DB_ENDPOINT_HOST}" != "${RDS_HOST}" ] || return 0
+  kubectl -n "${PGBOUNCER_NAMESPACE:-otterworks-platform}" get pods -l app=pgbouncer \
+    -o jsonpath='{range .items[?(@.status.podIP)]}{.status.podIP}{" "}{end}' 2>/dev/null || true
+}
+
 create_tenant_database() {
-  [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB (services will share the default DB)"; return 0; }
-  log "Ensuring per-tenant database ${T_DB_NAME} exists on shared RDS (in-cluster job)..."
+  [ -n "${RDS_HOST}" ] || { warn "RDS endpoint unknown; skipping per-tenant DB"; return 0; }
+  log "Ensuring per-tenant database ${T_DB_NAME} and role ${T_DB_USER} on shared RDS (in-cluster job)..."
+  apply_tenant_db_credentials
+  if [ "${DB_ENDPOINT_HOST}" != "${RDS_HOST}" ]; then
+    PGB_PASSWORD="${T_DB_PASSWORD}" pgbouncer_userlist_set "${T_DB_USER}" \
+      || { err "could not add ${T_DB_USER} to the pgbouncer-auth userlist"; return 1; }
+  fi
   kubectl -n "${NS}" delete job tenant-db-init --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n "${NS}" create configmap tenant-db-role-sql \
+    --from-file=tenant-db-role.sql="${SCRIPT_DIR}/lib/tenant-db-role.sql" \
+    --dry-run=client -o yaml | kubectl -n "${NS}" apply -f - >/dev/null
   apply_db_admin_secret "${NS}"
   kubectl apply -n "${NS}" -f - <<YAML
 apiVersion: batch/v1
@@ -265,17 +276,26 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      volumes:
+        - name: sql
+          configMap: { name: tenant-db-role-sql }
       containers:
         - name: psql
           image: postgres:16-alpine
+          volumeMounts:
+            - { name: sql, mountPath: /sql, readOnly: true }
           env:
-            - name: PGPASSWORD
+            - name: ADMIN_PASSWORD
               valueFrom: { secretKeyRef: { name: tenant-db-admin, key: PGPASSWORD } }
+            - name: TENANT_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: tenant-db-credentials, key: password } }
+            - { name: PGB_IPS, value: "$(pgbouncer_pod_ips)" }
           command: ["/bin/sh","-c"]
           args:
             - |
               set -e
               CONN="host=${RDS_HOST} port=${RDS_PORT} dbname=otterworks user=${DB_USER} sslmode=prefer connect_timeout=10"
+              export PGPASSWORD="\$ADMIN_PASSWORD"
               if psql "\$CONN" -tAc "SELECT 1 FROM pg_database WHERE datname='${T_DB_NAME}'" | grep -q 1; then
                 echo "database ${T_DB_NAME} already exists"
               else
@@ -291,23 +311,60 @@ spec:
               # survives pooling. public stays first: everything else in this
               # app, including the other services' migrations, lives there.
               psql "\$CONN" -c 'ALTER DATABASE "${T_DB_NAME}" SET search_path = public, analytics'
+              psql "\$CONN" -q -v db="${T_DB_NAME}" -v role="${T_DB_USER}" -f /sql/tenant-db-role.sql
+              echo "role ${T_DB_USER} owns ${T_DB_NAME}"
+              unset PGPASSWORD
+              # Kubelet propagates the userlist Secret to the pooler pods within
+              # about a minute; RELOAD until the new role logs in on every replica
+              # and both pool modes.
+              [ -n "\$PGB_IPS" ] || exit 0
+              for attempt in \$(seq 1 36); do
+                ready=1
+                for ip in \$PGB_IPS; do
+                  for port in 6432 6433; do
+                    PGPASSWORD="\$ADMIN_PASSWORD" psql "host=\$ip port=\$port dbname=pgbouncer user=${DB_USER} connect_timeout=5" -c RELOAD >/dev/null 2>&1 || true
+                    PGPASSWORD="\$TENANT_DB_PASSWORD" psql "host=\$ip port=\$port dbname=${T_DB_NAME} user=${T_DB_USER} connect_timeout=5" -tAc 'SELECT 1' >/dev/null 2>&1 || ready=0
+                  done
+                done
+                [ "\$ready" = 1 ] && { echo "POOLER_READY"; exit 0; }
+                sleep 5
+              done
+              echo "POOLER_NOT_READY"
           resources:
             requests: { cpu: 50m, memory: 64Mi }
             limits: { cpu: 200m, memory: 128Mi }
 YAML
-  if kubectl -n "${NS}" wait --for=condition=complete job/tenant-db-init --timeout=120s >/dev/null 2>&1; then
-    log "  per-tenant database ready."
+  local rc=0
+  if kubectl -n "${NS}" wait --for=condition=complete job/tenant-db-init --timeout=300s >/dev/null 2>&1; then
+    log "  per-tenant database and role ready."
+    # A pooler still on the old subPath mount never sees userlist changes
+    # (re-run demo-platform/scripts/install-pgbouncer.sh); until then this
+    # tenant talks to RDS directly rather than failing every login.
+    if [ "${DB_ENDPOINT_HOST}" != "${RDS_HOST}" ] && \
+       ! kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | grep -q '^POOLER_READY$'; then
+      warn "  pgbouncer did not accept ${T_DB_USER}; wiring this tenant straight to RDS"
+      DB_ENDPOINT_HOST="${RDS_HOST}"; DB_ENDPOINT_PORT="${RDS_PORT}"; DB_SESSION_PORT="${RDS_PORT}"
+    fi
   else
-    warn "  per-tenant DB init did not complete; check: kubectl -n ${NS} logs job/tenant-db-init"
+    err "  per-tenant DB init did not complete; check: kubectl -n ${NS} logs job/tenant-db-init"
     kubectl -n "${NS}" logs job/tenant-db-init 2>/dev/null | tail -5 || true
+    rc=1
   fi
   kubectl -n "${NS}" delete secret tenant-db-admin --ignore-not-found >/dev/null 2>&1 || true
+  return "${rc}"
 }
 if [ "${SKIP_DB}" = true ]; then
-  warn "--skip-db set: using the shared default database (no Postgres data isolation)."
+  # The golden database has no per-tenant role, so this mode hands the tenant
+  # the RDS master credential. Never by default.
+  if [ "${ALLOW_SHARED_DB_CREDENTIAL:-false}" != true ]; then
+    err "--skip-db gives the tenant the shared RDS master credential; set ALLOW_SHARED_DB_CREDENTIAL=true to accept that."
+    exit 1
+  fi
+  warn "--skip-db set: using the shared default database AND the master credential (no Postgres isolation)."
   T_DB_NAME="otterworks"
+  T_DB_USER="${DB_USER}"; T_DB_PASSWORD="${DB_PASSWORD}"
 else
-  create_tenant_database
+  create_tenant_database || { err "per-tenant database setup failed; aborting"; exit 1; }
 fi
 
 # ---------- Per-tenant Redis + MeiliSearch ----------

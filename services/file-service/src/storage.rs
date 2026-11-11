@@ -5,11 +5,21 @@ use std::time::Duration;
 use crate::config::AwsConfig;
 use crate::errors::ServiceError;
 
+pub fn file_key(
+    key_prefix: &str,
+    owner: impl std::fmt::Display,
+    file_id: impl std::fmt::Display,
+) -> String {
+    format!("{key_prefix}files/{owner}/{file_id}")
+}
+
 /// S3 client for file blob operations.
 #[derive(Clone)]
 pub struct S3Client {
     pub client: aws_sdk_s3::Client,
     pub bucket: String,
+    /// Normalized key prefix (see `config::normalize_key_prefix`).
+    pub key_prefix: String,
 }
 
 impl S3Client {
@@ -30,7 +40,17 @@ impl S3Client {
         Self {
             client,
             bucket: config.s3_bucket.clone(),
+            key_prefix: config.s3_key_prefix.clone(),
         }
+    }
+
+    /// Object key for a new file blob, under this service's key prefix.
+    pub fn file_key(
+        &self,
+        owner: impl std::fmt::Display,
+        file_id: impl std::fmt::Display,
+    ) -> String {
+        file_key(&self.key_prefix, owner, file_id)
     }
 
     /// Upload file content to S3.
@@ -123,5 +143,23 @@ impl S3Client {
 
         tracing::info!(source = %source_key, dest = %dest_key, "Copied object in S3");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_key;
+
+    #[test]
+    fn file_key_without_prefix_is_unchanged() {
+        assert_eq!(file_key("", "u1", "f1"), "files/u1/f1");
+    }
+
+    #[test]
+    fn file_key_is_scoped_under_tenant_prefix() {
+        assert_eq!(
+            file_key("tenants/a01/", "u1", "f1"),
+            "tenants/a01/files/u1/f1"
+        );
     }
 }

@@ -15,7 +15,7 @@ cluster, one per attendee/demo run (`ATTENDEE_ID` → namespace
 |---|---|
 | `scripts/tenant-platform-baseline.sh` | **Run once.** Installs the SHARED ingress-nginx (one NLB) and the namespace TTL reaper CronJob. |
 | `scripts/deploy-tenant.sh <ID> [--tier A\|B] [--image-tag TAG] [--ttl 8h] [--host-suffix DOMAIN]` | Deploy/redeploy one tenant. |
-| `scripts/teardown-tenant.sh <ID> [--keep-db] [--keep-trust]` | Delete one tenant (namespace + per-tenant DB + IRSA trust). |
+| `scripts/teardown-tenant.sh <ID> [--keep-db] [--keep-trust]` | Delete one tenant (namespace + per-tenant DB and role + per-tenant IAM roles/tables). |
 | `scripts/inject-bug.sh <ID> <list\|reset\|scenario>` | Inject/clear a per-tenant bug (chaos flag / config / image). |
 | `scripts/tenant-scale.sh <ID> <up\|down>` | Scale a tenant's compute to zero (or back) between sessions. |
 | `scripts/bug-catalog.yaml` | The demo-scenario → variant registry. |
@@ -66,21 +66,22 @@ through the one shared ingress/NLB.
 | Compute | namespace + `ResourceQuota` + `LimitRange` + `NetworkPolicy`, `replicas=1` |
 | Chaos flags / sessions / collab | **per-tenant in-cluster Redis** (`redis.<ns>`) — chaos keys are un-prefixed, so a shared Redis would leak bug injection across tenants; a dedicated Redis fully isolates it |
 | Search | **per-tenant in-cluster MeiliSearch** |
-| Relational data | **per-tenant RDS database** `otterworks_<ID>` on the shared instance (auth-service Flyway + document-service `create_all` self-provision the schema on boot) |
-| Object storage | shared `otterworks-files-dev` bucket (objects keyed by UUID); listing is driven by the per-tenant DB / DynamoDB, so no cross-tenant listing |
-| DynamoDB / S3 access | shared per-service **IRSA roles**; `deploy-tenant.sh` extends each role's trust policy to the tenant namespace's service accounts (dev-reuse model; the Terraform `modules/irsa` change makes this the reproducible default) |
+| Relational data | **per-tenant RDS database** `otterworks_<ID>` on the shared instance, owned by a per-tenant login role `otterworks_<ID>_app` (random password, `CONNECT` revoked from `PUBLIC` on every `otterworks*` database). Services get only that role; the master credential stays in the runner's init/drop Jobs (`scripts/lib/tenant-db-role.sql`) |
+| Object storage | shared `otterworks-files-dev` / audit buckets, tenant objects under `tenants/<ID>/` (`S3_KEY_PREFIX` / `Aws__S3KeyPrefix`) |
+| DynamoDB | **per-tenant tables** `<shared table>-t-<ID>`, cloned from the shared tables' schema at deploy, deleted at teardown |
+| AWS identity | **per-tenant IRSA roles** `otterworks-t-<hash>-<svc>` for file/notification/audit-service, each trusted only by `system:serviceaccount:otterworks-<ID>:<svc>` and scoped to that tenant's prefix and tables, under the `otterworks-tenant-workload-boundary` permissions boundary. The shared `otterworks-<svc>-dev` roles trust only the golden namespace |
 
-**Tier A (default, implemented):** shared physical stores, isolated logically as
-above. Blast radius: the shared S3 bucket and DynamoDB dev tables are physically
-shared (mitigated because listings come from the per-tenant DB and objects use
-UUID keys). Redis, MeiliSearch and the relational DB are fully per-tenant.
+Every tenant gets the isolation above regardless of `--tier` (now only a
+label): a tenant's credentials and AWS identity cannot read or write another
+tenant's database, objects or tables. The S3 buckets and the RDS instance remain
+physically shared.
 
-**Tier B (data-isolated):** additionally provision per-tenant DynamoDB tables and
-scoped IRSA. **Not enabled by default** because the shared file-service IAM
-policy is pinned to the `*-dev` table ARNs; enabling Tier B requires broadening
-that policy resource to `otterworks-*` (or minting per-tenant roles) — see
-"Known limitations". The per-tenant RDS database already gives Tier-B-grade
-isolation for all Postgres-backed services today.
+**Rolling this out** (shared infra, needs an infra owner): apply
+`demo-platform/infra/terraform` first (boundary policy + runner permissions),
+re-run `demo-platform/scripts/install-pgbouncer.sh` (moves the userlist to a
+directory mount so tenant entries reach running pods), then apply
+`infrastructure/terraform` (drops the wildcard trust). Tenants deployed before
+then lose AWS access at that last step until they are redeployed.
 
 ## Bug injection (per tenant, never touches others)
 
@@ -131,6 +132,8 @@ Stood up `a01` + `a02` concurrently on the shared cluster and confirmed:
   deleted a synthetic expired namespace.
 - **Teardown/cleanup:** both tenants removed — namespaces gone, per-tenant DBs
   dropped, and tenant subjects removed from the shared IRSA role trust policies.
+  (Recorded before per-tenant roles; teardown now also deletes the tenant's DB
+  role, IAM roles and DynamoDB tables.)
 
 Note: the 2-node SPOT group is sized for the golden app; running two extra full
 tenants required scaling the shared node group to 4 (`t3.large` SPOT). Size the
@@ -139,9 +142,9 @@ autoscaler) rather than per-tenant node groups.
 
 ## Known limitations / honest gaps
 
-- **Tier B DynamoDB** is documented but not enabled by default (IAM policy is
-  ARN-pinned to the dev tables — see above). Postgres isolation via per-tenant DB
-  is fully implemented.
+- **Pooler connection ceiling is per tenant.** Each tenant authenticates to
+  PgBouncer as its own role, so `max_user_connections` caps one tenant rather
+  than the whole pooler; the instance-wide ceiling is RDS `max_connections`.
 - **Shared SNS/SQS eventing is left unwired for tenants** (`T_WIRE_EVENTING=false`)
   to avoid competing-consumer cross-talk on the shared queue. notification/search
   event pipelines are therefore inert per tenant; the request/response paths work.
