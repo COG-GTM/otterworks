@@ -324,7 +324,9 @@ ensure_tenant_aws_resources() {
   local id="$1" oidc_url svc role t boundary
   T_IRSA_JSON="{}"
   oidc_url="$(resolve_oidc_url)"
-  [ -n "${oidc_url}" ] || { warn "OIDC provider URL unavailable; tenant services get no AWS identity"; return 0; }
+  # Services are wired to the tenant tables either way, so carrying on without
+  # them would only produce a tenant whose file/notification/audit services fail.
+  [ -n "${oidc_url}" ] || { err "OIDC provider URL unavailable; cannot create tenant IRSA roles"; return 1; }
   boundary="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${TENANT_IRSA_BOUNDARY_NAME}"
   for svc in ${TENANT_AWS_SERVICES}; do
     while IFS= read -r t; do
