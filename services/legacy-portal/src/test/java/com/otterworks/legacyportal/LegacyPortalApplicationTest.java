@@ -161,6 +161,11 @@ class LegacyPortalApplicationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"title\":\"Fake\",\"body\":\"phish\",\"published\":true}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/announcements/")
+                        .header(HttpHeaders.AUTHORIZATION, user)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Fake\",\"body\":\"phish\",\"published\":true}"))
+                .andExpect(status().isForbidden());
 
         String draft = mockMvc.perform(post("/api/announcements")
                         .header(HttpHeaders.AUTHORIZATION, admin)
@@ -177,6 +182,8 @@ class LegacyPortalApplicationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.title == 'Draft')]").isEmpty());
         mockMvc.perform(post("/api/announcements/" + id + "/publish").header(HttpHeaders.AUTHORIZATION, user))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/announcements/" + id + "/publish/").header(HttpHeaders.AUTHORIZATION, user))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/announcements/" + id + "/publish").header(HttpHeaders.AUTHORIZATION, admin))
                 .andExpect(status().isOk())

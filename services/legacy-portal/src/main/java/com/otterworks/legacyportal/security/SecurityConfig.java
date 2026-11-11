@@ -44,7 +44,7 @@ public class SecurityConfig {
                 .and()
                 .authorizeRequests(auth -> auth
                         .antMatchers("/health", "/actuator/health/**", "/actuator/info").permitAll()
-                        .antMatchers(HttpMethod.POST, "/api/announcements", "/api/announcements/*/publish")
+                        .mvcMatchers(HttpMethod.POST, "/api/announcements", "/api/announcements/{id}/publish")
                         .hasAnyRole(CurrentUser.ADMIN_ROLES)
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
