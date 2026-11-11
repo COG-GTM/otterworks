@@ -6,6 +6,7 @@ import com.otterworks.auth.service.UserService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -31,7 +32,11 @@ public class AuthController {
 
   @PostMapping("/register")
   public ResponseEntity<Map<String, String>> register(@Valid @RequestBody RegisterRequest request) {
-    authService.register(request);
+    try {
+      authService.register(request);
+    } catch (DataIntegrityViolationException raceWithConcurrentRegistration) {
+      // The email was registered between the existence check and the insert; same outcome.
+    }
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("message", REGISTER_ACCEPTED));
   }
 
