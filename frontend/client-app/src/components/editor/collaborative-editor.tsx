@@ -7,6 +7,7 @@ import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { useAuthStore } from "@/stores/auth-store";
+import { apiClient } from "@/lib/api-client";
 import { generateColor } from "@/lib/utils";
 import {
   Bold,
@@ -49,6 +50,16 @@ const COLLAB_WS_URL =
     ? `${NATIVE_WS_SCHEME}://${NATIVE_WS_HOST}:8085`
     : `${WEB_WS_SCHEME}://localhost:8085`);
 
+const MAX_RECONNECT_DELAY_MS = 10_000;
+
+// Browsers can't set an Authorization header on a WebSocket handshake, so each
+// connection attempt trades the access token (sent as a header) for a
+// short-lived, single-use ticket that goes in the URL instead of the JWT.
+async function fetchCollabTicket(): Promise<string> {
+  const { data } = await apiClient.post<{ ticket: string }>("/collab/ws-ticket");
+  return data.ticket;
+}
+
 export function CollaborativeEditor({ documentId, initialContent, onUpdate }: CollaborativeEditorProps) {
   const { user } = useAuthStore();
   const [ydoc] = useState(() => new Y.Doc());
@@ -59,13 +70,41 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("otter_access_token") : null;
-    const wsProvider = new WebsocketProvider(
-      COLLAB_WS_URL,
-      `document-${documentId}`,
-      ydoc,
-      { params: { token: token || "" } }
-    );
+    const wsProvider = new WebsocketProvider(COLLAB_WS_URL, `document-${documentId}`, ydoc, {
+      connect: false,
+    });
+    let cancelled = false;
+    let failedAttempts = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleConnect = () => {
+      if (cancelled || reconnectTimer) return;
+      const delay = failedAttempts === 0 ? 0 : Math.min(2 ** failedAttempts * 100, MAX_RECONNECT_DELAY_MS);
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        try {
+          const ticket = await fetchCollabTicket();
+          if (cancelled) return;
+          wsProvider.params = { ticket };
+          wsProvider.connect();
+        } catch {
+          failedAttempts += 1;
+          setConnectionStatus("disconnected");
+          scheduleConnect();
+        }
+      }, delay);
+    };
+
+    // Tickets are single-use, so take over y-websocket's built-in reconnect
+    // (which would replay the spent ticket) and mint a fresh one per attempt.
+    wsProvider.on("connection-close", () => {
+      if (cancelled) return;
+      wsProvider.shouldConnect = false;
+      failedAttempts = wsProvider.wsconnected ? 0 : failedAttempts + 1;
+      scheduleConnect();
+    });
+
+    scheduleConnect();
 
     wsProvider.on("status", (event: { status: string }) => {
       setConnectionStatus(event.status as "connected" | "disconnected" | "connecting");
@@ -81,6 +120,8 @@ export function CollaborativeEditor({ documentId, initialContent, onUpdate }: Co
     setProvider(wsProvider);
 
     return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       wsProvider.destroy();
       if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     };

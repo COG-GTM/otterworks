@@ -2,13 +2,17 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
-import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
 import { loadConfig } from './config';
 import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
+import {
+  WsTicketStore,
+  authenticateUpgrade,
+  verifyBearerToken,
+} from './middleware/ws-auth';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
@@ -75,6 +79,20 @@ app.get('/api/v1/collab/documents/:id/presence', (req, res) => {
   res.json(presence);
 });
 
+// Single-use ticket for browser y-websocket upgrades (browsers cannot send an
+// Authorization header on a WebSocket handshake).
+const wsTicketStore = new WsTicketStore();
+app.post('/api/v1/collab/ws-ticket', (req, res) => {
+  const auth = verifyBearerToken(req.headers.authorization, config.jwt.secret);
+  if (!auth) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+  const { ticket, expiresInSeconds } = wsTicketStore.issue(auth.userId);
+  res.set('Cache-Control', 'no-store');
+  res.json({ ticket, expires_in: expiresInSeconds });
+});
+
 // Active documents listing
 app.get('/api/v1/collab/documents', (_req, res) => {
   const activeDocuments = presenceHandler.getActiveDocuments();
@@ -131,7 +149,8 @@ const collabManager = setupCollaborationHandlers(
 const wss = new WebSocketServer({ noServer: true });
 wss.on('connection', (conn, req) => {
   setupWSConnection(conn, req);
-  logger.info({ url: req.url }, 'y-websocket_client_connected');
+  const path = new URL(req.url || '', 'http://localhost').pathname;
+  logger.info({ path }, 'y-websocket_client_connected');
 });
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
@@ -141,23 +160,9 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
-  // JWT authentication for y-websocket connections
-  const url = new URL(request.url || '', `http://${request.headers.host}`);
-  const token =
-    url.searchParams.get('token') ||
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (!token) {
-    logger.warn('y-websocket_connection_rejected: no token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  try {
-    jwt.verify(token, config.jwt.secret);
-  } catch {
-    logger.warn('y-websocket_connection_rejected: invalid token');
+  const auth = authenticateUpgrade(request, config.jwt.secret, wsTicketStore);
+  if (!auth) {
+    logger.warn('y-websocket_connection_rejected: missing or invalid credentials');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
