@@ -5,10 +5,12 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
 import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
 import com.otterworks.analytics.model.DashboardJsonProtocol.{*, given}
-import com.otterworks.analytics.service.AnalyticsService
+import com.otterworks.analytics.api.CallerDirectives.{allowIf, caller}
+import com.otterworks.analytics.service.{AnalyticsService, DocumentAccess}
 import spray.json.*
 
 import java.time.Instant
+import scala.concurrent.Future
 
 /**
  * Analytics query routes:
@@ -19,17 +21,24 @@ import java.time.Instant
  *   GET /api/v1/analytics/active-users
  *   GET /api/v1/analytics/storage
  *   GET /api/v1/analytics/export
+ *
+ * Every route requires the gateway-asserted caller (X-User-ID). Per-user and
+ * per-document views are limited to the caller's own data; cross-user views
+ * (dashboard, top-content, active-users, export, storage without user_id)
+ * require an admin role.
  */
-class AnalyticsRoutes(analyticsService: AnalyticsService):
+class AnalyticsRoutes(analyticsService: AnalyticsService, documentAccess: DocumentAccess):
 
   val routes: Route = pathPrefix("api" / "v1" / "analytics") {
     concat(
       // Dashboard Summary
       path("dashboard") {
         get {
-          parameters("period".withDefault("7d")) { period =>
-            onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
-              complete(summary)
+          (caller & parameters("period".withDefault("7d"))) { (who, period) =>
+            allowIf(who.isAdmin) {
+              onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
+                complete(summary)
+              }
             }
           }
         }
@@ -39,8 +48,12 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("users") {
         path(Segment / "activity") { userId =>
           get {
-            onSuccess(analyticsService.getUserActivity(userId)) { activity =>
-              complete(activity)
+            caller { who =>
+              allowIf(who.canActAs(userId)) {
+                onSuccess(analyticsService.getUserActivity(userId)) { activity =>
+                  complete(activity)
+                }
+              }
             }
           }
         }
@@ -50,8 +63,17 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("documents") {
         path(Segment / "stats") { documentId =>
           get {
-            onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
-              complete(stats)
+            (caller & optionalHeaderValueByName("Authorization")) { (who, authorization) =>
+              val access =
+                if who.isAdmin then Future.successful(true)
+                else documentAccess.canView(documentId, who.userId, authorization)
+              onSuccess(access) { allowed =>
+                allowIf(allowed) {
+                  onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
+                    complete(stats)
+                  }
+                }
+              }
             }
           }
         }
@@ -60,13 +82,15 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Top Content
       path("top-content") {
         get {
-          parameters(
+          (caller & parameters(
             "type".withDefault("documents"),
             "period".withDefault("7d"),
             "limit".as[Int].withDefault(10)
-          ) { (contentType, period, limit) =>
-            onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
-              complete(response)
+          )) { (who, contentType, period, limit) =>
+            allowIf(who.isAdmin) {
+              onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -75,9 +99,11 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Active Users
       path("active-users") {
         get {
-          parameters("period".withDefault("daily")) { period =>
-            onSuccess(analyticsService.getActiveUsers(period)) { response =>
-              complete(response)
+          (caller & parameters("period".withDefault("daily"))) { (who, period) =>
+            allowIf(who.isAdmin) {
+              onSuccess(analyticsService.getActiveUsers(period)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -86,9 +112,11 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Storage Usage
       path("storage") {
         get {
-          parameters("user_id".optional) { userId =>
-            onSuccess(analyticsService.getStorageUsage(userId)) { response =>
-              complete(response)
+          (caller & parameters("user_id".optional)) { (who, userId) =>
+            allowIf(userId.fold(who.isAdmin)(who.canActAs)) {
+              onSuccess(analyticsService.getStorageUsage(userId)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -97,20 +125,22 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Export Report
       path("export") {
         get {
-          parameters(
+          (caller & parameters(
             "format".withDefault("json"),
             "period".withDefault("7d")
-          ) { (format, period) =>
-            format match
-              case "csv" =>
-                onSuccess(analyticsService.exportReport("csv", period)) { report =>
-                  val csvContent = buildCsvContent(report.data)
-                  complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
-                }
-              case _ =>
-                onSuccess(analyticsService.exportReport("json", period)) { report =>
-                  complete(report)
-                }
+          )) { (who, format, period) =>
+            allowIf(who.isAdmin) {
+              format match
+                case "csv" =>
+                  onSuccess(analyticsService.exportReport("csv", period)) { report =>
+                    val csvContent = buildCsvContent(report.data)
+                    complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
+                  }
+                case _ =>
+                  onSuccess(analyticsService.exportReport("json", period)) { report =>
+                    complete(report)
+                  }
+            }
           }
         }
       },

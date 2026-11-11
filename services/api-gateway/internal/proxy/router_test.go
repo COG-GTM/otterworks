@@ -102,3 +102,38 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+func TestProxyForwardsRolesAndStripsSpoofedRoles(t *testing.T) {
+	var gotRoles []string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRoles = r.Header.Values("X-User-Roles")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+
+	sign := func(roles []string) string {
+		claims := middleware.JWTClaims{
+			Roles: roles,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Subject:   "user-123",
+			},
+		}
+		tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+		require.NoError(t, err)
+		return tokenStr
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+	req.Header.Set("Authorization", "Bearer "+sign([]string{"USER", "ADMIN"}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	assert.Equal(t, []string{"USER,ADMIN"}, gotRoles)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+	req.Header.Set("Authorization", "Bearer "+sign(nil))
+	req.Header.Set("X-User-Roles", "ADMIN")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	assert.Empty(t, gotRoles, "client-supplied X-User-Roles must not reach the backend")
+}

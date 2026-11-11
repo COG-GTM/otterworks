@@ -10,7 +10,7 @@ import com.otterworks.analytics.batch.MarketSeeder
 import com.otterworks.analytics.config.AppConfig
 import com.otterworks.analytics.db.AnalyticsDb
 import com.otterworks.analytics.repository.{InMemoryMetricsRepository, MarketRepository, MetricsRepository, PostgresMetricsRepository}
-import com.otterworks.analytics.service.{AnalyticsService, EventProcessor, MarginService}
+import com.otterworks.analytics.service.{AnalyticsService, EventProcessor, HttpDocumentAccess, MarginService}
 
 import scala.concurrent.{Await, ExecutionContextExecutor}
 import scala.concurrent.duration.Duration
@@ -74,7 +74,7 @@ object Main:
 
     // Build routes
     val healthRoutes = HealthRoutes(analyticsService)
-    val analyticsRoutes = AnalyticsRoutes(analyticsService)
+    val analyticsRoutes = AnalyticsRoutes(analyticsService, HttpDocumentAccess(config.documentService.url))
     val eventRoutes = EventRoutes(analyticsService)
 
     val routes: Route = concat(

@@ -203,6 +203,37 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	assert.Equal(t, "test@otterworks.dev", capturedClaims.Email)
 }
 
+func TestJWTAuth_RefreshTokenOnlyAcceptedOnRefreshPath(t *testing.T) {
+	cfg := JWTConfig{
+		Secret:     testSecret,
+		PublicPath: DefaultPublicPaths(),
+		PrefixPath: DefaultPrefixPaths(),
+	}
+
+	tokenStr := generateTestToken(t, testSecret, JWTClaims{
+		Type: "refresh",
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
+			Subject:   "user-123",
+		},
+	})
+
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for path, want := range map[string]int{
+		"/api/v1/documents/": http.StatusUnauthorized,
+		RefreshTokenPath:     http.StatusOK,
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Authorization", "Bearer "+tokenStr)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, want, rec.Code, path)
+	}
+}
+
 func TestJWTAuth_ExpiredToken(t *testing.T) {
 	cfg := JWTConfig{
 		Secret:     testSecret,
