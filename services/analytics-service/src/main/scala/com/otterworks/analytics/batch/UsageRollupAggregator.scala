@@ -1,6 +1,7 @@
 package com.otterworks.analytics.batch
 
 import com.otterworks.analytics.model.*
+import com.otterworks.analytics.repository.MetricsAggregator
 
 import java.time.{Instant, LocalDate, ZoneOffset}
 
@@ -47,7 +48,7 @@ object UsageRollupAggregator:
     events
       .filter(_.eventType == eventType)
       .foldLeft(0L) { (acc, e) =>
-        acc + scala.util.Try(e.metadata.getOrElse("bytes", "0").toLong).getOrElse(0L)
+        acc + MetricsAggregator.eventBytes(e)
       }
 
   private def dateOf(timestamp: Instant): LocalDate =
