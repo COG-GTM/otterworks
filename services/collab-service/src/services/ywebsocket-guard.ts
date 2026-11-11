@@ -2,9 +2,10 @@ import type { IncomingMessage } from 'http';
 import type { Logger } from 'pino';
 import type { RawData, WebSocket } from 'ws';
 import * as decoding from 'lib0/decoding';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import type { CollabLimits } from '../config';
 import { DocumentSizeTracker } from './document-size-tracker';
+import type { DocumentStore } from './document-store';
 
 export const WS_CLOSE_MESSAGE_TOO_BIG = 1009;
 
@@ -19,11 +20,42 @@ export interface YWebsocketGuardOptions {
     opts: { docName: string },
   ) => void;
   docs: Map<string, SharedDoc>;
-  limits: Pick<
-    CollabLimits,
-    'maxDocumentBytes' | 'maxDocumentsPerUser' | 'idleDocumentEvictMs'
-  >;
+  limits: Pick<CollabLimits, 'maxDocumentBytes' | 'maxDocumentsPerUser'>;
+  persistence?: YWebsocketPersistence;
   logger: Logger;
+}
+
+export interface YWebsocketPersistence {
+  bindState(docName: string, doc: Y.Doc): Promise<void>;
+  writeState(docName: string, doc: Y.Doc): Promise<void>;
+}
+
+/**
+ * y-websocket persistence backed by the Redis document store. With a
+ * persistence layer set, y-websocket writes a document's state and drops it
+ * from memory when its last connection closes, and reloads it on next open.
+ */
+export function createYWebsocketPersistence(
+  store: Pick<DocumentStore, 'getDocumentState' | 'saveDocumentState'>,
+  logger: Logger,
+): YWebsocketPersistence {
+  return {
+    async bindState(docName, doc) {
+      try {
+        const state = await store.getDocumentState(docName);
+        if (state) Y.applyUpdate(doc, state);
+      } catch (err) {
+        logger.error({ err, docName }, 'y-websocket_load_state_failed');
+      }
+    },
+    async writeState(docName, doc) {
+      try {
+        await store.saveDocumentState(docName, Buffer.from(Y.encodeStateAsUpdate(doc)));
+      } catch (err) {
+        logger.error({ err, docName }, 'y-websocket_persist_state_failed');
+      }
+    },
+  };
 }
 
 export function docNameFromUrl(url: string | undefined): string {
@@ -58,15 +90,13 @@ export function growsDocument(data: RawData): boolean {
 }
 
 /**
- * Wraps y-websocket's setupWSConnection with per-document size caps, per-user
- * room caps and eviction of idle documents (y-websocket keeps them forever
- * when no persistence is configured).
+ * Wraps y-websocket's setupWSConnection with per-document size caps and
+ * per-user room caps.
  */
 export class YWebsocketGuard {
   private tracker: DocumentSizeTracker;
   private userDocs: Map<string, Map<string, number>> = new Map();
   private trackedDocs: WeakSet<Y.Doc> = new WeakSet();
-  private evictionTimers: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(private readonly options: YWebsocketGuardOptions) {
     this.tracker = new DocumentSizeTracker(options.limits.maxDocumentBytes);
@@ -82,7 +112,6 @@ export class YWebsocketGuard {
     const { setupWSConnection, docs, logger } = this.options;
     const docName = docNameFromUrl(req.url);
     this.retain(userId, docName);
-    this.cancelEviction(docName);
 
     const originalOn = conn.on.bind(conn) as OnFn;
     const guardedOn: OnFn = (event, listener) => {
@@ -124,13 +153,17 @@ export class YWebsocketGuard {
     });
     conn.on('close', () => {
       this.release(userId, docName);
-      this.scheduleEvictionIfIdle(docName);
+      if (!docs.has(docName)) this.tracker.delete(docName);
     });
   }
 
-  stop(): void {
-    for (const timer of this.evictionTimers.values()) clearTimeout(timer);
-    this.evictionTimers.clear();
+  /** Persist every in-memory document (e.g. on shutdown). */
+  async flush(): Promise<void> {
+    const { persistence, docs } = this.options;
+    if (!persistence) return;
+    await Promise.all(
+      Array.from(docs.entries()).map(([name, doc]) => persistence.writeState(name, doc)),
+    );
   }
 
   private retain(userId: string, docName: string): void {
@@ -149,30 +182,5 @@ export class YWebsocketGuard {
     if (count > 0) openDocs.set(docName, count);
     else openDocs.delete(docName);
     if (openDocs.size === 0) this.userDocs.delete(userId);
-  }
-
-  private cancelEviction(docName: string): void {
-    const timer = this.evictionTimers.get(docName);
-    if (timer) {
-      clearTimeout(timer);
-      this.evictionTimers.delete(docName);
-    }
-  }
-
-  private scheduleEvictionIfIdle(docName: string): void {
-    const doc = this.options.docs.get(docName);
-    if (!doc || doc.conns.size > 0) return;
-    this.cancelEviction(docName);
-    const timer = setTimeout(() => {
-      this.evictionTimers.delete(docName);
-      const current = this.options.docs.get(docName);
-      if (!current || current.conns.size > 0) return;
-      this.options.docs.delete(docName);
-      this.tracker.delete(docName);
-      current.destroy();
-      this.options.logger.info({ docName }, 'y-websocket_idle_document_evicted');
-    }, this.options.limits.idleDocumentEvictMs);
-    timer.unref();
-    this.evictionTimers.set(docName, timer);
   }
 }

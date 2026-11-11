@@ -14,10 +14,18 @@ import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
-import { YWebsocketGuard, docNameFromUrl } from './services/ywebsocket-guard';
+import {
+  YWebsocketGuard,
+  createYWebsocketPersistence,
+  docNameFromUrl,
+} from './services/ywebsocket-guard';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection, docs: yDocs } = require('y-websocket/bin/utils');
+const {
+  setupWSConnection,
+  setPersistence,
+  docs: yDocs,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+} = require('y-websocket/bin/utils');
 
 const config = loadConfig();
 
@@ -135,10 +143,13 @@ const wss = new WebSocketServer({
   noServer: true,
   maxPayload: config.limits.maxMessageBytes,
 });
+const yjsPersistence = createYWebsocketPersistence(documentStore, logger);
+setPersistence(yjsPersistence);
 const yjsGuard = new YWebsocketGuard({
   setupWSConnection,
   docs: yDocs,
   limits: config.limits,
+  persistence: yjsPersistence,
   logger,
 });
 
@@ -217,7 +228,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'shutdown_initiated');
 
   clearInterval(presenceCleanupTimer);
-  yjsGuard.stop();
+  await yjsGuard.flush();
   await collabManager.stop();
 
   httpServer.close(() => {

@@ -22,11 +22,16 @@ import {
   WS_CLOSE_MESSAGE_TOO_BIG,
   YWebsocketGuard,
   docNameFromUrl,
+  createYWebsocketPersistence,
   growsDocument,
 } from '../services/ywebsocket-guard';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection, docs: yDocs } = require('y-websocket/bin/utils');
+const {
+  setupWSConnection,
+  setPersistence,
+  docs: yDocs,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+} = require('y-websocket/bin/utils');
 
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 
@@ -283,18 +288,21 @@ describe('YWebsocketGuard', () => {
   let guard: YWebsocketGuard;
   let port: number;
   const sockets: WebSocket[] = [];
+  const store = {
+    getDocumentState: jest.fn().mockResolvedValue(null),
+    saveDocumentState: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeAll(async () => {
     httpServer = createServer();
     wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+    const persistence = createYWebsocketPersistence(store, mockLogger);
+    setPersistence(persistence);
     guard = new YWebsocketGuard({
       setupWSConnection,
       docs: yDocs,
-      limits: {
-        maxDocumentBytes: 8192,
-        maxDocumentsPerUser: 2,
-        idleDocumentEvictMs: 100,
-      },
+      limits: { maxDocumentBytes: 8192, maxDocumentsPerUser: 2 },
+      persistence,
       logger: mockLogger,
     });
     httpServer.on('upgrade', (req, socket, head) => {
@@ -316,7 +324,7 @@ describe('YWebsocketGuard', () => {
   });
 
   afterAll(async () => {
-    guard.stop();
+    setPersistence(null);
     wss.close();
     await new Promise((resolve) => httpServer.close(resolve));
   });
@@ -410,22 +418,44 @@ describe('YWebsocketGuard', () => {
     expect(await closed).toBe(WS_CLOSE_MESSAGE_TOO_BIG);
   });
 
-  it('caps rooms per user and evicts idle documents', async () => {
+  it('caps rooms per user and persists documents when the last client leaves', async () => {
     const a = await open('yws-room-1', 'u4');
     await open('yws-room-2', 'u4');
     await expect(open('yws-room-3', 'u4')).rejects.toThrow('HTTP 429');
     // Re-opening an already-open room is fine; other users are unaffected
     await open('yws-room-1', 'u4');
     await open('yws-room-3', 'u5');
+    a.send(syncUpdateMessage(textUpdate(42)));
 
     const closed = closeCode(a);
     a.close();
     await closed;
     expect(yDocs.has('yws-room-1')).toBe(true);
     while (sockets.length) sockets.pop()?.close();
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 200));
     expect(yDocs.has('yws-room-1')).toBe(false);
     expect(yDocs.has('yws-room-2')).toBe(false);
+    const saved = store.saveDocumentState.mock.calls.find(
+      ([name]) => name === 'yws-room-1',
+    );
+    expect(saved).toBeDefined();
     await open('yws-room-4', 'u4');
+
+    // Reopening restores the persisted state instead of starting empty
+    store.getDocumentState.mockImplementation(async (name: string) =>
+      name === 'yws-room-1' ? new Uint8Array(saved![1]) : null,
+    );
+    await open('yws-room-1', 'u6');
+    await new Promise((r) => setTimeout(r, 100));
+    expect(yDocs.get('yws-room-1').getText('content').length).toBe(42);
+  });
+
+  it('flushes in-memory documents on shutdown', async () => {
+    const ws = await open('yws-flush', 'u7');
+    ws.send(syncUpdateMessage(textUpdate(5)));
+    await new Promise((r) => setTimeout(r, 100));
+    store.saveDocumentState.mockClear();
+    await guard.flush();
+    expect(store.saveDocumentState).toHaveBeenCalledWith('yws-flush', expect.any(Buffer));
   });
 });

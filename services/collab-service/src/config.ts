@@ -41,8 +41,6 @@ export interface CollabLimits {
   persistDebounceMs: number;
   /** Min delay between client-requested snapshots of the same document. */
   snapshotMinIntervalMs: number;
-  /** How long a y-websocket document with no connections stays in memory. */
-  idleDocumentEvictMs: number;
 }
 
 export const DEFAULT_LIMITS: CollabLimits = {
@@ -51,7 +49,6 @@ export const DEFAULT_LIMITS: CollabLimits = {
   maxDocumentsPerUser: 10,
   persistDebounceMs: 2000,
   snapshotMinIntervalMs: 30000,
-  idleDocumentEvictMs: 300000,
 };
 
 function intFromEnv(name: string, fallback: number): number {
@@ -99,10 +96,6 @@ export function loadConfig(): Config {
       snapshotMinIntervalMs: intFromEnv(
         'SNAPSHOT_MIN_INTERVAL_MS',
         DEFAULT_LIMITS.snapshotMinIntervalMs,
-      ),
-      idleDocumentEvictMs: intFromEnv(
-        'IDLE_DOCUMENT_EVICT_MS',
-        DEFAULT_LIMITS.idleDocumentEvictMs,
       ),
     },
     logLevel: process.env.LOG_LEVEL || 'info',
