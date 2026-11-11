@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sets the password of the Flyway-seeded admin (admin@otterworks.dev) to ADMIN_PASSWORD
 # from the gitignored .env, so no admin credential is committed to the repo.
-# Waits for auth-service's migrations to create the account.
+# Changing the password revokes the account's refresh tokens. Waits for auth-service's
+# migrations to create the account.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,7 +24,9 @@ for _ in $(seq 1 90); do
     pw="${pw//\'/\\\'}"
     matches="$(printf '%s\n' "\\set pw '$pw'" \
       "SET client_min_messages = warning;" "CREATE EXTENSION IF NOT EXISTS pgcrypto;" \
-      "UPDATE users SET password_hash = crypt(:'pw', gen_salt('bf', 10)), updated_at = NOW() WHERE email = '$ADMIN_EMAIL';" \
+      "WITH changed AS (UPDATE users SET password_hash = crypt(:'pw', gen_salt('bf', 10)), updated_at = NOW()" \
+      "  WHERE email = '$ADMIN_EMAIL' AND password_hash <> crypt(:'pw', password_hash) RETURNING id)" \
+      "UPDATE refresh_tokens SET revoked = true WHERE NOT revoked AND user_id IN (SELECT id FROM changed);" \
       "SELECT password_hash = crypt(:'pw', password_hash) FROM users WHERE email = '$ADMIN_EMAIL';" \
       | psql)"
     if [ "$matches" != "t" ]; then
