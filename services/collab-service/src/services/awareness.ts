@@ -185,6 +185,17 @@ export class AwarenessService {
     return mapping?.documentId || null;
   }
 
+  /** Documents the user has open on sockets other than `excludeSocketId`. */
+  getUserDocumentIds(userId: string, excludeSocketId?: string): Set<string> {
+    const documentIds = new Set<string>();
+    for (const [socketId, mapping] of this.socketToDocument) {
+      if (mapping.userId === userId && socketId !== excludeSocketId) {
+        documentIds.add(mapping.documentId);
+      }
+    }
+    return documentIds;
+  }
+
   getActiveDocumentIds(): string[] {
     return Array.from(this.states.keys());
   }
