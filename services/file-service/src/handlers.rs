@@ -43,6 +43,33 @@ pub async fn metrics() -> HttpResponse {
 
 // -- File Handlers --
 
+/// Upper bound for small multipart text fields such as `owner_id` / `folder_id`.
+const MAX_TEXT_FIELD_BYTES: usize = 128;
+
+/// Reads a multipart text field, rejecting it as soon as it exceeds `max_bytes`
+/// so oversized fields are never buffered in full.
+async fn read_text_field<S, E>(
+    field: &mut S,
+    name: &str,
+    max_bytes: usize,
+) -> Result<String, ServiceError>
+where
+    S: futures_util::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
+    E: std::fmt::Display,
+{
+    let mut value = BytesMut::new();
+    while let Some(chunk) = field.next().await {
+        let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
+        if value.len() + data.len() > max_bytes {
+            return Err(ServiceError::BadRequest(format!(
+                "{name} exceeds maximum length of {max_bytes} bytes"
+            )));
+        }
+        value.extend_from_slice(&data);
+    }
+    Ok(String::from_utf8_lossy(&value).into_owned())
+}
+
 pub async fn upload_file(
     req: HttpRequest,
     s3: web::Data<S3Client>,
@@ -104,12 +131,7 @@ pub async fn upload_file(
                 }
             }
             "owner_id" => {
-                let mut value = BytesMut::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    value.extend_from_slice(&data);
-                }
-                let s = String::from_utf8_lossy(&value).to_string();
+                let s = read_text_field(&mut field, "owner_id", MAX_TEXT_FIELD_BYTES).await?;
                 owner_id = Some(
                     s.trim()
                         .parse::<Uuid>()
@@ -117,12 +139,7 @@ pub async fn upload_file(
                 );
             }
             "folder_id" => {
-                let mut value = BytesMut::new();
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| ServiceError::BadRequest(e.to_string()))?;
-                    value.extend_from_slice(&data);
-                }
-                let s = String::from_utf8_lossy(&value).to_string();
+                let s = read_text_field(&mut field, "folder_id", MAX_TEXT_FIELD_BYTES).await?;
                 let trimmed = s.trim();
                 if !trimmed.is_empty() {
                     folder_id = Some(trimmed.parse::<Uuid>().map_err(|e| {
@@ -832,6 +849,31 @@ mod tests {
     async fn test_health_endpoint() {
         let resp = health().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_rt::test]
+    async fn test_read_text_field_accepts_small_value() {
+        let id = Uuid::new_v4().to_string();
+        let mut stream = futures_util::stream::iter(vec![Ok::<_, std::io::Error>(
+            bytes::Bytes::from(id.clone()),
+        )]);
+        let value = read_text_field(&mut stream, "owner_id", MAX_TEXT_FIELD_BYTES)
+            .await
+            .unwrap();
+        assert_eq!(value, id);
+    }
+
+    #[actix_rt::test]
+    async fn test_read_text_field_rejects_oversized_value_without_draining() {
+        let chunk = bytes::Bytes::from(vec![b'a'; 64]);
+        let mut stream = futures_util::stream::iter(
+            std::iter::repeat_with(move || Ok::<_, std::io::Error>(chunk.clone())).take(1000),
+        );
+        let err = read_text_field(&mut stream, "owner_id", MAX_TEXT_FIELD_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, ServiceError::BadRequest(ref m) if m.contains("owner_id")));
+        assert_eq!(futures_util::Stream::size_hint(&stream).0, 997);
     }
 
     #[actix_rt::test]
