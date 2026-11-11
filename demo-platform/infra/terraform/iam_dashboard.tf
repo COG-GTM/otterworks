@@ -33,9 +33,25 @@ locals {
   # The platform's own cluster is always sweepable; var.sweepable_clusters adds
   # names it used to run under, whose orphans still need reclaiming.
   sweepable_clusters = toset(concat([var.cluster_name], var.sweepable_clusters))
+
+  # Same naming as infrastructure/terraform/modules/irsa and the
+  # `otterworks-${svc}-dev` roles deploy-tenant.sh / teardown-tenant.sh edit.
+  tenant_irsa_role_arns = [
+    for svc in var.tenant_irsa_services :
+    "arn:aws:iam::${local.account_id}:role/otterworks-${svc}-${var.environment}"
+  ]
+
+  # Record names reaper.sh (t-/api-t-) and infra-sweep.sh (plus external-dns's
+  # cname-/txt- ownership records) delete, in Route53's normalized form.
+  tenant_record_name_patterns = [
+    for prefix in ["t-", "api-t-", "cname-t-", "cname-api-t-", "txt-t-", "txt-api-t-"] :
+    "${prefix}*.${lower(trimsuffix(var.dns_zone_name, "."))}"
+  ]
 }
 
 data "aws_iam_policy_document" "dashboard" {
+  source_policy_documents = [data.aws_iam_policy_document.dashboard_iam_dns.json]
+
   # Full control of the control table (+ any indexes).
   statement {
     sid    = "ControlTable"
@@ -201,15 +217,6 @@ data "aws_iam_policy_document" "dashboard" {
     }
   }
 
-  # Teardown maintains IRSA trust on the shared per-service roles (add/remove the
-  # tenant namespace SA). Scoped to the otterworks-* service roles only.
-  statement {
-    sid       = "TenantIrsaTrust"
-    effect    = "Allow"
-    actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
-    resources = ["arn:aws:iam::${local.account_id}:role/otterworks-*"]
-  }
-
   # deploy/teardown resolve shared RDS/S3/DynamoDB coordinates by reading the
   # application Terraform state (load_infra_outputs -> `terraform output`).
   # Read-only: TF 1.9 S3 backend without a lock table performs no writes here.
@@ -251,17 +258,63 @@ data "aws_iam_policy_document" "dashboard" {
     actions   = ["dynamodb:ListTables", "s3:ListAllMyBuckets"]
     resources = ["*"]
   }
+}
 
-  # Reaper GC of per-tenant Route53 records (host-based routing). Scoped to
-  # hosted-zone record changes; list actions are account-level.
+# The control plane's grants over other identities and over DNS, kept in their
+# own document so tests/ can assert on them offline (none of it depends on a
+# resource created by this stack). Merged into the role policy above.
+data "aws_iam_policy_document" "dashboard_iam_dns" {
+  # Deploy/teardown maintain IRSA trust on the shared per-service roles (add or
+  # remove the tenant namespace SA). Listed by exact ARN, never `otterworks-*`:
+  # that prefix also matches the EKS cluster/node, Karpenter, CI, DNS roles and
+  # this role itself, and rewriting any of their trust policies is a backdoor.
   statement {
-    sid    = "ReaperRoute53"
-    effect = "Allow"
-    actions = [
-      "route53:ListHostedZonesByName", "route53:ListHostedZones",
-      "route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets",
-    ]
+    sid       = "TenantIrsaTrust"
+    effect    = "Allow"
+    actions   = ["iam:GetRole", "iam:UpdateAssumeRolePolicy"]
+    resources = local.tenant_irsa_role_arns
+  }
+
+  # Reaper GC of per-tenant Route53 records (host-based routing). Zone lookup is
+  # account-level by API design; everything else is bound to the demo zone.
+  statement {
+    sid       = "ReaperRoute53List"
+    effect    = "Allow"
+    actions   = ["route53:ListHostedZonesByName", "route53:ListHostedZones"]
     resources = ["*"]
+  }
+
+  # The reaper and infra-sweep only ever DELETE tenant records (and the
+  # external-dns ownership records beside them) in the demo zone. The account
+  # holds unrelated zones, so neither another zone nor a non-tenant record --
+  # the apex, ops.*, cert-manager's _acme-challenge -- is changeable from here.
+  dynamic "statement" {
+    for_each = var.enable_dns ? [data.aws_route53_zone.demo[0].zone_id] : []
+    content {
+      sid       = "ReaperRoute53Read"
+      effect    = "Allow"
+      actions   = ["route53:ListResourceRecordSets"]
+      resources = ["arn:aws:route53:::hostedzone/${statement.value}"]
+    }
+  }
+  dynamic "statement" {
+    for_each = var.enable_dns ? [data.aws_route53_zone.demo[0].zone_id] : []
+    content {
+      sid       = "ReaperRoute53DeleteTenantRecords"
+      effect    = "Allow"
+      actions   = ["route53:ChangeResourceRecordSets"]
+      resources = ["arn:aws:route53:::hostedzone/${statement.value}"]
+      condition {
+        test     = "ForAllValues:StringEquals"
+        variable = "route53:ChangeResourceRecordSetsActions"
+        values   = ["DELETE"]
+      }
+      condition {
+        test     = "ForAllValues:StringLike"
+        variable = "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+        values   = local.tenant_record_name_patterns
+      }
+    }
   }
 }
 

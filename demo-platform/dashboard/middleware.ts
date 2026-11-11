@@ -58,11 +58,13 @@ async function verifyToken(token: string | undefined, secret: string): Promise<b
   return true;
 }
 
-// Paths allowed without a session.
+// Paths allowed without a session. /api/cd/sync authenticates each request
+// itself with a GitHub Actions OIDC token instead of a session cookie.
 function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/login" ||
     pathname === "/api/auth/login" ||
+    pathname === "/api/cd/sync" ||
     pathname === "/api/health" ||
     pathname === "/favicon.ico"
   );

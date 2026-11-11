@@ -124,6 +124,31 @@ variable "sweepable_clusters" {
   default     = []
 }
 
+# The shared per-service IRSA roles (infrastructure/terraform `module "irsa"`
+# service_accounts keys) whose trust the runner adds tenant namespaces to. Keep
+# in step with that map: a service missing here gets AccessDenied on deploy.
+variable "tenant_irsa_services" {
+  description = "Service names whose otterworks-<service>-<environment> IRSA role trust the dashboard runner may update."
+  type        = list(string)
+  default = [
+    "file-service",
+    "document-service",
+    "notification-service",
+    "search-service",
+    "analytics-service",
+    "audit-service",
+    "auth-service",
+    "admin-service",
+    "api-gateway",
+    "collab-service",
+  ]
+
+  validation {
+    condition     = alltrue([for s in var.tenant_irsa_services : can(regex("^[a-z0-9][a-z0-9-]*$", s))])
+    error_message = "tenant_irsa_services entries must be plain service names (no wildcards)."
+  }
+}
+
 variable "provisioner_user_name" {
   description = "IAM user who provisions demo tenants through the dashboard (holds only the passcode grant)."
   type        = string

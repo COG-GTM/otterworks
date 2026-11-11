@@ -57,3 +57,16 @@ export function secondsToTtl(seconds: number): string {
 export function randomIdSuffix(): string {
   return Math.random().toString(36).slice(2, 6);
 }
+
+// Tenant id CD derives from a branch, matching branch_tenant_id() in
+// scripts/lib/tenant-common.sh: `workshop-derek` and `demo-derek` both own
+// tenant `derek`, optionally namespaced by a per-repository prefix.
+export function tenantIdForBranch(branch: string, prefix?: string): string {
+  const bare = branch.replace(/^(workshop|demo)[-/]/, "");
+  return sanitizeId(prefix ? `${prefix}-${bare}` : bare);
+}
+
+// Container image tag syntax (OCI distribution spec).
+export function isValidImageTag(tag: string): boolean {
+  return /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(tag);
+}

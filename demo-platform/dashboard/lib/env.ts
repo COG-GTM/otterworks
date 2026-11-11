@@ -74,12 +74,55 @@ export const env = {
       .filter(Boolean);
     return new Set(list);
   },
+  // Audience CD requests for its GitHub OIDC token (tenant.sh's
+  // CD_OIDC_AUDIENCE). Distinct from sts.amazonaws.com, so a token minted for
+  // AWS cannot be replayed here and vice versa.
+  get cdOidcAudience(): string {
+    return process.env.CD_OIDC_AUDIENCE || "otterworks-demo-ops";
+  },
+  // owner/repo => branch patterns whose workflow runs may sync their own
+  // tenant via /api/cd/sync. Mirrors github_actions_trusted_repos in
+  // infra/terraform/variables.tf. Unparseable JSON trusts nobody.
+  get cdTrustedRepos(): Record<string, string[]> {
+    const raw = process.env.CD_TRUSTED_REPOS;
+    if (raw === undefined) {
+      return {
+        "Cognition-Partner-Workshops/otterworks": ["main", "workshop-*", "demo-*"],
+        "COG-GTM/otterworks": ["workshop-*", "demo-*"],
+      };
+    }
+    return parseStringMap(raw, (v): v is string[] =>
+      Array.isArray(v) && v.every((x) => typeof x === "string"),
+    );
+  },
+  // owner/repo => TENANT_PREFIX. Held server-side so a workflow cannot pick the
+  // prefix (and with it, another repository's tenant ids).
+  get cdTenantPrefixes(): Record<string, string> {
+    return parseStringMap(process.env.CD_TENANT_PREFIXES ?? "{}", (v): v is string =>
+      typeof v === "string",
+    );
+  },
+  get cdTtl(): string {
+    return process.env.CD_TTL || "72h";
+  },
   get sessionTtlSeconds(): number {
     const raw = process.env.SESSION_TTL_SECONDS;
     const n = raw ? Number(raw) : NaN;
     return Number.isFinite(n) && n > 0 ? n : 8 * 60 * 60; // ~8h
   },
 } as const;
+
+function parseStringMap<T>(raw: string, isValue: (v: unknown) => v is T): Record<string, T> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, T> = {};
+    for (const [k, v] of Object.entries(parsed)) if (isValue(v)) out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export const TENANT_LABEL = "demo/tenant";
 export const TTL_LABEL = "demo/expires-at";

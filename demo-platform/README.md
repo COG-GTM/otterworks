@@ -64,8 +64,13 @@ the tenant was checked out from, so the two cannot quietly overwrite each other.
 
 CD holds no cluster credentials. The workflow assumes an OIDC role
 (`infra/terraform/iam_github_actions.tf`) trusted only for `main`, `workshop-*` and `demo-*` on
-this repo, which can push to ECR and read the dashboard passcode — nothing else. Deployment
-itself is `tenant.sh sync <branch>` against the dashboard API, exactly what a human would do.
+this repo, which can push to ECR — nothing else. Deployment itself is `tenant.sh sync <branch>`,
+which presents the run's GitHub OIDC token to the dashboard's `/api/cd/sync`. The dashboard
+verifies that token itself and takes the repository and branch from it, so a push can only
+create or redeploy the one tenant its own branch maps to; CD never holds the facilitator
+passcode. The repositories and branches it accepts (`CD_TRUSTED_REPOS`) mirror
+`github_actions_trusted_repos`, and a fork's `TENANT_PREFIX` must also be set on the dashboard
+(`CD_TENANT_PREFIXES`) because the dashboard, not the workflow, derives the tenant id.
 
 Pushes to `main` deploy the perpetual tenant, and deliberately cannot create it: CD makes
 ephemeral environments only, so a missing `t-main` is an error rather than a surprise
