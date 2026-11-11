@@ -1,12 +1,15 @@
 package com.otterworks.legacyportal.announcements;
 
+import com.otterworks.legacyportal.security.CurrentUser;
 import java.time.Instant;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.stream.Collectors;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,15 +31,21 @@ public class AnnouncementController {
 
     @GetMapping
     public List<AnnouncementResponse> list(
+            Authentication authentication,
             @RequestParam(name = "publishedOnly", defaultValue = "true") boolean publishedOnly) {
+        boolean includeDrafts = !publishedOnly && CurrentUser.isAdmin(authentication);
         List<Announcement> announcements =
-                publishedOnly ? service.listPublished() : service.listAll();
+                includeDrafts ? service.listAll() : service.listPublished();
         return announcements.stream().map(AnnouncementResponse::from).collect(Collectors.toList());
     }
 
     @GetMapping("/{id}")
-    public AnnouncementResponse get(@PathVariable Long id) {
-        return AnnouncementResponse.from(service.get(id));
+    public AnnouncementResponse get(@PathVariable Long id, Authentication authentication) {
+        Announcement announcement = service.get(id);
+        if (!announcement.isPublished() && !CurrentUser.isAdmin(authentication)) {
+            throw new NoSuchElementException("announcement " + id + " not found");
+        }
+        return AnnouncementResponse.from(announcement);
     }
 
     @PostMapping
