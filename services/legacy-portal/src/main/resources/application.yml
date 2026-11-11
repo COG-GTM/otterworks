@@ -19,6 +19,12 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
 
+legacy-portal:
+  security:
+    # Shared HMAC secret auth-service signs access tokens with (its jwt.secret / JWT_SECRET).
+    # There is deliberately no default: the portal refuses to start without it.
+    jwt-secret: ${JWT_SECRET:}
+
 management:
   endpoints:
     web:

@@ -8,7 +8,10 @@ import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.Size;
+import com.otterworks.legacyportal.security.PortalRoles;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,14 +32,23 @@ public class FeedbackController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public FeedbackResponse submit(@Valid @RequestBody SubmitFeedbackRequest request) {
+    public FeedbackResponse submit(
+            @Valid @RequestBody SubmitFeedbackRequest request, Authentication authentication) {
         return FeedbackResponse.from(
-                service.submit(request.getUserId(), request.getRating(), request.getMessage()));
+                service.submit(
+                        authentication.getName(), request.getRating(), request.getMessage()));
     }
 
+    /** Lists the caller's own feedback; admins may pass {@code userId} to read another user's. */
     @GetMapping
-    public List<FeedbackResponse> listForUser(@RequestParam String userId) {
-        return service.listForUser(userId).stream()
+    public List<FeedbackResponse> listForUser(
+            @RequestParam(required = false) String userId, Authentication authentication) {
+        String caller = authentication.getName();
+        String target = userId == null ? caller : userId;
+        if (!target.equals(caller) && !PortalRoles.isAdmin(authentication)) {
+            throw new AccessDeniedException("cannot read another user's feedback");
+        }
+        return service.listForUser(target).stream()
                 .map(FeedbackResponse::from)
                 .collect(Collectors.toList());
     }
@@ -48,10 +60,6 @@ public class FeedbackController {
 
     public static class SubmitFeedbackRequest {
 
-        @NotBlank
-        @Size(max = 100)
-        private String userId;
-
         @Min(1)
         @Max(5)
         private int rating;
@@ -59,14 +67,6 @@ public class FeedbackController {
         @NotBlank
         @Size(max = 2000)
         private String message;
-
-        public String getUserId() {
-            return userId;
-        }
-
-        public void setUserId(String userId) {
-            this.userId = userId;
-        }
 
         public int getRating() {
             return rating;
