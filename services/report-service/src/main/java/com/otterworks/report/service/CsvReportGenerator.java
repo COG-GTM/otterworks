@@ -112,7 +112,7 @@ public class CsvReportGenerator {
 
     /**
      * Neutralizes spreadsheet formula injection (OWASP "CSV Injection"): a cell
-     * starting with =, +, -, @, tab or carriage return is prefixed with a single
+     * starting with =, +, -, @, tab, carriage return or line feed is prefixed with a single
      * quote so spreadsheet applications treat it as text. Plain numbers such as
      * -42 or +3.5 are left untouched.
      */
@@ -122,7 +122,7 @@ public class CsvReportGenerator {
         }
         char first = value.charAt(0);
         boolean formulaTrigger = first == '=' || first == '+' || first == '-' || first == '@'
-                || first == '\t' || first == '\r';
+                || first == '\t' || first == '\r' || first == '\n';
         if (!formulaTrigger || PLAIN_NUMBER.matcher(value).matches()) {
             return value;
         }

@@ -219,6 +219,7 @@ public class CsvReportGeneratorTest {
         assertEquals("'+A1", CsvReportGenerator.escapeCell("+A1"));
         assertEquals("'-A1", CsvReportGenerator.escapeCell("-A1"));
         assertEquals("'\r=1", CsvReportGenerator.escapeCell("\r=1"));
+        assertEquals("'\n=HYPERLINK(\"x\")", CsvReportGenerator.escapeCell("\n=HYPERLINK(\"x\")"));
         assertEquals("-7", CsvReportGenerator.escapeCell("-7"));
         assertEquals("+1.5e3", CsvReportGenerator.escapeCell("+1.5e3"));
         assertEquals("# OtterWorks Report", CsvReportGenerator.escapeCell("# OtterWorks Report"));
