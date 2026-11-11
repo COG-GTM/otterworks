@@ -213,8 +213,8 @@ class NotificationServiceTest {
 
     @Test
     fun `markAsRead delegates to repository`() = runTest {
-        coEvery { repository.markAsRead("n-1") } returns true
-        assertTrue(service.markAsRead("n-1"))
+        coEvery { repository.markAsRead("n-1", "user-1") } returns true
+        assertTrue(service.markAsRead("n-1", "user-1"))
     }
 
     @Test

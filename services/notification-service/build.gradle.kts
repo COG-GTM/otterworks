@@ -47,6 +47,9 @@ dependencies {
     implementation("aws.sdk.kotlin:ses:$awsSdkVersion")
     implementation("aws.sdk.kotlin:dynamodb:$awsSdkVersion")
 
+    // Caller identity: verify the gateway-issued JWT
+    implementation("com.auth0:java-jwt:4.4.0")
+
     // Notification template interpolation
     implementation("org.apache.commons:commons-text:$commonsTextVersion")
 
