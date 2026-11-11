@@ -127,6 +127,13 @@ services:
   grafana:
     image: grafana/grafana:10.4.0
     container_name: otterworks-grafana
+    # GF_SECURITY_ADMIN_PASSWORD only applies when grafana_data is first created; reset it on
+    # every start so a volume from before the password moved to .env drops the old one.
+    entrypoint:
+    - /bin/sh
+    - -c
+    - grafana cli --homepath "$$GF_PATHS_HOME" --config "$$GF_PATHS_CONFIG" admin reset-admin-password
+      "$$GF_SECURITY_ADMIN_PASSWORD" >/dev/null 2>&1 || true; exec /run.sh
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required - run scripts/ensure-local-env.sh}

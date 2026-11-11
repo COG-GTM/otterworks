@@ -93,3 +93,8 @@ def test_prometheus_admin_and_lifecycle_apis_are_off() -> None:
     command = services("docker-compose.infra.yml")["prometheus"].get("command") or []
     assert "--web.enable-admin-api" not in command
     assert "--web.enable-lifecycle" not in command
+
+
+def test_grafana_resets_the_admin_password_on_start() -> None:
+    entrypoint = " ".join(services("docker-compose.infra.yml")["grafana"].get("entrypoint") or [])
+    assert "reset-admin-password" in entrypoint and "GF_SECURITY_ADMIN_PASSWORD" in entrypoint
