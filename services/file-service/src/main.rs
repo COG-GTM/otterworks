@@ -64,6 +64,7 @@ async fn main() -> std::io::Result<()> {
             .route("/metrics", web::get().to(handlers::metrics))
             .service(
                 web::scope("/api/v1/files")
+                    .wrap(actix_middleware::from_fn(middleware::require_user_id))
                     .route("/upload", web::post().to(handlers::upload_file))
                     .route("/shared", web::get().to(handlers::list_shared_files))
                     .route("/trash", web::get().to(handlers::list_trashed))
@@ -91,6 +92,7 @@ async fn main() -> std::io::Result<()> {
             )
             .service(
                 web::scope("/api/v1/folders")
+                    .wrap(actix_middleware::from_fn(middleware::require_user_id))
                     .route("", web::get().to(handlers::list_folders))
                     .route("", web::post().to(handlers::create_folder))
                     .route("/{folder_id}", web::get().to(handlers::get_folder))
