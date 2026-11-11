@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import comments, documents, health, templates
+from app.api.documents import require_jwt_secret
 from app.config import settings
 from app.db.session import engine, init_db
 
@@ -30,6 +31,7 @@ structlog.configure(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
+    require_jwt_secret()
     await init_db()
 
     if settings.otel_enabled:
