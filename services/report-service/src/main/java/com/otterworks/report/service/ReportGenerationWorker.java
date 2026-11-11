@@ -113,7 +113,7 @@ public class ReportGenerationWorker {
             logger.error("Report generation failed for {}: {}", reportId, e.getMessage(), e);
             report.setStatus(ReportStatus.FAILED);
             report.setCompletedAt(new Date());
-            report.setErrorMessage(e.getMessage());
+            report.setErrorMessage(Report.GENERATION_FAILED_MESSAGE);
             reportRepository.save(report);
         }
     }

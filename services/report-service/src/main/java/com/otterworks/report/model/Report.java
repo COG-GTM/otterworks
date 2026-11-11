@@ -32,6 +32,8 @@ import java.util.Date;
 @ApiModel(description = "Generated report metadata")
 public class Report {
 
+    public static final String GENERATION_FAILED_MESSAGE = "Report generation failed";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @ApiModelProperty(value = "Unique report identifier", readOnly = true)
