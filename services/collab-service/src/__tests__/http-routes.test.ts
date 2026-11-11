@@ -87,6 +87,13 @@ describe('collab HTTP routes', () => {
         401,
       );
     });
+
+    it('returns 401 for a refresh token', async () => {
+      const refresh = jwt.sign({ sub: 'alice', type: 'refresh' }, JWT_SECRET, {
+        expiresIn: '30d',
+      }); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
+      expect((await get(path, refresh)).status).toBe(401);
+    });
   });
 
   describe('GET /api/v1/collab/documents/:id/presence', () => {
