@@ -6,6 +6,11 @@ import { AwarenessService, type CursorPosition } from '../services/awareness';
 import { extractUserFromSocket } from '../middleware/auth';
 import { MetricsCollector } from '../metrics';
 import { PresenceHandler } from './presence';
+import { DEFAULT_LIMITS, type CollabLimits } from '../config';
+import {
+  DocumentSizeTracker,
+  base64DecodedLength,
+} from '../services/document-size-tracker';
 
 export interface CommentAnnotation {
   id: string;
@@ -28,6 +33,7 @@ export interface CollaborationDeps {
   logger: Logger;
   persistIntervalMs: number;
   snapshotIntervalMs: number;
+  limits?: Partial<CollabLimits>;
 }
 
 export class CollaborationManager {
@@ -37,9 +43,16 @@ export class CollaborationManager {
   private deps: CollaborationDeps;
   private persistTimer: NodeJS.Timeout | null = null;
   private snapshotTimer: NodeJS.Timeout | null = null;
+  private limits: CollabLimits;
+  private sizeTracker: DocumentSizeTracker;
+  private lastPersistAt: Map<string, number> = new Map();
+  private pendingPersist: Map<string, NodeJS.Timeout> = new Map();
+  private lastSnapshotAt: Map<string, number> = new Map();
 
   constructor(deps: CollaborationDeps) {
     this.deps = deps;
+    this.limits = { ...DEFAULT_LIMITS, ...deps.limits };
+    this.sizeTracker = new DocumentSizeTracker(this.limits.maxDocumentBytes);
   }
 
   getDocument(documentId: string): Y.Doc | undefined {
@@ -72,6 +85,8 @@ export class CollaborationManager {
   async stop(): Promise<void> {
     if (this.persistTimer) clearInterval(this.persistTimer);
     if (this.snapshotTimer) clearInterval(this.snapshotTimer);
+    for (const timer of this.pendingPersist.values()) clearTimeout(timer);
+    this.pendingPersist.clear();
 
     // Final persistence pass: flush all in-memory documents to Redis before shutdown
     const { documentStore, logger } = this.deps;
@@ -112,6 +127,17 @@ export class CollaborationManager {
     const room = `doc:${documentId}`;
 
     try {
+      const openDocs = awareness.getUserDocumentIds(user.userId, socket.id);
+      if (!openDocs.has(documentId) && openDocs.size >= this.limits.maxDocumentsPerUser) {
+        logger.warn(
+          { documentId, userId: user.userId, socketId: socket.id },
+          'join_document_rejected: too many open documents',
+        );
+        metrics.connectionErrors.inc({ reason: 'document_limit' });
+        if (ack) ack({ success: false, error: 'Too many open documents' });
+        return;
+      }
+
       // If socket is already in another document, leave it first
       const oldDocId = awareness.getUserDocument(socket.id);
       if (oldDocId && oldDocId !== documentId) {
@@ -209,7 +235,7 @@ export class CollaborationManager {
     socket: Socket,
     data: { documentId: string; update: unknown },
   ): Promise<void> {
-    const { documentStore, metrics, logger } = this.deps;
+    const { metrics, logger } = this.deps;
     const { documentId, update } = data;
     const room = `doc:${documentId}`;
     const user = extractUserFromSocket(socket);
@@ -222,9 +248,18 @@ export class CollaborationManager {
 
     // Accept legacy JSON patches for API-flow clients while preserving Yjs updates for real editors.
     if (typeof update === 'string') {
+      if (base64DecodedLength(update) > this.limits.maxMessageBytes) {
+        this.rejectUpdate(socket, documentId, 'Update exceeds maximum size');
+        return;
+      }
+      const updateBytes = Buffer.from(update, 'base64');
+      if (!this.sizeTracker.fits(documentId, doc, updateBytes.byteLength)) {
+        this.rejectUpdate(socket, documentId, 'Document size limit exceeded');
+        return;
+      }
       try {
-        const updateBytes = Buffer.from(update, 'base64');
         Y.applyUpdate(doc, new Uint8Array(updateBytes));
+        this.sizeTracker.add(documentId, updateBytes.byteLength);
       } catch (err) {
         logger.error({ err, documentId, socketId: socket.id }, 'crdt_apply_failed');
         socket.emit('document-update-error', {
@@ -243,15 +278,47 @@ export class CollaborationManager {
     metrics.documentUpdatesTotal.inc();
     metrics.messagesTotal.inc({ type: 'document-update' });
 
-    // Step 3: Persist to Redis as best-effort (periodic loop provides eventual consistency)
+    // Step 3: Persist to Redis as best-effort, throttled per document
+    // (periodic loop provides eventual consistency)
+    this.schedulePersist(documentId, user.userId);
+  }
+
+  private rejectUpdate(socket: Socket, documentId: string, error: string): void {
+    this.deps.logger.warn(
+      { documentId, socketId: socket.id, error },
+      'document_update_rejected',
+    );
+    this.deps.metrics.messagesTotal.inc({ type: 'document-update-rejected' });
+    socket.emit('document-update-error', { documentId, error });
+  }
+
+  private schedulePersist(documentId: string, userId: string): void {
+    if (this.pendingPersist.has(documentId)) return;
+    const elapsed = Date.now() - (this.lastPersistAt.get(documentId) ?? 0);
+    const delay = Math.max(0, this.limits.persistDebounceMs - elapsed);
+    if (delay === 0) {
+      void this.persistUpdate(documentId, userId);
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.pendingPersist.delete(documentId);
+      void this.persistUpdate(documentId, userId);
+    }, delay);
+    timer.unref();
+    this.pendingPersist.set(documentId, timer);
+  }
+
+  private async persistUpdate(documentId: string, userId: string): Promise<void> {
+    const { documentStore, metrics, logger } = this.deps;
+    const doc = this.documents.get(documentId);
+    if (!doc) return;
+    this.lastPersistAt.set(documentId, Date.now());
+
     try {
       const fullState = Y.encodeStateAsUpdate(doc);
+      this.sizeTracker.set(documentId, fullState.byteLength);
       const persistStart = Date.now();
-      await documentStore.saveDocumentState(
-        documentId,
-        Buffer.from(fullState),
-        user.userId,
-      );
+      await documentStore.saveDocumentState(documentId, Buffer.from(fullState), userId);
       metrics.persistenceDuration.observe(
         { operation: 'save_state' },
         (Date.now() - persistStart) / 1000,
@@ -261,7 +328,7 @@ export class CollaborationManager {
         status: 'success',
       });
     } catch (err) {
-      logger.error({ err, documentId, socketId: socket.id }, 'document_persist_failed');
+      logger.error({ err, documentId }, 'document_persist_failed');
       metrics.persistenceOperations.inc({
         operation: 'save_state',
         status: 'error',
@@ -397,6 +464,20 @@ export class CollaborationManager {
       return;
     }
 
+    const now = Date.now();
+    const lastSnapshot = this.lastSnapshotAt.get(documentId);
+    if (
+      lastSnapshot !== undefined &&
+      now - lastSnapshot < this.limits.snapshotMinIntervalMs
+    ) {
+      socket.emit('snapshot-error', {
+        documentId,
+        error: 'Snapshot rate limit exceeded',
+      });
+      return;
+    }
+    this.lastSnapshotAt.set(documentId, now);
+
     try {
       const state = Y.encodeStateAsUpdate(doc);
       const snapshot = await documentStore.createSnapshot(
@@ -474,11 +555,13 @@ export class CollaborationManager {
 
     try {
       const state = Y.encodeStateAsUpdate(doc);
+      this.clearPendingPersist(documentId);
       await documentStore.saveDocumentState(documentId, Buffer.from(state));
       logger.info({ documentId }, 'document_persisted_on_cleanup');
       // Re-check if users have re-joined during the async persistence
       if (this.deps.awareness.getDocumentUserCount(documentId) === 0) {
         this.documents.delete(documentId);
+        this.forgetDocument(documentId);
         metrics.activeRooms.dec();
         logger.debug({ documentId }, 'document_removed_from_memory');
       }
@@ -488,6 +571,21 @@ export class CollaborationManager {
     } finally {
       this.cleaningUp.delete(documentId);
     }
+  }
+
+  private clearPendingPersist(documentId: string): void {
+    const timer = this.pendingPersist.get(documentId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingPersist.delete(documentId);
+    }
+  }
+
+  private forgetDocument(documentId: string): void {
+    this.clearPendingPersist(documentId);
+    this.lastPersistAt.delete(documentId);
+    this.lastSnapshotAt.delete(documentId);
+    this.sizeTracker.delete(documentId);
   }
 
   private async getOrCreateDoc(documentId: string): Promise<Y.Doc> {
@@ -576,6 +674,7 @@ export function setupCollaborationHandlers(
   logger: Logger,
   persistIntervalMs = 30000,
   snapshotIntervalMs = 300000,
+  limits?: Partial<CollabLimits>,
 ): CollaborationManager {
   const manager = new CollaborationManager({
     io,
@@ -586,6 +685,7 @@ export function setupCollaborationHandlers(
     logger,
     persistIntervalMs,
     snapshotIntervalMs,
+    limits,
   });
   manager.start();
   return manager;

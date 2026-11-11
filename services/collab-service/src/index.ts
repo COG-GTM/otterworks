@@ -14,9 +14,10 @@ import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
 import { PresenceHandler } from './handlers/presence';
 import { setupCollaborationHandlers } from './handlers/collaboration';
+import { YWebsocketGuard, docNameFromUrl } from './services/ywebsocket-guard';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { setupWSConnection } = require('y-websocket/bin/utils');
+const { setupWSConnection, docs: yDocs } = require('y-websocket/bin/utils');
 
 const config = loadConfig();
 
@@ -89,6 +90,7 @@ const io = new SocketIOServer(httpServer, {
   },
   pingInterval: 25000,
   pingTimeout: 20000,
+  maxHttpBufferSize: config.limits.maxMessageBytes,
 });
 
 // JWT auth middleware for WebSocket
@@ -125,13 +127,19 @@ const collabManager = setupCollaborationHandlers(
   logger,
   config.persistence.intervalMs,
   config.persistence.snapshotIntervalMs,
+  config.limits,
 );
 
 // y-websocket server for TipTap/Yjs collaborative editing
-const wss = new WebSocketServer({ noServer: true });
-wss.on('connection', (conn, req) => {
-  setupWSConnection(conn, req);
-  logger.info({ url: req.url }, 'y-websocket_client_connected');
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: config.limits.maxMessageBytes,
+});
+const yjsGuard = new YWebsocketGuard({
+  setupWSConnection,
+  docs: yDocs,
+  limits: config.limits,
+  logger,
 });
 
 // Route WebSocket upgrades: Socket.IO paths go to Socket.IO, all others to y-websocket
@@ -154,8 +162,10 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  let userId: string;
   try {
-    jwt.verify(token, config.jwt.secret);
+    const decoded = jwt.verify(token, config.jwt.secret) as jwt.JwtPayload;
+    userId = String(decoded.sub ?? '');
   } catch {
     logger.warn('y-websocket_connection_rejected: invalid token');
     socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -163,8 +173,16 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  if (!yjsGuard.canOpen(userId, docNameFromUrl(request.url))) {
+    logger.warn({ userId }, 'y-websocket_connection_rejected: too many open documents');
+    socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
   wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
+    yjsGuard.handleConnection(ws, request, userId);
+    logger.info({ url: request.url }, 'y-websocket_client_connected');
   });
 });
 
@@ -199,6 +217,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'shutdown_initiated');
 
   clearInterval(presenceCleanupTimer);
+  yjsGuard.stop();
   await collabManager.stop();
 
   httpServer.close(() => {
