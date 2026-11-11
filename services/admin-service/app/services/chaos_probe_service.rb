@@ -13,7 +13,8 @@ class ChaosProbeService
   SERVICE_PROBES = {
     'search-service' => {
       url: 'http://search-service:8087/api/v1/search/suggest?q=test',
-      headers: { 'X-User-ID' => 'chaos-probe' },
+      # search-service authenticates internal callers with its service token.
+      headers: { 'Authorization' => "Bearer #{ENV.fetch('SEARCH_SERVICE_TOKEN', '')}" },
     },
     # file-service upload expects multipart/form-data with a "file" field.
     # Sending JSON results in a 400 before the chaos flag is ever checked.

@@ -303,6 +303,7 @@ services:
       SQS_ENABLED: 'true'
       SQS_QUEUE_URL: http://localstack:4566/000000000000/otterworks-search-events
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      SEARCH_SERVICE_TOKEN: ${SEARCH_SERVICE_TOKEN:-otterworks-local-dev-search-token-change-me}
     depends_on:
       meilisearch:
         condition: service_healthy
@@ -399,6 +400,7 @@ services:
       SLACK_USER_MAP: ${SLACK_USER_MAP:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
       CHAOS_SECRET: ${CHAOS_SECRET:-}
+      SEARCH_SERVICE_TOKEN: ${SEARCH_SERVICE_TOKEN:-otterworks-local-dev-search-token-change-me}
     depends_on:
       postgres:
         condition: service_healthy
