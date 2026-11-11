@@ -520,6 +520,9 @@ services:
     - 3000:3000
     environment:
       API_GATEWAY_URL: http://api-gateway:8080
+      # file-service presigns LocalStack URLs (path-style, bucket otterworks-files)
+      # that the browser loads for previews and downloads.
+      CSP_STORAGE_ORIGINS: http://localhost:4566/otterworks-files/
     depends_on:
     - api-gateway
     security_opt:
