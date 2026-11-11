@@ -346,13 +346,13 @@ class DocumentService:
 
     # ---- Templates ----
 
-    async def create_template(self, data: TemplateCreate) -> Template:
+    async def create_template(self, data: TemplateCreate, created_by: UUID) -> Template:
         template = Template(
             name=data.name,
             description=data.description,
             content=data.content,
             content_type=data.content_type,
-            created_by=data.created_by,
+            created_by=created_by,
         )
         self.db.add(template)
         await self.db.commit()

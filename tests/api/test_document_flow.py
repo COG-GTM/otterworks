@@ -111,11 +111,11 @@ def test_document_crud_versions_export_comments_and_template_flow(api_client):
             "name": f"Flow Template {api_client.run_id}",
             "description": "Template for API flow tests",
             "content": "template body",
-            "created_by": user.id,
         },
     )
     assert template_response.status_code == 201, template_response.text
     template = template_response.json()
+    assert template["created_by"] == user.id
 
     from_template_response = api_client.client.post(
         f"/api/v1/documents/from-template/{template['id']}",
