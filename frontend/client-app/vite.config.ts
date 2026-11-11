@@ -12,8 +12,10 @@ const apiProxy = {
     changeOrigin: true,
   },
 };
+// Allowlist of exact billing routes (anchored so "../" or "%2e%2e" segments
+// cannot match): the injected service token never reaches /internal/*.
 const billingProxy = {
-  "/billing-api": {
+  "^/billing-api/api/(plans|tenants/[0-9a-fA-F-]{36}/(entitlement|plan-change))(\\?[^/]*)?$": {
     target: process.env.BILLING_SERVICE_URL || "http://localhost:12109",
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/billing-api/, ""),
