@@ -5,6 +5,21 @@ an SQS consumer) and serves aggregated analytics: dashboard summaries, per-user
 activity, document stats, top content, active users, storage usage, and report
 exports.
 
+## Access control
+
+The usage-analytics query routes require the caller identity the API gateway
+derives from the JWT (`X-User-ID`, plus `X-User-Roles` from the `roles` claim);
+a request without `X-User-ID` gets `401`.
+
+- `users/{id}/activity` and `storage?user_id=` — the caller's own id only.
+- `documents/{id}/stats` — documents document-service returns to the caller
+  (checked against `DOCUMENT_SERVICE_URL`, default `http://document-service:8083`;
+  fails closed).
+- `dashboard`, `top-content`, `active-users`, `export`, `storage` without
+  `user_id` — admin roles only (`ADMIN`, `OWNER`, `super_admin`).
+
+Admins may read any of the above. Anything else gets `403`.
+
 ## Metrics store
 
 Events and a daily aggregate rollup are persisted to a **durable PostgreSQL
