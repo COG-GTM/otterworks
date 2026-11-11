@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -180,6 +181,48 @@ public class CsvReportGeneratorTest {
 
         assertTrue("File name should contain sanitized report name",
                 csv.getName().startsWith("monthly_security_audit_"));
+    }
+
+    @Test
+    public void generatedCsvNeutralizesFormulaCellsInDataAndHeader() throws IOException {
+        Report report = buildReport("Formula Injection Report");
+        List<Map<String, Object>> data = new ArrayList<Map<String, Object>>();
+        Map<String, Object> row = new LinkedHashMap<String, Object>();
+        row.put("=HYPERLINK(\"https://evil.example\")", "=1+1");
+        row.put("resource_id", "@SUM(A1)");
+        row.put("user_agent", "+cmd|' /C calc'!A0");
+        row.put("note", "-2+3");
+        row.put("tabbed", "\t=1+1");
+        row.put("balance", "-42.5");
+        row.put("plain", "alice");
+        data.add(row);
+
+        File csv = generator.generateCsv(report, data, outputDir.getAbsolutePath());
+        String content = String.join("\n", readAllLines(csv));
+
+        assertTrue(content.contains("\"'=HYPERLINK("));
+        assertTrue(content.contains("\"'=1+1\""));
+        assertTrue(content.contains("\"'@SUM(A1)\""));
+        assertTrue(content.contains("\"'+cmd|"));
+        assertTrue(content.contains("\"'-2+3\""));
+        assertTrue(content.contains("\"'\t=1+1\""));
+        assertTrue(content.contains("\"-42.5\""));
+        assertTrue(content.contains("\"alice\""));
+        assertFalse(content.contains("\"=1+1\""));
+        assertFalse(content.contains("\"@SUM(A1)\""));
+    }
+
+    @Test
+    public void escapeCellPrefixesFormulaTriggersOnly() {
+        assertEquals("'=1+1", CsvReportGenerator.escapeCell("=1+1"));
+        assertEquals("'@SUM(A1)", CsvReportGenerator.escapeCell("@SUM(A1)"));
+        assertEquals("'+A1", CsvReportGenerator.escapeCell("+A1"));
+        assertEquals("'-A1", CsvReportGenerator.escapeCell("-A1"));
+        assertEquals("'\r=1", CsvReportGenerator.escapeCell("\r=1"));
+        assertEquals("-7", CsvReportGenerator.escapeCell("-7"));
+        assertEquals("+1.5e3", CsvReportGenerator.escapeCell("+1.5e3"));
+        assertEquals("# OtterWorks Report", CsvReportGenerator.escapeCell("# OtterWorks Report"));
+        assertEquals("", CsvReportGenerator.escapeCell(""));
     }
 
     // ---- Helpers ----
