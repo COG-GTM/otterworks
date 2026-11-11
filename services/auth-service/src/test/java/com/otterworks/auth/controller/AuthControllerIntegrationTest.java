@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,19 @@ class AuthControllerIntegrationTest {
     assertThat(owner.getDisplayName()).isEqualTo("Duplicate User");
     assertThat(passwordEncoder.matches("password123", owner.getPasswordHash())).isTrue();
     assertThat(passwordEncoder.matches("attacker-pw1", owner.getPasswordHash())).isFalse();
+  }
+
+  @Test
+  void register_shouldRejectEmailLongerThanColumn() throws Exception {
+    String email = "a".repeat(64) + "@" + ("b".repeat(60) + ".").repeat(4) + "com";
+    String body =
+        objectMapper.writeValueAsString(
+            Map.of("email", email, "password", "password123", "displayName", "Long Email"));
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+        .andExpect(status().isBadRequest());
   }
 
   @Test

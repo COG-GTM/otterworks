@@ -7,7 +7,10 @@ import lombok.Data;
 
 @Data
 public class RegisterRequest {
-  @NotBlank @Email private String email;
+  @NotBlank
+  @Email
+  @Size(max = 255)
+  private String email;
 
   @NotBlank
   @Size(min = 8, max = 128)
