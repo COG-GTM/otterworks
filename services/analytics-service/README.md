@@ -33,7 +33,9 @@ Selected by `analytics.repository.backend` (env `ANALYTICS_REPOSITORY_BACKEND`):
 
 The connection is assembled from `POSTGRES_*` (compose) unless `DATABASE_URL`
 is provided explicitly (`scripts/deploy-dev.sh` wiring); `DATABASE_*` always
-takes precedence. If the durable store cannot be initialised at startup, the
+takes precedence. There is no default password: with the `postgres` backend the
+service refuses to start unless `POSTGRES_PASSWORD` or `DATABASE_PASSWORD` is
+set. If the durable store cannot be initialised at startup, the
 service logs a warning and falls back to the in-memory store so it still boots.
 
 ## Market data & margins (OTD-15)
