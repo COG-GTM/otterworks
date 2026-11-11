@@ -40,6 +40,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Global brake: hold the attempt until its paced slot instead of refusing it.
+  if (rate.delayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, rate.delayMs));
+  }
+
   let submitted = "";
   try {
     const body = (await req.json()) as { passcode?: unknown };

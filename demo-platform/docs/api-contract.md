@@ -8,7 +8,10 @@ The dashboard is a **Next.js** app (server + UI in one deployable) in namespace
 - `POST /api/auth/login` `{ passcode }` → sets an HttpOnly, Secure, SameSite=Strict signed
   session cookie (`ow_ops_session`, ~8h). **Constant-time compare** against the passcode from
   env `DASHBOARD_PASSCODE` (mounted from the `demo-ops-dashboard` Secret). **Rate-limit**:
-  max 5 attempts / IP / 15 min, exponential backoff, audit `login_ok`/`login_fail`.
+  max 5 attempts / IP / 15 min, exponential backoff; after 20 failures across all clients,
+  attempts are paced globally (exponential spacing, capped at 10s; callers are held
+  server-side until their slot and refused with 429 only if it is >30s away), so an
+  attacker cannot lock legitimate facilitators or CD out; audit `login_ok`/`login_fail`.
 - `POST /api/auth/logout` → clears cookie.
 - **Every** other `/api/*` handler calls `requireSession()` first (401 if missing/invalid).
   A Next.js `middleware.ts` also gates all non-login routes.
