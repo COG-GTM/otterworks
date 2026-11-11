@@ -181,6 +181,7 @@ class TestAnalyticsEndpoint:
             meili_module._search_analytics["queries"] = []
             meili_module._search_analytics["total_searches"] = 0
             meili_module._search_analytics["total_results"] = 0
+            meili_module._search_analytics["owner_totals"] = {}
         yield
 
     def test_analytics_returns_data(self, client):
@@ -201,6 +202,16 @@ class TestAnalyticsEndpoint:
         data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "mallory"}).get_json()
         assert data["total_searches"] == 1
         assert [q["query"] for q in data["popular_queries"]] == ["roadmap"]
+
+    def test_analytics_owner_totals_survive_eviction(self, client, monkeypatch):
+        """Other users' searches evicting old entries don't shrink a user's totals."""
+        monkeypatch.setattr(meili_module, "MAX_ANALYTICS_ENTRIES", 2)
+        client.get("/api/v1/search/?q=layoff", headers={"X-User-ID": "alice"})
+        for _ in range(3):
+            client.get("/api/v1/search/?q=roadmap", headers={"X-User-ID": "mallory"})
+
+        data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "alice"}).get_json()
+        assert data["total_searches"] == 1
 
     def test_analytics_without_identity_forbidden(self, client):
         """Analytics without a caller identity or service token is rejected."""

@@ -23,6 +23,7 @@ _search_analytics: dict[str, Any] = {
     "queries": [],
     "total_searches": 0,
     "total_results": 0,
+    "owner_totals": {},
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
@@ -41,6 +42,10 @@ def record_search_analytics(query: str, result_count: int, owner_id: str | None 
         )
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
+        if owner_id is not None:
+            owner_totals = _search_analytics["owner_totals"].setdefault(owner_id, [0, 0])
+            owner_totals[0] += 1
+            owner_totals[1] += result_count
         if len(_search_analytics["queries"]) > MAX_ANALYTICS_ENTRIES:
             _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
@@ -53,13 +58,14 @@ def get_search_analytics(owner_id: str | None = None) -> AnalyticsData:
     """
     with _analytics_lock:
         queries = list(_search_analytics["queries"])
-        total_searches = _search_analytics["total_searches"]
-        total_results = _search_analytics["total_results"]
+        if owner_id is None:
+            total_searches = _search_analytics["total_searches"]
+            total_results = _search_analytics["total_results"]
+        else:
+            total_searches, total_results = _search_analytics["owner_totals"].get(owner_id, (0, 0))
 
     if owner_id is not None:
         queries = [entry for entry in queries if entry.get("owner_id") == owner_id]
-        total_searches = len(queries)
-        total_results = sum(entry["result_count"] for entry in queries)
 
     query_counts: dict[str, int] = {}
     zero_result_counts: dict[str, int] = {}
