@@ -28,9 +28,12 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+scripts/gen-dev-env.sh   # writes random JWT_SECRET, SECRET_KEY_BASE, ... to .env
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
+
+The compose files ship no secret defaults: `JWT_SECRET`, `SECRET_KEY_BASE`, `ALERT_WEBHOOK_SECRET` and `CHAOS_SECRET` must be set, and compose refuses to start otherwise. `make env` (run automatically by `make infra-up`/`up`/`build`) generates per-checkout random values into the git-ignored `.env`.
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 

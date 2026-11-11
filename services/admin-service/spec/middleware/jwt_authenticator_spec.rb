@@ -35,4 +35,23 @@ RSpec.describe JwtAuthenticator do
     expect(status).to eq(401)
     expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
   end
+
+  context 'outside the test environment' do
+    before { allow(Rails).to receive(:env).and_return(ActiveSupport::EnvironmentInquirer.new('development')) }
+
+    it 'verifies with JWT_SECRET from the environment' do
+      stub_const('ENV', ENV.to_h.merge('JWT_SECRET' => 'per-deploy-secret'))
+      status, _headers, _body = call(JWT.encode(payload, 'per-deploy-secret', 'HS512'))
+      expect(status).to eq(200)
+    end
+
+    it 'rejects every token instead of falling back to a committed default when JWT_SECRET is unset' do
+      stub_const('ENV', ENV.to_h.except('JWT_SECRET'))
+      [secret, 'dev_jwt_secret_key', 'otterworks-local-dev-jwt-secret-change-me-in-production'].each do |guess|
+        status, _headers, body = call(JWT.encode(payload, guess, 'HS256'))
+        expect(status).to eq(401)
+        expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
+      end
+    end
+  end
 end
