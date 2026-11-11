@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+from collections import OrderedDict
 
 import pytest
 
@@ -181,7 +182,7 @@ class TestAnalyticsEndpoint:
             meili_module._search_analytics["queries"] = []
             meili_module._search_analytics["total_searches"] = 0
             meili_module._search_analytics["total_results"] = 0
-            meili_module._search_analytics["owner_totals"] = {}
+            meili_module._search_analytics["owner_totals"] = OrderedDict()
         yield
 
     def test_analytics_returns_data(self, client):
@@ -212,6 +213,14 @@ class TestAnalyticsEndpoint:
 
         data = client.get("/api/v1/search/analytics", headers={"X-User-ID": "alice"}).get_json()
         assert data["total_searches"] == 1
+
+    def test_analytics_owner_totals_bounded(self, client, monkeypatch):
+        """Per-owner totals stay bounded as distinct users search."""
+        monkeypatch.setattr(meili_module, "MAX_ANALYTICS_ENTRIES", 2)
+        for user in ("alice", "bob", "carol"):
+            client.get("/api/v1/search/?q=x", headers={"X-User-ID": user})
+
+        assert list(meili_module._search_analytics["owner_totals"]) == ["bob", "carol"]
 
     def test_analytics_without_identity_forbidden(self, client):
         """Analytics without a caller identity or service token is rejected."""

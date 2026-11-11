@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import OrderedDict
 from typing import Any
 
 import meilisearch
@@ -23,7 +24,9 @@ _search_analytics: dict[str, Any] = {
     "queries": [],
     "total_searches": 0,
     "total_results": 0,
-    "owner_totals": {},
+    # Per-owner [searches, results], LRU-capped: an owner is evicted only after
+    # MAX_ANALYTICS_ENTRIES newer searches, by which time their queries have aged out too.
+    "owner_totals": OrderedDict(),
 }
 
 MAX_ANALYTICS_ENTRIES = 10000
@@ -43,9 +46,13 @@ def record_search_analytics(query: str, result_count: int, owner_id: str | None 
         _search_analytics["total_searches"] += 1
         _search_analytics["total_results"] += result_count
         if owner_id is not None:
-            owner_totals = _search_analytics["owner_totals"].setdefault(owner_id, [0, 0])
+            all_owner_totals = _search_analytics["owner_totals"]
+            owner_totals = all_owner_totals.setdefault(owner_id, [0, 0])
             owner_totals[0] += 1
             owner_totals[1] += result_count
+            all_owner_totals.move_to_end(owner_id)
+            if len(all_owner_totals) > MAX_ANALYTICS_ENTRIES:
+                all_owner_totals.popitem(last=False)
         if len(_search_analytics["queries"]) > MAX_ANALYTICS_ENTRIES:
             _search_analytics["queries"] = _search_analytics["queries"][-MAX_ANALYTICS_ENTRIES:]
 
