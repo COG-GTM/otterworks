@@ -23,6 +23,8 @@ const GLOBAL_FREE_FAILURES = 20;
 const GLOBAL_BASE_DELAY_MS = 1000;
 const GLOBAL_MAX_DELAY_MS = 10_000;
 const GLOBAL_MAX_WAIT_MS = 30_000;
+// Bound on tracked per-IP buckets; spoofed IPs must not grow memory without limit.
+const MAX_BUCKETS = 10_000;
 
 interface Bucket {
   count: number;
@@ -35,12 +37,16 @@ interface GlobalState {
   // so a sustained attack cannot reset the backoff by outlasting a window.
   failures: number;
   lastFailure: number;
+  // Paced attempts reserved since pacing began. Spacing escalates per
+  // reservation, so a burst queued before its failures land cannot keep the
+  // short initial spacing.
+  reservations: number;
   // Earliest time the next paced attempt may be evaluated.
   nextSlot: number;
 }
 
 const buckets = new Map<string, Bucket>();
-let globalState: GlobalState = { failures: 0, lastFailure: 0, nextSlot: 0 };
+let globalState: GlobalState = { failures: 0, lastFailure: 0, reservations: 0, nextSlot: 0 };
 
 export interface RateResult {
   allowed: boolean;
@@ -54,23 +60,23 @@ export interface RateResult {
 
 function rollGlobal(now: number): void {
   if (globalState.failures > 0 && now - globalState.lastFailure > WINDOW_MS) {
-    globalState = { failures: 0, lastFailure: 0, nextSlot: 0 };
+    globalState = { failures: 0, lastFailure: 0, reservations: 0, nextSlot: 0 };
   }
 }
 
 function globalSpacingMs(now: number): number {
   rollGlobal(now);
-  const over = globalState.failures - GLOBAL_FREE_FAILURES;
-  if (over < 0) return 0;
-  return Math.min(GLOBAL_BASE_DELAY_MS * 2 ** over, GLOBAL_MAX_DELAY_MS);
+  if (globalState.failures < GLOBAL_FREE_FAILURES) return 0;
+  return Math.min(GLOBAL_BASE_DELAY_MS * 2 ** globalState.reservations, GLOBAL_MAX_DELAY_MS);
 }
 
 export function checkRateLimit(ip: string, now: number = Date.now()): RateResult {
   let b = buckets.get(ip);
-  if (!b || now - b.windowStart > WINDOW_MS) {
-    b = { count: 0, windowStart: now, lastAttempt: 0 };
-    buckets.set(ip, b);
+  if (b && now - b.windowStart > WINDOW_MS) {
+    buckets.delete(ip);
+    b = undefined;
   }
+  if (!b) b = { count: 0, windowStart: now, lastAttempt: 0 };
 
   if (b.count >= MAX_ATTEMPTS) {
     return {
@@ -107,25 +113,42 @@ export function checkRateLimit(ip: string, now: number = Date.now()): RateResult
     return { allowed: false, retryAfterMs: wait - GLOBAL_MAX_WAIT_MS, remaining, delayMs: 0 };
   }
   globalState.nextSlot = slot + spacing;
+  globalState.reservations += 1;
   return { allowed: true, retryAfterMs: 0, remaining, delayMs: wait };
 }
 
 /** Record a failed attempt (advances the backoff + count) on both layers. */
 export function recordFailure(ip: string, now: number = Date.now()): void {
-  const b = buckets.get(ip) ?? { count: 0, windowStart: now, lastAttempt: 0 };
+  let b = buckets.get(ip);
+  if (!b || now - b.windowStart > WINDOW_MS) b = { count: 0, windowStart: now, lastAttempt: 0 };
   b.count += 1;
   b.lastAttempt = now;
+  buckets.delete(ip);
   buckets.set(ip, b);
+  pruneBuckets(now);
 
   rollGlobal(now);
   globalState.failures += 1;
   globalState.lastFailure = now;
 }
 
+// Drop expired buckets, then the oldest (Map keeps insertion order), once over
+// MAX_BUCKETS. Evicting a live bucket only weakens the best-effort per-IP layer.
+function pruneBuckets(now: number): void {
+  if (buckets.size <= MAX_BUCKETS) return;
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.windowStart > WINDOW_MS) buckets.delete(key);
+  }
+  for (const key of buckets.keys()) {
+    if (buckets.size <= MAX_BUCKETS) break;
+    buckets.delete(key);
+  }
+}
+
 /** Clear per-IP and global state on a successful login. */
 export function recordSuccess(ip: string): void {
   buckets.delete(ip);
-  globalState = { failures: 0, lastFailure: 0, nextSlot: 0 };
+  globalState = { failures: 0, lastFailure: 0, reservations: 0, nextSlot: 0 };
 }
 
 export function clientIp(headers: Headers): string {
