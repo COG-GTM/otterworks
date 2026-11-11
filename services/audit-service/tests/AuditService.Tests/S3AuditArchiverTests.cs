@@ -87,6 +87,7 @@ public class S3AuditArchiverTests
     [InlineData("@SUM(1,2)", "'@SUM(1,2)")]
     [InlineData("\t=1+1", "'\t=1+1")]
     [InlineData("\r=1+1", "'\r=1+1")]
+    [InlineData("\n=1+1", "'\n=1+1")]
     [InlineData("u1", "u1")]
     [InlineData("a=b", "a=b")]
     public async Task ExportAsync_WithCsvFormat_ShouldNeutralizeFormulaCells(string payload, string expectedCell)
@@ -111,7 +112,7 @@ public class S3AuditArchiverTests
         await _archiver.ExportAsync(from, to, "csv");
 
         Assert.NotNull(body);
-        var dataRow = body!.Split('\n')[1];
+        var dataRow = body![(body.IndexOf('\n') + 1)..];
         var quoted = $"\"{expectedCell}\"";
         Assert.Equal(6, CountOccurrences(dataRow, $",{quoted}"));
     }

@@ -140,7 +140,7 @@ public class S3AuditArchiver : IAuditArchiver
         return sb.ToString();
     }
 
-    private static readonly char[] FormulaTriggerChars = ['=', '+', '-', '@', '\t', '\r'];
+    private static readonly char[] FormulaTriggerChars = ['=', '+', '-', '@', '\t', '\r', '\n'];
 
     private static string Esc(string? value)
     {
