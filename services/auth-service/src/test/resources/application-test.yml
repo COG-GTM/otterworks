@@ -31,3 +31,9 @@ logging:
   level:
     com.otterworks: DEBUG
     org.springframework.security: DEBUG
+
+otterworks:
+  user-lookup:
+    email-limit: 5
+    id-limit: 5
+    window-seconds: 60
