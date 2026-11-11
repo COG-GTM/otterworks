@@ -77,7 +77,10 @@ public class ReportResponse {
         if (report.getFilePath() != null) {
             response.setDownloadUrl("/api/v1/reports/" + report.getId() + "/download");
         }
-        response.setErrorMessage(report.getErrorMessage());
+        // Never echo stored exception text to clients; detail stays in server logs.
+        if (report.getErrorMessage() != null) {
+            response.setErrorMessage(Report.GENERATION_FAILED_MESSAGE);
+        }
         return response;
     }
 
