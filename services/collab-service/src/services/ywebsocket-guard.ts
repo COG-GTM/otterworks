@@ -28,19 +28,53 @@ export interface YWebsocketGuardOptions {
 export interface YWebsocketPersistence {
   bindState(docName: string, doc: Y.Doc): Promise<void>;
   writeState(docName: string, doc: Y.Doc): Promise<void>;
+  /** Wait for in-flight writes and retry any that failed (e.g. on shutdown). */
+  drain?(): Promise<void>;
 }
 
 /**
  * y-websocket persistence backed by the Redis document store. With a
  * persistence layer set, y-websocket writes a document's state and drops it
  * from memory when its last connection closes, and reloads it on next open.
+ *
+ * Writes for the same document are serialized and a reload waits for them, so a
+ * reconnect during a save never starts from stale state. A state whose write
+ * failed is kept in memory and merged into the next load (or retried by
+ * `drain`) instead of being lost when y-websocket destroys the document.
  */
 export function createYWebsocketPersistence(
   store: Pick<DocumentStore, 'getDocumentState' | 'saveDocumentState'>,
   logger: Logger,
 ): YWebsocketPersistence {
+  const writes = new Map<string, Promise<void>>();
+  const unsaved = new Map<string, Uint8Array>();
+
+  const save = async (docName: string, state: Uint8Array): Promise<void> => {
+    try {
+      await store.saveDocumentState(docName, Buffer.from(state));
+      unsaved.delete(docName);
+    } catch (err) {
+      unsaved.set(docName, state);
+      logger.error({ err, docName }, 'y-websocket_persist_state_failed');
+    }
+  };
+
+  const enqueue = (docName: string, state: Uint8Array): Promise<void> => {
+    const write = (writes.get(docName) ?? Promise.resolve()).then(() =>
+      save(docName, state),
+    );
+    writes.set(docName, write);
+    void write.then(() => {
+      if (writes.get(docName) === write) writes.delete(docName);
+    });
+    return write;
+  };
+
   return {
     async bindState(docName, doc) {
+      await writes.get(docName);
+      const pending = unsaved.get(docName);
+      if (pending) Y.applyUpdate(doc, pending);
       try {
         const state = await store.getDocumentState(docName);
         if (state) Y.applyUpdate(doc, state);
@@ -48,12 +82,12 @@ export function createYWebsocketPersistence(
         logger.error({ err, docName }, 'y-websocket_load_state_failed');
       }
     },
-    async writeState(docName, doc) {
-      try {
-        await store.saveDocumentState(docName, Buffer.from(Y.encodeStateAsUpdate(doc)));
-      } catch (err) {
-        logger.error({ err, docName }, 'y-websocket_persist_state_failed');
-      }
+    writeState(docName, doc) {
+      return enqueue(docName, Y.encodeStateAsUpdate(doc));
+    },
+    async drain() {
+      await Promise.all(writes.values());
+      await Promise.all(Array.from(unsaved).map(([name, state]) => enqueue(name, state)));
     },
   };
 }
@@ -164,6 +198,7 @@ export class YWebsocketGuard {
     await Promise.all(
       Array.from(docs.entries()).map(([name, doc]) => persistence.writeState(name, doc)),
     );
+    await persistence.drain?.();
   }
 
   private retain(userId: string, docName: string): void {

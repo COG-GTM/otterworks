@@ -459,3 +459,62 @@ describe('YWebsocketGuard', () => {
     expect(store.saveDocumentState).toHaveBeenCalledWith('yws-flush', expect.any(Buffer));
   });
 });
+
+describe('createYWebsocketPersistence', () => {
+  const docWith = (text: string): Y.Doc => {
+    const doc = new Y.Doc();
+    doc.getText('content').insert(0, text);
+    return doc;
+  };
+
+  it('waits for an in-flight save before loading, so a reconnect sees the latest state', async () => {
+    const saved = new Map<string, Uint8Array>();
+    let finishSave!: () => void;
+    const store = {
+      getDocumentState: jest.fn(async (name: string) => saved.get(name) ?? null),
+      saveDocumentState: jest.fn(
+        (name: string, state: Buffer) =>
+          new Promise<void>((resolve) => {
+            finishSave = () => {
+              saved.set(name, new Uint8Array(state));
+              resolve();
+            };
+          }),
+      ),
+    };
+    const persistence = createYWebsocketPersistence(store, mockLogger);
+
+    const write = persistence.writeState('doc-race', docWith('latest edits'));
+    const reopened = new Y.Doc();
+    const bind = persistence.bindState('doc-race', reopened);
+    await new Promise((r) => setImmediate(r));
+    expect(store.getDocumentState).not.toHaveBeenCalled();
+    finishSave();
+    await Promise.all([write, bind]);
+    expect(reopened.getText('content').toString()).toBe('latest edits');
+  });
+
+  it('keeps a state whose save failed and restores or retries it', async () => {
+    const store = {
+      getDocumentState: jest.fn().mockResolvedValue(null),
+      saveDocumentState: jest.fn().mockRejectedValueOnce(new Error('redis down')),
+    };
+    const persistence = createYWebsocketPersistence(store, mockLogger);
+
+    await expect(
+      persistence.writeState('doc-fail', docWith('unsaved edits')),
+    ).resolves.toBeUndefined();
+    const reopened = new Y.Doc();
+    await persistence.bindState('doc-fail', reopened);
+    expect(reopened.getText('content').toString()).toBe('unsaved edits');
+
+    store.saveDocumentState.mockResolvedValue(undefined);
+    await persistence.drain!();
+    expect(store.saveDocumentState).toHaveBeenCalledTimes(2);
+    const retried = new Y.Doc();
+    Y.applyUpdate(retried, store.saveDocumentState.mock.calls[1][1]);
+    expect(retried.getText('content').toString()).toBe('unsaved edits');
+    await persistence.drain!();
+    expect(store.saveDocumentState).toHaveBeenCalledTimes(2);
+  });
+});
