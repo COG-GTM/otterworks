@@ -5,6 +5,7 @@ import akka.http.scaladsl.model.headers.RawHeader
 import akka.http.scaladsl.server.Directives.*
 import akka.http.scaladsl.server.Route
 import akka.http.scaladsl.testkit.ScalatestRouteTest
+import io.jsonwebtoken.Jwts
 import io.jsonwebtoken.security.Keys
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -61,6 +62,13 @@ class AuthSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest:
     Get("/me") ~> bearer(unsigned) ~> route ~> check {
       status shouldBe StatusCodes.Unauthorized
     }
+  }
+
+  it should "reject signed tokens without a type claim" in {
+    val untyped = Jwts.builder().subject("admin-1").claim("roles", java.util.List.of("ADMIN"))
+      .expiration(java.util.Date.from(java.time.Instant.now().plusSeconds(600)))
+      .signWith(Keys.hmacShaKeyFor(Secret.getBytes(StandardCharsets.UTF_8))).compact()
+    Get("/me") ~> bearer(untyped) ~> route ~> check { status shouldBe StatusCodes.Unauthorized }
   }
 
   it should "reject everything when no secret is configured" in {

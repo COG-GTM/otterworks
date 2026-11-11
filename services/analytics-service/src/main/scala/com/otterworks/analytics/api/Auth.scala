@@ -56,8 +56,7 @@ class JwtAuthenticator(secret: Option[String]):
     case _                            => None
 
   private def toUser(claims: Claims): Option[AuthenticatedUser] =
-    val tokenType = Option(claims.get("type", classOf[String]))
-    if tokenType.exists(_ != "access") then None
+    if !Option(claims.get("type", classOf[String])).contains("access") then None
     else
       val userId = Option(claims.getSubject).orElse(Option(claims.get("user_id", classOf[String]))).map(_.trim)
       userId.filter(_.nonEmpty).map(id => AuthenticatedUser(id, roles(claims)))
