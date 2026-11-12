@@ -31,6 +31,7 @@ export function FolderCard({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -40,7 +41,11 @@ export function FolderCard({
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key !== "Escape") return;
+      if (menuContainerRef.current?.contains(document.activeElement)) {
+        menuTriggerRef.current?.focus();
+      }
+      setMenuOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -120,6 +125,7 @@ export function FolderCard({
         </Link>
         <div className="relative w-8" ref={menuContainerRef}>
           <button
+            ref={menuTriggerRef}
             type="button"
             aria-label={`More actions for ${folder.name}`}
             aria-haspopup="menu"
@@ -164,6 +170,7 @@ export function FolderCard({
           </div>
           <div className="relative" ref={menuContainerRef}>
             <button
+              ref={menuTriggerRef}
               type="button"
               aria-label={`More actions for ${folder.name}`}
               aria-haspopup="menu"

@@ -61,6 +61,17 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("returns focus to the trigger when Escape is pressed inside the menu", () => {
+    renderCard({ view });
+    const trigger = screen.getByRole("button", { name: "More actions for Reports" });
+    fireEvent.click(trigger);
+    const share = screen.getByRole("menuitem", { name: "Share" });
+    share.focus();
+    fireEvent.keyDown(share, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("closes the menu on an outside pointer press without navigating", () => {
     renderCard({ view });
     fireEvent.click(screen.getByRole("button", { name: "More actions for Reports" }));
