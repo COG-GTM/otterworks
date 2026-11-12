@@ -63,11 +63,10 @@ export function ShareDialog({
         detail = data?.message ?? "";
         isAwsError = data?.error === "event_error" || data?.error === "storage_error";
       }
-      const message = detail
-        ? isAwsError
-          ? `Sharing failed. AWS ${detail}`
-          : `Sharing failed: ${detail}`
-        : "Sharing failed.";
+      let message = "Sharing failed.";
+      if (detail) {
+        message = isAwsError ? `Sharing failed. AWS ${detail}` : `Sharing failed: ${detail}`;
+      }
       setShareError(message);
       toast.error(message);
     } finally {
@@ -238,7 +237,7 @@ export function ShareDialog({
                   )}
 
                   {/* Shared users */}
-                  {sharedWith.length > 0 ? (
+                  {sharedWith.length > 0 &&
                     sharedWith
                       .filter((user) => user.userId !== ownerId)
                       .map((user) => {
@@ -307,12 +306,13 @@ export function ShareDialog({
                             </div>
                           </div>
                         );
-                      })
-                  ) : !ownerId ? (
+                      })}
+
+                  {sharedWith.length === 0 && !ownerId && (
                     <p className="text-sm text-gray-500 text-center py-4">
                       No one else has access yet
                     </p>
-                  ) : null}
+                  )}
 
                   {ownerId && sharedWith.filter((u) => u.userId !== ownerId).length === 0 && (
                     <p className="text-sm text-gray-500 text-center py-3">
