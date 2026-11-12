@@ -184,7 +184,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private destroy$ = new Subject<void>();
 
-  constructor(private api: AdminApiService) {}
+  constructor(private readonly api: AdminApiService) {}
 
   ngOnInit(): void {
     this.loadStats();
