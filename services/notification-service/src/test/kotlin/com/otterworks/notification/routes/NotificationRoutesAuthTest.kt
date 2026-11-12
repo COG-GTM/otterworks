@@ -7,7 +7,6 @@ import com.otterworks.notification.configurePlugins
 import com.otterworks.notification.model.Notification
 import com.otterworks.notification.service.NotificationService
 import com.otterworks.notification.websocket.WebSocketManager
-import io.ktor.client.plugins.websocket.WebSocketException
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.bearerAuth
@@ -19,6 +18,10 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.server.application.createApplicationPlugin
+import io.ktor.server.application.hooks.ResponseSent
+import io.ktor.server.application.install
+import io.ktor.server.request.path
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
@@ -29,9 +32,10 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import java.util.Date
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertFails
 import kotlin.test.assertTrue
 
 class NotificationRoutesAuthTest {
@@ -39,6 +43,7 @@ class NotificationRoutesAuthTest {
     private val secret = "notification-test-jwt-secret-0123456789abcdef"
     private val notificationService = mockk<NotificationService>(relaxed = true)
     private val webSocketManager = WebSocketManager()
+    private val responseStatuses = ConcurrentHashMap<String, HttpStatusCode>()
 
     private fun config(jwtSecret: String? = secret) = AppConfig(
         port = 0,
@@ -66,6 +71,11 @@ class NotificationRoutesAuthTest {
 
     private fun ApplicationTestBuilder.service(jwtSecret: String? = secret) {
         application {
+            install(
+                createApplicationPlugin("RecordResponseStatus") {
+                    on(ResponseSent) { call -> call.response.status()?.let { responseStatuses[call.request.path()] = it } }
+                },
+            )
             configurePlugins(config(jwtSecret))
             routing { notificationApiRoutes(notificationService, webSocketManager) }
         }
@@ -160,8 +170,8 @@ class NotificationRoutesAuthTest {
         service()
         val ws = createClient { install(WebSockets) }
         for (path in listOf("/ws/notifications/bob", "/ws/notifications")) {
-            val refused = assertFailsWith<WebSocketException> { ws.webSocket(path) { } }
-            assertTrue(refused.message.orEmpty().endsWith("but was 401"), "$path: ${refused.message}")
+            assertFails { ws.webSocket(path) { } }
+            assertEquals(HttpStatusCode.Unauthorized, responseStatuses[path], path)
         }
         assertTrue(!webSocketManager.isUserConnected("bob"))
     }
