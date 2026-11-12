@@ -37,4 +37,51 @@ RSpec.describe Api::V1::Admin::AuditLogsController do
       expect(body['id']).to eq(log.id)
     end
   end
+
+  describe 'authorization' do
+    let!(:log) { create(:audit_log) }
+
+    %w[user editor viewer].each do |role|
+      context "with a #{role} role" do
+        before { set_jwt_env(request, role: role) }
+
+        it 'forbids listing audit logs' do
+          get :index
+          expect(response).to have_http_status(:forbidden)
+          expect(response.body).not_to include(log.actor_email.to_s)
+        end
+
+        it 'forbids reading an audit log entry' do
+          get :show, params: { id: log.id }
+          expect(response).to have_http_status(:forbidden)
+          expect(response.body).not_to include(log.actor_email.to_s)
+        end
+      end
+    end
+
+    context 'without a role claim' do
+      before { set_jwt_env(request, role: nil) }
+
+      it 'forbids listing audit logs' do
+        get :index
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    %w[admin super_admin owner].each do |role|
+      context "with an #{role} role" do
+        before { set_jwt_env(request, role: role) }
+
+        it 'allows listing audit logs' do
+          get :index
+          expect(response).to have_http_status(:ok)
+        end
+
+        it 'allows reading an audit log entry' do
+          get :show, params: { id: log.id }
+          expect(response).to have_http_status(:ok)
+        end
+      end
+    end
+  end
 end
