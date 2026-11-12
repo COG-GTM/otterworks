@@ -86,37 +86,31 @@ a {
 
 /* ── Sidebar nav-list overrides ──────────────────────────────────────────────
    Angular Material's light theme renders mat-list-item text in dark ink.
-   These rules force white text/icons inside the dark sidebar regardless of
-   the global theme, replacing the weaker ::ng-deep rules in the component. */
-app-sidebar .mat-mdc-list-item,
+   These rules force light text/icons inside the dark sidebar regardless of
+   the global theme. Every text colour is paired with an opaque background so
+   each state meets WCAG 2.1 AA (>= 4.5:1):
+     default  #d6dde8 on #1f3a5f   8.4:1
+     hover    #ffffff on #314a6c   9.0:1
+     active   #f2c078 on #404b59   5.3:1 */
+app-sidebar .mat-mdc-list-item {
+  color: #d6dde8 !important;
+  background-color: #1f3a5f !important;
+}
+
 app-sidebar .mat-mdc-list-item .mdc-list-item__primary-text,
-app-sidebar .mat-mdc-list-item .mat-mdc-list-item-title {
-  color: rgba(255, 255, 255, 0.75) !important;
-}
-
+app-sidebar .mat-mdc-list-item .mat-mdc-list-item-title,
 app-sidebar .mat-mdc-list-item .mat-icon {
-  color: rgba(255, 255, 255, 0.75) !important;
+  color: inherit !important;
 }
 
-app-sidebar .mat-mdc-list-item:hover .mdc-list-item__primary-text,
-app-sidebar .mat-mdc-list-item:hover .mat-mdc-list-item-title,
 app-sidebar .mat-mdc-list-item:hover {
   color: #ffffff !important;
+  background-color: #314a6c !important;
 }
 
-app-sidebar .mat-mdc-list-item:hover .mat-icon {
-  color: #ffffff !important;
-}
-
-app-sidebar .active-link,
-app-sidebar .active-link .mdc-list-item__primary-text,
-app-sidebar .active-link .mat-mdc-list-item-title {
-  color: #d99a3d !important;
-  background: rgba(217, 154, 61, 0.18) !important;
-}
-
-app-sidebar .active-link .mat-icon {
-  color: #d99a3d !important;
+app-sidebar .mat-mdc-list-item.active-link {
+  color: #f2c078 !important;
+  background-color: #404b59 !important;
 }
 
 /* Ripple / focus state should also be light */
