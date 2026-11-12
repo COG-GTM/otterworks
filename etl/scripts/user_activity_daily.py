@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 import boto3
 import psycopg2
 
+from s3_ownership import expected_bucket_owner
+
 
 def main():
     print("[%s] user_activity_daily.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -37,6 +39,7 @@ def main():
     db_password = config.get("database", "password")
 
     data_lake_bucket = config.get("s3", "data_lake_bucket")
+    bucket_owner = expected_bucket_owner(config)
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     lookback_days = 30
@@ -144,7 +147,7 @@ def main():
         key = "analytics/daily/year=%s/month=%s/day=%s/top_users.jsonl.gz" % (year, month, day)
 
         try:
-            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key)
+            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key, ExpectedBucketOwner=bucket_owner)
             body = response["Body"].read()
             decompressed = gzip.decompress(body).decode("utf-8")
 
@@ -215,6 +218,7 @@ def main():
     report_key = "%s/%s/activity_report.json" % (s3_reports_prefix, ds)
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
@@ -223,6 +227,7 @@ def main():
     latest_key = "%s/latest/activity_report.json" % s3_reports_prefix
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=latest_key,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
@@ -234,6 +239,7 @@ def main():
         lines = [json.dumps(u, default=str) for u in user_summaries]
         s3_client_upload.put_object(
             Bucket=data_lake_bucket,
+            ExpectedBucketOwner=bucket_owner,
             Key=users_key,
             Body=("\n".join(lines) + "\n").encode("utf-8"),
         )
