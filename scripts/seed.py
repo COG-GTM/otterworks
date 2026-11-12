@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["psycopg2-binary", "bcrypt"]
+# dependencies = ["psycopg2-binary"]
 # ///
 """
 OtterWorks admin-service seed script.
@@ -21,7 +21,6 @@ import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import bcrypt
 import psycopg2
 from psycopg2.extras import execute_values, Json
 
@@ -48,9 +47,6 @@ def hours_ago(n: int) -> datetime:
 
 def uid() -> str:
     return str(uuid.uuid4())
-
-def hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=10)).decode()
 
 def log(msg: str) -> None:
     print(f"  {msg}")
