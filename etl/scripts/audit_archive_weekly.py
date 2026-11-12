@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -28,6 +29,21 @@ class DecimalEncoder(json.JSONEncoder):
                 return int(o)
             return float(o)
         return super().default(o)
+
+
+def delete_archived_batch(table, keys):
+    """Delete one batch of archived event keys; return how many were deleted."""
+    try:
+        with table.batch_writer() as batch_writer:
+            for k in keys:
+                batch_writer.delete_item(Key=k)
+    except (BotoCoreError, ClientError) as e:
+        # TODO ETL-167: Retry throttled / unprocessed items instead of skipping the batch
+        print("[%s] WARNING: failed to delete batch of %d archived events from DynamoDB: %s" % (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(keys), e
+        ))
+        return 0
+    return len(keys)
 
 
 def main():
@@ -144,28 +160,16 @@ def main():
         batch.append(key)
 
         if len(batch) >= dynamodb_batch_size:
-            try:
-                with table.batch_writer() as batch_writer:
-                    for k in batch:
-                        batch_writer.delete_item(Key=k)
-                deleted_count += len(batch)
-            except:
-                # TODO ETL-167: Handle throttling / partial failures
-                pass
+            deleted_count += delete_archived_batch(table, batch)
             batch = []
 
     # flush remaining batch
     if batch:
-        try:
-            with table.batch_writer() as batch_writer:
-                for k in batch:
-                    batch_writer.delete_item(Key=k)
-            deleted_count += len(batch)
-        except:
-            pass
+        deleted_count += delete_archived_batch(table, batch)
 
-    print("[%s] Deleted %d events from DynamoDB" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), deleted_count
+    delete_failed_count = archive_count - deleted_count
+    print("[%s] Deleted %d events from DynamoDB (%d failed)" % (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), deleted_count, delete_failed_count
     ))
 
     # ---- Generate compliance report ----
@@ -181,6 +185,7 @@ def main():
             "events_scanned": archive_count,
             "events_archived": archive_count,
             "events_deleted_from_source": deleted_count,
+            "events_failed_to_delete_from_source": delete_failed_count,
             "archive_location": "s3://%s/%s" % (archive_bucket, archive_key),
             "archive_storage_class": "GLACIER",
             "compressed_size_bytes": compressed_size,
