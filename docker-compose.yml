@@ -168,6 +168,9 @@ services:
       DOC_SVC_AWS_ENDPOINT_URL: http://localstack:4566
       DOC_SVC_SNS_ENABLED: 'true'
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      # No default: share links are refused (503) until a private key is supplied,
+      # e.g. export SHARE_LINK_SECRET=$(openssl rand -hex 32).
+      SHARE_LINK_SECRET: ${SHARE_LINK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
