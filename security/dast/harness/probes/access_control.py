@@ -75,6 +75,11 @@ def bola_documents(ctx: ScanContext) -> Result:
     )
 
 
+# Only these statuses are an authorization decision; 400/405/422/3xx mean the
+# attack was malformed or misrouted, not refused.
+_OWNERSHIP_REFUSALS = frozenset({401, 403, 404})
+
+
 def _upload_victim_file(ctx: ScanContext) -> dict | None:
     response = ctx.client.post(
         "/api/v1/files/upload",
@@ -127,14 +132,19 @@ def bola_files(ctx: ScanContext) -> Result:
         evidence.append(Evidence.from_response(response, note=f"{method} {path} as attacker"))
         if response.status_code < 300:
             breached.append(f"{method} {path} -> {response.status_code}")
-        elif unavailable(response):
+        elif response.status_code not in _OWNERSHIP_REFUSALS:
             if breached:
                 # A confirmed breach stands even if a later request could not be assessed.
                 break
+            reason = (
+                "the backend is failing or throttling"
+                if unavailable(response)
+                else "the request never reached an ownership decision"
+            )
             return self.result(
                 Verdict.INCONCLUSIVE,
-                f"{method} {path} returned {response.status_code}; the backend is failing or "
-                "throttling, so the refusal is not evidence of an ownership check",
+                f"{method} {path} returned {response.status_code}; {reason}, so the refusal "
+                "is not evidence of an ownership check",
                 evidence,
             )
     if breached:
