@@ -31,6 +31,8 @@ describe.each(["grid", "list"] as const)("selection checkbox (%s view)", (view) 
       </MemoryRouter>
     );
     const checkbox = screen.getByRole("checkbox", { name: "Select report.pdf" });
+    expect(checkbox).toBeEnabled();
+    expect(checkbox.tabIndex).toBe(0);
     checkbox.focus();
     expect(checkbox).toHaveFocus();
     fireEvent.click(checkbox);
@@ -51,6 +53,8 @@ describe.each(["grid", "list"] as const)("selection checkbox (%s view)", (view) 
       </MemoryRouter>
     );
     const checkbox = screen.getByRole("checkbox", { name: "Select Reports" });
+    expect(checkbox).toBeEnabled();
+    expect(checkbox.tabIndex).toBe(0);
     fireEvent.click(checkbox);
     expect(onSelect).toHaveBeenCalledWith("d1");
   });

@@ -52,6 +52,7 @@ describe("Document title rename", () => {
     const trigger = screen.getByRole("button", { name: "Quarterly plan" });
     expect(heading).toContainElement(trigger);
     expect(trigger).toHaveAttribute("type", "button");
+    expect(trigger.tabIndex).toBe(0);
 
     trigger.focus();
     expect(trigger).toHaveFocus();
