@@ -57,19 +57,128 @@ interface FileCardProps {
   onStarToggle?: () => void;
 }
 
-export function FileCard({
+function fileHref(file: FileItem) {
+  return file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`;
+}
+
+function SelectionCheckbox({
+  selected,
+  className,
+  onClick,
+}: {
+  selected: boolean;
+  className: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div className={className} onClick={onClick}>
+      <input
+        type="checkbox"
+        checked={selected}
+        readOnly
+        className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
+      />
+    </div>
+  );
+}
+
+function StarButton({
+  starred,
+  className,
+  onClick,
+}: {
+  starred: boolean;
+  className: string;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <button onClick={onClick} className={className} aria-label={starred ? "Unstar" : "Star"}>
+      <Star
+        size={16}
+        className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
+      />
+    </button>
+  );
+}
+
+function RenameInput({
+  inputRef,
+  value,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  inputRef: React.RefObject<HTMLInputElement>;
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") onSubmit();
+    if (e.key === "Escape") onCancel();
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={handleKeyDown}
+      onBlur={onSubmit}
+      className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+    />
+  );
+}
+
+function FileMenuTrigger({
   file,
+  wrapperClassName,
+  buttonClassName,
   onDelete,
   onShare,
   onRename,
   onDownload,
-  view = "grid",
-  selected = false,
-  onSelect,
-  selectionActive = false,
-  onStarToggle,
-}: FileCardProps) {
+}: {
+  file: FileItem;
+  wrapperClassName: string;
+  buttonClassName: string;
+  onDelete?: (id: string) => void;
+  onShare?: (id: string) => void;
+  onRename: () => void;
+  onDownload?: (id: string, name: string) => void;
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div className={wrapperClassName}>
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setMenuOpen(!menuOpen);
+        }}
+        className={buttonClassName}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {menuOpen && (
+        <FileMenu
+          file={file}
+          onClose={() => setMenuOpen(false)}
+          onDelete={onDelete}
+          onShare={onShare}
+          onRename={onRename}
+          onDownload={onDownload}
+        />
+      )}
+    </div>
+  );
+}
+
+function useStarred(file: FileItem, onStarToggle?: () => void) {
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, file.id) : false);
@@ -88,11 +197,15 @@ export function FileCard({
     setStarred(nowStarred);
     onStarToggle?.();
   }, [userId, file.id, file.isFolder, onStarToggle]);
+
+  return { starred, handleStarClick };
+}
+
+function useRename(file: FileItem, onRename?: (id: string, name: string) => void) {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(file.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
-  const Icon = file.isFolder ? Folder : getIconComponent(file.mimeType);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -101,6 +214,12 @@ export function FileCard({
       renameInputRef.current.setSelectionRange(0, dotIdx > 0 ? dotIdx : file.name.length);
     }
   }, [isRenaming, file.name]);
+
+  const startRename = () => {
+    renameDoneRef.current = false;
+    setIsRenaming(true);
+    setRenameValue(file.name);
+  };
 
   const submitRename = () => {
     if (renameDoneRef.current) return;
@@ -112,48 +231,69 @@ export function FileCard({
     setIsRenaming(false);
   };
 
+  const cancelRename = () => {
+    renameDoneRef.current = true;
+    setIsRenaming(false);
+    setRenameValue(file.name);
+  };
+
+  return {
+    isRenaming,
+    renameValue,
+    setRenameValue,
+    renameInputRef,
+    startRename,
+    submitRename,
+    cancelRename,
+  };
+}
+
+export function FileCard({
+  file,
+  onDelete,
+  onShare,
+  onRename,
+  onDownload,
+  view = "grid",
+  selected = false,
+  onSelect,
+  selectionActive = false,
+  onStarToggle,
+}: FileCardProps) {
+  const { starred, handleStarClick } = useStarred(file, onStarToggle);
+  const rename = useRename(file, onRename);
+  const Icon = file.isFolder ? Folder : getIconComponent(file.mimeType);
+
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     onSelect?.(file.id);
   };
 
+  const renameInput = (
+    <RenameInput
+      inputRef={rename.renameInputRef}
+      value={rename.renameValue}
+      onChange={rename.setRenameValue}
+      onSubmit={rename.submitRename}
+      onCancel={rename.cancelRename}
+    />
+  );
+
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
-            <input
-              type="checkbox"
-              checked={selected}
-              readOnly
-              className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-            />
-          </div>
+          <SelectionCheckbox selected={selected} className="flex-shrink-0" onClick={handleCheckboxClick} />
         )}
-        <Link
-          to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
-          className="flex items-center gap-4 flex-1 min-w-0"
-        >
+        <Link to={fileHref(file)} className="flex items-center gap-4 flex-1 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-otter-50 flex items-center justify-center flex-shrink-0">
             <Icon size={20} className="text-otter-600" />
           </div>
           <div className="flex-1 min-w-0">
-            {isRenaming ? (
+            {rename.isRenaming ? (
               <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitRename();
-                    if (e.key === "Escape") { renameDoneRef.current = true; setIsRenaming(false); setRenameValue(file.name); }
-                  }}
-                  onBlur={submitRename}
-                  className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                />
+                {renameInput}
               </div>
             ) : (
               <p className="text-sm font-medium text-gray-900 truncate">{file.name}</p>
@@ -166,38 +306,20 @@ export function FileCard({
             {file.isFolder ? "\u2014" : formatFileSize(file.size)}
           </span>
         </Link>
-        <button
-          onClick={handleStarClick}
+        <StarButton
+          starred={starred}
           className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
-          aria-label={starred ? "Unstar" : "Star"}
-        >
-          <Star
-            size={16}
-            className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
-          />
-        </button>
-        <div className="relative w-8">
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setMenuOpen(!menuOpen);
-            }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
-          >
-            <MoreVertical size={16} />
-          </button>
-          {menuOpen && (
-            <FileMenu
-              file={file}
-              onClose={() => setMenuOpen(false)}
-              onDelete={onDelete}
-              onShare={onShare}
-              onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
-              onDownload={onDownload}
-            />
-          )}
-        </div>
+          onClick={handleStarClick}
+        />
+        <FileMenuTrigger
+          file={file}
+          wrapperClassName="relative w-8"
+          buttonClassName="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+          onDelete={onDelete}
+          onShare={onShare}
+          onRename={rename.startRename}
+          onDownload={onDownload}
+        />
       </div>
     );
   }
@@ -205,73 +327,33 @@ export function FileCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
-          <input
-            type="checkbox"
-            checked={selected}
-            readOnly
-            className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-          />
-        </div>
+        <SelectionCheckbox selected={selected} className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick} />
       )}
-      <Link
-        to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
-        className="flex flex-col"
-      >
+      <Link to={fileHref(file)} className="flex flex-col">
         <div className="flex items-start justify-between mb-3">
           <div className="w-12 h-12 rounded-lg bg-otter-50 flex items-center justify-center">
             <Icon size={24} className="text-otter-600" />
           </div>
           <div className="flex items-center gap-1">
-            <button
-              onClick={handleStarClick}
+            <StarButton
+              starred={starred}
               className="p-1 rounded hover:bg-gray-100 transition"
-              aria-label={starred ? "Unstar" : "Star"}
-            >
-              <Star
-                size={16}
-                className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
-              />
-            </button>
-            <div className="relative">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setMenuOpen(!menuOpen);
-                }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
-              >
-                <MoreVertical size={16} />
-              </button>
-              {menuOpen && (
-                <FileMenu
-                  file={file}
-                  onClose={() => setMenuOpen(false)}
-                  onDelete={onDelete}
-                  onShare={onShare}
-                  onDownload={onDownload}
-                  onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
-                />
-              )}
-            </div>
+              onClick={handleStarClick}
+            />
+            <FileMenuTrigger
+              file={file}
+              wrapperClassName="relative"
+              buttonClassName="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+              onDelete={onDelete}
+              onShare={onShare}
+              onRename={rename.startRename}
+              onDownload={onDownload}
+            />
           </div>
         </div>
-        {isRenaming ? (
+        {rename.isRenaming ? (
           <div className="mb-1" onClick={(e) => e.preventDefault()}>
-            <input
-              ref={renameInputRef}
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") submitRename();
-                if (e.key === "Escape") { renameDoneRef.current = true; setIsRenaming(false); setRenameValue(file.name); }
-              }}
-              onBlur={submitRename}
-              className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-            />
+            {renameInput}
           </div>
         ) : (
           <p className="text-sm font-medium text-gray-900 truncate mb-1">{file.name}</p>
