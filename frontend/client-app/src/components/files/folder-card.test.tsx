@@ -87,10 +87,24 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     const link = input.closest("a")!;
     fireEvent.mouseDown(link);
     fireEvent.blur(input);
-    fireEvent.click(link);
+    fireEvent.click(link, { detail: 1 });
     expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
     expect(screen.getByTestId("location")).toHaveTextContent("/home");
     fireEvent.mouseDown(link);
+    fireEvent.click(link, { detail: 1 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
+  it("opens the folder from the keyboard after a rename submitted with Enter", () => {
+    renderCard({ view, onRename: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Reports" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByRole("textbox", { name: "Folder name" });
+    const link = input.closest("a")!;
+    fireEvent.mouseDown(input);
+    fireEvent.click(input, { detail: 1 });
+    fireEvent.change(input, { target: { value: "Q3 Reports" } });
+    fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.click(link);
     expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
   });

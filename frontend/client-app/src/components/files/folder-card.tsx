@@ -60,8 +60,12 @@ export function FolderCard({
     onMouseDown: () => {
       renamingAtPointerDownRef.current = isRenaming;
     },
+    onKeyDown: () => {
+      renamingAtPointerDownRef.current = false;
+    },
     onClick: (e: React.MouseEvent) => {
-      if (isRenaming || renamingAtPointerDownRef.current) e.preventDefault();
+      const pointerClick = e.detail !== 0;
+      if (isRenaming || (pointerClick && renamingAtPointerDownRef.current)) e.preventDefault();
       renamingAtPointerDownRef.current = false;
     },
   };
