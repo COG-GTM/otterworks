@@ -1,8 +1,8 @@
 plugins {
-    kotlin("jvm") version "1.9.23"
-    kotlin("plugin.serialization") version "1.9.23"
-    id("io.ktor.plugin") version "2.3.9"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ktor)
+    alias(libs.plugins.shadow)
 }
 
 group = "com.otterworks"
@@ -16,70 +16,63 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "2.3.9"
-val awsSdkVersion = "1.0.70"
-val coroutinesVersion = "1.8.0"
-val koinVersion = "3.5.3"
-val micrometerVersion = "1.12.4"
-val commonsTextVersion = "1.9"
-
 dependencies {
     // Ktor Server
-    implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-status-pages-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-cors-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-websockets-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-call-logging-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-default-headers-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-server-metrics-micrometer-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktorVersion")
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.netty)
+    implementation(libs.ktor.server.content.negotiation)
+    implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.cors)
+    implementation(libs.ktor.server.websockets)
+    implementation(libs.ktor.server.call.logging)
+    implementation(libs.ktor.server.default.headers)
+    implementation(libs.ktor.server.metrics.micrometer)
+    implementation(libs.ktor.serialization.kotlinx.json)
 
     // Ktor Client (for calling other services)
-    implementation("io.ktor:ktor-client-core-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-client-cio-jvm:$ktorVersion")
-    implementation("io.ktor:ktor-client-content-negotiation-jvm:$ktorVersion")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
 
     // AWS SDK for Kotlin
-    implementation("aws.sdk.kotlin:sqs:$awsSdkVersion")
-    implementation("aws.sdk.kotlin:sns:$awsSdkVersion")
-    implementation("aws.sdk.kotlin:ses:$awsSdkVersion")
-    implementation("aws.sdk.kotlin:dynamodb:$awsSdkVersion")
+    implementation(libs.aws.sqs)
+    implementation(libs.aws.sns)
+    implementation(libs.aws.ses)
+    implementation(libs.aws.dynamodb)
 
     // Notification template interpolation
-    implementation("org.apache.commons:commons-text:$commonsTextVersion")
+    implementation(libs.commons.text)
 
     // Serialization
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.core)
 
     // Dependency Injection - Koin
-    implementation("io.insert-koin:koin-core:$koinVersion")
-    implementation("io.insert-koin:koin-ktor:$koinVersion")
-    implementation("io.insert-koin:koin-logger-slf4j:$koinVersion")
+    implementation(libs.koin.core)
+    implementation(libs.koin.ktor)
+    implementation(libs.koin.logger.slf4j)
 
     // Logging
-    implementation("ch.qos.logback:logback-classic:1.5.3")
-    implementation("net.logstash.logback:logstash-logback-encoder:7.4")
-    implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
+    implementation(libs.logback.classic)
+    implementation(libs.logstash.logback.encoder)
+    implementation(libs.kotlin.logging)
 
     // Metrics & Tracing
-    implementation("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
-    implementation("io.opentelemetry:opentelemetry-api:1.36.0")
-    implementation("io.opentelemetry:opentelemetry-sdk:1.36.0")
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.36.0")
+    implementation(libs.micrometer.registry.prometheus)
+    implementation(libs.opentelemetry.api)
+    implementation(libs.opentelemetry.sdk)
+    implementation(libs.opentelemetry.exporter.otlp)
 
     // Redis (chaos flag checks)
-    implementation("redis.clients:jedis:5.1.3")
+    implementation(libs.jedis)
 
     // Testing
-    testImplementation("io.ktor:ktor-server-tests-jvm:$ktorVersion")
-    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.23")
-    testImplementation("io.mockk:mockk:1.13.10")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
-    testImplementation("io.insert-koin:koin-test:$koinVersion")
+    testImplementation(libs.ktor.server.tests)
+    testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.koin.test)
 }
 
 kotlin {
