@@ -1,6 +1,7 @@
 """Tests for read-only share-link tokens."""
 
 import hashlib
+import hmac
 import uuid
 
 import pytest
@@ -81,6 +82,14 @@ def test_falls_back_to_key_derived_from_jwt_secret(monkeypatch):
     token = service.mint_token(DOC_ID)
     assert service.verify_token(DOC_ID, token) is True
     assert token != ShareLinkService(secret="jwt-secret").mint_token(DOC_ID)
+
+    derived = hmac.new(b"jwt-secret", b"otterworks/share-link/v1", hashlib.sha256).digest()
+    assert token == hmac.new(derived, DOC_ID.encode(), hashlib.sha256).hexdigest()
+
+    monkeypatch.setenv("JWT_SECRET", "rotated-jwt-secret")
+    rotated = ShareLinkService()
+    assert rotated.mint_token(DOC_ID) != token
+    assert rotated.verify_token(DOC_ID, token) is False
 
 
 def test_fails_closed_without_any_secret(monkeypatch):
