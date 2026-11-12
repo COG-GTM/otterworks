@@ -33,6 +33,8 @@ from pypdf import PdfReader
 HERE = Path(__file__).resolve().parent
 FIXTURES = HERE / "fixtures"
 FILES = HERE / "files"
+# IDs created by a run that has not finished cleaning up; the next run deletes them first.
+INFLIGHT = HERE / ".replay-inflight.json"
 
 GOLDEN_USER = "golden-fixture-user"
 DATE_FROM = "2026-10-01T00:00:00Z"
@@ -137,14 +139,14 @@ class Recorder:
             return r
         r = dict(r)
         key = self.ids.get(r.get("id"), r.get("id"))
-        r["id"] = key
         for f in ("createdAt", "completedAt"):
             if r.get(f) is not None:
                 r[f] = TS
         if r.get("errorMessage"):
             r["errorMessage"] = DNS_DETAIL_RE.sub("", r["errorMessage"])
-        if r.get("downloadUrl"):
+        if r.get("downloadUrl") == f"/api/v1/reports/{r.get('id')}/download":
             r["downloadUrl"] = f"/api/v1/reports/{key}/download"
+        r["id"] = key
         if r.get("fileSizeBytes") is not None and r.get("reportType") != "CSV":
             r["fileSizeBytes"] = "<positive>" if r["fileSizeBytes"] > 0 else r["fileSizeBytes"]
         return r
@@ -158,9 +160,19 @@ class Recorder:
     # ----- scenarios -----
 
     def preclean(self):
-        _, _, raw = self.c.request("GET", f"/api/v1/reports?userId={GOLDEN_USER}")
-        for r in (parse_json(raw) or {}).get("reports", []):
-            self.c.request("DELETE", f"/api/v1/reports/{r['id']}")
+        # Some list endpoints return 500 on the Java 8 baseline, so gather leftovers from every
+        # list that works plus the in-flight file of an interrupted run.
+        ids = set(json.loads(INFLIGHT.read_text())) if INFLIGHT.exists() else set()
+        for query in [f"userId={GOLDEN_USER}", "status=COMPLETED", "status=FAILED",
+                      "status=PENDING", "status=GENERATING", ""]:
+            _, _, raw = self.c.request("GET", f"/api/v1/reports?{query}")
+            body = parse_json(raw)
+            for r in body.get("reports", []) if isinstance(body, dict) else []:
+                if r.get("requestedBy") == GOLDEN_USER:
+                    ids.add(r["id"])
+        for rid in sorted(ids):
+            self.c.request("DELETE", f"/api/v1/reports/{rid}")
+        INFLIGHT.unlink(missing_ok=True)
 
     def platform(self):
         self.add("health", self.exchange("GET", "/health"))
@@ -236,6 +248,7 @@ class Recorder:
                 rid = resp.get("id") if isinstance(resp, dict) else None
                 if rid is not None:
                     self.ids[rid] = key
+                    INFLIGHT.write_text(json.dumps(sorted(self.ids)))
                 self.add(f"report_{key}_create", {
                     "request": "POST /api/v1/reports", "status": status, "body": self.norm_report(resp)})
                 created.append((key, rid, category, rtype))
@@ -261,6 +274,7 @@ class Recorder:
         for key, rid, _, _ in created:
             self.add(f"report_{key}_delete", self.exchange(
                 "DELETE", f"/api/v1/reports/{rid}", normalize=norm_error, label=f"/api/v1/reports/{{{key}}}"))
+        INFLIGHT.unlink(missing_ok=True)
         key, rid, _, _ = created[0]
         self.add("get_after_delete", self.exchange(
             "GET", f"/api/v1/reports/{rid}", normalize=norm_error, label=f"/api/v1/reports/{{{key}}}"))
