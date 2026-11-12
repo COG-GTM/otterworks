@@ -1,3 +1,9 @@
+buildscript {
+    configurations.classpath {
+        resolutionStrategy.activateDependencyLocking()
+    }
+}
+
 plugins {
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.serialization") version "1.9.23"
@@ -14,6 +20,14 @@ application {
 
 repositories {
     mavenCentral()
+}
+
+// Versions are pinned by gradle.lockfile (and buildscript-gradle.lockfile for plugins).
+// After changing a dependency or plugin, refresh them with:
+//   gradle dependencies buildEnvironment --write-locks --no-daemon
+dependencyLocking {
+    lockAllConfigurations()
+    lockMode.set(LockMode.STRICT)
 }
 
 val ktorVersion = "2.3.9"
