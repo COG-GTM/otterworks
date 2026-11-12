@@ -71,14 +71,6 @@ JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 NS="$(tenant_namespace "${ATTENDEE_ID}")"
-# Shared secret file-/notification-service send to admin-service's alert
-# webhook, which rejects every request without it. Reuse the tenant's current
-# value so services redeployed separately stay in sync with admin-service.
-ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NS}" get secret admin-service-secrets \
-  -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
-# admin-service rejects the old compose default; replace it instead of reusing it.
-[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
-ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 T_DB_NAME="$(tenant_db_name "${ATTENDEE_ID}")"
 T_REDIS_HOST="redis"
 T_MEILI_URL="http://meilisearch:7700"
@@ -120,6 +112,15 @@ log "Tenant '${ATTENDEE_ID}' -> namespace ${NS} (tier ${TIER}, ttl ${TTL} -> exp
 if [ -z "${KUBERNETES_SERVICE_HOST:-}" ]; then
   aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}" >/dev/null
 fi
+# Shared secret file-/notification-service send to admin-service's alert
+# webhook, which rejects every request without it. Reuse the tenant's current
+# value so services redeployed separately stay in sync with admin-service
+# (read only once kubectl can reach the cluster, so redeploys do not rotate it).
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NS}" get secret admin-service-secrets \
+  -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+# admin-service rejects the old compose default; replace it instead of reusing it.
+[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 log "Loading shared application-infra Terraform outputs..."
 load_infra_outputs
 
