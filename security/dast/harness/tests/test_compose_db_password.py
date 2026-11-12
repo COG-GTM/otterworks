@@ -70,6 +70,11 @@ def test_ensure_generates_a_random_url_safe_password(tmp_path: Path) -> None:
     assert again.returncode == 0
     assert env_file.read_text().splitlines()[1] == lines[1]
 
+    other = tmp_path / "other"
+    other.mkdir()
+    _, other_env = _ensure(other)
+    assert other_env.read_text().strip() != lines[1]
+
 
 @pytest.mark.parametrize(
     ("env_text", "env"),
