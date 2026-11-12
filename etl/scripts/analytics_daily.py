@@ -12,6 +12,7 @@ import configparser
 import gzip
 import io
 import json
+import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,14 @@ from decimal import Decimal
 import boto3
 import pandas as pd
 import psycopg2
+
+
+def get_expected_bucket_owner(config):
+    """AWS account ID that must own the S3 buckets this job writes to."""
+    account_id = config.get("aws", "account_id", fallback="").strip()
+    if not re.fullmatch(r"\d{12}", account_id):
+        raise ValueError("[aws] account_id must be the 12-digit AWS account ID that owns the S3 buckets")
+    return account_id
 
 
 def main():
@@ -32,6 +41,7 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    expected_bucket_owner = get_expected_bucket_owner(config)
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -308,6 +318,7 @@ def main():
     summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=summary_key,
         Body=summary_bytes,
     )
@@ -318,6 +329,7 @@ def main():
     hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=hourly_key,
         Body=hourly_bytes,
     )
@@ -331,6 +343,7 @@ def main():
             gz.write(b"\n")
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=users_key,
         Body=buf.getvalue(),
     )
@@ -432,6 +445,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
