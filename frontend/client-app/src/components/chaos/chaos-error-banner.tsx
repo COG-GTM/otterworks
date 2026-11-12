@@ -41,7 +41,7 @@ export function ChaosErrorBanner({
   onDismiss,
   className,
   variant = "error",
-}: ChaosErrorBannerProps) {
+}: Readonly<ChaosErrorBannerProps>) {
   const styles = VARIANT_STYLES[variant];
   const Icon = variant === "warning" ? FileWarning : AlertOctagon;
   return (
