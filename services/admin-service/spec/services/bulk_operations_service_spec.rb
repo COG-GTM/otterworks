@@ -55,7 +55,9 @@ RSpec.describe BulkOperationsService do
       result = described_class.process(operation: 'unknown', user_ids: user_ids)
       expect(result.success_count).to eq(0)
       expect(result.failure_count).to eq(3)
-      expect(result.errors).to all(include(error: 'Unsupported operation: unknown'))
+      expect(result.errors).to match_array(
+        users.map { |u| { user_id: u.id, error: 'Unsupported operation: unknown' } }
+      )
     end
   end
 end
