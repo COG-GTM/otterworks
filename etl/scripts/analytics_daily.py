@@ -20,6 +20,7 @@ from decimal import Decimal
 import boto3
 import pandas as pd
 import psycopg2
+from s3_ownership import expected_bucket_owner
 
 
 def main():
@@ -41,6 +42,7 @@ def main():
 
     data_lake_bucket = config.get("s3", "data_lake_bucket")
     analytics_prefix = config.get("s3", "analytics_prefix")
+    bucket_owner = expected_bucket_owner(config)
 
     # today's date for partitioning
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
@@ -308,6 +310,7 @@ def main():
     summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=summary_key,
         Body=summary_bytes,
     )
@@ -318,6 +321,7 @@ def main():
     hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=hourly_key,
         Body=hourly_bytes,
     )
@@ -331,6 +335,7 @@ def main():
             gz.write(b"\n")
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=users_key,
         Body=buf.getvalue(),
     )
@@ -432,6 +437,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
