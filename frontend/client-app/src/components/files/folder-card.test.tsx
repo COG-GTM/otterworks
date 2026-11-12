@@ -76,4 +76,22 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
   });
+
+  it("does not navigate when a click elsewhere on the folder blurs the rename input", () => {
+    const onRename = vi.fn();
+    renderCard({ view, onRename });
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Reports" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByRole("textbox", { name: "Folder name" });
+    fireEvent.change(input, { target: { value: "Q3 Reports" } });
+    const link = input.closest("a")!;
+    fireEvent.mouseDown(link);
+    fireEvent.blur(input);
+    fireEvent.click(link);
+    expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
+    expect(screen.getByTestId("location")).toHaveTextContent("/home");
+    fireEvent.mouseDown(link);
+    fireEvent.click(link);
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
 });

@@ -54,8 +54,16 @@ export function FolderCard({
     setRenameValue(folder.name);
   };
 
-  const preventNavigationWhileRenaming = (e: React.MouseEvent) => {
-    if (isRenaming) e.preventDefault();
+  // Captured on mousedown: the rename input blurs (and ends renaming) before the click fires.
+  const renamingAtPointerDownRef = useRef(false);
+  const linkGuardProps = {
+    onMouseDown: () => {
+      renamingAtPointerDownRef.current = isRenaming;
+    },
+    onClick: (e: React.MouseEvent) => {
+      if (isRenaming || renamingAtPointerDownRef.current) e.preventDefault();
+      renamingAtPointerDownRef.current = false;
+    },
   };
 
   if (view === "list") {
@@ -74,7 +82,7 @@ export function FolderCard({
         )}
         <Link
           to={`/files?folder=${folder.id}`}
-          onClick={preventNavigationWhileRenaming}
+          {...linkGuardProps}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
@@ -149,7 +157,7 @@ export function FolderCard({
       )}
       <Link
         to={`/files?folder=${folder.id}`}
-        onClick={preventNavigationWhileRenaming}
+        {...linkGuardProps}
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">
