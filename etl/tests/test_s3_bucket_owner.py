@@ -65,13 +65,16 @@ def test_config_value_used_without_env(monkeypatch):
 def test_falls_back_to_caller_account(monkeypatch):
     monkeypatch.delenv("ETL_EXPECTED_BUCKET_OWNER", raising=False)
     sts = boto3.client("sts", region_name="us-east-1", aws_access_key_id="a", aws_secret_access_key="s")
-    with Stubber(sts) as stub, mock.patch("s3_ownership.boto3.client", return_value=sts):
+    with Stubber(sts) as stub, mock.patch("s3_ownership.boto3.client", return_value=sts) as client:
         stub.add_response(
             "get_caller_identity",
             {"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/etl", "UserId": "AIDAEXAMPLE"},
         )
-        assert resolve_expected_bucket_owner(_config(""), "a", "s", "us-east-1") == "123456789012"
+        assert resolve_expected_bucket_owner(_config(""), "etl-key", "etl-secret", "eu-west-1") == "123456789012"
         stub.assert_no_pending_responses()
+    client.assert_called_once_with(
+        "sts", aws_access_key_id="etl-key", aws_secret_access_key="etl-secret", region_name="eu-west-1"
+    )
 
 
 @pytest.mark.parametrize("bad", ["12345", "12345678901a", "arn:aws:iam::123456789012:root"])
