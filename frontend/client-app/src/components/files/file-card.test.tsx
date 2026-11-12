@@ -123,6 +123,19 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("saves the rename on blur", () => {
+    const onRename = vi.fn();
+    renderCard({ view, onRename });
+    openMenu();
+    fireEvent.click(screen.getByText("Rename"));
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "blurred.pdf" } });
+    fireEvent.blur(input);
+    expect(onRename).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith("f1", "blurred.pdf");
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
   it("does not rename when the name is unchanged or blank", () => {
     const onRename = vi.fn();
     renderCard({ view, onRename });
