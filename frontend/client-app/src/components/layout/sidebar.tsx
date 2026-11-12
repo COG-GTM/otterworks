@@ -74,6 +74,7 @@ export function Sidebar() {
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          aria-hidden="true"
           onClick={toggleSidebar}
         />
       )}
