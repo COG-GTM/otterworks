@@ -33,6 +33,7 @@ router = APIRouter()
 
 DEFAULT_SORT = "updated_at"
 DEFAULT_DIRECTION = "desc"
+DOCUMENT_NOT_FOUND = "Document not found"
 
 _redis_client: redis_lib.Redis | None = None
 
@@ -194,7 +195,7 @@ async def get_shared_document(
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     return document
 
 
@@ -350,7 +351,7 @@ async def get_document(
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(document, user_id)
     return document
 
@@ -368,7 +369,7 @@ async def update_document(
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(existing, user_id)
     document = await service.update(document_id, body)
     logger.info("document_updated", document_id=str(document_id))
@@ -388,7 +389,7 @@ async def patch_document(
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(existing, user_id)
     document = await service.patch(document_id, body)
     logger.info("document_patched", document_id=str(document_id))
@@ -407,7 +408,7 @@ async def delete_document(
     service = DocumentService(db)
     existing = await service.get(document_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(existing, user_id)
     await service.delete(document_id)
     logger.info("document_deleted", document_id=str(document_id))
@@ -424,7 +425,7 @@ async def list_versions(
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(document, user_id)
     versions = await service.list_versions(document_id)
     return versions
@@ -471,7 +472,7 @@ async def create_share_link(
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(document, user_id)
     token = ShareLinkService().mint_token(str(document_id))
     logger.info("share_link_created", document_id=str(document_id))
@@ -490,7 +491,7 @@ async def export_document(
     service = DocumentService(db)
     document = await service.get(document_id)
     if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=404, detail=DOCUMENT_NOT_FOUND)
     _ensure_owner(document, user_id)
 
     body, content_type = service.export_document(document, format)
