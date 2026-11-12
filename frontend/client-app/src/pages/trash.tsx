@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2,
@@ -85,6 +85,33 @@ function TrashContent() {
     onError: () => toast.error("Failed to empty trash"),
   });
 
+  let trashItemsContent: ReactNode;
+  if (isLoading) {
+    trashItemsContent = <PageLoader />;
+  } else if (items.length === 0) {
+    trashItemsContent = (
+      <EmptyState
+        icon={Trash2}
+        title="Trash is empty"
+        description="Deleted files and documents will appear here"
+      />
+    );
+  } else {
+    trashItemsContent = (
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        {items.map((item) => (
+          <TrashRow
+            key={item.id}
+            item={item}
+            onRestore={() => restoreMutation.mutate(item.id)}
+            onDelete={() => setDeleteTarget(item)}
+            isRestoring={restoreMutation.isPending}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -117,27 +144,7 @@ function TrashContent() {
       )}
 
       {/* Trash items */}
-      {isLoading ? (
-        <PageLoader />
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={Trash2}
-          title="Trash is empty"
-          description="Deleted files and documents will appear here"
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-          {items.map((item) => (
-            <TrashRow
-              key={item.id}
-              item={item}
-              onRestore={() => restoreMutation.mutate(item.id)}
-              onDelete={() => setDeleteTarget(item)}
-              isRestoring={restoreMutation.isPending}
-            />
-          ))}
-        </div>
-      )}
+      {trashItemsContent}
 
       {/* Confirm permanent delete of single item */}
       <ConfirmDialog
