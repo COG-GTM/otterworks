@@ -18,6 +18,13 @@ repositories {
     mavenCentral()
 }
 
+// Pin every resolved dependency (direct and transitive) in gradle.lockfile.
+// Regenerate after changing dependencies: gradle dependencies --write-locks
+dependencyLocking {
+    lockAllConfigurations()
+    lockMode = LockMode.STRICT
+}
+
 dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
