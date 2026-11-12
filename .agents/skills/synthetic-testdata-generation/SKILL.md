@@ -97,7 +97,7 @@ testdata/generated/<ns>/
 | `DB_PORT` | `5432` |
 | `DB_NAME` | `otterworks` |
 | `DB_USER` | `otterworks` |
-| `DB_PASSWORD` | `otterworks_dev` |
+| `DB_PASSWORD` | `POSTGRES_PASSWORD` from the repo-root `.env` (`make env`) |
 
 On EKS/RDS, set these to the cluster values. The validation harness and scripts
 all read from environment variables.

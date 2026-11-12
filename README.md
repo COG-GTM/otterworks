@@ -14,7 +14,8 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
-# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
+# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack).
+# The first run writes a random POSTGRES_PASSWORD to the git-ignored .env (`make env`).
 make infra-up
 
 # Start all application services (builds images on first run)
@@ -28,6 +29,7 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+scripts/ensure-local-env.sh   # compose refuses to start without POSTGRES_PASSWORD
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
