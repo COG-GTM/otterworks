@@ -30,6 +30,7 @@ export function FolderCard({
   const [renameValue, setRenameValue] = useState(folder.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -111,6 +112,7 @@ export function FolderCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
+            ref={menuTriggerRef}
             aria-label={`More actions for ${folder.name}`}
             aria-expanded={menuOpen}
             className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
@@ -121,6 +123,7 @@ export function FolderCard({
             <FolderMenu
               folder={folder}
               onClose={() => setMenuOpen(false)}
+              returnFocusRef={menuTriggerRef}
               onDelete={onDelete}
               onShare={onShare}
               onRename={startRename}
@@ -151,6 +154,7 @@ export function FolderCard({
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
+              ref={menuTriggerRef}
               aria-label={`More actions for ${folder.name}`}
               aria-expanded={menuOpen}
               className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
@@ -161,6 +165,7 @@ export function FolderCard({
               <FolderMenu
                 folder={folder}
                 onClose={() => setMenuOpen(false)}
+                returnFocusRef={menuTriggerRef}
                 onDelete={onDelete}
                 onShare={onShare}
                 onRename={startRename}
@@ -201,20 +206,24 @@ function FolderMenu({
   onDelete,
   onShare,
   onRename,
+  returnFocusRef,
 }: {
   folder: FileItem;
   onClose: () => void;
+  returnFocusRef?: React.RefObject<HTMLButtonElement>;
   onDelete?: (id: string) => void;
   onShare?: (id: string) => void;
   onRename?: () => void;
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      onClose();
+      returnFocusRef?.current?.focus();
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, returnFocusRef]);
 
   return (
     <>
