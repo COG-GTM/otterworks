@@ -62,6 +62,10 @@ jobs:
       - name: Unit-test the harness
         run: make dast-test
 
+      # The compose files require OTTERWORKS_DB_PASSWORD; generate a random one.
+      - name: Generate local .env
+        run: make env
+
       - name: Start the application stack
         run: |
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \

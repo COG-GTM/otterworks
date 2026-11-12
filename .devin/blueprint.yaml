@@ -1,6 +1,9 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
+  # The compose files require OTTERWORKS_DB_PASSWORD (no committed DB password); this writes
+  # a random one to the gitignored .env, which docker compose reads automatically.
+  ./scripts/ensure-local-env.sh
   # Docker Hub rate-limits anonymous pulls (HTTP 429), so the infra image pull gets the
   # same backoff loop as the builds below rather than failing the whole setup on one 429.
   n=0

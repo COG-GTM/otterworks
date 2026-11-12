@@ -14,6 +14,10 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
+# Generate the gitignored .env with a random local Postgres password
+# (the infra-up/up/down targets also run this automatically)
+make env
+
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
@@ -28,9 +32,14 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+./scripts/ensure-local-env.sh   # writes OTTERWORKS_DB_PASSWORD to .env (compose refuses to start without it)
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
+
+The Postgres password is never committed: the compose files read `OTTERWORKS_DB_PASSWORD` from the
+gitignored `.env`. A `postgres_data` volume created before this keeps its old password — run
+`make db-password-sync` once (or remove the volume) so the database matches `.env`.
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
