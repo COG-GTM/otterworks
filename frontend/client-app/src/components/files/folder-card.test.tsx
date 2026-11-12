@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { FileItem } from "@/types";
@@ -30,15 +31,25 @@ function renderCard(props: Partial<Parameters<typeof FolderCard>[0]> = {}) {
 }
 
 describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
-  it("selects through a labelled, natively focusable checkbox", () => {
+  it("selects with Space after tabbing to the labelled checkbox", async () => {
+    const user = userEvent.setup();
     const onSelect = vi.fn();
     renderCard({ view, selectionActive: true, onSelect });
 
+    await user.tab();
     const checkbox = screen.getByRole("checkbox", { name: "Select Reports" });
-    checkbox.focus();
     expect(checkbox).toHaveFocus();
 
-    fireEvent.click(checkbox);
+    await user.keyboard(" ");
+    expect(onSelect).toHaveBeenCalledWith("folder-1");
+  });
+
+  it("selects with a mouse click without navigating", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    renderCard({ view, selectionActive: true, onSelect });
+
+    await user.click(screen.getByRole("checkbox", { name: "Select Reports" }));
     expect(onSelect).toHaveBeenCalledWith("folder-1");
   });
 
@@ -47,31 +58,39 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(screen.getByRole("checkbox", { name: "Select Reports" })).toBeChecked();
   });
 
-  it("closes the actions menu with Escape", () => {
+  it("opens the actions menu with Enter and closes it with Escape, restoring focus", async () => {
+    const user = userEvent.setup();
     renderCard({ view });
     const trigger = screen.getByRole("button", { name: "More actions for Reports" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.click(trigger);
+    trigger.focus();
+    await user.keyboard("{Enter}");
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    await user.tab();
+    expect(screen.getByRole("button", { name: /rename/i })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /rename/i })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
-  it("renames from the menu and submits with Enter", () => {
+  it("renames from the keyboard: Enter on Rename, type, Enter to submit", async () => {
+    const user = userEvent.setup();
     const onRename = vi.fn();
     renderCard({ view, onRename });
 
-    fireEvent.click(screen.getByRole("button", { name: "More actions for Reports" }));
-    fireEvent.click(screen.getByRole("button", { name: /rename/i }));
+    screen.getByRole("button", { name: "More actions for Reports" }).focus();
+    await user.keyboard("{Enter}");
+    await user.tab();
+    await user.keyboard("{Enter}");
 
     const input = screen.getByDisplayValue("Reports");
     expect(input).toHaveFocus();
-    fireEvent.change(input, { target: { value: "Q3 Reports" } });
-    fireEvent.keyDown(input, { key: "Enter" });
+    await user.clear(input);
+    await user.type(input, "Q3 Reports{Enter}");
 
     expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
     expect(screen.queryByDisplayValue("Q3 Reports")).not.toBeInTheDocument();
