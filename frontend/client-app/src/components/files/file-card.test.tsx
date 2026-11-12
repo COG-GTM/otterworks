@@ -99,6 +99,28 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     expect(onRename).toHaveBeenCalledWith("file-1", "summary.pdf");
   });
 
+  it("does not navigate when clicking elsewhere on the card to end a rename", () => {
+    const onRename = vi.fn();
+    renderCard({ view, onRename });
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+    const input = screen.getByDisplayValue("report.pdf");
+    fireEvent.change(input, { target: { value: "summary.pdf" } });
+    const link = screen.getByRole("link");
+    fireEvent.mouseDown(link);
+    fireEvent.blur(input);
+    fireEvent.click(link);
+
+    expect(onRename).toHaveBeenCalledWith("file-1", "summary.pdf");
+    expect(screen.getByTestId("location").textContent).toBe("/files");
+
+    fireEvent.mouseDown(link);
+    fireEvent.click(link);
+    expect(screen.getByTestId("location").textContent).toBe("/files/file-1");
+  });
+
   it("navigates to the file when not renaming", () => {
     renderCard({ view });
 

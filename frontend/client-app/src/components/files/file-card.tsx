@@ -116,8 +116,15 @@ export function FileCard({
     onSelect?.(file.id);
   };
 
+  // Clicking the card while renaming blurs the input, which submits and clears
+  // isRenaming before the click lands, so capture the state on mousedown.
+  const suppressLinkClickRef = useRef(false);
+  const handleLinkMouseDown = () => {
+    suppressLinkClickRef.current = isRenaming;
+  };
   const preventNavigationWhileRenaming = (e: React.MouseEvent) => {
-    if (isRenaming) e.preventDefault();
+    if (isRenaming || suppressLinkClickRef.current) e.preventDefault();
+    suppressLinkClickRef.current = false;
   };
 
   const selectCheckbox = (
@@ -140,6 +147,7 @@ export function FileCard({
         <Link
           to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
           className="flex items-center gap-4 flex-1 min-w-0"
+          onMouseDown={handleLinkMouseDown}
           onClick={preventNavigationWhileRenaming}
         >
           <div className="w-10 h-10 rounded-lg bg-otter-50 flex items-center justify-center flex-shrink-0">
@@ -219,6 +227,7 @@ export function FileCard({
       <Link
         to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
         className="flex flex-col"
+        onMouseDown={handleLinkMouseDown}
         onClick={preventNavigationWhileRenaming}
       >
         <div className="flex items-start justify-between mb-3">
