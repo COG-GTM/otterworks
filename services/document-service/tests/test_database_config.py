@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from alembic.config import Config
 from pydantic import SecretStr
 
 from alembic import command
+from alembic import config as alembic_config
 from app.config import DatabaseNotConfiguredError, Settings, settings
 from app.db import session as db_session
 from app.main import app, lifespan
@@ -56,7 +56,7 @@ def test_source_tree_has_no_baked_in_database_password():
 def test_alembic_env_preserves_percent_encoded_password(monkeypatch):
     url = "postgresql+asyncpg://otterworks:p%40ss%25word@db:5432/otterworks"
     monkeypatch.setattr(settings, "database_url", SecretStr(url))
-    alembic_cfg = Config()
+    alembic_cfg = alembic_config.Config()
     alembic_cfg.set_main_option("script_location", str(REPO_SERVICE_DIR / "alembic"))
 
     command.upgrade(alembic_cfg, "head", sql=True)
