@@ -17,6 +17,7 @@ Environment overrides (all optional — defaults match docker-compose):
 """
 
 import os
+import secrets
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -376,8 +377,7 @@ def seed_audit_logs(cur) -> None:
         log("  No seeded users found — skipping audit logs.")
         return
 
-    import random
-    rng = random.Random(42)  # deterministic
+    rng = secrets.SystemRandom()
 
     rows = []
     for i in range(80):
