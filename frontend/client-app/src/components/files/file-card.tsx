@@ -190,7 +190,6 @@ export function FileCard({
               setMenuOpen(!menuOpen);
             }}
             aria-label="More actions"
-            aria-haspopup="menu"
             aria-expanded={menuOpen}
             className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
@@ -244,7 +243,6 @@ export function FileCard({
                   setMenuOpen(!menuOpen);
                 }}
                 aria-label="More actions"
-                aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
               >
