@@ -9,9 +9,10 @@ RSpec.describe 'config/bundler_gemfile' do
   let(:clean_env) { { 'BUNDLE_GEMFILE' => nil, 'RUBYOPT' => nil, 'BUNDLE_BIN_PATH' => nil } }
 
   def gemfile_after_require(env)
-    out, status = Open3.capture2(env, RbConfig.ruby, '-e', 'require ARGV[0]; print ENV["BUNDLE_GEMFILE"]',
-                                 bundler_gemfile, chdir: Dir.tmpdir)
-    expect(status).to be_success
+    out, err, status = Open3.capture3(env, RbConfig.ruby, '--disable-gems', '-e',
+                                      'require ARGV[0]; print ENV["BUNDLE_GEMFILE"]',
+                                      bundler_gemfile, chdir: Dir.tmpdir)
+    expect(status).to be_success, err
     out
   end
 
