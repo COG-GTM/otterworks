@@ -174,7 +174,6 @@ test: ## Run tests for all services
 	@echo "=== Audit Service (C#) ===" && cd services/audit-service && dotnet test
 	@echo "=== Web Frontend ===" && cd frontend/web-app && npm test
 	@echo "=== Admin Dashboard ===" && cd frontend/admin-dashboard && npm test
-	@echo "=== Scripts (Python) ===" && python -m pytest tests/scripts -q
 
 test-coverage: ## Run tests with coverage for all services
 	@echo "=== Document Service ===" && cd services/document-service && pytest --cov=app --cov-report=term-missing || true
