@@ -50,4 +50,32 @@ describe("ShareDialog", () => {
     renderDialog();
     expect(screen.getByRole("button", { name: "Close share dialog" })).toHaveAttribute("tabindex", "-1");
   });
+
+  it("moves focus into the dialog and traps Tab inside it", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(close).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    const focusable = dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input, select");
+    const last = focusable[focusable.length - 1];
+    expect(last).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(close).toHaveFocus();
+  });
+
+  it("restores focus to the opener on unmount", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(
+      <ShareDialog fileId="f" fileName="a.txt" sharedWith={[]} onShare={vi.fn()} onClose={vi.fn()} />
+    );
+    expect(opener).not.toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
 });
