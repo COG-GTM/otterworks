@@ -64,6 +64,8 @@ jobs:
 
       - name: Start the application stack
         run: |
+          SHARE_LINK_SECRET="$(openssl rand -hex 32)"
+          export SHARE_LINK_SECRET
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
             postgres redis localstack meilisearch \
             auth-service api-gateway document-service search-service file-service
