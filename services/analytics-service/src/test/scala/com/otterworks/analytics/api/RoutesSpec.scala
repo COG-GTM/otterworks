@@ -39,6 +39,10 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
   private def trackJson(body: String) = HttpEntity(ContentTypes.`application/json`, body)
 
+  private def asUser(userId: String) = addHeader(RawHeader(CallerAuth.UserIdHeader, userId))
+  private def asAdmin(userId: String = "admin-1", roles: String = "USER,ADMIN") =
+    addHeaders(RawHeader(CallerAuth.UserIdHeader, userId), RawHeader(CallerAuth.RolesHeader, roles))
+
   // --- Event Routes ---
 
   "POST /api/v1/analytics/events" should "accept a valid event" in {
@@ -147,7 +151,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/dashboard" should "return a summary with default period" in {
     val (_, analyticsRoutes, _) = createRoutes()
 
-    Get("/api/v1/analytics/dashboard") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/dashboard") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val summary = responseAs[DashboardSummary]
       summary.period shouldBe "7d"
@@ -158,7 +162,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   it should "accept a period parameter" in {
     val (_, analyticsRoutes, _) = createRoutes()
 
-    Get("/api/v1/analytics/dashboard?period=30d") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/dashboard?period=30d") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val summary = responseAs[DashboardSummary]
       summary.period shouldBe "30d"
@@ -173,7 +177,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     // First track an event
     service.trackEvent("document.created", "user-42", "doc-1", "document", Map.empty).futureValue
 
-    Get("/api/v1/analytics/users/user-42/activity") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/users/user-42/activity") ~> asUser("user-42") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val activity = responseAs[UserActivity]
       activity.userId shouldBe "user-42"
@@ -201,7 +205,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/top-content" should "return top content" in {
     val (_, analyticsRoutes, _) = createRoutes()
 
-    Get("/api/v1/analytics/top-content?type=documents&period=7d") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/top-content?type=documents&period=7d") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[TopContentResponse]
       response.contentType shouldBe "documents"
@@ -214,7 +218,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/active-users" should "return active users" in {
     val (_, analyticsRoutes, _) = createRoutes()
 
-    Get("/api/v1/analytics/active-users?period=daily") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/active-users?period=daily") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[ActiveUsersResponse]
       response.period shouldBe "daily"
@@ -227,7 +231,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/storage" should "return storage usage" in {
     val (_, analyticsRoutes, _) = createRoutes()
 
-    Get("/api/v1/analytics/storage") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/storage") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[StorageUsageResponse]
       response.totalStorageBytes shouldBe 0
@@ -239,7 +243,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
     service.trackEvent("storage.allocated", "user-1", "file-1", "file", Map("bytes" -> "512")).futureValue
 
-    Get("/api/v1/analytics/storage?user_id=user-1") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/storage?user_id=user-1") ~> asUser("user-1") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[StorageUsageResponse]
       response.userId shouldBe Some("user-1")
@@ -254,7 +258,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
     service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
 
-    Get("/api/v1/analytics/export?format=json&period=7d") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/export?format=json&period=7d") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[ExportReportResponse]
       response.format shouldBe "json"
@@ -267,11 +271,102 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
     service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
 
-    Get("/api/v1/analytics/export?format=csv&period=7d") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/export?format=csv&period=7d") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       val csv = responseAs[String]
       csv should include("event_id,event_type,user_id,resource_id,resource_type,timestamp")
       csv should include("document.created")
+    }
+  }
+
+  // --- Caller authorization ---
+
+  "Analytics query routes" should "answer 401 without a gateway-forwarded caller identity" in {
+    val (_, analyticsRoutes, _) = createRoutes()
+    val paths = Seq(
+      "/api/v1/analytics/dashboard",
+      "/api/v1/analytics/users/user-1/activity",
+      "/api/v1/analytics/top-content",
+      "/api/v1/analytics/active-users",
+      "/api/v1/analytics/storage",
+      "/api/v1/analytics/export?format=csv&period=30d"
+    )
+    paths.foreach { p =>
+      Get(p) ~> analyticsRoutes.routes ~> check {
+        withClue(p) { status shouldBe StatusCodes.Unauthorized }
+      }
+    }
+  }
+
+  it should "forbid a USER from reading another user's activity" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("document.viewed", "bob", "doc-secret", "document", Map.empty).futureValue
+
+    Get("/api/v1/analytics/users/bob/activity") ~> addHeaders(
+      RawHeader(CallerAuth.UserIdHeader, "mallory"),
+      RawHeader(CallerAuth.RolesHeader, "USER")
+    ) ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.Forbidden
+      responseAs[String] should not include "doc-secret"
+    }
+  }
+
+  it should "let an admin read another user's activity" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("document.viewed", "bob", "doc-1", "document", Map.empty).futureValue
+
+    Get("/api/v1/analytics/users/bob/activity") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[UserActivity].totalEvents shouldBe 1
+    }
+  }
+
+  it should "forbid a USER from reading another user's storage" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("storage.allocated", "bob", "file-1", "file", Map("bytes" -> "4096")).futureValue
+
+    Get("/api/v1/analytics/storage?user_id=bob") ~> asUser("mallory") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.Forbidden
+    }
+  }
+
+  it should "scope a USER's storage query without user_id to their own usage" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("storage.allocated", "bob", "file-1", "file", Map("bytes" -> "4096")).futureValue
+    service.trackEvent("storage.allocated", "alice", "file-2", "file", Map("bytes" -> "100")).futureValue
+
+    Get("/api/v1/analytics/storage") ~> asUser("alice") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
+      val response = responseAs[StorageUsageResponse]
+      response.userId shouldBe Some("alice")
+      response.totalStorageBytes shouldBe 100
+    }
+  }
+
+  it should "restrict dashboard, top-content, active-users and export to admins" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("document.created", "bob", "doc-1", "document", Map.empty).futureValue
+    val paths = Seq(
+      "/api/v1/analytics/dashboard",
+      "/api/v1/analytics/top-content",
+      "/api/v1/analytics/active-users",
+      "/api/v1/analytics/export?format=json&period=30d",
+      "/api/v1/analytics/export?format=csv&period=30d"
+    )
+    paths.foreach { p =>
+      Get(p) ~> addHeaders(
+        RawHeader(CallerAuth.UserIdHeader, "mallory"),
+        RawHeader(CallerAuth.RolesHeader, "USER,EDITOR")
+      ) ~> analyticsRoutes.routes ~> check {
+        withClue(p) { status shouldBe StatusCodes.Forbidden }
+      }
+    }
+  }
+
+  it should "accept OWNER as an admin role and parse roles case-insensitively" in {
+    val (_, analyticsRoutes, _) = createRoutes()
+    Get("/api/v1/analytics/export?format=json") ~> asAdmin("owner-1", " user , owner ") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
     }
   }
