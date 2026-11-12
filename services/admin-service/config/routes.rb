@@ -10,8 +10,8 @@ Rails.application.routes.draw do
         # User Management
         resources :users, only: %i[index show update destroy] do
           member do
-            put :suspend
-            put :activate
+            put :suspend, to: 'users#suspend'
+            put :activate, to: 'users#activate'
           end
         end
 
@@ -40,7 +40,7 @@ Rails.application.routes.draw do
         # Incidents (Automated Incident Response)
         resources :incidents, only: %i[index show create update destroy] do
           member do
-            post :trigger_session
+            post :trigger_session, to: 'incidents#trigger_session'
           end
         end
 
