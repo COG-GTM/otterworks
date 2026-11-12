@@ -60,6 +60,21 @@ class WebSocketManagerTest {
     }
 
     @Test
+    fun `pushNotification sends to every session present at call time even if others disconnect mid-push`() = runTest {
+        val manager = WebSocketManager()
+        val sessions = List(3) { mockk<DefaultWebSocketSession>(relaxed = true) }
+        sessions.forEach { session ->
+            coEvery { session.send(any()) } answers {
+                sessions.filter { it !== session }.forEach { manager.removeConnection("user-1", it) }
+            }
+            manager.addConnection("user-1", session)
+        }
+
+        assertEquals(3, manager.pushNotification("user-1", notification))
+        sessions.forEach { coVerify(exactly = 1) { it.send(any()) } }
+    }
+
+    @Test
     fun `pushNotification disconnects user when all sessions fail`() = runTest {
         val manager = WebSocketManager()
         val dead = mockk<DefaultWebSocketSession>(relaxed = true)
