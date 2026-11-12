@@ -55,6 +55,22 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     expect(onRename).toHaveBeenCalledWith("f1", "renamed.pdf");
   });
 
+  it("does not navigate when clicking elsewhere on the card ends a rename", () => {
+    renderCard({ view, onRename: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const input = screen.getByRole("textbox");
+    const link = screen.getByRole("link");
+    fireEvent.mouseDown(link);
+    fireEvent.blur(input);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(link);
+    expect(screen.queryByText("file detail page")).not.toBeInTheDocument();
+    fireEvent.mouseDown(link);
+    fireEvent.click(link);
+    expect(screen.getByText("file detail page")).toBeInTheDocument();
+  });
+
   it("closes the menu with Escape", () => {
     renderCard({ view });
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
