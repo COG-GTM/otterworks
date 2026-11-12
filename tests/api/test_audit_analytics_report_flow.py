@@ -47,29 +47,57 @@ def test_audit_event_query_reports_export_and_archive(api_client):
     )
     assert user_report_response.status_code == 200, user_report_response.text
 
-    compliance_response = api_client.client.get(
-        "/api/v1/audit/reports/compliance",
-        headers=user.auth_headers,
-        params={"period": "30d"},
-    )
-    assert compliance_response.status_code == 200, compliance_response.text
+    # Compliance, export, and archive span every user's events: admin roles only.
+    for method, path, params in (
+        ("GET", "/api/v1/audit/reports/compliance", {"period": "30d"}),
+        ("GET", "/api/v1/audit/export", {"format": "json"}),
+        ("POST", "/api/v1/audit/archive", None),
+    ):
+        response = api_client.client.request(method, path, headers=user.auth_headers, params=params)
+        assert response.status_code == 403, f"{method} {path}: {response.text}"
 
-    export_response = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "json"},
-    )
-    assert export_response.status_code == 200, export_response.text
 
-    invalid_export = api_client.client.get(
-        "/api/v1/audit/export",
-        headers=user.auth_headers,
-        params={"format": "xml"},
-    )
-    assert invalid_export.status_code == 400
+def test_audit_rejects_cross_user_access(api_client):
+    alice = api_client.register_user("audit-alice")
+    mallory = api_client.register_user("audit-mallory")
+    resource_id = f"audit-cross-{api_client.run_id}"
 
-    archive_response = api_client.client.post("/api/v1/audit/archive", headers=user.auth_headers)
-    assert archive_response.status_code == 200, archive_response.text
+    alice_event = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=alice.auth_headers,
+        json={"action": "create", "resourceType": "document", "resourceId": resource_id},
+    )
+    assert alice_event.status_code == 201, alice_event.text
+    assert alice_event.json()["userId"] == alice.id
+    alice_event_id = alice_event.json()["id"]
+
+    forged = api_client.client.post(
+        "/api/v1/audit/events",
+        headers=mallory.auth_headers,
+        json={"userId": alice.id, "action": "delete", "resourceType": "document", "resourceId": resource_id},
+    )
+    assert forged.status_code == 403, forged.text
+
+    other_query = api_client.client.get(
+        "/api/v1/audit/events", headers=mallory.auth_headers, params={"user_id": alice.id}
+    )
+    assert other_query.status_code == 403, other_query.text
+
+    unfiltered = api_client.client.get(
+        "/api/v1/audit/events", headers=mallory.auth_headers, params={"resource": resource_id}
+    )
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert all(event["userId"] == mallory.id for event in unfiltered.json()["events"])
+
+    other_event = api_client.client.get(f"/api/v1/audit/events/{alice_event_id}", headers=mallory.auth_headers)
+    assert other_event.status_code == 404, other_event.text
+
+    other_report = api_client.client.get(f"/api/v1/audit/reports/user/{alice.id}", headers=mallory.auth_headers)
+    assert other_report.status_code == 403, other_report.text
+
+    history = api_client.client.get(f"/api/v1/audit/resources/{resource_id}/history", headers=mallory.auth_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["totalEvents"] == 0
 
 
 def test_analytics_event_ingestion_queries_and_export(api_client):

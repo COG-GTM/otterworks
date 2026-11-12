@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -71,6 +72,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 		// client-supplied values must never reach the backends.
 		req.Header.Del("X-User-ID")
 		req.Header.Del("X-User-Email")
+		req.Header.Del("X-User-Roles")
 		if claims := middleware.GetJWTClaims(req.Context()); claims != nil {
 			userID := claims.Subject
 			if userID == "" {
@@ -81,6 +83,9 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			}
 			if claims.Email != "" {
 				req.Header.Set("X-User-Email", claims.Email)
+			}
+			if roles := forwardableRoles(claims.Roles); roles != "" {
+				req.Header.Set("X-User-Roles", roles)
 			}
 		}
 	}
@@ -124,4 +129,18 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			})
 		}
 	}
+}
+
+// forwardableRoles renders the JWT roles claim as a comma-separated header value,
+// dropping entries that could not survive the round trip intact.
+func forwardableRoles(roles []string) string {
+	kept := make([]string, 0, len(roles))
+	for _, role := range roles {
+		role = strings.TrimSpace(role)
+		if role == "" || strings.ContainsAny(role, ",\r\n") {
+			continue
+		}
+		kept = append(kept, role)
+	}
+	return strings.Join(kept, ",")
 }

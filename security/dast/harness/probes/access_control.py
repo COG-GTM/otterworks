@@ -528,3 +528,103 @@ def share_token_forgery(ctx: ScanContext) -> Result:
     return self.result(
         Verdict.SECURE, "offline-derived tokens were rejected by the share route"
     )
+
+
+@probe(
+    finding_id="DAST-AUDIT-BOLA",
+    title="Audit service lets a regular user read, forge, and export other users' audit events",
+    severity=Severity.HIGH,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="audit-service",
+    remediation=(
+        "Scope non-admin audit reads to the caller's X-User-ID, record events under the "
+        "caller rather than a body-supplied UserId, and restrict export, compliance, and "
+        "archive to admin roles forwarded by the gateway from the validated JWT."
+    ),
+)
+def audit_bola(ctx: ScanContext) -> Result:
+    """Attacker reads the victim's audit report, writes an event as the victim, and exports the log.
+
+    Archive is deliberately not attacked: on a vulnerable target it deletes events from
+    the live store, and it is guarded by the same admin check as export.
+    """
+    self = audit_bola.probe
+    victim_report = f"/api/v1/audit/reports/user/{ctx.victim.user_id}"
+    attacks = {
+        f"GET {victim_report}": lambda: ctx.get(victim_report, identity=ctx.attacker),
+        "POST /api/v1/audit/events as victim": lambda: ctx.request(
+            "POST",
+            "/api/v1/audit/events",
+            identity=ctx.attacker,
+            json={
+                "userId": ctx.victim.user_id,
+                "action": "delete",
+                "resourceType": "document",
+                "resourceId": f"dast-forged-{ctx.run_id}",
+            },
+        ),
+        "GET /api/v1/audit/events?user_id=victim": lambda: ctx.get(
+            "/api/v1/audit/events", identity=ctx.attacker, params={"user_id": ctx.victim.user_id}
+        ),
+        "GET /api/v1/audit/export": lambda: ctx.get(
+            "/api/v1/audit/export", identity=ctx.attacker, params={"format": "json"}
+        ),
+    }
+
+    evidence: list[Evidence] = []
+    exposed: list[str] = []
+    unreached: list[str] = []
+    for label, attack in attacks.items():
+        response = attack()
+        evidence.append(Evidence.from_response(response, note=label))
+        if response.status_code < 400:
+            exposed.append(label)
+        elif unavailable(response) or response.status_code not in (401, 403, 404):
+            # A 400/405/422 rejects the request's shape, not the caller: nothing was assessed.
+            unreached.append(f"{label} -> {response.status_code}")
+    if exposed:
+        return self.result(
+            Verdict.VULNERABLE,
+            f"the attacker's token was accepted for: {', '.join(exposed)}",
+            evidence,
+        )
+    if unreached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"audit-service did not make an authorization decision: {', '.join(unreached)}",
+            evidence,
+        )
+    own_event = ctx.request(
+        "POST",
+        "/api/v1/audit/events",
+        identity=ctx.victim,
+        json={
+            "action": "create",
+            "resourceType": "document",
+            "resourceId": f"dast-own-{ctx.run_id}",
+        },
+    )
+    evidence.append(
+        Evidence.from_response(own_event, note="control: victim records their own event")
+    )
+    if own_event.status_code != 201:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the victim cannot record their own audit event either ({own_event.status_code}), "
+            "so the attacker's refusal proves nothing",
+            evidence,
+        )
+    if not ctx.owner_can_read(victim_report, ctx.victim):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the victim cannot read their own audit report either, so the attacker's refusal "
+            "proves nothing",
+            evidence,
+        )
+    return self.result(
+        Verdict.SECURE,
+        "the victim can record events and read their own audit report; every cross-user "
+        "and admin-only request from the attacker was refused",
+        evidence,
+    )
