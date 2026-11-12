@@ -17,11 +17,12 @@ describe("Sidebar mobile overlay", () => {
     useUIStore.setState({ sidebarOpen: true });
   });
 
-  it("renders the overlay as a native, labelled button", () => {
+  it("renders the overlay as a native, labelled button outside the tab order", () => {
     renderSidebar();
     const overlay = screen.getByRole("button", { name: "Close sidebar" });
     expect(overlay.tagName).toBe("BUTTON");
     expect(overlay).toHaveAttribute("type", "button");
+    expect(overlay).toHaveAttribute("tabindex", "-1");
   });
 
   it("closes the sidebar when the overlay is clicked", () => {
