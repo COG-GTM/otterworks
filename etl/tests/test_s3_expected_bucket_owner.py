@@ -74,7 +74,7 @@ def _write_config(tmp_path, owner):
     path.write_text(
         "[aws]\naccess_key = AKIDTEST\nsecret_key = secret\nregion = us-east-1\n"
         "[database]\nhost = db\nport = 5432\ndatabase = d\nuser = u\npassword = p\n"
-        "[s3]\ndata_lake_bucket = otterworks-data-lake\nexpected_bucket_owner = {owner}\n"
+        f"[s3]\ndata_lake_bucket = otterworks-data-lake\nexpected_bucket_owner = {owner}\n"
     )
     return path
 
