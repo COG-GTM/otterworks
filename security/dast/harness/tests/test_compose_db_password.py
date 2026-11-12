@@ -18,7 +18,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[4]
 COMPOSE_FILES = ("docker-compose.yml", "docker-compose.infra.yml")
 ENSURE = REPO / "scripts" / "ensure-local-env.sh"
-PASSWORD_KEYS = re.compile(r"(^|_)PASSWORD$")
+DB_PASSWORD_KEYS = re.compile(r"^(POSTGRES|SPRING_DATASOURCE|DATABASE|DB)_PASSWORD$")
 DSN = re.compile(r"^[a-z0-9+]+://[^:/@]+:([^@]+)@")
 REQUIRED = re.compile(r"^\$\{POSTGRES_PASSWORD:\?[^}]*\}$")
 
@@ -29,7 +29,7 @@ def _db_secrets():
         for svc, spec in services.items():
             for key, value in (spec.get("environment") or {}).items():
                 value = str(value)
-                if PASSWORD_KEYS.search(key) and "POSTGRES" in value.upper() + key:
+                if DB_PASSWORD_KEYS.match(key):
                     yield name, svc, key, value
                 elif m := DSN.match(value):
                     yield name, svc, key, m.group(1)
