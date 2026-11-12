@@ -25,6 +25,8 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import kotlinx.serialization.Serializable
 import org.koin.ktor.ext.inject
 
+private const val NOTIFICATION_NOT_FOUND = "Notification not found"
+
 @Serializable
 data class HealthResponse(val status: String, val service: String)
 
@@ -95,7 +97,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                 if (notification != null) {
                     call.respond(notification)
                 } else {
-                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Notification not found"))
+                    call.respond(HttpStatusCode.NotFound, ErrorResponse(NOTIFICATION_NOT_FOUND))
                 }
             }
 
@@ -109,7 +111,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {
-                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Notification not found"))
+                    call.respond(HttpStatusCode.NotFound, ErrorResponse(NOTIFICATION_NOT_FOUND))
                 }
             }
 
@@ -134,7 +136,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
                 if (success) {
                     call.respond(HttpStatusCode.NoContent)
                 } else {
-                    call.respond(HttpStatusCode.NotFound, ErrorResponse("Notification not found"))
+                    call.respond(HttpStatusCode.NotFound, ErrorResponse(NOTIFICATION_NOT_FOUND))
                 }
             }
         }
