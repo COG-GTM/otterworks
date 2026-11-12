@@ -157,7 +157,7 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
     assert create_response.status_code == 202, create_response.text
     report = create_response.json()
     report_id = report["id"]
-    api_client.created_reports.append(report_id)
+    api_client.created_reports[report_id] = user.auth_headers
 
     get_response = api_client.client.get(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert get_response.status_code == 200, get_response.text
@@ -177,7 +177,7 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
 
     delete_response = api_client.client.delete(f"/api/v1/reports/{report_id}", headers=user.auth_headers)
     assert delete_response.status_code == 204, delete_response.text
-    api_client.created_reports.remove(report_id)
+    del api_client.created_reports[report_id]
 
     invalid_report = api_client.client.post(
         "/api/v1/reports",
@@ -185,3 +185,60 @@ def test_report_generation_lifecycle_and_gateway_route(api_client):
         json={"category": "USAGE_ANALYTICS", "reportType": "CSV", "requestedBy": user.id},
     )
     assert invalid_report.status_code in {400, 422}
+
+
+def test_reports_are_scoped_to_the_caller(api_client):
+    owner = api_client.register_user("report-owner")
+    other = api_client.register_user("report-other")
+
+    create_response = api_client.client.post(
+        "/api/v1/reports",
+        headers=owner.auth_headers,
+        json={
+            "reportName": f"Owner Report {api_client.run_id}",
+            "category": "USAGE_ANALYTICS",
+            "reportType": "CSV",
+            "requestedBy": other.id,
+        },
+    )
+    api_client.assert_gateway_route_available(create_response, "/api/v1/reports")
+    assert create_response.status_code == 202, create_response.text
+    report = create_response.json()
+    report_id = report["id"]
+    api_client.created_reports[report_id] = owner.auth_headers
+    assert report["requestedBy"] == owner.id
+
+    def owner_report():
+        response = api_client.client.get(f"/api/v1/reports/{report_id}", headers=owner.auth_headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    api_client.poll_until(
+        owner_report,
+        lambda current: current.get("status") in {"COMPLETED", "FAILED"},
+        timeout_seconds=60,
+        description="owner report terminal status",
+    )
+
+    for params in ({}, {"status": "COMPLETED"}):
+        listing = api_client.client.get("/api/v1/reports", headers=other.auth_headers, params=params)
+        assert listing.status_code == 200, listing.text
+        assert report_id not in [r["id"] for r in listing.json()["reports"]]
+
+    foreign_filter = api_client.client.get(
+        "/api/v1/reports", headers=other.auth_headers, params={"userId": owner.id}
+    )
+    assert foreign_filter.status_code == 200, foreign_filter.text
+    assert report_id not in [r["id"] for r in foreign_filter.json()["reports"]]
+
+    for method, path in (
+        ("GET", f"/api/v1/reports/{report_id}"),
+        ("GET", f"/api/v1/reports/{report_id}/download"),
+        ("DELETE", f"/api/v1/reports/{report_id}"),
+    ):
+        response = api_client.client.request(method, path, headers=other.auth_headers)
+        assert response.status_code == 404, f"{method} {path}: {response.status_code} {response.text}"
+
+    owner_listing = api_client.client.get("/api/v1/reports", headers=owner.auth_headers)
+    assert owner_listing.status_code == 200, owner_listing.text
+    assert report_id in [r["id"] for r in owner_listing.json()["reports"]]

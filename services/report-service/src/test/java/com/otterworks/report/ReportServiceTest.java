@@ -73,6 +73,7 @@ public class ReportServiceTest {
         request.setDateTo(new Date());
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("X-User-ID", request.getRequestedBy())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -93,6 +94,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-002");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("X-User-ID", request.getRequestedBy())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -108,6 +110,7 @@ public class ReportServiceTest {
         request.setRequestedBy("test-user-003");
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("X-User-ID", request.getRequestedBy())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isAccepted())
@@ -116,13 +119,14 @@ public class ReportServiceTest {
 
     @Test
     public void getReportNotFoundShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999"))
+        mockMvc.perform(get("/api/v1/reports/99999").header("X-User-ID", "test-user"))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     public void listReportsShouldReturnEmptyList() throws Exception {
         mockMvc.perform(get("/api/v1/reports")
+                        .header("X-User-ID", "nonexistent-user")
                         .param("userId", "nonexistent-user"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.reports").isArray())
@@ -138,6 +142,7 @@ public class ReportServiceTest {
         // Missing reportName — should fail validation
 
         mockMvc.perform(post("/api/v1/reports")
+                        .header("X-User-ID", request.getRequestedBy())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
@@ -145,7 +150,7 @@ public class ReportServiceTest {
 
     @Test
     public void downloadNonExistentReportShouldReturn404() throws Exception {
-        mockMvc.perform(get("/api/v1/reports/99999/download"))
+        mockMvc.perform(get("/api/v1/reports/99999/download").header("X-User-ID", "test-user"))
                 .andExpect(status().isNotFound());
     }
 }
