@@ -28,7 +28,7 @@ describe("skeleton placeholders", () => {
     expect(content.querySelector(".space-y-3")?.children).toHaveLength(4);
   });
 
-  it("does not trigger React duplicate-key warnings", () => {
+  it("renders all placeholders without React key warnings", () => {
     render(
       <>
         <FileGridSkeleton />
