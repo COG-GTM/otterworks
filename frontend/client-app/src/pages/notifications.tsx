@@ -116,7 +116,7 @@ const notificationColors: Record<string, string> = {
   system: "text-gray-600 bg-gray-100",
 };
 
-function NotificationRow({
+export function NotificationRow({
   notification,
   onMarkRead,
 }: Readonly<{
@@ -137,59 +137,64 @@ function NotificationRow({
     if (!notification.read) onMarkRead();
   };
 
+  const rowClassName = cn(
+    "flex w-full items-start gap-4 px-5 py-4 text-left transition",
+    !notification.read ? "bg-otter-50/30" : "hover:bg-gray-50"
+  );
+
   const content = (
-    <div
-      role="button"
-      tabIndex={0}
-      className={cn(
-        "flex items-start gap-4 px-5 py-4 transition cursor-pointer",
-        !notification.read ? "bg-otter-50/30" : "hover:bg-gray-50"
-      )}
-      onClick={handleActivate}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          handleActivate();
-        }
-      }}
-    >
+    <>
       {notification.actorName ? (
-        <div
+        <span
           className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
           style={{
             backgroundColor: generateColor(notification.actorId || notification.actorName),
           }}
         >
           {getInitials(notification.actorName)}
-        </div>
+        </span>
       ) : (
-        <div
+        <span
           className={cn(
             "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
             color
           )}
         >
-          <Icon size={18} />
-        </div>
+          <Icon size={18} aria-hidden="true" />
+        </span>
       )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-900">
+      <span className="flex-1 min-w-0">
+        <span className="block text-sm text-gray-900">
           <span className="font-medium">{notification.title}</span>
-        </p>
-        <p className="text-sm text-gray-500 mt-0.5">{notification.message}</p>
-        <p className="text-xs text-gray-400 mt-1">
+        </span>
+        <span className="block text-sm text-gray-500 mt-0.5">{notification.message}</span>
+        <span className="block text-xs text-gray-400 mt-1">
           {formatRelativeTime(notification.createdAt)}
-        </p>
-      </div>
+        </span>
+      </span>
       {!notification.read && (
-        <div className="w-2.5 h-2.5 rounded-full bg-otter-600 flex-shrink-0 mt-1.5" />
+        <span className="w-2.5 h-2.5 rounded-full bg-otter-600 flex-shrink-0 mt-1.5">
+          <span className="sr-only">Unread</span>
+        </span>
       )}
-    </div>
+    </>
   );
 
   if (href) {
-    return <Link to={href}>{content}</Link>;
+    return (
+      <Link to={href} className={rowClassName} onClick={handleActivate}>
+        {content}
+      </Link>
+    );
   }
 
-  return content;
+  if (notification.read) {
+    return <div className={rowClassName}>{content}</div>;
+  }
+
+  return (
+    <button type="button" className={cn(rowClassName, "cursor-pointer")} onClick={handleActivate}>
+      {content}
+    </button>
+  );
 }
