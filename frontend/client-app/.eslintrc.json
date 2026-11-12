@@ -9,7 +9,14 @@
   "plugins": ["react-hooks"],
   "rules": {
     "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "warn"
+    "react-hooks/exhaustive-deps": "warn",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.property.name='removeChild']",
+        "message": "Use childNode.remove() instead of parentNode.removeChild(childNode) (Sonar typescript:S7762)."
+      }
+    ]
   },
   "ignorePatterns": ["dist", "node_modules", "test-results"]
 }
