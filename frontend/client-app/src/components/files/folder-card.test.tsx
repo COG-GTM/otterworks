@@ -1,0 +1,171 @@
+import { StrictMode } from "react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { FolderCard } from "./folder-card";
+import type { FileItem } from "@/types";
+
+const folder: FileItem = {
+  id: "folder-1",
+  name: "Reports",
+  mimeType: "application/x-directory",
+  size: 0,
+  parentId: null,
+  ownerId: "user-1",
+  ownerName: "Owner",
+  isFolder: true,
+  path: "/Reports",
+  sharedWith: [],
+  tags: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  versions: [],
+};
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
+}
+
+function renderCard(props: Partial<React.ComponentProps<typeof FolderCard>> = {}) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={["/files"]}>
+        <Routes>
+          <Route path="*" element={<><FolderCard folder={folder} {...props} /><LocationProbe /></>} />
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>
+  );
+}
+
+describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
+  it("closes the actions menu with Escape and returns focus to the trigger", () => {
+    renderCard({ view });
+    const trigger = screen.getByRole("button", { name: "Actions for Reports" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toHaveFocus();
+
+    fireEvent.keyDown(document.activeElement ?? document, { key: "Escape" });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("moves between menu items with the arrow, Home and End keys", () => {
+    renderCard({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    const rename = screen.getByRole("menuitem", { name: "Rename" });
+    const share = screen.getByRole("menuitem", { name: "Share" });
+    const del = screen.getByRole("menuitem", { name: "Delete" });
+
+    fireEvent.keyDown(rename, { key: "ArrowDown" });
+    expect(share).toHaveFocus();
+    fireEvent.keyDown(share, { key: "ArrowDown" });
+    expect(del).toHaveFocus();
+    fireEvent.keyDown(del, { key: "ArrowDown" });
+    expect(rename).toHaveFocus();
+    fireEvent.keyDown(rename, { key: "ArrowUp" });
+    expect(del).toHaveFocus();
+    fireEvent.keyDown(del, { key: "Home" });
+    expect(rename).toHaveFocus();
+    fireEvent.keyDown(rename, { key: "End" });
+    expect(del).toHaveFocus();
+  });
+
+  it("still closes the actions menu when the backdrop is clicked", () => {
+    const { container } = renderCard({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    const backdrop = container.querySelector('[aria-hidden="true"].fixed');
+    expect(backdrop).not.toBeNull();
+
+    fireEvent.click(backdrop!);
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
+  });
+
+  it("runs menu actions from the keyboard-focusable menu items", () => {
+    const onDelete = vi.fn();
+    renderCard({ view, onDelete });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+
+    expect(onDelete).toHaveBeenCalledWith("folder-1");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("does not open the folder when clicking around the rename input", () => {
+    renderCard({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByDisplayValue("Reports");
+
+    fireEvent.click(input.parentElement!);
+    fireEvent.click(input);
+
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
+    expect(input).toBeInTheDocument();
+  });
+
+  it("does not open the folder when a click elsewhere on the card ends the rename", () => {
+    const onRename = vi.fn();
+    renderCard({ view, onRename });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByDisplayValue("Reports");
+    fireEvent.change(input, { target: { value: "Q3 Reports" } });
+    const link = screen.getByRole("link");
+
+    fireEvent.mouseDown(link);
+    fireEvent.blur(input);
+    fireEvent.click(link, { detail: 1 });
+
+    expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
+    expect(screen.queryByDisplayValue("Q3 Reports")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
+
+    fireEvent.mouseDown(link);
+    fireEvent.click(link, { detail: 1 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
+  it("opens the folder via keyboard after a rename started with a mouse press in the input", () => {
+    renderCard({ view, onRename: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByDisplayValue("Reports");
+
+    fireEvent.mouseDown(input);
+    fireEvent.click(input, { detail: 1 });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("link"));
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
+  it("opens the folder when the card is clicked outside rename mode", () => {
+    renderCard({ view });
+
+    fireEvent.click(screen.getByRole("link"));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
+  it("calls onSelect when the selection checkbox changes", () => {
+    const onSelect = vi.fn();
+    renderCard({ view, onSelect, selectionActive: true });
+    const checkbox = screen.getByRole("checkbox", { name: "Select Reports" });
+
+    fireEvent.click(checkbox);
+
+    expect(onSelect).toHaveBeenCalledWith("folder-1");
+  });
+});

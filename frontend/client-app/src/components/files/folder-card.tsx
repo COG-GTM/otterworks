@@ -30,6 +30,7 @@ export function FolderCard({
   const [renameValue, setRenameValue] = useState(folder.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
+  const renamingAtPointerDownRef = useRef(false);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -48,27 +49,33 @@ export function FolderCard({
     setIsRenaming(false);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onSelect?.(folder.id);
+  const linkGuardProps = {
+    onMouseDown: () => {
+      renamingAtPointerDownRef.current = isRenaming;
+    },
+    onClick: (e: React.MouseEvent) => {
+      if (isRenaming || (e.detail > 0 && renamingAtPointerDownRef.current)) e.preventDefault();
+      renamingAtPointerDownRef.current = false;
+    },
   };
 
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
+          <div className="flex-shrink-0">
             <input
               type="checkbox"
               checked={selected}
-              readOnly
+              onChange={() => onSelect?.(folder.id)}
+              aria-label={`Select ${folder.name}`}
               className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
             />
           </div>
         )}
         <Link
           to={`/files?folder=${folder.id}`}
+          {...linkGuardProps}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
@@ -76,7 +83,7 @@ export function FolderCard({
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-center gap-1">
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -107,7 +114,10 @@ export function FolderCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label={`Actions for ${folder.name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -128,17 +138,19 @@ export function FolderCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
+        <div className="absolute top-2 left-2 z-10">
           <input
             type="checkbox"
             checked={selected}
-            readOnly
+            onChange={() => onSelect?.(folder.id)}
+            aria-label={`Select ${folder.name}`}
             className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
           />
         </div>
       )}
       <Link
         to={`/files?folder=${folder.id}`}
+        {...linkGuardProps}
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">
@@ -152,7 +164,10 @@ export function FolderCard({
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+              aria-label={`Actions for ${folder.name}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
             >
               <MoreVertical size={16} />
             </button>
@@ -168,7 +183,7 @@ export function FolderCard({
           </div>
         </div>
         {isRenaming ? (
-          <div className="mb-1" onClick={(e) => e.preventDefault()}>
+          <div className="mb-1">
             <input
               ref={renameInputRef}
               type="text"
@@ -207,11 +222,60 @@ function FolderMenu({
   onShare?: (id: string) => void;
   onRename?: () => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [opener] = useState(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null
+  );
+
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      onCloseRef.current();
+      opener?.focus();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [opener]);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next: Record<string, number> = {
+      ArrowDown: (current + 1) % items.length,
+      ArrowUp: (current - 1 + items.length) % items.length,
+      Home: 0,
+      End: items.length - 1,
+    };
+    if (!(e.key in next)) return;
+    e.preventDefault();
+    items[next[e.key]].focus();
+  };
+
   return (
     <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+      <div
+        className="fixed inset-0 z-10"
+        aria-hidden="true"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
+      <div
+        ref={menuRef}
+        role="menu"
+        tabIndex={-1}
+        onKeyDown={handleMenuKeyDown}
+        className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
+      >
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -224,6 +288,8 @@ function FolderMenu({
           Rename
         </button>
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -236,6 +302,8 @@ function FolderMenu({
           Share
         </button>
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
