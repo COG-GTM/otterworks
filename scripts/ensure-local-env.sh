@@ -24,7 +24,10 @@ if [ "$current" = "$PUBLIC_DEFAULT" ]; then
 fi
 
 if [ -z "$current" ]; then
-  sed -i "/^${KEY}=/d" "$ENV_FILE"
+  # Portable in-place delete (BSD sed on macOS has a different -i syntax).
+  grep -v "^${KEY}=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
+  cat "$ENV_FILE.tmp" > "$ENV_FILE"
+  rm -f "$ENV_FILE.tmp"
   if command -v openssl >/dev/null 2>&1; then
     password="$(openssl rand -hex 24)"
   else
