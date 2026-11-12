@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-
 from app.config import AppConfig, AuthConfig
 from app.main import create_app
 
