@@ -49,7 +49,7 @@ fun main() {
 
 fun Application.module(config: AppConfig = AppConfig.load()) {
     val prometheusRegistry = configureMonitoring()
-    configurePlugins(config)
+    configurePlugins()
     configureDependencyInjection(config, prometheusRegistry)
     configureRouting(prometheusRegistry)
 
@@ -61,7 +61,7 @@ fun Application.module(config: AppConfig = AppConfig.load()) {
     logger.info { "Notification Service started on port ${config.port}" }
 }
 
-fun Application.configurePlugins(config: AppConfig = AppConfig.load()) {
+fun Application.configurePlugins() {
     install(ContentNegotiation) {
         json(Json {
             prettyPrint = false
