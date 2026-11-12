@@ -11,6 +11,7 @@
 
 import configparser
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -31,6 +32,10 @@ def main():
     file_storage_bucket = config.get("s3", "file_storage_bucket")
     quarantine_bucket = config.get("s3", "quarantine_bucket")
     data_lake_bucket = config.get("s3", "data_lake_bucket")
+    expected_bucket_owner = config.get("s3", "expected_bucket_owner").strip()
+    if not re.fullmatch(r"\d{12}", expected_bucket_owner):
+        print("[%s] ERROR: [s3] expected_bucket_owner must be the 12-digit AWS account ID that owns the buckets" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        sys.exit(1)
 
     files_prefix = "files/"
     quarantine_prefix = "quarantined"
@@ -53,7 +58,11 @@ def main():
     all_objects = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
-    for page in paginator.paginate(Bucket=file_storage_bucket, Prefix=files_prefix):
+    for page in paginator.paginate(
+        Bucket=file_storage_bucket,
+        Prefix=files_prefix,
+        ExpectedBucketOwner=expected_bucket_owner,
+    ):
         for obj in page.get("Contents", []):
             all_objects.append({
                 "key": obj["Key"],
@@ -141,8 +150,14 @@ def main():
                 Key=dest_key,
                 CopySource={"Bucket": file_storage_bucket, "Key": source_key},
                 MetadataDirective="COPY",
+                ExpectedBucketOwner=expected_bucket_owner,
+                ExpectedSourceBucketOwner=expected_bucket_owner,
             )
-            s3_client.delete_object(Bucket=file_storage_bucket, Key=source_key)
+            s3_client.delete_object(
+                Bucket=file_storage_bucket,
+                Key=source_key,
+                ExpectedBucketOwner=expected_bucket_owner,
+            )
             moved_count += 1
         except Exception as e:
             print("[%s] WARNING: Failed to quarantine %s: %s" % (
@@ -198,6 +213,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
