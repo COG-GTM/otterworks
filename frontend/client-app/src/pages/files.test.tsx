@@ -84,6 +84,7 @@ describe("FilesPage bulk delete", () => {
   it("trashes files, deletes folders and summarises both in one toast", async () => {
     await selectAndDelete([0, 1, 2]);
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("2 files moved to trash, 1 folder deleted"));
+    expect(toastMock.success).toHaveBeenCalledTimes(1);
     expect(filesApiMock.delete.mock.calls.map((c) => c[0]).sort()).toEqual(["f1", "f2"]);
     expect(filesApiMock.deleteFolder).toHaveBeenCalledWith("d1");
     expect(toastMock.error).not.toHaveBeenCalled();
@@ -93,6 +94,7 @@ describe("FilesPage bulk delete", () => {
   it("uses the singular form for a single file", async () => {
     await selectAndDelete([1]);
     await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith("1 file moved to trash"));
+    expect(toastMock.success).toHaveBeenCalledTimes(1);
     expect(filesApiMock.deleteFolder).not.toHaveBeenCalled();
   });
 
@@ -101,6 +103,8 @@ describe("FilesPage bulk delete", () => {
     filesApiMock.deleteFolder.mockRejectedValueOnce(new Error("boom"));
     await selectAndDelete([0, 1, 2]);
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith("2 items failed to delete"));
+    expect(toastMock.error).toHaveBeenCalledTimes(1);
+    expect(toastMock.success).toHaveBeenCalledTimes(1);
     expect(toastMock.success).toHaveBeenCalledWith("1 file moved to trash");
     expect(filesApiMock.delete).toHaveBeenCalledTimes(2);
   });
