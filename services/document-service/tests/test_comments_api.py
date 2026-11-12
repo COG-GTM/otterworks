@@ -87,3 +87,22 @@ async def test_delete_comment_not_found(client: AsyncClient, owner_id: uuid.UUID
         f"/api/v1/documents/{doc_id}/comments/{uuid.uuid4()}"
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_comment_404s_documented_in_openapi(client: AsyncClient):
+    resp = await client.get("/openapi.json")
+    assert resp.status_code == 200
+    paths = resp.json()["paths"]
+
+    add = paths["/api/v1/documents/{document_id}/comments"]["post"]["responses"]
+    assert add["404"]["description"] == "Document not found"
+    assert add["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
+
+    delete = paths["/api/v1/documents/{document_id}/comments/{comment_id}"]["delete"]["responses"]
+    assert delete["404"]["description"] == "Comment not found"
+    assert delete["404"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ErrorResponse"
+    }
