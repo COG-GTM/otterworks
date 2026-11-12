@@ -133,6 +133,8 @@ def test_file_and_folder_routes_enforce_ownership(api_client):
     owner = api_client.register_user("file-acl-owner")
     viewer = api_client.register_user("file-acl-viewer")
     stranger = api_client.register_user("file-acl-stranger")
+    # A second recipient, so the viewer's metadata must filter out another user's grant.
+    bystander = api_client.register_user("file-acl-bystander")
 
     folder_response = api_client.client.post(
         "/api/v1/folders",
@@ -168,6 +170,12 @@ def test_file_and_folder_routes_enforce_ownership(api_client):
     )
     assert share_response.status_code == 201, share_response.text
     assert share_response.json()["share"]["shared_by"] == owner.id
+    bystander_share = api_client.client.post(
+        f"/api/v1/files/{file_id}/share",
+        headers=owner.auth_headers,
+        json={"shared_with": bystander.id, "permission": "viewer"},
+    )
+    assert bystander_share.status_code == 201, bystander_share.text
 
     def file_calls(user):
         headers = user.auth_headers
@@ -213,6 +221,7 @@ def test_file_and_folder_routes_enforce_ownership(api_client):
     assert owner_view.json()["name"] == "acl.txt"
     assert owner_view.json()["folder_id"] == folder["id"]
     assert owner_view.json()["is_trashed"] is False
+    assert [s["shared_with"] for s in owner_view.json()["shared_with"]] == [bystander.id]
 
     for method, body in (("get", None), ("put", {"name": "pwned"}), ("delete", None)):
         response = api_client.client.request(
