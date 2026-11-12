@@ -246,7 +246,15 @@ function FolderMenu({
 
   return (
     <>
-      <div className="fixed inset-0 z-10" aria-hidden="true" onClick={onClose} />
+      <div
+        className="fixed inset-0 z-10"
+        aria-hidden="true"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
       <div
         ref={menuRef}
         role="menu"

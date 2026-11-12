@@ -87,6 +87,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     fireEvent.click(backdrop!);
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
   });
 
   it("runs menu actions from the keyboard-focusable menu items", () => {
