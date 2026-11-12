@@ -1,0 +1,9 @@
+{
+  "body": {
+    "reports": [],
+    "total(golden user only)": 0
+  },
+  "content_type": "application/json",
+  "request": "GET /api/v1/reports?userId=golden-fixture-user",
+  "status": 200
+}

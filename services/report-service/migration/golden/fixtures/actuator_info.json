@@ -1,0 +1,11 @@
+{
+  "body": {
+    "app": {
+      "name": "OtterWorks Report Service",
+      "version": "0.1.0"
+    }
+  },
+  "content_type": "application/vnd.spring-boot.actuator.v3+json",
+  "request": "GET /actuator/info",
+  "status": 200
+}

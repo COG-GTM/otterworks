@@ -1,0 +1,8 @@
+{
+  "body": {
+    "status": "UP"
+  },
+  "content_type": "application/vnd.spring-boot.actuator.v3+json",
+  "request": "GET /actuator/health",
+  "status": 200
+}

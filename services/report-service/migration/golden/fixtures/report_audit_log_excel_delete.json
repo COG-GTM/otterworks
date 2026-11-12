@@ -1,0 +1,6 @@
+{
+  "body": null,
+  "content_type": null,
+  "request": "DELETE /api/v1/reports/{audit_log_excel}",
+  "status": 204
+}

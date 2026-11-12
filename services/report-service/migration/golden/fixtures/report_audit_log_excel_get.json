@@ -1,0 +1,21 @@
+{
+  "body": {
+    "category": "AUDIT_LOG",
+    "completedAt": "<timestamp>",
+    "createdAt": "<timestamp>",
+    "dateFrom": "2026-10-01T00:00:00.000+00:00",
+    "dateTo": "2026-10-31T00:00:00.000+00:00",
+    "downloadUrl": null,
+    "errorMessage": "org.springframework.web.client.ResourceAccessException: I/O error on GET request for \"http://audit-service:8090/api/v1/audit/events\": audit-service; nested exception is java.net.UnknownHostException: audit-service",
+    "fileSizeBytes": null,
+    "id": "audit_log_excel",
+    "reportName": "Golden AUDIT_LOG EXCEL",
+    "reportType": "EXCEL",
+    "requestedBy": "golden-fixture-user",
+    "rowCount": null,
+    "status": "FAILED"
+  },
+  "content_type": "application/json",
+  "request": "GET /api/v1/reports/{audit_log_excel}",
+  "status": 200
+}

@@ -1,0 +1,21 @@
+{
+  "body": {
+    "category": "USER_ACTIVITY",
+    "completedAt": "<timestamp>",
+    "createdAt": "<timestamp>",
+    "dateFrom": "2026-10-01T00:00:00.000+00:00",
+    "dateTo": "2026-10-31T00:00:00.000+00:00",
+    "downloadUrl": "/api/v1/reports/user_activity_pdf/download",
+    "errorMessage": null,
+    "fileSizeBytes": "<positive>",
+    "id": "user_activity_pdf",
+    "reportName": "Golden USER_ACTIVITY PDF",
+    "reportType": "PDF",
+    "requestedBy": "golden-fixture-user",
+    "rowCount": 25,
+    "status": "COMPLETED"
+  },
+  "content_type": "application/json",
+  "request": "GET /api/v1/reports/{user_activity_pdf}",
+  "status": 200
+}

@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Not Found",
+    "path": "/actuator/env",
+    "status": 404,
+    "timestamp": "<timestamp>"
+  },
+  "content_type": "application/json",
+  "request": "GET /actuator/env",
+  "status": 404
+}

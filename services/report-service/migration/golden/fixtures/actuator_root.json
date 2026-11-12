@@ -1,0 +1,29 @@
+{
+  "body": {
+    "_links": {
+      "health": {
+        "href": "<base>/actuator/health",
+        "templated": false
+      },
+      "health-path": {
+        "href": "<base>/actuator/health/{*path}",
+        "templated": true
+      },
+      "info": {
+        "href": "<base>/actuator/info",
+        "templated": false
+      },
+      "prometheus": {
+        "href": "<base>/actuator/prometheus",
+        "templated": false
+      },
+      "self": {
+        "href": "<base>/actuator",
+        "templated": false
+      }
+    }
+  },
+  "content_type": "application/vnd.spring-boot.actuator.v3+json",
+  "request": "GET /actuator",
+  "status": 200
+}

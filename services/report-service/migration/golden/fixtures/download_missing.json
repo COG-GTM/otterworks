@@ -1,0 +1,6 @@
+{
+  "body": null,
+  "content_type": null,
+  "request": "GET /api/v1/reports/987654321/download",
+  "status": 404
+}

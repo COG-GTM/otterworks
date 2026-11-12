@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Bad Request",
+    "path": "/api/v1/reports",
+    "status": 400,
+    "timestamp": "<timestamp>"
+  },
+  "content_type": "application/json",
+  "request": "POST /api/v1/reports",
+  "status": 400
+}
