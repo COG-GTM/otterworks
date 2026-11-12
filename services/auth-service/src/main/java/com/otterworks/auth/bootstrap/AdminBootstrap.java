@@ -1,7 +1,9 @@
 package com.otterworks.auth.bootstrap;
 
+import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.UserRepository;
+import jakarta.validation.Validator;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +28,7 @@ public class AdminBootstrap implements ApplicationRunner {
 
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
+  private final Validator validator;
   private final String email;
   private final String password;
   private final String displayName;
@@ -33,11 +36,13 @@ public class AdminBootstrap implements ApplicationRunner {
   public AdminBootstrap(
       UserRepository userRepository,
       PasswordEncoder passwordEncoder,
+      Validator validator,
       @Value("${auth.bootstrap-admin.email:}") String email,
       @Value("${auth.bootstrap-admin.password:}") String password,
       @Value("${auth.bootstrap-admin.display-name:Administrator}") String displayName) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
+    this.validator = validator;
     this.email = email == null ? "" : email.trim();
     this.password = password == null ? "" : password;
     this.displayName = displayName;
@@ -50,6 +55,10 @@ public class AdminBootstrap implements ApplicationRunner {
 
   boolean bootstrap() {
     if (email.isEmpty()) {
+      return false;
+    }
+    if (!validator.validateValue(LoginRequest.class, "email", email).isEmpty()) {
+      log.warn("Admin bootstrap skipped: AUTH_BOOTSTRAP_ADMIN_EMAIL is not a valid login email");
       return false;
     }
     if (password.length() < MIN_PASSWORD_LENGTH) {

@@ -6,6 +6,8 @@ import static org.mockito.Mockito.*;
 
 import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.UserRepository;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,8 +25,12 @@ class AdminBootstrapTest {
   @Mock private UserRepository userRepository;
   @Mock private PasswordEncoder passwordEncoder;
 
+  private static final Validator VALIDATOR =
+      Validation.buildDefaultValidatorFactory().getValidator();
+
   private AdminBootstrap bootstrap(String email, String password) {
-    return new AdminBootstrap(userRepository, passwordEncoder, email, password, "Ops Admin");
+    return new AdminBootstrap(
+        userRepository, passwordEncoder, VALIDATOR, email, password, "Ops Admin");
   }
 
   @Test
@@ -37,6 +43,13 @@ class AdminBootstrapTest {
   void refusesShortOrMissingPassword() {
     assertThat(bootstrap(EMAIL, "").bootstrap()).isFalse();
     assertThat(bootstrap(EMAIL, "Admin123!").bootstrap()).isFalse();
+    verifyNoInteractions(userRepository, passwordEncoder);
+  }
+
+  @Test
+  void refusesEmailThatLoginWouldReject() {
+    assertThat(bootstrap("not-an-email", PASSWORD).bootstrap()).isFalse();
+    assertThat(bootstrap("ops@@example.com", PASSWORD).bootstrap()).isFalse();
     verifyNoInteractions(userRepository, passwordEncoder);
   }
 
