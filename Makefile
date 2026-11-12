@@ -59,7 +59,7 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # The compose files take the Postgres password from OTTERWORKS_DB_PASSWORD in the
 # gitignored .env; `make env` generates a random one on first use.
-LOCAL_DB_PASSWORD = $$(sed -n 's/^OTTERWORKS_DB_PASSWORD=//p' .env 2>/dev/null | tail -n1)
+LOCAL_DB_PASSWORD = $$(sed -n 's/^OTTERWORKS_DB_PASSWORD=//p' .env 2>/dev/null | tail -n1 | tr -d "\"'")
 
 env: ## Generate .env with a random local Postgres password (kept if already set)
 	@./scripts/ensure-local-env.sh
