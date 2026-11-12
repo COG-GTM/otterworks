@@ -1,8 +1,12 @@
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { searchApi } from "@/lib/api";
 import type { SearchResult } from "@/types";
-import { SearchResults } from "./search";
+import { SearchContent, SearchResults } from "./search";
+
+vi.mock("@/lib/api", () => ({ searchApi: { search: vi.fn() } }));
 
 const base = { path: "/", updatedAt: new Date().toISOString(), ownerName: "Otter" };
 
@@ -58,5 +62,32 @@ describe("SearchResults", () => {
   it("uses singular wording for one result", () => {
     renderResults({ submittedQuery: "logo", results: [results[2]] });
     expect(screen.getByText(/1 result for/)).toBeInTheDocument();
+  });
+});
+
+describe("SearchContent", () => {
+  it("renders hits fetched for the URL query", async () => {
+    vi.mocked(searchApi.search).mockResolvedValue({
+      data: results,
+      total: 3,
+      page: 1,
+      pageSize: 20,
+      hasMore: false,
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/search?q=plan"]}>
+          <SearchContent />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/3 results for/)).toBeInTheDocument();
+    expect(searchApi.search).toHaveBeenCalledWith({ query: "plan", type: undefined });
+    expect(screen.getByText("Quarterly plan").closest("a")).toHaveAttribute("href", "/documents/doc-1");
+    expect(screen.getByText("Designs").closest("a")).toHaveAttribute("href", "/files?folder=fold-1");
+    expect(screen.getByText("logo.png").closest("a")).toHaveAttribute("href", "/files/file-1");
   });
 });

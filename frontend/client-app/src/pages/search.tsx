@@ -48,7 +48,7 @@ function escapeHtml(text: string): string {
 }
 import type { SearchResult } from "@/types";
 
-function SearchContent() {
+export function SearchContent() {
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(initialQuery);
