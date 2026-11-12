@@ -31,6 +31,10 @@ GOLDEN_HOST_SUFFIX="${GOLDEN_HOST_SUFFIX:-otterworks.app}"
 JWT_SECRET="${JWT_SECRET:-$(openssl rand -hex 32)}"
 # Rails (admin-service) session key. Stable value recommended across redeploys.
 SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
+# admin-service chaos endpoint second factor (X-Chaos-Secret, alongside an admin
+# JWT). The endpoint is disabled when unset. Read it back with:
+#   kubectl -n <ns> get secret admin-service-secrets -o jsonpath='{.data.CHAOS_SECRET}' | base64 -d
+CHAOS_SECRET="${CHAOS_SECRET:-$(openssl rand -hex 32)}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -398,7 +402,8 @@ build_helm_args() {
       # Settings (auto-investigate, Devin credentials) and chaos flags live in Redis.
       EXTRA_ARGS+=(--set-string "config.REDIS_HOST=${REDIS_HOST}" --set-string "config.REDIS_PORT=6379")
       add_secret DATABASE_PASSWORD "${DB_PASSWORD}"
-      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}" ;;
+      add_secret SECRET_KEY_BASE "${SECRET_KEY_BASE}"
+      add_secret CHAOS_SECRET "${CHAOS_SECRET}" ;;
     audit-service)
       EXTRA_ARGS+=(--set-string "config.Aws__Region=${AWS_REGION}")
       EXTRA_ARGS+=(--set-string "config.Aws__DynamoDbTable=${DDB_AUDIT}")

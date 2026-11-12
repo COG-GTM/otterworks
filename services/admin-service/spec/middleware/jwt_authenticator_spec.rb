@@ -35,4 +35,11 @@ RSpec.describe JwtAuthenticator do
     expect(status).to eq(401)
     expect(JSON.parse(body.first)['error']).to eq('Invalid or expired token')
   end
+
+  it 'requires a token for the chaos endpoint' do
+    env = Rack::MockRequest.env_for('/api/v1/admin/chaos', method: 'POST')
+    status, _headers, body = described_class.new(app).call(env)
+    expect(status).to eq(401)
+    expect(JSON.parse(body.first)['error']).to eq('Missing authorization token')
+  end
 end

@@ -5,6 +5,7 @@ import { IncidentsComponent } from './incidents.component';
 import { AdminApiService } from '../../core/services/admin-api.service';
 import { Incident } from '../../core/models/incident.model';
 import { of, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { OverlayModule } from '@angular/cdk/overlay';
 
@@ -188,6 +189,56 @@ describe('IncidentsComponent', () => {
       component.deleteIncident(incident);
 
       expect(apiSpy.deleteIncident).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('chaos controls', () => {
+    const secretRequired = () => throwError(() => new HttpErrorResponse({
+      status: 403, error: { code: 'chaos_secret_required' },
+    }));
+
+    beforeEach(() => sessionStorage.removeItem('ow_admin_chaos_secret'));
+    afterEach(() => sessionStorage.removeItem('ow_admin_chaos_secret'));
+
+    it('prompts for the chaos secret and sends it with the trigger', () => {
+      spyOn(window, 'prompt').and.returnValue('s3cret');
+      apiSpy.triggerChaos.and.returnValue(of({ status: 'chaos_active', key: 'k', expires_in: 600 }));
+
+      component.triggerChaos('file-service', 'upload_s3_error');
+
+      expect(apiSpy.triggerChaos).toHaveBeenCalledWith('file-service', 'upload_s3_error', 's3cret');
+      expect(component.chaosState['file-service']).toBeTrue();
+      expect(sessionStorage.getItem('ow_admin_chaos_secret')).toBe('s3cret');
+    });
+
+    it('does not call the API when the prompt is cancelled', () => {
+      spyOn(window, 'prompt').and.returnValue(null);
+
+      component.triggerChaos('file-service', 'upload_s3_error');
+
+      expect(apiSpy.triggerChaos).not.toHaveBeenCalled();
+    });
+
+    it('re-prompts once when the stored secret is rejected', () => {
+      sessionStorage.setItem('ow_admin_chaos_secret', 'stale');
+      spyOn(window, 'prompt').and.returnValue('fresh');
+      apiSpy.resetChaos.and.returnValues(secretRequired(), of({ status: 'reset', cleared: [] }));
+
+      component.resetAllChaos();
+
+      expect(apiSpy.resetChaos.calls.allArgs()).toEqual([['stale'], ['fresh']]);
+      expect(sessionStorage.getItem('ow_admin_chaos_secret')).toBe('fresh');
+    });
+
+    it('stops after a second rejection and clears the stored secret', () => {
+      spyOn(window, 'prompt').and.returnValue('wrong');
+      apiSpy.triggerChaos.and.returnValue(secretRequired());
+
+      component.triggerChaos('file-service', 'upload_s3_error');
+
+      expect(apiSpy.triggerChaos).toHaveBeenCalledTimes(2);
+      expect(sessionStorage.getItem('ow_admin_chaos_secret')).toBeNull();
+      expect(component.chaosState['file-service']).toBeFalsy();
     });
   });
 });

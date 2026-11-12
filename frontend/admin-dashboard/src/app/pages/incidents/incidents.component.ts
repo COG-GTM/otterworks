@@ -17,9 +17,12 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { AdminApiService } from '../../core/services/admin-api.service';
 import { Incident, AFFECTED_SERVICES } from '../../core/models/incident.model';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.component';
-import { Subscription, interval } from 'rxjs';
+import { Observable, Subscription, interval } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
 
 const CHAOS_STATE_KEY = 'ow_admin_chaos_state';
+// Operator-entered CHAOS_SECRET; tab-scoped so it is never persisted across sessions.
+const CHAOS_SECRET_KEY = 'ow_admin_chaos_secret';
 
 @Component({
   selector: 'app-incidents',
@@ -646,21 +649,57 @@ export class IncidentsComponent implements OnInit, OnDestroy {
   }
 
   triggerChaos(service: string, scenario: string): void {
-    this.chaosLoading = true;
-    this.api.triggerChaos(service, scenario).subscribe({
+    this.withChaosSecret(secret => this.api.triggerChaos(service, scenario, secret), {
       next: () => {
         this.chaosState[service] = true;
         this.saveChaosState();
-        this.chaosLoading = false;
         this.snackBar.open(
           `Chaos active on ${service} — watch Grafana for the alert (auto-resets in 10m)`,
           'Dismiss',
           { duration: 6000 },
         );
       },
-      error: () => {
+      failure: `Failed to trigger chaos on ${service}`,
+    });
+  }
+
+  // Runs a chaos call with the operator's CHAOS_SECRET, prompting for it when
+  // none is stored or admin-service rejects the stored one.
+  private withChaosSecret<T>(
+    call: (secret: string) => Observable<T>,
+    handlers: { next: (res: T) => void; failure: string },
+    retried = false,
+  ): void {
+    let secret = sessionStorage.getItem(CHAOS_SECRET_KEY) || '';
+    if (!secret) {
+      secret = (window.prompt('Enter the chaos secret (CHAOS_SECRET configured on admin-service):') || '').trim();
+      if (!secret) return;
+      sessionStorage.setItem(CHAOS_SECRET_KEY, secret);
+    }
+    this.chaosLoading = true;
+    call(secret).subscribe({
+      next: (res) => {
         this.chaosLoading = false;
-        this.snackBar.open(`Failed to trigger chaos on ${service}`, 'Dismiss', { duration: 3000 });
+        handlers.next(res);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.chaosLoading = false;
+        const code = err.error?.code;
+        if (code === 'chaos_secret_required') {
+          sessionStorage.removeItem(CHAOS_SECRET_KEY);
+          if (!retried) {
+            this.withChaosSecret(call, handlers, true);
+            return;
+          }
+          this.snackBar.open('Invalid chaos secret', 'Dismiss', { duration: 4000 });
+          return;
+        }
+        if (code === 'chaos_disabled') {
+          this.snackBar.open('Chaos injection is disabled: CHAOS_SECRET is not configured on admin-service', 'Dismiss', { duration: 6000 });
+          return;
+        }
+        const detail = err.status === 403 ? 'Admin role required' : handlers.failure;
+        this.snackBar.open(detail, 'Dismiss', { duration: 3000 });
       },
     });
   }
@@ -687,12 +726,10 @@ export class IncidentsComponent implements OnInit, OnDestroy {
   }
 
   resetAllChaos(): void {
-    this.chaosLoading = true;
-    this.api.resetChaos().subscribe({
+    this.withChaosSecret(secret => this.api.resetChaos(secret), {
       next: (res) => {
         this.chaosState = {};
         this.saveChaosState();
-        this.chaosLoading = false;
         const cleared = res.cleared?.length ?? 0;
         const resolved = (res as any).resolved_incidents?.length ?? 0;
         const msg = resolved > 0
@@ -701,10 +738,7 @@ export class IncidentsComponent implements OnInit, OnDestroy {
         this.snackBar.open(msg, 'Dismiss', { duration: 5000 });
         this.loadIncidents();
       },
-      error: () => {
-        this.chaosLoading = false;
-        this.snackBar.open('Failed to reset chaos flags', 'Dismiss', { duration: 3000 });
-      },
+      failure: 'Failed to reset chaos flags',
     });
   }
 }
