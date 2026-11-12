@@ -69,7 +69,8 @@ Not covered: the `409` download response while a report is still `PENDING`/`GENE
 - `fileSizeBytes` exact for CSV, `<positive>` for PDF / XLSX
 - `Content-Disposition` filename timestamp → `_<timestamp>.`
 - List responses are filtered to `requestedBy = golden-fixture-user` (the replay deletes
-  leftovers of that user before it starts), so other data in the database is ignored
+  leftovers of that user before it starts: those it can list, plus the IDs an interrupted run
+  left in the git-ignored `.replay-inflight.json`), so other data in the database is ignored
 - CSV: parsed rows; `# Generated:` banner time masked
 - XLSX: sheet order, cell values per row, merged ranges and auto-filter; `Generated:` masked
 - PDF: whitespace-separated text tokens (pypdf); `Generated:` time masked
