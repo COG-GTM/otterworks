@@ -5,24 +5,42 @@ import inspect
 import textwrap
 
 import pytest
+from fastapi import status
 from fastapi.routing import APIRoute
 
 from app.api import comments, documents, templates
 from app.main import app
 
 
-def _raised_status_codes(endpoint) -> set[int]:
-    tree = ast.parse(textwrap.dedent(inspect.getsource(endpoint)))
+def _status_code(node: ast.expr) -> int | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        return node.value
+    if isinstance(node, ast.Attribute) and getattr(node.value, "id", None) == "status":
+        return getattr(status, node.attr, None)
+    return None
+
+
+def _raised_status_codes(func, seen: set | None = None) -> set[int]:
+    """Statuses raised by ``func`` and by the same-module helpers it calls."""
+    seen = set() if seen is None else seen
+    if func in seen:
+        return set()
+    seen.add(func)
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
     codes: set[int] = set()
     for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            helper = func.__globals__.get(node.func.id)
+            if inspect.isfunction(helper) and helper.__module__ == func.__module__:
+                codes |= _raised_status_codes(helper, seen)
         if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
             continue
-        func = node.exc.func
-        if getattr(func, "id", getattr(func, "attr", None)) != "HTTPException":
+        exc = node.exc.func
+        if getattr(exc, "id", getattr(exc, "attr", None)) != "HTTPException":
             continue
         for kw in node.exc.keywords:
-            if kw.arg == "status_code" and isinstance(kw.value, ast.Constant):
-                codes.add(kw.value.value)
+            if kw.arg == "status_code" and (code := _status_code(kw.value)) is not None:
+                codes.add(code)
     return codes
 
 
