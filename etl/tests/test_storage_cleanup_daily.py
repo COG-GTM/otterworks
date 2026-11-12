@@ -91,8 +91,13 @@ class ExpectedBucketOwnerTest(unittest.TestCase):
             s3.add_response("list_objects_v2", listing(), {"Bucket": "files", "Prefix": "files/", "ExpectedBucketOwner": OWNER})
             s3.add_client_error("copy_object", service_error_code="AccessDenied", http_status_code=403)
             report.add_response("put_object", {}, {"Bucket": "lake", "Key": ANY, "Body": ANY, "ExpectedBucketOwner": OWNER})
+            attempted = []
+            self.s3.meta.events.register(
+                "provide-client-params.s3.*", lambda model, **_: attempted.append(model.name)
+            )
             run_job([self.sts, self.s3, self.report])
             s3.assert_no_pending_responses()
+            self.assertEqual(attempted, ["ListObjectsV2", "CopyObject"])
 
     def test_foreign_file_bucket_aborts_before_any_change(self):
         with Stubber(self.s3) as s3:
