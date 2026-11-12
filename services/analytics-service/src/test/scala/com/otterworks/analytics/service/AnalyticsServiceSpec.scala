@@ -22,6 +22,8 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     maxPoolSize = 2
   )
 
+  private val SecondUserId = "user-2"
+
   private def createService(): AnalyticsService =
     val repo = MetricsRepository(testConfig)
     AnalyticsService(repo)
@@ -48,7 +50,7 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
 
     // Track some events
     service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentCreated, "user-2", "doc-2", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, SecondUserId, "doc-2", "document", Map.empty).futureValue
     service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
     service.trackEvent(EventType.CollabSessionStarted, "user-1", "session-1", "session", Map.empty).futureValue
 
@@ -68,7 +70,7 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
     service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentCreated, "user-2", "doc-2", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, SecondUserId, "doc-2", "document", Map.empty).futureValue
 
     val activity = service.getUserActivity("user-1").futureValue
 
@@ -84,7 +86,7 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     val service = createService()
 
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, SecondUserId, "doc-1", "document", Map.empty).futureValue
     service.trackEvent(EventType.DocumentEdited, "user-1", "doc-1", "document", Map.empty).futureValue
     service.trackEvent(EventType.DocumentShared, "user-1", "doc-1", "document", Map.empty).futureValue
 
@@ -102,7 +104,7 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
 
     // doc-1 gets 3 events, doc-2 gets 1
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map("title" -> "Popular")).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map("title" -> "Popular")).futureValue
+    service.trackEvent(EventType.DocumentViewed, SecondUserId, "doc-1", "document", Map("title" -> "Popular")).futureValue
     service.trackEvent(EventType.DocumentEdited, "user-1", "doc-1", "document", Map("title" -> "Popular")).futureValue
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-2", "document", Map("title" -> "Less Popular")).futureValue
 
@@ -119,7 +121,7 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
 
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
     service.trackEvent(EventType.DocumentViewed, "user-1", "doc-2", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, SecondUserId, "doc-1", "document", Map.empty).futureValue
 
     val response = service.getActiveUsers("daily").futureValue
 
