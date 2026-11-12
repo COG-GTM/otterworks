@@ -28,8 +28,8 @@ function result(type: SearchResult["type"], id: string, name: string): SearchRes
   } as SearchResult;
 }
 
-function page(data: SearchResult[]): PaginatedResponse<SearchResult> {
-  return { data, total: data.length } as PaginatedResponse<SearchResult>;
+function page(data: SearchResult[], total = data.length): PaginatedResponse<SearchResult> {
+  return { data, total } as PaginatedResponse<SearchResult>;
 }
 
 function renderSearch(url = "/search") {
@@ -85,6 +85,14 @@ describe("SearchPage results", () => {
     expect(link("Doc One")?.firstElementChild).toHaveClass("text-blue-600", "bg-blue-50");
     expect(link("Folder One")?.firstElementChild).toHaveClass("text-amber-600", "bg-amber-50");
     expect(link("File One")?.firstElementChild).toHaveClass("text-otter-600", "bg-otter-50");
+  });
+
+  it("reports the server total rather than the page size", async () => {
+    search.mockResolvedValue(
+      page([result("file", "x1", "Page One"), result("file", "x2", "Page Two")], 42),
+    );
+    renderSearch("/search?q=page");
+    expect(await screen.findByText(/42 results for/)).toBeInTheDocument();
   });
 
   it("uses the singular label for a single result", async () => {
