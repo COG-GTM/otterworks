@@ -219,14 +219,14 @@ define validate_ns
 $(if $(filter ok,$(shell echo '$(NS)' | grep -qE '^[A-Za-z0-9_]+$$' && echo ok)),,$(error NS must contain only letters, digits, and underscores))
 endef
 
-testdata-validate: ## Validate generated test data (NS=<namespace>, CRITERIA=<file>)
+testdata-validate: env ## Validate generated test data (NS=<namespace>, CRITERIA=<file>)
 ifndef NS
 	$(error NS is required, e.g. make testdata-validate NS=dev)
 endif
 	$(call validate_ns)
-	uv run testdata/harness/validate.py --ns $(NS) $(if $(CRITERIA),--criteria $(CRITERIA),)
+	DB_PASSWORD=$${DB_PASSWORD:-$(LOCAL_DB_PASSWORD)} uv run testdata/harness/validate.py --ns $(NS) $(if $(CRITERIA),--criteria $(CRITERIA),)
 
-testdata-clean: ## Drop a test-data namespace schema (NS=<namespace>)
+testdata-clean: env ## Drop a test-data namespace schema (NS=<namespace>)
 ifndef NS
 	$(error NS is required, e.g. make testdata-clean NS=dev)
 endif
@@ -238,7 +238,7 @@ endif
 		-c "DROP SCHEMA IF EXISTS otterworks_$(NS) CASCADE;"
 	@echo "Done."
 
-testdata-setup-schema: ## Create a namespaced schema (NS=<namespace>)
+testdata-setup-schema: env ## Create a namespaced schema (NS=<namespace>)
 ifndef NS
 	$(error NS is required, e.g. make testdata-setup-schema NS=dev)
 endif
