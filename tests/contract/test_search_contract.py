@@ -4,7 +4,11 @@ Loads the OpenAPI spec from shared/openapi/search-service.yaml and validates
 that a running search-service instance conforms to the documented contract.
 
 Usage:
-    SEARCH_SERVICE_URL=http://localhost:8087 pytest tests/contract/test_search_contract.py -v
+    SEARCH_SERVICE_URL=http://localhost:8087 SEARCH_SERVICE_TOKEN=<token> \
+        pytest tests/contract/test_search_contract.py -v
+
+The index endpoints are internal and only accept the service token; their
+validation cases are skipped when SEARCH_SERVICE_TOKEN is not set.
 
 Requirements:
     pip install pyyaml jsonschema requests pytest
@@ -23,6 +27,7 @@ from jsonschema import validate
 
 SPEC_PATH = Path(__file__).resolve().parents[2] / "shared" / "openapi" / "search-service.yaml"
 BASE_URL = os.environ.get("SEARCH_SERVICE_URL", "http://localhost:8087")
+SERVICE_TOKEN = os.environ.get("SEARCH_SERVICE_TOKEN", "")
 
 
 @pytest.fixture(scope="session")
@@ -291,14 +296,42 @@ class TestAnalyticsEndpoint:
         assert isinstance(body["total_searches"], int)
 
 
+def _service_headers() -> dict[str, str]:
+    if not SERVICE_TOKEN:
+        pytest.skip("SEARCH_SERVICE_TOKEN not set; index endpoints are service-token only")
+    return {"Authorization": f"Bearer {SERVICE_TOKEN}"}
+
+
 class TestIndexEndpoints:
-    """Tests for indexing endpoints."""
+    """Tests for indexing endpoints (service token only)."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("post", "/api/v1/search/index/document"),
+            ("post", "/api/v1/search/index/file"),
+            ("delete", "/api/v1/search/index/document/test-doc-001"),
+            ("post", "/api/v1/search/reindex"),
+        ],
+    )
+    def test_index_routes_forbid_gateway_users(
+        self, openapi_spec: dict[str, Any], method: str, path: str
+    ) -> None:
+        """A gateway-injected X-User-ID is not enough to mutate the index."""
+        resp = requests.request(
+            method,
+            f"{BASE_URL}{path}",
+            json={"id": "test-doc-001", "title": "x", "name": "x", "owner_id": "victim"},
+            headers={"X-User-ID": "test-user-001"},
+        )
+        assert resp.status_code == 403
+        assert "error" in resp.json()
 
     def test_index_document_missing_body(self, openapi_spec: dict[str, Any]) -> None:
         """POST /api/v1/search/index/document without body returns 400."""
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/document",
-            headers={"Content-Type": "application/json", "X-User-ID": "test-user-001"},
+            headers={"Content-Type": "application/json", **_service_headers()},
         )
         # Flask returns 400 for missing JSON body
         assert resp.status_code == 400
@@ -310,7 +343,7 @@ class TestIndexEndpoints:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/document",
             json={"title": "Test Doc"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=_service_headers(),
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -320,7 +353,7 @@ class TestIndexEndpoints:
         """POST /api/v1/search/index/file without body returns 400."""
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/file",
-            headers={"Content-Type": "application/json", "X-User-ID": "test-user-001"},
+            headers={"Content-Type": "application/json", **_service_headers()},
         )
         assert resp.status_code == 400
         body = resp.json()
@@ -331,7 +364,7 @@ class TestIndexEndpoints:
         resp = requests.post(
             f"{BASE_URL}/api/v1/search/index/file",
             json={"id": "file-001"},
-            headers={"X-User-ID": "test-user-001"},
+            headers=_service_headers(),
         )
         assert resp.status_code == 400
         body = resp.json()

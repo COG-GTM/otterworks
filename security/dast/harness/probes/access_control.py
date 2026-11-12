@@ -425,6 +425,101 @@ def search_tenant_leak(ctx: ScanContext) -> Result:
     )
 
 
+@probe(
+    finding_id="DAST-SEARCH-INDEX-WRITE",
+    title="Any user can write into or delete from the shared search index",
+    severity=Severity.MEDIUM,
+    owasp="API5:2023 Broken Function Level Authorization",
+    cwe="CWE-862",
+    service="search-service",
+    remediation=(
+        "Restrict the index/delete/reindex routes to service-to-service callers (a shared "
+        "service token or network policy) and never take owner_id from a user's request."
+    ),
+)
+def search_index_write(ctx: ScanContext) -> Result:
+    """Attacker plants an index entry owned by the victim, then deletes it.
+
+    Only scan-owned ids are written, so a vulnerable target is left as it was:
+    the delete that proves the second half of the finding is also the cleanup.
+    /reindex is not sent — on a vulnerable target it rebuilds the whole tenant.
+    """
+    self = search_index_write.probe
+    if not ctx.victim.user_id:
+        return self.result(Verdict.INCONCLUSIVE, "the victim identity has no user id")
+
+    plant_id = f"dast-index-{ctx.run_id}"
+    attempts = [
+        (
+            "POST",
+            "/api/v1/search/index/document",
+            {
+                "id": plant_id,
+                "title": f"Payroll update, sign in here {ctx.plant_marker}",
+                "content": ctx.plant_marker,
+                "owner_id": ctx.victim.user_id,
+            },
+        ),
+        (
+            "POST",
+            "/api/v1/search/index/file",
+            {"id": plant_id, "name": f"{ctx.plant_marker}.pdf", "owner_id": ctx.victim.user_id},
+        ),
+        ("DELETE", f"/api/v1/search/index/document/{plant_id}", None),
+        ("DELETE", f"/api/v1/search/index/file/{plant_id}", None),
+    ]
+    evidence: list[Evidence] = []
+    accepted: list[str] = []
+    unreached: list[str] = []
+    unexpected: list[str] = []
+    for method, path, body in attempts:
+        response = ctx.request(method, path, identity=ctx.attacker, json=body)
+        evidence.append(Evidence.from_response(response, note=f"{method} {path}"))
+        if unavailable(response):
+            unreached.append(f"{method} {path} -> {response.status_code}")
+        elif response.status_code < 400 or (
+            # The handler answering "not found" is the handler running for the attacker.
+            method == "DELETE" and response.status_code == 404 and "not_found" in response.text
+        ):
+            accepted.append(f"{method} {path} -> {response.status_code}")
+        elif response.status_code not in (401, 403):
+            # A router-level 404 is not an authorization decision: the route may be
+            # renamed or gone from this target, which leaves the control unmeasured.
+            unexpected.append(f"{method} {path} -> {response.status_code}")
+    if accepted:
+        return self.result(
+            Verdict.VULNERABLE,
+            f"the attacker's token reached the index handlers: {', '.join(accepted)}",
+            evidence,
+        )
+    if unreached:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"index routes never produced an auth verdict: {', '.join(unreached)}",
+            evidence,
+        )
+    if unexpected:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"index routes answered without an auth refusal: {', '.join(unexpected)}",
+            evidence,
+        )
+    # Control request: search-service has to be routed and answering for the
+    # refusals above to be its decision rather than a dead route.
+    if ctx.search_as(ctx.attacker, ctx.plant_marker) is None:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "search-service did not answer an ordinary search, so the refusals cannot be "
+            "attributed to it",
+            evidence,
+        )
+    return self.result(
+        Verdict.SECURE,
+        "search works for the attacker but every index write and delete was refused",
+        evidence,
+    )
+
+
 def _forge_share_token(document_id: str, salt: str, length: int) -> str:
     """Derive a share token the way an unkeyed digest lets anyone derive it.
 

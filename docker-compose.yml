@@ -302,6 +302,7 @@ services:
       OTEL_SERVICE_NAME: search-service
       SQS_ENABLED: 'true'
       SQS_QUEUE_URL: http://localstack:4566/000000000000/otterworks-search-events
+      SEARCH_SERVICE_TOKEN: ${SEARCH_SERVICE_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
     depends_on:
       meilisearch:
