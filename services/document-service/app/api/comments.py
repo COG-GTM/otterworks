@@ -6,6 +6,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.errors import error_responses
 from app.db.session import get_db
 from app.schemas.document import CommentCreate, CommentResponse
 from app.services.document_service import DocumentService
@@ -18,6 +19,7 @@ router = APIRouter()
     "/{document_id}/comments",
     response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=error_responses(404),
 )
 async def add_comment(
     document_id: UUID,
@@ -46,6 +48,7 @@ async def list_comments(
 @router.delete(
     "/{document_id}/comments/{comment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    responses=error_responses(404),
 )
 async def delete_comment(
     document_id: UUID,
