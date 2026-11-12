@@ -85,6 +85,10 @@ describe("SearchPage results", () => {
     expect(link("Doc One")?.firstElementChild).toHaveClass("text-blue-600", "bg-blue-50");
     expect(link("Folder One")?.firstElementChild).toHaveClass("text-amber-600", "bg-amber-50");
     expect(link("File One")?.firstElementChild).toHaveClass("text-otter-600", "bg-otter-50");
+    const icon = (name: string) => link(name)?.querySelector("svg");
+    expect(icon("Doc One")).toHaveClass("lucide-file-text");
+    expect(icon("Folder One")).toHaveClass("lucide-folder-open");
+    expect(icon("File One")).toHaveClass("lucide-file");
   });
 
   it("reports the server total rather than the page size", async () => {
