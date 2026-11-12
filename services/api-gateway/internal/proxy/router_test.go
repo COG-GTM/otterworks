@@ -102,3 +102,50 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+func TestProxyForwardsRolesFromJWTOnly(t *testing.T) {
+	var gotRoles []string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRoles = r.Header.Values("X-User-Roles")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	handler := newTestRouter(t, backend.URL)
+
+	sign := func(roles []string) string {
+		claims := middleware.JWTClaims{
+			Roles: roles,
+			RegisteredClaims: jwt.RegisteredClaims{
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Subject:   "user-123",
+			},
+		}
+		tokenStr, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(routerTestSecret))
+		require.NoError(t, err)
+		return tokenStr
+	}
+
+	cases := []struct {
+		name  string
+		roles []string
+		want  []string
+	}{
+		{name: "roles claim is forwarded", roles: []string{"USER", "EDITOR"}, want: []string{"USER,EDITOR"}},
+		{name: "spoofed header is dropped when the token has no roles", roles: nil, want: nil},
+		{name: "entries that would split or inject the header are dropped", roles: []string{"USER", "USER,ADMIN", "ADMIN\r\nX-Evil: 1"}, want: []string{"USER"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotRoles = nil
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil)
+			req.Header.Set("Authorization", "Bearer "+sign(tc.roles))
+			req.Header.Set("X-User-Roles", "ADMIN")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, tc.want, gotRoles, "X-User-Roles must come from the JWT, not the client")
+		})
+	}
+}
