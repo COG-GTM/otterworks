@@ -47,9 +47,11 @@ def secure_client(mock_meilisearch_client):
     )
 
 
-def _search_filter(mock_meilisearch_client: MagicMock) -> str:
-    mock_index = mock_meilisearch_client.index.return_value
-    return mock_index.search.call_args.args[1].get("filter", "")
+def _assert_every_search_scoped_to(mock_meilisearch_client: MagicMock, owner_id: str) -> None:
+    calls = mock_meilisearch_client.index.return_value.search.call_args_list
+    assert len(calls) == 2, "expected one search per index (documents and files)"
+    for call in calls:
+        assert f'owner_id = "{owner_id}"' in call.args[1].get("filter", "")
 
 
 class TestUserRoutes:
@@ -91,14 +93,14 @@ class TestUserRoutes:
         headers = {**_bearer(_make_token(ALICE)), "X-User-ID": ALICE}
         response = secure_client.get("/api/v1/search/?q=design", headers=headers)
         assert response.status_code == 200
-        assert f'owner_id = "{ALICE}"' in _search_filter(mock_meilisearch_client)
+        _assert_every_search_scoped_to(mock_meilisearch_client, ALICE)
 
     def test_advanced_search_scoped_to_token_subject(self, secure_client, mock_meilisearch_client):
         response = secure_client.post(
             "/api/v1/search/advanced", json={}, headers=_bearer(_make_token(ALICE))
         )
         assert response.status_code == 200
-        assert f'owner_id = "{ALICE}"' in _search_filter(mock_meilisearch_client)
+        _assert_every_search_scoped_to(mock_meilisearch_client, ALICE)
 
     def test_user_id_claim_fallback(self, secure_client, mock_meilisearch_client):
         token = jwt.encode(
@@ -106,7 +108,7 @@ class TestUserRoutes:
         )
         response = secure_client.get("/api/v1/search/?q=design", headers=_bearer(token))
         assert response.status_code == 200
-        assert f'owner_id = "{ALICE}"' in _search_filter(mock_meilisearch_client)
+        _assert_every_search_scoped_to(mock_meilisearch_client, ALICE)
 
     def test_missing_jwt_secret_fails_closed(self, mock_meilisearch_client):
         client = _build_client(
