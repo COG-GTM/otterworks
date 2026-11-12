@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { uniqueEmail, registerUser, loginUser, expectDashboard, clearAuth } from "./fixtures/test-helpers";
+import { uniqueEmail, testPassword, registerUser, loginUser, expectDashboard, clearAuth } from "./fixtures/test-helpers";
 
 test.describe("Authentication", () => {
   test.describe("Registration", () => {
@@ -17,8 +17,9 @@ test.describe("Authentication", () => {
       await page.goto("/register");
       await page.getByLabel("Full name").fill("A");
       await page.getByLabel("Email").fill(uniqueEmail());
-      await page.getByLabel("Password", { exact: true }).fill("Passw0rd!23");
-      await page.getByLabel("Confirm password").fill("Passw0rd!23");
+      const password = testPassword();
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByLabel("Confirm password").fill(password);
       await page.getByRole("button", { name: "Create account" }).click();
       await expect(page.getByText("Name must be at least 2 characters")).toBeVisible();
     });
@@ -28,8 +29,9 @@ test.describe("Authentication", () => {
       await page.getByLabel("Full name").fill("Test User");
       const emailInput = page.getByLabel("Email");
       await emailInput.fill("not-an-email");
-      await page.getByLabel("Password", { exact: true }).fill("Passw0rd!23");
-      await page.getByLabel("Confirm password").fill("Passw0rd!23");
+      const password = testPassword();
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByLabel("Confirm password").fill(password);
       await page.getByRole("button", { name: "Create account" }).click();
       // Zod validation shows "Please enter a valid email" or browser native validation kicks in
       const zodError = page.getByText("Please enter a valid email");
@@ -52,8 +54,9 @@ test.describe("Authentication", () => {
       await page.goto("/register");
       await page.getByLabel("Full name").fill("Test User");
       await page.getByLabel("Email").fill(uniqueEmail());
-      await page.getByLabel("Password", { exact: true }).fill("Passw0rd!23");
-      await page.getByLabel("Confirm password").fill("DifferentPass1!");
+      const password = testPassword();
+      await page.getByLabel("Password", { exact: true }).fill(password);
+      await page.getByLabel("Confirm password").fill(`${password}-mismatch`);
       await page.getByRole("button", { name: "Create account" }).click();
       await expect(page.getByText("Passwords do not match")).toBeVisible();
     });
@@ -76,7 +79,7 @@ test.describe("Authentication", () => {
 
     test("shows validation error for empty email", async ({ page }) => {
       await page.goto("/login");
-      await page.getByLabel("Password").fill("somepassword");
+      await page.getByLabel("Password").fill(testPassword());
       await page.getByRole("button", { name: "Sign in" }).click();
       await expect(page.getByText("Please enter a valid email")).toBeVisible();
     });
@@ -89,7 +92,7 @@ test.describe("Authentication", () => {
     });
 
     test("shows error for invalid credentials", async ({ page }) => {
-      await loginUser(page, "nonexistent@test.com", "WrongPassword123");
+      await loginUser(page, "nonexistent@test.com", testPassword());
       await expect(
         page.getByText("Invalid email or password")
       ).toBeVisible({ timeout: 10_000 });
