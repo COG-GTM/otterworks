@@ -5,7 +5,7 @@ import uuid
 pytestmark = pytest.mark.api_flow
 
 
-def test_search_index_query_suggest_advanced_and_delete_flow(api_client):
+def test_search_query_suggest_advanced_flow_and_index_routes_are_internal(api_client):
     user = api_client.register_user("search-flow")
     document_id = str(uuid.uuid4())
     title = f"Unique Search Flow {api_client.run_id}"
@@ -23,8 +23,8 @@ def test_search_index_query_suggest_advanced_and_delete_flow(api_client):
             "updated_at": api_client.iso_time(),
         },
     )
-    assert index_response.status_code == 201, index_response.text
-    api_client.indexed_documents.append(document_id)
+    # Index mutation is service-to-service only; a user token must not reach it.
+    assert index_response.status_code == 403, index_response.text
 
     search_response = api_client.client.get(
         "/api/v1/search/",
@@ -33,7 +33,7 @@ def test_search_index_query_suggest_advanced_and_delete_flow(api_client):
     )
     assert search_response.status_code == 200, search_response.text
     search_data = search_response.json()
-    assert search_data["total"] >= 1
+    assert all(hit["id"] != document_id for hit in search_data["results"])
 
     suggest_response = api_client.client.get(
         "/api/v1/search/suggest",
@@ -54,8 +54,10 @@ def test_search_index_query_suggest_advanced_and_delete_flow(api_client):
         f"/api/v1/search/index/document/{document_id}",
         headers=user.auth_headers,
     )
-    assert delete_response.status_code in {200, 404}, delete_response.text
-    api_client.indexed_documents.remove(document_id)
+    assert delete_response.status_code == 403, delete_response.text
+
+    reindex_response = api_client.client.post("/api/v1/search/reindex", headers=user.auth_headers)
+    assert reindex_response.status_code == 403, reindex_response.text
 
 
 def test_search_validation_and_pagination_bounds(api_client):
@@ -84,4 +86,4 @@ def test_search_validation_and_pagination_bounds(api_client):
         headers=user.auth_headers,
         json={},
     )
-    assert empty_index.status_code == 400
+    assert empty_index.status_code == 403
