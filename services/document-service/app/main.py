@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import comments, documents, health, templates
-from app.config import settings
-from app.db.session import engine, init_db
+from app.config import DatabaseNotConfiguredError, settings
+from app.db.session import dispose_engine, init_db
 
 logger = structlog.get_logger()
 
@@ -30,6 +30,11 @@ structlog.configure(
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_starting")
+    try:
+        settings.require_database_url()
+    except DatabaseNotConfiguredError:
+        logger.error("document_service_database_url_missing")
+        raise
     await init_db()
 
     if settings.otel_enabled:
@@ -44,7 +49,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("document_service_started")
     yield
     logger.info("document_service_shutting_down")
-    await engine.dispose()
+    await dispose_engine()
 
 
 app = FastAPI(
