@@ -163,13 +163,13 @@ RSpec.describe Api::V1::Admin::SettingsController do
       expect(AdminSettingsService).not_to have_received(:set_slack_notifications)
     end
 
-    it 'allows settings reads for non-admin roles' do
+    it 'forbids settings reads for non-admin roles' do
       set_jwt_env(request, role: 'viewer')
-      allow(AdminSettingsService).to receive(:slack_notifications_enabled?).and_return(true)
-      allow(AdminSettingsService).to receive(:slack_webhook_url).and_return(nil)
 
-      get :slack_notifications
-      expect(response).to have_http_status(:ok)
+      %i[auto_investigate devin_credentials slack_notifications].each do |action|
+        get action
+        expect(response).to have_http_status(:forbidden), "expected #{action} to be forbidden"
+      end
     end
   end
 end

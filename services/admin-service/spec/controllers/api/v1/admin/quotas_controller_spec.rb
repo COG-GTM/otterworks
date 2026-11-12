@@ -19,6 +19,26 @@ RSpec.describe Api::V1::Admin::QuotasController do
       get :show, params: { user_id: SecureRandom.uuid }
       expect(response).to have_http_status(:not_found)
     end
+
+    it 'lets a non-admin read their own quota' do
+      set_jwt_env(request, user_id: user_id, role: 'user')
+      get :show, params: { user_id: user_id }
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['user_id']).to eq(user_id)
+    end
+
+    it "forbids a non-admin from reading another user's quota" do
+      set_jwt_env(request, user_id: SecureRandom.uuid, role: 'user')
+      get :show, params: { user_id: user_id }
+      expect(response).to have_http_status(:forbidden)
+      expect(response.parsed_body).not_to have_key('quota_bytes')
+    end
+
+    it 'returns 403 rather than 404 to a non-admin probing unknown users' do
+      set_jwt_env(request, user_id: SecureRandom.uuid, role: 'user')
+      get :show, params: { user_id: SecureRandom.uuid }
+      expect(response).to have_http_status(:forbidden)
+    end
   end
 
   describe 'PUT #update' do
@@ -27,6 +47,13 @@ RSpec.describe Api::V1::Admin::QuotasController do
       expect(response).to have_http_status(:ok)
       body = JSON.parse(response.body)
       expect(body['tier']).to eq('pro')
+    end
+
+    it 'forbids quota owners without an admin role from updating it' do
+      set_jwt_env(request, user_id: user_id, role: 'user')
+      put :update, params: { user_id: user_id, quota: { tier: 'enterprise' } }
+      expect(response).to have_http_status(:forbidden)
+      expect(quota.reload.tier).to eq('free')
     end
 
     it 'returns errors for invalid params' do

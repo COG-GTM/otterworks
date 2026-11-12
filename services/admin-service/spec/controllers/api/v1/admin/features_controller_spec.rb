@@ -71,4 +71,20 @@ RSpec.describe Api::V1::Admin::FeaturesController do
       expect(response).to have_http_status(:no_content)
     end
   end
+
+  describe 'role enforcement' do
+    let(:flag) { create(:feature_flag) }
+
+    it 'forbids listing feature flags for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :index
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it 'forbids reading a feature flag for non-admin roles' do
+      set_jwt_env(request, role: 'user')
+      get :show, params: { id: flag.id }
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end
