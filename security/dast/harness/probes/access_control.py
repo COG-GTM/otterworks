@@ -94,6 +94,21 @@ def _upload_victim_file(ctx: ScanContext) -> dict | None:
         return None
 
 
+def _create_victim_folder(ctx: ScanContext) -> dict | None:
+    response = ctx.client.post(
+        "/api/v1/folders",
+        headers=ctx.victim.headers,
+        # owner_id is the victim's own id; older builds still require it in the body.
+        json={"name": f"victim-folder-{ctx.run_id}", "owner_id": ctx.victim.user_id},
+    )
+    if response.status_code not in (200, 201):
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
 @probe(
     finding_id="DAST-BOLA-FILES",
     title="Broken object-level authorization on /api/v1/files/{id} and /api/v1/folders/{id}",
@@ -107,12 +122,16 @@ def _upload_victim_file(ctx: ScanContext) -> dict | None:
     ),
 )
 def bola_files(ctx: ScanContext) -> Result:
-    """Attacker reads, re-shares and deletes a victim-owned file with its own token."""
+    """Attacker reads, re-shares and deletes a victim-owned file and folder with its own token."""
     self = bola_files.probe
     victim_file = _upload_victim_file(ctx)
     if not victim_file or "id" not in victim_file:
         return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned file")
     file_path = f"/api/v1/files/{victim_file['id']}"
+    victim_folder = _create_victim_folder(ctx)
+    if not isinstance(victim_folder, dict) or "id" not in victim_folder:
+        return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned folder")
+    folder_path = f"/api/v1/folders/{victim_folder['id']}"
 
     attacks = [
         ("GET", f"{file_path}/download", None),
@@ -124,6 +143,9 @@ def bola_files(ctx: ScanContext) -> Result:
         ),
         ("PATCH", f"{file_path}/rename", {"name": f"renamed-by-attacker-{ctx.run_id}.txt"}),
         ("DELETE", file_path, None),
+        ("GET", folder_path, None),
+        ("PUT", folder_path, {"name": f"renamed-by-attacker-{ctx.run_id}"}),
+        ("DELETE", folder_path, None),
     ]
     evidence: list[Evidence] = []
     breached: list[str] = []
@@ -150,7 +172,7 @@ def bola_files(ctx: ScanContext) -> Result:
     if breached:
         return self.result(
             Verdict.VULNERABLE,
-            "the attacker's token acted on the victim's file: " + "; ".join(breached),
+            "the attacker's token acted on the victim's file or folder: " + "; ".join(breached),
             evidence,
         )
     # Control request: the owner must still be able to download the file.
@@ -171,6 +193,9 @@ def bola_files(ctx: ScanContext) -> Result:
             {"shared_with": ctx.attacker.user_id, "permission": "viewer"},
         ),
         ("DELETE", file_path, None),
+        ("GET", folder_path, None),
+        ("PUT", folder_path, {"name": f"renamed-by-owner-{ctx.run_id}"}),
+        ("DELETE", folder_path, None),
     ]
     for method, path, body in owner_controls:
         response = ctx.request(method, path, identity=ctx.victim, json=body)
@@ -185,8 +210,8 @@ def bola_files(ctx: ScanContext) -> Result:
             )
     return self.result(
         Verdict.SECURE,
-        "the owner can download, list versions, rename, share and delete the file but every "
-        "attacker read and mutation was refused",
+        "the owner can download, list versions, rename, share and delete the file and read, "
+        "rename and delete the folder, but every attacker read and mutation was refused",
         evidence[:2],
     )
 
