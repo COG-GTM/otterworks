@@ -126,12 +126,37 @@ export function ShareDialog({
   onCloseRef.current = onClose;
 
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     dialogRef.current?.focus();
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
+      if (e.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const inside = dialogRef.current.contains(active);
+      if (e.shiftKey && (active === first || active === dialogRef.current || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
   }, []);
 
   return (
