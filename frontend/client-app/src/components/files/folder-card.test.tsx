@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { FileItem } from "@/types";
 import { FolderCard } from "./folder-card";
@@ -22,13 +22,22 @@ const folder: FileItem = {
   updatedAt: "2026-01-01T00:00:00Z",
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
+}
+
 function renderCard(props: Partial<Parameters<typeof FolderCard>[0]> = {}) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={["/files"]}>
       <FolderCard folder={folder} {...props} />
+      <LocationProbe />
     </MemoryRouter>
   );
 }
+
+const expectNoNavigation = () =>
+  expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
 
 describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
   it("selects with Space after tabbing to the labelled checkbox", async () => {
@@ -42,6 +51,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
 
     await user.keyboard(" ");
     expect(onSelect).toHaveBeenCalledWith("folder-1");
+    expectNoNavigation();
   });
 
   it("selects with a mouse click without navigating", async () => {
@@ -51,6 +61,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
 
     await user.click(screen.getByRole("checkbox", { name: "Select Reports" }));
     expect(onSelect).toHaveBeenCalledWith("folder-1");
+    expectNoNavigation();
   });
 
   it("reflects the selected state", () => {
@@ -67,6 +78,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     trigger.focus();
     await user.keyboard("{Enter}");
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expectNoNavigation();
 
     await user.tab();
     expect(screen.getByRole("button", { name: /rename/i })).toHaveFocus();
@@ -75,6 +87,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /rename/i })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+    expectNoNavigation();
   });
 
   it("renames from the keyboard: Enter on Rename, type, Enter to submit", async () => {
@@ -89,10 +102,21 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
 
     const input = screen.getByDisplayValue("Reports");
     expect(input).toHaveFocus();
+    await user.click(input);
+    expectNoNavigation();
     await user.clear(input);
     await user.type(input, "Q3 Reports{Enter}");
 
     expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
     expect(screen.queryByDisplayValue("Q3 Reports")).not.toBeInTheDocument();
+    expectNoNavigation();
+  });
+
+  it("still navigates into the folder when the card link is activated", async () => {
+    const user = userEvent.setup();
+    renderCard({ view });
+
+    await user.click(screen.getByText("Reports"));
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
   });
 });
