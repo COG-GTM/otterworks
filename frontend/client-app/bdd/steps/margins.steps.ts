@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Given, Then } from "@cucumber/cucumber";
 import { expect } from "@playwright/test";
 import { OtterWorld } from "../support/world";
@@ -5,7 +6,7 @@ import { OtterWorld } from "../support/world";
 const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 
 Given("I am logged in as a new user", async function (this: OtterWorld) {
-  const email = `bdd-margins-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@otterworks.test`;
+  const email = `bdd-margins-${randomUUID()}@otterworks.test`;
   const password = "Passw0rd!23";
   await this.page.goto(`${BASE_URL}/register`);
   await this.page.getByLabel("Full name").fill("BDD Margins User");
