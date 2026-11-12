@@ -45,6 +45,7 @@ class SeededAdminMigrationTest {
     String v1 = read("/db/migration/V1__create_users_table.sql");
     assertThat(v1).doesNotContainIgnoringCase("INSERT INTO");
     assertThat(v1).doesNotContain("admin@otterworks.dev");
+    assertThat(v1).doesNotContainPattern("\\$2[aby]?\\$\\d{2}\\$");
   }
 
   @Test
@@ -59,7 +60,8 @@ class SeededAdminMigrationTest {
     String v5 = read("/db/migration/V5__disable_seeded_admin.sql");
     assertThat(v5)
         .contains("a0000000-0000-0000-0000-000000000001")
-        .contains("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+        .contains("06456ebb89a24e2fb0a01f4e5f02254664a0859c377fc00b650e8f20f55372d5")
+        .doesNotContainPattern("\\$2[aby]?\\$\\d{2}\\$")
         .contains("UPDATE refresh_tokens")
         .contains("DELETE FROM user_roles")
         .doesNotContainIgnoringCase("DELETE FROM users");
