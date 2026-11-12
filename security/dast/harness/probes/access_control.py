@@ -75,6 +75,147 @@ def bola_documents(ctx: ScanContext) -> Result:
     )
 
 
+# Only these statuses are an authorization decision; 400/405/422/3xx mean the
+# attack was malformed or misrouted, not refused.
+_OWNERSHIP_REFUSALS = frozenset({401, 403, 404})
+
+
+def _upload_victim_file(ctx: ScanContext) -> dict | None:
+    response = ctx.client.post(
+        "/api/v1/files/upload",
+        headers=ctx.victim.headers,
+        files={"file": (f"victim-{ctx.run_id}.txt", b"confidential", "text/plain")},
+    )
+    if response.status_code not in (200, 201):
+        return None
+    try:
+        return response.json().get("file")
+    except (ValueError, AttributeError):
+        return None
+
+
+def _create_victim_folder(ctx: ScanContext) -> dict | None:
+    response = ctx.client.post(
+        "/api/v1/folders",
+        headers=ctx.victim.headers,
+        # owner_id is the victim's own id; older builds still require it in the body.
+        json={"name": f"victim-folder-{ctx.run_id}", "owner_id": ctx.victim.user_id},
+    )
+    if response.status_code not in (200, 201):
+        return None
+    try:
+        return response.json()
+    except ValueError:
+        return None
+
+
+@probe(
+    finding_id="DAST-BOLA-FILES",
+    title="Broken object-level authorization on /api/v1/files/{id} and /api/v1/folders/{id}",
+    severity=Severity.CRITICAL,
+    owasp="API1:2023 Broken Object Level Authorization",
+    cwe="CWE-639",
+    service="file-service",
+    remediation=(
+        "Load the file or folder and compare its owner_id (or, for reads, a share granted "
+        "to the caller) against X-User-ID before every read or mutation."
+    ),
+)
+def bola_files(ctx: ScanContext) -> Result:
+    """Attacker reads, re-shares and deletes a victim-owned file and folder with its own token."""
+    self = bola_files.probe
+    victim_file = _upload_victim_file(ctx)
+    if not victim_file or "id" not in victim_file:
+        return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned file")
+    file_path = f"/api/v1/files/{victim_file['id']}"
+    victim_folder = _create_victim_folder(ctx)
+    if not isinstance(victim_folder, dict) or "id" not in victim_folder:
+        return self.result(Verdict.INCONCLUSIVE, "could not seed a victim-owned folder")
+    folder_path = f"/api/v1/folders/{victim_folder['id']}"
+
+    attacks = [
+        ("GET", f"{file_path}/download", None),
+        ("GET", f"{file_path}/versions", None),
+        (
+            "POST",
+            f"{file_path}/share",
+            {"shared_with": ctx.attacker.user_id, "permission": "editor"},
+        ),
+        ("PATCH", f"{file_path}/rename", {"name": f"renamed-by-attacker-{ctx.run_id}.txt"}),
+        ("DELETE", file_path, None),
+        ("GET", folder_path, None),
+        ("PUT", folder_path, {"name": f"renamed-by-attacker-{ctx.run_id}"}),
+        ("DELETE", folder_path, None),
+    ]
+    evidence: list[Evidence] = []
+    breached: list[str] = []
+    for method, path, body in attacks:
+        response = ctx.request(method, path, identity=ctx.attacker, json=body)
+        evidence.append(Evidence.from_response(response, note=f"{method} {path} as attacker"))
+        if response.status_code < 300:
+            breached.append(f"{method} {path} -> {response.status_code}")
+        elif response.status_code not in _OWNERSHIP_REFUSALS:
+            if breached:
+                # A confirmed breach stands even if a later request could not be assessed.
+                break
+            reason = (
+                "the backend is failing or throttling"
+                if unavailable(response)
+                else "the request never reached an ownership decision"
+            )
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"{method} {path} returned {response.status_code}; {reason}, so the refusal "
+                "is not evidence of an ownership check",
+                evidence,
+            )
+    if breached:
+        return self.result(
+            Verdict.VULNERABLE,
+            "the attacker's token acted on the victim's file or folder: " + "; ".join(breached),
+            evidence,
+        )
+    # Control request: the owner must still be able to download the file.
+    if not ctx.owner_can_read(f"{file_path}/download", ctx.victim):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            "the owner is also refused; the file routes reject every caller, so cross-tenant "
+            "access cannot be assessed",
+            evidence,
+        )
+    # The other attacked routes must work for the owner too, or a refusal proves nothing.
+    owner_controls = [
+        ("GET", f"{file_path}/versions", None),
+        ("PATCH", f"{file_path}/rename", {"name": f"renamed-by-owner-{ctx.run_id}.txt"}),
+        (
+            "POST",
+            f"{file_path}/share",
+            {"shared_with": ctx.attacker.user_id, "permission": "viewer"},
+        ),
+        ("DELETE", file_path, None),
+        ("GET", folder_path, None),
+        ("PUT", folder_path, {"name": f"renamed-by-owner-{ctx.run_id}"}),
+        ("DELETE", folder_path, None),
+    ]
+    for method, path, body in owner_controls:
+        response = ctx.request(method, path, identity=ctx.victim, json=body)
+        if response.status_code >= 300:
+            evidence.append(Evidence.from_response(response, note=f"{method} {path} as owner"))
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the owner's own {method} {path} returned {response.status_code}; the route "
+                "rejects every caller, so the attacker's refusal is not evidence of an "
+                "ownership check",
+                evidence,
+            )
+    return self.result(
+        Verdict.SECURE,
+        "the owner can download, list versions, rename, share and delete the file and read, "
+        "rename and delete the folder, but every attacker read and mutation was refused",
+        evidence[:2],
+    )
+
+
 @probe(
     finding_id="DAST-IDENTITY-HEADER-SPOOF",
     title="Client-supplied X-User-ID is trusted downstream of the gateway",
@@ -525,6 +666,4 @@ def share_token_forgery(ctx: ScanContext) -> Result:
                 "a token derived offline from the document id opened the victim's document",
                 [Evidence.from_response(response, note=f"forged token for salt {salt!r}")],
             )
-    return self.result(
-        Verdict.SECURE, "offline-derived tokens were rejected by the share route"
-    )
+    return self.result(Verdict.SECURE, "offline-derived tokens were rejected by the share route")
