@@ -128,3 +128,12 @@ class DocumentFromTemplate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     owner_id: UUID
     folder_id: UUID | None = None
+
+
+# ---- Error schemas ----
+
+
+class ErrorResponse(BaseModel):
+    """Body FastAPI returns for a raised ``HTTPException``."""
+
+    detail: str
