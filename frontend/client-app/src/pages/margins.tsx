@@ -28,6 +28,12 @@ import type { MarginRow } from "@/lib/api";
 
 const CHART_FROM_DAYS = 180;
 
+function marginColor(marginPct: number): string {
+  if (marginPct < 0) return "text-red-600";
+  if (marginPct < 20) return "text-orange-600";
+  return "text-green-700";
+}
+
 function chartFromDate(): string {
   const d = new Date();
   d.setDate(d.getDate() - CHART_FROM_DAYS);
@@ -368,13 +374,7 @@ function MarginsContent() {
                     ${row.cogsUsd.toFixed(2)}
                   </td>
                   <td
-                    className={`px-4 py-2.5 text-right font-medium ${
-                      row.marginPct < 0
-                        ? "text-red-600"
-                        : row.marginPct < 20
-                          ? "text-orange-600"
-                          : "text-green-700"
-                    }`}
+                    className={`px-4 py-2.5 text-right font-medium ${marginColor(row.marginPct)}`}
                   >
                     {row.marginPct.toFixed(1)}%
                   </td>
