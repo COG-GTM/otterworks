@@ -45,13 +45,24 @@ def test_raised_http_exceptions_are_documented(route: APIRoute):
 @pytest.mark.parametrize(
     ("path", "method", "codes"),
     [
+        ("/api/v1/documents/", "post", {"401"}),
+        ("/api/v1/documents/", "get", {"400"}),
         ("/api/v1/documents/{document_id}", "get", {"401", "403", "404"}),
+        ("/api/v1/documents/{document_id}", "put", {"401", "403", "404"}),
+        ("/api/v1/documents/{document_id}", "patch", {"401", "403", "404"}),
         ("/api/v1/documents/{document_id}", "delete", {"401", "403", "404"}),
         ("/api/v1/documents/{document_id}/versions", "get", {"401", "403", "404"}),
         ("/api/v1/documents/{document_id}/share", "post", {"401", "403", "404"}),
+        ("/api/v1/documents/{document_id}/export", "get", {"401", "403", "404"}),
+        (
+            "/api/v1/documents/{document_id}/versions/{version_id}/restore",
+            "post",
+            {"401", "403", "404"},
+        ),
         ("/api/v1/documents/shared", "get", {"403", "404"}),
         ("/api/v1/documents/exports", "get", {"404"}),
         ("/api/v1/documents/from-template/{template_id}", "post", {"404"}),
+        ("/api/v1/documents/{document_id}/comments", "post", {"404"}),
         ("/api/v1/documents/{document_id}/comments/{comment_id}", "delete", {"404"}),
     ],
 )
