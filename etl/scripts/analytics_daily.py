@@ -21,6 +21,9 @@ import boto3
 import pandas as pd
 import psycopg2
 
+from s3_ownership import resolve_expected_bucket_owner
+from sqs_ack import load_then_ack
+
 
 def main():
     print("[%s] analytics_daily.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -32,6 +35,9 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    expected_bucket_owner = resolve_expected_bucket_owner(
+        config, aws_access_key, aws_secret_key, aws_region
+    )
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -58,6 +64,8 @@ def main():
     )
 
     all_sqs_events = []
+    # Deleted only after the data lake upload succeeds, so a failed load leaves them queued.
+    processed_receipts = []
     messages_processed = 0
     max_messages = 10000  # hardcoded limit
     batch_size = 10
@@ -73,6 +81,7 @@ def main():
                 WaitTimeSeconds=5,
                 AttributeNames=["All"],
                 MessageAttributeNames=["All"],
+                VisibilityTimeout=43200,
             )
             consecutive_errors = 0
         except:
@@ -89,20 +98,16 @@ def main():
             print("[%s] No more messages after %d processed" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), messages_processed))
             break
 
-        entries_to_delete = []
         for msg in messages:
             try:
                 event = json.loads(msg["Body"])
                 all_sqs_events.append(event)
-                entries_to_delete.append(
+                processed_receipts.append(
                     {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
                 )
             except:
                 # TODO ETL-103: Add dead-letter queue for malformed messages (2020-01-08)
                 pass
-
-        if entries_to_delete:
-            sqs_client.delete_message_batch(QueueUrl=sqs_queue_url, Entries=entries_to_delete)
 
         messages_processed += len(messages)
 
@@ -303,39 +308,45 @@ def main():
 
     partition_key = "%s/year=%s/month=%s/day=%s" % (analytics_prefix, ds[:4], ds[5:7], ds[8:10])
 
-    # Write summary
-    summary_key = "%s/summary.json.gz" % partition_key
-    summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        Key=summary_key,
-        Body=summary_bytes,
-    )
-    print("[%s] Uploaded summary to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, summary_key))
+    def load_data_lake():
+        # Write summary
+        summary_key = "%s/summary.json.gz" % partition_key
+        summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=summary_key,
+            Body=summary_bytes,
+        )
+        print("[%s] Uploaded summary to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, summary_key))
 
-    # Write hourly breakdown
-    hourly_key = "%s/hourly_breakdown.json.gz" % partition_key
-    hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        Key=hourly_key,
-        Body=hourly_bytes,
-    )
+        # Write hourly breakdown
+        hourly_key = "%s/hourly_breakdown.json.gz" % partition_key
+        hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=hourly_key,
+            Body=hourly_bytes,
+        )
 
-    # Write top users as JSONL
-    users_key = "%s/top_users.jsonl.gz" % partition_key
-    buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
-        for user in user_summaries:
-            gz.write(json.dumps(user).encode("utf-8"))
-            gz.write(b"\n")
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        Key=users_key,
-        Body=buf.getvalue(),
-    )
+        # Write top users as JSONL
+        users_key = "%s/top_users.jsonl.gz" % partition_key
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            for user in user_summaries:
+                gz.write(json.dumps(user).encode("utf-8"))
+                gz.write(b"\n")
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=users_key,
+            Body=buf.getvalue(),
+        )
+        print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
 
-    print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
+    # Events stay on the queue (and become visible again) unless the data lake load succeeds.
+    load_then_ack(sqs_client, sqs_queue_url, processed_receipts, load_data_lake, batch_size)
 
     # ---- Upsert PostgreSQL aggregates ----
     print("[%s] Connecting to PostgreSQL at %s:%d/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), db_host, db_port, db_name))
@@ -432,6 +443,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
