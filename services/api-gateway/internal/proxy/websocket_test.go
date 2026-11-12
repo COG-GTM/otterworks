@@ -42,12 +42,13 @@ func newWebSocketGateway(t *testing.T, backendURL string) *httptest.Server {
 	return gateway
 }
 
-// upgradingBackend completes a websocket handshake and records the identity the gateway forwarded.
-func upgradingBackend(t *testing.T, hits *int32, gotUserID *atomic.Value) *httptest.Server {
+// upgradingBackend completes a websocket handshake and records the identity and credentials the gateway forwarded.
+func upgradingBackend(t *testing.T, hits *int32, gotUserID, gotAuth *atomic.Value) *httptest.Server {
 	t.Helper()
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(hits, 1)
 		gotUserID.Store(r.Header.Get("X-User-ID"))
+		gotAuth.Store(r.Header.Get("Authorization"))
 		conn, rw, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			return
@@ -102,8 +103,8 @@ func signedToken(t *testing.T, subject string) string {
 
 func TestNotificationWebSocketRequiresToken(t *testing.T) {
 	var hits int32
-	var gotUserID atomic.Value
-	gateway := newWebSocketGateway(t, upgradingBackend(t, &hits, &gotUserID).URL)
+	var gotUserID, gotAuth atomic.Value
+	gateway := newWebSocketGateway(t, upgradingBackend(t, &hits, &gotUserID, &gotAuth).URL)
 
 	assert.Equal(t, http.StatusUnauthorized, handshake(t, gateway.URL, "/ws/notifications", nil))
 	assert.Equal(t, http.StatusUnauthorized, handshake(t, gateway.URL, "/ws/notifications/alice", map[string]string{"X-User-ID": "alice"}))
@@ -113,15 +114,17 @@ func TestNotificationWebSocketRequiresToken(t *testing.T) {
 
 func TestNotificationWebSocketForwardsTokenIdentity(t *testing.T) {
 	var hits int32
-	var gotUserID atomic.Value
-	gateway := newWebSocketGateway(t, upgradingBackend(t, &hits, &gotUserID).URL)
+	var gotUserID, gotAuth atomic.Value
+	gateway := newWebSocketGateway(t, upgradingBackend(t, &hits, &gotUserID, &gotAuth).URL)
+	bearer := "Bearer " + signedToken(t, "alice")
 
 	status := handshake(t, gateway.URL, "/ws/notifications", map[string]string{
-		"Authorization": "Bearer " + signedToken(t, "alice"),
+		"Authorization": bearer,
 		"X-User-ID":     "bob",
 	})
 
 	assert.Equal(t, http.StatusSwitchingProtocols, status)
 	assert.Equal(t, int32(1), atomic.LoadInt32(&hits))
 	assert.Equal(t, "alice", gotUserID.Load(), "X-User-ID must come from the JWT, not the client")
+	assert.Equal(t, bearer, gotAuth.Load(), "notification-service verifies the bearer token itself, so the gateway must forward it")
 }
