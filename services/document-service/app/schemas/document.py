@@ -5,6 +5,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+
+class ErrorResponse(BaseModel):
+    detail: str
+
 # ---- Document schemas ----
 
 
