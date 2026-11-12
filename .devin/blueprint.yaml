@@ -227,10 +227,9 @@ knowledge:
   - name: run admin dashboard
     contents: |
       `make up` serves the Angular dashboard at http://localhost:4200 from the prebuilt nginx
-      container - no dev server needed. Login is a CLIENT-SIDE MOCK
-      (frontend/admin-dashboard/src/app/core/services/auth.service.ts): any email + any
-      non-empty password returns a hardcoded admin JWT, so the web-app credentials are not
-      used here. Data comes from admin-service's tables, seeded at init. To re-seed:
+      container - no dev server needed. Login calls auth-service (POST /api/v1/auth/login via
+      the gateway) and requires an admin/owner role; the seeded admin is
+      admin@otterworks.dev / Admin123!. Data comes from admin-service's tables, seeded at init. To re-seed:
         docker exec otterworks-admin-service bundle exec rails db:seed
       `make dev-admin` (HMR) is NOT pre-warmed - the first run pays a full Angular `npm ci`.
   - name: run android app
