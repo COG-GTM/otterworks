@@ -25,6 +25,8 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import kotlinx.serialization.Serializable
 import org.koin.ktor.ext.inject
 
+private const val USER_ID_REQUIRED_MESSAGE = "user_id is required (via X-User-ID header or query parameter)"
+
 @Serializable
 data class HealthResponse(val status: String, val service: String)
 
@@ -54,7 +56,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             get {
                 val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
                 if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(USER_ID_REQUIRED_MESSAGE))
                     return@get
                 }
 
@@ -77,7 +79,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             get("/unread-count") {
                 val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
                 if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(USER_ID_REQUIRED_MESSAGE))
                     return@get
                 }
 
@@ -116,7 +118,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             put("/read-all") {
                 val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
                 if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(USER_ID_REQUIRED_MESSAGE))
                     return@put
                 }
 
@@ -143,7 +145,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             get {
                 val userId = call.request.headers["X-User-ID"] ?: call.request.queryParameters["user_id"]
                 if (userId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("user_id is required (via X-User-ID header or query parameter)"))
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(USER_ID_REQUIRED_MESSAGE))
                     return@get
                 }
 
