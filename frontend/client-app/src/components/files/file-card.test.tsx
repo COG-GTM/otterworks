@@ -53,7 +53,7 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     fireEvent.click(checkbox);
 
     expect(onSelect).toHaveBeenCalledWith("file-1");
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expect(screen.getByTestId("location").textContent).toBe("/files");
   });
 
   it("closes the actions menu with the backdrop button without navigating", () => {
@@ -68,7 +68,7 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     fireEvent.click(backdrop);
 
     expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expect(screen.getByTestId("location").textContent).toBe("/files");
   });
 
   it("closes the actions menu with Escape", () => {
@@ -91,7 +91,7 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
 
     const input = screen.getByDisplayValue("report.pdf");
     fireEvent.click(input.parentElement as HTMLElement);
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expect(screen.getByTestId("location").textContent).toBe("/files");
 
     fireEvent.change(input, { target: { value: "summary.pdf" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -104,6 +104,6 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
 
     fireEvent.click(screen.getByText("report.pdf"));
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/files/file-1");
+    expect(screen.getByTestId("location").textContent).toBe("/files/file-1");
   });
 });
