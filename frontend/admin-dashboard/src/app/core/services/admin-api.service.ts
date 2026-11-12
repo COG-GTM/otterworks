@@ -29,6 +29,17 @@ const PRIORITY_TO_SEVERITY: Record<string, string> = {
   low: 'info', medium: 'warning', critical: 'critical', high: 'maintenance',
 };
 
+// Backend reports healthy|unhealthy|<other>; anything else is treated as degraded
+function toServiceHealthStatus(status: unknown): ServiceHealth['status'] {
+  if (status === 'healthy') {
+    return 'healthy';
+  }
+  if (status === 'unhealthy') {
+    return 'down';
+  }
+  return 'degraded';
+}
+
 @Injectable({ providedIn: 'root' })
 export class AdminApiService {
   private readonly baseUrl = '/api/v1';
@@ -340,7 +351,7 @@ export class AdminApiService {
       const meta = SERVICE_META[s.name] ?? { version: 'unknown', port: 0, language: 'unknown', details: s.message ?? '' };
       return {
         name: s.name,
-        status: s.status === 'healthy' ? 'healthy' : (s.status === 'unhealthy' ? 'down' : 'degraded'),
+        status: toServiceHealthStatus(s.status),
         uptime: 'N/A',
         responseTime: s.latency_ms ?? 0,
         lastChecked: res.timestamp ?? new Date().toISOString(),

@@ -148,4 +148,42 @@ describe('AdminApiService', () => {
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
   });
+
+  describe('getSystemHealth status mapping', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+      httpMock.verify();
+    });
+
+    it('maps healthy, unhealthy and other backend statuses', () => {
+      let statuses: Record<string, string> = {};
+      service.getSystemHealth().subscribe(services => {
+        statuses = Object.fromEntries(services.map(s => [s.name, s.status]));
+      });
+
+      httpMock.expectOne('/api/v1/admin/health/services').flush({
+        timestamp: '2026-01-01T00:00:00Z',
+        services: [
+          { name: 'auth-service', status: 'healthy' },
+          { name: 'file-service', status: 'unhealthy' },
+          { name: 'search-service', status: 'timeout' },
+          { name: 'notification-service' },
+          { name: 'toString', status: 'toString' },
+        ],
+      });
+
+      expect(statuses).toEqual({
+        'auth-service': 'healthy',
+        'file-service': 'down',
+        'search-service': 'degraded',
+        'notification-service': 'degraded',
+        'toString': 'degraded',
+      });
+    });
+  });
 });
