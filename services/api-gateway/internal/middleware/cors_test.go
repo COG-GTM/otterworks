@@ -32,6 +32,7 @@ func TestCORS_AllowedOrigin(t *testing.T) {
 	assert.Equal(t, "http://localhost:3000", rec.Header().Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "true", rec.Header().Get("Access-Control-Allow-Credentials"))
 	assert.Equal(t, "X-Request-ID", rec.Header().Get("Access-Control-Expose-Headers"))
+	assert.Equal(t, "Origin", rec.Header().Get("Vary"))
 }
 
 func TestCORS_DisallowedOrigin(t *testing.T) {
@@ -53,6 +54,7 @@ func TestCORS_DisallowedOrigin(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Empty(t, rec.Header().Get("Access-Control-Allow-Origin"))
+	assert.Empty(t, rec.Header().Get("Vary"))
 }
 
 func TestCORS_PreflightRequest(t *testing.T) {
@@ -82,6 +84,7 @@ func TestCORS_PreflightRequest(t *testing.T) {
 	assert.Equal(t, "GET, POST, PUT", rec.Header().Get("Access-Control-Allow-Methods"))
 	assert.Equal(t, "Content-Type, Authorization", rec.Header().Get("Access-Control-Allow-Headers"))
 	assert.Equal(t, "600", rec.Header().Get("Access-Control-Max-Age"))
+	assert.Equal(t, "Origin", rec.Header().Get("Vary"))
 	assert.Empty(t, rec.Body.String(), "preflight should not pass through to handler")
 }
 
