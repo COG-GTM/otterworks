@@ -148,4 +148,44 @@ describe('AdminApiService', () => {
       req.flush(null, { status: 204, statusText: 'No Content' });
     });
   });
+  describe('getAnalyticsReport mapping', () => {
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+      httpMock = TestBed.inject(HttpTestingController);
+    });
+
+    afterEach(() => {
+      httpMock.verify();
+    });
+
+    it('maps role, tier and action breakdowns to chart points', () => {
+      service.getAnalyticsReport().subscribe(report => {
+        expect(report.userSignups).toEqual([{ label: 'admin', value: 2 }, { label: 'viewer', value: 5 }]);
+        expect(report.storageUsage).toEqual([{ label: 'free', value: 1024 }, { label: 'pro', value: 4096 }]);
+        expect(report.documentActivity).toEqual([{ label: 'login', value: 9 }]);
+        expect(report.activeUsers).toEqual([{ label: 'Active', value: 6 }, { label: 'Suspended', value: 1 }]);
+      });
+
+      httpMock.expectOne('/api/v1/admin/metrics/summary').flush({
+        users: { total: 7, active: 6, suspended: 1, by_role: { admin: 2, viewer: 5 } },
+        storage: { total_used_bytes: 5120, by_tier: { free: 1024, pro: 4096 } },
+        audit: { total_events: 9, top_actions: { login: 9 } },
+      });
+    });
+
+    it('falls back to totals when breakdowns are empty', () => {
+      service.getAnalyticsReport().subscribe(report => {
+        expect(report.userSignups).toEqual([{ label: 'Users', value: 7 }]);
+        expect(report.storageUsage).toEqual([{ label: 'Used', value: 5120 }]);
+        expect(report.documentActivity).toEqual([{ label: 'Events', value: 9 }]);
+      });
+
+      httpMock.expectOne('/api/v1/admin/metrics/summary').flush({
+        users: { total: 7 },
+        storage: { total_used_bytes: 5120, by_tier: {} },
+        audit: { total_events: 9 },
+      });
+    });
+  });
 });
