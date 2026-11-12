@@ -281,3 +281,60 @@ async def test_create_document_no_auth_returns_401(client: AsyncClient):
         auth=None,  # opt out of the client fixture's default bearer token
     )
     assert resp.status_code == 401
+
+
+async def _create_as(client: AsyncClient, user_id: uuid.UUID, title: str, content: str = ""):
+    resp = await client.post(
+        "/api/v1/documents/",
+        json={"title": title, "content": content},
+        headers={"Authorization": f"Bearer {_make_jwt(str(user_id))}"},
+    )
+    assert resp.status_code == 201
+    return resp.json()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+async def test_list_documents_requires_auth(client: AsyncClient, owner_id: uuid.UUID, path):
+    await _create_as(client, owner_id, "Private")
+    resp = await client.get(path, params={"size": 100}, auth=None)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_search_documents_requires_auth(client: AsyncClient, owner_id: uuid.UUID):
+    await _create_as(client, owner_id, "Budget", "budget")
+    resp = await client.get("/api/v1/documents/search", params={"q": "budget"}, auth=None)
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/api/v1/documents/", "/api/v1/documents"])
+@pytest.mark.parametrize("extra", [{}, {"title": "plan"}])
+async def test_list_documents_scoped_to_caller(
+    client: AsyncClient, owner_id: uuid.UUID, path, extra
+):
+    other = uuid.uuid4()
+    await _create_as(client, owner_id, "My plan")
+    await _create_as(client, other, "Their plan")
+
+    resp = await client.get(path, params=extra)
+    assert resp.status_code == 200
+    assert [d["title"] for d in resp.json()["items"]] == ["My plan"]
+
+    resp = await client.get(path, params={"owner_id": str(other), **extra})
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_search_documents_scoped_to_caller(client: AsyncClient, owner_id: uuid.UUID):
+    await _create_as(client, owner_id, "My budget", "budget")
+    await _create_as(client, uuid.uuid4(), "Their budget", "budget")
+
+    resp = await client.get("/api/v1/documents/search", params={"q": "budget"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert [d["title"] for d in data["items"]] == ["My budget"]
