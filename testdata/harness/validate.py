@@ -36,12 +36,26 @@ from tabulate import tabulate
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
+def _local_db_password():
+    """DB_PASSWORD, else OTTERWORKS_DB_PASSWORD from the env or the repo's .env (make env)."""
+    password = os.getenv("DB_PASSWORD") or os.getenv("OTTERWORKS_DB_PASSWORD")
+    if password:
+        return password
+    env_file = Path(__file__).resolve().parents[2] / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "OTTERWORKS_DB_PASSWORD":
+                return value.strip().strip("'\"")
+    return None
+
+
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": int(os.getenv("DB_PORT", "5432")),
     "dbname": os.getenv("DB_NAME", "otterworks"),
     "user": os.getenv("DB_USER", "otterworks"),
-    "password": os.getenv("DB_PASSWORD") or os.getenv("OTTERWORKS_DB_PASSWORD"),
+    "password": _local_db_password(),
 }
 
 # ── Data Classes ──────────────────────────────────────────────────────────────
