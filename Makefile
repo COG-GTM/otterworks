@@ -3,10 +3,9 @@
 SHELL := /bin/bash
 
 # Local secrets (e.g. POSTGRES_PASSWORD) live in the gitignored .env; `make env` creates it.
-ifneq (,$(wildcard .env))
-include .env
-export POSTGRES_PASSWORD
-endif
+# Resolved like Compose does: the shell value wins, then .env (surrounding quotes stripped).
+LOCAL_PG_PASSWORD := $(or $(POSTGRES_PASSWORD),$(shell sed -n 's/^POSTGRES_PASSWORD=//p' .env 2>/dev/null | tail -n1 | sed -e 's/^"\(.*\)"$$/\1/' -e "s/^'\(.*\)'$$/\1/"))
+export LOCAL_PG_PASSWORD
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -72,7 +71,7 @@ env: .env ## Create .env with a generated local POSTGRES_PASSWORD (no-op if it e
 infra-up: .env ## Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch)
 	docker compose -f docker-compose.infra.yml up -d
 
-infra-down: ## Stop local infrastructure
+infra-down: .env ## Stop local infrastructure
 	docker compose -f docker-compose.infra.yml down
 
 up: .env ## Start all services (add seed=1 to seed after start)
@@ -81,7 +80,7 @@ up: .env ## Start all services (add seed=1 to seed after start)
 	@$(MAKE) --no-print-directory wait-for-db seed
  endif
 
-down: ## Stop all application services
+down: .env ## Stop all application services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml down
 
 build: .env ## Build all service images
@@ -97,7 +96,7 @@ wait-for-db: ## Wait for Postgres to accept connections
 		sleep 1; \
 	done; echo "Timed out waiting for Postgres" && exit 1
 
-logs: ## Tail logs for all services
+logs: .env ## Tail logs for all services
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml logs -f
 
 # --- App Dev Targets ---
@@ -110,7 +109,7 @@ COMPOSE := docker compose -f docker-compose.infra.yml -f docker-compose.yml
 # otherwise default to :8085, which only matches the k8s dev environment.
 COLLAB_WS_URL := ws://localhost:8084
 
-dev-backend: ## Start the Dockerized backend (all services except the frontend containers)
+dev-backend: .env ## Start the Dockerized backend (all services except the frontend containers)
 	$(COMPOSE) up -d $$($(COMPOSE) config --services | grep -vE '^(web-app|admin-dashboard)$$')
 	@echo "Backend up - API gateway on http://localhost:8080 (fresh DB? run: make seed)"
 
@@ -232,7 +231,7 @@ ifndef NS
 endif
 	$(call validate_ns)
 	@echo "Dropping schema otterworks_$(NS)..."
-	PGPASSWORD=$${DB_PASSWORD:-$${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - run make env}} psql \
+	PGPASSWORD=$${DB_PASSWORD:-$${LOCAL_PG_PASSWORD:?POSTGRES_PASSWORD is not set - run make env}} psql \
 		-h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} \
 		-U $${DB_USER:-otterworks} -d $${DB_NAME:-otterworks} \
 		-c "DROP SCHEMA IF EXISTS otterworks_$(NS) CASCADE;"
@@ -244,7 +243,7 @@ ifndef NS
 endif
 	$(call validate_ns)
 	@echo "Creating schema otterworks_$(NS)..."
-	PGPASSWORD=$${DB_PASSWORD:-$${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set - run make env}} psql \
+	PGPASSWORD=$${DB_PASSWORD:-$${LOCAL_PG_PASSWORD:?POSTGRES_PASSWORD is not set - run make env}} psql \
 		-h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} \
 		-U $${DB_USER:-otterworks} -d $${DB_NAME:-otterworks} \
 		-f testdata/harness/create_schema.sql \
