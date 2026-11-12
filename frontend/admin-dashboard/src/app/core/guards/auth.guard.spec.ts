@@ -5,6 +5,7 @@ import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 import { authGuard } from './auth.guard';
 import { AuthService } from '../services/auth.service';
+import { futureExp, unsignedJwt } from '../../../testing/jwt';
 
 describe('authGuard', () => {
   let authService: AuthService;
@@ -33,8 +34,16 @@ describe('authGuard', () => {
   });
 
   it('should allow access when authenticated', () => {
-    localStorage.setItem('ow_admin_token', 'test-token');
+    localStorage.setItem('ow_admin_token', unsignedJwt({ sub: 'u1', roles: ['ADMIN'], exp: futureExp() }));
     const result = TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState));
     expect(result).toBeTrue();
+  });
+
+  it('should deny access when the stored session has expired', () => {
+    spyOn(router, 'navigate');
+    localStorage.setItem('ow_admin_token', unsignedJwt({ sub: 'u1', roles: ['ADMIN'], exp: futureExp(-60) }));
+    const result = TestBed.runInInjectionContext(() => authGuard(mockRoute, mockState));
+    expect(result).toBeFalse();
+    expect(localStorage.getItem('ow_admin_token')).toBeNull();
   });
 });
