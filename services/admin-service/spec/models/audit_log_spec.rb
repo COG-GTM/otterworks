@@ -41,5 +41,38 @@ RSpec.describe AuditLog do
         )
       end.to change(described_class, :count).by(1)
     end
+
+    it 'persists every supported attribute' do
+      resource_id = SecureRandom.uuid
+      actor_id = SecureRandom.uuid
+      log = described_class.record!(
+        action: 'user.updated',
+        resource_type: 'AdminUser',
+        resource_id: resource_id,
+        actor_id: actor_id,
+        actor_email: 'admin@test.com',
+        changes_made: { 'role' => %w[viewer admin] },
+        ip_address: '10.0.0.1',
+        user_agent: 'rspec'
+      )
+
+      expect(log.reload).to have_attributes(
+        action: 'user.updated', resource_type: 'AdminUser', resource_id: resource_id, actor_id: actor_id,
+        actor_email: 'admin@test.com', changes_made: { 'role' => %w[viewer admin] },
+        ip_address: '10.0.0.1', user_agent: 'rspec'
+      )
+    end
+
+    it 'defaults changes_made to an empty hash' do
+      log = described_class.record!(action: 'config.updated', resource_type: 'SystemConfig')
+
+      expect(log.reload.changes_made).to eq({})
+    end
+
+    it 'rejects unknown attributes' do
+      expect do
+        described_class.record!(action: 'user.created', resource_type: 'AdminUser', role: 'admin')
+      end.to raise_error(ArgumentError, /role/)
+    end
   end
 end
