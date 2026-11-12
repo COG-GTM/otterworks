@@ -414,7 +414,8 @@ def parse_tree(
 def find_declarations(module: Module, advisory: Advisory) -> list[str]:
     """Where a human has to edit: build files naming the artifact or its version property."""
     hits = []
-    for name in ("pom.xml", "build.gradle", "build.gradle.kts", "gradle.properties"):
+    for name in ("pom.xml", "build.gradle", "build.gradle.kts", "gradle.properties",
+                 "gradle/libs.versions.toml"):
         build_file = module.path / name
         if not build_file.exists():
             continue
