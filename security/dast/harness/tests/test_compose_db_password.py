@@ -122,3 +122,19 @@ def test_make_never_echoes_the_password() -> None:
     assert proc.returncode == 0, proc.stderr
     assert "c" * 32 not in proc.stdout
     assert "ensure-local-env.sh --print" in proc.stdout
+
+
+@pytest.mark.parametrize("bad", ["otterworks_dev", "short"])
+def test_make_stops_before_the_db_command_on_an_invalid_password(tmp_path: Path, bad) -> None:
+    marker = tmp_path / "psql-ran"
+    fake = tmp_path / "psql"
+    fake.write_text(f"#!/bin/sh\ntouch {marker}\n")
+    fake.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if k != "DB_PASSWORD"}
+    env.update(POSTGRES_PASSWORD=bad, PATH=f"{tmp_path}:{env['PATH']}")
+    proc = subprocess.run(
+        ["make", "testdata-clean", "NS=t1"], cwd=REPO, env=env, capture_output=True, text=True
+    )
+    assert proc.returncode != 0
+    assert "POSTGRES_PASSWORD" in proc.stderr
+    assert not marker.exists()
