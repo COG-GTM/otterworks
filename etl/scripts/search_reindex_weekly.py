@@ -17,303 +17,231 @@ from datetime import datetime
 
 import requests
 
+DOCUMENTS_INDEX = "documents"
+FILES_INDEX = "files"
+API_PAGE_SIZE = 100
+SETTINGS_TASK_TIMEOUT = 60
+INDEX_TASK_TIMEOUT = 120
 
-def main():
-    print("[%s] search_reindex_weekly.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+RANKING_RULES = ["words", "typo", "proximity", "attribute", "sort", "exactness"]
 
-    # ---- Load config ----
-    config = configparser.ConfigParser()
-    config.read("/opt/etl/config.ini")
+DOCS_SETTINGS = {
+    "searchableAttributes": ["title", "content", "tags"],
+    "filterableAttributes": ["type", "owner_id", "tags", "created_at", "updated_at"],
+    "sortableAttributes": ["updated_at", "created_at"],
+    "rankingRules": RANKING_RULES,
+}
 
-    document_service_url = config.get("services", "document_service_url")
-    file_service_url = config.get("services", "file_service_url")
-    meilisearch_url = config.get("services", "meilisearch_url")
-    meilisearch_api_key = config.get("services", "meilisearch_api_key")
+FILES_SETTINGS = {
+    "searchableAttributes": ["name", "tags", "mime_type"],
+    "filterableAttributes": ["type", "owner_id", "mime_type", "folder_id", "tags", "created_at", "updated_at"],
+    "sortableAttributes": ["updated_at", "created_at", "size"],
+    "rankingRules": RANKING_RULES,
+}
 
-    documents_index = "documents"
-    files_index = "files"
-    bulk_batch_size = 500
-    api_page_size = 100
 
-    meili_headers = {"Content-Type": "application/json"}
-    if meilisearch_api_key:
-        meili_headers["Authorization"] = "Bearer %s" % meilisearch_api_key
+def log(message):
+    print("[%s] %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), message))
 
-    # ---- Clear existing indices ----
-    print("[%s] Clearing MeiliSearch indices..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    for index_name in [documents_index, files_index]:
-        try:
-            resp = requests.delete(
-                "%s/indexes/%s" % (meilisearch_url, index_name),
-                headers=meili_headers,
-            )
-            if resp.ok:
-                task_uid = resp.json().get("taskUid")
-                if task_uid is not None:
-                    # poll until done
-                    deadline = time.monotonic() + 60
-                    while time.monotonic() < deadline:
-                        task_resp = requests.get(
-                            "%s/tasks/%s" % (meilisearch_url, task_uid),
-                            headers=meili_headers,
-                        )
-                        task_resp.raise_for_status()
-                        status = task_resp.json().get("status")
-                        if status == "succeeded":
-                            break
-                        if status == "failed":
-                            print("[%s] WARNING: Delete task %s failed" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), task_uid))
-                            break
-                        time.sleep(1)
-                print("[%s] Deleted index: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), index_name))
-        except:
-            print("[%s] Index %s did not exist, skipping delete" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), index_name))
+class MeiliClient:
+    def __init__(self, url, api_key):
+        self.url = url
+        self.headers = {"Content-Type": "application/json"}
+        if api_key:
+            self.headers["Authorization"] = "Bearer %s" % api_key
 
-    # ---- Create indices ----
-    for index_name in [documents_index, files_index]:
+    def wait_for_task(self, task_uid, timeout):
+        """Poll a MeiliSearch task until it finishes or `timeout` seconds pass.
+
+        Returns the final task payload, or None if the deadline expired.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            task_resp = requests.get("%s/tasks/%s" % (self.url, task_uid), headers=self.headers)
+            task_resp.raise_for_status()
+            task = task_resp.json()
+            if task.get("status") in ("succeeded", "failed"):
+                return task
+            time.sleep(1)
+        return None
+
+    def _wait_if_enqueued(self, resp, timeout):
+        task_uid = resp.json().get("taskUid")
+        if task_uid is None:
+            return None, None
+        return task_uid, self.wait_for_task(task_uid, timeout)
+
+    def delete_index(self, index_name):
+        resp = requests.delete("%s/indexes/%s" % (self.url, index_name), headers=self.headers)
+        if not resp.ok:
+            return
+        task_uid, task = self._wait_if_enqueued(resp, SETTINGS_TASK_TIMEOUT)
+        if task is not None and task.get("status") == "failed":
+            log("WARNING: Delete task %s failed" % task_uid)
+        log("Deleted index: %s" % index_name)
+
+    def create_index(self, index_name):
         resp = requests.post(
-            "%s/indexes" % meilisearch_url,
-            headers=meili_headers,
+            "%s/indexes" % self.url,
+            headers=self.headers,
             data=json.dumps({"uid": index_name, "primaryKey": "id"}),
         )
         resp.raise_for_status()
-        task_uid = resp.json().get("taskUid")
-        if task_uid is not None:
-            deadline = time.monotonic() + 60
-            while time.monotonic() < deadline:
-                task_resp = requests.get(
-                    "%s/tasks/%s" % (meilisearch_url, task_uid),
-                    headers=meili_headers,
-                )
-                task_resp.raise_for_status()
-                status = task_resp.json().get("status")
-                if status in ("succeeded", "failed"):
-                    break
-                time.sleep(1)
-        print("[%s] Created index: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), index_name))
+        self._wait_if_enqueued(resp, SETTINGS_TASK_TIMEOUT)
+        log("Created index: %s" % index_name)
 
-    # ---- Configure documents index settings ----
-    docs_settings = {
-        "searchableAttributes": ["title", "content", "tags"],
-        "filterableAttributes": ["type", "owner_id", "tags", "created_at", "updated_at"],
-        "sortableAttributes": ["updated_at", "created_at"],
-        "rankingRules": ["words", "typo", "proximity", "attribute", "sort", "exactness"],
+    def update_settings(self, index_name, settings):
+        resp = requests.patch(
+            "%s/indexes/%s/settings" % (self.url, index_name),
+            headers=self.headers,
+            data=json.dumps(settings),
+        )
+        resp.raise_for_status()
+        self._wait_if_enqueued(resp, SETTINGS_TASK_TIMEOUT)
+
+    def add_documents(self, index_name, batch):
+        resp = requests.post(
+            "%s/indexes/%s/documents" % (self.url, index_name),
+            headers=self.headers,
+            data=json.dumps(batch),
+        )
+        resp.raise_for_status()
+        _, task = self._wait_if_enqueued(resp, INDEX_TASK_TIMEOUT)
+        if task is not None and task.get("status") == "failed":
+            log("WARNING: Index task failed: %s" % task.get("error", {}))
+
+    def document_count(self, index_name):
+        resp = requests.get("%s/indexes/%s/stats" % (self.url, index_name), headers=self.headers)
+        resp.raise_for_status()
+        return resp.json().get("numberOfDocuments", 0)
+
+
+def to_document_record(doc):
+    return {
+        "id": doc.get("document_id", doc.get("id", "")),
+        "title": doc.get("title", ""),
+        "content": doc.get("content", ""),
+        "owner_id": doc.get("owner_id", ""),
+        "tags": doc.get("tags", []),
+        "type": "document",
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
     }
-    resp = requests.patch(
-        "%s/indexes/%s/settings" % (meilisearch_url, documents_index),
-        headers=meili_headers,
-        data=json.dumps(docs_settings),
-    )
-    resp.raise_for_status()
-    task_uid = resp.json().get("taskUid")
-    if task_uid is not None:
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            task_resp = requests.get(
-                "%s/tasks/%s" % (meilisearch_url, task_uid),
-                headers=meili_headers,
-            )
-            task_resp.raise_for_status()
-            if task_resp.json().get("status") in ("succeeded", "failed"):
-                break
-            time.sleep(1)
 
-    # ---- Configure files index settings ----
-    files_settings = {
-        "searchableAttributes": ["name", "tags", "mime_type"],
-        "filterableAttributes": ["type", "owner_id", "mime_type", "folder_id", "tags", "created_at", "updated_at"],
-        "sortableAttributes": ["updated_at", "created_at", "size"],
-        "rankingRules": ["words", "typo", "proximity", "attribute", "sort", "exactness"],
+
+def to_file_record(f):
+    return {
+        "id": f.get("file_id", f.get("id", "")),
+        "name": f.get("file_name", f.get("name", "")),
+        "owner_id": f.get("owner_id", ""),
+        "mime_type": f.get("mime_type", ""),
+        "folder_id": f.get("folder_id", ""),
+        "size": f.get("size_bytes", f.get("size", 0)),
+        "tags": f.get("tags", []),
+        "type": "file",
+        "created_at": f.get("created_at"),
+        "updated_at": f.get("updated_at"),
     }
-    resp = requests.patch(
-        "%s/indexes/%s/settings" % (meilisearch_url, files_index),
-        headers=meili_headers,
-        data=json.dumps(files_settings),
-    )
-    resp.raise_for_status()
-    task_uid = resp.json().get("taskUid")
-    if task_uid is not None:
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            task_resp = requests.get(
-                "%s/tasks/%s" % (meilisearch_url, task_uid),
-                headers=meili_headers,
-            )
-            task_resp.raise_for_status()
-            if task_resp.json().get("status") in ("succeeded", "failed"):
-                break
-            time.sleep(1)
 
-    print("[%s] MeiliSearch indices configured" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    # ---- Fetch and index documents ----
-    print("[%s] Indexing documents from document-service..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+def reindex_source(meili, index_name, source_url, size_param, items_key, to_record):
+    """Page through a service listing API and bulk-index every page.
 
-    docs_indexed = 0
+    Returns the number of source items indexed.
+    """
+    indexed = 0
     page = 1
-
     while True:
         # No session reuse, no timeout, no retry -- just raw requests
-        resp = requests.get(
-            "%s/api/v1/documents" % document_service_url,
-            params={"page": page, "size": api_page_size},
-        )
+        resp = requests.get(source_url, params={"page": page, size_param: API_PAGE_SIZE})
         resp.raise_for_status()
         data = resp.json()
-        documents = data.get("documents", data.get("items", []))
+        items = data.get(items_key, data.get("items", []))
 
-        if not documents:
+        if not items:
             break
 
-        batch = []
-        for doc in documents:
-            batch.append({
-                "id": doc.get("document_id", doc.get("id", "")),
-                "title": doc.get("title", ""),
-                "content": doc.get("content", ""),
-                "owner_id": doc.get("owner_id", ""),
-                "tags": doc.get("tags", []),
-                "type": "document",
-                "created_at": doc.get("created_at"),
-                "updated_at": doc.get("updated_at"),
-            })
+        meili.add_documents(index_name, [to_record(item) for item in items])
+        indexed += len(items)
 
-        index_resp = requests.post(
-            "%s/indexes/%s/documents" % (meilisearch_url, documents_index),
-            headers=meili_headers,
-            data=json.dumps(batch),
-        )
-        index_resp.raise_for_status()
-        task_uid = index_resp.json().get("taskUid")
-        if task_uid is not None:
-            deadline = time.monotonic() + 120
-            while time.monotonic() < deadline:
-                task_resp = requests.get(
-                    "%s/tasks/%s" % (meilisearch_url, task_uid),
-                    headers=meili_headers,
-                )
-                task_resp.raise_for_status()
-                st = task_resp.json().get("status")
-                if st == "succeeded":
-                    break
-                if st == "failed":
-                    error = task_resp.json().get("error", {})
-                    print("[%s] WARNING: Index task failed: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), error))
-                    break
-                time.sleep(1)
-        docs_indexed += len(documents)
-
-        if len(documents) < api_page_size:
+        if len(items) < API_PAGE_SIZE:
             break
         page += 1
+    return indexed
 
-    print("[%s] Indexed %d documents into %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), docs_indexed, documents_index))
 
-    # ---- Fetch and index files ----
-    print("[%s] Indexing files from file-service..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+def reset_indices(meili):
+    log("Clearing MeiliSearch indices...")
+    for index_name in [DOCUMENTS_INDEX, FILES_INDEX]:
+        try:
+            meili.delete_index(index_name)
+        except Exception:
+            log("Index %s did not exist, skipping delete" % index_name)
 
-    files_indexed = 0
-    page = 1
+    for index_name in [DOCUMENTS_INDEX, FILES_INDEX]:
+        meili.create_index(index_name)
 
-    while True:
-        resp = requests.get(
-            "%s/api/v1/files" % file_service_url,
-            params={"page": page, "page_size": api_page_size},
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        files = data.get("files", data.get("items", []))
+    meili.update_settings(DOCUMENTS_INDEX, DOCS_SETTINGS)
+    meili.update_settings(FILES_INDEX, FILES_SETTINGS)
+    log("MeiliSearch indices configured")
 
-        if not files:
-            break
 
-        batch = []
-        for f in files:
-            batch.append({
-                "id": f.get("file_id", f.get("id", "")),
-                "name": f.get("file_name", f.get("name", "")),
-                "owner_id": f.get("owner_id", ""),
-                "mime_type": f.get("mime_type", ""),
-                "folder_id": f.get("folder_id", ""),
-                "size": f.get("size_bytes", f.get("size", 0)),
-                "tags": f.get("tags", []),
-                "type": "file",
-                "created_at": f.get("created_at"),
-                "updated_at": f.get("updated_at"),
-            })
+def validate_counts(meili, docs_indexed, files_indexed):
+    log("Validating index counts...")
+    docs_count = meili.document_count(DOCUMENTS_INDEX)
+    files_count = meili.document_count(FILES_INDEX)
 
-        index_resp = requests.post(
-            "%s/indexes/%s/documents" % (meilisearch_url, files_index),
-            headers=meili_headers,
-            data=json.dumps(batch),
-        )
-        index_resp.raise_for_status()
-        task_uid = index_resp.json().get("taskUid")
-        if task_uid is not None:
-            deadline = time.monotonic() + 120
-            while time.monotonic() < deadline:
-                task_resp = requests.get(
-                    "%s/tasks/%s" % (meilisearch_url, task_uid),
-                    headers=meili_headers,
-                )
-                task_resp.raise_for_status()
-                st = task_resp.json().get("status")
-                if st == "succeeded":
-                    break
-                if st == "failed":
-                    error = task_resp.json().get("error", {})
-                    print("[%s] WARNING: Index task failed: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), error))
-                    break
-                time.sleep(1)
-        files_indexed += len(files)
-
-        if len(files) < api_page_size:
-            break
-        page += 1
-
-    print("[%s] Indexed %d files into %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), files_indexed, files_index))
-
-    # ---- Validate index counts ----
-    print("[%s] Validating index counts..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-    docs_stats = requests.get(
-        "%s/indexes/%s/stats" % (meilisearch_url, documents_index),
-        headers=meili_headers,
-    )
-    docs_stats.raise_for_status()
-    docs_count = docs_stats.json().get("numberOfDocuments", 0)
-
-    files_stats = requests.get(
-        "%s/indexes/%s/stats" % (meilisearch_url, files_index),
-        headers=meili_headers,
-    )
-    files_stats.raise_for_status()
-    files_count = files_stats.json().get("numberOfDocuments", 0)
-
-    print("[%s] Validation: documents=%d (expected %d), files=%d (expected %d)" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    log("Validation: documents=%d (expected %d), files=%d (expected %d)" % (
         docs_count, docs_indexed,
         files_count, files_indexed,
     ))
 
     if docs_count != docs_indexed:
-        print("[%s] ERROR: Documents index count mismatch: %d != %d" % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), docs_count, docs_indexed
-        ))
+        log("ERROR: Documents index count mismatch: %d != %d" % (docs_count, docs_indexed))
         sys.exit(1)
     if files_count != files_indexed:
-        print("[%s] ERROR: Files index count mismatch: %d != %d" % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), files_count, files_indexed
-        ))
+        log("ERROR: Files index count mismatch: %d != %d" % (files_count, files_indexed))
         sys.exit(1)
 
-    print("[%s] search_reindex_weekly.py completed successfully" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+def main():
+    log("search_reindex_weekly.py starting...")
+
+    config = configparser.ConfigParser()
+    config.read("/opt/etl/config.ini")
+
+    document_service_url = config.get("services", "document_service_url")
+    file_service_url = config.get("services", "file_service_url")
+    meili = MeiliClient(
+        config.get("services", "meilisearch_url"),
+        config.get("services", "meilisearch_api_key"),
+    )
+
+    reset_indices(meili)
+
+    log("Indexing documents from document-service...")
+    docs_indexed = reindex_source(
+        meili, DOCUMENTS_INDEX, "%s/api/v1/documents" % document_service_url,
+        "size", "documents", to_document_record,
+    )
+    log("Indexed %d documents into %s" % (docs_indexed, DOCUMENTS_INDEX))
+
+    log("Indexing files from file-service...")
+    files_indexed = reindex_source(
+        meili, FILES_INDEX, "%s/api/v1/files" % file_service_url,
+        "page_size", "files", to_file_record,
+    )
+    log("Indexed %d files into %s" % (files_indexed, FILES_INDEX))
+
+    validate_counts(meili, docs_indexed, files_indexed)
+
+    log("search_reindex_weekly.py completed successfully")
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print("[%s] FATAL: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(e)))
+        log("FATAL: %s" % str(e))
         sys.exit(1)
