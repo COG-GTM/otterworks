@@ -24,7 +24,7 @@ export function FolderCard({
   selected = false,
   onSelect,
   selectionActive = false,
-}: FolderCardProps) {
+}: Readonly<FolderCardProps>) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(folder.name);
