@@ -121,4 +121,24 @@ describe("apiClient response interceptor", () => {
 
     expect(error).toBe(original());
   });
+
+  it("clears the session, redirects to /login and rejects with the original error when the token is expired", async () => {
+    localStorage.setItem("otter_refresh_token", "refresh-token");
+    billingServer.use(http.get("/api/v1/auth/profile", () => HttpResponse.json({}, { status: 401 })));
+    const realLocation = window.location;
+    const fakeLocation = { href: "http://localhost:3000/files" };
+    Object.defineProperty(window, "location", { value: fakeLocation, configurable: true, writable: true });
+    const { adapter, original } = rejectWith(401);
+
+    try {
+      const error = await captureRejection(apiClient.get("/files", { adapter }));
+
+      expect(error).toBe(original());
+      expect(localStorage.getItem("otter_access_token")).toBeNull();
+      expect(localStorage.getItem("otter_refresh_token")).toBeNull();
+      expect(fakeLocation.href).toBe("/login");
+    } finally {
+      Object.defineProperty(window, "location", { value: realLocation, configurable: true, writable: true });
+    }
+  });
 });
