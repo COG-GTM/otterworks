@@ -3,7 +3,7 @@ import { Capacitor } from "@capacitor/core";
 
 // ── snake_case → camelCase helpers ────────────────────────────
 function snakeToCamel(s: string): string {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  return s.replaceAll(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 function transformKeys(obj: unknown): unknown {
