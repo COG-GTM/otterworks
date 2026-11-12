@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import pandas as pd
 import psycopg2
 
@@ -75,7 +76,7 @@ def main():
                 MessageAttributeNames=["All"],
             )
             consecutive_errors = 0
-        except:
+        except (BotoCoreError, ClientError):
             # TODO ETL-103: Add dead-letter queue for failed SQS calls (2020-01-08)
             consecutive_errors += 1
             print("[%s] WARNING: SQS receive failed (%d consecutive)" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), consecutive_errors))
@@ -97,7 +98,7 @@ def main():
                 entries_to_delete.append(
                     {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
                 )
-            except:
+            except (ValueError, KeyError, TypeError):
                 # TODO ETL-103: Add dead-letter queue for malformed messages (2020-01-08)
                 pass
 
@@ -174,7 +175,7 @@ def main():
                 if isinstance(ts, str):
                     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     return "%02d" % dt.hour
-            except:
+            except ValueError:
                 pass
             return "00"
         df["hour"] = df["timestamp"].apply(parse_hour)
