@@ -16,6 +16,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 import psycopg2
 
 
@@ -170,7 +171,7 @@ def main():
                     prev = user_totals[uid]["actions_by_type"].get(action_type, 0)
                     user_totals[uid]["actions_by_type"][action_type] = prev + count
 
-        except:
+        except (BotoCoreError, ClientError, OSError, EOFError, ValueError, AttributeError):
             # S3 key might not exist for every day -- silently skip
             # TODO ETL-098: Log missing days for debugging
             pass
