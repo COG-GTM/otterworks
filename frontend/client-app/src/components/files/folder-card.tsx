@@ -30,6 +30,7 @@ export function FolderCard({
   const [renameValue, setRenameValue] = useState(folder.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
+  const renamingAtPointerDownRef = useRef(false);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -48,6 +49,16 @@ export function FolderCard({
     setIsRenaming(false);
   };
 
+  const linkGuardProps = {
+    onMouseDown: () => {
+      renamingAtPointerDownRef.current = isRenaming;
+    },
+    onClick: (e: React.MouseEvent) => {
+      if (isRenaming || renamingAtPointerDownRef.current) e.preventDefault();
+      renamingAtPointerDownRef.current = false;
+    },
+  };
+
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
@@ -64,7 +75,7 @@ export function FolderCard({
         )}
         <Link
           to={`/files?folder=${folder.id}`}
-          onClick={isRenaming ? (e) => e.preventDefault() : undefined}
+          {...linkGuardProps}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
@@ -139,7 +150,7 @@ export function FolderCard({
       )}
       <Link
         to={`/files?folder=${folder.id}`}
-        onClick={isRenaming ? (e) => e.preventDefault() : undefined}
+        {...linkGuardProps}
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">

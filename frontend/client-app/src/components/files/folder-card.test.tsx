@@ -114,6 +114,28 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(input).toBeInTheDocument();
   });
 
+  it("does not open the folder when a click elsewhere on the card ends the rename", () => {
+    const onRename = vi.fn();
+    renderCard({ view, onRename });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByDisplayValue("Reports");
+    fireEvent.change(input, { target: { value: "Q3 Reports" } });
+    const link = screen.getByRole("link");
+
+    fireEvent.mouseDown(link);
+    fireEvent.blur(input);
+    fireEvent.click(link);
+
+    expect(onRename).toHaveBeenCalledWith("folder-1", "Q3 Reports");
+    expect(screen.queryByDisplayValue("Q3 Reports")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
+
+    fireEvent.mouseDown(link);
+    fireEvent.click(link);
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
   it("opens the folder when the card is clicked outside rename mode", () => {
     renderCard({ view });
 
