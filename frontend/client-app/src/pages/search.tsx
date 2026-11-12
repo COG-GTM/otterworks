@@ -81,6 +81,7 @@ function SearchContent() {
   );
 
   const results = data?.data || [];
+  const hasQuery = submittedQuery.length > 0;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -147,15 +148,15 @@ function SearchContent() {
       )}
 
       {/* Results */}
-      {submittedQuery && isLoading ? (
-        <PageLoader />
-      ) : submittedQuery && results.length === 0 ? (
+      {hasQuery && isLoading && <PageLoader />}
+      {hasQuery && !isLoading && results.length === 0 && (
         <EmptyState
           icon={Search}
           title="No results found"
           description={`No results for "${submittedQuery}". Try different keywords.`}
         />
-      ) : submittedQuery ? (
+      )}
+      {hasQuery && !isLoading && results.length > 0 && (
         <div className="space-y-1">
           <p className="text-sm text-gray-500 mb-4">
             {data?.total || results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{submittedQuery}&rdquo;
@@ -164,7 +165,8 @@ function SearchContent() {
             <SearchResultRow key={result.id} result={result} />
           ))}
         </div>
-      ) : (
+      )}
+      {!hasQuery && (
         <EmptyState
           icon={Search}
           title="Search OtterWorks"
@@ -175,27 +177,21 @@ function SearchContent() {
   );
 }
 
-function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
-  const href =
-    result.type === "document"
-      ? `/documents/${result.id}`
-      : result.type === "folder"
-      ? `/files?folder=${result.id}`
-      : `/files/${result.id}`;
+const resultTypeStyles: Record<SearchResult["type"], { Icon: typeof File; iconColor: string }> = {
+  document: { Icon: FileText, iconColor: "text-blue-600 bg-blue-50" },
+  folder: { Icon: FolderOpen, iconColor: "text-amber-600 bg-amber-50" },
+  file: { Icon: File, iconColor: "text-otter-600 bg-otter-50" },
+};
 
-  const Icon =
-    result.type === "document"
-      ? FileText
-      : result.type === "folder"
-      ? FolderOpen
-      : File;
+function searchResultHref(result: SearchResult): string {
+  if (result.type === "document") return `/documents/${result.id}`;
+  if (result.type === "folder") return `/files?folder=${result.id}`;
+  return `/files/${result.id}`;
+}
 
-  const iconColor =
-    result.type === "document"
-      ? "text-blue-600 bg-blue-50"
-      : result.type === "folder"
-      ? "text-amber-600 bg-amber-50"
-      : "text-otter-600 bg-otter-50";
+export function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
+  const { Icon, iconColor } = resultTypeStyles[result.type] ?? resultTypeStyles.file;
+  const href = searchResultHref(result);
 
   return (
     <Link
