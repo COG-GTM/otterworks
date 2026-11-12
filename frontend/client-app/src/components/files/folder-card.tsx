@@ -30,6 +30,30 @@ export function FolderCard({
   const [renameValue, setRenameValue] = useState(folder.name);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const renameDoneRef = useRef(false);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!menuContainerRef.current?.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (menuContainerRef.current?.contains(document.activeElement)) {
+        menuTriggerRef.current?.focus();
+      }
+      setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     if (isRenaming && renameInputRef.current) {
@@ -48,23 +72,22 @@ export function FolderCard({
     setIsRenaming(false);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onSelect?.(folder.id);
-  };
+  const selectCheckbox = (className: string) => (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onSelect?.(folder.id)}
+      aria-label={`Select ${folder.name}`}
+      className={className}
+    />
+  );
 
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
-            <input
-              type="checkbox"
-              checked={selected}
-              readOnly
-              className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-            />
+          <div className="flex-shrink-0">
+            {selectCheckbox("h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer")}
           </div>
         )}
         <Link
@@ -76,7 +99,7 @@ export function FolderCard({
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-center gap-1">
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -100,14 +123,19 @@ export function FolderCard({
           </span>
           <span className="text-xs text-gray-400 w-20 hidden sm:block text-right">&mdash;</span>
         </Link>
-        <div className="relative w-8">
+        <div className="relative w-8" ref={menuContainerRef}>
           <button
+            ref={menuTriggerRef}
+            type="button"
+            aria-label={`More actions for ${folder.name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -128,13 +156,8 @@ export function FolderCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
-          <input
-            type="checkbox"
-            checked={selected}
-            readOnly
-            className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-          />
+        <div className="absolute top-2 left-2 z-10">
+          {selectCheckbox("h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer")}
         </div>
       )}
       <Link
@@ -145,14 +168,19 @@ export function FolderCard({
           <div className="w-12 h-12 rounded-lg bg-amber-50 flex items-center justify-center">
             <Folder size={24} className="text-amber-600" />
           </div>
-          <div className="relative">
+          <div className="relative" ref={menuContainerRef}>
             <button
+              ref={menuTriggerRef}
+              type="button"
+              aria-label={`More actions for ${folder.name}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
             >
               <MoreVertical size={16} />
             </button>
@@ -168,7 +196,7 @@ export function FolderCard({
           </div>
         </div>
         {isRenaming ? (
-          <div className="mb-1" onClick={(e) => e.preventDefault()}>
+          <div className="mb-1">
             <input
               ref={renameInputRef}
               type="text"
@@ -208,46 +236,53 @@ function FolderMenu({
   onRename?: () => void;
 }) {
   return (
-    <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRename?.();
-            onClose();
-          }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          <Pencil size={14} />
-          Rename
-        </button>
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onShare?.(folder.id);
-            onClose();
-          }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          <Share2 size={14} />
-          Share
-        </button>
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete?.(folder.id);
-            onClose();
-          }}
-          className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-        >
-          <Trash2 size={14} />
-          Delete
-        </button>
-      </div>
-    </>
+    <div
+      role="menu"
+      aria-label={`Actions for ${folder.name}`}
+      className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
+    >
+      <button
+        type="button"
+        role="menuitem"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRename?.();
+          onClose();
+        }}
+        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+      >
+        <Pencil size={14} />
+        Rename
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onShare?.(folder.id);
+          onClose();
+        }}
+        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+      >
+        <Share2 size={14} />
+        Share
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete?.(folder.id);
+          onClose();
+        }}
+        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+      >
+        <Trash2 size={14} />
+        Delete
+      </button>
+    </div>
   );
 }
