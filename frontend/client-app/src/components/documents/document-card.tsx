@@ -108,7 +108,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
       <div className="h-32 bg-gradient-to-br from-blue-50 to-otter-50 p-4 flex items-start">
         <p className="text-xs text-gray-500 line-clamp-4 leading-relaxed">
           {document.content
-            ? document.content.replace(/<[^>]{0,2048}>/g, "").slice(0, 200)
+            ? document.content.replaceAll(/<[^>]{0,2048}>/g, "").slice(0, 200)
             : "Empty document"}
         </p>
       </div>
