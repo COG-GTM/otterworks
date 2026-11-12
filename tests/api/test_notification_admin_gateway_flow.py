@@ -7,8 +7,8 @@ pytestmark = pytest.mark.api_flow
 def test_notification_listing_read_preferences_and_route_gaps(api_client):
     user = api_client.register_user("notification-flow")
 
-    missing_user_response = api_client.client.get("/api/v1/notifications", headers=user.auth_headers)
-    assert missing_user_response.status_code == 400
+    unauthenticated_response = api_client.client.get("/api/v1/notifications", params={"user_id": user.id})
+    assert unauthenticated_response.status_code == 401
 
     list_response = api_client.client.get(
         "/api/v1/notifications",
@@ -56,6 +56,46 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
         json={"userId": user.id, "eventType": "document_edited", "channels": ["IN_APP"]},
     )
     assert preferences_put.status_code == 204, preferences_put.text
+
+    own_preferences_put = api_client.client.put(
+        "/api/v1/preferences",
+        headers=user.auth_headers,
+        json={"eventType": "comment_added", "channels": ["IN_APP"]},
+    )
+    assert own_preferences_put.status_code == 204, own_preferences_put.text
+
+
+def test_notification_routes_reject_cross_user_access(api_client):
+    attacker = api_client.register_user("notification-attacker")
+    victim = api_client.register_user("notification-victim")
+
+    cross_user_put = api_client.client.put(
+        "/api/v1/preferences",
+        headers=attacker.auth_headers,
+        json={"userId": victim.id, "eventType": "file_shared", "channels": []},
+    )
+    assert cross_user_put.status_code == 403, cross_user_put.text
+
+    victim_preferences = api_client.client.get("/api/v1/preferences", headers=victim.auth_headers)
+    assert victim_preferences.status_code == 200, victim_preferences.text
+    assert victim_preferences.json()["userId"] == victim.id
+    assert victim_preferences.json()["channels"]["file_shared"], victim_preferences.text
+
+    spoofed_preferences = api_client.client.get(
+        "/api/v1/preferences",
+        headers=attacker.auth_headers,
+        params={"user_id": victim.id},
+    )
+    assert spoofed_preferences.status_code == 200, spoofed_preferences.text
+    assert spoofed_preferences.json()["userId"] == attacker.id
+
+    spoofed_unread = api_client.client.get(
+        "/api/v1/notifications/unread-count",
+        headers=attacker.auth_headers,
+        params={"user_id": victim.id},
+    )
+    assert spoofed_unread.status_code == 200, spoofed_unread.text
+    assert spoofed_unread.json()["userId"] == attacker.id
 
 
 def test_admin_health_users_features_and_permissions(api_client):
