@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -28,11 +29,13 @@ function LocationProbe() {
 
 function renderCard(props: Partial<React.ComponentProps<typeof FolderCard>> = {}) {
   return render(
-    <MemoryRouter initialEntries={["/files"]}>
-      <Routes>
-        <Route path="*" element={<><FolderCard folder={folder} {...props} /><LocationProbe /></>} />
-      </Routes>
-    </MemoryRouter>
+    <StrictMode>
+      <MemoryRouter initialEntries={["/files"]}>
+        <Routes>
+          <Route path="*" element={<><FolderCard folder={folder} {...props} /><LocationProbe /></>} />
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>
   );
 }
 
