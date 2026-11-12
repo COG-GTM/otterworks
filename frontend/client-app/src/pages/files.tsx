@@ -51,6 +51,22 @@ async function runDeletions(
   return { succeeded, failed };
 }
 
+function pluralize(count: number, noun: string): string {
+  return `${count} ${noun}${count > 1 ? "s" : ""}`;
+}
+
+function reportBulkDeleteResult(
+  fileResult: { succeeded: number; failed: number },
+  folderResult: { succeeded: number; failed: number }
+): void {
+  const msgs: string[] = [];
+  if (fileResult.succeeded > 0) msgs.push(`${pluralize(fileResult.succeeded, "file")} moved to trash`);
+  if (folderResult.succeeded > 0) msgs.push(`${pluralize(folderResult.succeeded, "folder")} deleted`);
+  if (msgs.length > 0) toast.success(msgs.join(", "));
+  const failed = fileResult.failed + folderResult.failed;
+  if (failed > 0) toast.error(`${pluralize(failed, "item")} failed to delete`);
+}
+
 function FileBrowserContent() {
   const [searchParams] = useSearchParams();
   const folderId = searchParams.get("folder");
@@ -227,12 +243,7 @@ function FileBrowserContent() {
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
 
-    const msgs: string[] = [];
-    if (fileResult.succeeded > 0) msgs.push(`${fileResult.succeeded} file${fileResult.succeeded > 1 ? "s" : ""} moved to trash`);
-    if (folderResult.succeeded > 0) msgs.push(`${folderResult.succeeded} folder${folderResult.succeeded > 1 ? "s" : ""} deleted`);
-    if (msgs.length > 0) toast.success(msgs.join(", "));
-    const failed = fileResult.failed + folderResult.failed;
-    if (failed > 0) toast.error(`${failed} item${failed > 1 ? "s" : ""} failed to delete`);
+    reportBulkDeleteResult(fileResult, folderResult);
     clearSelection();
   };
 
