@@ -11,7 +11,12 @@ import spray.json.*
 import java.time.Instant
 
 /**
- * Analytics query routes:
+ * Analytics query routes. Callers are identified by the gateway's X-User-ID /
+ * X-User-Roles headers (see [[CallerAuth]]): per-user activity and storage are
+ * limited to the caller's own data unless the caller is an admin, and the
+ * cross-user aggregates (dashboard, top-content, active-users, export) are
+ * admin-only.
+ *
  *   GET /api/v1/analytics/dashboard
  *   GET /api/v1/analytics/users/{id}/activity
  *   GET /api/v1/analytics/documents/{id}/stats
@@ -27,9 +32,11 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Dashboard Summary
       path("dashboard") {
         get {
-          parameters("period".withDefault("7d")) { period =>
-            onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
-              complete(summary)
+          CallerAuth.adminOnly { _ =>
+            parameters("period".withDefault("7d")) { period =>
+              onSuccess(analyticsService.getDashboardSummary(period)) { summary =>
+                complete(summary)
+              }
             }
           }
         }
@@ -39,8 +46,12 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("users") {
         path(Segment / "activity") { userId =>
           get {
-            onSuccess(analyticsService.getUserActivity(userId)) { activity =>
-              complete(activity)
+            CallerAuth.authenticated { caller =>
+              if !caller.canViewUser(userId) then CallerAuth.forbidden
+              else
+                onSuccess(analyticsService.getUserActivity(userId)) { activity =>
+                  complete(activity)
+                }
             }
           }
         }
@@ -60,13 +71,15 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Top Content
       path("top-content") {
         get {
-          parameters(
-            "type".withDefault("documents"),
-            "period".withDefault("7d"),
-            "limit".as[Int].withDefault(10)
-          ) { (contentType, period, limit) =>
-            onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
-              complete(response)
+          CallerAuth.adminOnly { _ =>
+            parameters(
+              "type".withDefault("documents"),
+              "period".withDefault("7d"),
+              "limit".as[Int].withDefault(10)
+            ) { (contentType, period, limit) =>
+              onSuccess(analyticsService.getTopContent(contentType, period, limit)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -75,9 +88,11 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Active Users
       path("active-users") {
         get {
-          parameters("period".withDefault("daily")) { period =>
-            onSuccess(analyticsService.getActiveUsers(period)) { response =>
-              complete(response)
+          CallerAuth.adminOnly { _ =>
+            parameters("period".withDefault("daily")) { period =>
+              onSuccess(analyticsService.getActiveUsers(period)) { response =>
+                complete(response)
+              }
             }
           }
         }
@@ -86,9 +101,15 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Storage Usage
       path("storage") {
         get {
-          parameters("user_id".optional) { userId =>
-            onSuccess(analyticsService.getStorageUsage(userId)) { response =>
-              complete(response)
+          CallerAuth.authenticated { caller =>
+            parameters("user_id".optional) { requested =>
+              // Non-admins only ever see their own usage; the global view is admin-only.
+              val target = if caller.isAdmin then requested else requested.orElse(Some(caller.userId))
+              if target.exists(id => !caller.canViewUser(id)) then CallerAuth.forbidden
+              else
+                onSuccess(analyticsService.getStorageUsage(target)) { response =>
+                  complete(response)
+                }
             }
           }
         }
@@ -97,20 +118,22 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       // Export Report
       path("export") {
         get {
-          parameters(
-            "format".withDefault("json"),
-            "period".withDefault("7d")
-          ) { (format, period) =>
-            format match
-              case "csv" =>
-                onSuccess(analyticsService.exportReport("csv", period)) { report =>
-                  val csvContent = buildCsvContent(report.data)
-                  complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
-                }
-              case _ =>
-                onSuccess(analyticsService.exportReport("json", period)) { report =>
-                  complete(report)
-                }
+          CallerAuth.adminOnly { _ =>
+            parameters(
+              "format".withDefault("json"),
+              "period".withDefault("7d")
+            ) { (format, period) =>
+              format match
+                case "csv" =>
+                  onSuccess(analyticsService.exportReport("csv", period)) { report =>
+                    val csvContent = buildCsvContent(report.data)
+                    complete(HttpEntity(ContentTypes.`text/plain(UTF-8)`, csvContent))
+                  }
+                case _ =>
+                  onSuccess(analyticsService.exportReport("json", period)) { report =>
+                    complete(report)
+                  }
+            }
           }
         }
       },
