@@ -9,19 +9,23 @@ import java.time.Instant
 
 class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
 
+  private val UserId = "user-1"
+  private val DocumentId = "doc-1"
+  private val DocumentResourceType = "document"
+
   "AnalyticsEvent.create" should "generate a unique event ID and current timestamp" in {
     val event = AnalyticsEvent.create(
       eventType = EventType.DocumentCreated,
-      userId = "user-1",
-      resourceId = "doc-1",
-      resourceType = "document"
+      userId = UserId,
+      resourceId = DocumentId,
+      resourceType = DocumentResourceType
     )
 
     event.eventId should not be empty
     event.eventType shouldBe EventType.DocumentCreated
-    event.userId shouldBe "user-1"
-    event.resourceId shouldBe "doc-1"
-    event.resourceType shouldBe "document"
+    event.userId shouldBe UserId
+    event.resourceId shouldBe DocumentId
+    event.resourceType shouldBe DocumentResourceType
     event.metadata shouldBe empty
     event.timestamp should not be null
   }
@@ -43,9 +47,9 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
     val event = AnalyticsEvent(
       eventId = "evt-123",
       eventType = EventType.DocumentViewed,
-      userId = "user-1",
-      resourceId = "doc-1",
-      resourceType = "document",
+      userId = UserId,
+      resourceId = DocumentId,
+      resourceType = DocumentResourceType,
       metadata = Map("source" -> "web"),
       timestamp = Instant.parse("2024-01-15T10:30:00Z")
     )
@@ -61,9 +65,9 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
     val request = jsonStr.parseJson.convertTo[TrackEventRequest]
 
     request.eventType shouldBe "document.created"
-    request.userId shouldBe "user-1"
-    request.resourceId shouldBe "doc-1"
-    request.resourceType shouldBe "document"
+    request.userId shouldBe UserId
+    request.resourceId shouldBe DocumentId
+    request.resourceType shouldBe DocumentResourceType
     request.metadata shouldBe Some(Map("title" -> "Test"))
   }
 
