@@ -12,8 +12,9 @@ admin dashboard shows real metrics instead of in-memory mock data.
 Usage:
     uv run scripts/seed.py
 
-Environment overrides (all optional — defaults match docker-compose):
-    DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+Environment overrides (defaults match docker-compose):
+    DB_HOST, DB_PORT, DB_NAME, DB_USER,
+    DB_PASSWORD (falls back to OTTERWORKS_DB_PASSWORD, which `make seed` loads from .env)
 """
 
 import os
@@ -32,7 +33,7 @@ DB_CONFIG = {
     "port":     int(os.getenv("DB_PORT", "5432")),
     "dbname":   os.getenv("DB_NAME",     "otterworks"),
     "user":     os.getenv("DB_USER",     "otterworks"),
-    "password": os.getenv("DB_PASSWORD", "otterworks_dev"),
+    "password": os.getenv("DB_PASSWORD") or os.getenv("OTTERWORKS_DB_PASSWORD"),
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

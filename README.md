@@ -14,7 +14,8 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
-# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
+# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack).
+# The first run generates a git-ignored .env with a random local Postgres password.
 make infra-up
 
 # Start all application services (builds images on first run)
@@ -25,14 +26,20 @@ open http://localhost:3000        # Web App (React / Next.js)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
-Or without Make:
+Or without Make (set `OTTERWORKS_DB_PASSWORD` first — see `.env.example`):
 
 ```bash
+cp .env.example .env && sed -i "s/^OTTERWORKS_DB_PASSWORD=.*/OTTERWORKS_DB_PASSWORD=$(openssl rand -hex 24)/" .env
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
+
+The Postgres password only takes effect when the `postgres_data` volume is first
+initialised. If you have a volume from before `.env` existed, either recreate it
+(`docker compose -f docker-compose.infra.yml down -v`) or put the password it was
+created with in `.env`.
 
 To stop everything:
 
