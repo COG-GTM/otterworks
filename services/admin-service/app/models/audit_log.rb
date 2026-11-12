@@ -19,17 +19,10 @@ class AuditLog < ApplicationRecord
   scope :recent, -> { order(created_at: :desc) }
   scope :since, ->(time) { where('created_at >= ?', time) }
 
-  def self.record!(action:, resource_type:, resource_id: nil, actor_id: nil, actor_email: nil,
-                   changes_made: {}, ip_address: nil, user_agent: nil)
-    create!(
-      action: action,
-      resource_type: resource_type,
-      resource_id: resource_id,
-      actor_id: actor_id,
-      actor_email: actor_email,
-      changes_made: changes_made,
-      ip_address: ip_address,
-      user_agent: user_agent
-    )
+  OPTIONAL_ATTRIBUTES = %i[resource_id actor_id actor_email changes_made ip_address user_agent].freeze
+
+  def self.record!(action:, resource_type:, **attributes)
+    attributes.assert_valid_keys(*OPTIONAL_ATTRIBUTES)
+    create!({ changes_made: {} }.merge(attributes, action: action, resource_type: resource_type))
   end
 end
