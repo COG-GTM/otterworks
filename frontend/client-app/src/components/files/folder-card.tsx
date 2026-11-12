@@ -227,12 +227,29 @@ function FolderMenu({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next: Record<string, number> = {
+      ArrowDown: (current + 1) % items.length,
+      ArrowUp: (current - 1 + items.length) % items.length,
+      Home: 0,
+      End: items.length - 1,
+    };
+    if (!(e.key in next)) return;
+    e.preventDefault();
+    items[next[e.key]].focus();
+  };
+
   return (
     <>
       <div className="fixed inset-0 z-10" aria-hidden="true" onClick={onClose} />
       <div
         ref={menuRef}
         role="menu"
+        tabIndex={-1}
+        onKeyDown={handleMenuKeyDown}
         className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
       >
         <button

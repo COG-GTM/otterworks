@@ -54,6 +54,27 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(trigger).toHaveFocus();
   });
 
+  it("moves between menu items with the arrow, Home and End keys", () => {
+    renderCard({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    const rename = screen.getByRole("menuitem", { name: "Rename" });
+    const share = screen.getByRole("menuitem", { name: "Share" });
+    const del = screen.getByRole("menuitem", { name: "Delete" });
+
+    fireEvent.keyDown(rename, { key: "ArrowDown" });
+    expect(share).toHaveFocus();
+    fireEvent.keyDown(share, { key: "ArrowDown" });
+    expect(del).toHaveFocus();
+    fireEvent.keyDown(del, { key: "ArrowDown" });
+    expect(rename).toHaveFocus();
+    fireEvent.keyDown(rename, { key: "ArrowUp" });
+    expect(del).toHaveFocus();
+    fireEvent.keyDown(del, { key: "Home" });
+    expect(rename).toHaveFocus();
+    fireEvent.keyDown(rename, { key: "End" });
+    expect(del).toHaveFocus();
+  });
+
   it("still closes the actions menu when the backdrop is clicked", () => {
     const { container } = renderCard({ view });
     fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
