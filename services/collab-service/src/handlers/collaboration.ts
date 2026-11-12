@@ -169,6 +169,7 @@ export class CollaborationManager {
       );
       access = 'none';
     }
+    if (!socket.connected) return;
     if (access === 'none') {
       logger.warn(
         { documentId, userId: user.userId, socketId: socket.id },
