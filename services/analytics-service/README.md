@@ -5,6 +5,14 @@ an SQS consumer) and serves aggregated analytics: dashboard summaries, per-user
 activity, document stats, top content, active users, storage usage, and report
 exports.
 
+Query routes identify the caller from the gateway's `X-User-ID` / `X-User-Roles`
+headers (derived from the validated JWT; client-supplied copies are stripped).
+`users/{id}/activity` and `storage?user_id=` return only the caller's own data
+unless the caller has the `ADMIN` or `OWNER` role (`storage` without `user_id`
+defaults to the caller for non-admins); `dashboard`, `top-content`,
+`active-users` and `export` are admin-only. A missing identity answers 401, an
+unauthorized request 403.
+
 ## Metrics store
 
 Events and a daily aggregate rollup are persisted to a **durable PostgreSQL
