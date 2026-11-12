@@ -8,9 +8,8 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    database_url: str = (
-        "postgresql+asyncpg://otterworks:otterworks_dev@localhost:5432/otterworks"
-    )
+    # Credentials come from DOC_SVC_DATABASE_URL; never commit them here.
+    database_url: str = "postgresql+asyncpg://otterworks@localhost:5432/otterworks"
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
