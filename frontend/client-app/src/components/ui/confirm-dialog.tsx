@@ -42,7 +42,7 @@ export function ConfirmDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="w-[calc(100%-2rem)] max-w-md bg-transparent p-0 backdrop:bg-black/50"
+      className="!m-auto w-[calc(100%-2rem)] max-w-md bg-transparent p-0 backdrop:bg-black/50"
       aria-labelledby="confirm-dialog-title"
       aria-describedby="confirm-dialog-description"
       onCancel={(e) => {
