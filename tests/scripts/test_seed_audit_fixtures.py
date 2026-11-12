@@ -10,7 +10,7 @@ import ipaddress
 import re
 import sys
 import types
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -38,6 +38,9 @@ seed = _load_seed()
 USERS = [(u["id"], u["email"]) for u in sorted(seed.USERS, key=lambda u: u["email"])]
 
 
+FROZEN_NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
 class FakeCursor:
     def __init__(self, users):
         self.users = users
@@ -58,15 +61,16 @@ def _audit_rows(monkeypatch, users=USERS):
 
     monkeypatch.setattr(seed, "execute_values", fake_execute_values)
     monkeypatch.setattr(seed, "log", lambda msg: None)
+    monkeypatch.setattr(seed, "now", lambda: FROZEN_NOW)
     cur = FakeCursor(users)
     seed.seed_audit_logs(cur)
     return cur, captured["rows"]
 
 
 def _stable(row):
-    # id/resource_id for non-user resources are uuid4 and timestamps are relative to now()
-    _, actor_id, actor_email, action, resource_type, resource_id, _, ip, ua, _, _ = row
-    return actor_id, actor_email, action, resource_type, resource_id if resource_type == "AdminUser" else None, ip, ua
+    # id and resource_id for non-user resources are uuid4
+    _, actor_id, actor_email, action, resource_type, resource_id, _, ip, ua, created, _ = row
+    return actor_id, actor_email, action, resource_type, resource_id if resource_type == "AdminUser" else None, ip, ua, created
 
 
 def test_seed_does_not_use_random_module():
@@ -114,7 +118,7 @@ def test_audit_rows_values_in_range(monkeypatch):
         octets = [int(p) for p in ip.split(".")]
         assert ipaddress.ip_address(ip) in subnet and 1 <= octets[2] <= 5 and 1 <= octets[3] <= 254
         assert ua == "Mozilla/5.0 (seed)" and changes == "{}" and created == updated
-        assert timedelta(0) <= seed.now() - created <= timedelta(hours=30 * 24, minutes=1)
+        assert timedelta(0) <= FROZEN_NOW - created <= timedelta(hours=30 * 24, minutes=1)
 
 
 def test_no_users_skips_insert(monkeypatch):
