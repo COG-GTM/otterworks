@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -101,4 +102,50 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
+}
+
+func TestRouterErrorResponsesAreJSON(t *testing.T) {
+	backend := httptest.NewServer(http.NotFoundHandler())
+	deadURL := backend.URL
+	backend.Close()
+
+	router := NewRouter(RouterConfig{
+		Routes: []Route{{Prefix: "/api/v1/files", TargetURL: deadURL}},
+		CBManager: NewCircuitBreakerManager(CircuitBreakerConfig{
+			MaxRequests:  1,
+			Interval:     time.Minute,
+			Timeout:      time.Minute,
+			FailureRatio: 0.5,
+		}),
+		Logger: zerolog.Nop(),
+	})
+
+	serve := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+	assertJSONError := func(t *testing.T, rec *httptest.ResponseRecorder, status int, wantError string) {
+		t.Helper()
+		assert.Equal(t, status, rec.Code)
+		assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+		var body map[string]string
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		assert.Equal(t, wantError, body["error"])
+	}
+
+	t.Run("unknown route", func(t *testing.T) {
+		assertJSONError(t, serve("/no/such/route"), http.StatusNotFound, "route not found")
+	})
+
+	t.Run("backend unreachable", func(t *testing.T) {
+		assertJSONError(t, serve("/api/v1/files/list"), http.StatusBadGateway, "service unavailable")
+	})
+
+	t.Run("circuit breaker open", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			serve("/api/v1/files/list")
+		}
+		assertJSONError(t, serve("/api/v1/files/list"), http.StatusServiceUnavailable, "service temporarily unavailable")
+	})
 }
