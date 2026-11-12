@@ -121,6 +121,10 @@
    "request": {
     "method": "GET",
     "path": "/api/v1/documents/",
+    "headers": {
+     "Authorization": "Bearer fixture",
+     "X-User-ID": "aaaaaaaa-0000-4000-8000-00000000000a"
+    },
     "params": {
      "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
      "title": "report"
@@ -134,6 +138,10 @@
    "request": {
     "method": "GET",
     "path": "/api/v1/documents/",
+    "headers": {
+     "Authorization": "Bearer fixture",
+     "X-User-ID": "aaaaaaaa-0000-4000-8000-00000000000a"
+    },
     "params": {
      "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
      "title": "report",
@@ -149,6 +157,10 @@
    "request": {
     "method": "GET",
     "path": "/api/v1/documents/",
+    "headers": {
+     "Authorization": "Bearer fixture",
+     "X-User-ID": "aaaaaaaa-0000-4000-8000-00000000000a"
+    },
     "params": {
      "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a"
     }
@@ -225,6 +237,10 @@
    "request": {
     "method": "GET",
     "path": "/api/v1/documents/",
+    "headers": {
+     "Authorization": "Bearer fixture",
+     "X-User-ID": "aaaaaaaa-0000-4000-8000-00000000000a"
+    },
     "params": {
      "owner_id": "aaaaaaaa-0000-4000-8000-00000000000a",
      "title": "report'"
