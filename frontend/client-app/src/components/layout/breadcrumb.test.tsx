@@ -31,6 +31,7 @@ describe("Breadcrumb", () => {
       { label: "report.pdf" },
     ]);
     const filesItem = screen.getByRole("link", { name: "Files" }).parentElement;
+    const currentItem = screen.getByText("report.pdf").parentElement;
 
     rerender(
       <MemoryRouter>
@@ -45,6 +46,7 @@ describe("Breadcrumb", () => {
     );
 
     expect(screen.getByRole("link", { name: "Files" }).parentElement).toBe(filesItem);
+    expect(screen.getByText("report.pdf").parentElement).toBe(currentItem);
     expect(errors).not.toHaveBeenCalledWith(expect.stringContaining("key"), expect.anything());
   });
 });
