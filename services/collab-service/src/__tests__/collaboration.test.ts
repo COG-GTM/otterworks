@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Server as SocketIOServer } from 'socket.io';
 import { createServer } from 'http';
 import { io as clientIO, Socket as ClientSocket } from 'socket.io-client';
@@ -11,11 +12,11 @@ import { MetricsCollector } from '../metrics';
 import { createAuthMiddleware } from '../middleware/auth';
 import { RedisAdapter } from '../services/redis-adapter';
 
-const JWT_SECRET = 'test-secret-key-for-unit-tests';
+const JWT_SECRET = randomBytes(32).toString('hex');
 let PORT: number;
 
 function createToken(payload: Record<string, unknown>): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }); // nosemgrep: javascript.jsonwebtoken.security.jwt-hardcode.hardcoded-jwt-secret
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
 const mockRedis = {
