@@ -2,7 +2,8 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DashboardSkeleton, FileGridSkeleton, FileListSkeleton } from "./skeleton";
 
-describe("Skeleton placeholders", () => {
+// Rendering is identical with index keys; the S6479 guard itself is SonarCloud.
+describe("Skeleton placeholders render unchanged", () => {
   const consoleError = vi.spyOn(console, "error");
 
   afterEach(() => {
@@ -15,19 +16,19 @@ describe("Skeleton placeholders", () => {
     );
   }
 
-  it("renders the requested number of list rows with unique keys", () => {
+  it("renders the requested number of list rows", () => {
     const { container } = render(<FileListSkeleton count={5} />);
     expect(container.firstElementChild?.children).toHaveLength(5);
     expect(keyWarnings()).toHaveLength(0);
   });
 
-  it("renders the requested number of grid cards with unique keys", () => {
+  it("renders the requested number of grid cards", () => {
     const { container } = render(<FileGridSkeleton count={3} />);
     expect(container.firstElementChild?.children).toHaveLength(3);
     expect(keyWarnings()).toHaveLength(0);
   });
 
-  it("keeps row count stable when the count changes", () => {
+  it("re-renders to the new row count when count changes", () => {
     const { container, rerender } = render(<FileListSkeleton count={2} />);
     rerender(<FileListSkeleton count={4} />);
     expect(container.firstElementChild?.children).toHaveLength(4);
