@@ -43,6 +43,7 @@ for arg in "$@"; do
     --skip-platform)  SKIP_PLATFORM=true ;;
     --skip-terraform) SKIP_TERRAFORM=true ;;
     --skip-build)     SKIP_BUILD=true ;;
+    *) echo "[deploy] Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
 
@@ -320,6 +321,7 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].path=/')
       EXTRA_ARGS+=(--set-string 'ingress.hosts[0].paths[0].pathType=Prefix')
       EXTRA_ARGS+=(--set 'ingress.tls=null') ;;
+    *) ;; # backend services stay ClusterIP with no ingress
   esac
 
   local port="${CONTAINER_PORT[$service]:-}"
@@ -335,6 +337,7 @@ build_helm_args() {
     case "$service" in
       api-gateway|auth-service|document-service|collab-service|admin-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
+      *) ;; # service does not validate JWTs
     esac
   fi
 
@@ -407,6 +410,7 @@ build_helm_args() {
       EXTRA_ARGS+=(--set-string "config.DB_HOST=${DB_ENDPOINT_HOST}" --set-string "config.DB_PORT=${DB_ENDPOINT_PORT}")
       EXTRA_ARGS+=(--set-string "config.DB_NAME=${DB_NAME}" --set-string "config.DB_USER=${DB_USER}")
       add_secret DB_PASSWORD "${DB_PASSWORD}" ;;
+    *) ;; # no service-specific config
   esac
 }
 
