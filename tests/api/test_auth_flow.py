@@ -71,7 +71,7 @@ def test_auth_validation_and_protected_routes(api_client):
 
     invalid_login = api_client.client.post(
         "/api/v1/auth/login",
-        json={"email": user.email, "password": f"{user.password}-wrong"},
+        json={"email": user.email, "password": f"wrong-{user.password}"},
     )
     assert invalid_login.status_code in {400, 401}
 
