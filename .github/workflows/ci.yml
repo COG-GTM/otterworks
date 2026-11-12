@@ -91,7 +91,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install boto3==1.26.0
-      - run: make test-etl
+      - run: python3 -m unittest discover -s etl/tests -v
 
   # Go - API Gateway
   api-gateway:
