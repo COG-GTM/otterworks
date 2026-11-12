@@ -28,19 +28,21 @@ class BucketOwnerCoverageTest(unittest.TestCase):
                 self.assertIn("ExpectedBucketOwner", kwargs, where)
                 if "CopySource" in kwargs:
                     self.assertIn("ExpectedSourceBucketOwner", kwargs, where)
-        self.assertGreaterEqual(checked, 15)
+        self.assertGreaterEqual(checked, 14)
 
-    def test_analytics_checks_owner_before_consuming_sqs(self):
-        calls = _calls(SCRIPTS / "analytics_daily.py")
-
-        def first(attr):
-            return min(
-                c.lineno for c in calls
-                if isinstance(c.func, ast.Attribute) and c.func.attr == attr
-            )
-
-        self.assertLess(first("head_bucket"), first("receive_message"))
-        self.assertLess(first("head_bucket"), first("delete_message_batch"))
+    def test_analytics_deletes_sqs_events_only_after_data_lake_upload(self):
+        calls = [
+            c for c in _calls(SCRIPTS / "analytics_daily.py")
+            if isinstance(c.func, ast.Attribute)
+        ]
+        lake_puts = [
+            c.lineno for c in calls
+            if c.func.attr == "put_object"
+            and isinstance(c.func.value, ast.Name) and c.func.value.id == "s3_client"
+        ]
+        deletes = [c.lineno for c in calls if c.func.attr == "delete_message_batch"]
+        self.assertTrue(lake_puts and deletes)
+        self.assertGreater(min(deletes), max(lake_puts))
 
 
 if __name__ == "__main__":

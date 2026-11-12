@@ -52,14 +52,6 @@ def main():
 
     print("[%s] Processing analytics for date: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ds))
 
-    # Fail before consuming (and deleting) SQS events if the data lake is not ours.
-    boto3.client(
-        "s3",
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region,
-    ).head_bucket(Bucket=data_lake_bucket, ExpectedBucketOwner=expected_bucket_owner)
-
     # ---- Extract from SQS ----
     # TODO ETL-089: Make queue URL configurable per environment (2019-11-15)
     sqs_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/otterworks-analytics"
@@ -71,6 +63,8 @@ def main():
     )
 
     all_sqs_events = []
+    # Deleted only after the data lake upload succeeds, so a failed load leaves them queued.
+    processed_receipts = []
     messages_processed = 0
     max_messages = 10000  # hardcoded limit
     batch_size = 10
@@ -86,6 +80,7 @@ def main():
                 WaitTimeSeconds=5,
                 AttributeNames=["All"],
                 MessageAttributeNames=["All"],
+                VisibilityTimeout=43200,
             )
             consecutive_errors = 0
         except:
@@ -102,20 +97,16 @@ def main():
             print("[%s] No more messages after %d processed" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), messages_processed))
             break
 
-        entries_to_delete = []
         for msg in messages:
             try:
                 event = json.loads(msg["Body"])
                 all_sqs_events.append(event)
-                entries_to_delete.append(
+                processed_receipts.append(
                     {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
                 )
             except:
                 # TODO ETL-103: Add dead-letter queue for malformed messages (2020-01-08)
                 pass
-
-        if entries_to_delete:
-            sqs_client.delete_message_batch(QueueUrl=sqs_queue_url, Entries=entries_to_delete)
 
         messages_processed += len(messages)
 
@@ -352,6 +343,11 @@ def main():
     )
 
     print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
+
+    for i in range(0, len(processed_receipts), batch_size):
+        sqs_client.delete_message_batch(
+            QueueUrl=sqs_queue_url, Entries=processed_receipts[i:i + batch_size]
+        )
 
     # ---- Upsert PostgreSQL aggregates ----
     print("[%s] Connecting to PostgreSQL at %s:%d/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), db_host, db_port, db_name))
