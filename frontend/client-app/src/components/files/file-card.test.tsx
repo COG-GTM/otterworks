@@ -75,6 +75,7 @@ describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
     fireEvent.change(input, { target: { value: "final.pdf" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onRename).toHaveBeenCalledWith("f1", "final.pdf");
+    expect(screen.queryByText("file detail page")).not.toBeInTheDocument();
   });
 
   it("still navigates to the file when the card is clicked", () => {
