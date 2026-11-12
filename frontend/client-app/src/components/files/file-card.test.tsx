@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import type { FileItem } from "@/types";
 import { FileCard } from "./file-card";
@@ -57,5 +57,33 @@ describe.each(["grid", "list"] as const)("selection checkbox (%s view)", (view) 
     expect(checkbox.tabIndex).toBe(0);
     fireEvent.click(checkbox);
     expect(onSelect).toHaveBeenCalledWith("d1");
+  });
+});
+
+function CurrentUrl() {
+  const { pathname, search } = useLocation();
+  return <output data-testid="url">{pathname + search}</output>;
+}
+
+describe.each(["grid", "list"] as const)("menu backdrop (%s view)", (view) => {
+  it.each([
+    ["file", (v: typeof view) => <FileCard file={item} view={v} />],
+    ["folder", (v: typeof view) => <FolderCard folder={{ ...item, isFolder: true }} view={v} />],
+  ])("closes the %s menu without following the card link", (_kind, card) => {
+    const { container } = render(
+      <MemoryRouter initialEntries={["/files"]}>
+        {card(view)}
+        <CurrentUrl />
+      </MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "" }));
+    expect(screen.getByRole("button", { name: /rename/i })).toBeInTheDocument();
+
+    const backdrop = container.querySelector('[aria-hidden="true"].fixed.inset-0');
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+
+    expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
+    expect(screen.getByTestId("url")).toHaveTextContent(/^\/files$/);
   });
 });
