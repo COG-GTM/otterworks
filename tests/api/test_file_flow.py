@@ -188,10 +188,11 @@ def test_file_and_folder_routes_enforce_ownership(api_client):
                 headers=headers,
                 json={"shared_with": stranger.id, "permission": "editor"},
             ),
+            # Before remove-share: a viewer who left the share would get 404, not 403.
+            "delete": api_client.client.delete(f"/api/v1/files/{file_id}", headers=headers),
             "remove-share": api_client.client.delete(
                 f"/api/v1/files/{file_id}/share/{viewer.id}", headers=headers
             ),
-            "delete": api_client.client.delete(f"/api/v1/files/{file_id}", headers=headers),
         }
 
     stranger_calls = file_calls(stranger)
