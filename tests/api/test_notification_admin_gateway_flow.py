@@ -95,7 +95,7 @@ def test_admin_health_users_features_and_permissions(api_client):
         headers=user.auth_headers,
         params={"page": 1, "per_page": 10},
     )
-    assert audit_logs_response.status_code in {200, 401, 403}
+    assert audit_logs_response.status_code in {401, 403}
 
 
 def test_gateway_health_cors_request_id_and_unavailable_route_behavior(api_client):
