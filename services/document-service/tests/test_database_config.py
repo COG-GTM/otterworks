@@ -3,10 +3,10 @@
 from pathlib import Path
 
 import pytest
-from alembic import command
 from alembic.config import Config
 from pydantic import SecretStr
 
+from alembic import command
 from app.config import DatabaseNotConfiguredError, Settings, settings
 from app.db import session as db_session
 from app.main import app, lifespan
