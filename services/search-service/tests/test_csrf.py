@@ -92,6 +92,22 @@ class TestLegitimateWritesAllowed:
         )
         assert response.status_code == 200
 
+    def test_desktop_loopback_origin_through_gateway_host(self, client):
+        response = client.post(
+            ADVANCED,
+            json={"q": "plan"},
+            headers={"Origin": "http://127.0.0.1:34117", "Host": "localhost:8080"},
+        )
+        assert response.status_code == 200
+
+    def test_loopback_lookalike_host_rejected(self, client):
+        response = client.post(
+            ADVANCED,
+            json={"q": "plan"},
+            headers={"Origin": "http://localhost.evil.example", "Host": "t-main.otterworks.app"},
+        )
+        assert response.status_code == 403
+
     def test_json_with_charset(self, client):
         response = client.post(
             ADVANCED, data='{"q": "plan"}', content_type="application/json; charset=utf-8"
@@ -141,7 +157,12 @@ class TestCorsAndConfig:
         client = app.test_client()
         ok = client.post(ADVANCED, json={"q": "x"}, headers={"Origin": "https://app.example"})
         assert ok.status_code == 200
-        bad = client.post(ADVANCED, json={"q": "x"}, headers={"Origin": "http://localhost:3000"})
+        preflight = client.options(
+            ADVANCED,
+            headers={"Origin": "https://app.example", "Access-Control-Request-Method": "POST"},
+        )
+        assert preflight.headers.get("Access-Control-Allow-Origin") == "https://app.example"
+        bad = client.post(ADVANCED, json={"q": "x"}, headers={"Origin": "https://other.example"})
         assert bad.status_code == 403
 
 

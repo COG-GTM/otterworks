@@ -6,8 +6,8 @@ header, and no session cookie is ever issued. Synchronizer tokens (e.g.
 Flask-WTF's ``CSRFProtect``) need a server-side session, so instead every
 unsafe request (POST/PUT/PATCH/DELETE) must pass these checks:
 
-* A browser-supplied ``Origin`` must match the request's own host or be one
-  of the trusted origins.
+* A browser-supplied ``Origin`` must match the request's own host, be one of
+  the trusted origins, or be a loopback ``http://`` origin (local shells).
 * Without ``Origin``, a ``Sec-Fetch-Site: cross-site`` request is refused.
 * A request body must be ``application/json``. HTML forms can only send
   ``application/x-www-form-urlencoded``, ``multipart/form-data`` or
@@ -28,12 +28,18 @@ from flask import jsonify, request
 logger = structlog.get_logger()
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
+LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 JSON_MIMETYPES = frozenset({"application/json"})
+
+
+def normalize_origins(origins) -> list[str]:
+    """Normalize configured origins the way browsers serialize ``Origin``."""
+    return list(dict.fromkeys(_normalize_origin(o) for o in origins if o and o.strip()))
 
 
 def csrf_protect(app, trusted_origins) -> None:
     """Register a ``before_request`` hook that refuses cross-site writes."""
-    trusted = frozenset(_normalize_origin(o) for o in trusted_origins if o)
+    trusted = frozenset(normalize_origins(trusted_origins))
 
     @app.before_request
     def _check_csrf():
@@ -60,7 +66,11 @@ def _rejection_reason(trusted: frozenset[str]) -> str | None:
     origin = request.headers.get("Origin")
     if origin is not None:
         normalized = _normalize_origin(origin)
-        if normalized not in trusted and not _is_same_host(normalized):
+        if not (
+            normalized in trusted
+            or _is_same_host(normalized)
+            or _is_loopback_http(normalized)
+        ):
             return "untrusted_origin"
     elif request.headers.get("Sec-Fetch-Site", "").lower() == "cross-site":
         return "cross_site_request"
@@ -83,6 +93,13 @@ def _is_same_host(normalized_origin: str) -> bool:
     # proxied request reliably matches the browser's Origin.
     host = urlsplit(normalized_origin).netloc
     return bool(host) and host == _strip_default_port(request.host.lower(), "")
+
+
+def _is_loopback_http(normalized_origin: str) -> bool:
+    # Local shells (e.g. the Electron desktop app on 127.0.0.1:<port>) proxy
+    # /api/v1 with the gateway's Host; only local code can serve these origins.
+    parts = urlsplit(normalized_origin)
+    return parts.scheme == "http" and parts.hostname in LOOPBACK_HOSTS
 
 
 def _normalize_origin(origin: str) -> str:
