@@ -578,10 +578,11 @@ def audit_bola(ctx: ScanContext) -> Result:
     for label, attack in attacks.items():
         response = attack()
         evidence.append(Evidence.from_response(response, note=label))
-        if unavailable(response):
-            unreached.append(f"{label} -> {response.status_code}")
-        elif response.status_code < 400:
+        if response.status_code < 400:
             exposed.append(label)
+        elif unavailable(response) or response.status_code not in (401, 403, 404):
+            # A 400/405/422 rejects the request's shape, not the caller: nothing was assessed.
+            unreached.append(f"{label} -> {response.status_code}")
     if exposed:
         return self.result(
             Verdict.VULNERABLE,
@@ -591,7 +592,27 @@ def audit_bola(ctx: ScanContext) -> Result:
     if unreached:
         return self.result(
             Verdict.INCONCLUSIVE,
-            f"audit-service did not answer: {', '.join(unreached)}",
+            f"audit-service did not make an authorization decision: {', '.join(unreached)}",
+            evidence,
+        )
+    own_event = ctx.request(
+        "POST",
+        "/api/v1/audit/events",
+        identity=ctx.victim,
+        json={
+            "action": "create",
+            "resourceType": "document",
+            "resourceId": f"dast-own-{ctx.run_id}",
+        },
+    )
+    evidence.append(
+        Evidence.from_response(own_event, note="control: victim records their own event")
+    )
+    if own_event.status_code != 201:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"the victim cannot record their own audit event either ({own_event.status_code}), "
+            "so the attacker's refusal proves nothing",
             evidence,
         )
     if not ctx.owner_can_read(victim_report, ctx.victim):
@@ -603,7 +624,7 @@ def audit_bola(ctx: ScanContext) -> Result:
         )
     return self.result(
         Verdict.SECURE,
-        "the victim can read their own audit report; every cross-user and admin-only "
-        "request from the attacker was refused",
+        "the victim can record events and read their own audit report; every cross-user "
+        "and admin-only request from the attacker was refused",
         evidence,
     )
