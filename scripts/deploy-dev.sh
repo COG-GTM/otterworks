@@ -13,6 +13,23 @@
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
+# Parsed before the required-env checks so --help and typos work without them.
+SKIP_PLATFORM=false
+SKIP_TERRAFORM=false
+SKIP_BUILD=false
+for arg in "$@"; do
+  case "$arg" in
+    --skip-platform)  SKIP_PLATFORM=true ;;
+    --skip-terraform) SKIP_TERRAFORM=true ;;
+    --skip-build)     SKIP_BUILD=true ;;
+    -h|--help)        sed -n '2,13p' "$0"; exit 0 ;;
+    *)
+      echo "[deploy] unknown argument: ${arg}" >&2
+      echo "[deploy] usage: $0 [--skip-platform] [--skip-terraform] [--skip-build]" >&2
+      exit 2 ;;
+  esac
+done
+
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:?ERROR: AWS_ACCOUNT_ID must be set}"
 EKS_CLUSTER="${EKS_CLUSTER:-otterworks-dev}"
@@ -34,22 +51,6 @@ SECRET_KEY_BASE="${SECRET_KEY_BASE:-$(openssl rand -hex 64)}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-SKIP_PLATFORM=false
-SKIP_TERRAFORM=false
-SKIP_BUILD=false
-for arg in "$@"; do
-  case "$arg" in
-    --skip-platform)  SKIP_PLATFORM=true ;;
-    --skip-terraform) SKIP_TERRAFORM=true ;;
-    --skip-build)     SKIP_BUILD=true ;;
-    -h|--help)        sed -n '2,13p' "$0"; exit 0 ;;
-    *)
-      echo "[deploy] unknown argument: ${arg}" >&2
-      echo "[deploy] usage: $0 [--skip-platform] [--skip-terraform] [--skip-build]" >&2
-      exit 2 ;;
-  esac
-done
 
 # Colors
 RED='\033[0;31m'
