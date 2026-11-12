@@ -21,7 +21,7 @@ interface LoginResponse {
 export class AuthService {
   private readonly TOKEN_KEY = 'ow_admin_token';
   private readonly USER_KEY = 'ow_admin_user';
-  private currentUserSubject = new BehaviorSubject<AuthUser | null>(this.getStoredUser());
+  private readonly currentUserSubject = new BehaviorSubject<AuthUser | null>(this.getStoredUser());
   currentUser$ = this.currentUserSubject.asObservable();
 
   constructor(private http: HttpClient, private router: Router) {}
