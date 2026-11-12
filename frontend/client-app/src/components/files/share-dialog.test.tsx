@@ -226,6 +226,21 @@ describe("ShareDialog", () => {
     expect(screen.getByPlaceholderText("Add people by email")).toBeInTheDocument();
   });
 
+  it("keeps the draft email, error and link access when switching tabs", async () => {
+    renderDialog({ onShare: vi.fn().mockRejectedValue(new Error("boom")) });
+    shareWith("hank@example.com");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "edit" } });
+    fireEvent.click(screen.getByRole("button", { name: /Get link/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Anyone with the link/ }));
+    fireEvent.click(screen.getByRole("button", { name: /People/ }));
+    expect(screen.getByPlaceholderText("Add people by email")).toHaveValue("hank@example.com");
+    expect(screen.getAllByRole("combobox")[0]).toHaveValue("edit");
+    expect(screen.getByRole("alert")).toHaveTextContent("Sharing failed.");
+    fireEvent.click(screen.getByRole("button", { name: /Get link/ }));
+    expect(screen.getByRole("button", { name: /Anyone with the link/ })).toHaveClass("bg-otter-50");
+  });
+
   it("copies the file link and resets the Copied label", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });

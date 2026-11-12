@@ -39,6 +39,85 @@ function fileShareUrl(fileId: string): string {
   return typeof window === "undefined" ? `/files/${fileId}` : `${window.location.origin}/files/${fileId}`;
 }
 
+function useShareForm(onShare: (email: string, permission: Permission) => Promise<void>) {
+  const [email, setEmail] = useState("");
+  const [permission, setPermission] = useState<Permission>("view");
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  const handleShare = async () => {
+    const target = email.trim();
+    if (!target) return;
+    setIsSharing(true);
+    setShareError(null);
+    try {
+      await onShare(target, permission);
+      setEmail("");
+      toast.success(`Shared with ${target}`);
+    } catch (err) {
+      const message = shareErrorMessage(err);
+      setShareError(message);
+      toast.error(message);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  return { email, setEmail, permission, setPermission, isSharing, shareError, handleShare };
+}
+
+function useAccessActions(
+  changePermission: (userId: string, permission: Permission) => Promise<unknown>,
+  removeAccess: (userId: string) => Promise<unknown>
+) {
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+
+  const handlePermissionChange = async (userId: string, newPermission: Permission) => {
+    setUpdatingUserId(userId);
+    try {
+      await changePermission(userId, newPermission);
+      toast.success("Permission updated");
+    } catch {
+      toast.error("Failed to update permission");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleRemoveAccess = async (userId: string) => {
+    setRemovingUserId(userId);
+    try {
+      await removeAccess(userId);
+      toast.success("Access removed");
+    } catch {
+      toast.error("Failed to remove access");
+    } finally {
+      setRemovingUserId(null);
+    }
+  };
+
+  return { updatingUserId, removingUserId, handlePermissionChange, handleRemoveAccess };
+}
+
+function useLinkSharing(shareUrl: string) {
+  const [linkAccess, setLinkAccess] = useState<LinkAccess>("restricted");
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      toast.success("Link copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy link");
+    }
+  };
+
+  return { shareUrl, linkAccess, setLinkAccess, copied, handleCopyLink };
+}
+
 export function ShareDialog({
   fileId,
   fileName,
@@ -53,14 +132,15 @@ export function ShareDialog({
   onRemoveAccess,
 }: ShareDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>("people");
-
-  const changePermission = (userId: string, permission: Permission) =>
-    onPermissionChange
-      ? onPermissionChange(userId, permission)
-      : filesApi.updateSharePermission(fileId, userId, permission);
-
-  const removeAccess = (userId: string) =>
-    onRemoveAccess ? onRemoveAccess(userId) : filesApi.removeShare(fileId, userId);
+  const shareForm = useShareForm(onShare);
+  const access = useAccessActions(
+    (userId, permission) =>
+      onPermissionChange
+        ? onPermissionChange(userId, permission)
+        : filesApi.updateSharePermission(fileId, userId, permission),
+    (userId) => (onRemoveAccess ? onRemoveAccess(userId) : filesApi.removeShare(fileId, userId))
+  );
+  const link = useLinkSharing(fileShareUrl(fileId));
 
   return (
     <>
@@ -99,12 +179,11 @@ export function ShareDialog({
                 ownerEmail={ownerEmail}
                 sharedWith={sharedWith}
                 resolvedUsers={resolvedUsers}
-                onShare={onShare}
-                onPermissionChange={changePermission}
-                onRemoveAccess={removeAccess}
+                shareForm={shareForm}
+                access={access}
               />
             ) : (
-              <LinkPanel fileId={fileId} />
+              <LinkPanel link={link} />
             )}
           </div>
         </div>
@@ -144,53 +223,16 @@ interface PeoplePanelProps {
   ownerEmail?: string;
   sharedWith: SharedUser[];
   resolvedUsers: ResolvedUsers;
-  onShare: (email: string, permission: Permission) => Promise<void>;
-  onPermissionChange: (userId: string, permission: Permission) => Promise<unknown>;
-  onRemoveAccess: (userId: string) => Promise<unknown>;
+  shareForm: ReturnType<typeof useShareForm>;
+  access: ReturnType<typeof useAccessActions>;
 }
 
-function PeoplePanel({
-  ownerId,
-  ownerName,
-  ownerEmail,
-  sharedWith,
-  resolvedUsers,
-  onShare,
-  onPermissionChange,
-  onRemoveAccess,
-}: PeoplePanelProps) {
-  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
-  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
-
-  const handlePermissionChange = async (userId: string, newPermission: Permission) => {
-    setUpdatingUserId(userId);
-    try {
-      await onPermissionChange(userId, newPermission);
-      toast.success("Permission updated");
-    } catch {
-      toast.error("Failed to update permission");
-    } finally {
-      setUpdatingUserId(null);
-    }
-  };
-
-  const handleRemoveAccess = async (userId: string) => {
-    setRemovingUserId(userId);
-    try {
-      await onRemoveAccess(userId);
-      toast.success("Access removed");
-    } catch {
-      toast.error("Failed to remove access");
-    } finally {
-      setRemovingUserId(null);
-    }
-  };
-
+function PeoplePanel({ ownerId, ownerName, ownerEmail, sharedWith, resolvedUsers, shareForm, access }: PeoplePanelProps) {
   const others = sharedWith.filter((user) => user.userId !== ownerId);
 
   return (
     <div className="space-y-4">
-      <ShareForm onShare={onShare} />
+      <ShareForm form={shareForm} />
 
       {/* People with access list */}
       <div className="space-y-1">
@@ -205,10 +247,10 @@ function PeoplePanel({
             key={user.userId}
             user={user}
             resolved={resolvedUsers[user.userId]}
-            isUpdating={updatingUserId === user.userId}
-            isRemoving={removingUserId === user.userId}
-            onPermissionChange={handlePermissionChange}
-            onRemoveAccess={handleRemoveAccess}
+            isUpdating={access.updatingUserId === user.userId}
+            isRemoving={access.removingUserId === user.userId}
+            onPermissionChange={access.handlePermissionChange}
+            onRemoveAccess={access.handleRemoveAccess}
           />
         ))}
 
@@ -222,29 +264,8 @@ function PeoplePanel({
   );
 }
 
-function ShareForm({ onShare }: { onShare: (email: string, permission: Permission) => Promise<void> }) {
-  const [email, setEmail] = useState("");
-  const [permission, setPermission] = useState<Permission>("view");
-  const [isSharing, setIsSharing] = useState(false);
-  const [shareError, setShareError] = useState<string | null>(null);
-
-  const handleShare = async () => {
-    const target = email.trim();
-    if (!target) return;
-    setIsSharing(true);
-    setShareError(null);
-    try {
-      await onShare(target, permission);
-      setEmail("");
-      toast.success(`Shared with ${target}`);
-    } catch (err) {
-      const message = shareErrorMessage(err);
-      setShareError(message);
-      toast.error(message);
-    } finally {
-      setIsSharing(false);
-    }
-  };
+function ShareForm({ form }: { form: ReturnType<typeof useShareForm> }) {
+  const { email, setEmail, permission, setPermission, isSharing, shareError, handleShare } = form;
 
   return (
     <>
@@ -373,21 +394,8 @@ function SharedUserRow({
   );
 }
 
-function LinkPanel({ fileId }: { fileId: string }) {
-  const [linkAccess, setLinkAccess] = useState<LinkAccess>("restricted");
-  const [copied, setCopied] = useState(false);
-  const shareUrl = fileShareUrl(fileId);
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      toast.success("Link copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error("Failed to copy link");
-    }
-  };
+function LinkPanel({ link }: { link: ReturnType<typeof useLinkSharing> }) {
+  const { shareUrl, linkAccess, setLinkAccess, copied, handleCopyLink } = link;
 
   return (
     <div className="space-y-4">
