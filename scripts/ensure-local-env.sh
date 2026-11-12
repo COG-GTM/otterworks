@@ -3,6 +3,7 @@
 # to the repo. docker-compose*.yml require POSTGRES_PASSWORD (`${POSTGRES_PASSWORD:?}`);
 # this script writes a random one to the repo-root .env (git-ignored, read by compose)
 # the first time, and refuses the old public default `otterworks_dev`.
+# With --print it writes the resolved password to stdout for host-side tools (psql, seed).
 #
 # A Postgres volume created with another password keeps it: either reset the volume
 # (`make down` + `docker volume rm otterworks_postgres_data`) or rotate the role in place:
@@ -14,6 +15,13 @@ ENV_FILE="${ENV_FILE:-$ROOT/.env}"
 PUBLIC_DEFAULT="otterworks_dev"
 # Embedded verbatim in DSNs (postgresql://user:pass@host), so keep it URL-safe.
 SAFE_RE='^[A-Za-z0-9._~-]{16,}$'
+PRINT=0
+[ "${1:-}" = "--print" ] && PRINT=1
+
+done_with() {
+  [ "$PRINT" = 1 ] && printf '%s\n' "$1"
+  exit 0
+}
 
 check() {
   local value="$1" source="$2"
@@ -30,7 +38,7 @@ check() {
 # An exported value wins over .env in docker compose, so validate it first.
 if [ -n "${POSTGRES_PASSWORD+x}" ]; then
   check "$POSTGRES_PASSWORD" "the environment"
-  exit 0
+  done_with "$POSTGRES_PASSWORD"
 fi
 
 current=""
@@ -40,7 +48,8 @@ fi
 
 if [ -n "$current" ]; then
   check "$current" "$ENV_FILE"
-  exit 0
+  chmod 600 "$ENV_FILE"
+  done_with "$current"
 fi
 
 password="$(openssl rand -hex 24 2>/dev/null || od -An -tx1 -N24 /dev/urandom | tr -d ' \n')"
@@ -51,4 +60,5 @@ if [ -f "$ENV_FILE" ]; then
 fi
 echo "POSTGRES_PASSWORD=$password" >> "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-echo "Wrote a random POSTGRES_PASSWORD to $ENV_FILE"
+echo "Wrote a random POSTGRES_PASSWORD to $ENV_FILE" >&2
+done_with "$password"

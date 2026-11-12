@@ -84,3 +84,41 @@ def test_ensure_rejects_public_or_unsafe_passwords(tmp_path: Path, env_text, env
     proc, _ = _ensure(tmp_path, env_text, **env)
     assert proc.returncode == 1
     assert "POSTGRES_PASSWORD" in proc.stderr
+
+
+def test_existing_env_file_is_tightened_and_print_returns_the_password(tmp_path: Path) -> None:
+    value = "a" * 32
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"POSTGRES_PASSWORD={value}\n")
+    env_file.chmod(0o644)
+    proc, _ = _ensure(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == ""
+    assert oct(env_file.stat().st_mode & 0o777) == "0o600"
+
+    run_env = {k: v for k, v in os.environ.items() if k != "POSTGRES_PASSWORD"}
+    run_env["ENV_FILE"] = str(env_file)
+    printed = subprocess.run(
+        ["bash", str(ENSURE), "--print"], env=run_env, capture_output=True, text=True
+    )
+    assert printed.stdout == f"{value}\n"
+    exported = subprocess.run(
+        ["bash", str(ENSURE), "--print"],
+        env={**run_env, "POSTGRES_PASSWORD": "b" * 32},
+        capture_output=True,
+        text=True,
+    )
+    assert exported.stdout == "b" * 32 + "\n"
+
+
+def test_make_never_echoes_the_password() -> None:
+    proc = subprocess.run(
+        ["make", "-n", "seed", "testdata-clean", "NS=t1"],
+        cwd=REPO,
+        env={**os.environ, "POSTGRES_PASSWORD": "c" * 32},
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "c" * 32 not in proc.stdout
+    assert "ensure-local-env.sh --print" in proc.stdout

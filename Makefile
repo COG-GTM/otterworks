@@ -57,9 +57,9 @@ insurance-test: procs-validate ## Run the Commission Pay OLTP + OLAP test suites
 
 # --- Local Development ---
 
-# Compose requires POSTGRES_PASSWORD; .env (git-ignored) supplies it to compose and to the
-# host-side Postgres targets below.
--include .env
+# Compose requires POSTGRES_PASSWORD and reads it from the environment or the git-ignored
+# .env; host-side Postgres targets resolve it the same way at run time (never echoed).
+PG_PASSWORD = $${DB_PASSWORD:-$$(scripts/ensure-local-env.sh --print)}
 
 env: ## Generate .env with a random local POSTGRES_PASSWORD (no-op when already set)
 	@scripts/ensure-local-env.sh
@@ -83,7 +83,7 @@ build: env ## Build all service images
 	docker compose -f docker-compose.infra.yml -f docker-compose.yml build
 
 seed: ## Seed development data (services must be running)
-	DB_PASSWORD=$${DB_PASSWORD:-$(POSTGRES_PASSWORD)} uv run scripts/seed.py
+	DB_PASSWORD="$(PG_PASSWORD)" uv run scripts/seed.py
 
 wait-for-db: ## Wait for Postgres to accept connections
 	@echo "Waiting for Postgres to be healthy..."
@@ -219,7 +219,7 @@ ifndef NS
 	$(error NS is required, e.g. make testdata-validate NS=dev)
 endif
 	$(call validate_ns)
-	DB_PASSWORD=$${DB_PASSWORD:-$(POSTGRES_PASSWORD)} uv run testdata/harness/validate.py --ns $(NS) $(if $(CRITERIA),--criteria $(CRITERIA),)
+	DB_PASSWORD="$(PG_PASSWORD)" uv run testdata/harness/validate.py --ns $(NS) $(if $(CRITERIA),--criteria $(CRITERIA),)
 
 testdata-clean: ## Drop a test-data namespace schema (NS=<namespace>)
 ifndef NS
@@ -227,7 +227,7 @@ ifndef NS
 endif
 	$(call validate_ns)
 	@echo "Dropping schema otterworks_$(NS)..."
-	PGPASSWORD=$${DB_PASSWORD:-$(POSTGRES_PASSWORD)} psql \
+	PGPASSWORD="$(PG_PASSWORD)" psql \
 		-h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} \
 		-U $${DB_USER:-otterworks} -d $${DB_NAME:-otterworks} \
 		-c "DROP SCHEMA IF EXISTS otterworks_$(NS) CASCADE;"
@@ -239,7 +239,7 @@ ifndef NS
 endif
 	$(call validate_ns)
 	@echo "Creating schema otterworks_$(NS)..."
-	PGPASSWORD=$${DB_PASSWORD:-$(POSTGRES_PASSWORD)} psql \
+	PGPASSWORD="$(PG_PASSWORD)" psql \
 		-h $${DB_HOST:-localhost} -p $${DB_PORT:-5432} \
 		-U $${DB_USER:-otterworks} -d $${DB_NAME:-otterworks} \
 		-f testdata/harness/create_schema.sql \
