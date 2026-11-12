@@ -42,6 +42,16 @@ describe("Search page", () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it("shows the loader while a search is pending", async () => {
+    let resolve!: (value: PaginatedResponse<SearchResult>) => void;
+    search.mockReturnValue(new Promise((r) => (resolve = r)));
+    renderAt("/search?q=pending");
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
+    resolve(page([]));
+    expect(await screen.findByText("No results found")).toBeInTheDocument();
+  });
+
   it("shows the no-results state", async () => {
     search.mockResolvedValue(page([]));
     renderAt("/search?q=zzz");
@@ -56,6 +66,19 @@ describe("Search page", () => {
     expect(screen.getByText("document-1").closest("a")).toHaveAttribute("href", "/documents/1");
     expect(screen.getByText("folder-2").closest("a")).toHaveAttribute("href", "/files?folder=2");
     expect(screen.getByText("file-3").closest("a")).toHaveAttribute("href", "/files/3");
+  });
+
+  it.each([
+    ["document", "text-blue-600 bg-blue-50", "lucide-file-text"],
+    ["folder", "text-amber-600 bg-amber-50", "lucide-folder-open"],
+    ["file", "text-otter-600 bg-otter-50", "lucide-file"],
+  ] as const)("renders the %s icon and tint", async (type, tint, iconClass) => {
+    search.mockResolvedValue(page([result("1", type)]));
+    renderAt("/search?q=icon");
+    const link = (await screen.findByText(`${type}-1`)).closest("a")!;
+    const badge = link.firstElementChild!;
+    expect(badge).toHaveClass(...tint.split(" "));
+    expect(badge.querySelector("svg")).toHaveClass(iconClass);
   });
 
   it("uses the singular for exactly one result", async () => {
