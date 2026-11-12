@@ -16,6 +16,7 @@ Environment overrides (all optional — defaults match docker-compose):
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 """
 
+import hashlib
 import os
 import sys
 import uuid
@@ -51,6 +52,11 @@ def uid() -> str:
 
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=10)).decode()
+
+def seeded_index(n: int, *key: object) -> int:
+    """Deterministic index in [0, n) derived from ``key``; spreads demo data, never used for secrets."""
+    digest = hashlib.sha256(":".join(map(str, key)).encode()).digest()
+    return int.from_bytes(digest[:8], "big") % n
 
 def log(msg: str) -> None:
     print(f"  {msg}")
@@ -376,28 +382,25 @@ def seed_audit_logs(cur) -> None:
         log("  No seeded users found — skipping audit logs.")
         return
 
-    import random
-    rng = random.Random(42)  # deterministic
-
     rows = []
     for i in range(80):
-        user = rng.choice(db_users)
+        user = db_users[seeded_index(len(db_users), i, "actor")]
         actor_id, actor_email = user[0], user[1]
-        action, resource_type = rng.choice(AUDIT_ACTIONS)
+        action, resource_type = AUDIT_ACTIONS[seeded_index(len(AUDIT_ACTIONS), i, "action")]
 
-        # Pick a random resource_id — use another user's ID for user actions
+        # User actions target another seeded user's ID
         if resource_type == "AdminUser":
-            resource_id = rng.choice(db_users)[0]
+            resource_id = db_users[seeded_index(len(db_users), i, "resource")][0]
         else:
             resource_id = uid()
 
-        age_hours = rng.randint(0, 30 * 24)
+        age_hours = seeded_index(30 * 24 + 1, i, "age")
         created = hours_ago(age_hours)
 
         rows.append((
             uid(), actor_id, actor_email, action, resource_type, resource_id,
             '{}',  # changes_made
-            f"192.168.{rng.randint(1,5)}.{rng.randint(1,254)}",
+            f"192.168.{1 + seeded_index(5, i, 'subnet')}.{1 + seeded_index(254, i, 'host')}",
             "Mozilla/5.0 (seed)",
             created, created,
         ))
