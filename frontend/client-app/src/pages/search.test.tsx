@@ -47,12 +47,23 @@ function rowFor(name: string) {
 }
 
 describe("SearchPage", () => {
-  beforeEach(() => search.mockReset());
+  beforeEach(() => {
+    search.mockReset();
+  });
 
   it("shows the start state before a query is submitted", () => {
     renderPage("/search");
     expect(screen.getByText("Search OtterWorks")).toBeInTheDocument();
     expect(search).not.toHaveBeenCalled();
+  });
+
+  it("shows the loader while the search request is pending", async () => {
+    search.mockReturnValue(new Promise(() => {}));
+    const { container } = renderPage("/search?q=pending");
+    await vi.waitFor(() => expect(search).toHaveBeenCalled());
+    expect(container.querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
+    expect(screen.queryByText("Search OtterWorks")).not.toBeInTheDocument();
   });
 
   it("shows the no-results state for an empty result set", async () => {
