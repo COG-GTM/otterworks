@@ -61,5 +61,5 @@ import { AuthService } from '../../core/services/auth.service';
   `],
 })
 export class ToolbarComponent {
-  constructor(public authService: AuthService) {}
+  constructor(public readonly authService: AuthService) {}
 }
