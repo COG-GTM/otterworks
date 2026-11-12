@@ -189,7 +189,7 @@ function searchResultHref(result: SearchResult): string {
   return `/files/${result.id}`;
 }
 
-function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
+export function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
   const { Icon, iconColor } = resultTypeStyles[result.type] ?? resultTypeStyles.file;
   const href = searchResultHref(result);
 
