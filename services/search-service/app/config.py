@@ -45,6 +45,33 @@ class AuthConfig:
     )
 
 
+DEFAULT_TRUSTED_ORIGINS = (
+    "http://localhost:3000",
+    "http://localhost:4200",
+    "https://localhost",
+    "capacitor://localhost",
+)
+
+
+def _env_list(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
+
+
+@dataclass(frozen=True)
+class CSRFConfig:
+    """Browser origins allowed to make state-changing requests (and CORS)."""
+
+    trusted_origins: tuple[str, ...] = field(
+        default_factory=lambda: _env_list(
+            "CSRF_TRUSTED_ORIGINS",
+            _env_list("CORS_ALLOWED_ORIGINS", DEFAULT_TRUSTED_ORIGINS),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class AppConfig:
     """Top-level application configuration."""
@@ -59,3 +86,4 @@ class AppConfig:
     meilisearch: MeiliSearchConfig = field(default_factory=MeiliSearchConfig)
     sqs: SQSConfig = field(default_factory=SQSConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
+    csrf: CSRFConfig = field(default_factory=CSRFConfig)
