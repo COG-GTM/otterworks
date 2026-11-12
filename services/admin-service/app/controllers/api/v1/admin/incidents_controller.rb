@@ -98,6 +98,9 @@ module Api
             @incident.close!
           when 'investigating'
             @incident.investigate!
+          else
+            raise Incident::InvalidTransitionError,
+                  "Cannot transition from '#{@incident.status}' to '#{new_status}'"
           end
 
           AuditLogger.log(
