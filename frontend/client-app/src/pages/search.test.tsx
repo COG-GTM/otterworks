@@ -69,18 +69,20 @@ describe("SearchPage", () => {
         result({ id: "f1", type: "folder", name: "Folder" }),
         result({ id: "x1", type: "file", name: "File" }),
         result({ id: "u1", type: "mystery" as SearchResult["type"], name: "Unknown" }),
+        result({ id: "c1", type: "constructor" as SearchResult["type"], name: "Inherited" }),
       ],
-      total: 4,
+      total: 5,
     });
     renderPage("/search?q=otter");
 
-    expect(await screen.findByText(/4 results for/)).toBeInTheDocument();
+    expect(await screen.findByText(/5 results for/)).toBeInTheDocument();
 
     const cases: Array<[string, string, string, string]> = [
       ["Doc", "/documents/d1", "text-blue-600", "lucide-file-text"],
       ["Folder", "/files?folder=f1", "text-amber-600", "lucide-folder-open"],
       ["File", "/files/x1", "text-otter-600", "lucide-file"],
       ["Unknown", "/files/u1", "text-otter-600", "lucide-file"],
+      ["Inherited", "/files/c1", "text-otter-600", "lucide-file"],
     ];
     for (const [name, href, color, icon] of cases) {
       const row = rowFor(name);

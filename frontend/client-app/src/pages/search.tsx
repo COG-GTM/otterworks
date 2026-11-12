@@ -227,7 +227,9 @@ const RESULT_TYPE_DISPLAY: Record<
 };
 
 function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
-  const display = RESULT_TYPE_DISPLAY[result.type] ?? RESULT_TYPE_DISPLAY.file;
+  const display = Object.prototype.hasOwnProperty.call(RESULT_TYPE_DISPLAY, result.type)
+    ? RESULT_TYPE_DISPLAY[result.type]
+    : RESULT_TYPE_DISPLAY.file;
   const href = display.href(result.id);
   const Icon = display.icon;
   const iconColor = display.iconColor;
