@@ -52,7 +52,7 @@ function isTooLargeError(err: unknown): boolean {
 let fileIdCounter = 0;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
-  { uploadFile, onUploadComplete, onDismiss, className }: FileUploadDropzoneProps,
+  { uploadFile, onUploadComplete, onDismiss, className }: Readonly<FileUploadDropzoneProps>,
   ref: Ref<FileUploadDropzoneHandle>,
 ) {
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([]);
