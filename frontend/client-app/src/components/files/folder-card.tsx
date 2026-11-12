@@ -64,6 +64,7 @@ export function FolderCard({
         )}
         <Link
           to={`/files?folder=${folder.id}`}
+          onClick={isRenaming ? (e) => e.preventDefault() : undefined}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
@@ -138,6 +139,7 @@ export function FolderCard({
       )}
       <Link
         to={`/files?folder=${folder.id}`}
+        onClick={isRenaming ? (e) => e.preventDefault() : undefined}
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">

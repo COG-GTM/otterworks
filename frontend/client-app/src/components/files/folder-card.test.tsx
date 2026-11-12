@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { FolderCard } from "./folder-card";
 import type { FileItem } from "@/types";
 
@@ -21,10 +21,17 @@ const folder: FileItem = {
   versions: [],
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname + location.search}</output>;
+}
+
 function renderCard(props: Partial<React.ComponentProps<typeof FolderCard>> = {}) {
   return render(
-    <MemoryRouter>
-      <FolderCard folder={folder} {...props} />
+    <MemoryRouter initialEntries={["/files"]}>
+      <Routes>
+        <Route path="*" element={<><FolderCard folder={folder} {...props} /><LocationProbe /></>} />
+      </Routes>
     </MemoryRouter>
   );
 }
@@ -69,7 +76,28 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("toggles selection through the checkbox itself", () => {
+  it("does not open the folder when clicking around the rename input", () => {
+    renderCard({ view });
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    const input = screen.getByDisplayValue("Reports");
+
+    fireEvent.click(input.parentElement!);
+    fireEvent.click(input);
+
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
+    expect(input).toBeInTheDocument();
+  });
+
+  it("opens the folder when the card is clicked outside rename mode", () => {
+    renderCard({ view });
+
+    fireEvent.click(screen.getByRole("link"));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/files?folder=folder-1");
+  });
+
+  it("calls onSelect when the selection checkbox changes", () => {
     const onSelect = vi.fn();
     renderCard({ view, onSelect, selectionActive: true });
     const checkbox = screen.getByRole("checkbox", { name: "Select Reports" });
