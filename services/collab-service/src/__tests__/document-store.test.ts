@@ -169,6 +169,14 @@ describe('DocumentStore', () => {
       expect(result).toBeNull();
     });
 
+    it('should return null when redis returns no hash', async () => {
+      mockRedis.hgetall.mockResolvedValue(null as unknown as Record<string, string>);
+
+      const result = await store.getDocumentMeta('doc-missing');
+
+      expect(result).toBeNull();
+    });
+
     it('should return parsed metadata', async () => {
       mockRedis.hgetall.mockResolvedValue({
         documentId: 'doc-123',
