@@ -35,8 +35,11 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.ktor.plugin.Koin
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -47,6 +50,16 @@ class RoutesTest {
     private val webSocketManager = mockk<WebSocketManager>(relaxed = true)
 
     private val userIdRequired = "user_id is required (via X-User-ID header or query parameter)"
+
+    @BeforeTest
+    fun resetKoinBefore() {
+        stopKoin()
+    }
+
+    @AfterTest
+    fun resetKoinAfter() {
+        stopKoin()
+    }
 
     private fun notification(id: String) = Notification(
         id = id,
