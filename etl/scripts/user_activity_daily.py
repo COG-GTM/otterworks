@@ -12,11 +12,22 @@
 import configparser
 import gzip
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
 import boto3
 import psycopg2
+
+
+def load_bucket_owner_account_id(config):
+    # Passed as ExpectedBucketOwner on every S3 call so a bucket that was
+    # deleted and re-created under another AWS account is never read from or
+    # written to.
+    account_id = config.get("aws", "account_id", fallback="").strip()
+    if not re.fullmatch(r"\d{12}", account_id):
+        raise ValueError("[aws] account_id must be the 12-digit AWS account ID that owns the S3 buckets")
+    return account_id
 
 
 def main():
@@ -29,6 +40,7 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    bucket_owner = load_bucket_owner_account_id(config)
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -144,7 +156,11 @@ def main():
         key = "analytics/daily/year=%s/month=%s/day=%s/top_users.jsonl.gz" % (year, month, day)
 
         try:
-            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key)
+            response = s3_client.get_object(
+                Bucket=data_lake_bucket,
+                Key=key,
+                ExpectedBucketOwner=bucket_owner,
+            )
             body = response["Body"].read()
             decompressed = gzip.decompress(body).decode("utf-8")
 
@@ -216,6 +232,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=report_key,
+        ExpectedBucketOwner=bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -224,6 +241,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=latest_key,
+        ExpectedBucketOwner=bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -235,6 +253,7 @@ def main():
         s3_client_upload.put_object(
             Bucket=data_lake_bucket,
             Key=users_key,
+            ExpectedBucketOwner=bucket_owner,
             Body=("\n".join(lines) + "\n").encode("utf-8"),
         )
 
