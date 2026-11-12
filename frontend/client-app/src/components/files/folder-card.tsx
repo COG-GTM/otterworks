@@ -54,7 +54,7 @@ export function FolderCard({
       renamingAtPointerDownRef.current = isRenaming;
     },
     onClick: (e: React.MouseEvent) => {
-      if (isRenaming || renamingAtPointerDownRef.current) e.preventDefault();
+      if (isRenaming || (e.detail > 0 && renamingAtPointerDownRef.current)) e.preventDefault();
       renamingAtPointerDownRef.current = false;
     },
   };
