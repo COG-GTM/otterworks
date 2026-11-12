@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Document } from "@/types";
 import { documentsApi } from "@/lib/api";
@@ -41,6 +41,11 @@ function doc(id: string, title: string): Document {
   };
 }
 
+function EditorStub() {
+  const { id } = useParams();
+  return <p>editor page {id}</p>;
+}
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -48,7 +53,7 @@ function renderPage() {
       <MemoryRouter initialEntries={["/documents"]}>
         <Routes>
           <Route path="/documents" element={<DocumentsPage />} />
-          <Route path="/documents/:id" element={<p>editor page</p>} />
+          <Route path="/documents/:id" element={<EditorStub />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -93,14 +98,14 @@ describe("DocumentsPage", () => {
 
   it("offers to create the first document when the list is empty", async () => {
     list.mockResolvedValue({ data: [] } as never);
-    create.mockResolvedValue(doc("new", "Untitled document"));
+    create.mockResolvedValue(doc("new-42", "Untitled document"));
     renderPage();
 
     expect(await screen.findByText("No documents yet")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create document" }));
 
     await waitFor(() => expect(create).toHaveBeenCalledWith("Untitled document"));
-    expect(await screen.findByText("editor page")).toBeInTheDocument();
+    expect(await screen.findByText("editor page new-42")).toBeInTheDocument();
   });
 
   it("switches between grid and list layouts", async () => {
@@ -111,11 +116,17 @@ describe("DocumentsPage", () => {
     const [gridBtn, listBtn] = screen
       .getAllByRole("button")
       .filter((b) => b.className.includes("p-2 transition"));
+    const listing = () => screen.getByText("Roadmap").closest(".grid, .space-y-1");
+    expect(listing()).toHaveClass("grid");
+
     fireEvent.click(listBtn);
     expect(useUIStore.getState().viewMode).toBe("list");
-    expect(screen.getByRole("link", { name: /Roadmap/ })).toHaveAttribute("href", "/documents/1");
+    expect(listing()).toHaveClass("space-y-1");
+    expect(listing()).not.toHaveClass("grid");
+    expect(listing()?.firstElementChild).toHaveClass("flex", "items-center", "gap-4");
 
     fireEvent.click(gridBtn);
     expect(useUIStore.getState().viewMode).toBe("grid");
+    expect(listing()).toHaveClass("grid");
   });
 });
