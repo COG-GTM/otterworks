@@ -137,3 +137,22 @@ func TestProxyErrorReturnsJSON(t *testing.T) {
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"error":"service unavailable","target":"/api/v1/files"}`, rec.Body.String())
 }
+
+func TestCircuitBreakerRejectionReturnsJSON(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+	router := newBareTestRouter(backend.URL)
+
+	for i := 0; i < 6; i++ {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil))
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil))
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"error":"service temporarily unavailable","service":"/api/v1/files","reason":"circuit breaker open"}`, rec.Body.String())
+}
