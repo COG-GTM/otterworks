@@ -70,6 +70,7 @@ export function FileCard({
   onStarToggle,
 }: FileCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, file.id) : false);
@@ -177,6 +178,7 @@ export function FileCard({
         </button>
         <div className="relative w-8">
           <button
+            ref={menuTriggerRef}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -193,6 +195,7 @@ export function FileCard({
             <FileMenu
               file={file}
               onClose={() => setMenuOpen(false)}
+              triggerRef={menuTriggerRef}
               onDelete={onDelete}
               onShare={onShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
@@ -238,6 +241,7 @@ export function FileCard({
             </button>
             <div className="relative">
               <button
+                ref={menuTriggerRef}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -254,6 +258,7 @@ export function FileCard({
                 <FileMenu
                   file={file}
                   onClose={() => setMenuOpen(false)}
+                  triggerRef={menuTriggerRef}
                   onDelete={onDelete}
                   onShare={onShare}
                   onDownload={onDownload}
@@ -299,21 +304,49 @@ function FileMenu({
   onShare,
   onRename,
   onDownload,
+  triggerRef,
 }: {
   file: FileItem;
   onClose: () => void;
+  triggerRef?: React.RefObject<HTMLButtonElement>;
   onDelete?: (id: string) => void;
   onShare?: (id: string) => void;
   onRename?: () => void;
   onDownload?: (id: string, name: string) => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        triggerRef?.current?.focus();
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    let next: number;
+    if (e.key === "ArrowDown") next = (current + 1) % items.length;
+    else if (e.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
+  };
 
   return (
     <>
@@ -328,7 +361,7 @@ function FileMenu({
           onClose();
         }}
       />
-      <div role="menu" className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+      <div ref={menuRef} role="menu" onKeyDown={handleMenuKeyDown} className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
         <button
           type="button"
           role="menuitem"

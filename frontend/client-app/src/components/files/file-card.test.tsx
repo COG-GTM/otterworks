@@ -33,19 +33,43 @@ function renderCard(props: Partial<React.ComponentProps<typeof FileCard>> = {}) 
 }
 
 describe.each(["grid", "list"] as const)("FileCard (%s view)", (view) => {
-  it("selects through the native checkbox, including from the keyboard", () => {
+  it("selects through a labelled, focusable native checkbox", () => {
     const onSelect = vi.fn();
     renderCard({ view, selectionActive: true, onSelect });
 
     const checkbox = screen.getByRole("checkbox", { name: "Select report.pdf" });
-    fireEvent.click(checkbox);
-    expect(onSelect).toHaveBeenCalledWith("f1");
-
+    expect(checkbox).not.toHaveAttribute("readonly");
     checkbox.focus();
     expect(checkbox).toHaveFocus();
+
     fireEvent.click(checkbox);
-    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect).toHaveBeenCalledWith("f1");
     expect(screen.queryByText("file detail page")).not.toBeInTheDocument();
+  });
+
+  it("moves focus through menu items with the arrow keys and returns it to the trigger on Escape", () => {
+    renderCard({ view });
+
+    const trigger = screen.getByRole("button", { name: "More actions for report.pdf" });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu");
+    const [rename, download, , remove] = screen.getAllByRole("menuitem");
+    expect(rename).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(download).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "End" });
+    expect(remove).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(rename).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(remove).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Home" });
+    expect(rename).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("opens an accessible menu that closes on Escape and on backdrop click without navigating", () => {
