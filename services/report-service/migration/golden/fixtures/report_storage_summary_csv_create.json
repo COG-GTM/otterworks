@@ -1,0 +1,20 @@
+{
+  "body": {
+    "category": "STORAGE_SUMMARY",
+    "completedAt": null,
+    "createdAt": "<timestamp>",
+    "dateFrom": "2026-10-01T00:00:00.000+00:00",
+    "dateTo": "2026-10-31T00:00:00.000+00:00",
+    "downloadUrl": null,
+    "errorMessage": null,
+    "fileSizeBytes": null,
+    "id": "storage_summary_csv",
+    "reportName": "Golden STORAGE_SUMMARY CSV",
+    "reportType": "CSV",
+    "requestedBy": "golden-fixture-user",
+    "rowCount": null,
+    "status": "PENDING"
+  },
+  "request": "POST /api/v1/reports",
+  "status": 202
+}

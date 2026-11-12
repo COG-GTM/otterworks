@@ -1,0 +1,14 @@
+{
+  "operations": [
+    "DELETE /api/v1/reports/{id}",
+    "GET /api/v1/reports",
+    "GET /api/v1/reports/{id}",
+    "GET /api/v1/reports/{id}/download",
+    "GET /health",
+    "POST /api/v1/reports"
+  ],
+  "request": "GET <api-docs>",
+  "status": 200,
+  "title": "OtterWorks Report Service API",
+  "version": "0.1.0"
+}

@@ -1,0 +1,6 @@
+{
+  "body": null,
+  "content_type": null,
+  "request": "DELETE /api/v1/reports/987654321",
+  "status": 404
+}

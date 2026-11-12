@@ -1,0 +1,13 @@
+{
+  "content_type": "text/plain",
+  "families_present": {
+    "hikaricp_connections_active": true,
+    "http_server_requests_seconds_count": true,
+    "jvm_memory_used_bytes": true,
+    "jvm_threads_live_threads": true,
+    "process_uptime_seconds": true,
+    "system_cpu_count": true
+  },
+  "request": "GET /actuator/prometheus",
+  "status": 200
+}

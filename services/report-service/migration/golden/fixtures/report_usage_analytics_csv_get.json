@@ -1,0 +1,21 @@
+{
+  "body": {
+    "category": "USAGE_ANALYTICS",
+    "completedAt": "<timestamp>",
+    "createdAt": "<timestamp>",
+    "dateFrom": "2026-10-01T00:00:00.000+00:00",
+    "dateTo": "2026-10-31T00:00:00.000+00:00",
+    "downloadUrl": null,
+    "errorMessage": "org.springframework.web.client.ResourceAccessException: I/O error on GET request for \"http://analytics-service:8088/api/v1/analytics/events\": analytics-service; nested exception is java.net.UnknownHostException: analytics-service",
+    "fileSizeBytes": null,
+    "id": "usage_analytics_csv",
+    "reportName": "Golden USAGE_ANALYTICS CSV",
+    "reportType": "CSV",
+    "requestedBy": "golden-fixture-user",
+    "rowCount": null,
+    "status": "FAILED"
+  },
+  "content_type": "application/json",
+  "request": "GET /api/v1/reports/{usage_analytics_csv}",
+  "status": 200
+}

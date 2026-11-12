@@ -1,0 +1,11 @@
+{
+  "body": {
+    "error": "Internal Server Error",
+    "path": "/api/v1/reports",
+    "status": 500,
+    "timestamp": "<timestamp>"
+  },
+  "content_type": "application/json",
+  "request": "GET /api/v1/reports?status=FAILED",
+  "status": 500
+}

@@ -1,0 +1,6 @@
+{
+  "body": null,
+  "content_type": null,
+  "request": "DELETE /api/v1/reports/{usage_analytics_pdf}",
+  "status": 204
+}

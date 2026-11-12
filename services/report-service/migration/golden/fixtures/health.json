@@ -1,0 +1,10 @@
+{
+  "body": {
+    "service": "report-service",
+    "status": "healthy",
+    "version": "0.1.0"
+  },
+  "content_type": "application/json",
+  "request": "GET /health",
+  "status": 200
+}

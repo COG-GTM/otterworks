@@ -1,0 +1,6 @@
+{
+  "content_disposition": null,
+  "content_type": null,
+  "request": "GET /api/v1/reports/{collaboration_metrics_csv}/download",
+  "status": 404
+}
