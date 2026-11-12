@@ -13,6 +13,16 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.responses import (
+    ACCESS_DENIED,
+    AUTHENTICATION_REQUIRED,
+    DOCUMENT_NOT_FOUND,
+    EXPORT_NOT_FOUND,
+    INVALID_FILTER,
+    INVALID_SHARE_TOKEN,
+    TEMPLATE_NOT_FOUND,
+    VERSION_NOT_FOUND,
+)
 from app.db.session import get_db
 from app.schemas.document import (
     DocumentCreate,
@@ -126,7 +136,12 @@ async def _do_create_document(
     return document
 
 
-@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={401: AUTHENTICATION_REQUIRED},
+)
 async def create_document(
     body: DocumentCreate,
     request: Request,
@@ -141,6 +156,7 @@ async def create_document(
     "",
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
+    responses={401: AUTHENTICATION_REQUIRED},
     include_in_schema=False,
 )
 async def create_document_no_slash(
@@ -173,7 +189,11 @@ async def search_documents(
     )
 
 
-@router.get("/exports", response_class=PlainTextResponse)
+@router.get(
+    "/exports",
+    response_class=PlainTextResponse,
+    responses={404: EXPORT_NOT_FOUND},
+)
 async def read_export(name: str = Query(..., min_length=1)):
     """Return a previously rendered export from the export archive."""
     archive = ExportArchive()
@@ -183,7 +203,11 @@ async def read_export(name: str = Query(..., min_length=1)):
         raise HTTPException(status_code=404, detail="Export not found") from exc
 
 
-@router.get("/shared", response_model=DocumentResponse)
+@router.get(
+    "/shared",
+    response_model=DocumentResponse,
+    responses={403: INVALID_SHARE_TOKEN, 404: DOCUMENT_NOT_FOUND},
+)
 async def get_shared_document(
     document_id: UUID,
     token: str = Query(..., min_length=1),
@@ -274,7 +298,7 @@ def _is_filtered(
     )
 
 
-@router.get("/", response_model=DocumentListResponse)
+@router.get("/", response_model=DocumentListResponse, responses={400: INVALID_FILTER})
 async def list_documents(
     request: Request,
     owner_id: UUID | None = None,
@@ -307,6 +331,7 @@ async def list_documents(
 @router.get(
     "",
     response_model=DocumentListResponse,
+    responses={400: INVALID_FILTER},
     include_in_schema=False,
 )
 async def list_documents_no_slash(
@@ -338,7 +363,15 @@ async def list_documents_no_slash(
     return await _do_list_documents(effective_owner, folder_id, page, size, db)
 
 
-@router.get("/{document_id}", response_model=DocumentResponse)
+@router.get(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def get_document(
     document_id: UUID,
     request: Request,
@@ -355,7 +388,15 @@ async def get_document(
     return document
 
 
-@router.put("/{document_id}", response_model=DocumentResponse)
+@router.put(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def update_document(
     document_id: UUID,
     body: DocumentUpdate,
@@ -375,7 +416,15 @@ async def update_document(
     return document
 
 
-@router.patch("/{document_id}", response_model=DocumentResponse)
+@router.patch(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def patch_document(
     document_id: UUID,
     body: DocumentPatch,
@@ -395,7 +444,15 @@ async def patch_document(
     return document
 
 
-@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def delete_document(
     document_id: UUID,
     request: Request,
@@ -413,7 +470,15 @@ async def delete_document(
     logger.info("document_deleted", document_id=str(document_id))
 
 
-@router.get("/{document_id}/versions", response_model=list[DocumentVersionResponse])
+@router.get(
+    "/{document_id}/versions",
+    response_model=list[DocumentVersionResponse],
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def list_versions(
     document_id: UUID,
     request: Request,
@@ -433,6 +498,11 @@ async def list_versions(
 @router.post(
     "/{document_id}/versions/{version_id}/restore",
     response_model=DocumentResponse,
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: VERSION_NOT_FOUND,
+    },
 )
 async def restore_version(
     document_id: UUID,
@@ -460,7 +530,14 @@ async def restore_version(
     return document
 
 
-@router.post("/{document_id}/share")
+@router.post(
+    "/{document_id}/share",
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def create_share_link(
     document_id: UUID,
     request: Request,
@@ -478,7 +555,14 @@ async def create_share_link(
     return {"document_id": str(document_id), "token": token}
 
 
-@router.get("/{document_id}/export")
+@router.get(
+    "/{document_id}/export",
+    responses={
+        401: AUTHENTICATION_REQUIRED,
+        403: ACCESS_DENIED,
+        404: DOCUMENT_NOT_FOUND,
+    },
+)
 async def export_document(
     document_id: UUID,
     request: Request,
@@ -501,6 +585,7 @@ async def export_document(
     "/from-template/{template_id}",
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
+    responses={404: TEMPLATE_NOT_FOUND},
 )
 async def create_from_template(
     template_id: UUID,
