@@ -112,35 +112,37 @@ export function FileCard({
     setIsRenaming(false);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onSelect?.(file.id);
+  const handleLinkClick = (e: React.MouseEvent) => {
+    if (isRenaming) e.preventDefault();
   };
+
+  const selectCheckbox = (
+    <input
+      type="checkbox"
+      checked={selected}
+      onChange={() => onSelect?.(file.id)}
+      aria-label={`Select ${file.name}`}
+      className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
+    />
+  );
 
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
-            <input
-              type="checkbox"
-              checked={selected}
-              readOnly
-              className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-            />
-          </div>
+          <div className="flex-shrink-0">{selectCheckbox}</div>
         )}
         <Link
           to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
           className="flex items-center gap-4 flex-1 min-w-0"
+          onClick={handleLinkClick}
         >
           <div className="w-10 h-10 rounded-lg bg-otter-50 flex items-center justify-center flex-shrink-0">
             <Icon size={20} className="text-otter-600" />
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-center gap-1">
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -183,7 +185,8 @@ export function FileCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+            aria-label="More actions"
           >
             <MoreVertical size={16} />
           </button>
@@ -205,18 +208,12 @@ export function FileCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
-          <input
-            type="checkbox"
-            checked={selected}
-            readOnly
-            className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
-          />
-        </div>
+        <div className="absolute top-2 left-2 z-10">{selectCheckbox}</div>
       )}
       <Link
         to={file.isFolder ? `/files?folder=${file.id}` : `/files/${file.id}`}
         className="flex flex-col"
+        onClick={handleLinkClick}
       >
         <div className="flex items-start justify-between mb-3">
           <div className="w-12 h-12 rounded-lg bg-otter-50 flex items-center justify-center">
@@ -240,7 +237,8 @@ export function FileCard({
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+                aria-label="More actions"
               >
                 <MoreVertical size={16} />
               </button>
@@ -258,7 +256,7 @@ export function FileCard({
           </div>
         </div>
         {isRenaming ? (
-          <div className="mb-1" onClick={(e) => e.preventDefault()}>
+          <div className="mb-1">
             <input
               ref={renameInputRef}
               type="text"
@@ -301,9 +299,27 @@ function FileMenu({
   onRename?: () => void;
   onDownload?: (id: string, name: string) => void;
 }) {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
   return (
     <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Close menu"
+        className="fixed inset-0 z-10 cursor-default"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
       <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
         <button
           onClick={(e) => {
