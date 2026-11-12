@@ -1,6 +1,7 @@
 """Tests for read-only share-link tokens."""
 
 import hashlib
+import hmac
 import uuid
 
 import pytest
@@ -47,6 +48,17 @@ def test_token_depends_on_secret(service):
     assert other.verify_token(DOC_ID, service.mint_token(DOC_ID)) is False
 
 
+def test_token_is_hmac_sha256_over_document_id(service):
+    expected = "a0f6f0b45dc089e4bd194ced6dc188c95385018e8bbfcddc60fe4a5388681222"
+    assert service.mint_token(DOC_ID) == expected
+    assert (
+        hmac.new(
+            TEST_SECRET.encode(), b"otterworks.share-link.v1:" + DOC_ID.encode(), hashlib.sha256
+        ).hexdigest()
+        == expected
+    )
+
+
 def test_token_reads_secret_from_environment(monkeypatch):
     monkeypatch.setenv("SHARE_LINK_SECRET", TEST_SECRET)
     assert ShareLinkService().mint_token(DOC_ID) == ShareLinkService(secret=TEST_SECRET).mint_token(
@@ -60,6 +72,13 @@ def test_unusable_secret_fails_closed(secret):
     with pytest.raises(RuntimeError):
         weak.mint_token(DOC_ID)
     assert weak.verify_token(DOC_ID, _legacy_md5_token(DOC_ID)) is False
+    assert (
+        weak.verify_token(DOC_ID, ShareLinkService(secret=TEST_SECRET).mint_token(DOC_ID)) is False
+    )
+    keyed_with_weak = hmac.new(
+        secret.encode(), b"otterworks.share-link.v1:" + DOC_ID.encode(), hashlib.sha256
+    ).hexdigest()
+    assert weak.verify_token(DOC_ID, keyed_with_weak) is False
 
 
 @pytest.mark.asyncio
@@ -116,10 +135,19 @@ async def test_share_endpoints_fail_closed_without_secret(client, owner_id: uuid
     )
     doc_id = created.json()["id"]
     headers = {"Authorization": "Bearer token", "X-User-ID": str(owner_id)}
+    issued = await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
+    assert issued.status_code == 200
+    previously_valid = issued.json()["token"]
 
     monkeypatch.delenv("SHARE_LINK_SECRET", raising=False)
     minted = await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
     assert minted.status_code == 503
+
+    stale = await client.get(
+        "/api/v1/documents/shared",
+        params={"document_id": doc_id, "token": previously_valid},
+    )
+    assert stale.status_code == 403
 
     forged = await client.get(
         "/api/v1/documents/shared",
