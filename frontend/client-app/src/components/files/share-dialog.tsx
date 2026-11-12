@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Link2, Copy, Check, UserPlus, Globe, Lock, ChevronDown, AlertCircle } from "lucide-react";
 import { isAxiosError } from "axios";
 import toast from "react-hot-toast";
@@ -121,17 +121,45 @@ export function ShareDialog({
 
   const ownerInitial = ownerName ? ownerName.charAt(0).toUpperCase() : "O";
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCloseRef.current();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
-    <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Close share dialog"
+        className="absolute inset-0 bg-black/40 cursor-default"
+        onClick={onClose}
+      />
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-4">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="share-dialog-title"
+          tabIndex={-1}
+          className="pointer-events-auto bg-white rounded-2xl shadow-2xl w-full max-w-lg focus:outline-none"
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 id="share-dialog-title" className="text-lg font-semibold text-gray-900">
               Share &ldquo;{fileName}&rdquo;
             </h2>
             <button
+              type="button"
+              aria-label="Close"
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
             >
@@ -184,6 +212,7 @@ export function ShareDialog({
                 <div className="flex gap-2">
                   <input
                     type="email"
+                    aria-label="Email address to share with"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Add people by email"
@@ -435,6 +464,6 @@ export function ShareDialog({
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
