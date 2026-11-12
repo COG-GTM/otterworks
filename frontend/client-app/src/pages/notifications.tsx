@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -52,6 +53,31 @@ function NotificationsContent() {
   const notifications = data?.data || [];
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  let listContent: ReactNode;
+  if (isLoading) {
+    listContent = <PageLoader />;
+  } else if (notifications.length === 0) {
+    listContent = (
+      <EmptyState
+        icon={Bell}
+        title="No notifications"
+        description="You&apos;re all caught up! New notifications will appear here."
+      />
+    );
+  } else {
+    listContent = (
+      <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+        {notifications.map((notification) => (
+          <NotificationRow
+            key={notification.id}
+            notification={notification}
+            onMarkRead={() => markReadMutation.mutate(notification.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
@@ -77,25 +103,7 @@ function NotificationsContent() {
       </div>
 
       {/* Notifications */}
-      {isLoading ? (
-        <PageLoader />
-      ) : notifications.length === 0 ? (
-        <EmptyState
-          icon={Bell}
-          title="No notifications"
-          description="You&apos;re all caught up! New notifications will appear here."
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-          {notifications.map((notification) => (
-            <NotificationRow
-              key={notification.id}
-              notification={notification}
-              onMarkRead={() => markReadMutation.mutate(notification.id)}
-            />
-          ))}
-        </div>
-      )}
+      {listContent}
     </div>
   );
 }
@@ -116,6 +124,17 @@ const notificationColors: Record<string, string> = {
   system: "text-gray-600 bg-gray-100",
 };
 
+const resourcePathPrefixes: Record<string, string> = {
+  document: "/documents",
+  file: "/files",
+};
+
+function getNotificationHref(notification: Notification): string | undefined {
+  if (!notification.resourceId || !notification.resourceType) return undefined;
+  const prefix = resourcePathPrefixes[notification.resourceType];
+  return prefix ? `${prefix}/${notification.resourceId}` : undefined;
+}
+
 function NotificationRow({
   notification,
   onMarkRead,
@@ -126,12 +145,7 @@ function NotificationRow({
   const Icon = notificationIcons[notification.type] || Bell;
   const color = notificationColors[notification.type] || "text-gray-600 bg-gray-100";
 
-  const href =
-    notification.resourceId && notification.resourceType === "document"
-      ? `/documents/${notification.resourceId}`
-      : notification.resourceId && notification.resourceType === "file"
-      ? `/files/${notification.resourceId}`
-      : undefined;
+  const href = getNotificationHref(notification);
 
   const handleActivate = () => {
     if (!notification.read) onMarkRead();
