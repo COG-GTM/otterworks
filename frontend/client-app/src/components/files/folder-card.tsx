@@ -103,7 +103,6 @@ export function FolderCard({
               setMenuOpen(!menuOpen);
             }}
             aria-label={`Actions for ${folder.name}`}
-            aria-haspopup="menu"
             aria-expanded={menuOpen}
             className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
@@ -152,7 +151,6 @@ export function FolderCard({
                 setMenuOpen(!menuOpen);
               }}
               aria-label={`Actions for ${folder.name}`}
-              aria-haspopup="menu"
               aria-expanded={menuOpen}
               className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
             >
@@ -230,13 +228,9 @@ function FolderMenu({
           onClose();
         }}
       />
-      <div
-        role="menu"
-        className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20"
-      >
+      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
         <button
           type="button"
-          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -250,7 +244,6 @@ function FolderMenu({
         </button>
         <button
           type="button"
-          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -264,7 +257,6 @@ function FolderMenu({
         </button>
         <button
           type="button"
-          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();

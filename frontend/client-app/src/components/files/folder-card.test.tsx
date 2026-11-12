@@ -63,21 +63,26 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Close menu" }));
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
     expect(screen.getByTestId("location")).toHaveTextContent(/^\/files$/);
   });
 
-  it("closes the actions menu with Escape", () => {
+  it("reaches menu actions by Tab and closes the menu with Escape", () => {
     renderCard({ view });
 
-    fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
+    const toggle = screen.getByRole("button", { name: "Actions for Reports" });
+    fireEvent.click(toggle);
+    const tabbable = Array.from(
+      document.querySelectorAll<HTMLElement>("a[href], button, input")
+    ).filter((el) => el.tabIndex >= 0);
+    expect(tabbable.slice(tabbable.indexOf(toggle) + 1, tabbable.indexOf(toggle) + 4).map((el) => el.textContent)).toEqual(["Rename", "Share", "Delete"]);
     fireEvent.keyDown(document, { key: "Escape" });
 
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
   });
 
   it("renames inline without navigating", () => {
@@ -85,7 +90,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     renderCard({ view, onRename });
 
     fireEvent.click(screen.getByRole("button", { name: "Actions for Reports" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
 
     const input = screen.getByRole("textbox");
     fireEvent.click(input);
