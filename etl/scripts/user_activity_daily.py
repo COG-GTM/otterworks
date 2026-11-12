@@ -12,11 +12,32 @@
 import configparser
 import gzip
 import json
+import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
 import boto3
 import psycopg2
+
+ACCOUNT_ID_RE = re.compile(r"^\d{12}$")
+
+
+def resolve_expected_bucket_owner(config, sts_client_factory):
+    """Return the AWS account ID that must own the data lake bucket.
+
+    Taken from ETL_EXPECTED_BUCKET_OWNER or [s3] expected_bucket_owner; when
+    neither is set, the account of the ETL credentials (STS GetCallerIdentity)
+    is used, since the data lake lives in the same account as the job.
+    """
+    owner = os.environ.get("ETL_EXPECTED_BUCKET_OWNER", "").strip()
+    if not owner:
+        owner = config.get("s3", "expected_bucket_owner", fallback="").strip()
+    if not owner:
+        owner = sts_client_factory().get_caller_identity()["Account"]
+    if not ACCOUNT_ID_RE.match(owner):
+        raise ValueError("expected bucket owner must be a 12-digit AWS account ID")
+    return owner
 
 
 def main():
@@ -133,6 +154,22 @@ def main():
         region_name=aws_region,
     )
 
+    try:
+        expected_bucket_owner = resolve_expected_bucket_owner(
+            config,
+            lambda: boto3.client(
+                "sts",
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                region_name=aws_region,
+            ),
+        )
+    except Exception as e:
+        print("[%s] ERROR: Could not determine expected S3 bucket owner: %s" % (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(e)
+        ))
+        sys.exit(1)
+
     user_totals = {}
     execution_date = datetime.strptime(ds, "%Y-%m-%d")
 
@@ -144,7 +181,11 @@ def main():
         key = "analytics/daily/year=%s/month=%s/day=%s/top_users.jsonl.gz" % (year, month, day)
 
         try:
-            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key)
+            response = s3_client.get_object(
+                Bucket=data_lake_bucket,
+                Key=key,
+                ExpectedBucketOwner=expected_bucket_owner,
+            )
             body = response["Body"].read()
             decompressed = gzip.decompress(body).decode("utf-8")
 
@@ -216,6 +257,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=report_key,
+        ExpectedBucketOwner=expected_bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -224,6 +266,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=latest_key,
+        ExpectedBucketOwner=expected_bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -235,6 +278,7 @@ def main():
         s3_client_upload.put_object(
             Bucket=data_lake_bucket,
             Key=users_key,
+            ExpectedBucketOwner=expected_bucket_owner,
             Body=("\n".join(lines) + "\n").encode("utf-8"),
         )
 
