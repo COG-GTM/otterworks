@@ -26,7 +26,7 @@ import psycopg2
 def get_expected_bucket_owner(config):
     """AWS account ID that must own the S3 buckets this job writes to."""
     account_id = config.get("aws", "account_id", fallback="").strip()
-    if not re.fullmatch(r"\d{12}", account_id):
+    if not re.fullmatch(r"[0-9]{12}", account_id):
         raise ValueError("[aws] account_id must be the 12-digit AWS account ID that owns the S3 buckets")
     return account_id
 
