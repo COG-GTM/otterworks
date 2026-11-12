@@ -13,6 +13,7 @@ import configparser
 import gzip
 import io
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -30,6 +31,16 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+def resolve_bucket_owner(config, sts_client):
+    """AWS account that must own the archive bucket; S3 rejects writes otherwise."""
+    owner = config.get("s3", "archive_bucket_owner", fallback="").strip()
+    if not owner:
+        owner = sts_client.get_caller_identity()["Account"]
+    if not re.fullmatch(r"\d{12}", owner):
+        raise ValueError("archive bucket owner must be a 12-digit AWS account ID")
+    return owner
+
+
 def main():
     print("[%s] audit_archive_weekly.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -42,6 +53,12 @@ def main():
     aws_region = config.get("aws", "region")
 
     archive_bucket = config.get("s3", "archive_bucket")
+    archive_bucket_owner = resolve_bucket_owner(config, boto3.client(
+        "sts",
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=aws_region,
+    ))
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     retention_days = 90
@@ -119,6 +136,7 @@ def main():
 
     s3_client.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=archive_bucket_owner,
         Key=archive_key,
         Body=buf.getvalue(),
         StorageClass="GLACIER",
@@ -202,6 +220,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=archive_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
