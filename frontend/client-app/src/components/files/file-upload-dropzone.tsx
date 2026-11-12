@@ -49,6 +49,21 @@ function isTooLargeError(err: unknown): boolean {
   return isAxiosError(err) && err.response?.status === 413;
 }
 
+/** Returns a state updater that patches the upload with the given id. */
+function patchUpload(id: string, patch: Partial<UploadingFile>) {
+  return (prev: UploadingFile[]): UploadingFile[] =>
+    prev.map((f) => (f.id === id ? { ...f, ...patch } : f));
+}
+
+/** Returns a state updater that drops the upload with the given id. */
+function withoutUpload(id: string) {
+  return (prev: UploadingFile[]): UploadingFile[] => prev.filter((f) => f.id !== id);
+}
+
+function withoutCompleted(prev: UploadingFile[]): UploadingFile[] {
+  return prev.filter((f) => f.status !== "done");
+}
+
 let fileIdCounter = 0;
 
 export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
@@ -109,65 +124,49 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     (entry: UploadingFile) => {
       const abortController = new AbortController();
 
-      setUploadingFiles((prev) =>
-        prev.map((f) =>
-          f.id === entry.id
-            ? {
-                ...f,
-                status: "uploading" as const,
-                progress: 0,
-                error: undefined,
-                errorKind: undefined,
-                abortController,
-              }
-            : f,
-        ),
+      setUploadingFiles(
+        patchUpload(entry.id, {
+          status: "uploading",
+          progress: 0,
+          error: undefined,
+          errorKind: undefined,
+          abortController,
+        }),
       );
 
       uploadFile(entry.file, {
         onProgress: (percent) => {
-          setUploadingFiles((prev) =>
-            prev.map((f) => (f.id === entry.id ? { ...f, progress: percent } : f)),
-          );
+          setUploadingFiles(patchUpload(entry.id, { progress: percent }));
         },
         signal: abortController.signal,
       })
         .then(() => {
-          setUploadingFiles((prev) =>
-            prev.map((f) =>
-              f.id === entry.id
-                ? { ...f, status: "done" as const, progress: 100, abortController: undefined }
-                : f,
-            ),
+          setUploadingFiles(
+            patchUpload(entry.id, { status: "done", progress: 100, abortController: undefined }),
           );
           void notifyUploadComplete(entry.file.name);
           onUploadComplete?.();
         })
         .catch((err: unknown) => {
           if (abortController.signal.aborted) {
-            setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
-          } else {
-            const rejectedTooLarge = isTooLargeError(err);
-            setUploadingFiles((prev) =>
-              prev.map((f) =>
-                f.id === entry.id
-                  ? {
-                      ...f,
-                      status: "error" as const,
-                      error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
-                      errorKind: rejectedTooLarge ? ("size" as const) : ("failure" as const),
-                      abortController: undefined,
-                    }
-                  : f,
-              ),
-            );
-            if (rejectedTooLarge) {
-              setShowTooLargeBanner(true);
-            } else {
-              setShowUploadErrorBanner(true);
-            }
-            void notifyUploadFailed(entry.file.name);
+            setUploadingFiles(withoutUpload(entry.id));
+            return;
           }
+          const rejectedTooLarge = isTooLargeError(err);
+          setUploadingFiles(
+            patchUpload(entry.id, {
+              status: "error",
+              error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
+              errorKind: rejectedTooLarge ? "size" : "failure",
+              abortController: undefined,
+            }),
+          );
+          if (rejectedTooLarge) {
+            setShowTooLargeBanner(true);
+          } else {
+            setShowUploadErrorBanner(true);
+          }
+          void notifyUploadFailed(entry.file.name);
         });
     },
     [uploadFile, onUploadComplete],
@@ -215,11 +214,11 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
   };
 
   const removeUpload = (id: string) => {
-    setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
+    setUploadingFiles(withoutUpload(id));
   };
 
   const clearCompleted = () => {
-    setUploadingFiles((prev) => prev.filter((f) => f.status !== "done"));
+    setUploadingFiles(withoutCompleted);
   };
 
   const dismissErrorBanner = () => {
