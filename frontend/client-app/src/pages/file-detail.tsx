@@ -25,6 +25,7 @@ import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
 import { filesApi, authApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
+import type { FileItem, FileVersion, SharedUser } from "@/types";
 
 export default function FileDetailPage() {
   return (
@@ -34,6 +35,57 @@ export default function FileDetailPage() {
       </ErrorBoundary>
     </AppShell>
   );
+}
+
+type ResolvedUsers = Record<string, { name: string; email: string }>;
+
+const TEXT_MIME_TYPES = new Set([
+  "application/json",
+  "application/xml",
+  "application/javascript",
+  "application/typescript",
+  "application/x-yaml",
+  "application/x-sh",
+]);
+
+function getPreviewFlags(mimeType: string) {
+  return {
+    isImage: mimeType.startsWith("image/"),
+    isVideo: mimeType.startsWith("video/"),
+    isPdf: mimeType === "application/pdf",
+    isText: mimeType.startsWith("text/") || TEXT_MIME_TYPES.has(mimeType),
+  };
+}
+
+function useResolvedSharedUsers(sharedWith: SharedUser[] | undefined): ResolvedUsers {
+  const [resolvedUsers, setResolvedUsers] = useState<ResolvedUsers>({});
+
+  useEffect(() => {
+    if (!sharedWith?.length) return;
+    const userIds = sharedWith
+      .map((s) => s.userId)
+      .filter((id) => id && !resolvedUsers[id]);
+    if (userIds.length === 0) return;
+
+    Promise.allSettled(
+      userIds.map((id) => authApi.lookupUserById(id))
+    ).then((results) => {
+      const newUsers: ResolvedUsers = {};
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          newUsers[userIds[i]] = {
+            name: result.value.displayName || result.value.email,
+            email: result.value.email,
+          };
+        }
+      });
+      if (Object.keys(newUsers).length > 0) {
+        setResolvedUsers((prev) => ({ ...prev, ...newUsers }));
+      }
+    });
+  }, [sharedWith]);
+
+  return resolvedUsers;
 }
 
 function FileDetailContent() {
@@ -55,33 +107,7 @@ function FileDetailContent() {
   });
 
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [resolvedUsers, setResolvedUsers] = useState<Record<string, { name: string; email: string }>>({});
-
-  useEffect(() => {
-    if (!file?.sharedWith?.length) return;
-    const userIds = file.sharedWith
-      .map((s) => s.userId)
-      .filter((id) => id && !resolvedUsers[id]);
-    if (userIds.length === 0) return;
-
-    Promise.allSettled(
-      userIds.map((id) => authApi.lookupUserById(id))
-    ).then((results) => {
-      const newUsers: Record<string, { name: string; email: string }> = {};
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          newUsers[userIds[i]] = {
-            name: result.value.displayName || result.value.email,
-            email: result.value.email,
-          };
-        }
-      });
-      if (Object.keys(newUsers).length > 0) {
-        setResolvedUsers((prev) => ({ ...prev, ...newUsers }));
-      }
-    });
-  }, [file?.sharedWith]);
+  const resolvedUsers = useResolvedSharedUsers(file?.sharedWith);
 
   const deleteMutation = useMutation({
     mutationFn: () => filesApi.delete(fileId),
@@ -94,39 +120,20 @@ function FileDetailContent() {
     onError: () => toast.error("Failed to move file to trash"),
   });
 
+  const refreshFile = () => queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+
   const handleShare = async (email: string, permission: "view" | "edit") => {
     try {
       await filesApi.share(fileId, email, permission);
     } finally {
       // The share record can be persisted even when the request fails
       // (e.g. notification publish errors), so refresh regardless.
-      queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+      refreshFile();
     }
   };
 
   if (isLoading) return <PageLoader />;
-  if (!file) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <p className="text-gray-500">File not found</p>
-        <Link to="/files" className="text-otter-600 hover:underline mt-2 text-sm">
-          Back to files
-        </Link>
-      </div>
-    );
-  }
-
-  const isImage = file.mimeType.startsWith("image/");
-  const isVideo = file.mimeType.startsWith("video/");
-  const isPdf = file.mimeType === "application/pdf";
-  const isText =
-    file.mimeType.startsWith("text/") ||
-    file.mimeType === "application/json" ||
-    file.mimeType === "application/xml" ||
-    file.mimeType === "application/javascript" ||
-    file.mimeType === "application/typescript" ||
-    file.mimeType === "application/x-yaml" ||
-    file.mimeType === "application/x-sh";
+  if (!file) return <FileNotFound />;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -137,70 +144,14 @@ function FileDetailContent() {
         ]}
       />
 
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div className="w-12 h-12 rounded-xl bg-otter-50 flex items-center justify-center">
-            <FileIcon mimeType={file.mimeType} />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{file.name}</h1>
-            <p className="text-sm text-gray-500">
-              {formatFileSize(file.size)} &middot; {formatRelativeTime(file.updatedAt)}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            disabled={isDownloading}
-            onClick={async () => {
-              setIsDownloading(true);
-              try {
-                const downloadUrl = await filesApi.getDownloadUrl(file.id);
-                const a = document.createElement("a");
-                a.href = downloadUrl;
-                a.download = file.name;
-                a.rel = "noopener";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                toast.success(`Downloading ${file.name}`);
-              } catch {
-                toast.error("Download failed. Please try again.");
-              } finally {
-                setIsDownloading(false);
-              }
-            }}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            {isDownloading ? "Downloading..." : "Download"}
-          </button>
-          <button
-            onClick={() => setShowShareDialog(true)}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-          >
-            <Share2 size={16} />
-            Share
-          </button>
-          <button
-            onClick={() => deleteMutation.mutate()}
-            className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
-          >
-            <Trash2 size={16} />
-            Delete
-          </button>
-        </div>
-      </div>
+      <FileHeader
+        file={file}
+        onBack={() => navigate(-1)}
+        onShare={() => setShowShareDialog(true)}
+        onDelete={() => deleteMutation.mutate()}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Preview */}
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-200">
@@ -211,10 +162,7 @@ function FileDetailContent() {
             </div>
             <div className="p-8 flex items-center justify-center min-h-[300px] bg-gray-50">
               <FilePreviewContent
-                isImage={isImage}
-                isVideo={isVideo}
-                isPdf={isPdf}
-                isText={isText}
+                {...getPreviewFlags(file.mimeType)}
                 isUrlLoading={isUrlLoading}
                 presignedUrl={presignedUrl}
                 fileName={file.name}
@@ -222,142 +170,13 @@ function FileDetailContent() {
             </div>
           </div>
 
-          {/* Versions */}
-          {file.versions && file.versions.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200 mt-6">
-              <div className="px-5 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Clock size={16} />
-                  Versions ({file.versions.length})
-                </h2>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {file.versions.map((version) => (
-                  <div
-                    key={version.id}
-                    className="flex items-center justify-between px-5 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        Version {version.versionNumber}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatFileSize(version.size)} &middot;{" "}
-                        {formatRelativeTime(version.createdAt)} &middot;{" "}
-                        {version.uploadedBy}
-                      </p>
-                    </div>
-                    <a
-                      href={version.downloadUrl}
-                      className="text-sm text-otter-600 hover:underline"
-                    >
-                      Download
-                    </a>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <VersionsPanel versions={file.versions} />
         </div>
 
-        {/* Sidebar info */}
         <div className="space-y-6">
-          {/* File info */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200">
-              <h2 className="text-sm font-medium text-gray-700">Details</h2>
-            </div>
-            <div className="p-5 space-y-4">
-              <InfoRow icon={User} label="Owner" value={file.ownerName || "You"} />
-              <InfoRow
-                icon={HardDrive}
-                label="Size"
-                value={formatFileSize(file.size)}
-              />
-              <InfoRow
-                icon={FileText}
-                label="Type"
-                value={file.mimeType}
-              />
-              <InfoRow
-                icon={Clock}
-                label="Modified"
-                value={formatRelativeTime(file.updatedAt)}
-              />
-              <InfoRow
-                icon={Clock}
-                label="Created"
-                value={formatRelativeTime(file.createdAt)}
-              />
-              {file.path && (
-                <InfoRow
-                  icon={File}
-                  label="Path"
-                  value={file.path}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Shared with */}
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-sm font-medium text-gray-700">Shared with</h2>
-              <button className="text-xs text-otter-600 hover:underline">
-                Manage
-              </button>
-            </div>
-            <div className="p-5">
-              {file.sharedWith.length === 0 ? (
-                <p className="text-sm text-gray-400">Not shared with anyone</p>
-              ) : (
-                <div className="space-y-3">
-                  {file.sharedWith.map((shared) => {
-                    const resolved = resolvedUsers[shared.userId];
-                    const displayName = resolved?.name || shared.name || shared.userId.slice(0, 8);
-                    const displayEmail = resolved?.email || shared.email;
-                    return (
-                      <div key={shared.userId} className="flex items-center gap-3">
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                          style={{ backgroundColor: generateColor(shared.userId) }}
-                        >
-                          {getInitials(displayName)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {displayName}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {displayEmail ? `${displayEmail} · ${shared.permission}` : shared.permission}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Tags */}
-          {file.tags.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-200">
-              <div className="px-5 py-4 border-b border-gray-200">
-                <h2 className="text-sm font-medium text-gray-700">Tags</h2>
-              </div>
-              <div className="p-5 flex flex-wrap gap-2">
-                {file.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          <DetailsPanel file={file} />
+          <SharedWithPanel sharedWith={file.sharedWith} resolvedUsers={resolvedUsers} />
+          <TagsPanel tags={file.tags} />
         </div>
       </div>
 
@@ -372,15 +191,274 @@ function FileDetailContent() {
           onShare={handleShare}
           onPermissionChange={async (userId, permission) => {
             await filesApi.updateSharePermission(file.id, userId, permission);
-            queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+            refreshFile();
           }}
           onRemoveAccess={async (userId) => {
             await filesApi.removeShare(file.id, userId);
-            queryClient.invalidateQueries({ queryKey: ["files", fileId] });
+            refreshFile();
           }}
           onClose={() => setShowShareDialog(false)}
         />
       )}
+    </div>
+  );
+}
+
+function FileNotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px]">
+      <p className="text-gray-500">File not found</p>
+      <Link to="/files" className="text-otter-600 hover:underline mt-2 text-sm">
+        Back to files
+      </Link>
+    </div>
+  );
+}
+
+function FileHeader({
+  file,
+  onBack,
+  onShare,
+  onDelete,
+}: Readonly<{
+  file: FileItem;
+  onBack: () => void;
+  onShare: () => void;
+  onDelete: () => void;
+}>) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onBack}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        <div className="w-12 h-12 rounded-xl bg-otter-50 flex items-center justify-center">
+          <FileIcon mimeType={file.mimeType} />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">{file.name}</h1>
+          <p className="text-sm text-gray-500">
+            {formatFileSize(file.size)} &middot; {formatRelativeTime(file.updatedAt)}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <DownloadButton fileId={file.id} fileName={file.name} />
+        <button
+          onClick={onShare}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+        >
+          <Share2 size={16} />
+          Share
+        </button>
+        <button
+          onClick={onDelete}
+          className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
+        >
+          <Trash2 size={16} />
+          Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DownloadButton({ fileId, fileName }: Readonly<{ fileId: string; fileName: string }>) {
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    setIsDownloading(true);
+    try {
+      const downloadUrl = await filesApi.getDownloadUrl(fileId);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = fileName;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast.success(`Downloading ${fileName}`);
+    } catch {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  return (
+    <button
+      disabled={isDownloading}
+      onClick={handleDownload}
+      className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+      {isDownloading ? "Downloading..." : "Download"}
+    </button>
+  );
+}
+
+function VersionsPanel({ versions }: Readonly<{ versions: FileVersion[] | undefined }>) {
+  if (!versions?.length) return null;
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 mt-6">
+      <div className="px-5 py-4 border-b border-gray-200">
+        <h2 className="text-sm font-medium text-gray-700 flex items-center gap-2">
+          <Clock size={16} />
+          Versions ({versions.length})
+        </h2>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {versions.map((version) => (
+          <div
+            key={version.id}
+            className="flex items-center justify-between px-5 py-3"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Version {version.versionNumber}
+              </p>
+              <p className="text-xs text-gray-500">
+                {formatFileSize(version.size)} &middot;{" "}
+                {formatRelativeTime(version.createdAt)} &middot;{" "}
+                {version.uploadedBy}
+              </p>
+            </div>
+            <a
+              href={version.downloadUrl}
+              className="text-sm text-otter-600 hover:underline"
+            >
+              Download
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailsPanel({ file }: Readonly<{ file: FileItem }>) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200">
+      <div className="px-5 py-4 border-b border-gray-200">
+        <h2 className="text-sm font-medium text-gray-700">Details</h2>
+      </div>
+      <div className="p-5 space-y-4">
+        <InfoRow icon={User} label="Owner" value={file.ownerName || "You"} />
+        <InfoRow
+          icon={HardDrive}
+          label="Size"
+          value={formatFileSize(file.size)}
+        />
+        <InfoRow
+          icon={FileText}
+          label="Type"
+          value={file.mimeType}
+        />
+        <InfoRow
+          icon={Clock}
+          label="Modified"
+          value={formatRelativeTime(file.updatedAt)}
+        />
+        <InfoRow
+          icon={Clock}
+          label="Created"
+          value={formatRelativeTime(file.createdAt)}
+        />
+        {file.path && (
+          <InfoRow
+            icon={File}
+            label="Path"
+            value={file.path}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SharedWithPanel({
+  sharedWith,
+  resolvedUsers,
+}: Readonly<{
+  sharedWith: SharedUser[];
+  resolvedUsers: ResolvedUsers;
+}>) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200">
+      <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h2 className="text-sm font-medium text-gray-700">Shared with</h2>
+        <button className="text-xs text-otter-600 hover:underline">
+          Manage
+        </button>
+      </div>
+      <div className="p-5">
+        {sharedWith.length === 0 ? (
+          <p className="text-sm text-gray-400">Not shared with anyone</p>
+        ) : (
+          <div className="space-y-3">
+            {sharedWith.map((shared) => (
+              <SharedUserRow
+                key={shared.userId}
+                shared={shared}
+                resolved={resolvedUsers[shared.userId]}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SharedUserRow({
+  shared,
+  resolved,
+}: Readonly<{
+  shared: SharedUser;
+  resolved: ResolvedUsers[string] | undefined;
+}>) {
+  const displayName = resolved?.name || shared.name || shared.userId.slice(0, 8);
+  const displayEmail = resolved?.email || shared.email;
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+        style={{ backgroundColor: generateColor(shared.userId) }}
+      >
+        {getInitials(displayName)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900 truncate">
+          {displayName}
+        </p>
+        <p className="text-xs text-gray-500">
+          {displayEmail ? `${displayEmail} · ${shared.permission}` : shared.permission}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TagsPanel({ tags }: Readonly<{ tags: string[] }>) {
+  if (tags.length === 0) return null;
+  return (
+    <div className="bg-white rounded-xl border border-gray-200">
+      <div className="px-5 py-4 border-b border-gray-200">
+        <h2 className="text-sm font-medium text-gray-700">Tags</h2>
+      </div>
+      <div className="p-5 flex flex-wrap gap-2">
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className="px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
