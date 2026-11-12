@@ -90,6 +90,71 @@ function StarredContent() {
   const isLoading = authLoading || starredIdsLoading || filesLoading || foldersLoading || docsLoading;
   const isEmpty = files.length === 0 && documents.length === 0;
 
+  let content: React.ReactNode;
+  if (isLoading) {
+    content = <PageLoader />;
+  } else if (isEmpty) {
+    content = (
+      <EmptyState
+        icon={Star}
+        title="No starred items"
+        description="Star files and documents for quick access. They will appear here."
+      />
+    );
+  } else {
+    content = (
+      <div className="space-y-8">
+        {files.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Files
+            </h2>
+            <div
+              className={cn(
+                viewMode === "grid"
+                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                  : "space-y-1"
+              )}
+            >
+              {files.map((file) => (
+                <FileCard
+                  key={file.id}
+                  file={file}
+                  view={viewMode}
+                  onStarToggle={handleStarToggle}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {documents.length > 0 && (
+          <section>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Documents
+            </h2>
+            <div
+              className={cn(
+                viewMode === "grid"
+                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                  : "space-y-1"
+              )}
+            >
+              {documents.map((doc) => (
+                <DocumentCard
+                  key={doc.id}
+                  document={doc}
+                  view={viewMode}
+                  onStarToggle={handleStarToggle}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <Breadcrumb items={[{ label: "Starred" }]} />
@@ -112,65 +177,7 @@ function StarredContent() {
         </div>
       </div>
 
-      {isLoading ? (
-        <PageLoader />
-      ) : isEmpty ? (
-        <EmptyState
-          icon={Star}
-          title="No starred items"
-          description="Star files and documents for quick access. They will appear here."
-        />
-      ) : (
-        <div className="space-y-8">
-          {files.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Files
-              </h2>
-              <div
-                className={cn(
-                  viewMode === "grid"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-                    : "space-y-1"
-                )}
-              >
-                {files.map((file) => (
-                  <FileCard
-                    key={file.id}
-                    file={file}
-                    view={viewMode}
-                    onStarToggle={handleStarToggle}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {documents.length > 0 && (
-            <section>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Documents
-              </h2>
-              <div
-                className={cn(
-                  viewMode === "grid"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-                    : "space-y-1"
-                )}
-              >
-                {documents.map((doc) => (
-                  <DocumentCard
-                    key={doc.id}
-                    document={doc}
-                    view={viewMode}
-                    onStarToggle={handleStarToggle}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
+      {content}
     </div>
   );
 }
