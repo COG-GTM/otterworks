@@ -1,6 +1,7 @@
 """Tests for read-only share-link tokens."""
 
 import hashlib
+import hmac
 import uuid
 
 import pytest
@@ -45,6 +46,19 @@ def test_token_depends_on_secret():
     ).mint_token(DOC_ID)
 
 
+def test_token_is_hmac_sha256_of_document_id(service):
+    expected = hmac.new(b"test-share-secret", DOC_ID.encode(), hashlib.sha256).hexdigest()
+    assert service.mint_token(DOC_ID) == expected
+
+
+def test_jwt_fallback_key_is_domain_separated_hmac(monkeypatch):
+    monkeypatch.delenv("SHARE_LINK_SECRET", raising=False)
+    monkeypatch.setenv("JWT_SECRET", "jwt")
+    key = hmac.new(b"jwt", b"otterworks-share-link-v1", hashlib.sha256).digest()
+    expected = hmac.new(key, DOC_ID.encode(), hashlib.sha256).hexdigest()
+    assert ShareLinkService().mint_token(DOC_ID) == expected
+
+
 def test_non_ascii_token_is_rejected(service):
     assert service.verify_token(DOC_ID, "\u00e9" * 64) is False
 
@@ -52,9 +66,9 @@ def test_non_ascii_token_is_rejected(service):
 def test_dedicated_secret_env_is_preferred(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "jwt")
     monkeypatch.setenv("SHARE_LINK_SECRET", "dedicated")
-    assert ShareLinkService().mint_token(DOC_ID) == ShareLinkService(
-        secret="dedicated"
-    ).mint_token(DOC_ID)
+    assert ShareLinkService().mint_token(DOC_ID) == ShareLinkService(secret="dedicated").mint_token(
+        DOC_ID
+    )
 
 
 def test_falls_back_to_key_derived_from_jwt_secret(monkeypatch):
@@ -102,3 +116,23 @@ async def test_share_endpoint_round_trip(client, owner_id: uuid.UUID, monkeypatc
         "/api/v1/documents/shared", params={"document_id": doc_id, "token": "wrong"}
     )
     assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_share_endpoint_without_secret_returns_503(client, owner_id: uuid.UUID, monkeypatch):
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    monkeypatch.delenv("SHARE_LINK_SECRET", raising=False)
+    created = await client.post(
+        "/api/v1/documents/",
+        json={"title": "Unshareable", "content": "body", "owner_id": str(owner_id)},
+    )
+    doc_id = created.json()["id"]
+    headers = {"Authorization": "Bearer token", "X-User-ID": str(owner_id)}
+
+    minted = await client.post(f"/api/v1/documents/{doc_id}/share", headers=headers)
+    assert minted.status_code == 503
+
+    shared = await client.get(
+        "/api/v1/documents/shared", params={"document_id": doc_id, "token": "anything"}
+    )
+    assert shared.status_code == 403
