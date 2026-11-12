@@ -10,8 +10,10 @@ service:
   port: 80
   targetPort: 8089
 
+# admin-service is reached through api-gateway (JWT) and in-cluster callers;
+# it is not published directly.
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
