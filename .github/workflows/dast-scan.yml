@@ -27,6 +27,9 @@ on:
       - 'infrastructure/helm/**'
       - 'security/dast/**'
       - '.github/workflows/dast-scan.yml'
+      - 'docker-compose.yml'
+      - 'docker-compose.infra.yml'
+      - 'scripts/ensure-local-env.sh'
   schedule:
     - cron: '0 7 * * *' # Daily 7AM UTC
   workflow_dispatch:
@@ -61,6 +64,10 @@ jobs:
       # shrink the surface the coverage gate measures.
       - name: Unit-test the harness
         run: make dast-test
+
+      # The compose files require OTTERWORKS_DB_PASSWORD; generate a random one.
+      - name: Generate local .env
+        run: make env
 
       - name: Start the application stack
         run: |

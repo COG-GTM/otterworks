@@ -311,8 +311,8 @@ is a terraform input (`var.db_password`), set/rotated at apply time.
 
 **Gap / what a demo needs.** There is **no delivery mechanism for application secrets into pods** —
 no k8s Secret, no External Secrets Operator, no SSM/Secrets Manager CSI driver. `docker-compose.yml`
-uses hard-coded test credentials (`AWS_ACCESS_KEY_ID: test`, `POSTGRES_PASSWORD: otterworks_dev`,
-a default `JWT_SECRET`), which is fine locally but is exactly what's missing in-cluster. Add
+uses hard-coded test credentials (`AWS_ACCESS_KEY_ID: test`, a default `JWT_SECRET`; the Postgres
+password comes from `OTTERWORKS_DB_PASSWORD`, generated into the gitignored `.env` by `make env`), which is fine locally but is exactly what's missing in-cluster. Add
 External Secrets Operator (pulling from Secrets Manager/SSM) for a credible secrets story.
 
 ## 13. Data / ETL — Partial

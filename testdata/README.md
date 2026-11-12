@@ -18,7 +18,9 @@ staging, load-test) driven by **GitHub Issue acceptance criteria**.
 
 ```bash
 # Prerequisites: running Postgres (make infra-up) with OtterWorks schemas
-export DB_HOST=localhost DB_PORT=5432 DB_NAME=otterworks DB_USER=otterworks DB_PASSWORD=otterworks_dev
+# The password is the OTTERWORKS_DB_PASSWORD that `make env` wrote to the gitignored .env
+export DB_HOST=localhost DB_PORT=5432 DB_NAME=otterworks DB_USER=otterworks
+export DB_PASSWORD="$(sed -n 's/^OTTERWORKS_DB_PASSWORD=//p' .env | tail -n1)"
 
 # Generate data for a namespace (produced by Devin from a GH Issue)
 python testdata/generated/dev/generate.py --ns dev
