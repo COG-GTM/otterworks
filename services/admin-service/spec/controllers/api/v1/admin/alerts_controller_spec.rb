@@ -65,9 +65,9 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(0)
     end
 
-    it 'rejects a request carrying only a user JWT' do
+    it 'rejects a request carrying only a valid user JWT' do
       request.headers['X-Alert-Secret'] = nil
-      request.headers['Authorization'] = 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.sig'
+      request.headers['Authorization'] = "Bearer #{jwt_token(email: 'mallory@example.com', role: 'user')}"
       post :ingest, params: { alerts: [firing_alert] }
       expect(response).to have_http_status(:unauthorized)
       expect(Incident.count).to eq(0)
