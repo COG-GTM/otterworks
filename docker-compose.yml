@@ -71,6 +71,8 @@ services:
       SPRING_DATASOURCE_USERNAME: otterworks
       SPRING_DATASOURCE_PASSWORD: otterworks_dev
       JWT_SECRET: ${JWT_SECRET:-otterworks-local-dev-jwt-secret-change-me-in-production}
+      AUTH_BOOTSTRAP_ADMIN_EMAIL: ${AUTH_BOOTSTRAP_ADMIN_EMAIL:-}
+      AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
