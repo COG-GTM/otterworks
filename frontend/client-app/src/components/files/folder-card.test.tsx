@@ -112,6 +112,21 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expectNoNavigation();
   });
 
+  it("closes the actions menu on an outside click without navigating", async () => {
+    const user = userEvent.setup();
+    const { container } = renderCard({ view });
+    const trigger = screen.getByRole("button", { name: "More actions for Reports" });
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    const backdrop = container.querySelector<HTMLElement>(".fixed.inset-0");
+    expect(backdrop).not.toBeNull();
+    await user.click(backdrop!);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expectNoNavigation();
+  });
+
   it("still navigates into the folder when the card link is activated", async () => {
     const user = userEvent.setup();
     renderCard({ view });
