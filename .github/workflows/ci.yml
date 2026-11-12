@@ -31,6 +31,7 @@ jobs:
       report-service: ${{ steps.changes.outputs.report-service }}
       legacy-portal: ${{ steps.changes.outputs.legacy-portal }}
       api-tests: ${{ steps.changes.outputs.api-tests }}
+      etl: ${{ steps.changes.outputs.etl }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -76,6 +77,8 @@ jobs:
               - 'services/api-gateway/internal/config/**'
               - 'docker-compose*.yml'
               - 'Makefile'
+            etl:
+              - 'etl/**'
 
   # Go - API Gateway
   api-gateway:
@@ -429,3 +432,19 @@ jobs:
       - run: python -m pip install -r tests/api/requirements.txt
       - run: python -m py_compile tests/api/*.py
       - run: python -m pytest tests/api --collect-only -q
+
+  # Python - ETL cron scripts
+  etl:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.etl == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: etl
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install boto3==1.26.0 pytest
+      - run: python -m pytest tests -q
