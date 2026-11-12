@@ -45,6 +45,16 @@ describe("SearchPage", () => {
     expect(search).not.toHaveBeenCalled();
   });
 
+  it("shows the loader while the search is pending", async () => {
+    let finish: (value: PaginatedResponse<SearchResult>) => void = () => {};
+    search.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    renderAt("/search?q=otter");
+    expect(await screen.findByRole("status", { name: "Loading" })).toBeInTheDocument();
+    expect(screen.queryByText("Search OtterWorks")).not.toBeInTheDocument();
+    finish({ data: [], total: 0, page: 1, pageSize: 20, hasMore: false });
+    expect(await screen.findByText("No results found")).toBeInTheDocument();
+  });
+
   it("shows the no-results state when the search returns nothing", async () => {
     search.mockResolvedValue({ data: [], total: 0, page: 1, pageSize: 20, hasMore: false });
     renderAt("/search?q=nothing");
@@ -64,6 +74,19 @@ describe("SearchPage", () => {
     expect(screen.getByRole("link", { name: /document d1/ })).toHaveAttribute("href", "/documents/d1");
     expect(screen.getByRole("link", { name: /folder f1/ })).toHaveAttribute("href", "/files?folder=f1");
     expect(screen.getByRole("link", { name: /file x1/ })).toHaveAttribute("href", "/files/x1");
+  });
+
+  it.each([
+    ["document", "d1", "lucide-file-text", "text-blue-600"],
+    ["folder", "f1", "lucide-folder-open", "text-amber-600"],
+    ["file", "x1", "lucide-file", "text-otter-600"],
+  ] as const)("renders the %s icon and colour", async (type, id, iconClass, colorClass) => {
+    search.mockResolvedValue({ data: [result(type, id)], total: 1, page: 1, pageSize: 20, hasMore: false });
+    renderAt("/search?q=otter");
+    const link = await screen.findByRole("link", { name: new RegExp(`${type} ${id}`) });
+    const icon = link.querySelector("svg");
+    expect(icon).toHaveClass(iconClass);
+    expect(icon?.parentElement).toHaveClass(colorClass);
   });
 
   it("uses the singular for a single result", async () => {
