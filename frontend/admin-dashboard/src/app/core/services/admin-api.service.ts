@@ -407,9 +407,9 @@ export class AdminApiService {
     const byTier: Record<string, number> = storage.by_tier ?? {};
     const topActions: Record<string, number> = audit.top_actions ?? {};
 
-    const rolePoints: ChartDataPoint[] = Object.entries(byRole).map(([label, value]) => ({ label, value: value as number }));
-    const tierPoints: ChartDataPoint[] = Object.entries(byTier).map(([label, value]) => ({ label, value: value as number }));
-    const actionPoints: ChartDataPoint[] = Object.entries(topActions).map(([label, value]) => ({ label, value: value as number }));
+    const rolePoints: ChartDataPoint[] = Object.entries(byRole).map(([label, value]) => ({ label, value }));
+    const tierPoints: ChartDataPoint[] = Object.entries(byTier).map(([label, value]) => ({ label, value }));
+    const actionPoints: ChartDataPoint[] = Object.entries(topActions).map(([label, value]) => ({ label, value }));
 
     return {
       userSignups: rolePoints.length ? rolePoints : [{ label: 'Users', value: users.total ?? 0 }],
