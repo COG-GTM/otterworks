@@ -25,9 +25,10 @@ fi
 
 if [ -z "$current" ]; then
   # Portable in-place delete (BSD sed on macOS has a different -i syntax).
-  grep -v "^${KEY}=" "$ENV_FILE" > "$ENV_FILE.tmp" || true
-  cat "$ENV_FILE.tmp" > "$ENV_FILE"
-  rm -f "$ENV_FILE.tmp"
+  tmp="$(mktemp "$ENV_FILE.XXXXXX")"
+  grep -v "^${KEY}=" "$ENV_FILE" > "$tmp" || true
+  cat "$tmp" > "$ENV_FILE"
+  rm -f "$tmp"
   if command -v openssl >/dev/null 2>&1; then
     password="$(openssl rand -hex 24)"
   else
