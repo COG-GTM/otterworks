@@ -7,6 +7,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants import MARKDOWN_CONTENT_TYPE
 from app.db.base import Base
 
 
@@ -23,7 +24,7 @@ class Document(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="text/markdown"
+        String(50), nullable=False, default=MARKDOWN_CONTENT_TYPE
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False, index=True
@@ -107,7 +108,7 @@ class Template(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_type: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="text/markdown"
+        String(50), nullable=False, default=MARKDOWN_CONTENT_TYPE
     )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
