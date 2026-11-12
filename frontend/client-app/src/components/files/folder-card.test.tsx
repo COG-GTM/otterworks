@@ -37,6 +37,13 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(screen.getByTestId("location")).toHaveTextContent("/home");
   });
 
+  it.each([true, false])("reflects selected=%s on the checkbox", (selected) => {
+    renderCard({ view, selectionActive: true, selected, onSelect: vi.fn() });
+    const checkbox = screen.getByRole("checkbox", { name: "Select Reports" });
+    if (selected) expect(checkbox).toBeChecked();
+    else expect(checkbox).not.toBeChecked();
+  });
+
   it("closes the actions menu from the backdrop button without navigating", () => {
     renderCard({ view });
     const trigger = screen.getByRole("button", { name: "More actions for Reports" });
