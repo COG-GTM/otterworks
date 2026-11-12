@@ -1,10 +1,31 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { http, HttpResponse, delay } from "msw";
-import { AxiosError } from "axios";
+import { AxiosError, type AxiosAdapter } from "axios";
 import { billingServer } from "../test-setup";
 import { apiClient } from "./api-client";
 
 const TOKEN = "access-token";
+
+function rejectWith(status: number): { adapter: AxiosAdapter; original: () => AxiosError } {
+  let original: AxiosError | undefined;
+  const adapter: AxiosAdapter = async (config) => {
+    original = new AxiosError("failed", undefined, config, undefined, {
+      status,
+      statusText: "",
+      headers: {},
+      config,
+      data: {},
+    });
+    throw original;
+  };
+  return {
+    adapter,
+    original: () => {
+      if (!original) throw new Error("adapter was not called");
+      return original;
+    },
+  };
+}
 
 async function captureRejection(promise: Promise<unknown>): Promise<unknown> {
   try {
@@ -90,5 +111,14 @@ describe("apiClient response interceptor", () => {
 
     expect((error as AxiosError).response?.status).toBe(401);
     expect(profileCalls).toBe(0);
+  });
+
+  it.each([500, 401])("rejects a %i with the exact error object the request produced", async (status) => {
+    billingServer.use(http.get("/api/v1/auth/profile", () => HttpResponse.json({ id: "u1" })));
+    const { adapter, original } = rejectWith(status);
+
+    const error = await captureRejection(apiClient.get("/files", { adapter }));
+
+    expect(error).toBe(original());
   });
 });
