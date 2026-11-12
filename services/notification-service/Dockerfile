@@ -2,6 +2,7 @@ FROM gradle:8.6-jdk17 AS builder
 
 WORKDIR /app
 COPY build.gradle.kts settings.gradle.kts gradle-init.gradle ./
+COPY gradle ./gradle
 RUN gradle dependencies --no-daemon --init-script gradle-init.gradle || true
 
 COPY src ./src
