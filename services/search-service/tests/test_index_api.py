@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
+
+from tests.conftest import TEST_SERVICE_TOKEN
+
+
+@pytest.fixture()
+def client(app):
+    """Test client authenticated as an internal service (index routes require it)."""
+    test_client = app.test_client()
+    test_client.environ_base["HTTP_AUTHORIZATION"] = f"Bearer {TEST_SERVICE_TOKEN}"
+    return test_client
+
 
 class TestIndexDocumentEndpoint:
     """Tests for POST /api/v1/search/index/document."""

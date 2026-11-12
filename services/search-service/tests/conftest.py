@@ -10,6 +10,8 @@ from app.config import AppConfig, AuthConfig, MeiliSearchConfig, SQSConfig
 from app.main import create_app
 from app.services.meilisearch_client import MeiliSearchService
 
+TEST_SERVICE_TOKEN = "test-search-service-token"
+
 
 @pytest.fixture()
 def app_config() -> AppConfig:
@@ -26,7 +28,7 @@ def app_config() -> AppConfig:
             files_index="test-otterworks-files",
         ),
         sqs=SQSConfig(enabled=False),
-        auth=AuthConfig(service_token="", require_auth=False),
+        auth=AuthConfig(service_token=TEST_SERVICE_TOKEN, require_auth=False),
     )
 
 
