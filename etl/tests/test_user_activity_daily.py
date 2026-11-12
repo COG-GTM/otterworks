@@ -1,6 +1,7 @@
 """Run with: python3 -m unittest discover -s etl/tests"""
 
 import configparser
+import gzip
 import importlib.util
 import pathlib
 import sys
@@ -66,6 +67,16 @@ class UserActivityBucketOwnerTest(unittest.TestCase):
         for call in s3.get_object.call_args_list + s3.put_object.call_args_list:
             self.assertEqual(call.kwargs["ExpectedBucketOwner"], OWNER)
             self.assertEqual(call.kwargs["Bucket"], "otterworks-data-lake")
+
+    def test_per_user_summaries_upload_sends_expected_bucket_owner(self):
+        day = gzip.compress(b'{"user_id": "u1", "total": 5, "actions": {"edit": 5}}\n')
+        reads = [{"Body": mock.MagicMock(read=mock.MagicMock(return_value=day))}]
+        reads += [_client_error("NoSuchKey", 404)] * 29
+        s3, _, _ = self.run_main(get_error=reads)
+        self.assertEqual(s3.put_object.call_count, 3)
+        self.assertTrue(s3.put_object.call_args_list[2].kwargs["Key"].endswith("/user_summaries.jsonl"))
+        for call in s3.put_object.call_args_list:
+            self.assertEqual(call.kwargs["ExpectedBucketOwner"], OWNER)
 
     def test_missing_account_id_fails_before_any_io(self):
         for line in ("", "account_id =", "account_id = 1234", "account_id = abcdefghijkl"):
