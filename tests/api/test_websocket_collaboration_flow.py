@@ -1,5 +1,11 @@
+import base64
+import hashlib
+import hmac
+import json
 import os
+import secrets
 import time
+import uuid
 
 import pytest
 import socketio
@@ -12,6 +18,20 @@ def _collab_url(base_url: str) -> str:
     return os.getenv("OTTERWORKS_COLLAB_WS_URL", base_url.replace("http://", "ws://").replace("https://", "wss://"))
 
 
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _jwt_signed_with_random_key() -> str:
+    """Well-formed HS256 JWT signed with a throwaway per-run key the server cannot know."""
+    now = int(time.time())
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    claims = _b64url(json.dumps({"sub": str(uuid.uuid4()), "iat": now, "exp": now + 300}).encode())
+    signing_input = f"{header}.{claims}".encode("ascii")
+    signature = hmac.new(secrets.token_bytes(32), signing_input, hashlib.sha256).digest()
+    return f"{header}.{claims}.{_b64url(signature)}"
+
+
 def test_socketio_rejects_missing_or_invalid_token(base_url):
     sio = socketio.Client(reconnection=False, request_timeout=3)
     with pytest.raises(socketio.exceptions.ConnectionError):
@@ -21,7 +41,7 @@ def test_socketio_rejects_missing_or_invalid_token(base_url):
     with pytest.raises(socketio.exceptions.ConnectionError):
         invalid.connect(
             _collab_url(base_url),
-            auth={"token": "not-a-valid-token"},
+            auth={"token": _jwt_signed_with_random_key()},
             transports=["websocket"],
         )
 
