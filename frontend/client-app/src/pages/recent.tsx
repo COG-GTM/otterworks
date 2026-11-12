@@ -162,16 +162,19 @@ function RecentContent() {
   );
 }
 
+const SKELETON_SECTIONS = ["skeleton-section-1", "skeleton-section-2"] as const;
+const SKELETON_CARDS = ["skeleton-card-1", "skeleton-card-2", "skeleton-card-3"] as const;
+
 function RecentSkeleton() {
   return (
     <div className="space-y-6">
-      {[1, 2].map((section) => (
+      {SKELETON_SECTIONS.map((section) => (
         <div key={section}>
           <div className="h-4 w-20 bg-gray-200 rounded animate-pulse mb-3" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {SKELETON_CARDS.map((card) => (
               <div
-                key={i}
+                key={card}
                 className="flex flex-col rounded-xl border border-gray-200 bg-white p-4"
               >
                 <div className="flex items-start justify-between mb-3">
