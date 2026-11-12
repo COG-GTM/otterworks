@@ -106,8 +106,11 @@ describe('AuthService', () => {
   it('should drop an expired stored session', () => {
     localStorage.setItem('ow_admin_token', unsignedJwt({ sub: apiUser.id, roles: ['ADMIN'], exp: futureExp(-60) }));
     localStorage.setItem('ow_admin_user', JSON.stringify(apiUser));
+    spyOn(router, 'navigate');
     expect(service.getToken()).toBeNull();
     expect(localStorage.getItem('ow_admin_user')).toBeNull();
+    expect(service.currentUser).toBeNull();
+    expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
 
   it('should emit the user on currentUser$ and clear state on logout', () => {

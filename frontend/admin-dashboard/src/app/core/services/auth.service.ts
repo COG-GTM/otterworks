@@ -57,7 +57,7 @@ export class AuthService {
     }
     const claims = decodeClaims(token);
     if (!claims || isExpired(claims)) {
-      this.clearSession();
+      this.logout();
       return null;
     }
     return token;
