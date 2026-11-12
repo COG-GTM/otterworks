@@ -32,6 +32,54 @@ describe("ShareDialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("lets outside clicks fall through the centering layer to the backdrop", () => {
+    // JSDOM does not hit-test CSS, so pin the classes that route real clicks.
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    const centeringLayer = dialog.parentElement!;
+    const backdrop = screen.getByRole("button", { name: "Close share dialog" });
+    expect(centeringLayer).toHaveClass("pointer-events-none");
+    expect(dialog).toHaveClass("pointer-events-auto");
+    expect(backdrop.parentElement).toBe(centeringLayer.parentElement);
+    expect(backdrop.compareDocumentPosition(centeringLayer)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+  });
+
+  it("keeps Tab focus inside the dialog", () => {
+    renderDialog();
+    const dialog = screen.getByRole("dialog");
+    const close = screen.getByRole("button", { name: "Close" });
+    // The Share button is disabled until an email is typed, so the select is last.
+    const permission = screen.getByRole("combobox");
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(permission).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(permission).toHaveFocus();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+
+  it("restores focus to the opener when it closes", () => {
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const { unmount } = render(
+      <ShareDialog
+        fileId="file-1"
+        fileName="report.pdf"
+        sharedWith={[]}
+        onShare={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    expect(screen.getByRole("dialog")).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
   it("closes on Escape and from the header close button", () => {
     const onClose = renderDialog();
     fireEvent.keyDown(document, { key: "Escape" });
