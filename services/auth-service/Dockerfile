@@ -1,7 +1,7 @@
 FROM gradle:8.6-jdk17 AS builder
 
 WORKDIR /app
-COPY build.gradle settings.gradle gradle-init.gradle ./
+COPY build.gradle settings.gradle gradle-init.gradle gradle.lockfile ./
 COPY gradle ./gradle
 RUN gradle dependencies --no-daemon --init-script gradle-init.gradle || true
 
