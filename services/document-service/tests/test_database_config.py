@@ -1,5 +1,7 @@
 """The database connection string must come from the environment, never from code."""
 
+import configparser
+import re
 from pathlib import Path
 
 import pytest
@@ -12,6 +14,7 @@ from app.db import session as db_session
 from app.main import app, lifespan
 
 REPO_SERVICE_DIR = Path(__file__).resolve().parents[1]
+CREDENTIALED_URL = re.compile(r"\w+(\+\w+)?://[^/\s:@]+:[^/\s@]+@")
 
 
 @pytest.fixture
@@ -50,7 +53,11 @@ def test_blank_database_url_is_rejected(monkeypatch):
 
 def test_source_tree_has_no_baked_in_database_password():
     for path in (REPO_SERVICE_DIR / "app" / "config.py", REPO_SERVICE_DIR / "alembic.ini"):
-        assert "otterworks_dev" not in path.read_text(encoding="utf-8"), path
+        assert not CREDENTIALED_URL.search(path.read_text(encoding="utf-8")), path
+
+    ini = configparser.ConfigParser(interpolation=None)
+    ini.read(REPO_SERVICE_DIR / "alembic.ini", encoding="utf-8")
+    assert not ini.has_option("alembic", "sqlalchemy.url")
 
 
 def test_alembic_env_preserves_percent_encoded_password(monkeypatch):
