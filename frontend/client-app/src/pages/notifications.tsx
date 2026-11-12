@@ -124,15 +124,16 @@ const notificationColors: Record<string, string> = {
   system: "text-gray-600 bg-gray-100",
 };
 
-const resourcePathPrefixes: Record<string, string> = {
-  document: "/documents",
-  file: "/files",
-};
-
 function getNotificationHref(notification: Notification): string | undefined {
-  if (!notification.resourceId || !notification.resourceType) return undefined;
-  const prefix = resourcePathPrefixes[notification.resourceType];
-  return prefix ? `${prefix}/${notification.resourceId}` : undefined;
+  if (!notification.resourceId) return undefined;
+  switch (notification.resourceType) {
+    case "document":
+      return `/documents/${notification.resourceId}`;
+    case "file":
+      return `/files/${notification.resourceId}`;
+    default:
+      return undefined;
+  }
 }
 
 function NotificationRow({

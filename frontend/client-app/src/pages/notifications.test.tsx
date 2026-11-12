@@ -72,9 +72,15 @@ describe("NotificationsPage", () => {
           resourceType: "comment" as Notification["resourceType"],
           resourceId: "c1",
         }),
+        notification({
+          id: "6",
+          title: "Inherited key",
+          resourceType: "constructor" as Notification["resourceType"],
+          resourceId: "x1",
+        }),
         notification({ id: "4", title: "System notice" }),
       ],
-      total: 5,
+      total: 6,
       page: 1,
       pageSize: 20,
       totalPages: 1,
@@ -85,6 +91,7 @@ describe("NotificationsPage", () => {
     expect(screen.getByText("File shared").closest("a")).toHaveAttribute("href", "/files/f1");
     expect(screen.getByText("Missing id").closest("a")).toBeNull();
     expect(screen.getByText("Comment added").closest("a")).toBeNull();
+    expect(screen.getByText("Inherited key").closest("a")).toBeNull();
     expect(screen.getByText("System notice").closest("a")).toBeNull();
     expect(screen.queryByText("No notifications")).not.toBeInTheDocument();
   });
