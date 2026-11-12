@@ -31,5 +31,5 @@ def resolve_expected_bucket_owner(config, aws_access_key, aws_secret_key, aws_re
         )
         owner = sts_client.get_caller_identity()["Account"]
     if not _ACCOUNT_ID.match(owner):
-        raise ValueError("expected S3 bucket owner must be a 12-digit AWS account id, got %r" % owner)
+        raise ValueError(f"expected S3 bucket owner must be a 12-digit AWS account id, got {owner!r}")
     return owner

@@ -11,7 +11,7 @@ from botocore.stub import Stubber
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from s3_ownership import resolve_expected_bucket_owner  # noqa: E402
+from s3_ownership import resolve_expected_bucket_owner
 
 S3_BUCKET_CALLS = {
     "put_object", "get_object", "delete_object", "copy_object", "head_object",
@@ -42,7 +42,7 @@ def _s3_calls(path):
 def test_every_s3_bucket_call_verifies_ownership(script):
     for call in _s3_calls(SCRIPTS / script):
         kwargs = {kw.arg for kw in call.keywords}
-        where = "%s:%d %s" % (script, call.lineno, call.func.attr)
+        where = f"{script}:{call.lineno} {call.func.attr}"
         assert "ExpectedBucketOwner" in kwargs, where
         if call.func.attr == "copy_object":
             assert "ExpectedSourceBucketOwner" in kwargs, where
