@@ -1,8 +1,17 @@
+import { randomBytes } from "node:crypto";
 import { type Page, expect } from "@playwright/test";
 
 /** Generate a unique email for test isolation */
 export function uniqueEmail(): string {
   return `test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@otterworks.test`;
+}
+
+/**
+ * Throwaway password for accounts created by a test run: random per call so no
+ * credential lives in source. Set E2E_TEST_PASSWORD to pin one.
+ */
+export function testPassword(): string {
+  return process.env.E2E_TEST_PASSWORD || `Pw-${randomBytes(12).toString("base64url")}`;
 }
 
 /** Fill and submit the registration form */
@@ -12,7 +21,7 @@ export async function registerUser(
 ) {
   const name = opts.name ?? "Test User";
   const email = opts.email ?? uniqueEmail();
-  const password = opts.password ?? "Passw0rd!23";
+  const password = opts.password ?? testPassword();
 
   await page.goto("/register");
   await page.getByLabel("Full name").fill(name);
