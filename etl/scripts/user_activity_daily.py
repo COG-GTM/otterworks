@@ -40,9 +40,9 @@ def main():
 
     data_lake_bucket = config.get("s3", "data_lake_bucket")
     expected_bucket_owner = (
-        os.environ.get("ETL_EXPECTED_BUCKET_OWNER")
-        or config.get("s3", "expected_bucket_owner", fallback="")
-    ).strip()
+        os.environ.get("ETL_EXPECTED_BUCKET_OWNER", "").strip()
+        or config.get("s3", "expected_bucket_owner", fallback="").strip()
+    )
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     lookback_days = 30
