@@ -31,7 +31,7 @@ import { AuthService } from '../../core/services/auth.service';
           <form (ngSubmit)="onLogin()" class="login-form">
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>Email</mat-label>
-              <input matInput type="email" [(ngModel)]="email" name="email" required placeholder="admin@otterworks.io" (input)="clearError()">
+              <input matInput type="email" [(ngModel)]="email" name="email" required placeholder="admin@otterworks.dev" (input)="clearError()">
               <mat-icon matSuffix>email</mat-icon>
             </mat-form-field>
 
