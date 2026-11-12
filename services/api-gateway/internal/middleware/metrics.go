@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -59,29 +60,28 @@ func Metrics(next http.Handler) http.Handler {
 	})
 }
 
+// metricsRoutePrefixes are the top-level route prefixes used as the "path"
+// metric label; any other path is reported as "other".
+var metricsRoutePrefixes = []string{
+	"/api/v1/auth",
+	"/api/v1/files",
+	"/api/v1/documents",
+	"/api/v1/collab",
+	"/api/v1/notifications",
+	"/api/v1/search",
+	"/api/v1/analytics",
+	"/api/v1/admin",
+	"/api/v1/audit",
+}
+
+const otherRouteLabel = "other"
+
 // normalizePath reduces cardinality by collapsing path parameters.
 func normalizePath(path string) string {
-	// Keep top-level route prefix for grouping
-	switch {
-	case len(path) >= len("/api/v1/auth") && path[:len("/api/v1/auth")] == "/api/v1/auth":
-		return "/api/v1/auth"
-	case len(path) >= len("/api/v1/files") && path[:len("/api/v1/files")] == "/api/v1/files":
-		return "/api/v1/files"
-	case len(path) >= len("/api/v1/documents") && path[:len("/api/v1/documents")] == "/api/v1/documents":
-		return "/api/v1/documents"
-	case len(path) >= len("/api/v1/collab") && path[:len("/api/v1/collab")] == "/api/v1/collab":
-		return "/api/v1/collab"
-	case len(path) >= len("/api/v1/notifications") && path[:len("/api/v1/notifications")] == "/api/v1/notifications":
-		return "/api/v1/notifications"
-	case len(path) >= len("/api/v1/search") && path[:len("/api/v1/search")] == "/api/v1/search":
-		return "/api/v1/search"
-	case len(path) >= len("/api/v1/analytics") && path[:len("/api/v1/analytics")] == "/api/v1/analytics":
-		return "/api/v1/analytics"
-	case len(path) >= len("/api/v1/admin") && path[:len("/api/v1/admin")] == "/api/v1/admin":
-		return "/api/v1/admin"
-	case len(path) >= len("/api/v1/audit") && path[:len("/api/v1/audit")] == "/api/v1/audit":
-		return "/api/v1/audit"
-	default:
-		return "other"
+	for _, prefix := range metricsRoutePrefixes {
+		if strings.HasPrefix(path, prefix) {
+			return prefix
+		}
 	}
+	return otherRouteLabel
 }
