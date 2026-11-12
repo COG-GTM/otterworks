@@ -8,29 +8,31 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
+// Expected labels are literals so a change to the production constants is
+// caught as a change to the exported Prometheus label values.
 func TestNormalizePath(t *testing.T) {
 	tests := []struct {
 		path string
 		want string
 	}{
-		{"/api/v1/auth", routeAuth},
-		{"/api/v1/auth/login", routeAuth},
-		{"/api/v1/files/123/download", routeFiles},
-		{"/api/v1/documents", routeDocuments},
-		{"/api/v1/documents/abc/share", routeDocuments},
-		{"/api/v1/collab/ws", routeCollab},
-		{"/api/v1/notifications/unread", routeNotifications},
-		{"/api/v1/search", routeSearch},
-		{"/api/v1/search/analytics", routeSearch},
-		{"/api/v1/searchsuggest", routeSearch},
-		{"/api/v1/analytics/dashboard", routeAnalytics},
-		{"/api/v1/admin/users", routeAdmin},
-		{"/api/v1/audit/events", routeAudit},
-		{"/api/v1/aut", routeOther},
-		{"/api/v1/unknown", routeOther},
-		{"/health", routeOther},
-		{"", routeOther},
-		{"/API/V1/SEARCH", routeOther},
+		{"/api/v1/auth", "/api/v1/auth"},
+		{"/api/v1/auth/login", "/api/v1/auth"},
+		{"/api/v1/files/123/download", "/api/v1/files"},
+		{"/api/v1/documents", "/api/v1/documents"},
+		{"/api/v1/documents/abc/share", "/api/v1/documents"},
+		{"/api/v1/collab/ws", "/api/v1/collab"},
+		{"/api/v1/notifications/unread", "/api/v1/notifications"},
+		{"/api/v1/search", "/api/v1/search"},
+		{"/api/v1/search/analytics", "/api/v1/search"},
+		{"/api/v1/searchsuggest", "/api/v1/search"},
+		{"/api/v1/analytics/dashboard", "/api/v1/analytics"},
+		{"/api/v1/admin/users", "/api/v1/admin"},
+		{"/api/v1/audit/events", "/api/v1/audit"},
+		{"/api/v1/aut", "other"},
+		{"/api/v1/unknown", "other"},
+		{"/health", "other"},
+		{"", "other"},
+		{"/API/V1/SEARCH", "other"},
 	}
 
 	for _, tt := range tests {
@@ -45,7 +47,7 @@ func TestMetricsRecordsNormalizedPathLabel(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 
-	counter := httpRequestsTotal.WithLabelValues(http.MethodGet, routeSearch, "418")
+	counter := httpRequestsTotal.WithLabelValues(http.MethodGet, "/api/v1/search", "418")
 	before := testutil.ToFloat64(counter)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/search/query?q=otter", nil)
