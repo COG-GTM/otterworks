@@ -50,7 +50,7 @@ def run_job(clients, owner=OWNER, env=None):
     with mock.patch.object(configparser.ConfigParser, "read", fake_read), \
          mock.patch.object(job.boto3, "client", side_effect=lambda *a, **k: queue.pop(0)), \
          mock.patch.object(job.boto3, "resource", return_value=FakeDynamo()), \
-         mock.patch.dict(job.os.environ, env or {}, clear=False):
+         mock.patch.dict(job.os.environ, {"S3_EXPECTED_BUCKET_OWNER": "", **(env or {})}):
         job.main()
 
 
