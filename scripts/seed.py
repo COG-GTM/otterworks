@@ -16,6 +16,7 @@ Environment overrides (all optional — defaults match docker-compose):
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 """
 
+import hashlib
 import os
 import sys
 import uuid
@@ -54,6 +55,14 @@ def hash_password(plain: str) -> str:
 
 def log(msg: str) -> None:
     print(f"  {msg}")
+
+def fixture_int(key: str, upper: int) -> int:
+    """Reproducible value in [0, upper) derived from key (fixture data, not a PRNG)."""
+    digest = hashlib.sha256(key.encode()).digest()
+    return int.from_bytes(digest[:8], "big") % upper
+
+def fixture_choice(key: str, seq):
+    return seq[fixture_int(key, len(seq))]
 
 # ── Seed data ─────────────────────────────────────────────────────────────────
 
@@ -376,28 +385,30 @@ def seed_audit_logs(cur) -> None:
         log("  No seeded users found — skipping audit logs.")
         return
 
-    import random
-    rng = random.Random(42)  # deterministic
+    db_users = sorted(db_users)
 
     rows = []
     for i in range(80):
-        user = rng.choice(db_users)
+        user = fixture_choice(f"audit:{i}:actor", db_users)
         actor_id, actor_email = user[0], user[1]
-        action, resource_type = rng.choice(AUDIT_ACTIONS)
+        action, resource_type = fixture_choice(f"audit:{i}:action", AUDIT_ACTIONS)
 
-        # Pick a random resource_id — use another user's ID for user actions
+        # Pick a resource_id — use another user's ID for user actions
         if resource_type == "AdminUser":
-            resource_id = rng.choice(db_users)[0]
+            resource_id = fixture_choice(f"audit:{i}:resource", db_users)[0]
         else:
             resource_id = uid()
 
-        age_hours = rng.randint(0, 30 * 24)
+        age_hours = fixture_int(f"audit:{i}:age", 30 * 24 + 1)
         created = hours_ago(age_hours)
+        subnet = fixture_int(f"audit:{i}:subnet", 5) + 1
+        host = fixture_int(f"audit:{i}:host", 254) + 1
+        ip = f"192.168.{subnet}.{host}"
 
         rows.append((
             uid(), actor_id, actor_email, action, resource_type, resource_id,
             '{}',  # changes_made
-            f"192.168.{rng.randint(1,5)}.{rng.randint(1,254)}",
+            ip,
             "Mozilla/5.0 (seed)",
             created, created,
         ))
