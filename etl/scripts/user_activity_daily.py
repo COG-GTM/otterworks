@@ -12,11 +12,23 @@
 import configparser
 import gzip
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
 import boto3
 import psycopg2
+from botocore.exceptions import ClientError
+
+
+def load_bucket_owner_account_id(config):
+    # Passed as ExpectedBucketOwner on every S3 call so a bucket that was
+    # deleted and re-created under another AWS account is never read from or
+    # written to.
+    account_id = config.get("aws", "account_id", fallback="").strip()
+    if not re.fullmatch(r"\d{12}", account_id):
+        raise ValueError("[aws] account_id must be the 12-digit AWS account ID that owns the S3 buckets")
+    return account_id
 
 
 def main():
@@ -29,6 +41,7 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    bucket_owner = load_bucket_owner_account_id(config)
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -144,7 +157,11 @@ def main():
         key = "analytics/daily/year=%s/month=%s/day=%s/top_users.jsonl.gz" % (year, month, day)
 
         try:
-            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key)
+            response = s3_client.get_object(
+                Bucket=data_lake_bucket,
+                Key=key,
+                ExpectedBucketOwner=bucket_owner,
+            )
             body = response["Body"].read()
             decompressed = gzip.decompress(body).decode("utf-8")
 
@@ -170,6 +187,11 @@ def main():
                     prev = user_totals[uid]["actions_by_type"].get(action_type, 0)
                     user_totals[uid]["actions_by_type"][action_type] = prev + count
 
+        except ClientError as e:
+            # Bucket not owned by bucket_owner (or no access): fail rather than
+            # silently produce a report from missing data.
+            if e.response.get("Error", {}).get("Code") in ("AccessDenied", "403"):
+                raise
         except:
             # S3 key might not exist for every day -- silently skip
             # TODO ETL-098: Log missing days for debugging
@@ -216,6 +238,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=report_key,
+        ExpectedBucketOwner=bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -224,6 +247,7 @@ def main():
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
         Key=latest_key,
+        ExpectedBucketOwner=bucket_owner,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
 
@@ -235,6 +259,7 @@ def main():
         s3_client_upload.put_object(
             Bucket=data_lake_bucket,
             Key=users_key,
+            ExpectedBucketOwner=bucket_owner,
             Body=("\n".join(lines) + "\n").encode("utf-8"),
         )
 
