@@ -42,5 +42,21 @@ RSpec.describe Api::V1::Admin::IncidentsController do
       expect(response).to have_http_status(:forbidden)
       expect(response.body).not_to include('devin.ai')
     end
+
+    it 'does not call the Devin API for non-admin roles' do
+      active = Incident.create!(
+        title: 'collab-service websocket drops',
+        description: 'Clients disconnected every 30s',
+        severity: 'medium',
+        status: 'investigating',
+        affected_service: 'collab-service',
+        devin_session_id: 'devin-session-123'
+      )
+      expect(DevinSessionService).not_to receive(:get_session)
+
+      set_jwt_env(request, role: 'user')
+      get :show, params: { id: active.id }
+      expect(response).to have_http_status(:forbidden)
+    end
   end
 end
