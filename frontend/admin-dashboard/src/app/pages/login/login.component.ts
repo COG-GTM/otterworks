@@ -133,7 +133,10 @@ export class LoginComponent {
   loading = false;
   errorMessage = '';
 
-  constructor(private authService: AuthService, private router: Router) {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly router: Router,
+  ) {
     if (this.authService.isAuthenticated) {
       this.router.navigate(['/']);
     }
