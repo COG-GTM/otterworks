@@ -52,6 +52,14 @@ def main():
 
     print("[%s] Processing analytics for date: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), ds))
 
+    # Fail before consuming (and deleting) SQS events if the data lake is not ours.
+    boto3.client(
+        "s3",
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=aws_region,
+    ).head_bucket(Bucket=data_lake_bucket, ExpectedBucketOwner=expected_bucket_owner)
+
     # ---- Extract from SQS ----
     # TODO ETL-089: Make queue URL configurable per environment (2019-11-15)
     sqs_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/otterworks-analytics"
