@@ -16,7 +16,14 @@ function LocationProbe() {
   return <span data-testid="location">{location.pathname + location.search}</span>;
 }
 
-function renderCard(props: Partial<React.ComponentProps<typeof FolderCard>> = {}) {
+function expectStillOnFiles() {
+  expect(screen.getByTestId("location").textContent).toBe("/files");
+}
+
+function renderCard(
+  props: Partial<React.ComponentProps<typeof FolderCard>> = {},
+  onOutsideClick: () => void = () => {}
+) {
   return render(
     <MemoryRouter initialEntries={["/files"]}>
       <Routes>
@@ -25,7 +32,9 @@ function renderCard(props: Partial<React.ComponentProps<typeof FolderCard>> = {}
           element={
             <>
               <FolderCard folder={folder} {...props} />
-              <button type="button">Outside</button>
+              <button type="button" onClick={onOutsideClick}>
+                Outside
+              </button>
               <LocationProbe />
             </>
           }
@@ -51,7 +60,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
       "Share",
       "Delete",
     ]);
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expectStillOnFiles();
   });
 
   it("closes the menu on Escape", () => {
@@ -72,12 +81,16 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(trigger).toHaveFocus();
   });
 
-  it("closes the menu on an outside pointer press without navigating", () => {
-    renderCard({ view });
+  it("closes the menu on an outside press and still activates the outside target", () => {
+    const onOutsideClick = vi.fn();
+    renderCard({ view }, onOutsideClick);
     fireEvent.click(screen.getByRole("button", { name: "More actions for Reports" }));
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Outside" }));
+    const outside = screen.getByRole("button", { name: "Outside" });
+    fireEvent.pointerDown(outside);
+    fireEvent.click(outside);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expect(onOutsideClick).toHaveBeenCalledTimes(1);
+    expectStillOnFiles();
   });
 
   it("keeps the menu open when pressing inside it and runs the action", () => {
@@ -90,7 +103,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     fireEvent.click(del);
     expect(onDelete).toHaveBeenCalledWith("folder-1");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expectStillOnFiles();
   });
 
   it("toggles selection through the native checkbox", () => {
@@ -98,7 +111,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     renderCard({ view, onSelect, selectionActive: true });
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Reports" }));
     expect(onSelect).toHaveBeenCalledWith("folder-1");
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expectStillOnFiles();
   });
 
   it("does not navigate when clicking the rename input", () => {
@@ -107,7 +120,13 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     const input = screen.getByDisplayValue("Reports");
     fireEvent.click(input);
-    expect(screen.getByTestId("location")).toHaveTextContent("/files");
+    expectStillOnFiles();
+  });
+
+  it("still navigates into the folder when the tile is clicked", () => {
+    renderCard({ view });
+    fireEvent.click(screen.getByText("Reports"));
+    expect(screen.getByTestId("location").textContent).toBe("/files?folder=folder-1");
   });
 
   it("has no non-interactive elements with click handlers", () => {
