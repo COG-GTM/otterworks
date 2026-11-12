@@ -44,6 +44,23 @@ class BucketOwnerCoverageTest(unittest.TestCase):
         self.assertTrue(lake_puts and deletes)
         self.assertGreater(min(deletes), max(lake_puts))
 
+    def test_analytics_releases_sqs_events_when_data_lake_upload_fails(self):
+        tree = ast.parse((SCRIPTS / "analytics_daily.py").read_text())
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            body_attrs = {
+                c.func.attr for stmt in node.body for c in ast.walk(stmt)
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+            }
+            handler_attrs = {
+                c.func.attr for h in node.handlers for c in ast.walk(h)
+                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+            }
+            if "put_object" in body_attrs and "change_message_visibility_batch" in handler_attrs:
+                return
+        self.fail("data lake put_object calls must release SQS visibility on failure")
+
 
 if __name__ == "__main__":
     unittest.main()

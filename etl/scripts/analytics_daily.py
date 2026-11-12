@@ -307,40 +307,52 @@ def main():
 
     partition_key = "%s/year=%s/month=%s/day=%s" % (analytics_prefix, ds[:4], ds[5:7], ds[8:10])
 
-    # Write summary
-    summary_key = "%s/summary.json.gz" % partition_key
-    summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        ExpectedBucketOwner=expected_bucket_owner,
-        Key=summary_key,
-        Body=summary_bytes,
-    )
-    print("[%s] Uploaded summary to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, summary_key))
+    try:
+        # Write summary
+        summary_key = "%s/summary.json.gz" % partition_key
+        summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=summary_key,
+            Body=summary_bytes,
+        )
+        print("[%s] Uploaded summary to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, summary_key))
 
-    # Write hourly breakdown
-    hourly_key = "%s/hourly_breakdown.json.gz" % partition_key
-    hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        ExpectedBucketOwner=expected_bucket_owner,
-        Key=hourly_key,
-        Body=hourly_bytes,
-    )
+        # Write hourly breakdown
+        hourly_key = "%s/hourly_breakdown.json.gz" % partition_key
+        hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=hourly_key,
+            Body=hourly_bytes,
+        )
 
-    # Write top users as JSONL
-    users_key = "%s/top_users.jsonl.gz" % partition_key
-    buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
-        for user in user_summaries:
-            gz.write(json.dumps(user).encode("utf-8"))
-            gz.write(b"\n")
-    s3_client.put_object(
-        Bucket=data_lake_bucket,
-        ExpectedBucketOwner=expected_bucket_owner,
-        Key=users_key,
-        Body=buf.getvalue(),
-    )
+        # Write top users as JSONL
+        users_key = "%s/top_users.jsonl.gz" % partition_key
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            for user in user_summaries:
+                gz.write(json.dumps(user).encode("utf-8"))
+                gz.write(b"\n")
+        s3_client.put_object(
+            Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
+            Key=users_key,
+            Body=buf.getvalue(),
+        )
+    except Exception:
+        # Make the retained events visible again so a retry can load them right away.
+        for i in range(0, len(processed_receipts), batch_size):
+            sqs_client.change_message_visibility_batch(
+                QueueUrl=sqs_queue_url,
+                Entries=[
+                    dict(entry, VisibilityTimeout=0)
+                    for entry in processed_receipts[i:i + batch_size]
+                ],
+            )
+        raise
 
     print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
 
