@@ -112,7 +112,6 @@ export function FolderCard({
               setMenuOpen(!menuOpen);
             }}
             aria-label={`More actions for ${folder.name}`}
-            aria-haspopup="menu"
             aria-expanded={menuOpen}
             className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
           >
@@ -153,7 +152,6 @@ export function FolderCard({
                 setMenuOpen(!menuOpen);
               }}
               aria-label={`More actions for ${folder.name}`}
-              aria-haspopup="menu"
               aria-expanded={menuOpen}
               className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition"
             >
