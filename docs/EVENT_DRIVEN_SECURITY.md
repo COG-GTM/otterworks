@@ -148,7 +148,7 @@ Required GitHub Actions secrets:
 | file-service | Rust | `Cargo.toml` | Cargo crates |
 | document-service | Python 3.12 | `pyproject.toml` | Poetry packages |
 | collab-service | Node.js 20 | `package.json` | npm packages |
-| notification-service | Kotlin | `build.gradle.kts` | Gradle dependencies |
+| notification-service | Kotlin | `build.gradle.kts`, `gradle/libs.versions.toml` | Gradle dependencies (version catalog) |
 | search-service | Python 3 | `requirements.txt` | pip packages |
 | analytics-service | Scala 3.4 | `build.sbt` | sbt dependencies |
 | admin-service | Ruby 3.3 | `Gemfile` | Bundler gems |
