@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 import psycopg2
+from botocore.exceptions import ClientError
 
 
 def main():
@@ -170,10 +171,17 @@ def main():
                     prev = user_totals[uid]["actions_by_type"].get(action_type, 0)
                     user_totals[uid]["actions_by_type"][action_type] = prev + count
 
-        except:
-            # S3 key might not exist for every day -- silently skip
-            # TODO ETL-098: Log missing days for debugging
-            pass
+        except ClientError as e:
+            # S3 key might not exist for every day -- skip missing days quietly
+            if e.response.get("Error", {}).get("Code") not in ("NoSuchKey", "404"):
+                print("[%s] WARNING: Skipping %s: %s" % (
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"), key, str(e)
+                ))
+        except Exception as e:
+            # Corrupt gzip or malformed records for one day -- skip that day
+            print("[%s] WARNING: Skipping unreadable %s: %s" % (
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), key, str(e)
+            ))
 
     user_list = sorted(user_totals.values(), key=lambda x: x["total_actions"], reverse=True)
     print("[%s] Aggregated activity for %d users over %d days" % (
