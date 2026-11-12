@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable, Subject, map } from 'rxjs';
 import { User, UserActivity } from '../models/user.model';
 import { AuditEvent } from '../models/audit.model';
@@ -221,12 +221,23 @@ export class AdminApiService {
 
   // ── Chaos injection (demo/workshop controls) ─────────────────────────────
 
-  triggerChaos(service: string, scenario: string): Observable<{ status: string; key: string; expires_in: number }> {
-    return this.http.post<any>(`${this.baseUrl}/admin/chaos`, { service, scenario });
+  // admin-service requires an admin JWT *and* the operator-supplied CHAOS_SECRET.
+  triggerChaos(
+    service: string,
+    scenario: string,
+    chaosSecret: string,
+  ): Observable<{ status: string; key: string; expires_in: number }> {
+    return this.http.post<any>(`${this.baseUrl}/admin/chaos`, { service, scenario }, {
+      headers: this.chaosHeaders(chaosSecret),
+    });
   }
 
-  resetChaos(): Observable<{ status: string; cleared: string[] }> {
-    return this.http.delete<any>(`${this.baseUrl}/admin/chaos`);
+  resetChaos(chaosSecret: string): Observable<{ status: string; cleared: string[] }> {
+    return this.http.delete<any>(`${this.baseUrl}/admin/chaos`, { headers: this.chaosHeaders(chaosSecret) });
+  }
+
+  private chaosHeaders(chaosSecret: string): HttpHeaders {
+    return new HttpHeaders({ 'X-Chaos-Secret': chaosSecret });
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────

@@ -11,6 +11,10 @@ module Api
           'document-service'     => 'slow_queries',
         }.freeze
 
+        # Both factors are always required: an admin JWT (role checked here; the
+        # token itself by JwtAuthenticator) and the X-Chaos-Secret header. An
+        # unset CHAOS_SECRET disables the endpoint instead of opening it.
+        before_action :require_admin!
         before_action :verify_chaos_secret
 
         # POST /api/v1/admin/chaos
@@ -32,7 +36,7 @@ module Api
           # Start background probe to generate traffic → Prometheus metrics → Grafana alert
           ChaosProbeService.start(service: svc, redis_key: redis_key)
 
-          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s)")
+          Rails.logger.warn("CHAOS TRIGGERED: #{redis_key} (TTL #{CHAOS_TTL_SECONDS}s) by user #{current_user_id}")
 
           render json: {
             status:     'chaos_active',
@@ -62,7 +66,10 @@ module Api
             end
           end
 
-          Rails.logger.warn("CHAOS RESET: cleared #{keys.size} flag(s): #{keys.join(', ')}; resolved #{resolved_incidents.size} incident(s)")
+          Rails.logger.warn(
+            "CHAOS RESET by user #{current_user_id}: cleared #{keys.size} flag(s): #{keys.join(', ')}; " \
+            "resolved #{resolved_incidents.size} incident(s)"
+          )
 
           render json: { status: 'reset', cleared: keys, resolved_incidents: resolved_incidents }
         end
@@ -76,14 +83,22 @@ module Api
           end
         end
 
+        # 403 (not 401) on a bad secret: the caller's JWT is valid, and the admin
+        # dashboard treats 401 as "session expired" and logs the user out.
         def verify_chaos_secret
-          expected = ENV.fetch('CHAOS_SECRET', nil)
-          return if expected.nil? || expected.empty? # secret not configured → allow (dev mode)
+          expected = ENV.fetch('CHAOS_SECRET', '').to_s
+          if expected.strip.empty?
+            return render json: {
+              error: 'Chaos injection is disabled: CHAOS_SECRET is not configured',
+              code:  'chaos_disabled',
+            }, status: :service_unavailable
+          end
 
-          provided = request.headers['X-Chaos-Secret']
-          return if ActiveSupport::SecurityUtils.secure_compare(provided.to_s, expected)
+          provided = request.headers['X-Chaos-Secret'].to_s
+          return if !provided.empty? && ActiveSupport::SecurityUtils.secure_compare(provided, expected)
 
-          render json: { error: 'Unauthorized' }, status: :unauthorized
+          render json: { error: 'Invalid or missing X-Chaos-Secret header', code: 'chaos_secret_required' },
+                 status: :forbidden
         end
       end
     end

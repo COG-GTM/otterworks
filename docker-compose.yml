@@ -398,6 +398,8 @@ services:
       SLACK_ONCALL_MEMBER: ${SLACK_ONCALL_MEMBER:-}
       SLACK_USER_MAP: ${SLACK_USER_MAP:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-demo-alert-secret}
+      # Chaos endpoint needs an admin JWT + this value in X-Chaos-Secret; unset
+      # disables it. Set it in .env (e.g. `openssl rand -hex 32`) to use chaos.
       CHAOS_SECRET: ${CHAOS_SECRET:-}
     depends_on:
       postgres:
