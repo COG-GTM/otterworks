@@ -16,152 +16,78 @@ from datetime import datetime, timezone
 
 import boto3
 
+FILES_PREFIX = "files/"
+QUARANTINE_PREFIX = "quarantined"
+DYNAMODB_TABLE_NAME = "otterworks-file-metadata"
+S3_PRICE_PER_GB_MONTH = 0.023
 
-def main():
-    print("[%s] storage_cleanup_daily.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    # ---- Load config ----
-    config = configparser.ConfigParser()
-    config.read("/opt/etl/config.ini")
+def _now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    aws_access_key = config.get("aws", "access_key")
-    aws_secret_key = config.get("aws", "secret_key")
-    aws_region = config.get("aws", "region")
 
-    file_storage_bucket = config.get("s3", "file_storage_bucket")
-    quarantine_bucket = config.get("s3", "quarantine_bucket")
-    data_lake_bucket = config.get("s3", "data_lake_bucket")
+def _aws_kwargs(config):
+    return {
+        "aws_access_key_id": config.get("aws", "access_key"),
+        "aws_secret_access_key": config.get("aws", "secret_key"),
+        "region_name": config.get("aws", "region"),
+    }
 
-    files_prefix = "files/"
-    quarantine_prefix = "quarantined"
-    dynamodb_table_name = "otterworks-file-metadata"
 
-    ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-
-    # ---- List all S3 objects ----
-    print("[%s] Listing objects in s3://%s/%s" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), file_storage_bucket, files_prefix
-    ))
-
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region,
-    )
-
+def list_s3_objects(s3_client, bucket, prefix):
     all_objects = []
     paginator = s3_client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=file_storage_bucket, Prefix=files_prefix):
+    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
         for obj in page.get("Contents", []):
             all_objects.append({
                 "key": obj["Key"],
                 "size": obj["Size"],
                 "last_modified": obj["LastModified"].isoformat(),
             })
+    return all_objects
 
-    total_objects = len(all_objects)
-    total_size_bytes = sum(o["size"] for o in all_objects)
 
-    print("[%s] Found %d objects in S3 (%d bytes total)" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_objects, total_size_bytes
-    ))
-
-    # ---- List metadata references from DynamoDB ----
-    print("[%s] Scanning DynamoDB table %s for metadata references..." % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), dynamodb_table_name
-    ))
-
-    dynamodb = boto3.resource(
-        "dynamodb",
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region,
-    )
-    table = dynamodb.Table(dynamodb_table_name)
-
+def scan_referenced_keys(table):
     referenced_keys = set()
     scan_kwargs = {
         "ProjectionExpression": "s3_key",
     }
-
     while True:
         response = table.scan(**scan_kwargs)
-        for item in response.get("Items", []):
-            s3_key = item.get("s3_key", "")
-            if s3_key:
-                referenced_keys.add(s3_key)
-
+        referenced_keys.update(
+            item.get("s3_key", "") for item in response.get("Items", []) if item.get("s3_key", "")
+        )
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
-            break
+            return referenced_keys
         scan_kwargs["ExclusiveStartKey"] = last_key
 
-    print("[%s] Found %d S3 keys referenced in metadata" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(referenced_keys)
-    ))
 
-    # ---- Find orphaned objects ----
-    orphaned = []
-    orphaned_bytes = 0
-
-    for obj in all_objects:
-        if obj["key"] not in referenced_keys:
-            orphaned.append(obj)
-            orphaned_bytes += obj["size"]
-
-    orphaned_count = len(orphaned)
-
-    print("[%s] Found %d orphaned objects (%.2f MB)" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        orphaned_count,
-        orphaned_bytes / (1024 * 1024),
-    ))
-
-    if orphaned_count == 0:
-        print("[%s] No orphaned objects to quarantine" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        # Still generate report even with 0 orphans
-    else:
-        # ---- Move orphaned objects to quarantine ----
-        print("[%s] Moving %d orphaned objects to quarantine..." % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), orphaned_count
-        ))
-
+def quarantine_objects(s3_client, orphaned, source_bucket, quarantine_bucket, ds):
     moved_count = 0
     failed_count = 0
-
     for obj in orphaned:
         source_key = obj["key"]
-        dest_key = "%s/%s/%s" % (quarantine_prefix, ds, source_key)
-
+        dest_key = "%s/%s/%s" % (QUARANTINE_PREFIX, ds, source_key)
         try:
             s3_client.copy_object(
                 Bucket=quarantine_bucket,
                 Key=dest_key,
-                CopySource={"Bucket": file_storage_bucket, "Key": source_key},
+                CopySource={"Bucket": source_bucket, "Key": source_key},
                 MetadataDirective="COPY",
             )
-            s3_client.delete_object(Bucket=file_storage_bucket, Key=source_key)
+            s3_client.delete_object(Bucket=source_bucket, Key=source_key)
             moved_count += 1
         except Exception as e:
-            print("[%s] WARNING: Failed to quarantine %s: %s" % (
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S"), source_key, str(e)
-            ))
+            print("[%s] WARNING: Failed to quarantine %s: %s" % (_now(), source_key, str(e)))
             failed_count += 1
+    return moved_count, failed_count
 
-    if orphaned_count > 0:
-        print("[%s] Quarantined %d objects (%d failed) to s3://%s/%s/%s/" % (
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            moved_count, failed_count,
-            quarantine_bucket, quarantine_prefix, ds,
-        ))
 
-    # ---- Generate storage cleanup report ----
+def build_report(ds, total_objects, total_size_bytes, orphaned_count, orphaned_bytes,
+                 moved_count, failed_count, quarantine_bucket):
     savings_gb = orphaned_bytes / (1024 ** 3)
-    estimated_monthly_savings = round(savings_gb * 0.023, 4)
-
-    report = {
+    return {
         "report_type": "storage_cleanup",
         "report_date": ds,
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
@@ -185,28 +111,89 @@ def main():
         },
         "savings": {
             "storage_freed_gb": round(savings_gb, 4),
-            "estimated_monthly_savings_usd": estimated_monthly_savings,
+            "estimated_monthly_savings_usd": round(savings_gb * S3_PRICE_PER_GB_MONTH, 4),
         },
     }
 
-    report_key = "reports/storage-cleanup/%s/report.json" % ds
-    s3_client_report = boto3.client(
-        "s3",
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        region_name=aws_region,
+
+def main():
+    print("[%s] storage_cleanup_daily.py starting..." % _now())
+
+    # ---- Load config ----
+    config = configparser.ConfigParser()
+    config.read("/opt/etl/config.ini")
+
+    aws_kwargs = _aws_kwargs(config)
+
+    file_storage_bucket = config.get("s3", "file_storage_bucket")
+    quarantine_bucket = config.get("s3", "quarantine_bucket")
+    data_lake_bucket = config.get("s3", "data_lake_bucket")
+
+    ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+
+    # ---- List all S3 objects ----
+    print("[%s] Listing objects in s3://%s/%s" % (_now(), file_storage_bucket, FILES_PREFIX))
+
+    s3_client = boto3.client("s3", **aws_kwargs)
+    all_objects = list_s3_objects(s3_client, file_storage_bucket, FILES_PREFIX)
+
+    total_objects = len(all_objects)
+    total_size_bytes = sum(o["size"] for o in all_objects)
+
+    print("[%s] Found %d objects in S3 (%d bytes total)" % (_now(), total_objects, total_size_bytes))
+
+    # ---- List metadata references from DynamoDB ----
+    print("[%s] Scanning DynamoDB table %s for metadata references..." % (_now(), DYNAMODB_TABLE_NAME))
+
+    dynamodb = boto3.resource("dynamodb", **aws_kwargs)
+    referenced_keys = scan_referenced_keys(dynamodb.Table(DYNAMODB_TABLE_NAME))
+
+    print("[%s] Found %d S3 keys referenced in metadata" % (_now(), len(referenced_keys)))
+
+    # ---- Find orphaned objects ----
+    orphaned = [obj for obj in all_objects if obj["key"] not in referenced_keys]
+    orphaned_bytes = sum(obj["size"] for obj in orphaned)
+    orphaned_count = len(orphaned)
+
+    print("[%s] Found %d orphaned objects (%.2f MB)" % (
+        _now(), orphaned_count, orphaned_bytes / (1024 * 1024),
+    ))
+
+    if orphaned_count == 0:
+        # Still generate report even with 0 orphans
+        print("[%s] No orphaned objects to quarantine" % _now())
+    else:
+        # ---- Move orphaned objects to quarantine ----
+        print("[%s] Moving %d orphaned objects to quarantine..." % (_now(), orphaned_count))
+
+    moved_count, failed_count = quarantine_objects(
+        s3_client, orphaned, file_storage_bucket, quarantine_bucket, ds
     )
+
+    if orphaned_count > 0:
+        print("[%s] Quarantined %d objects (%d failed) to s3://%s/%s/%s/" % (
+            _now(), moved_count, failed_count, quarantine_bucket, QUARANTINE_PREFIX, ds,
+        ))
+
+    # ---- Generate storage cleanup report ----
+    report = build_report(
+        ds, total_objects, total_size_bytes, orphaned_count, orphaned_bytes,
+        moved_count, failed_count, quarantine_bucket,
+    )
+
+    report_key = "reports/storage-cleanup/%s/report.json" % ds
+    s3_client_report = boto3.client("s3", **aws_kwargs)
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
 
+    savings = report["savings"]
     print("[%s] Storage cleanup report: %d orphans quarantined, %.4f GB freed, ~$%.4f/month saved" % (
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        moved_count, savings_gb, estimated_monthly_savings,
+        _now(), moved_count, orphaned_bytes / (1024 ** 3), savings["estimated_monthly_savings_usd"],
     ))
-    print("[%s] storage_cleanup_daily.py completed successfully" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    print("[%s] storage_cleanup_daily.py completed successfully" % _now())
 
 
 if __name__ == "__main__":
