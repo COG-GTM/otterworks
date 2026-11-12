@@ -30,36 +30,18 @@ class BucketOwnerCoverageTest(unittest.TestCase):
                     self.assertIn("ExpectedSourceBucketOwner", kwargs, where)
         self.assertGreaterEqual(checked, 14)
 
-    def test_analytics_deletes_sqs_events_only_after_data_lake_upload(self):
-        calls = [
-            c for c in _calls(SCRIPTS / "analytics_daily.py")
+    def test_analytics_acks_sqs_only_through_load_then_ack(self):
+        attrs = [
+            c.func.attr for c in _calls(SCRIPTS / "analytics_daily.py")
             if isinstance(c.func, ast.Attribute)
         ]
-        lake_puts = [
-            c.lineno for c in calls
-            if c.func.attr == "put_object"
-            and isinstance(c.func.value, ast.Name) and c.func.value.id == "s3_client"
+        names = [
+            c.func.id for c in _calls(SCRIPTS / "analytics_daily.py")
+            if isinstance(c.func, ast.Name)
         ]
-        deletes = [c.lineno for c in calls if c.func.attr == "delete_message_batch"]
-        self.assertTrue(lake_puts and deletes)
-        self.assertGreater(min(deletes), max(lake_puts))
-
-    def test_analytics_releases_sqs_events_when_data_lake_upload_fails(self):
-        tree = ast.parse((SCRIPTS / "analytics_daily.py").read_text())
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Try):
-                continue
-            body_attrs = {
-                c.func.attr for stmt in node.body for c in ast.walk(stmt)
-                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-            }
-            handler_attrs = {
-                c.func.attr for h in node.handlers for c in ast.walk(h)
-                if isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
-            }
-            if "put_object" in body_attrs and "change_message_visibility_batch" in handler_attrs:
-                return
-        self.fail("data lake put_object calls must release SQS visibility on failure")
+        self.assertIn("load_then_ack", names)
+        self.assertNotIn("delete_message_batch", attrs)
+        self.assertNotIn("change_message_visibility_batch", attrs)
 
 
 if __name__ == "__main__":

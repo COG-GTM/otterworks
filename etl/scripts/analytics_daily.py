@@ -22,6 +22,7 @@ import pandas as pd
 import psycopg2
 
 from s3_ownership import resolve_expected_bucket_owner
+from sqs_ack import load_then_ack
 
 
 def main():
@@ -307,7 +308,7 @@ def main():
 
     partition_key = "%s/year=%s/month=%s/day=%s" % (analytics_prefix, ds[:4], ds[5:7], ds[8:10])
 
-    try:
+    def load_data_lake():
         # Write summary
         summary_key = "%s/summary.json.gz" % partition_key
         summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
@@ -342,24 +343,10 @@ def main():
             Key=users_key,
             Body=buf.getvalue(),
         )
-    except Exception:
-        # Make the retained events visible again so a retry can load them right away.
-        for i in range(0, len(processed_receipts), batch_size):
-            sqs_client.change_message_visibility_batch(
-                QueueUrl=sqs_queue_url,
-                Entries=[
-                    dict(entry, VisibilityTimeout=0)
-                    for entry in processed_receipts[i:i + batch_size]
-                ],
-            )
-        raise
+        print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
 
-    print("[%s] Loaded analytics data to s3://%s/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), data_lake_bucket, partition_key))
-
-    for i in range(0, len(processed_receipts), batch_size):
-        sqs_client.delete_message_batch(
-            QueueUrl=sqs_queue_url, Entries=processed_receipts[i:i + batch_size]
-        )
+    # Events stay on the queue (and become visible again) unless the data lake load succeeds.
+    load_then_ack(sqs_client, sqs_queue_url, processed_receipts, load_data_lake, batch_size)
 
     # ---- Upsert PostgreSQL aggregates ----
     print("[%s] Connecting to PostgreSQL at %s:%d/%s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), db_host, db_port, db_name))
