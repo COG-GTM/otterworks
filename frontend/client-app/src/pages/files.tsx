@@ -580,6 +580,10 @@ function SortableHeader({
   className?: string;
 }>) {
   const isActive = current.field === field;
+  let sortIcon = <ArrowUpDown size={12} className="opacity-0 group-hover/sort:opacity-100" />;
+  if (isActive) {
+    sortIcon = current.direction === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+  }
   return (
     <button
       onClick={() => onSort(field)}
@@ -590,15 +594,7 @@ function SortableHeader({
       )}
     >
       {label}
-      {isActive ? (
-        current.direction === "asc" ? (
-          <ChevronUp size={12} />
-        ) : (
-          <ChevronDown size={12} />
-        )
-      ) : (
-        <ArrowUpDown size={12} className="opacity-0 group-hover/sort:opacity-100" />
-      )}
+      {sortIcon}
     </button>
   );
 }
