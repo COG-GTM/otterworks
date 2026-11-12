@@ -71,7 +71,8 @@ describe("Files page listing", () => {
     filesApi.listFolders.mockResolvedValue([]);
 
     const { container } = renderPage();
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(container.querySelector(".space-y-1 .animate-pulse")).not.toBeNull();
+    expect(container.querySelector(".grid .animate-pulse")).toBeNull();
     expect(screen.queryByText("This folder is empty")).not.toBeInTheDocument();
 
     await act(async () => resolveFiles(listResponse([])));
@@ -110,5 +111,6 @@ describe("Files page listing", () => {
 
     const { container } = renderPage();
     expect(container.querySelector(".grid .animate-pulse")).not.toBeNull();
+    expect(container.querySelector(".space-y-1 .animate-pulse")).toBeNull();
   });
 });
