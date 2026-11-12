@@ -20,6 +20,12 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
 
   given PatienceConfig = PatienceConfig(timeout = Span(5, Seconds), interval = Span(100, Millis))
 
+  private val TestUserId = "user-1"
+  private val DocumentCreated = "document.created"
+  private val TestDocId = "doc-1"
+  private val DocumentType = "document"
+  private val EventsPath = "/api/v1/analytics/events"
+
   private val testConfig: PostgresConfig = PostgresConfig(
     url = "jdbc:postgresql://localhost:5432/test",
     user = "test",
@@ -39,15 +45,15 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "POST /api/v1/analytics/events" should "accept a valid event" in {
     val (eventRoutes, _, _) = createRoutes()
     val payload = TrackEventRequest(
-      eventType = "document.created",
-      userId = "user-1",
-      resourceId = "doc-1",
-      resourceType = "document",
+      eventType = DocumentCreated,
+      userId = TestUserId,
+      resourceId = TestDocId,
+      resourceType = DocumentType,
       metadata = Some(Map("title" -> "Test"))
     ).toJson.compactPrint
     val entity = HttpEntity(ContentTypes.`application/json`, payload)
 
-    Post("/api/v1/analytics/events", entity) ~> eventRoutes.routes ~> check {
+    Post(EventsPath, entity) ~> eventRoutes.routes ~> check {
       status shouldBe StatusCodes.Accepted
       val response = responseAs[AcceptedResponse]
       response.status shouldBe "accepted"
@@ -59,15 +65,15 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val (eventRoutes, analyticsRoutes, _) = createRoutes()
     val routes = concat(eventRoutes.routes, analyticsRoutes.routes)
     val payload = TrackEventRequest(
-      eventType = "document.created",
-      userId = "user-1",
-      resourceId = "doc-1",
-      resourceType = "document",
+      eventType = DocumentCreated,
+      userId = TestUserId,
+      resourceId = TestDocId,
+      resourceType = DocumentType,
       metadata = Some(Map("title" -> "Test"))
     ).toJson.compactPrint
     val entity = HttpEntity(ContentTypes.`application/json`, payload)
 
-    Post("/api/v1/analytics/events", entity) ~> routes ~> check {
+    Post(EventsPath, entity) ~> routes ~> check {
       status shouldBe StatusCodes.Accepted
     }
   }
@@ -101,7 +107,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val (eventRoutes, analyticsRoutes, service) = createRoutes()
 
     // First track an event
-    service.trackEvent("document.created", "user-42", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreated, "user-42", TestDocId, DocumentType, Map.empty).futureValue
 
     Get("/api/v1/analytics/users/user-42/activity") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -116,7 +122,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/documents/{id}/stats" should "return document stats" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.viewed", "user-1", "doc-99", "document", Map.empty).futureValue
+    service.trackEvent("document.viewed", TestUserId, "doc-99", DocumentType, Map.empty).futureValue
 
     Get("/api/v1/analytics/documents/doc-99/stats") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -167,12 +173,12 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   it should "filter by user_id" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("storage.allocated", "user-1", "file-1", "file", Map("bytes" -> "512")).futureValue
+    service.trackEvent("storage.allocated", TestUserId, "file-1", "file", Map("bytes" -> "512")).futureValue
 
-    Get("/api/v1/analytics/storage?user_id=user-1") ~> analyticsRoutes.routes ~> check {
+    Get(s"/api/v1/analytics/storage?user_id=$TestUserId") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[StorageUsageResponse]
-      response.userId shouldBe Some("user-1")
+      response.userId shouldBe Some(TestUserId)
       response.totalStorageBytes shouldBe 512
     }
   }
@@ -182,7 +188,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/export" should "return JSON export" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreated, TestUserId, TestDocId, DocumentType, Map.empty).futureValue
 
     Get("/api/v1/analytics/export?format=json&period=7d") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -195,13 +201,13 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   it should "return CSV export" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreated, TestUserId, TestDocId, DocumentType, Map.empty).futureValue
 
     Get("/api/v1/analytics/export?format=csv&period=7d") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       val csv = responseAs[String]
       csv should include("event_id,event_type,user_id,resource_id,resource_type,timestamp")
-      csv should include("document.created")
+      csv should include(DocumentCreated)
     }
   }
