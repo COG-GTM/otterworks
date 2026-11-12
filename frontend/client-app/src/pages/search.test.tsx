@@ -77,9 +77,9 @@ describe("SearchPage", () => {
   });
 
   it.each([
-    ["document", "d1", "lucide-file-text", "text-blue-600"],
-    ["folder", "f1", "lucide-folder-open", "text-amber-600"],
-    ["file", "x1", "lucide-file", "text-otter-600"],
+    ["document", "d1", "lucide-file-text", "text-blue-600 bg-blue-50"],
+    ["folder", "f1", "lucide-folder-open", "text-amber-600 bg-amber-50"],
+    ["file", "x1", "lucide-file", "text-otter-600 bg-otter-50"],
   ] as const)("renders the %s icon and colour", async (type, id, iconClass, colorClass) => {
     search.mockResolvedValue({ data: [result(type, id)], total: 1, page: 1, pageSize: 20, hasMore: false });
     renderAt("/search?q=otter");
