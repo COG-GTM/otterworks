@@ -89,17 +89,17 @@ describe("SearchPage", () => {
     expect(await screen.findByText(/5 results for/)).toBeInTheDocument();
 
     const cases: Array<[string, string, string, string]> = [
-      ["Doc", "/documents/d1", "text-blue-600", "lucide-file-text"],
-      ["Folder", "/files?folder=f1", "text-amber-600", "lucide-folder-open"],
-      ["File", "/files/x1", "text-otter-600", "lucide-file"],
-      ["Unknown", "/files/u1", "text-otter-600", "lucide-file"],
-      ["Inherited", "/files/c1", "text-otter-600", "lucide-file"],
+      ["Doc", "/documents/d1", "text-blue-600 bg-blue-50", "lucide-file-text"],
+      ["Folder", "/files?folder=f1", "text-amber-600 bg-amber-50", "lucide-folder-open"],
+      ["File", "/files/x1", "text-otter-600 bg-otter-50", "lucide-file"],
+      ["Unknown", "/files/u1", "text-otter-600 bg-otter-50", "lucide-file"],
+      ["Inherited", "/files/c1", "text-otter-600 bg-otter-50", "lucide-file"],
     ];
     for (const [name, href, color, icon] of cases) {
       const row = rowFor(name);
       expect(row).toHaveAttribute("href", href);
       const iconBox = row.firstElementChild as HTMLElement;
-      expect(iconBox).toHaveClass(color);
+      expect(iconBox).toHaveClass(...color.split(" "));
       expect(iconBox.querySelector("svg")).toHaveClass(icon);
     }
   });
