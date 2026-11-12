@@ -11,10 +11,30 @@
 
 import configparser
 import json
+import os
+import re
 import sys
 from datetime import datetime, timezone
 
 import boto3
+
+ACCOUNT_ID_RE = re.compile(r"^[0-9]{12}$")
+
+
+def resolve_expected_bucket_owner(config, sts_client):
+    """AWS account id that must own every bucket this job touches.
+
+    S3_EXPECTED_BUCKET_OWNER env > [s3] expected_bucket_owner > caller's own account.
+    """
+    owner = (
+        os.environ.get("S3_EXPECTED_BUCKET_OWNER")
+        or config.get("s3", "expected_bucket_owner", fallback="")
+    ).strip()
+    if not owner:
+        owner = sts_client.get_caller_identity()["Account"]
+    if not ACCOUNT_ID_RE.match(owner):
+        raise ValueError("expected bucket owner must be a 12-digit AWS account id")
+    return owner
 
 
 def main():
@@ -38,6 +58,14 @@ def main():
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
 
+    sts_client = boto3.client(
+        "sts",
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        region_name=aws_region,
+    )
+    bucket_owner = resolve_expected_bucket_owner(config, sts_client)
+
     # ---- List all S3 objects ----
     print("[%s] Listing objects in s3://%s/%s" % (
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"), file_storage_bucket, files_prefix
@@ -53,7 +81,9 @@ def main():
     all_objects = []
     paginator = s3_client.get_paginator("list_objects_v2")
 
-    for page in paginator.paginate(Bucket=file_storage_bucket, Prefix=files_prefix):
+    for page in paginator.paginate(
+        Bucket=file_storage_bucket, Prefix=files_prefix, ExpectedBucketOwner=bucket_owner
+    ):
         for obj in page.get("Contents", []):
             all_objects.append({
                 "key": obj["Key"],
@@ -141,8 +171,14 @@ def main():
                 Key=dest_key,
                 CopySource={"Bucket": file_storage_bucket, "Key": source_key},
                 MetadataDirective="COPY",
+                ExpectedBucketOwner=bucket_owner,
+                ExpectedSourceBucketOwner=bucket_owner,
             )
-            s3_client.delete_object(Bucket=file_storage_bucket, Key=source_key)
+            s3_client.delete_object(
+                Bucket=file_storage_bucket,
+                Key=source_key,
+                ExpectedBucketOwner=bucket_owner,
+            )
             moved_count += 1
         except Exception as e:
             print("[%s] WARNING: Failed to quarantine %s: %s" % (
@@ -200,6 +236,7 @@ def main():
         Bucket=data_lake_bucket,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
+        ExpectedBucketOwner=bucket_owner,
     )
 
     print("[%s] Storage cleanup report: %d orphans quarantined, %.4f GB freed, ~$%.4f/month saved" % (
