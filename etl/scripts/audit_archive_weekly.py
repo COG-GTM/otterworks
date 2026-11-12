@@ -13,6 +13,7 @@ import configparser
 import gzip
 import io
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -30,6 +31,27 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+def resolve_expected_bucket_owner(config, aws_access_key, aws_secret_key, aws_region):
+    """AWS account ID that must own the archive bucket (S3 ExpectedBucketOwner).
+
+    Uses [s3] archive_bucket_owner when set, otherwise the account the ETL
+    credentials belong to. S3 rejects writes with 403 if the bucket is owned
+    by any other account, so archives never land in a foreign bucket.
+    """
+    owner = config.get("s3", "archive_bucket_owner", fallback="").strip()
+    if not owner:
+        sts_client = boto3.client(
+            "sts",
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            region_name=aws_region,
+        )
+        owner = sts_client.get_caller_identity()["Account"]
+    if not re.fullmatch(r"\d{12}", owner):
+        raise ValueError("archive bucket owner must be a 12-digit AWS account ID, got %r" % owner)
+    return owner
+
+
 def main():
     print("[%s] audit_archive_weekly.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -42,6 +64,9 @@ def main():
     aws_region = config.get("aws", "region")
 
     archive_bucket = config.get("s3", "archive_bucket")
+    archive_bucket_owner = resolve_expected_bucket_owner(
+        config, aws_access_key, aws_secret_key, aws_region
+    )
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     retention_days = 90
@@ -122,6 +147,7 @@ def main():
         Key=archive_key,
         Body=buf.getvalue(),
         StorageClass="GLACIER",
+        ExpectedBucketOwner=archive_bucket_owner,
     )
 
     print("[%s] Archived to s3://%s/%s (GLACIER)" % (
@@ -204,6 +230,7 @@ def main():
         Bucket=archive_bucket,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
+        ExpectedBucketOwner=archive_bucket_owner,
     )
 
     print("[%s] Compliance report: %d archived, %d deleted, stored at s3://%s/%s" % (
