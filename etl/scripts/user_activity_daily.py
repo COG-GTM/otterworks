@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 import boto3
 import psycopg2
 
+from s3_ownership import resolve_expected_bucket_owner
+
 
 def main():
     print("[%s] user_activity_daily.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -29,6 +31,9 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    expected_bucket_owner = resolve_expected_bucket_owner(
+        config, aws_access_key, aws_secret_key, aws_region
+    )
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -144,7 +149,9 @@ def main():
         key = "analytics/daily/year=%s/month=%s/day=%s/top_users.jsonl.gz" % (year, month, day)
 
         try:
-            response = s3_client.get_object(Bucket=data_lake_bucket, Key=key)
+            response = s3_client.get_object(
+                Bucket=data_lake_bucket, Key=key, ExpectedBucketOwner=expected_bucket_owner
+            )
             body = response["Body"].read()
             decompressed = gzip.decompress(body).decode("utf-8")
 
@@ -215,6 +222,7 @@ def main():
     report_key = "%s/%s/activity_report.json" % (s3_reports_prefix, ds)
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
@@ -223,6 +231,7 @@ def main():
     latest_key = "%s/latest/activity_report.json" % s3_reports_prefix
     s3_client_upload.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=latest_key,
         Body=json.dumps(report, indent=2, default=str).encode("utf-8"),
     )
@@ -234,6 +243,7 @@ def main():
         lines = [json.dumps(u, default=str) for u in user_summaries]
         s3_client_upload.put_object(
             Bucket=data_lake_bucket,
+            ExpectedBucketOwner=expected_bucket_owner,
             Key=users_key,
             Body=("\n".join(lines) + "\n").encode("utf-8"),
         )

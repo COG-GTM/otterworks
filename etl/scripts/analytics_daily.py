@@ -21,6 +21,8 @@ import boto3
 import pandas as pd
 import psycopg2
 
+from s3_ownership import resolve_expected_bucket_owner
+
 
 def main():
     print("[%s] analytics_daily.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -32,6 +34,9 @@ def main():
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
     aws_region = config.get("aws", "region")
+    expected_bucket_owner = resolve_expected_bucket_owner(
+        config, aws_access_key, aws_secret_key, aws_region
+    )
 
     db_host = config.get("database", "host")
     db_port = config.getint("database", "port")
@@ -308,6 +313,7 @@ def main():
     summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=summary_key,
         Body=summary_bytes,
     )
@@ -318,6 +324,7 @@ def main():
     hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=hourly_key,
         Body=hourly_bytes,
     )
@@ -331,6 +338,7 @@ def main():
             gz.write(b"\n")
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=users_key,
         Body=buf.getvalue(),
     )
@@ -432,6 +440,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
