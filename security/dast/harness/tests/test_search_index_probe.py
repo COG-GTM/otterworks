@@ -57,13 +57,13 @@ def test_an_accepted_write_is_vulnerable() -> None:
 
 
 def test_a_delete_answered_by_the_handler_is_vulnerable() -> None:
-    ctx = StubContext({"POST": 400, "DELETE": 404}, body='{"status": "not_found"}')
+    ctx = StubContext({"POST": 403, "DELETE": 404}, body='{"status": "not_found"}')
     assert search_index_write(ctx).verdict is Verdict.VULNERABLE
 
 
-def test_a_gateway_404_without_the_handler_is_not_vulnerable() -> None:
+def test_a_router_404_is_inconclusive_not_secure() -> None:
     ctx = StubContext({"POST": 404, "DELETE": 404}, body='{"error": "not found"}')
-    assert search_index_write(ctx).verdict is Verdict.SECURE
+    assert search_index_write(ctx).verdict is Verdict.INCONCLUSIVE
 
 
 def test_an_unavailable_backend_is_inconclusive() -> None:

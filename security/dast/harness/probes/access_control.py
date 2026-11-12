@@ -471,6 +471,7 @@ def search_index_write(ctx: ScanContext) -> Result:
     evidence: list[Evidence] = []
     accepted: list[str] = []
     unreached: list[str] = []
+    unexpected: list[str] = []
     for method, path, body in attempts:
         response = ctx.request(method, path, identity=ctx.attacker, json=body)
         evidence.append(Evidence.from_response(response, note=f"{method} {path}"))
@@ -481,6 +482,10 @@ def search_index_write(ctx: ScanContext) -> Result:
             method == "DELETE" and response.status_code == 404 and "not_found" in response.text
         ):
             accepted.append(f"{method} {path} -> {response.status_code}")
+        elif response.status_code not in (401, 403):
+            # A router-level 404 is not an authorization decision: the route may be
+            # renamed or gone from this target, which leaves the control unmeasured.
+            unexpected.append(f"{method} {path} -> {response.status_code}")
     if accepted:
         return self.result(
             Verdict.VULNERABLE,
@@ -491,6 +496,12 @@ def search_index_write(ctx: ScanContext) -> Result:
         return self.result(
             Verdict.INCONCLUSIVE,
             f"index routes never produced an auth verdict: {', '.join(unreached)}",
+            evidence,
+        )
+    if unexpected:
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"index routes answered without an auth refusal: {', '.join(unexpected)}",
             evidence,
         )
     # Control request: search-service has to be routed and answering for the
