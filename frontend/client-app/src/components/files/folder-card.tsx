@@ -48,21 +48,22 @@ export function FolderCard({
     setIsRenaming(false);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onSelect?.(folder.id);
+  const startRename = () => {
+    renameDoneRef.current = false;
+    setIsRenaming(true);
+    setRenameValue(folder.name);
   };
 
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
+          <div className="flex-shrink-0">
             <input
               type="checkbox"
               checked={selected}
-              readOnly
+              onChange={() => onSelect?.(folder.id)}
+              aria-label={`Select ${folder.name}`}
               className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
             />
           </div>
@@ -76,7 +77,7 @@ export function FolderCard({
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-center gap-1">
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -88,6 +89,7 @@ export function FolderCard({
                   }}
                   onBlur={submitRename}
                   className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+                  aria-label="Folder name"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 />
               </div>
@@ -107,6 +109,8 @@ export function FolderCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
+            aria-label={`More actions for ${folder.name}`}
+            aria-expanded={menuOpen}
             className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
@@ -117,7 +121,7 @@ export function FolderCard({
               onClose={() => setMenuOpen(false)}
               onDelete={onDelete}
               onShare={onShare}
-              onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(folder.name); }}
+              onRename={startRename}
             />
           )}
         </div>
@@ -128,11 +132,12 @@ export function FolderCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
+        <div className="absolute top-2 left-2 z-10">
           <input
             type="checkbox"
             checked={selected}
-            readOnly
+            onChange={() => onSelect?.(folder.id)}
+            aria-label={`Select ${folder.name}`}
             className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
           />
         </div>
@@ -152,6 +157,8 @@ export function FolderCard({
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
+              aria-label={`More actions for ${folder.name}`}
+              aria-expanded={menuOpen}
               className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
             >
               <MoreVertical size={16} />
@@ -162,13 +169,13 @@ export function FolderCard({
                 onClose={() => setMenuOpen(false)}
                 onDelete={onDelete}
                 onShare={onShare}
-                onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(folder.name); }}
+                onRename={startRename}
               />
             )}
           </div>
         </div>
         {isRenaming ? (
-          <div className="mb-1" onClick={(e) => e.preventDefault()}>
+          <div className="mb-1">
             <input
               ref={renameInputRef}
               type="text"
@@ -180,6 +187,7 @@ export function FolderCard({
               }}
               onBlur={submitRename}
               className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+              aria-label="Folder name"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             />
           </div>
@@ -207,9 +215,27 @@ function FolderMenu({
   onShare?: (id: string) => void;
   onRename?: () => void;
 }) {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
     <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Close menu"
+        className="fixed inset-0 z-10 cursor-default"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
       <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
         <button
           onClick={(e) => {
