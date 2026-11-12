@@ -13,6 +13,7 @@ import configparser
 import gzip
 import json
 import sys
+import zlib
 from datetime import datetime, timedelta, timezone
 
 import boto3
@@ -171,7 +172,7 @@ def main():
                     prev = user_totals[uid]["actions_by_type"].get(action_type, 0)
                     user_totals[uid]["actions_by_type"][action_type] = prev + count
 
-        except (BotoCoreError, ClientError, OSError, EOFError, ValueError, AttributeError):
+        except (BotoCoreError, ClientError, OSError, EOFError, zlib.error, ValueError, AttributeError):
             # S3 key might not exist for every day -- silently skip
             # TODO ETL-098: Log missing days for debugging
             pass
