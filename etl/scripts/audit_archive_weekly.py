@@ -13,6 +13,7 @@ import configparser
 import gzip
 import io
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -30,6 +31,13 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+def load_expected_bucket_owner(config):
+    owner = config.get("s3", "expected_bucket_owner").strip()
+    if not re.fullmatch(r"\d{12}", owner):
+        raise ValueError("[s3] expected_bucket_owner must be the 12-digit AWS account ID that owns the ETL buckets")
+    return owner
+
+
 def main():
     print("[%s] audit_archive_weekly.py starting..." % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
@@ -42,6 +50,7 @@ def main():
     aws_region = config.get("aws", "region")
 
     archive_bucket = config.get("s3", "archive_bucket")
+    expected_bucket_owner = load_expected_bucket_owner(config)
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     retention_days = 90
@@ -119,6 +128,7 @@ def main():
 
     s3_client.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=archive_key,
         Body=buf.getvalue(),
         StorageClass="GLACIER",
@@ -202,6 +212,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
