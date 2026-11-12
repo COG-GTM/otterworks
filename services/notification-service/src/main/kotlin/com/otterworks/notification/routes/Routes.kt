@@ -25,6 +25,8 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import kotlinx.serialization.Serializable
 import org.koin.ktor.ext.inject
 
+private const val NOTIFICATION_ID_REQUIRED = "Notification ID is required"
+
 @Serializable
 data class HealthResponse(val status: String, val service: String)
 
@@ -88,7 +90,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             get("/{id}") {
                 val id = call.parameters["id"] ?: return@get call.respond(
                     HttpStatusCode.BadRequest,
-                    ErrorResponse("Notification ID is required"),
+                    ErrorResponse(NOTIFICATION_ID_REQUIRED),
                 )
 
                 val notification = notificationService.getNotificationById(id)
@@ -102,7 +104,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             put("/{id}/read") {
                 val id = call.parameters["id"] ?: return@put call.respond(
                     HttpStatusCode.BadRequest,
-                    ErrorResponse("Notification ID is required"),
+                    ErrorResponse(NOTIFICATION_ID_REQUIRED),
                 )
 
                 val success = notificationService.markAsRead(id)
@@ -127,7 +129,7 @@ fun Application.configureRouting(prometheusRegistry: PrometheusMeterRegistry) {
             delete("/{id}") {
                 val id = call.parameters["id"] ?: return@delete call.respond(
                     HttpStatusCode.BadRequest,
-                    ErrorResponse("Notification ID is required"),
+                    ErrorResponse(NOTIFICATION_ID_REQUIRED),
                 )
 
                 val success = notificationService.deleteNotification(id)
