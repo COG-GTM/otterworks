@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MARKDOWN_CONTENT_TYPE
 from app.schemas.document import (
     CommentCreate,
     DocumentCreate,
@@ -237,3 +238,25 @@ async def test_paginate_helper():
     assert DocumentService.paginate(11, 1, 5) == 3
     assert DocumentService.paginate(0, 1, 5) == 1
     assert DocumentService.paginate(10, 1, 0) == 1
+
+
+@pytest.mark.asyncio
+async def test_markdown_is_default_content_type(
+    db_session: AsyncSession, owner_id: uuid.UUID
+):
+    from app.models.document import Document, Template
+
+    assert MARKDOWN_CONTENT_TYPE == "text/markdown"
+    assert DocumentCreate(title="t").content_type == MARKDOWN_CONTENT_TYPE
+    assert DocumentUpdate(title="t").content_type == MARKDOWN_CONTENT_TYPE
+    assert (
+        TemplateCreate(name="n", created_by=owner_id).content_type
+        == MARKDOWN_CONTENT_TYPE
+    )
+
+    doc = Document(title="Raw", owner_id=owner_id)
+    template = Template(name="Raw", created_by=owner_id)
+    db_session.add_all([doc, template])
+    await db_session.commit()
+    assert doc.content_type == MARKDOWN_CONTENT_TYPE
+    assert template.content_type == MARKDOWN_CONTENT_TYPE

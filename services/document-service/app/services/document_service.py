@@ -8,6 +8,7 @@ import structlog
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.constants import MARKDOWN_CONTENT_TYPE
 from app.models.document import Comment, Document, DocumentVersion, Template
 from app.schemas.document import (
     CommentCreate,
@@ -290,7 +291,7 @@ class DocumentService:
             return markup, "text/html"
         if fmt == "markdown":
             md = f"# {document.title}\n\n{document.content}"
-            return md, "text/markdown"
+            return md, MARKDOWN_CONTENT_TYPE
         # pdf → return simple text representation
         text = f"TITLE: {document.title}\n\n{document.content}"
         return text, "application/pdf"
