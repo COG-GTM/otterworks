@@ -148,14 +148,16 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
             setUploadingFiles((prev) => prev.filter((f) => f.id !== entry.id));
           } else {
             const rejectedTooLarge = isTooLargeError(err);
+            const uploadError = rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed";
+            const errorKind = rejectedTooLarge ? ("size" as const) : ("failure" as const);
             setUploadingFiles((prev) =>
               prev.map((f) =>
                 f.id === entry.id
                   ? {
                       ...f,
                       status: "error" as const,
-                      error: rejectedTooLarge ? SERVER_TOO_LARGE_ERROR : "Upload failed",
-                      errorKind: rejectedTooLarge ? ("size" as const) : ("failure" as const),
+                      error: uploadError,
+                      errorKind,
                       abortController: undefined,
                     }
                   : f,

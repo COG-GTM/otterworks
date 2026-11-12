@@ -68,7 +68,7 @@ function mapRawFile(raw: RawFileItem): FileItem {
         userId: s.sharedWith,
         name: "",
         email: "",
-        permission: s.permission === "viewer" ? "view" as const : s.permission === "editor" ? "edit" as const : "view" as const,
+        permission: s.permission === "editor" ? "edit" as const : "view" as const,
       }));
       const seen = new Set<string>();
       return mapped.filter((s) => {

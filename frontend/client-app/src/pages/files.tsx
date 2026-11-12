@@ -427,16 +427,17 @@ function FileBrowserContent() {
       )}
 
       {/* File listing */}
-      {isLoading ? (
-        viewMode === "list" ? <FileListSkeleton /> : <FileGridSkeleton />
-      ) : items.length === 0 ? (
+      {isLoading && viewMode === "list" && <FileListSkeleton />}
+      {isLoading && viewMode !== "list" && <FileGridSkeleton />}
+      {!isLoading && items.length === 0 && (
         <EmptyState
           icon={FolderOpen}
           title="This folder is empty"
           description="Upload files or create folders to get started"
           action={{ label: "Upload files", onClick: () => setShowUpload(true) }}
         />
-      ) : (
+      )}
+      {!isLoading && items.length > 0 && (
         <div className="space-y-6">
           {viewMode === "list" && (
             <div className="flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
@@ -580,6 +581,10 @@ function SortableHeader({
   className?: string;
 }>) {
   const isActive = current.field === field;
+  let sortIcon = <ArrowUpDown size={12} className="opacity-0 group-hover/sort:opacity-100" />;
+  if (isActive) {
+    sortIcon = current.direction === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+  }
   return (
     <button
       onClick={() => onSort(field)}
@@ -590,15 +595,7 @@ function SortableHeader({
       )}
     >
       {label}
-      {isActive ? (
-        current.direction === "asc" ? (
-          <ChevronUp size={12} />
-        ) : (
-          <ChevronDown size={12} />
-        )
-      ) : (
-        <ArrowUpDown size={12} className="opacity-0 group-hover/sort:opacity-100" />
-      )}
+      {sortIcon}
     </button>
   );
 }
