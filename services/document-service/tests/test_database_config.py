@@ -3,6 +3,8 @@
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from pydantic import SecretStr
 
 from app.config import DatabaseNotConfiguredError, Settings, settings
@@ -49,6 +51,17 @@ def test_blank_database_url_is_rejected(monkeypatch):
 def test_source_tree_has_no_baked_in_database_password():
     for path in (REPO_SERVICE_DIR / "app" / "config.py", REPO_SERVICE_DIR / "alembic.ini"):
         assert "otterworks_dev" not in path.read_text(encoding="utf-8"), path
+
+
+def test_alembic_env_preserves_percent_encoded_password(monkeypatch):
+    url = "postgresql+asyncpg://otterworks:p%40ss%25word@db:5432/otterworks"
+    monkeypatch.setattr(settings, "database_url", SecretStr(url))
+    alembic_cfg = Config()
+    alembic_cfg.set_main_option("script_location", str(REPO_SERVICE_DIR / "alembic"))
+
+    command.upgrade(alembic_cfg, "head", sql=True)
+
+    assert alembic_cfg.get_main_option("sqlalchemy.url") == url
 
 
 def test_engine_is_not_created_without_database_url(monkeypatch, reset_engine):
