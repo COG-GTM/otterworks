@@ -116,7 +116,7 @@ const notificationColors: Record<string, string> = {
   system: "text-gray-600 bg-gray-100",
 };
 
-function NotificationRow({
+export function NotificationRow({
   notification,
   onMarkRead,
 }: Readonly<{
