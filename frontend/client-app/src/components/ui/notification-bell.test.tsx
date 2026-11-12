@@ -13,13 +13,14 @@ const getUnreadCount = vi.mocked(notificationsApi.getUnreadCount);
 
 function renderBell() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
         <NotificationBell />
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return client;
 }
 
 describe("NotificationBell", () => {
@@ -27,8 +28,10 @@ describe("NotificationBell", () => {
 
   it("labels the link without a count when nothing is unread", async () => {
     getUnreadCount.mockResolvedValue(0);
-    renderBell();
-    await vi.waitFor(() => expect(getUnreadCount).toHaveBeenCalled());
+    const client = renderBell();
+    await vi.waitFor(() =>
+      expect(client.getQueryState(["notifications", "unread-count"])?.status).toBe("success")
+    );
     expect(screen.getByRole("link", { name: "Notifications" })).toHaveAttribute(
       "href",
       "/notifications"
