@@ -16,6 +16,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
+private const val DOC_OWNER_ID = "doc-owner"
+
 class NotificationServiceTest {
 
     private val repository = mockk<NotificationRepository>(relaxed = true)
@@ -57,25 +59,25 @@ class NotificationServiceTest {
     fun `resolveTargetUserId returns userId for comment_added events`() {
         val event = SqsNotificationMessage(
             eventType = "comment_added",
-            userId = "doc-owner",
+            userId = DOC_OWNER_ID,
             actorId = "commenter",
             documentId = "doc-1",
             commentId = "comment-1",
             timestamp = "2024-01-01T00:00:00Z",
         )
-        assertEquals("doc-owner", NotificationService.resolveTargetUserId(event))
+        assertEquals(DOC_OWNER_ID, NotificationService.resolveTargetUserId(event))
     }
 
     @Test
     fun `resolveTargetUserId returns userId for document_edited events`() {
         val event = SqsNotificationMessage(
             eventType = "document_edited",
-            userId = "doc-owner",
+            userId = DOC_OWNER_ID,
             actorId = "editor",
             documentId = "doc-1",
             timestamp = "2024-01-01T00:00:00Z",
         )
-        assertEquals("doc-owner", NotificationService.resolveTargetUserId(event))
+        assertEquals(DOC_OWNER_ID, NotificationService.resolveTargetUserId(event))
     }
 
     @Test
