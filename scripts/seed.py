@@ -16,6 +16,7 @@ Environment overrides (all optional — defaults match docker-compose):
     DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 """
 
+import hashlib
 import os
 import sys
 import uuid
@@ -48,6 +49,17 @@ def hours_ago(n: int) -> datetime:
 
 def uid() -> str:
     return str(uuid.uuid4())
+
+def fixture_int(*key: object, lo: int, hi: int) -> int:
+    """Deterministic integer in [lo, hi] derived from ``key`` via SHA-256.
+
+    For reproducible fixture data only; never use it for secrets or tokens.
+    """
+    digest = hashlib.sha256(":".join(map(str, key)).encode()).digest()
+    return lo + int.from_bytes(digest[:8], "big") % (hi - lo + 1)
+
+def fixture_choice(seq, *key: object):
+    return seq[fixture_int(*key, lo=0, hi=len(seq) - 1)]
 
 def hash_password(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=10)).decode()
@@ -370,34 +382,35 @@ def seed_audit_logs(cur) -> None:
     log("Inserting ~80 audit_log entries spread over the past 30 days ...")
 
     # Gather valid user IDs that were actually inserted
-    cur.execute("SELECT id, email FROM admin_users WHERE email LIKE '%@otterworks.io'")
+    cur.execute(
+        "SELECT id, email FROM admin_users WHERE email LIKE '%@otterworks.io' ORDER BY email"
+    )
     db_users = cur.fetchall()
     if not db_users:
         log("  No seeded users found — skipping audit logs.")
         return
 
-    import random
-    rng = random.Random(42)  # deterministic
-
     rows = []
     for i in range(80):
-        user = rng.choice(db_users)
+        user = fixture_choice(db_users, "audit", i, "actor")
         actor_id, actor_email = user[0], user[1]
-        action, resource_type = rng.choice(AUDIT_ACTIONS)
+        action, resource_type = fixture_choice(AUDIT_ACTIONS, "audit", i, "action")
 
-        # Pick a random resource_id — use another user's ID for user actions
+        # Pick a resource_id — use another user's ID for user actions
         if resource_type == "AdminUser":
-            resource_id = rng.choice(db_users)[0]
+            resource_id = fixture_choice(db_users, "audit", i, "resource")[0]
         else:
             resource_id = uid()
 
-        age_hours = rng.randint(0, 30 * 24)
+        age_hours = fixture_int("audit", i, "age", lo=0, hi=30 * 24)
         created = hours_ago(age_hours)
+        ip_subnet = fixture_int("audit", i, "subnet", lo=1, hi=5)
+        ip_host = fixture_int("audit", i, "host", lo=1, hi=254)
 
         rows.append((
             uid(), actor_id, actor_email, action, resource_type, resource_id,
             '{}',  # changes_made
-            f"192.168.{rng.randint(1,5)}.{rng.randint(1,254)}",
+            f"192.168.{ip_subnet}.{ip_host}",
             "Mozilla/5.0 (seed)",
             created, created,
         ))

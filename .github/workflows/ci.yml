@@ -64,6 +64,7 @@ jobs:
             demo-platform:
               - 'demo-platform/**'
               - 'scripts/**'
+              - 'tests/scripts/**'
             infrastructure:
               - 'infrastructure/**'
             report-service:
@@ -398,6 +399,10 @@ jobs:
       - run: ./demo-platform/reaper/test-idle-suspend.sh
       - run: ./demo-platform/reaper/test-infra-sweep.sh
       - run: ./demo-platform/reaper/test-orphan-sweep.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest && python -m pytest tests/scripts -q
 
   # Terraform validation for the demo control plane's own stack
   demo-platform-terraform:
