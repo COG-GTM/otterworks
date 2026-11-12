@@ -35,10 +35,10 @@ class NotificationServiceTest {
             eventType = "file_shared",
             fileId = "file-123",
             ownerId = "owner-1",
-            sharedWithUserId = "user-2",
+            sharedWithUserId = SHARED_WITH_USER_ID,
             timestamp = "2024-01-01T00:00:00Z",
         )
-        assertEquals("user-2", NotificationService.resolveTargetUserId(event))
+        assertEquals(SHARED_WITH_USER_ID, NotificationService.resolveTargetUserId(event))
     }
 
     @Test
@@ -134,11 +134,11 @@ class NotificationServiceTest {
             eventType = "file_shared",
             fileId = "file-123",
             ownerId = "owner-1",
-            sharedWithUserId = "user-2",
+            sharedWithUserId = SHARED_WITH_USER_ID,
             timestamp = "2024-01-01T00:00:00Z",
         )
 
-        coEvery { repository.getPreferences("user-2") } returns NotificationPreference(userId = "user-2")
+        coEvery { repository.getPreferences(SHARED_WITH_USER_ID) } returns NotificationPreference(userId = SHARED_WITH_USER_ID)
         coEvery { emailSender.sendEmail(any(), any(), any()) } returns true
 
         service.processEvent(event)
@@ -147,7 +147,7 @@ class NotificationServiceTest {
         coVerify(atLeast = 1) { repository.saveNotification(capture(savedNotifications)) }
 
         val lastSaved = savedNotifications.last()
-        assertEquals("user-2", lastSaved.userId)
+        assertEquals(SHARED_WITH_USER_ID, lastSaved.userId)
         assertEquals("file_shared", lastSaved.type)
         assertEquals("File Shared With You", lastSaved.title)
         assertTrue(lastSaved.deliveredVia.contains("in_app"))
@@ -245,5 +245,9 @@ class NotificationServiceTest {
         service.processEvent(event)
 
         coVerify { webSocketManager.pushNotification("user-3", any()) }
+    }
+
+    private companion object {
+        const val SHARED_WITH_USER_ID = "user-2"
     }
 }
