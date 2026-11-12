@@ -16,6 +16,7 @@ import io.ktor.client.request.header
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.routing
@@ -30,7 +31,6 @@ import io.mockk.mockk
 import java.util.Date
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
 import kotlin.test.assertTrue
 
 class NotificationRoutesAuthTest {
@@ -157,9 +157,15 @@ class NotificationRoutesAuthTest {
     @Test
     fun `websocket without a token is refused`() = testApplication {
         service()
-        val ws = createClient { install(WebSockets) }
-        assertFails { ws.webSocket("/ws/notifications/bob") { } }
-        assertFails { ws.webSocket("/ws/notifications") { } }
+        for (path in listOf("/ws/notifications/bob", "/ws/notifications")) {
+            val handshake = client.get(path) {
+                header(HttpHeaders.Connection, "Upgrade")
+                header(HttpHeaders.Upgrade, "websocket")
+                header(HttpHeaders.SecWebSocketKey, "dGhlIHNhbXBsZSBub25jZQ==")
+                header(HttpHeaders.SecWebSocketVersion, "13")
+            }
+            assertEquals(HttpStatusCode.Unauthorized, handshake.status, path)
+        }
         assertTrue(!webSocketManager.isUserConnected("bob"))
     }
 
