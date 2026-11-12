@@ -34,6 +34,8 @@ VALUES (
     NOW()
 );
 
-INSERT INTO user_roles (user_id, role) VALUES
-('a0000000-0000-0000-0000-000000000001', 'ADMIN'),
-('a0000000-0000-0000-0000-000000000001', 'USER');
+INSERT INTO user_roles (user_id, role)
+SELECT u.id, r.role
+FROM users u
+CROSS JOIN (VALUES ('ADMIN'), ('USER')) AS r(role)
+WHERE u.email = 'admin@otterworks.dev';
