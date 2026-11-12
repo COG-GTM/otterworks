@@ -46,6 +46,22 @@ RSpec.describe Api::V1::Admin::AlertsController do
       expect(Incident.count).to eq(2)
     end
 
+    it 'builds the incident description from the alert name and annotations' do
+      alert = firing_alert(labels: { team: 'storage' })
+      alert[:annotations][:runbook_url] = 'https://runbooks.example.com/upload'
+
+      post :ingest, params: { alerts: [alert] }
+
+      expect(Incident.last.description).to eq(
+        [
+          'File upload failed: a.txt',
+          '**Alert**: FileUploadFailed',
+          '**Runbook**: https://runbooks.example.com/upload',
+          '**Source**: Grafana Unified Alerting (auto-generated incident)'
+        ].join("\n\n")
+      )
+    end
+
     it 'rejects payloads without an alerts array' do
       post :ingest, params: { foo: 'bar' }
       expect(response).to have_http_status(:bad_request)
