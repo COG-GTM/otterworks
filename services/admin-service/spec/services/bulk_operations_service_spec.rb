@@ -42,4 +42,20 @@ RSpec.describe BulkOperationsService do
       expect(result.failure_count).to eq(1)
     end
   end
+
+  describe '.apply_operation' do
+    it 'raises for an operation without a handler instead of silently succeeding' do
+      expect do
+        described_class.send(:apply_operation, users.first, 'unknown', {})
+      end.to raise_error(ArgumentError, 'Unsupported operation: unknown')
+    end
+
+    it 'counts an unhandled operation as a per-user failure' do
+      stub_const("#{described_class}::VALID_OPERATIONS", %w[unknown])
+      result = described_class.process(operation: 'unknown', user_ids: user_ids)
+      expect(result.success_count).to eq(0)
+      expect(result.failure_count).to eq(3)
+      expect(result.errors).to all(include(error: 'Unsupported operation: unknown'))
+    end
+  end
 end
