@@ -153,7 +153,7 @@ def bola_files(ctx: ScanContext) -> Result:
             "the attacker's token acted on the victim's file: " + "; ".join(breached),
             evidence,
         )
-    # Control request: the owner must still be able to download and delete the file.
+    # Control request: the owner must still be able to download the file.
     if not ctx.owner_can_read(f"{file_path}/download", ctx.victim):
         return self.result(
             Verdict.INCONCLUSIVE,
@@ -161,10 +161,31 @@ def bola_files(ctx: ScanContext) -> Result:
             "access cannot be assessed",
             evidence,
         )
-    ctx.request("DELETE", file_path, identity=ctx.victim)
+    # The mutation routes must work for the owner too, or a refusal proves nothing.
+    owner_controls = [
+        ("PATCH", f"{file_path}/rename", {"name": f"renamed-by-owner-{ctx.run_id}.txt"}),
+        (
+            "POST",
+            f"{file_path}/share",
+            {"shared_with": ctx.attacker.user_id, "permission": "viewer"},
+        ),
+        ("DELETE", file_path, None),
+    ]
+    for method, path, body in owner_controls:
+        response = ctx.request(method, path, identity=ctx.victim, json=body)
+        if response.status_code >= 300:
+            evidence.append(Evidence.from_response(response, note=f"{method} {path} as owner"))
+            return self.result(
+                Verdict.INCONCLUSIVE,
+                f"the owner's own {method} {path} returned {response.status_code}; the route "
+                "rejects every caller, so the attacker's refusal is not evidence of an "
+                "ownership check",
+                evidence,
+            )
     return self.result(
         Verdict.SECURE,
-        "the owner can download the file but every attacker read and mutation was refused",
+        "the owner can download, rename, share and delete the file but every attacker read "
+        "and mutation was refused",
         evidence[:2],
     )
 
