@@ -65,9 +65,16 @@ describe("NotificationsPage", () => {
         notification({ id: "1", title: "Doc shared", resourceType: "document", resourceId: "d1" }),
         notification({ id: "2", title: "File shared", resourceType: "file", resourceId: "f1" }),
         notification({ id: "3", title: "Missing id", resourceType: "file" }),
+        notification({
+          id: "5",
+          type: "comment",
+          title: "Comment added",
+          resourceType: "comment" as Notification["resourceType"],
+          resourceId: "c1",
+        }),
         notification({ id: "4", title: "System notice" }),
       ],
-      total: 4,
+      total: 5,
       page: 1,
       pageSize: 20,
       totalPages: 1,
@@ -77,6 +84,7 @@ describe("NotificationsPage", () => {
     expect(screen.getByText("Doc shared").closest("a")).toHaveAttribute("href", "/documents/d1");
     expect(screen.getByText("File shared").closest("a")).toHaveAttribute("href", "/files/f1");
     expect(screen.getByText("Missing id").closest("a")).toBeNull();
+    expect(screen.getByText("Comment added").closest("a")).toBeNull();
     expect(screen.getByText("System notice").closest("a")).toBeNull();
     expect(screen.queryByText("No notifications")).not.toBeInTheDocument();
   });
