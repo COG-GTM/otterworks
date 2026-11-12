@@ -1,6 +1,8 @@
 runs-on: default
 # One-time setup (e.g., install system tools, global CLIs).
 initialize: |
+  # docker-compose*.yml require POSTGRES_PASSWORD; generate a random one into the git-ignored .env.
+  scripts/ensure-local-env.sh
   # Docker Hub rate-limits anonymous pulls (HTTP 429), so the infra image pull gets the
   # same backoff loop as the builds below rather than failing the whole setup on one 429.
   n=0
