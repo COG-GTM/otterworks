@@ -14,6 +14,9 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
+# Generate a gitignored .env with a random local POSTGRES_PASSWORD (infra-up/up do this automatically)
+make env
+
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
@@ -28,9 +31,12 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make:
 
 ```bash
+cp .env.example .env   # then set POSTGRES_PASSWORD (e.g. openssl rand -hex 24)
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
+
+The Compose files never contain the database password; they read `POSTGRES_PASSWORD` from `.env` (or the shell) and refuse to start without it. Use a URL-safe value (hex is fine) because it is also embedded in connection URLs. An existing `postgres_data` volume keeps the password it was initialised with, so either set `POSTGRES_PASSWORD` to that value or recreate the volume (`docker compose -f docker-compose.infra.yml down -v`).
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
