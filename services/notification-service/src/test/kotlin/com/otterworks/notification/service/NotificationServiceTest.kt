@@ -18,6 +18,10 @@ import kotlin.test.assertTrue
 
 class NotificationServiceTest {
 
+    private companion object {
+        const val USER_ID = "user-1"
+    }
+
     private val repository = mockk<NotificationRepository>(relaxed = true)
     private val emailSender = mockk<EmailSender>(relaxed = true)
     private val webSocketManager = mockk<WebSocketManager>(relaxed = true)
@@ -157,17 +161,17 @@ class NotificationServiceTest {
     fun `processEvent skips email when not in preferences`() = runTest {
         val event = SqsNotificationMessage(
             eventType = "document_edited",
-            userId = "user-1",
+            userId = USER_ID,
             actorId = "editor-1",
             documentId = "doc-1",
             timestamp = "2024-01-01T00:00:00Z",
         )
 
         val prefs = NotificationPreference(
-            userId = "user-1",
+            userId = USER_ID,
             channels = mapOf("document_edited" to listOf(DeliveryChannel.IN_APP)),
         )
-        coEvery { repository.getPreferences("user-1") } returns prefs
+        coEvery { repository.getPreferences(USER_ID) } returns prefs
 
         service.processEvent(event)
 
@@ -196,16 +200,16 @@ class NotificationServiceTest {
         val notifications = listOf(
             Notification(
                 id = "n-1",
-                userId = "user-1",
+                userId = USER_ID,
                 type = "file_shared",
                 title = "Test",
                 message = "Test msg",
                 createdAt = "2024-01-01T00:00:00Z",
             )
         )
-        coEvery { repository.getNotificationsByUserId("user-1", 1, 20) } returns Pair(notifications, 1)
+        coEvery { repository.getNotificationsByUserId(USER_ID, 1, 20) } returns Pair(notifications, 1)
 
-        val (result, total) = service.getNotifications("user-1", 1, 20)
+        val (result, total) = service.getNotifications(USER_ID, 1, 20)
         assertEquals(1, result.size)
         assertEquals(1, total)
         assertEquals("n-1", result[0].id)
@@ -219,14 +223,14 @@ class NotificationServiceTest {
 
     @Test
     fun `markAllAsRead delegates to repository`() = runTest {
-        coEvery { repository.markAllAsRead("user-1") } returns 5
-        assertEquals(5, service.markAllAsRead("user-1"))
+        coEvery { repository.markAllAsRead(USER_ID) } returns 5
+        assertEquals(5, service.markAllAsRead(USER_ID))
     }
 
     @Test
     fun `getUnreadCount delegates to repository`() = runTest {
-        coEvery { repository.getUnreadCount("user-1") } returns 3
-        assertEquals(3, service.getUnreadCount("user-1"))
+        coEvery { repository.getUnreadCount(USER_ID) } returns 3
+        assertEquals(3, service.getUnreadCount(USER_ID))
     }
 
     @Test
