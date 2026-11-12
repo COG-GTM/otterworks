@@ -8,6 +8,7 @@ import {
   File,
   Filter,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageLoader } from "@/components/ui/loading-spinner";
@@ -147,55 +148,91 @@ function SearchContent() {
       )}
 
       {/* Results */}
-      {submittedQuery && isLoading ? (
-        <PageLoader />
-      ) : submittedQuery && results.length === 0 ? (
-        <EmptyState
-          icon={Search}
-          title="No results found"
-          description={`No results for "${submittedQuery}". Try different keywords.`}
-        />
-      ) : submittedQuery ? (
-        <div className="space-y-1">
-          <p className="text-sm text-gray-500 mb-4">
-            {data?.total || results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{submittedQuery}&rdquo;
-          </p>
-          {results.map((result) => (
-            <SearchResultRow key={result.id} result={result} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={Search}
-          title="Search OtterWorks"
-          description="Find files, documents, and folders across your workspace"
-        />
-      )}
+      <SearchResults
+        submittedQuery={submittedQuery}
+        isLoading={isLoading}
+        results={results}
+        total={data?.total}
+      />
     </div>
   );
 }
 
+function SearchResults({
+  submittedQuery,
+  isLoading,
+  results,
+  total,
+}: Readonly<{
+  submittedQuery: string;
+  isLoading: boolean;
+  results: SearchResult[];
+  total?: number;
+}>) {
+  if (!submittedQuery) {
+    return (
+      <EmptyState
+        icon={Search}
+        title="Search OtterWorks"
+        description="Find files, documents, and folders across your workspace"
+      />
+    );
+  }
+
+  if (isLoading) {
+    return <PageLoader />;
+  }
+
+  if (results.length === 0) {
+    return (
+      <EmptyState
+        icon={Search}
+        title="No results found"
+        description={`No results for "${submittedQuery}". Try different keywords.`}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <p className="text-sm text-gray-500 mb-4">
+        {total || results.length} result{results.length === 1 ? "" : "s"} for &ldquo;{submittedQuery}&rdquo;
+      </p>
+      {results.map((result) => (
+        <SearchResultRow key={result.id} result={result} />
+      ))}
+    </div>
+  );
+}
+
+const RESULT_TYPE_DISPLAY: Record<
+  SearchResult["type"],
+  { href: (id: string) => string; icon: LucideIcon; iconColor: string }
+> = {
+  document: {
+    href: (id) => `/documents/${id}`,
+    icon: FileText,
+    iconColor: "text-blue-600 bg-blue-50",
+  },
+  folder: {
+    href: (id) => `/files?folder=${id}`,
+    icon: FolderOpen,
+    iconColor: "text-amber-600 bg-amber-50",
+  },
+  file: {
+    href: (id) => `/files/${id}`,
+    icon: File,
+    iconColor: "text-otter-600 bg-otter-50",
+  },
+};
+
 function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
-  const href =
-    result.type === "document"
-      ? `/documents/${result.id}`
-      : result.type === "folder"
-      ? `/files?folder=${result.id}`
-      : `/files/${result.id}`;
-
-  const Icon =
-    result.type === "document"
-      ? FileText
-      : result.type === "folder"
-      ? FolderOpen
-      : File;
-
-  const iconColor =
-    result.type === "document"
-      ? "text-blue-600 bg-blue-50"
-      : result.type === "folder"
-      ? "text-amber-600 bg-amber-50"
-      : "text-otter-600 bg-otter-50";
+  const display = Object.prototype.hasOwnProperty.call(RESULT_TYPE_DISPLAY, result.type)
+    ? RESULT_TYPE_DISPLAY[result.type]
+    : RESULT_TYPE_DISPLAY.file;
+  const href = display.href(result.id);
+  const Icon = display.icon;
+  const iconColor = display.iconColor;
 
   return (
     <Link
