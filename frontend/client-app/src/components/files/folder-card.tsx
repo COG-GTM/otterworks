@@ -54,6 +54,10 @@ export function FolderCard({
     setRenameValue(folder.name);
   };
 
+  const preventNavigationWhileRenaming = (e: React.MouseEvent) => {
+    if (isRenaming) e.preventDefault();
+  };
+
   if (view === "list") {
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
@@ -70,6 +74,7 @@ export function FolderCard({
         )}
         <Link
           to={`/files?folder=${folder.id}`}
+          onClick={preventNavigationWhileRenaming}
           className="flex items-center gap-4 flex-1 min-w-0"
         >
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
@@ -144,6 +149,7 @@ export function FolderCard({
       )}
       <Link
         to={`/files?folder=${folder.id}`}
+        onClick={preventNavigationWhileRenaming}
         className="flex flex-col"
       >
         <div className="flex items-start justify-between mb-3">

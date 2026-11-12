@@ -63,6 +63,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
     const input = screen.getByRole("textbox", { name: "Folder name" });
     fireEvent.click(input);
+    fireEvent.click(input.parentElement!);
     expect(screen.getByTestId("location")).toHaveTextContent("/home");
     fireEvent.change(input, { target: { value: "Q3 Reports" } });
     fireEvent.keyDown(input, { key: "Enter" });
