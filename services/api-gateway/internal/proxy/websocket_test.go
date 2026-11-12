@@ -15,13 +15,21 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/config"
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
-// newWebSocketGateway mirrors cmd/server/main.go: every route prefix is JWT-protected.
+// newWebSocketGateway mirrors cmd/server/main.go: routes come from config.ServiceRoutes and every route prefix is JWT-protected.
 func newWebSocketGateway(t *testing.T, backendURL string) *httptest.Server {
 	t.Helper()
-	routes := []Route{{Prefix: "/ws/notifications", TargetURL: backendURL}}
+	var routes []Route
+	var protected []string
+	for prefix, target := range (&config.Config{NotificationServiceURL: backendURL}).ServiceRoutes() {
+		protected = append(protected, prefix)
+		if target == backendURL {
+			routes = append(routes, Route{Prefix: prefix, TargetURL: target})
+		}
+	}
 	router := NewRouter(RouterConfig{
 		Routes: routes,
 		CBManager: NewCircuitBreakerManager(CircuitBreakerConfig{
@@ -36,7 +44,7 @@ func newWebSocketGateway(t *testing.T, backendURL string) *httptest.Server {
 		Secret:              routerTestSecret,
 		PublicPath:          middleware.DefaultPublicPaths(),
 		PrefixPath:          middleware.DefaultPrefixPaths(),
-		ProtectedPrefixPath: []string{"/ws/notifications"},
+		ProtectedPrefixPath: protected,
 	})(router))
 	t.Cleanup(gateway.Close)
 	return gateway
