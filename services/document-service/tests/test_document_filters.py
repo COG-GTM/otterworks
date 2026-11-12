@@ -148,3 +148,22 @@ async def test_sort_outside_allow_list_is_rejected(
 
     assert resp.status_code == 400
     assert resp.json() == {"detail": "Invalid sort or direction"}
+
+
+@pytest.mark.asyncio
+async def test_database_error_is_not_echoed(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    from sqlalchemy.exc import OperationalError
+
+    from app.services.document_query_repository import DocumentQueryRepository
+
+    async def _fail(self, **kwargs):
+        raise OperationalError("SELECT secret FROM documents", {}, Exception("boom"))
+
+    monkeypatch.setattr(DocumentQueryRepository, "count_documents", _fail)
+
+    resp = await client.get("/api/v1/documents/", params={"title": "report"}, auth=None)
+
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "Invalid filter"}
