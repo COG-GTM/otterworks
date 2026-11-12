@@ -2,6 +2,7 @@ package com.otterworks.notification.consumer
 
 import aws.sdk.kotlin.services.sqs.SqsClient
 import aws.sdk.kotlin.services.sqs.model.DeleteMessageRequest
+import aws.sdk.kotlin.services.sqs.model.Message
 import aws.sdk.kotlin.services.sqs.model.ReceiveMessageRequest
 import com.otterworks.notification.alerts.AlertPublisher
 import com.otterworks.notification.config.AppConfig
@@ -70,66 +71,75 @@ class SqsConsumer(
 
         while (isActive) {
             try {
-                val request = ReceiveMessageRequest {
-                    queueUrl = config.effectiveSqsQueueUrl
-                    maxNumberOfMessages = config.sqsMaxMessages
-                    waitTimeSeconds = config.sqsWaitTimeSeconds
-                }
-
-                val response = sqsClient.receiveMessage(request)
-                val messages = response.messages ?: emptyList()
-
-                if (messages.isNotEmpty()) {
-                    logger.info { "Received ${messages.size} messages from SQS" }
-                }
-
-                for (msg in messages) {
-                    launch {
-                        try {
-                            val body = msg.body ?: return@launch
-                            val event = parseMessage(body)
-
-                            if (event != null) {
-                                notificationService.processEvent(event)
-
-                                val deleteRequest = DeleteMessageRequest {
-                                    queueUrl = config.effectiveSqsQueueUrl
-                                    receiptHandle = msg.receiptHandle
-                                }
-                                sqsClient.deleteMessage(deleteRequest)
-                                logger.debug { "Deleted SQS message: ${msg.messageId}" }
-                            } else {
-                                processingErrorsCounter?.increment()
-                                logger.warn { "Failed to parse SQS message: ${msg.messageId}" }
-                                alertPublisher?.notifyConsumerFailure(
-                                    "Message ${msg.messageId} failed deserialization and was left in the queue"
-                                )
-                            }
-                        } catch (e: Exception) {
-                            logger.error(e) { "Error processing SQS message: ${msg.messageId}" }
-                        }
-                    }
-                }
-
+                val messages = receiveMessages()
+                messages.forEach { msg -> launch { processMessage(msg) } }
                 if (messages.isEmpty()) {
                     delay(config.sqsPollIntervalMs)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.error(e) { "Error polling SQS" }
-                if (config.sqsAlwaysFail) {
-                    processingErrorsCounter?.increment()
-                    try {
-                        alertPublisher?.notifyConsumerFailure(
-                            "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
-                        )
-                    } catch (alertError: Exception) {
-                        logger.warn(alertError) { "Failed to publish consumer-failure alert" }
-                    }
-                }
+                handlePollingError(e)
                 delay(config.sqsPollIntervalMs * 2)
             }
+        }
+    }
+
+    private suspend fun receiveMessages(): List<Message> {
+        val request = ReceiveMessageRequest {
+            queueUrl = config.effectiveSqsQueueUrl
+            maxNumberOfMessages = config.sqsMaxMessages
+            waitTimeSeconds = config.sqsWaitTimeSeconds
+        }
+        val messages = sqsClient.receiveMessage(request).messages ?: emptyList()
+        if (messages.isNotEmpty()) {
+            logger.info { "Received ${messages.size} messages from SQS" }
+        }
+        return messages
+    }
+
+    internal suspend fun processMessage(msg: Message) {
+        try {
+            val body = msg.body ?: return
+            val event = parseMessage(body)
+            if (event == null) {
+                reportUnparseableMessage(msg)
+                return
+            }
+            notificationService.processEvent(event)
+            deleteMessage(msg)
+        } catch (e: Exception) {
+            logger.error(e) { "Error processing SQS message: ${msg.messageId}" }
+        }
+    }
+
+    private suspend fun deleteMessage(msg: Message) {
+        val deleteRequest = DeleteMessageRequest {
+            queueUrl = config.effectiveSqsQueueUrl
+            receiptHandle = msg.receiptHandle
+        }
+        sqsClient.deleteMessage(deleteRequest)
+        logger.debug { "Deleted SQS message: ${msg.messageId}" }
+    }
+
+    private fun reportUnparseableMessage(msg: Message) {
+        processingErrorsCounter?.increment()
+        logger.warn { "Failed to parse SQS message: ${msg.messageId}" }
+        alertPublisher?.notifyConsumerFailure(
+            "Message ${msg.messageId} failed deserialization and was left in the queue"
+        )
+    }
+
+    internal fun handlePollingError(e: Exception) {
+        logger.error(e) { "Error polling SQS" }
+        if (!config.sqsAlwaysFail) return
+        processingErrorsCounter?.increment()
+        try {
+            alertPublisher?.notifyConsumerFailure(
+                "ReceiveMessage failed for ${config.effectiveSqsQueueUrl}: ${e.message}"
+            )
+        } catch (alertError: Exception) {
+            logger.warn(alertError) { "Failed to publish consumer-failure alert" }
         }
     }
 

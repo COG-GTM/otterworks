@@ -1,9 +1,19 @@
 package com.otterworks.notification.consumer
 
 import aws.sdk.kotlin.services.sqs.SqsClient
+import aws.sdk.kotlin.services.sqs.model.DeleteMessageRequest
+import aws.sdk.kotlin.services.sqs.model.Message
+import com.otterworks.notification.alerts.AlertPublisher
 import com.otterworks.notification.config.AppConfig
 import com.otterworks.notification.service.NotificationService
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -170,5 +180,88 @@ class SqsConsumerTest {
         assertEquals("", event.fileId)
         assertEquals("", event.ownerId)
         assertEquals("", event.sharedWithUserId)
+    }
+
+    private val validBody = """{"eventType":"file_shared","fileId":"file-123","timestamp":"2024-01-01T00:00:00Z"}"""
+
+    private fun message(body: String?) = Message {
+        messageId = "msg-1"
+        receiptHandle = "rh-1"
+        this.body = body
+    }
+
+    @Test
+    fun `processMessage processes and deletes a valid message`() = runTest {
+        val deleteRequest = slot<DeleteMessageRequest>()
+        coEvery { sqsClient.deleteMessage(capture(deleteRequest)) } returns mockk(relaxed = true)
+
+        consumer.processMessage(message(validBody))
+
+        coVerify(exactly = 1) { notificationService.processEvent(match { it.fileId == "file-123" }) }
+        assertEquals(config.effectiveSqsQueueUrl, deleteRequest.captured.queueUrl)
+        assertEquals("rh-1", deleteRequest.captured.receiptHandle)
+    }
+
+    @Test
+    fun `processMessage leaves unparseable message in queue and alerts`() = runTest {
+        val registry = SimpleMeterRegistry()
+        val alerts = mockk<AlertPublisher>(relaxed = true)
+        val alerting = SqsConsumer(sqsClient, notificationService, config, registry, alerts)
+
+        alerting.processMessage(message("not json"))
+
+        coVerify(exactly = 0) { notificationService.processEvent(any()) }
+        coVerify(exactly = 0) { sqsClient.deleteMessage(any<DeleteMessageRequest>()) }
+        verify(exactly = 1) {
+            alerts.notifyConsumerFailure("Message msg-1 failed deserialization and was left in the queue")
+        }
+        assertEquals(1.0, registry.counter("notifications.processing.errors").count())
+    }
+
+    @Test
+    fun `processMessage ignores a message without a body`() = runTest {
+        consumer.processMessage(message(null))
+
+        coVerify(exactly = 0) { notificationService.processEvent(any()) }
+        coVerify(exactly = 0) { sqsClient.deleteMessage(any<DeleteMessageRequest>()) }
+    }
+
+    @Test
+    fun `processMessage swallows processing failures without deleting`() = runTest {
+        coEvery { notificationService.processEvent(any()) } throws IllegalStateException("boom")
+
+        consumer.processMessage(message(validBody))
+
+        coVerify(exactly = 0) { sqsClient.deleteMessage(any<DeleteMessageRequest>()) }
+    }
+
+    @Test
+    fun `handlePollingError only alerts when sqsAlwaysFail is enabled`() {
+        val registry = SimpleMeterRegistry()
+        val alerts = mockk<AlertPublisher>(relaxed = true)
+
+        SqsConsumer(sqsClient, notificationService, config, registry, alerts)
+            .handlePollingError(RuntimeException("receive failed"))
+        verify(exactly = 0) { alerts.notifyConsumerFailure(any()) }
+        assertEquals(0.0, registry.counter("notifications.processing.errors").count())
+
+        val failing = config.copy(sqsAlwaysFail = true)
+        SqsConsumer(sqsClient, notificationService, failing, registry, alerts)
+            .handlePollingError(RuntimeException("receive failed"))
+        verify(exactly = 1) {
+            alerts.notifyConsumerFailure("ReceiveMessage failed for ${failing.effectiveSqsQueueUrl}: receive failed")
+        }
+        assertEquals(1.0, registry.counter("notifications.processing.errors").count())
+    }
+
+    @Test
+    fun `handlePollingError tolerates alert publisher failures`() {
+        val alerts = mockk<AlertPublisher>()
+        every { alerts.notifyConsumerFailure(any()) } throws RuntimeException("webhook down")
+
+        SqsConsumer(sqsClient, notificationService, config.copy(sqsAlwaysFail = true), null, alerts)
+            .handlePollingError(RuntimeException("receive failed"))
+
+        verify(exactly = 1) { alerts.notifyConsumerFailure(any()) }
     }
 }
