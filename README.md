@@ -29,7 +29,7 @@ open http://localhost:4200        # Admin Dashboard (Angular)
 Or without Make (set `OTTERWORKS_DB_PASSWORD` first — see `.env.example`):
 
 ```bash
-cp .env.example .env && sed -i "s/^OTTERWORKS_DB_PASSWORD=.*/OTTERWORKS_DB_PASSWORD=$(openssl rand -hex 24)/" .env
+(umask 077 && printf 'OTTERWORKS_DB_PASSWORD=%s\n' "$(openssl rand -hex 24)" > .env)
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
