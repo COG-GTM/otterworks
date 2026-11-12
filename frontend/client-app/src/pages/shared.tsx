@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Share2, LayoutGrid, List } from "lucide-react";
@@ -38,6 +39,52 @@ function SharedContent() {
     return true;
   });
 
+  let content: ReactNode;
+  if (isLoading) {
+    content = <PageLoader />;
+  } else if (files.length === 0) {
+    content = (
+      <EmptyState
+        icon={Share2}
+        title="Nothing shared with you yet"
+        description="Files and documents shared with you will appear here"
+      />
+    );
+  } else {
+    content = (
+      <div
+        className={cn(
+          viewMode === "grid"
+            ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+            : "space-y-1"
+        )}
+      >
+        {files.map((file) => (
+          <FileCard
+            key={file.id}
+            file={file}
+            view={viewMode}
+            onDownload={async (id, name) => {
+              try {
+                const downloadUrl = await filesApi.getDownloadUrl(id);
+                const a = document.createElement("a");
+                a.href = downloadUrl;
+                a.download = name;
+                a.rel = "noopener";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                toast.success("File downloaded successfully");
+              } catch {
+                toast.error("Download failed. Please try again.");
+              }
+            }}
+          />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -58,46 +105,7 @@ function SharedContent() {
         </div>
       </div>
 
-      {isLoading ? (
-        <PageLoader />
-      ) : files.length === 0 ? (
-        <EmptyState
-          icon={Share2}
-          title="Nothing shared with you yet"
-          description="Files and documents shared with you will appear here"
-        />
-      ) : (
-        <div
-          className={cn(
-            viewMode === "grid"
-              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-              : "space-y-1"
-          )}
-        >
-          {files.map((file) => (
-            <FileCard
-              key={file.id}
-              file={file}
-              view={viewMode}
-              onDownload={async (id, name) => {
-                try {
-                  const downloadUrl = await filesApi.getDownloadUrl(id);
-                  const a = document.createElement("a");
-                  a.href = downloadUrl;
-                  a.download = name;
-                  a.rel = "noopener";
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  toast.success("File downloaded successfully");
-                } catch {
-                  toast.error("Download failed. Please try again.");
-                }
-              }}
-            />
-          ))}
-        </div>
-      )}
+      {content}
     </div>
   );
 }
