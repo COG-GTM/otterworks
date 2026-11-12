@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { FolderCard } from "./folder-card";
 import type { FileItem } from "@/types";
@@ -36,15 +37,17 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(screen.getByTestId("location")).toHaveTextContent("/home");
   });
 
-  it("toggles selection from the keyboard via the native checkbox", () => {
+  it("toggles selection from the keyboard via the native checkbox", async () => {
+    const user = userEvent.setup();
     const onSelect = vi.fn();
     renderCard({ view, selectionActive: true, onSelect, selected: true });
     const checkbox = screen.getByRole("checkbox", { name: "Select folder Reports" });
     expect(checkbox).toBeChecked();
-    checkbox.focus();
+    await user.tab();
     expect(checkbox).toHaveFocus();
-    fireEvent.click(checkbox);
-    expect(onSelect).toHaveBeenCalledTimes(1);
+    await user.keyboard(" ");
+    expect(onSelect).toHaveBeenCalledWith("folder-1");
+    expect(screen.getByTestId("location")).toHaveTextContent("/home");
   });
 
   it("closes the actions menu via a native button backdrop", () => {
