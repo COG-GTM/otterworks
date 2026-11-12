@@ -31,6 +31,7 @@ jobs:
       report-service: ${{ steps.changes.outputs.report-service }}
       legacy-portal: ${{ steps.changes.outputs.legacy-portal }}
       api-tests: ${{ steps.changes.outputs.api-tests }}
+      etl: ${{ steps.changes.outputs.etl }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -70,6 +71,8 @@ jobs:
               - 'services/report-service/**'
             legacy-portal:
               - 'services/legacy-portal/**'
+            etl:
+              - 'etl/**'
             api-tests:
               - 'tests/api/**'
               - 'docs/api-route-matrix.md'
@@ -93,6 +96,19 @@ jobs:
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
       - run: go build -o /dev/null ./cmd/server
+
+  # Python - legacy ETL scripts
+  etl:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.etl == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.26.0
+      - run: python -m unittest discover -s etl/tests -v
 
   # Java - Auth Service
   auth-service:
