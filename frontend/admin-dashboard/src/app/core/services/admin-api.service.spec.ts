@@ -92,6 +92,24 @@ describe('AdminApiService', () => {
     tick(700);
   }));
 
+  it('should map metrics summary breakdowns to chart points', () => {
+    const httpMock = TestBed.inject(HttpTestingController);
+    let report: any;
+    service.getAnalyticsReport().subscribe(r => (report = r));
+
+    httpMock.expectOne(req => req.url.endsWith('/admin/metrics/summary')).flush({
+      users: { by_role: { admin: 2, editor: 5 }, active: 6, suspended: 1 },
+      storage: { by_tier: { standard: 1024 } },
+      audit: { top_actions: { 'document.edit': 42 } },
+    });
+
+    expect(report.userSignups).toEqual([{ label: 'admin', value: 2 }, { label: 'editor', value: 5 }]);
+    expect(report.storageUsage).toEqual([{ label: 'standard', value: 1024 }]);
+    expect(report.documentActivity).toEqual([{ label: 'document.edit', value: 42 }]);
+    expect(report.activeUsers).toEqual([{ label: 'Active', value: 6 }, { label: 'Suspended', value: 1 }]);
+    httpMock.verify();
+  });
+
   it('should toggle feature flag', fakeAsync(() => {
     service.toggleFeatureFlag('flag-001', true).subscribe(flag => {
       expect(flag).toBeTruthy();
