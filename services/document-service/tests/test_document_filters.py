@@ -96,3 +96,55 @@ async def test_unfiltered_list_is_unchanged(client: AsyncClient, owner_id: uuid.
 
     assert resp.status_code == 200
     assert resp.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_title_injection_is_treated_as_literal(client: AsyncClient, owner_id: uuid.UUID):
+    await _create(client, owner_id, "Quarterly Report")
+    await _create(client, uuid.uuid4(), "Private Plan")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"title": "x') OR 1=1 --"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_content_type_injection_is_treated_as_literal(
+    client: AsyncClient, owner_id: uuid.UUID
+):
+    await _create(client, owner_id, "Plan", content_type="text/markdown")
+    await _create(client, uuid.uuid4(), "Private Plan", content_type="text/markdown")
+
+    resp = await client.get(
+        "/api/v1/documents/",
+        params={"content_type": "text/html' OR '1'='1"},
+        auth=None,
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["items"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"sort": "(select 1)"},
+        {"sort": "title; DROP TABLE documents"},
+        {"sort": "title", "direction": "desc, (select 1)"},
+    ],
+)
+async def test_sort_outside_allow_list_is_rejected(
+    client: AsyncClient, owner_id: uuid.UUID, params: dict
+):
+    await _create(client, owner_id, "Quarterly Report")
+
+    resp = await client.get("/api/v1/documents/", params=params, auth=None)
+
+    assert resp.status_code == 400
+    assert resp.json() == {"detail": "Invalid sort or direction"}
