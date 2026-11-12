@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 class TestHealthEndpoint:
     """Tests for GET /health (liveness)."""
@@ -43,3 +45,18 @@ class TestMetricsEndpoint:
         response = client.get("/metrics")
         assert response.status_code == 200
         assert b"search_service" in response.data
+
+
+@pytest.mark.parametrize("path", ["/health", "/health/ready", "/metrics"])
+class TestHealthEndpointMethods:
+    """Health and metrics endpoints only accept GET (and implicit HEAD/OPTIONS)."""
+
+    @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+    def test_non_get_methods_rejected(self, client, path, method):
+        response = getattr(client, method)(path)
+        assert response.status_code == 405
+        assert "GET" in response.headers["Allow"]
+
+    def test_head_allowed(self, client, path):
+        response = client.head(path)
+        assert response.status_code in (200, 503)
