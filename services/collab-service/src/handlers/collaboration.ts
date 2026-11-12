@@ -3,7 +3,11 @@ import type { Logger } from 'pino';
 import * as Y from 'yjs';
 import { DocumentStore } from '../services/document-store';
 import { AwarenessService, type CursorPosition } from '../services/awareness';
-import { extractUserFromSocket } from '../middleware/auth';
+import { extractTokenFromSocket, extractUserFromSocket } from '../middleware/auth';
+import type {
+  DocumentAccess,
+  DocumentPermissionChecker,
+} from '../services/document-permissions';
 import { MetricsCollector } from '../metrics';
 import { PresenceHandler } from './presence';
 
@@ -24,6 +28,7 @@ export interface CollaborationDeps {
   documentStore: DocumentStore;
   awareness: AwarenessService;
   presenceHandler: PresenceHandler;
+  permissions: DocumentPermissionChecker;
   metrics: MetricsCollector;
   logger: Logger;
   persistIntervalMs: number;
@@ -34,6 +39,10 @@ export class CollaborationManager {
   private documents: Map<string, Y.Doc> = new Map();
   private documentInitPromises: Map<string, Promise<Y.Doc>> = new Map();
   private cleaningUp: Set<string> = new Set();
+  private socketAccess: Map<
+    string,
+    { documentId: string; access: Exclude<DocumentAccess, 'none'> }
+  > = new Map();
   private deps: CollaborationDeps;
   private persistTimer: NodeJS.Timeout | null = null;
   private snapshotTimer: NodeJS.Timeout | null = null;
@@ -101,15 +110,75 @@ export class CollaborationManager {
     socket.on('request-history', (data) => this.handleRequestHistory(socket, data));
   }
 
+  /**
+   * True only when the socket joined `documentId` through an access check, is
+   * still in its room, and holds at least the required access level.
+   */
+  private isAuthorized(
+    socket: Socket,
+    documentId: unknown,
+    required: 'read' | 'write',
+  ): documentId is string {
+    if (typeof documentId !== 'string') return false;
+    const grant = this.socketAccess.get(socket.id);
+    if (!grant || grant.documentId !== documentId) return false;
+    if (!socket.rooms.has(`doc:${documentId}`)) return false;
+    if (this.deps.awareness.getUserDocument(socket.id) !== documentId) return false;
+    return required === 'read' || grant.access === 'write';
+  }
+
+  private rejectUnauthorized(socket: Socket, event: string, documentId: unknown): void {
+    this.deps.logger.warn(
+      { socketId: socket.id, documentId, event },
+      'unauthorized_document_event',
+    );
+    this.deps.metrics.connectionErrors.inc({ reason: 'access_denied' });
+  }
+
   private async handleJoinDocument(
     socket: Socket,
-    data: { documentId: string },
-    ack?: (response: { success: boolean; error?: string }) => void,
+    data: { documentId: string; shareToken?: string },
+    ack?: (response: {
+      success: boolean;
+      error?: string;
+      access?: DocumentAccess;
+    }) => void,
   ): Promise<void> {
-    const { documentId } = data;
-    const { io, awareness, presenceHandler, metrics, logger } = this.deps;
+    const documentId = data?.documentId;
+    const { io, awareness, presenceHandler, permissions, metrics, logger } = this.deps;
     const user = extractUserFromSocket(socket);
+    if (typeof documentId !== 'string' || documentId.length === 0) {
+      if (typeof ack === 'function')
+        ack({ success: false, error: 'Invalid document id' });
+      return;
+    }
     const room = `doc:${documentId}`;
+
+    let access: DocumentAccess;
+    try {
+      access = await permissions.checkAccess({
+        documentId,
+        userId: user.userId,
+        token: extractTokenFromSocket(socket) ?? '',
+        shareToken: typeof data.shareToken === 'string' ? data.shareToken : undefined,
+      });
+    } catch (err) {
+      logger.error(
+        { err, documentId, socketId: socket.id },
+        'document_access_check_failed',
+      );
+      access = 'none';
+    }
+    if (!socket.connected) return;
+    if (access === 'none') {
+      logger.warn(
+        { documentId, userId: user.userId, socketId: socket.id },
+        'join_document_denied',
+      );
+      metrics.connectionErrors.inc({ reason: 'access_denied' });
+      if (typeof ack === 'function') ack({ success: false, error: 'Access denied' });
+      return;
+    }
 
     try {
       // If socket is already in another document, leave it first
@@ -132,6 +201,7 @@ export class CollaborationManager {
         );
       }
 
+      this.socketAccess.set(socket.id, { documentId, access });
       await socket.join(room);
       logger.info(
         { documentId, userId: user.userId, socketId: socket.id },
@@ -171,21 +241,25 @@ export class CollaborationManager {
       presenceHandler.broadcastPresenceUpdate(io, documentId);
       metrics.messagesTotal.inc({ type: 'join-document' });
 
-      if (ack) ack({ success: true });
+      if (typeof ack === 'function') ack({ success: true, access });
     } catch (err) {
       logger.error({ err, documentId, socketId: socket.id }, 'join_document_failed');
+      this.socketAccess.delete(socket.id);
       socket.leave(room);
       metrics.connectionErrors.inc({ reason: 'join_failed' });
-      if (ack) ack({ success: false, error: 'Failed to join document' });
+      if (typeof ack === 'function')
+        ack({ success: false, error: 'Failed to join document' });
     }
   }
 
   private handleLeaveDocument(socket: Socket, data: { documentId: string }): void {
     const { io, awareness, presenceHandler, metrics, logger } = this.deps;
 
+    this.socketAccess.delete(socket.id);
     const mapping = awareness.removeUser(socket.id);
     // Use the document the awareness service actually tracked, falling back to client-provided id
-    const trackedDocId = mapping?.documentId ?? data.documentId;
+    const trackedDocId = mapping?.documentId ?? data?.documentId;
+    if (typeof trackedDocId !== 'string') return;
     const room = `doc:${trackedDocId}`;
 
     socket.leave(room);
@@ -210,7 +284,12 @@ export class CollaborationManager {
     data: { documentId: string; update: unknown },
   ): Promise<void> {
     const { documentStore, metrics, logger } = this.deps;
-    const { documentId, update } = data;
+    const { documentId, update } = data ?? {};
+    if (!this.isAuthorized(socket, documentId, 'write')) {
+      this.rejectUnauthorized(socket, 'document-update', documentId);
+      socket.emit('document-update-error', { documentId, error: 'Access denied' });
+      return;
+    }
     const room = `doc:${documentId}`;
     const user = extractUserFromSocket(socket);
 
@@ -278,6 +357,10 @@ export class CollaborationManager {
     },
   ): void {
     const { awareness, metrics } = this.deps;
+    if (!this.isAuthorized(socket, data?.documentId, 'read')) {
+      this.rejectUnauthorized(socket, 'cursor-update', data?.documentId);
+      return;
+    }
     const updatedAwareness = awareness.updateCursor(
       socket.id,
       data.cursor,
@@ -303,6 +386,10 @@ export class CollaborationManager {
     data: { documentId: string; isTyping: boolean },
   ): void {
     const { awareness } = this.deps;
+    if (!this.isAuthorized(socket, data?.documentId, 'read')) {
+      this.rejectUnauthorized(socket, 'typing-indicator', data?.documentId);
+      return;
+    }
     const updated = awareness.setTyping(socket.id, data.isTyping);
 
     if (updated) {
@@ -324,6 +411,10 @@ export class CollaborationManager {
     },
   ): void {
     const { metrics } = this.deps;
+    if (!this.isAuthorized(socket, data?.documentId, 'write')) {
+      this.rejectUnauthorized(socket, 'comment-add', data?.documentId);
+      return;
+    }
     const user = extractUserFromSocket(socket);
     const room = `doc:${data.documentId}`;
 
@@ -349,6 +440,10 @@ export class CollaborationManager {
     },
   ): void {
     const { metrics } = this.deps;
+    if (!this.isAuthorized(socket, data?.documentId, 'write')) {
+      this.rejectUnauthorized(socket, 'comment-update', data?.documentId);
+      return;
+    }
     const user = extractUserFromSocket(socket);
     const room = `doc:${data.documentId}`;
 
@@ -369,6 +464,10 @@ export class CollaborationManager {
     data: { documentId: string; commentId: string },
   ): void {
     const { metrics } = this.deps;
+    if (!this.isAuthorized(socket, data?.documentId, 'write')) {
+      this.rejectUnauthorized(socket, 'comment-delete', data?.documentId);
+      return;
+    }
     const user = extractUserFromSocket(socket);
     const room = `doc:${data.documentId}`;
 
@@ -385,8 +484,13 @@ export class CollaborationManager {
     data: { documentId: string; label?: string },
   ): Promise<void> {
     const { documentStore, logger } = this.deps;
+    const { documentId, label } = data ?? {};
+    if (!this.isAuthorized(socket, documentId, 'write')) {
+      this.rejectUnauthorized(socket, 'request-snapshot', documentId);
+      socket.emit('snapshot-error', { documentId, error: 'Access denied' });
+      return;
+    }
     const user = extractUserFromSocket(socket);
-    const { documentId, label } = data;
 
     const doc = this.documents.get(documentId);
     if (!doc) {
@@ -423,10 +527,17 @@ export class CollaborationManager {
     data: { documentId: string; limit?: number },
   ): Promise<void> {
     const { documentStore, logger } = this.deps;
-    const { documentId, limit } = data;
+    const { documentId, limit } = data ?? {};
+    if (!this.isAuthorized(socket, documentId, 'read')) {
+      this.rejectUnauthorized(socket, 'request-history', documentId);
+      socket.emit('history-error', { documentId, error: 'Access denied' });
+      return;
+    }
+    const safeLimit =
+      typeof limit === 'number' && Number.isInteger(limit) && limit > 0 ? limit : 20;
 
     try {
-      const snapshots = await documentStore.getSnapshots(documentId, limit || 20);
+      const snapshots = await documentStore.getSnapshots(documentId, safeLimit);
       socket.emit('document-history', { documentId, snapshots });
     } catch (err) {
       logger.error({ err, documentId }, 'get_history_failed');
@@ -442,6 +553,7 @@ export class CollaborationManager {
 
     metrics.activeConnections.dec();
     logger.info({ socketId: socket.id, reason }, 'client_disconnected');
+    this.socketAccess.delete(socket.id);
 
     const mapping = awareness.removeUser(socket.id);
     if (mapping) {
@@ -572,6 +684,7 @@ export function setupCollaborationHandlers(
   documentStore: DocumentStore,
   awareness: AwarenessService,
   presenceHandler: PresenceHandler,
+  permissions: DocumentPermissionChecker,
   metrics: MetricsCollector,
   logger: Logger,
   persistIntervalMs = 30000,
@@ -582,6 +695,7 @@ export function setupCollaborationHandlers(
     documentStore,
     awareness,
     presenceHandler,
+    permissions,
     metrics,
     logger,
     persistIntervalMs,

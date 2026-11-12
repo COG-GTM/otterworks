@@ -2,13 +2,14 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { WebSocketServer } from 'ws';
-import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import helmet from 'helmet';
 import pino from 'pino';
 import { loadConfig } from './config';
 import { MetricsCollector } from './metrics';
 import { createAuthMiddleware } from './middleware/auth';
+import { authorizeYjsUpgrade } from './middleware/yjs-auth';
+import { DocumentServicePermissionChecker } from './services/document-permissions';
 import { RedisAdapter } from './services/redis-adapter';
 import { DocumentStore } from './services/document-store';
 import { AwarenessService } from './services/awareness';
@@ -114,6 +115,11 @@ const documentStore = new DocumentStore(redisAdapter, logger, {
 
 const awareness = new AwarenessService(logger);
 const presenceHandler = new PresenceHandler(awareness, logger);
+const permissions = new DocumentServicePermissionChecker(
+  config.documentService.url,
+  logger,
+  config.documentService.timeoutMs,
+);
 
 // Setup collaboration handlers
 const collabManager = setupCollaborationHandlers(
@@ -121,6 +127,7 @@ const collabManager = setupCollaborationHandlers(
   documentStore,
   awareness,
   presenceHandler,
+  permissions,
   metrics,
   logger,
   config.persistence.intervalMs,
@@ -141,31 +148,31 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
-  // JWT authentication for y-websocket connections
-  const url = new URL(request.url || '', `http://${request.headers.host}`);
-  const token =
-    url.searchParams.get('token') ||
-    request.headers.authorization?.replace('Bearer ', '');
-
-  if (!token) {
-    logger.warn('y-websocket_connection_rejected: no token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+  const onPendingSocketError = (err: Error) => {
+    logger.warn({ err }, 'y-websocket_upgrade_socket_error');
     socket.destroy();
-    return;
-  }
+  };
+  socket.on('error', onPendingSocketError);
 
-  try {
-    jwt.verify(token, config.jwt.secret);
-  } catch {
-    logger.warn('y-websocket_connection_rejected: invalid token');
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-    socket.destroy();
-    return;
-  }
-
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    wss.emit('connection', ws, request);
-  });
+  // y-websocket clients must hold a valid JWT and edit access to the room's document
+  authorizeYjsUpgrade(request, config.jwt.secret, permissions, logger)
+    .then((decision) => {
+      socket.off('error', onPendingSocketError);
+      if (socket.destroyed) return;
+      if (!decision.allowed) {
+        const statusLine = decision.status === 401 ? '401 Unauthorized' : '403 Forbidden';
+        socket.write(`HTTP/1.1 ${statusLine}\r\n\r\n`);
+        socket.destroy();
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    })
+    .catch((err) => {
+      logger.error({ err }, 'y-websocket_upgrade_failed');
+      socket.destroy();
+    });
 });
 
 // Start presence cleanup with document eviction callback

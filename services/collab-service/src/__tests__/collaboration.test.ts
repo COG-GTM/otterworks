@@ -10,6 +10,11 @@ import { PresenceHandler } from '../handlers/presence';
 import { MetricsCollector } from '../metrics';
 import { createAuthMiddleware } from '../middleware/auth';
 import { RedisAdapter } from '../services/redis-adapter';
+import type {
+  DocumentAccess,
+  DocumentAccessRequest,
+  DocumentPermissionChecker,
+} from '../services/document-permissions';
 
 const JWT_SECRET = 'test-secret-key-for-unit-tests';
 let PORT: number;
@@ -50,6 +55,19 @@ const mockLogger = {
   level: 'info',
 } as never;
 
+// Users named `mallory-*` have no access, `reader-*` hold a read-only share link,
+// everyone else owns the documents they open.
+const permissions: DocumentPermissionChecker & { calls: DocumentAccessRequest[] } = {
+  calls: [],
+  async checkAccess(request: DocumentAccessRequest): Promise<DocumentAccess> {
+    this.calls.push(request);
+    if (request.userId.startsWith('mallory')) return 'none';
+    if (request.userId.startsWith('reader')) return 'read';
+    if (request.userId.startsWith('slow')) await new Promise((r) => setTimeout(r, 200));
+    return 'write';
+  },
+};
+
 describe('CollaborationManager', () => {
   let io: SocketIOServer;
   let httpServer: ReturnType<typeof createServer>;
@@ -77,6 +95,7 @@ describe('CollaborationManager', () => {
       documentStore,
       awareness,
       presenceHandler,
+      permissions,
       metrics,
       logger: mockLogger,
       persistIntervalMs: 600000, // long interval so it doesn't fire during tests
@@ -371,6 +390,237 @@ describe('CollaborationManager', () => {
 
       client1.disconnect();
       client2.disconnect();
+    });
+  });
+  describe('Document Authorization', () => {
+    function join(
+      client: ClientSocket,
+      documentId: string,
+      extra: Record<string, unknown> = {},
+    ): Promise<{ success: boolean; error?: string; access?: string }> {
+      return new Promise((resolve) => {
+        client.emit('join-document', { documentId, ...extra }, resolve);
+      });
+    }
+
+    function yjsUpdate(text: string): string {
+      const tempDoc = new Y.Doc();
+      tempDoc.getText('content').insert(0, text);
+      return Buffer.from(Y.encodeStateAsUpdate(tempDoc)).toString('base64');
+    }
+
+    it('checks access with the caller identity, JWT and share token', async () => {
+      const client = await connectClient('user-perm-1', 'Alice');
+      permissions.calls.length = 0;
+
+      await join(client, 'doc-perm-args', { shareToken: 'share-123' });
+
+      expect(permissions.calls).toHaveLength(1);
+      expect(permissions.calls[0]).toMatchObject({
+        documentId: 'doc-perm-args',
+        userId: 'user-perm-1',
+        shareToken: 'share-123',
+      });
+      expect(typeof permissions.calls[0].token).toBe('string');
+      expect(permissions.calls[0].token.length).toBeGreaterThan(0);
+      client.disconnect();
+    });
+
+    it('stores no grant when the socket disconnects during the access check', async () => {
+      const client = await connectClient('slow-user', 'Slow');
+      const socketId = client.id as string;
+      client.emit('join-document', { documentId: 'doc-authz-aborted' }, () => {});
+      await new Promise((r) => setTimeout(r, 50));
+      client.disconnect();
+      await new Promise((r) => setTimeout(r, 300));
+
+      const grants = (manager as unknown as { socketAccess: Map<string, unknown> })
+        .socketAccess;
+      expect(grants.has(socketId)).toBe(false);
+      expect(awareness.getUserDocument(socketId)).toBeNull();
+    });
+
+    it('rejects join-document without access and sends no document state', async () => {
+      const owner = await connectClient('user-authz-owner', 'Alice');
+      const attacker = await connectClient('mallory-join', 'Mallory');
+      await join(owner, 'doc-authz-join');
+
+      const received: string[] = [];
+      attacker.on('sync-document', () => received.push('sync-document'));
+      attacker.on('presence-update', () => received.push('presence-update'));
+      let ownerSawJoin = false;
+      owner.on('user-joined', () => {
+        ownerSawJoin = true;
+      });
+
+      const res = await join(attacker, 'doc-authz-join');
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(res).toEqual({ success: false, error: 'Access denied' });
+      expect(received).toEqual([]);
+      expect(ownerSawJoin).toBe(false);
+      owner.disconnect();
+      attacker.disconnect();
+    });
+
+    it('rejects request-history for a document the socket has not joined', async () => {
+      const attacker = await connectClient('mallory-history', 'Mallory');
+
+      const result = await new Promise<{ event: string; data: { error?: string } }>(
+        (resolve) => {
+          attacker.on('document-history', (data) =>
+            resolve({ event: 'document-history', data }),
+          );
+          attacker.on('history-error', (data) =>
+            resolve({ event: 'history-error', data }),
+          );
+          attacker.emit('request-history', {
+            documentId: 'doc-authz-history',
+            limit: 50,
+          });
+        },
+      );
+
+      expect(result).toEqual({
+        event: 'history-error',
+        data: expect.objectContaining({ error: 'Access denied' }),
+      });
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+      attacker.disconnect();
+    });
+
+    it('rejects history after a denied join attempt', async () => {
+      const attacker = await connectClient('mallory-history-2', 'Mallory');
+      await join(attacker, 'doc-authz-history-2');
+
+      const event = await new Promise<string>((resolve) => {
+        attacker.on('document-history', () => resolve('document-history'));
+        attacker.on('history-error', () => resolve('history-error'));
+        attacker.emit('request-history', { documentId: 'doc-authz-history-2' });
+      });
+
+      expect(event).toBe('history-error');
+      expect(mockRedis.lrange).not.toHaveBeenCalled();
+      attacker.disconnect();
+    });
+
+    it('rejects document-update from a socket outside the room', async () => {
+      const owner = await connectClient('user-authz-upd-owner', 'Alice');
+      const attacker = await connectClient('mallory-update', 'Mallory');
+      await join(owner, 'doc-authz-update');
+      await join(attacker, 'doc-authz-update');
+
+      let ownerReceived = false;
+      owner.on('document-update', () => {
+        ownerReceived = true;
+      });
+      const error = new Promise<{ error: string }>((resolve) => {
+        attacker.on('document-update-error', resolve);
+      });
+
+      attacker.emit('document-update', {
+        documentId: 'doc-authz-update',
+        update: yjsUpdate('pwned'),
+      });
+
+      expect((await error).error).toBe('Access denied');
+      await new Promise((r) => setTimeout(r, 100));
+      expect(ownerReceived).toBe(false);
+      expect(manager.getDocument('doc-authz-update')?.getText('content').toString()).toBe(
+        '',
+      );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+      owner.disconnect();
+      attacker.disconnect();
+    });
+
+    it('rejects updates to a different document than the one joined', async () => {
+      const victim = await connectClient('user-authz-victim', 'Alice');
+      const owner = await connectClient('user-authz-own-doc', 'Bob');
+      await join(victim, 'doc-authz-victim');
+      await join(owner, 'doc-authz-own');
+
+      let victimReceived = false;
+      victim.on('document-update', () => {
+        victimReceived = true;
+      });
+      const error = new Promise<{ error: string }>((resolve) => {
+        owner.on('document-update-error', resolve);
+      });
+
+      owner.emit('document-update', {
+        documentId: 'doc-authz-victim',
+        update: yjsUpdate('cross-doc'),
+      });
+
+      expect((await error).error).toBe('Access denied');
+      await new Promise((r) => setTimeout(r, 100));
+      expect(victimReceived).toBe(false);
+      victim.disconnect();
+      owner.disconnect();
+    });
+
+    it('lets read-only users view and read history but not edit or comment', async () => {
+      const owner = await connectClient('user-authz-ro-owner', 'Alice');
+      const reader = await connectClient('reader-1', 'Rita');
+      await join(owner, 'doc-authz-readonly');
+
+      const sync = new Promise<{ documentId: string }>((resolve) => {
+        reader.on('sync-document', resolve);
+      });
+      const res = await join(reader, 'doc-authz-readonly', { shareToken: 'share-token' });
+      expect(res).toEqual({ success: true, access: 'read' });
+      expect((await sync).documentId).toBe('doc-authz-readonly');
+
+      const ownerEvents: string[] = [];
+      owner.on('document-update', () => ownerEvents.push('document-update'));
+      owner.on('comment-added', () => ownerEvents.push('comment-added'));
+      owner.on('snapshot-created', () => ownerEvents.push('snapshot-created'));
+
+      const updateError = new Promise<{ error: string }>((resolve) => {
+        reader.on('document-update-error', resolve);
+      });
+      const snapshotError = new Promise<{ error: string }>((resolve) => {
+        reader.on('snapshot-error', resolve);
+      });
+      reader.emit('document-update', {
+        documentId: 'doc-authz-readonly',
+        update: yjsUpdate('edit'),
+      });
+      reader.emit('comment-add', {
+        documentId: 'doc-authz-readonly',
+        comment: { id: 'c1', threadId: 't1', content: 'hi', rangeStart: 0, rangeEnd: 1 },
+      });
+      reader.emit('request-snapshot', { documentId: 'doc-authz-readonly' });
+
+      expect((await updateError).error).toBe('Access denied');
+      expect((await snapshotError).error).toBe('Access denied');
+
+      const history = await new Promise<{ documentId: string }>((resolve) => {
+        reader.on('document-history', resolve);
+        reader.emit('request-history', { documentId: 'doc-authz-readonly' });
+      });
+      expect(history.documentId).toBe('doc-authz-readonly');
+
+      await new Promise((r) => setTimeout(r, 100));
+      expect(ownerEvents).toEqual([]);
+      owner.disconnect();
+      reader.disconnect();
+    });
+
+    it('revokes access to the previous document after switching', async () => {
+      const owner = await connectClient('user-authz-switch', 'Alice');
+      await join(owner, 'doc-authz-switch-a');
+      await join(owner, 'doc-authz-switch-b');
+
+      const event = await new Promise<string>((resolve) => {
+        owner.on('document-history', () => resolve('document-history'));
+        owner.on('history-error', () => resolve('history-error'));
+        owner.emit('request-history', { documentId: 'doc-authz-switch-a' });
+      });
+
+      expect(event).toBe('history-error');
+      owner.disconnect();
     });
   });
 });
