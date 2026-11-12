@@ -25,6 +25,12 @@ dependencyLocking {
     lockMode = LockMode.STRICT
 }
 
+// Spotless resolves its formatter into per-build, randomly named configurations
+// that can never have lock state; the formatter is build tooling, not shipped code.
+configurations.matching { it.name.startsWith('spotless') }.configureEach {
+    resolutionStrategy.deactivateDependencyLocking()
+}
+
 dependencies {
     // Spring Boot
     implementation 'org.springframework.boot:spring-boot-starter-web'
