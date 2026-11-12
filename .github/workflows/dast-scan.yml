@@ -64,6 +64,10 @@ jobs:
 
       - name: Start the application stack
         run: |
+          OTTERWORKS_DB_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$OTTERWORKS_DB_PASSWORD"
+          echo "OTTERWORKS_DB_PASSWORD=$OTTERWORKS_DB_PASSWORD" >> "$GITHUB_ENV"
+          export OTTERWORKS_DB_PASSWORD
           docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build \
             postgres redis localstack meilisearch \
             auth-service api-gateway document-service search-service file-service

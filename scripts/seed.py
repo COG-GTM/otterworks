@@ -12,11 +12,13 @@ admin dashboard shows real metrics instead of in-memory mock data.
 Usage:
     uv run scripts/seed.py
 
-Environment overrides (all optional — defaults match docker-compose):
-    DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+Environment overrides (defaults match docker-compose):
+    DB_HOST, DB_PORT, DB_NAME, DB_USER,
+    DB_PASSWORD (falls back to OTTERWORKS_DB_PASSWORD from the environment or .env)
 """
 
 import os
+from pathlib import Path
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -27,12 +29,26 @@ from psycopg2.extras import execute_values, Json
 
 # ── Connection ────────────────────────────────────────────────────────────────
 
+def _local_db_password():
+    """DB_PASSWORD, else OTTERWORKS_DB_PASSWORD from the env or the repo's .env (make env)."""
+    password = os.getenv("DB_PASSWORD") or os.getenv("OTTERWORKS_DB_PASSWORD")
+    if password:
+        return password
+    env_file = Path(__file__).resolve().parents[1] / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key.strip() == "OTTERWORKS_DB_PASSWORD":
+                password = value.strip().strip("'\"")
+    return password or None
+
+
 DB_CONFIG = {
     "host":     os.getenv("DB_HOST",     "localhost"),
     "port":     int(os.getenv("DB_PORT", "5432")),
     "dbname":   os.getenv("DB_NAME",     "otterworks"),
     "user":     os.getenv("DB_USER",     "otterworks"),
-    "password": os.getenv("DB_PASSWORD", "otterworks_dev"),
+    "password": _local_db_password(),
 }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
