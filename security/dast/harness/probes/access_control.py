@@ -161,8 +161,9 @@ def bola_files(ctx: ScanContext) -> Result:
             "access cannot be assessed",
             evidence,
         )
-    # The mutation routes must work for the owner too, or a refusal proves nothing.
+    # The other attacked routes must work for the owner too, or a refusal proves nothing.
     owner_controls = [
+        ("GET", f"{file_path}/versions", None),
         ("PATCH", f"{file_path}/rename", {"name": f"renamed-by-owner-{ctx.run_id}.txt"}),
         (
             "POST",
@@ -184,8 +185,8 @@ def bola_files(ctx: ScanContext) -> Result:
             )
     return self.result(
         Verdict.SECURE,
-        "the owner can download, rename, share and delete the file but every attacker read "
-        "and mutation was refused",
+        "the owner can download, list versions, rename, share and delete the file but every "
+        "attacker read and mutation was refused",
         evidence[:2],
     )
 
