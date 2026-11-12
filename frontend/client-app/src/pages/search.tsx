@@ -157,7 +157,7 @@ function SearchContent() {
   );
 }
 
-function SearchResults({
+export function SearchResults({
   submittedQuery,
   isLoading,
   results,
