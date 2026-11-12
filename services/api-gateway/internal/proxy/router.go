@@ -13,6 +13,8 @@ import (
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
+const contentTypeJSON = "application/json"
+
 // Route defines a mapping from a URL prefix to a backend service.
 type Route struct {
 	Prefix    string
@@ -40,7 +42,7 @@ func NewRouter(cfg RouterConfig) chi.Router {
 		})
 	}
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "route not found",
@@ -93,7 +95,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			Str("method", r.Method).
 			Msg("proxy error")
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", contentTypeJSON)
 		w.WriteHeader(http.StatusBadGateway)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error":  "service unavailable",
@@ -115,7 +117,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				Str("state", cb.State().String()).
 				Msg("circuit breaker rejected request")
 
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Type", contentTypeJSON)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(map[string]string{
 				"error":   "service temporarily unavailable",
