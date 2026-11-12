@@ -19,6 +19,8 @@ from decimal import Decimal
 
 import boto3
 
+from s3_ownership import expected_bucket_owner
+
 
 class DecimalEncoder(json.JSONEncoder):
     """Handle DynamoDB Decimal types -- copied from StackOverflow"""
@@ -42,6 +44,7 @@ def main():
     aws_region = config.get("aws", "region")
 
     archive_bucket = config.get("s3", "archive_bucket")
+    bucket_owner = expected_bucket_owner(config)
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
     retention_days = 90
@@ -119,6 +122,7 @@ def main():
 
     s3_client.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=archive_key,
         Body=buf.getvalue(),
         StorageClass="GLACIER",
@@ -202,6 +206,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=archive_bucket,
+        ExpectedBucketOwner=bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
