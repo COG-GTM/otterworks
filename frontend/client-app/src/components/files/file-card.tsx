@@ -70,6 +70,7 @@ export function FileCard({
   onStarToggle,
 }: FileCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, file.id) : false);
@@ -112,9 +113,7 @@ export function FileCard({
     setIsRenaming(false);
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleCheckboxChange = () => {
     onSelect?.(file.id);
   };
 
@@ -122,11 +121,12 @@ export function FileCard({
     return (
       <div className="flex items-center gap-4 px-4 py-2.5 hover:bg-gray-50 rounded-lg transition group border-b border-gray-100 last:border-0">
         {selectionActive && (
-          <div className="flex-shrink-0" onClick={handleCheckboxClick}>
+          <div className="flex-shrink-0">
             <input
               type="checkbox"
               checked={selected}
-              readOnly
+              onChange={handleCheckboxChange}
+              aria-label={`Select ${file.name}`}
               className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
             />
           </div>
@@ -140,7 +140,7 @@ export function FileCard({
           </div>
           <div className="flex-1 min-w-0">
             {isRenaming ? (
-              <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+              <div className="flex items-center gap-1">
                 <input
                   ref={renameInputRef}
                   type="text"
@@ -178,12 +178,16 @@ export function FileCard({
         </button>
         <div className="relative w-8">
           <button
+            ref={menuTriggerRef}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+            aria-label={`More actions for ${file.name}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
             <MoreVertical size={16} />
           </button>
@@ -191,6 +195,7 @@ export function FileCard({
             <FileMenu
               file={file}
               onClose={() => setMenuOpen(false)}
+              triggerRef={menuTriggerRef}
               onDelete={onDelete}
               onShare={onShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
@@ -205,11 +210,12 @@ export function FileCard({
   return (
     <div className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition p-4">
       {selectionActive && (
-        <div className="absolute top-2 left-2 z-10" onClick={handleCheckboxClick}>
+        <div className="absolute top-2 left-2 z-10">
           <input
             type="checkbox"
             checked={selected}
-            readOnly
+            onChange={handleCheckboxChange}
+            aria-label={`Select ${file.name}`}
             className="h-4 w-4 rounded border-gray-300 text-otter-600 focus:ring-otter-500 cursor-pointer"
           />
         </div>
@@ -235,12 +241,16 @@ export function FileCard({
             </button>
             <div className="relative">
               <button
+                ref={menuTriggerRef}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition"
+                aria-label={`More actions for ${file.name}`}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
               >
                 <MoreVertical size={16} />
               </button>
@@ -248,6 +258,7 @@ export function FileCard({
                 <FileMenu
                   file={file}
                   onClose={() => setMenuOpen(false)}
+                  triggerRef={menuTriggerRef}
                   onDelete={onDelete}
                   onShare={onShare}
                   onDownload={onDownload}
@@ -258,7 +269,7 @@ export function FileCard({
           </div>
         </div>
         {isRenaming ? (
-          <div className="mb-1" onClick={(e) => e.preventDefault()}>
+          <div className="mb-1">
             <input
               ref={renameInputRef}
               type="text"
@@ -269,7 +280,7 @@ export function FileCard({
                 if (e.key === "Escape") { renameDoneRef.current = true; setIsRenaming(false); setRenameValue(file.name); }
               }}
               onBlur={submitRename}
-              className="text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
+              className="block text-sm font-medium text-gray-900 px-1 py-0.5 border border-otter-400 rounded focus:outline-none focus:ring-1 focus:ring-otter-500 w-full"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
             />
           </div>
@@ -293,19 +304,67 @@ function FileMenu({
   onShare,
   onRename,
   onDownload,
+  triggerRef,
 }: {
   file: FileItem;
   onClose: () => void;
+  triggerRef?: React.RefObject<HTMLButtonElement>;
   onDelete?: (id: string) => void;
   onShare?: (id: string) => void;
   onRename?: () => void;
   onDownload?: (id: string, name: string) => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        triggerRef?.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, triggerRef]);
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
+    );
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    let next: number;
+    if (e.key === "ArrowDown") next = (current + 1) % items.length;
+    else if (e.key === "ArrowUp") next = (current - 1 + items.length) % items.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
+  };
+
   return (
     <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
-      <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Close menu"
+        className="fixed inset-0 z-10 cursor-default"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onClose();
+        }}
+      />
+      <div ref={menuRef} role="menu" onKeyDown={handleMenuKeyDown} className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -319,6 +378,8 @@ function FileMenu({
         </button>
         {!file.isFolder && (
           <button
+            type="button"
+            role="menuitem"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -332,6 +393,8 @@ function FileMenu({
           </button>
         )}
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -344,6 +407,8 @@ function FileMenu({
           Share
         </button>
         <button
+          type="button"
+          role="menuitem"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
