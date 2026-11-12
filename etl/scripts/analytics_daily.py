@@ -20,6 +20,7 @@ from decimal import Decimal
 import boto3
 import pandas as pd
 import psycopg2
+from botocore.exceptions import BotoCoreError, ClientError
 
 
 def main():
@@ -75,10 +76,10 @@ def main():
                 MessageAttributeNames=["All"],
             )
             consecutive_errors = 0
-        except:
+        except (BotoCoreError, ClientError) as e:
             # TODO ETL-103: Add dead-letter queue for failed SQS calls (2020-01-08)
             consecutive_errors += 1
-            print("[%s] WARNING: SQS receive failed (%d consecutive)" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), consecutive_errors))
+            print("[%s] WARNING: SQS receive failed (%d consecutive): %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), consecutive_errors, e))
             if consecutive_errors >= 3:
                 print("[%s] ERROR: Too many SQS failures, giving up" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                 break
@@ -97,9 +98,9 @@ def main():
                 entries_to_delete.append(
                     {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
                 )
-            except:
+            except (ValueError, KeyError, TypeError, RecursionError) as e:
                 # TODO ETL-103: Add dead-letter queue for malformed messages (2020-01-08)
-                pass
+                print("[%s] WARNING: Skipping malformed SQS message %s: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg.get("MessageId", "?"), e))
 
         if entries_to_delete:
             sqs_client.delete_message_batch(QueueUrl=sqs_queue_url, Entries=entries_to_delete)
@@ -174,7 +175,7 @@ def main():
                 if isinstance(ts, str):
                     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
                     return "%02d" % dt.hour
-            except:
+            except ValueError:
                 pass
             return "00"
         df["hour"] = df["timestamp"].apply(parse_hour)
