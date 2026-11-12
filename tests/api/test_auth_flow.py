@@ -54,7 +54,7 @@ def test_register_login_profile_refresh_and_logout(api_client):
 def test_auth_validation_and_protected_routes(api_client):
     invalid_register = api_client.client.post(
         "/api/v1/auth/register",
-        json={"email": "not-an-email", "password": "short", "displayName": ""},
+        json={"email": "not-an-email", "password": "x" * 5, "displayName": ""},
     )
     assert invalid_register.status_code == 400
 
@@ -71,7 +71,7 @@ def test_auth_validation_and_protected_routes(api_client):
 
     invalid_login = api_client.client.post(
         "/api/v1/auth/login",
-        json={"email": user.email, "password": "wrong-password"},
+        json={"email": user.email, "password": f"wrong-{user.password}"},
     )
     assert invalid_login.status_code in {400, 401}
 

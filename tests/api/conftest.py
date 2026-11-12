@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -11,6 +12,13 @@ import pytest
 
 
 DEFAULT_GATEWAY_URL = "http://localhost:8080"
+
+
+def generate_test_password() -> str:
+    override = os.getenv("OTTERWORKS_API_TEST_PASSWORD")
+    if override:
+        return override
+    return f"Ow-{secrets.token_urlsafe(18)}-1a!"
 
 
 @dataclass(frozen=True)
@@ -42,7 +50,7 @@ class ApiClient:
         return f"{prefix}-{self.run_id}-{uuid.uuid4().hex[:8]}@example.test"
 
     def register_user(self, prefix: str = "api-flow-user") -> RegisteredUser:
-        password = "OtterworksTest123!"
+        password = generate_test_password()
         payload = {
             "email": self.unique_email(prefix),
             "password": password,
