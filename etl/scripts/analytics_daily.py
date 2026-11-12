@@ -12,6 +12,7 @@ import configparser
 import gzip
 import io
 import json
+import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,13 @@ from decimal import Decimal
 import boto3
 import pandas as pd
 import psycopg2
+
+
+def load_expected_bucket_owner(config):
+    owner = config.get("s3", "expected_bucket_owner").strip()
+    if not re.fullmatch(r"\d{12}", owner):
+        raise ValueError("[s3] expected_bucket_owner must be the 12-digit AWS account ID that owns the ETL buckets")
+    return owner
 
 
 def main():
@@ -41,6 +49,7 @@ def main():
 
     data_lake_bucket = config.get("s3", "data_lake_bucket")
     analytics_prefix = config.get("s3", "analytics_prefix")
+    expected_bucket_owner = load_expected_bucket_owner(config)
 
     # today's date for partitioning
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
@@ -308,6 +317,7 @@ def main():
     summary_bytes = gzip.compress(json.dumps(summary, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=summary_key,
         Body=summary_bytes,
     )
@@ -318,6 +328,7 @@ def main():
     hourly_bytes = gzip.compress(json.dumps(hourly_breakdown, indent=2).encode("utf-8"))
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=hourly_key,
         Body=hourly_bytes,
     )
@@ -331,6 +342,7 @@ def main():
             gz.write(b"\n")
     s3_client.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=users_key,
         Body=buf.getvalue(),
     )
@@ -432,6 +444,7 @@ def main():
     )
     s3_client_report.put_object(
         Bucket=data_lake_bucket,
+        ExpectedBucketOwner=expected_bucket_owner,
         Key=report_key,
         Body=json.dumps(report, indent=2).encode("utf-8"),
     )
