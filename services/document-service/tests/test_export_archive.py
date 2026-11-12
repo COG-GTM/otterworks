@@ -101,15 +101,18 @@ async def test_export_endpoint_404s_for_unreadable_file(client, monkeypatch, tmp
     "name",
     [
         "../outside/tenant-secrets.env",
-        "reports/../../outside/tenant-secrets.env",
+        "sub/../../outside/tenant-secrets.env",
         "./report.md",
-        "reports//q3.md",
+        "sub//q3.md",
         "report.md\x00.txt",
         "",
     ],
 )
 def test_rejects_names_that_leave_or_obscure_the_archive(archive_with_outside_secret, name):
-    reader, _, _ = archive_with_outside_secret
+    reader, root, _ = archive_with_outside_secret
+    # Real subdirectory, so the nested cases would resolve to files if allowed.
+    (root / "sub").mkdir()
+    (root / "sub" / "q3.md").write_text("# Q3\n", encoding="utf-8")
     with pytest.raises(FileNotFoundError):
         reader.read_export(name)
 
