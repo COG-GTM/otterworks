@@ -148,9 +148,16 @@ httpServer.on('upgrade', (request, socket, head) => {
     return;
   }
 
+  const onPendingSocketError = (err: Error) => {
+    logger.warn({ err }, 'y-websocket_upgrade_socket_error');
+    socket.destroy();
+  };
+  socket.on('error', onPendingSocketError);
+
   // y-websocket clients must hold a valid JWT and edit access to the room's document
   authorizeYjsUpgrade(request, config.jwt.secret, permissions, logger)
     .then((decision) => {
+      socket.off('error', onPendingSocketError);
       if (socket.destroyed) return;
       if (!decision.allowed) {
         const statusLine = decision.status === 401 ? '401 Unauthorized' : '403 Forbidden';
