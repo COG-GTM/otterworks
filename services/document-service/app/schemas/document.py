@@ -5,6 +5,15 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+# ---- Error schemas ----
+
+
+class ErrorResponse(BaseModel):
+    """Body of an ``HTTPException`` response."""
+
+    detail: str
+
+
 # ---- Document schemas ----
 
 
