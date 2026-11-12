@@ -102,6 +102,7 @@ func (c *Config) ServiceRoutes() map[string]string {
 		"/socket.io":            c.CollabServiceURL,
 		"/api/v1/notifications": c.NotificationServiceURL,
 		"/api/v1/preferences":   c.NotificationServiceURL,
+		"/ws/notifications":     c.NotificationServiceURL,
 		"/api/v1/search":        c.SearchServiceURL,
 		"/api/v1/analytics":     c.AnalyticsServiceURL,
 		"/api/v1/admin":         c.AdminServiceURL,
