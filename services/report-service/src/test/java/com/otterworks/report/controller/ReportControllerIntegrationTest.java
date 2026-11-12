@@ -280,8 +280,8 @@ public class ReportControllerIntegrationTest {
     public void otherUserCannotListGetDownloadOrDeleteReport() throws Exception {
         String alice = uniqueUser("alice");
         String mallory = uniqueUser("mallory");
-        Long id = createReportAndReturnId("Alice Usage Report",
-                ReportCategory.USAGE_ANALYTICS, ReportType.CSV, alice);
+        Long id = createReportAndReturnId("Alice Activity Report",
+                ReportCategory.USER_ACTIVITY, ReportType.CSV, alice);
         awaitTerminalStatus(id, alice);
 
         mockMvc.perform(get("/api/v1/reports").header(USER_HEADER, mallory))
