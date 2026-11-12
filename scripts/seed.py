@@ -17,6 +17,7 @@ Environment overrides (all optional — defaults match docker-compose):
 """
 
 import os
+import secrets
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -376,28 +377,25 @@ def seed_audit_logs(cur) -> None:
         log("  No seeded users found — skipping audit logs.")
         return
 
-    import random
-    rng = random.Random(42)  # deterministic
-
     rows = []
     for i in range(80):
-        user = rng.choice(db_users)
+        user = secrets.choice(db_users)
         actor_id, actor_email = user[0], user[1]
-        action, resource_type = rng.choice(AUDIT_ACTIONS)
+        action, resource_type = secrets.choice(AUDIT_ACTIONS)
 
         # Pick a random resource_id — use another user's ID for user actions
         if resource_type == "AdminUser":
-            resource_id = rng.choice(db_users)[0]
+            resource_id = secrets.choice(db_users)[0]
         else:
             resource_id = uid()
 
-        age_hours = rng.randint(0, 30 * 24)
+        age_hours = secrets.randbelow(30 * 24 + 1)
         created = hours_ago(age_hours)
 
         rows.append((
             uid(), actor_id, actor_email, action, resource_type, resource_id,
             '{}',  # changes_made
-            f"192.168.{rng.randint(1,5)}.{rng.randint(1,254)}",
+            f"192.168.{1 + secrets.randbelow(5)}.{1 + secrets.randbelow(254)}",
             "Mozilla/5.0 (seed)",
             created, created,
         ))
