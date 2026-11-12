@@ -368,13 +368,7 @@ function MarginsContent() {
                     ${row.cogsUsd.toFixed(2)}
                   </td>
                   <td
-                    className={`px-4 py-2.5 text-right font-medium ${
-                      row.marginPct < 0
-                        ? "text-red-600"
-                        : row.marginPct < 20
-                          ? "text-orange-600"
-                          : "text-green-700"
-                    }`}
+                    className={`px-4 py-2.5 text-right font-medium ${marginColorClass(row.marginPct)}`}
                   >
                     {row.marginPct.toFixed(1)}%
                   </td>
@@ -393,6 +387,12 @@ function MarginsContent() {
       </div>
     </div>
   );
+}
+
+function marginColorClass(marginPct: number): string {
+  if (marginPct < 0) return "text-red-600";
+  if (marginPct < 20) return "text-orange-600";
+  return "text-green-700";
 }
 
 function KpiTile({
