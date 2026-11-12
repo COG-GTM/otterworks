@@ -63,6 +63,7 @@ const permissions: DocumentPermissionChecker & { calls: DocumentAccessRequest[] 
     this.calls.push(request);
     if (request.userId.startsWith('mallory')) return 'none';
     if (request.userId.startsWith('reader')) return 'read';
+    if (request.userId.startsWith('slow')) await new Promise((r) => setTimeout(r, 200));
     return 'write';
   },
 };
@@ -423,6 +424,20 @@ describe('CollaborationManager', () => {
       expect(typeof permissions.calls[0].token).toBe('string');
       expect(permissions.calls[0].token.length).toBeGreaterThan(0);
       client.disconnect();
+    });
+
+    it('stores no grant when the socket disconnects during the access check', async () => {
+      const client = await connectClient('slow-user', 'Slow');
+      const socketId = client.id as string;
+      client.emit('join-document', { documentId: 'doc-authz-aborted' }, () => {});
+      await new Promise((r) => setTimeout(r, 50));
+      client.disconnect();
+      await new Promise((r) => setTimeout(r, 300));
+
+      const grants = (manager as unknown as { socketAccess: Map<string, unknown> })
+        .socketAccess;
+      expect(grants.has(socketId)).toBe(false);
+      expect(awareness.getUserDocument(socketId)).toBeNull();
     });
 
     it('rejects join-document without access and sends no document state', async () => {
