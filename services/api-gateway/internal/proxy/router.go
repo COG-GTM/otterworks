@@ -13,6 +13,11 @@ import (
 	"github.com/Cognition-Partner-Workshops/otterworks/services/api-gateway/internal/middleware"
 )
 
+const (
+	headerContentType = "Content-Type"
+	mimeJSON          = "application/json"
+)
+
 // Route defines a mapping from a URL prefix to a backend service.
 type Route struct {
 	Prefix    string
@@ -21,10 +26,10 @@ type Route struct {
 
 // RouterConfig holds configuration for the reverse proxy router.
 type RouterConfig struct {
-	Routes         []Route
-	CBManager      *CircuitBreakerManager
-	Logger         zerolog.Logger
-	EnableTracing  bool
+	Routes        []Route
+	CBManager     *CircuitBreakerManager
+	Logger        zerolog.Logger
+	EnableTracing bool
 }
 
 // NewRouter creates a chi router with all service routes mounted.
@@ -40,7 +45,7 @@ func NewRouter(cfg RouterConfig) chi.Router {
 		})
 	}
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, mimeJSON)
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "route not found",
@@ -93,7 +98,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 			Str("method", r.Method).
 			Msg("proxy error")
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(headerContentType, mimeJSON)
 		w.WriteHeader(http.StatusBadGateway)
 		json.NewEncoder(w).Encode(map[string]string{
 			"error":  "service unavailable",
@@ -115,7 +120,7 @@ func newProxyHandler(route Route, cfg RouterConfig) http.HandlerFunc {
 				Str("state", cb.State().String()).
 				Msg("circuit breaker rejected request")
 
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(headerContentType, mimeJSON)
 			w.WriteHeader(http.StatusServiceUnavailable)
 			json.NewEncoder(w).Encode(map[string]string{
 				"error":   "service temporarily unavailable",
