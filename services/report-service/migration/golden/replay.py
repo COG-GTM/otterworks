@@ -162,7 +162,13 @@ class Recorder:
     def preclean(self):
         # Some list endpoints return 500 on the Java 8 baseline, so gather leftovers from every
         # list that works plus the in-flight file of an interrupted run.
-        ids = set(json.loads(INFLIGHT.read_text())) if INFLIGHT.exists() else set()
+        ids = set()
+        # The journal may come from another instance, so only trust IDs that still belong to us.
+        for rid in json.loads(INFLIGHT.read_text()) if INFLIGHT.exists() else []:
+            _, _, raw = self.c.request("GET", f"/api/v1/reports/{rid}")
+            body = parse_json(raw)
+            if isinstance(body, dict) and body.get("requestedBy") == GOLDEN_USER:
+                ids.add(rid)
         for query in [f"userId={GOLDEN_USER}", "status=COMPLETED", "status=FAILED",
                       "status=PENDING", "status=GENERATING", ""]:
             _, _, raw = self.c.request("GET", f"/api/v1/reports?{query}")
