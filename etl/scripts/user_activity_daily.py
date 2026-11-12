@@ -18,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 
 import boto3
 import psycopg2
-from botocore.exceptions import ClientError
 
 
 def load_bucket_owner_account_id(config):
@@ -187,11 +186,6 @@ def main():
                     prev = user_totals[uid]["actions_by_type"].get(action_type, 0)
                     user_totals[uid]["actions_by_type"][action_type] = prev + count
 
-        except ClientError as e:
-            # Bucket not owned by bucket_owner (or no access): fail rather than
-            # silently produce a report from missing data.
-            if e.response.get("Error", {}).get("Code") in ("AccessDenied", "403"):
-                raise
         except:
             # S3 key might not exist for every day -- silently skip
             # TODO ETL-098: Log missing days for debugging
