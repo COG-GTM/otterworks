@@ -34,7 +34,7 @@ class NotificationServiceTest {
         val event = SqsNotificationMessage(
             eventType = "file_shared",
             fileId = "file-123",
-            ownerId = "owner-1",
+            ownerId = OWNER_ID,
             sharedWithUserId = "user-2",
             timestamp = "2024-01-01T00:00:00Z",
         )
@@ -133,7 +133,7 @@ class NotificationServiceTest {
         val event = SqsNotificationMessage(
             eventType = "file_shared",
             fileId = "file-123",
-            ownerId = "owner-1",
+            ownerId = OWNER_ID,
             sharedWithUserId = "user-2",
             timestamp = "2024-01-01T00:00:00Z",
         )
@@ -180,7 +180,7 @@ class NotificationServiceTest {
         val event = SqsNotificationMessage(
             eventType = "file_shared",
             fileId = "file-123",
-            ownerId = "owner-1",
+            ownerId = OWNER_ID,
             sharedWithUserId = "",
             timestamp = "2024-01-01T00:00:00Z",
         )
@@ -245,5 +245,9 @@ class NotificationServiceTest {
         service.processEvent(event)
 
         coVerify { webSocketManager.pushNotification("user-3", any()) }
+    }
+
+    private companion object {
+        const val OWNER_ID = "owner-1"
     }
 }
