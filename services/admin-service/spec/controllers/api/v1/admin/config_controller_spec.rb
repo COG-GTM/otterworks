@@ -15,6 +15,13 @@ RSpec.describe Api::V1::Admin::ConfigController do
       expect(keys).to include(public_config.id)
       expect(keys).not_to include(secret_config.id)
     end
+
+    it 'exposes the config_key column as key' do
+      get :index
+      body = JSON.parse(response.body)
+      entry = body['configs'].find { |c| c['id'] == public_config.id }
+      expect(entry['key']).to eq(public_config.config_key)
+    end
   end
 
   describe 'PUT #update' do

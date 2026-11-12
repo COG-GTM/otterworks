@@ -409,18 +409,18 @@ def _seed_system_configs(cur) -> int:
     ]
 
     columns = [
-        "id", "key", "value", "value_type", "description", "is_secret",
+        "id", "config_key", "value", "value_type", "description", "is_secret",
         "created_at", "updated_at",
     ]
 
     rows = []
-    for i, (key, value, value_type, description, is_secret) in enumerate(configs):
+    for i, (config_key, value, value_type, description, is_secret) in enumerate(configs):
         created_at = days_ago(rng.randint(30, 365))
         updated_at = created_at + timedelta(hours=rng.randint(0, 720))
 
         rows.append((
             stable_id("system-config", i),
-            key,
+            config_key,
             value,
             value_type,
             description,
@@ -430,4 +430,4 @@ def _seed_system_configs(cur) -> int:
         ))
 
     return bulk_insert(cur, "system_configs", columns, rows,
-                       on_conflict="(key) DO NOTHING")
+                       on_conflict="(config_key) DO NOTHING")

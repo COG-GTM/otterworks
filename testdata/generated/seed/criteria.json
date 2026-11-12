@@ -64,7 +64,7 @@
   },
   "system_configs": {
     "min_rows": 25,
-    "required_columns": ["key", "value", "value_type"],
-    "unique_columns": ["key"]
+    "required_columns": ["config_key", "value", "value_type"],
+    "unique_columns": ["config_key"]
   }
 }
