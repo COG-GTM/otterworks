@@ -58,6 +58,7 @@ describe.each(["grid", "list"] as const)("FolderCard (%s view)", (view) => {
     expect(backdrop).toHaveAttribute("tabindex", "-1");
     fireEvent.click(backdrop);
     expect(screen.queryByRole("button", { name: "Rename" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/home");
   });
 
   it("renames without navigating when the rename input is clicked", () => {
