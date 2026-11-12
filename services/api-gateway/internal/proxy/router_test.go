@@ -102,3 +102,57 @@ func TestProxyStripsSpoofedIdentityHeaders(t *testing.T) {
 	assert.False(t, emailPresent, "spoofed X-User-Email must not reach the backend when the JWT has no email claim")
 	assert.Equal(t, "user-123", gotUserID, "X-User-ID must come from the JWT, not the client")
 }
+
+func newBareTestRouter(backendURL string) http.Handler {
+	return NewRouter(RouterConfig{
+		Routes: []Route{{Prefix: "/api/v1/files", TargetURL: backendURL}},
+		CBManager: NewCircuitBreakerManager(CircuitBreakerConfig{
+			MaxRequests:  1,
+			Interval:     time.Minute,
+			Timeout:      time.Minute,
+			FailureRatio: 0.9,
+		}),
+		Logger: zerolog.Nop(),
+	})
+}
+
+func TestRouterNotFoundReturnsJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	newBareTestRouter("http://127.0.0.1:1").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/unknown", nil))
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"error":"route not found"}`, rec.Body.String())
+}
+
+func TestProxyErrorReturnsJSON(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	backendURL := backend.URL
+	backend.Close()
+
+	rec := httptest.NewRecorder()
+	newBareTestRouter(backendURL).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil))
+
+	assert.Equal(t, http.StatusBadGateway, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"error":"service unavailable","target":"/api/v1/files"}`, rec.Body.String())
+}
+
+func TestCircuitBreakerRejectionReturnsJSON(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer backend.Close()
+	router := newBareTestRouter(backend.URL)
+
+	for i := 0; i < 6; i++ {
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil))
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/files/list", nil))
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
+	assert.JSONEq(t, `{"error":"service temporarily unavailable","service":"/api/v1/files","reason":"circuit breaker open"}`, rec.Body.String())
+}
