@@ -13,8 +13,8 @@ from typing import Any
 
 import structlog
 from sqlalchemy import ColumnElement, column, false, func, literal, select, table
-from sqlalchemy.types import NullType
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import NullType
 
 logger = structlog.get_logger()
 
