@@ -30,6 +30,7 @@ describe("SearchResults", () => {
     const { container } = renderResults({ submittedQuery: "plan", isLoading: true });
     expect(container.querySelector(".animate-spin")).not.toBeNull();
     expect(screen.queryByText("Search OtterWorks")).not.toBeInTheDocument();
+    expect(screen.queryByText("No results found")).not.toBeInTheDocument();
   });
 
   it("shows no-results state for an empty result set", () => {
