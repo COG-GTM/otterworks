@@ -98,7 +98,7 @@ def main():
                 entries_to_delete.append(
                     {"Id": msg["MessageId"], "ReceiptHandle": msg["ReceiptHandle"]}
                 )
-            except (ValueError, KeyError, TypeError) as e:
+            except (ValueError, KeyError, TypeError, RecursionError) as e:
                 # TODO ETL-103: Add dead-letter queue for malformed messages (2020-01-08)
                 print("[%s] WARNING: Skipping malformed SQS message %s: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg.get("MessageId", "?"), e))
 
