@@ -40,12 +40,35 @@ def _s3_calls(path):
 
 @pytest.mark.parametrize("script", sorted(p.name for p in SCRIPTS.glob("*.py")))
 def test_every_s3_bucket_call_verifies_ownership(script):
-    for call in _s3_calls(SCRIPTS / script):
-        kwargs = {kw.arg for kw in call.keywords}
-        where = f"{script}:{call.lineno} {call.func.attr}"
-        assert "ExpectedBucketOwner" in kwargs, where
+    calls = list(_s3_calls(SCRIPTS / script))
+    for call in calls:
+        kwargs = {kw.arg: kw.value for kw in call.keywords}
+        required = ["ExpectedBucketOwner"]
         if call.func.attr == "copy_object":
-            assert "ExpectedSourceBucketOwner" in kwargs, where
+            required.append("ExpectedSourceBucketOwner")
+        for name in required:
+            value = kwargs.get(name)
+            assert isinstance(value, ast.Name) and value.id == "bucket_owner", (
+                f"{script}:{call.lineno} {call.func.attr} must pass {name}=bucket_owner"
+            )
+    if calls:
+        assert _bucket_owner_is_resolved(SCRIPTS / script), (
+            f"{script} must set bucket_owner = resolve_expected_bucket_owner(...)"
+        )
+
+
+def _bucket_owner_is_resolved(path):
+    assignments = [
+        node for node in ast.walk(ast.parse(path.read_text()))
+        if isinstance(node, ast.Assign)
+        and any(isinstance(t, ast.Name) and t.id == "bucket_owner" for t in node.targets)
+    ]
+    return bool(assignments) and all(
+        isinstance(a.value, ast.Call)
+        and isinstance(a.value.func, ast.Name)
+        and a.value.func.id == "resolve_expected_bucket_owner"
+        for a in assignments
+    )
 
 
 def test_analytics_daily_uploads_are_covered():
