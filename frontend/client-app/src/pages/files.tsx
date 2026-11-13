@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
   CheckSquare,
+  Download,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/layout/breadcrumb";
@@ -28,6 +29,7 @@ import { FileGridSkeleton, FileListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi } from "@/lib/api";
+import { buildFilesCsv, downloadCsv, filesCsvFilename } from "@/lib/files-csv";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { ViewMode, SortField } from "@/types";
@@ -255,6 +257,10 @@ function FileBrowserContent() {
     []
   );
 
+  const handleExportCsv = () => {
+    downloadCsv(buildFilesCsv(items), filesCsvFilename());
+  };
+
   const { getRootProps, isDragActive } = useDropzone({
     onDrop: (files) => {
       setShowUpload(true);
@@ -330,6 +336,14 @@ function FileBrowserContent() {
           >
             <CheckSquare size={16} />
             Select
+          </button>
+          <button
+            onClick={handleExportCsv}
+            disabled={isLoading || items.length === 0}
+            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
+          >
+            <Download size={16} />
+            Export CSV
           </button>
           <button
             onClick={() => setShowNewFolder(true)}
