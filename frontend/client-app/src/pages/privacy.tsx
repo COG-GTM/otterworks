@@ -2,8 +2,10 @@ import { Link } from "react-router-dom";
 import { Footer } from "@/components/layout/footer";
 import { Logo } from "@/components/ui/logo";
 import { COMPANY } from "@/lib/corporate";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function PrivacyPage() {
+  useDocumentTitle("Privacy Policy");
   return (
     <main className="min-h-screen bg-otter-50 flex flex-col">
       <header className="bg-white border-b border-gray-300">

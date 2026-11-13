@@ -7,6 +7,7 @@ import { Eye, EyeOff, LogIn } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/ui/logo";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -16,6 +17,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
+  useDocumentTitle("Sign in");
   const navigate = useNavigate();
   const { setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);

@@ -10,8 +10,10 @@ import { filesApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { ViewMode } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function SharedPage() {
+  useDocumentTitle("Shared with me");
   return (
     <AppShell>
       <ErrorBoundary>

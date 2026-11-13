@@ -20,6 +20,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { documentsApi } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function DocumentEditorPage() {
   return (
@@ -53,6 +54,7 @@ function DocumentEditorContent() {
     queryKey: ["documents", documentId],
     queryFn: () => documentsApi.get(documentId),
   });
+  useDocumentTitle(document?.title ?? "Document");
 
   const updateMutation = useMutation({
     mutationFn: (updates: { title?: string; content?: string }) =>

@@ -17,8 +17,10 @@ import { documentsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { Document, PaginatedResponse, ViewMode } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function DocumentsPage() {
+  useDocumentTitle("Documents");
   return (
     <AppShell>
       <ErrorBoundary>

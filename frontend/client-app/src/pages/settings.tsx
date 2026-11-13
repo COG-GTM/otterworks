@@ -9,6 +9,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { authApi, settingsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const profileSchema = z.object({
   displayName: z.string().min(2, "Name must be at least 2 characters"),
@@ -18,6 +19,7 @@ const profileSchema = z.object({
 type ProfileForm = z.infer<typeof profileSchema>;
 
 export default function SettingsPage() {
+  useDocumentTitle("Settings");
   return (
     <AppShell>
       <ErrorBoundary>

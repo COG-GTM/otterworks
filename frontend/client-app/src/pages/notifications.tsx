@@ -16,8 +16,10 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { notificationsApi } from "@/lib/api";
 import { formatRelativeTime, cn, getInitials, generateColor } from "@/lib/utils";
 import type { Notification } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function NotificationsPage() {
+  useDocumentTitle("Notifications");
   return (
     <AppShell>
       <ErrorBoundary>

@@ -47,6 +47,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 import type { SearchResult } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 function SearchContent() {
   const [searchParams] = useSearchParams();
@@ -235,6 +236,7 @@ function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
 }
 
 export default function SearchPage() {
+  useDocumentTitle("Search");
   return (
     <AppShell>
       <ErrorBoundary>

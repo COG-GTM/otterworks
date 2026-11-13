@@ -9,8 +9,10 @@ import {
   PRESS_RELEASES,
   CAREERS,
 } from "@/lib/corporate";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function Home() {
+  useDocumentTitle("Home");
   return (
     <main className="min-h-screen bg-otter-50 text-gray-800">
       {/* Top utility bar */}

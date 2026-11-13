@@ -7,6 +7,7 @@ import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/ui/logo";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const registerSchema = z
   .object({
@@ -23,6 +24,7 @@ const registerSchema = z
 type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function RegisterPage() {
+  useDocumentTitle("Create account");
   const navigate = useNavigate();
   const { setUser } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);

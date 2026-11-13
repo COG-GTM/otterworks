@@ -31,6 +31,7 @@ import { filesApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { ViewMode, SortField } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 // Run a delete operation over a list of ids, tallying successes and failures
 // so a single failure doesn't abort the rest of a bulk action.
@@ -84,6 +85,7 @@ function FileBrowserContent() {
     queryFn: () => filesApi.getFolder(folderId!),
     enabled: !!folderId,
   });
+  useDocumentTitle(folderId ? currentFolder?.name ?? "Files" : "Files");
 
   const isLoading = filesLoading || foldersLoading;
 

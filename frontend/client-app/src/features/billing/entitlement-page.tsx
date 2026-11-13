@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { billingApi, type Entitlement } from "./api";
 import { BillingAlert } from "./alert";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export default function BillingEntitlementPage() {
+  useDocumentTitle("Tenant entitlement");
   const { tenantId } = useParams();
   const navigate = useNavigate();
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
