@@ -34,6 +34,13 @@ describe("escapeCsvValue", () => {
     expect(escapeCsvValue("line1\nline2")).toBe('"line1\nline2"');
     expect(escapeCsvValue("line1\r\nline2")).toBe('"line1\r\nline2"');
   });
+
+  it("neutralises values a spreadsheet would evaluate as formulas", () => {
+    expect(escapeCsvValue("=HYPERLINK(\"http://x\")")).toBe('"\'=HYPERLINK(""http://x"")"');
+    expect(escapeCsvValue("+1")).toBe("'+1");
+    expect(escapeCsvValue("-2")).toBe("'-2");
+    expect(escapeCsvValue("@SUM(A1)")).toBe("'@SUM(A1)");
+  });
 });
 
 describe("fileItemToCsvRow", () => {

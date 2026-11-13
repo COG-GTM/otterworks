@@ -7,12 +7,14 @@ export const FILES_CSV_HEADERS = ["Name", "Type", "Size", "Last modified", "Owne
 type CsvItem = Pick<FileItem, "name" | "isFolder" | "size" | "updatedAt" | "ownerName" | "ownerId">;
 
 // RFC 4180: quote a field when it contains a comma, double quote, CR or LF,
-// doubling any embedded double quotes.
+// doubling any embedded double quotes. Values that a spreadsheet would treat
+// as a formula are prefixed with an apostrophe to prevent CSV injection.
 export function escapeCsvValue(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\r\n]/.test(safe)) {
+    return `"${safe.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safe;
 }
 
 function formatLastModified(value: string): string {
