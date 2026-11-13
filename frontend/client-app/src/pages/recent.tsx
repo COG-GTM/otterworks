@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { Clock } from "lucide-react";
@@ -8,40 +8,18 @@ import { DocumentCard } from "@/components/documents/document-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi, documentsApi } from "@/lib/api";
-import type { FileItem, Document } from "@/types";
-
-type RecentItem =
-  | { kind: "file"; data: FileItem; updatedAt: string }
-  | { kind: "document"; data: Document; updatedAt: string };
-
-function groupByTime(items: RecentItem[]): Record<string, RecentItem[]> {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - startOfToday.getDay());
-
-  const groups: Record<string, RecentItem[]> = {
-    Today: [],
-    Yesterday: [],
-    "This week": [],
-    Earlier: [],
-  };
-
-  for (const item of items) {
-    const d = new Date(item.updatedAt);
-    if (d >= startOfToday) {
-      groups["Today"].push(item);
-    } else if (d >= startOfYesterday) {
-      groups["Yesterday"].push(item);
-    } else if (d >= startOfWeek) {
-      groups["This week"].push(item);
-    } else {
-      groups["Earlier"].push(item);
-    }
-  }
-
-  return groups;
-}
+import { cn } from "@/lib/utils";
+import {
+  RECENT_FILTERS,
+  buildRecentItems,
+  emptyStateDescription,
+  emptyStateTitle,
+  filterRecentItems,
+  formatItemCount,
+  groupByTime,
+  nonEmptyGroups,
+  type RecentFilter,
+} from "@/lib/recent";
 
 export default function RecentPage() {
   return (
@@ -65,38 +43,63 @@ function RecentContent() {
   });
 
   const isLoading = filesLoading || docsLoading;
+  const [filter, setFilter] = useState<RecentFilter>("all");
 
-  const grouped = useMemo(() => {
-    const items: RecentItem[] = [];
+  const allItems = useMemo(
+    () => buildRecentItems(recentFiles, recentDocs),
+    [recentFiles, recentDocs]
+  );
 
-    if (recentFiles) {
-      for (const file of recentFiles) {
-        items.push({ kind: "file", data: file, updatedAt: file.updatedAt });
-      }
-    }
-    if (recentDocs) {
-      for (const doc of recentDocs) {
-        items.push({ kind: "document", data: doc, updatedAt: doc.updatedAt });
-      }
-    }
+  const filteredItems = useMemo(
+    () => filterRecentItems(allItems, filter),
+    [allItems, filter]
+  );
 
-    items.sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
+  const groups = useMemo(
+    () => nonEmptyGroups(groupByTime(filteredItems)),
+    [filteredItems]
+  );
 
-    return groupByTime(items);
-  }, [recentFiles, recentDocs]);
-
-  const totalItems = Object.values(grouped).reduce((s, g) => s + g.length, 0);
+  const totalItems = filteredItems.length;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Recent</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Files and documents you&apos;ve recently accessed or modified.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Recent</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Files and documents you&apos;ve recently accessed or modified.
+            {!isLoading && (
+              <span data-testid="recent-count" className="ml-1 text-gray-400">
+                &middot; {formatItemCount(totalItems)}
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div
+          role="group"
+          aria-label="Filter recent items"
+          className="inline-flex self-start sm:self-auto rounded-lg border border-gray-300 bg-white p-0.5"
+        >
+          {RECENT_FILTERS.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={filter === value}
+              onClick={() => setFilter(value)}
+              className={cn(
+                "px-3 py-1.5 text-sm font-medium rounded-md transition",
+                filter === value
+                  ? "bg-otter-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Loading state */}
@@ -106,58 +109,52 @@ function RecentContent() {
       {!isLoading && totalItems === 0 && (
         <EmptyState
           icon={Clock}
-          title="No recent items"
-          description="Files and documents you open or edit will appear here."
+          title={emptyStateTitle(filter)}
+          description={emptyStateDescription(filter)}
         />
       )}
 
       {/* Grouped items */}
       {!isLoading &&
-        (["Today", "Yesterday", "This week", "Earlier"] as const).map(
-          (label) => {
-            const items = grouped[label];
-            if (!items || items.length === 0) return null;
-            return (
-              <section key={label}>
-                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  {label}
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {items.map((item) =>
-                    item.kind === "file" ? (
-                      <FileCard
-                        key={`file-${item.data.id}`}
-                        file={item.data}
-                        view="grid"
-                        onDownload={async (id, name) => {
-                          try {
-                            const downloadUrl = await filesApi.getDownloadUrl(id);
-                            const a = document.createElement("a");
-                            a.href = downloadUrl;
-                            a.download = name;
-                            a.rel = "noopener";
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                            toast.success("File downloaded successfully");
-                          } catch {
-                            toast.error("Download failed. Please try again.");
-                          }
-                        }}
-                      />
-                    ) : (
-                      <DocumentCard
-                        key={`doc-${item.data.id}`}
-                        document={item.data}
-                        view="grid"
-                      />
-                    )
-                  )}
-                </div>
-              </section>
-            );
-          }
-        )}
+        groups.map(({ label, items }) => (
+          <section key={label}>
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              {label}
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {items.map((item) =>
+                item.kind === "file" ? (
+                  <FileCard
+                    key={`file-${item.data.id}`}
+                    file={item.data}
+                    view="grid"
+                    onDownload={async (id, name) => {
+                      try {
+                        const downloadUrl = await filesApi.getDownloadUrl(id);
+                        const a = document.createElement("a");
+                        a.href = downloadUrl;
+                        a.download = name;
+                        a.rel = "noopener";
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        toast.success("File downloaded successfully");
+                      } catch {
+                        toast.error("Download failed. Please try again.");
+                      }
+                    }}
+                  />
+                ) : (
+                  <DocumentCard
+                    key={`doc-${item.data.id}`}
+                    document={item.data}
+                    view="grid"
+                  />
+                )
+              )}
+            </div>
+          </section>
+        ))}
     </div>
   );
 }
