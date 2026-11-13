@@ -100,19 +100,21 @@ describe("Trash page restore", () => {
     await waitFor(() => expect(restoreButton("alpha.txt")).toBeDisabled());
     fireEvent.click(restoreButton("beta.txt"));
     await waitFor(() => expect(restoreButton("beta.txt")).toBeDisabled());
+    expect(restoreButton("alpha.txt")).toBeDisabled();
     expect(restoreButton("gamma.txt")).toBeEnabled();
 
     await waitFor(() => {
       expect(api.hasPendingRestore("file-a")).toBe(true);
       expect(api.hasPendingRestore("file-b")).toBe(true);
     });
-    api.finishRestore("file-a");
-    api.finishRestore("file-b");
 
-    await waitFor(() => {
-      expect(screen.queryByText("alpha.txt")).not.toBeInTheDocument();
-      expect(screen.queryByText("beta.txt")).not.toBeInTheDocument();
-    });
+    api.finishRestore("file-a");
+    await waitFor(() => expect(screen.queryByText("alpha.txt")).not.toBeInTheDocument());
+    expect(restoreButton("beta.txt")).toBeDisabled();
+    expect(restoreButton("gamma.txt")).toBeEnabled();
+
+    api.finishRestore("file-b");
+    await waitFor(() => expect(screen.queryByText("beta.txt")).not.toBeInTheDocument());
     expect(screen.getByText("gamma.txt")).toBeInTheDocument();
     expect(restoreButton("gamma.txt")).toBeEnabled();
   });
