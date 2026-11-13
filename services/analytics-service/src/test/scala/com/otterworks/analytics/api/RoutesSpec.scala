@@ -15,6 +15,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.time.{Millis, Seconds, Span}
 import spray.json.*
+import com.otterworks.analytics.TestFixtures.*
 
 class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with ScalaFutures:
 
@@ -39,8 +40,8 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "POST /api/v1/analytics/events" should "accept a valid event" in {
     val (eventRoutes, _, _) = createRoutes()
     val payload = TrackEventRequest(
-      eventType = "document.created",
-      userId = "user-1",
+      eventType = DocumentCreatedEventType,
+      userId = UserId1,
       resourceId = "doc-1",
       resourceType = "document",
       metadata = Some(Map("title" -> "Test"))
@@ -59,8 +60,8 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val (eventRoutes, analyticsRoutes, _) = createRoutes()
     val routes = concat(eventRoutes.routes, analyticsRoutes.routes)
     val payload = TrackEventRequest(
-      eventType = "document.created",
-      userId = "user-1",
+      eventType = DocumentCreatedEventType,
+      userId = UserId1,
       resourceId = "doc-1",
       resourceType = "document",
       metadata = Some(Map("title" -> "Test"))
@@ -101,7 +102,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val (eventRoutes, analyticsRoutes, service) = createRoutes()
 
     // First track an event
-    service.trackEvent("document.created", "user-42", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreatedEventType, "user-42", "doc-1", "document", Map.empty).futureValue
 
     Get("/api/v1/analytics/users/user-42/activity") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -116,7 +117,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/documents/{id}/stats" should "return document stats" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.viewed", "user-1", "doc-99", "document", Map.empty).futureValue
+    service.trackEvent("document.viewed", UserId1, "doc-99", "document", Map.empty).futureValue
 
     Get("/api/v1/analytics/documents/doc-99/stats") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -167,12 +168,12 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   it should "filter by user_id" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("storage.allocated", "user-1", "file-1", "file", Map("bytes" -> "512")).futureValue
+    service.trackEvent("storage.allocated", UserId1, FileId1, "file", Map("bytes" -> "512")).futureValue
 
     Get("/api/v1/analytics/storage?user_id=user-1") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val response = responseAs[StorageUsageResponse]
-      response.userId shouldBe Some("user-1")
+      response.userId shouldBe Some(UserId1)
       response.totalStorageBytes shouldBe 512
     }
   }
@@ -182,7 +183,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/export" should "return JSON export" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreatedEventType, UserId1, "doc-1", "document", Map.empty).futureValue
 
     Get("/api/v1/analytics/export?format=json&period=7d") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
@@ -195,13 +196,13 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   it should "return CSV export" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.created", "user-1", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(DocumentCreatedEventType, UserId1, "doc-1", "document", Map.empty).futureValue
 
     Get("/api/v1/analytics/export?format=csv&period=7d") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       contentType shouldBe ContentTypes.`text/plain(UTF-8)`
       val csv = responseAs[String]
       csv should include("event_id,event_type,user_id,resource_id,resource_type,timestamp")
-      csv should include("document.created")
+      csv should include(DocumentCreatedEventType)
     }
   }
