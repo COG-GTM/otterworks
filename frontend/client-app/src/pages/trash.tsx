@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2,
   RotateCcw,
@@ -31,6 +31,8 @@ export default function TrashPage() {
   );
 }
 
+const RESTORE_MUTATION_KEY = ["files", "restore"];
+
 function TrashContent() {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
@@ -42,6 +44,7 @@ function TrashContent() {
   });
 
   const restoreMutation = useMutation({
+    mutationKey: RESTORE_MUTATION_KEY,
     mutationFn: filesApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
@@ -51,6 +54,14 @@ function TrashContent() {
     },
     onError: () => toast.error("Failed to restore file"),
   });
+
+  // Track pending restores per item so one in-flight request doesn't disable every row.
+  const restoringIds = new Set(
+    useMutationState({
+      filters: { mutationKey: RESTORE_MUTATION_KEY, status: "pending" },
+      select: (mutation) => mutation.state.variables as string,
+    }),
+  );
 
   const permanentDeleteMutation = useMutation({
     mutationFn: filesApi.permanentDelete,
@@ -133,7 +144,7 @@ function TrashContent() {
               item={item}
               onRestore={() => restoreMutation.mutate(item.id)}
               onDelete={() => setDeleteTarget(item)}
-              isRestoring={restoreMutation.isPending}
+              isRestoring={restoringIds.has(item.id)}
             />
           ))}
         </div>
