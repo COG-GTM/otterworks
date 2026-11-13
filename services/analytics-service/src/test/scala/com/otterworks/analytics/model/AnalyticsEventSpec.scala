@@ -6,20 +6,21 @@ import spray.json.*
 import com.otterworks.analytics.model.AnalyticsEventJsonProtocol.{*, given}
 
 import java.time.Instant
+import com.otterworks.analytics.TestFixtures.*
 
 class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
 
   "AnalyticsEvent.create" should "generate a unique event ID and current timestamp" in {
     val event = AnalyticsEvent.create(
       eventType = EventType.DocumentCreated,
-      userId = "user-1",
+      userId = UserId1,
       resourceId = "doc-1",
       resourceType = "document"
     )
 
     event.eventId should not be empty
     event.eventType shouldBe EventType.DocumentCreated
-    event.userId shouldBe "user-1"
+    event.userId shouldBe UserId1
     event.resourceId shouldBe "doc-1"
     event.resourceType shouldBe "document"
     event.metadata shouldBe empty
@@ -30,8 +31,8 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
     val meta = Map("title" -> "My Doc", "size" -> "1024")
     val event = AnalyticsEvent.create(
       eventType = EventType.FileUploaded,
-      userId = "user-2",
-      resourceId = "file-1",
+      userId = UserId2,
+      resourceId = FileId1,
       resourceType = "file",
       metadata = meta
     )
@@ -43,7 +44,7 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
     val event = AnalyticsEvent(
       eventId = "evt-123",
       eventType = EventType.DocumentViewed,
-      userId = "user-1",
+      userId = UserId1,
       resourceId = "doc-1",
       resourceType = "document",
       metadata = Map("source" -> "web"),
@@ -57,18 +58,18 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
   }
 
   "TrackEventRequest JSON" should "deserialize correctly" in {
-    val jsonStr = """{"eventType":"document.created","userId":"user-1","resourceId":"doc-1","resourceType":"document","metadata":{"title":"Test"}}"""
+    val jsonStr = s"""{"eventType":"$DocumentCreatedEventType","userId":"$UserId1","resourceId":"doc-1","resourceType":"document","metadata":{"title":"Test"}}"""
     val request = jsonStr.parseJson.convertTo[TrackEventRequest]
 
-    request.eventType shouldBe "document.created"
-    request.userId shouldBe "user-1"
+    request.eventType shouldBe DocumentCreatedEventType
+    request.userId shouldBe UserId1
     request.resourceId shouldBe "doc-1"
     request.resourceType shouldBe "document"
     request.metadata shouldBe Some(Map("title" -> "Test"))
   }
 
   it should "handle missing optional metadata" in {
-    val jsonStr = """{"eventType":"file.uploaded","userId":"user-2","resourceId":"file-1","resourceType":"file"}"""
+    val jsonStr = s"""{"eventType":"file.uploaded","userId":"$UserId2","resourceId":"$FileId1","resourceType":"file"}"""
     val request = jsonStr.parseJson.convertTo[TrackEventRequest]
 
     request.metadata shouldBe None

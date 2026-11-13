@@ -9,6 +9,7 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Millis, Seconds, Span}
 
 import scala.concurrent.ExecutionContext
+import com.otterworks.analytics.TestFixtures.*
 
 class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
 
@@ -31,14 +32,14 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
 
     val result = service.trackEvent(
       EventType.DocumentCreated,
-      "user-1",
+      UserId1,
       "doc-1",
       "document",
       Map("title" -> "Test Document")
     ).futureValue
 
     result.eventType shouldBe EventType.DocumentCreated
-    result.userId shouldBe "user-1"
+    result.userId shouldBe UserId1
     result.resourceId shouldBe "doc-1"
     result.eventId should not be empty
   }
@@ -47,10 +48,10 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     val service = createService()
 
     // Track some events
-    service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentCreated, "user-2", "doc-2", "document", Map.empty).futureValue
-    service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
-    service.trackEvent(EventType.CollabSessionStarted, "user-1", "session-1", "session", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, UserId2, "doc-2", "document", Map.empty).futureValue
+    service.trackEvent(EventType.FileUploaded, UserId1, FileId1, "file", Map.empty).futureValue
+    service.trackEvent(EventType.CollabSessionStarted, UserId1, "session-1", "session", Map.empty).futureValue
 
     val summary = service.getDashboardSummary("7d").futureValue
 
@@ -65,14 +66,14 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
   "AnalyticsService.getUserActivity" should "return activity for a specific user" in {
     val service = createService()
 
-    service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentCreated, "user-2", "doc-2", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.FileUploaded, UserId1, FileId1, "file", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, UserId2, "doc-2", "document", Map.empty).futureValue
 
-    val activity = service.getUserActivity("user-1").futureValue
+    val activity = service.getUserActivity(UserId1).futureValue
 
-    activity.userId shouldBe "user-1"
+    activity.userId shouldBe UserId1
     activity.totalEvents shouldBe 3
     activity.documentsCreated shouldBe 1
     activity.documentsViewed shouldBe 1
@@ -83,10 +84,10 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
   "AnalyticsService.getDocumentStats" should "return document-level analytics" in {
     val service = createService()
 
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentEdited, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentShared, "user-1", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId2, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentEdited, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentShared, UserId1, "doc-1", "document", Map.empty).futureValue
 
     val stats = service.getDocumentStats("doc-1").futureValue
 
@@ -101,10 +102,10 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     val service = createService()
 
     // doc-1 gets 3 events, doc-2 gets 1
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map("title" -> "Popular")).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map("title" -> "Popular")).futureValue
-    service.trackEvent(EventType.DocumentEdited, "user-1", "doc-1", "document", Map("title" -> "Popular")).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-2", "document", Map("title" -> "Less Popular")).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-1", "document", Map("title" -> "Popular")).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId2, "doc-1", "document", Map("title" -> "Popular")).futureValue
+    service.trackEvent(EventType.DocumentEdited, UserId1, "doc-1", "document", Map("title" -> "Popular")).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-2", "document", Map("title" -> "Less Popular")).futureValue
 
     val response = service.getTopContent("documents", "7d", 10).futureValue
 
@@ -117,27 +118,27 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
   "AnalyticsService.getActiveUsers" should "return users ranked by activity" in {
     val service = createService()
 
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-1", "doc-2", "document", Map.empty).futureValue
-    service.trackEvent(EventType.DocumentViewed, "user-2", "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId1, "doc-2", "document", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentViewed, UserId2, "doc-1", "document", Map.empty).futureValue
 
     val response = service.getActiveUsers("daily").futureValue
 
     response.count shouldBe 2
-    response.users.head.userId shouldBe "user-1"
+    response.users.head.userId shouldBe UserId1
     response.users.head.eventCount shouldBe 2
   }
 
   "AnalyticsService.getStorageUsage" should "calculate storage metrics" in {
     val service = createService()
 
-    service.trackEvent(EventType.StorageAllocated, "user-1", "file-1", "file", Map("bytes" -> "1024")).futureValue
-    service.trackEvent(EventType.StorageAllocated, "user-1", "file-2", "file", Map("bytes" -> "2048")).futureValue
-    service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
+    service.trackEvent(EventType.StorageAllocated, UserId1, FileId1, "file", Map("bytes" -> "1024")).futureValue
+    service.trackEvent(EventType.StorageAllocated, UserId1, "file-2", "file", Map("bytes" -> "2048")).futureValue
+    service.trackEvent(EventType.FileUploaded, UserId1, FileId1, "file", Map.empty).futureValue
 
-    val usage = service.getStorageUsage(Some("user-1")).futureValue
+    val usage = service.getStorageUsage(Some(UserId1)).futureValue
 
-    usage.userId shouldBe Some("user-1")
+    usage.userId shouldBe Some(UserId1)
     usage.totalStorageBytes shouldBe 3072
     usage.filesCount shouldBe 1
   }
@@ -145,8 +146,8 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
   "AnalyticsService.exportReport" should "return event data for the period" in {
     val service = createService()
 
-    service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
-    service.trackEvent(EventType.FileUploaded, "user-1", "file-1", "file", Map.empty).futureValue
+    service.trackEvent(EventType.DocumentCreated, UserId1, "doc-1", "document", Map.empty).futureValue
+    service.trackEvent(EventType.FileUploaded, UserId1, FileId1, "file", Map.empty).futureValue
 
     val report = service.exportReport("json", "7d").futureValue
 
