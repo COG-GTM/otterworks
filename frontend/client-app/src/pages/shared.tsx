@@ -35,10 +35,10 @@ function SharedContent() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["files", "shared"],
-    queryFn: () => filesApi.getShared(),
+    queryFn: () => filesApi.getAllShared(),
   });
 
-  const rawFiles = data?.data || [];
+  const rawFiles = data ?? [];
   // Deduplicate by file id (multiple share records for same file)
   const seen = new Set<string>();
   const files = rawFiles.filter((f) => {

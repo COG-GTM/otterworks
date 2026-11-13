@@ -309,6 +309,16 @@ export const filesApi = {
       hasMore: (data.page ?? page) * (data.pageSize ?? pageSize) < (data.total ?? items.length),
     };
   },
+  // Fetches every page of shared files so client-side search/filters see the full list.
+  getAllShared: async (pageSize = 100, maxPages = 50): Promise<FileItem[]> => {
+    const all: FileItem[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const res = await filesApi.getShared(page, pageSize);
+      all.push(...res.data);
+      if (!res.hasMore || res.data.length === 0) break;
+    }
+    return all;
+  },
   getTrashed: async (page = 1, pageSize = 50): Promise<PaginatedResponse<FileItem>> => {
     const params: Record<string, string | number> = { page, page_size: pageSize };
     const ownerId = getOwnerIdFromJwt();
