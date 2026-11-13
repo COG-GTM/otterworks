@@ -685,6 +685,18 @@ pub async fn remove_share(
 
 // -- Folder Handlers --
 
+pub const MAX_FOLDER_NAME_CHARS: usize = 255;
+
+fn validate_folder_name(name: &str) -> Result<(), ServiceError> {
+    let len = name.chars().count();
+    if len > MAX_FOLDER_NAME_CHARS {
+        return Err(ServiceError::BadRequest(format!(
+            "folder name must be at most {MAX_FOLDER_NAME_CHARS} characters (got {len})"
+        )));
+    }
+    Ok(())
+}
+
 pub async fn list_folders(
     req: HttpRequest,
     meta: web::Data<MetadataClient>,
@@ -699,6 +711,8 @@ pub async fn create_folder(
     meta: web::Data<MetadataClient>,
     body: web::Json<CreateFolderRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    validate_folder_name(&body.name)?;
+
     let now = Utc::now();
     let folder = Folder {
         id: Uuid::new_v4(),
@@ -736,6 +750,10 @@ pub async fn update_folder(
         .into_inner()
         .parse()
         .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+
+    if let Some(name) = &body.name {
+        validate_folder_name(name)?;
+    }
 
     let folder = meta
         .update_folder(&folder_id, body.name.clone(), body.parent_id)
@@ -838,5 +856,72 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    async fn unreachable_metadata_client() -> web::Data<MetadataClient> {
+        // Unroutable endpoint: these requests must be rejected before DynamoDB is called.
+        let meta = MetadataClient::new(&crate::config::AwsConfig {
+            region: "us-east-1".into(),
+            endpoint_url: Some("http://127.0.0.1:9".into()),
+            s3_bucket: "test".into(),
+            dynamodb_table: "test-files".into(),
+            dynamodb_folders_table: "test-folders".into(),
+            dynamodb_versions_table: "test-versions".into(),
+            dynamodb_shares_table: "test-shares".into(),
+        })
+        .await;
+        web::Data::new(meta)
+    }
+
+    async fn assert_name_too_long(resp: actix_web::dev::ServiceResponse, len: usize) {
+        assert_eq!(resp.status(), actix_web::http::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = actix_web::test::read_body_json(resp).await;
+        assert_eq!(body["error"], "bad_request");
+        assert_eq!(
+            body["message"],
+            format!("Bad request: folder name must be at most 255 characters (got {len})")
+        );
+    }
+
+    #[actix_rt::test]
+    async fn test_create_folder_rejects_name_over_255_chars() {
+        let app = actix_web::test::init_service(
+            actix_web::App::new()
+                .app_data(unreachable_metadata_client().await)
+                .route("/folders", web::post().to(create_folder)),
+        )
+        .await;
+        let req = actix_web::test::TestRequest::post()
+            .uri("/folders")
+            .set_json(serde_json::json!({
+                "name": "a".repeat(256),
+                "owner_id": Uuid::new_v4(),
+            }))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_name_too_long(resp, 256).await;
+    }
+
+    #[actix_rt::test]
+    async fn test_update_folder_rejects_name_over_255_chars() {
+        let app = actix_web::test::init_service(
+            actix_web::App::new()
+                .app_data(unreachable_metadata_client().await)
+                .route("/folders/{id}", web::put().to(update_folder)),
+        )
+        .await;
+        let req = actix_web::test::TestRequest::put()
+            .uri(&format!("/folders/{}", Uuid::new_v4()))
+            .set_json(serde_json::json!({ "name": "é".repeat(256) }))
+            .to_request();
+        let resp = actix_web::test::call_service(&app, req).await;
+        assert_name_too_long(resp, 256).await;
+    }
+
+    #[test]
+    fn test_validate_folder_name_boundary() {
+        assert!(validate_folder_name(&"a".repeat(MAX_FOLDER_NAME_CHARS)).is_ok());
+        assert!(validate_folder_name(&"é".repeat(MAX_FOLDER_NAME_CHARS)).is_ok());
+        assert!(validate_folder_name(&"a".repeat(MAX_FOLDER_NAME_CHARS + 1)).is_err());
     }
 }

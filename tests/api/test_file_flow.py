@@ -127,3 +127,37 @@ def test_file_validation_and_route_gaps(api_client):
         json={"name": "route probe", "owner_id": owner.id},
     )
     api_client.assert_gateway_route_available(folder_route_response, "/api/v1/folders")
+
+
+def test_folder_name_over_255_characters_is_rejected(api_client):
+    owner = api_client.register_user("folder-name-length")
+
+    max_name = "f" * 255
+    ok_response = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": max_name, "owner_id": owner.id},
+    )
+    api_client.assert_gateway_route_available(ok_response, "/api/v1/folders")
+    assert ok_response.status_code == 201, ok_response.text
+    folder = ok_response.json()
+    api_client.created_folders.append(folder["id"])
+    assert folder["name"] == max_name
+
+    too_long_create = api_client.client.post(
+        "/api/v1/folders",
+        headers=owner.auth_headers,
+        json={"name": "f" * 256, "owner_id": owner.id},
+    )
+    assert too_long_create.status_code == 400, too_long_create.text
+    body = api_client.assert_json_error(too_long_create)
+    assert "folder name must be at most 255 characters (got 256)" in body["message"]
+
+    too_long_rename = api_client.client.put(
+        f"/api/v1/folders/{folder['id']}",
+        headers=owner.auth_headers,
+        json={"name": "f" * 300},
+    )
+    assert too_long_rename.status_code == 400, too_long_rename.text
+    body = api_client.assert_json_error(too_long_rename)
+    assert "folder name must be at most 255 characters (got 300)" in body["message"]
