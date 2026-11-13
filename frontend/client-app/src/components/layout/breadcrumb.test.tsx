@@ -83,7 +83,7 @@ describe("Breadcrumb", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("closes the hidden-folder menu on Escape", () => {
+  it("supports keyboard navigation and restores focus on Escape", () => {
     renderBreadcrumb([
       { label: "Files", href: "/files" },
       folder("a", "Alpha"),
@@ -92,10 +92,22 @@ describe("Breadcrumb", () => {
       { label: "Delta" },
     ]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show hidden folders" }));
-    expect(screen.getByRole("menu")).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Show hidden folders" });
+    fireEvent.click(toggle);
+    const menu = screen.getByRole("menu");
+    const [alpha, bravo] = within(menu).getAllByRole("menuitem");
+    expect(alpha).toHaveFocus();
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(bravo).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(alpha).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(bravo).toHaveFocus();
+
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
   });
 
   it("truncates long names and exposes the full name as a title tooltip", () => {

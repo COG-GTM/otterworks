@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 import { ChevronRight, Home } from "lucide-react";
 
@@ -44,6 +44,15 @@ function CrumbLabel({ item }: { item: BreadcrumbItem }) {
 function HiddenItemsMenu({ items }: { items: BreadcrumbItem[] }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLSpanElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+
+  const menuItems = () =>
+    Array.from(menuRef.current?.querySelectorAll<HTMLElement>("a[role='menuitem']") ?? []);
+
+  useEffect(() => {
+    if (open) menuItems()[0]?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +60,10 @@ function HiddenItemsMenu({ items }: { items: BreadcrumbItem[] }) {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+        toggleRef.current?.focus();
+      }
     };
     document.addEventListener("mousedown", handlePointerDown);
     document.addEventListener("keydown", handleKeyDown);
@@ -61,9 +73,20 @@ function HiddenItemsMenu({ items }: { items: BreadcrumbItem[] }) {
     };
   }, [open]);
 
+  const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLUListElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const items = menuItems();
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const step = event.key === "ArrowDown" ? 1 : -1;
+    items[(current + step + items.length) % items.length].focus();
+  };
+
   return (
     <span ref={containerRef} className="relative flex items-center">
       <button
+        ref={toggleRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-label="Show hidden folders"
@@ -75,8 +98,10 @@ function HiddenItemsMenu({ items }: { items: BreadcrumbItem[] }) {
       </button>
       {open && (
         <ul
+          ref={menuRef}
           role="menu"
           aria-label="Hidden folders"
+          onKeyDown={handleMenuKeyDown}
           className="absolute left-0 top-full z-20 mt-1 min-w-[10rem] max-w-xs rounded-md border border-gray-200 bg-white py-1 shadow-lg"
         >
           {items.map((item, index) => (
