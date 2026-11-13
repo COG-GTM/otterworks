@@ -37,6 +37,7 @@ interface RawFileItem {
   ownerId: string;
   version: number;
   isTrashed: boolean;
+  trashedAt?: string;
   createdAt: string;
   updatedAt: string;
   sharedWith?: RawShareItem[];
@@ -50,7 +51,7 @@ interface RawFileListResponse {
 }
 
 // Normalize a single file from the file-service format to the frontend FileItem shape
-function mapRawFile(raw: RawFileItem): FileItem {
+export function mapRawFile(raw: RawFileItem): FileItem {
   return {
     id: raw.id,
     name: raw.name,
@@ -61,6 +62,9 @@ function mapRawFile(raw: RawFileItem): FileItem {
     ownerName: "",
     isFolder: false,
     isTrashed: raw.isTrashed ?? false,
+    // The file-service has no trashed_at column; trashing sets updated_at, and a
+    // trashed file cannot be edited, so updatedAt is the time it was trashed.
+    trashedAt: raw.trashedAt ?? (raw.isTrashed && raw.updatedAt ? raw.updatedAt : undefined),
     path: `/${raw.name}`,
     downloadUrl: undefined,
     sharedWith: (() => {

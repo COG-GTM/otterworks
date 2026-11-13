@@ -17,7 +17,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { filesApi } from "@/lib/api";
-import { formatFileSize, formatRelativeTime } from "@/lib/utils";
+import { cn, formatFileSize } from "@/lib/utils";
+import { getTrashRetention } from "@/lib/trash-retention";
 import toast from "react-hot-toast";
 import type { FileItem } from "@/types";
 
@@ -191,6 +192,7 @@ function TrashRow({
   isRestoring: boolean;
 }>) {
   const Icon = getTrashIcon(item);
+  const retention = getTrashRetention(item.trashedAt);
 
   return (
     <div className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition">
@@ -199,9 +201,16 @@ function TrashRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
-        <p className="text-xs text-gray-500">
+        <p
+          className={cn(
+            "text-xs",
+            retention?.isUrgent ? "text-red-600 font-medium" : "text-gray-500",
+          )}
+          data-testid="trash-retention"
+        >
           {item.isFolder ? "Folder" : formatFileSize(item.size)}
-          {item.trashedAt && ` \u00B7 Deleted ${formatRelativeTime(item.trashedAt)}`}
+          {retention &&
+            ` \u00B7 ${retention.deletedLabel} \u00B7 ${retention.remainingLabel}`}
         </p>
       </div>
       <div className="flex items-center gap-1">
