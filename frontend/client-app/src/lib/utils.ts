@@ -12,8 +12,10 @@ export function formatFileSize(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-export function formatRelativeTime(dateString: string): string {
+export function formatRelativeTime(dateString: string | null | undefined): string {
+  if (!dateString) return "\u2014";
   const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return "\u2014";
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffSeconds = Math.floor(diffMs / 1000);
@@ -21,6 +23,8 @@ export function formatRelativeTime(dateString: string): string {
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
 
+  // Timestamps more than a minute in the future (e.g. clock skew) show the date.
+  if (diffSeconds < -60) return date.toLocaleDateString();
   if (diffSeconds < 60) return "just now";
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
