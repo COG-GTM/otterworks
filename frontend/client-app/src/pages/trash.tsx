@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useMutationState, useQueryClient } from "@tanstack/react-query";
 import {
   Trash2,
   RotateCcw,
@@ -20,6 +20,8 @@ import { filesApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { FileItem } from "@/types";
+
+const RESTORE_MUTATION_KEY = ["trash", "restore"];
 
 export default function TrashPage() {
   return (
@@ -42,6 +44,7 @@ function TrashContent() {
   });
 
   const restoreMutation = useMutation({
+    mutationKey: RESTORE_MUTATION_KEY,
     mutationFn: filesApi.restore,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["files"] });
@@ -50,6 +53,11 @@ function TrashContent() {
       toast.success("File restored");
     },
     onError: () => toast.error("Failed to restore file"),
+  });
+
+  const restoringIds = useMutationState({
+    filters: { mutationKey: RESTORE_MUTATION_KEY, status: "pending" },
+    select: (mutation) => mutation.state.variables as string,
   });
 
   const permanentDeleteMutation = useMutation({
@@ -133,7 +141,7 @@ function TrashContent() {
               item={item}
               onRestore={() => restoreMutation.mutate(item.id)}
               onDelete={() => setDeleteTarget(item)}
-              isRestoring={restoreMutation.isPending}
+              isRestoring={restoringIds.includes(item.id)}
             />
           ))}
         </div>
