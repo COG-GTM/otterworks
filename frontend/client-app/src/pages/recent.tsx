@@ -81,7 +81,7 @@ function RecentContent() {
         <div
           role="group"
           aria-label="Filter recent items"
-          className="inline-flex self-start sm:self-auto rounded-lg border border-gray-300 bg-gray-50 p-0.5"
+          className="inline-flex self-start sm:self-auto rounded-lg border border-gray-300 bg-white p-0.5"
         >
           {RECENT_FILTERS.map(({ value, label }) => (
             <button
@@ -92,7 +92,7 @@ function RecentContent() {
               className={cn(
                 "px-3 py-1.5 text-sm font-medium rounded-md transition",
                 filter === value
-                  ? "bg-white text-otter-700 shadow-sm"
+                  ? "bg-otter-600 text-white shadow-sm"
                   : "text-gray-600 hover:text-gray-900"
               )}
             >
