@@ -145,7 +145,7 @@ function normalizeFileItem(raw: Record<string, unknown>): FileItem {
     ...raw,
     size: (raw.sizeBytes ?? raw.size ?? 0) as number,
     mimeType: (raw.mimeType ?? raw.contentType ?? "") as string,
-    parentId: (raw.folderId ?? raw.parentId ?? null) as string | null,
+    parentId: (raw.folderId ?? raw.parentId ?? raw.parent_id ?? null) as string | null,
     isFolder: (raw.isFolder ?? false) as boolean,
     ownerName: (raw.ownerName ?? "") as string,
     path: (raw.path ?? "") as string,
@@ -247,6 +247,19 @@ export const filesApi = {
   getFolder: async (id: string): Promise<FileItem> => {
     const { data } = await apiClient.get<Record<string, unknown>>(`/folders/${id}`);
     return normalizeFileItem({ ...data, isFolder: true });
+  },
+  // Walks up from `id` to the root and returns the chain ordered root-first.
+  getFolderAncestors: async (id: string, maxDepth = 32): Promise<FileItem[]> => {
+    const chain: FileItem[] = [];
+    const seen = new Set<string>();
+    let nextId: string | null = id;
+    while (nextId && !seen.has(nextId) && chain.length < maxDepth) {
+      seen.add(nextId);
+      const folder = await filesApi.getFolder(nextId);
+      chain.unshift(folder);
+      nextId = folder.parentId;
+    }
+    return chain;
   },
   deleteFolder: async (id: string): Promise<void> => {
     await apiClient.delete(`/folders/${id}`);
