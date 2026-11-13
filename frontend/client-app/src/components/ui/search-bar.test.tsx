@@ -58,6 +58,24 @@ describe("SearchBar", () => {
     expect(searchInput()).not.toHaveFocus();
   });
 
+  it("ignores / while a modal dialog is open", () => {
+    render(
+      <MemoryRouter>
+        <SearchBar />
+        <div role="dialog" aria-modal="true">
+          <button>Cancel</button>
+        </div>
+      </MemoryRouter>
+    );
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+
+    fireEvent.keyDown(cancel, { key: "/" });
+
+    expect(cancel).toHaveFocus();
+    expect(searchInput()).not.toHaveFocus();
+  });
+
   it("clears and blurs the search bar on Escape", () => {
     renderSearchBar();
     fireEvent.keyDown(document.body, { key: "/" });

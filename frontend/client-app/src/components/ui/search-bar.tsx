@@ -12,6 +12,14 @@ function isTypingTarget(target: EventTarget | null): boolean {
   );
 }
 
+function isModalOpen(): boolean {
+  return (
+    document.querySelector(
+      '[aria-modal="true"], [role="dialog"], [role="alertdialog"]'
+    ) !== null
+  );
+}
+
 export function SearchBar() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
@@ -21,7 +29,7 @@ export function SearchBar() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "/" || e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target) || isModalOpen()) return;
       e.preventDefault();
       inputRef.current?.focus();
     };
