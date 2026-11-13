@@ -19,8 +19,10 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi, documentsApi, activityApi, storageApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
 import type { ActivityItem } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function DashboardPage() {
+  useDocumentTitle("Dashboard");
   return (
     <AppShell>
       <ErrorBoundary>

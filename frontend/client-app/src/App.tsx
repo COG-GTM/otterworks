@@ -23,12 +23,14 @@ import PrivacyPage from "@/pages/privacy";
 import BillingPlansPage from "@/features/billing/plans-page";
 import BillingEntitlementPage from "@/features/billing/entitlement-page";
 import BillingChangePlanPage from "@/features/billing/change-plan-page";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const BILLING_FIXTURE_ENABLED =
   import.meta.env.VITE_ENABLE_BILLING_FIXTURE === "true" ||
   import.meta.env.DEV;
 
 function NotFound() {
+  useDocumentTitle("Page not found");
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">
       <h1 className="text-2xl font-semibold text-gray-900">404 — Page not found</h1>

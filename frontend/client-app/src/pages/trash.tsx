@@ -20,8 +20,10 @@ import { filesApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
 import toast from "react-hot-toast";
 import type { FileItem } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function TrashPage() {
+  useDocumentTitle("Trash");
   return (
     <AppShell>
       <ErrorBoundary>

@@ -13,8 +13,10 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { ViewMode } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function StarredPage() {
+  useDocumentTitle("Starred");
   return (
     <AppShell>
       <ErrorBoundary>

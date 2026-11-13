@@ -25,6 +25,7 @@ import { ShareDialog } from "@/components/files/share-dialog";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
 import { filesApi, authApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 export default function FileDetailPage() {
   return (
@@ -46,6 +47,7 @@ function FileDetailContent() {
     queryKey: ["files", fileId],
     queryFn: () => filesApi.get(fileId),
   });
+  useDocumentTitle(file?.name ?? "File");
 
   const { data: presignedUrl, isLoading: isUrlLoading } = useQuery({
     queryKey: ["files", fileId, "download-url"],

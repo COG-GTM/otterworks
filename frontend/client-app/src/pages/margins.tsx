@@ -25,6 +25,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { marginsApi } from "@/lib/api";
 import type { MarginRow } from "@/lib/api";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const CHART_FROM_DAYS = 180;
 
@@ -35,6 +36,7 @@ function chartFromDate(): string {
 }
 
 export default function MarginsPage() {
+  useDocumentTitle("Margins");
   return (
     <AppShell>
       <ErrorBoundary>

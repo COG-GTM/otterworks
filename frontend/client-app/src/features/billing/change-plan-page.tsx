@@ -7,10 +7,12 @@ import {
   type PlanChangeResult,
 } from "./api";
 import { BillingAlert } from "./alert";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export default function BillingChangePlanPage() {
+  useDocumentTitle("Change plan");
   const { tenantId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();

@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi, documentsApi } from "@/lib/api";
 import type { FileItem, Document } from "@/types";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 type RecentItem =
   | { kind: "file"; data: FileItem; updatedAt: string }
@@ -44,6 +45,7 @@ function groupByTime(items: RecentItem[]): Record<string, RecentItem[]> {
 }
 
 export default function RecentPage() {
+  useDocumentTitle("Recent");
   return (
     <AppShell>
       <ErrorBoundary>

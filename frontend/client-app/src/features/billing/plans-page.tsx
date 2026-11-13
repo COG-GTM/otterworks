@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { billingApi, type Plan } from "./api";
 import { BillingAlert } from "./alert";
+import { useDocumentTitle } from "@/hooks/use-document-title";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 
 export default function BillingPlansPage() {
+  useDocumentTitle("Plans");
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
