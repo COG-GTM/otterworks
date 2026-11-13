@@ -141,6 +141,22 @@ pub struct ListFoldersResponse {
     pub folders: Vec<Folder>,
 }
 
+#[derive(Debug, Serialize, PartialEq)]
+pub struct FileTypeStats {
+    pub file_type: String,
+    pub file_count: u64,
+    pub total_size_bytes: u64,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct FolderStatsResponse {
+    pub folder_id: Uuid,
+    pub subfolder_count: u64,
+    pub total_files: u64,
+    pub total_size_bytes: u64,
+    pub by_type: Vec<FileTypeStats>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateFolderRequest {
     pub name: String,

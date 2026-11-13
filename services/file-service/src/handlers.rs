@@ -14,6 +14,7 @@ use crate::alerts;
 use crate::config::AppConfig;
 use crate::errors::ServiceError;
 use crate::events::EventPublisher;
+use crate::folder_stats;
 use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
@@ -725,6 +726,31 @@ pub async fn get_folder(
 
     let folder = meta.get_folder(&folder_id).await?;
     Ok(HttpResponse::Ok().json(folder))
+}
+
+pub async fn get_folder_stats(
+    req: HttpRequest,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let user_id = resolve_owner_id(&req, None)
+        .ok_or_else(|| ServiceError::Unauthorized("missing user context".into()))?;
+
+    let root = meta.get_folder(&folder_id).await?;
+    folder_stats::ensure_folder_access(&root, &user_id)?;
+
+    let (folders, files) = futures_util::future::try_join(
+        meta.list_folders_by_owner(&user_id),
+        meta.list_files(None, None, false),
+    )
+    .await?;
+
+    let stats = folder_stats::compute_folder_stats(&root, &user_id, &folders, &files)?;
+    Ok(HttpResponse::Ok().json(stats))
 }
 
 pub async fn update_folder(

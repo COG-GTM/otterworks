@@ -101,6 +101,73 @@ def test_file_folder_upload_lifecycle_share_and_download(api_client):
     api_client.created_folders.remove(folder["id"])
 
 
+def test_folder_stats_breaks_down_nested_files_by_type(api_client):
+    owner = api_client.register_user("folder-stats-owner")
+    outsider = api_client.register_user("folder-stats-outsider")
+
+    def create_folder(name, parent_id=None):
+        response = api_client.client.post(
+            "/api/v1/folders",
+            headers=owner.auth_headers,
+            json={"name": f"{name} {api_client.run_id}", "owner_id": owner.id, "parent_id": parent_id},
+        )
+        assert response.status_code == 201, response.text
+        folder_id = response.json()["id"]
+        api_client.created_folders.append(folder_id)
+        return folder_id
+
+    def upload(folder_id, name, body, content_type):
+        response = api_client.client.post(
+            "/api/v1/files/upload",
+            headers=owner.auth_headers,
+            files={"file": (name, body, content_type)},
+            data={"folder_id": folder_id},
+        )
+        assert response.status_code == 201, response.text
+        api_client.created_files.append(response.json()["file"]["id"])
+
+    root_id = create_folder("Stats Root")
+    child_id = create_folder("Stats Child", root_id)
+    grandchild_id = create_folder("Stats Grandchild", child_id)
+    empty_id = create_folder("Stats Empty")
+
+    upload(root_id, "a.txt", b"12345", "text/plain")
+    upload(child_id, "b.txt", b"123", "text/plain")
+    upload(grandchild_id, "c.csv", b"1,2,3,4", "text/csv")
+
+    stats_response = api_client.client.get(f"/api/v1/folders/{root_id}/stats", headers=owner.auth_headers)
+    assert stats_response.status_code == 200, stats_response.text
+    stats = stats_response.json()
+    assert stats["folder_id"] == root_id
+    assert stats["subfolder_count"] == 2
+    assert stats["total_files"] == 3
+    assert stats["total_size_bytes"] == 15
+    by_type = {item["file_type"]: item for item in stats["by_type"]}
+    assert by_type["text/plain"]["file_count"] == 2
+    assert by_type["text/plain"]["total_size_bytes"] == 8
+    assert by_type["text/csv"]["file_count"] == 1
+    assert by_type["text/csv"]["total_size_bytes"] == 7
+
+    empty_response = api_client.client.get(f"/api/v1/folders/{empty_id}/stats", headers=owner.auth_headers)
+    assert empty_response.status_code == 200, empty_response.text
+    assert empty_response.json() == {
+        "folder_id": empty_id,
+        "subfolder_count": 0,
+        "total_files": 0,
+        "total_size_bytes": 0,
+        "by_type": [],
+    }
+
+    forbidden_response = api_client.client.get(f"/api/v1/folders/{root_id}/stats", headers=outsider.auth_headers)
+    assert forbidden_response.status_code == 404, forbidden_response.text
+
+    unknown_response = api_client.client.get(
+        "/api/v1/folders/00000000-0000-0000-0000-000000000000/stats",
+        headers=owner.auth_headers,
+    )
+    assert unknown_response.status_code == 404, unknown_response.text
+
+
 @pytest.mark.gap_revealer
 def test_file_validation_and_route_gaps(api_client):
     owner = api_client.register_user("file-validation")
