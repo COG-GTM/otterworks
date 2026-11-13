@@ -85,6 +85,12 @@ function FileBrowserContent() {
     enabled: !!folderId,
   });
 
+  const { data: ancestorFolders } = useQuery({
+    queryKey: ["folders", "ancestors", folderId, currentFolder?.parentId ?? null],
+    queryFn: () => filesApi.getFolderAncestors(currentFolder!.parentId!),
+    enabled: !!currentFolder?.parentId,
+  });
+
   const isLoading = filesLoading || foldersLoading;
 
   const deleteMutation = useMutation({
@@ -161,7 +167,14 @@ function FileBrowserContent() {
   }, [queryClient]);
 
   const breadcrumbs: BreadcrumbItem[] | null = folderId
-    ? [{ label: "Files", href: "/files" }, { label: currentFolder?.name ?? "\u2026" }]
+    ? [
+        { label: "Files", href: "/files" },
+        ...(ancestorFolders ?? []).map((folder) => ({
+          label: folder.name,
+          href: `/files?folder=${encodeURIComponent(folder.id)}`,
+        })),
+        { label: currentFolder?.name ?? "\u2026" },
+      ]
     : null;
 
   const folders = folderItems ?? [];
