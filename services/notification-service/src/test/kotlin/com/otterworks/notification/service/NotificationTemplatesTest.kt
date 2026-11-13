@@ -1,6 +1,12 @@
 package com.otterworks.notification.service
 
 import com.otterworks.notification.model.SqsNotificationMessage
+import com.otterworks.notification.service.NotificationTestFixtures.COMMENT_ADDED
+import com.otterworks.notification.service.NotificationTestFixtures.DOCUMENT_EDITED
+import com.otterworks.notification.service.NotificationTestFixtures.FILE_SHARED
+import com.otterworks.notification.service.NotificationTestFixtures.OWNER_1
+import com.otterworks.notification.service.NotificationTestFixtures.TIMESTAMP
+import com.otterworks.notification.service.NotificationTestFixtures.USER_MENTIONED
 import com.otterworks.notification.template.NotificationTemplates
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,11 +17,11 @@ class NotificationTemplatesTest {
     @Test
     fun `render file_shared event`() {
         val event = SqsNotificationMessage(
-            eventType = "file_shared",
+            eventType = FILE_SHARED,
             fileId = "file-abc",
             ownerId = "alice",
             sharedWithUserId = "bob",
-            timestamp = "2024-01-01T00:00:00Z",
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
@@ -30,12 +36,12 @@ class NotificationTemplatesTest {
     @Test
     fun `render comment_added event`() {
         val event = SqsNotificationMessage(
-            eventType = "comment_added",
+            eventType = COMMENT_ADDED,
             actorId = "commenter-1",
             documentId = "doc-123",
             commentId = "c-1",
-            userId = "owner-1",
-            timestamp = "2024-01-01T00:00:00Z",
+            userId = OWNER_1,
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
@@ -48,11 +54,11 @@ class NotificationTemplatesTest {
     @Test
     fun `render document_edited event`() {
         val event = SqsNotificationMessage(
-            eventType = "document_edited",
+            eventType = DOCUMENT_EDITED,
             actorId = "editor-1",
             documentId = "doc-456",
-            userId = "owner-1",
-            timestamp = "2024-01-01T00:00:00Z",
+            userId = OWNER_1,
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
@@ -65,11 +71,11 @@ class NotificationTemplatesTest {
     @Test
     fun `render user_mentioned event`() {
         val event = SqsNotificationMessage(
-            eventType = "user_mentioned",
+            eventType = USER_MENTIONED,
             actorId = "mentioner-1",
             documentId = "doc-789",
             mentionedUserId = "mentioned-user",
-            timestamp = "2024-01-01T00:00:00Z",
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
@@ -83,7 +89,7 @@ class NotificationTemplatesTest {
     fun `render unknown event type returns default`() {
         val event = SqsNotificationMessage(
             eventType = "unknown_event",
-            timestamp = "2024-01-01T00:00:00Z",
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
@@ -95,12 +101,12 @@ class NotificationTemplatesTest {
     @Test
     fun `render uses ownerId as fallback for actorId`() {
         val event = SqsNotificationMessage(
-            eventType = "file_shared",
+            eventType = FILE_SHARED,
             fileId = "file-xyz",
             ownerId = "fallback-owner",
             sharedWithUserId = "bob",
             actorId = "",
-            timestamp = "2024-01-01T00:00:00Z",
+            timestamp = TIMESTAMP,
         )
 
         val rendered = NotificationTemplates.render(event)
