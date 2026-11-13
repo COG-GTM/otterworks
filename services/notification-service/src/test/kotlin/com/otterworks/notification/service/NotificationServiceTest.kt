@@ -5,6 +5,19 @@ import com.otterworks.notification.model.Notification
 import com.otterworks.notification.model.NotificationPreference
 import com.otterworks.notification.model.SqsNotificationMessage
 import com.otterworks.notification.repository.NotificationRepository
+import com.otterworks.notification.service.NotificationTestFixtures.COMMENT_ADDED
+import com.otterworks.notification.service.NotificationTestFixtures.DOCUMENT_EDITED
+import com.otterworks.notification.service.NotificationTestFixtures.DOC_1
+import com.otterworks.notification.service.NotificationTestFixtures.DOC_OWNER
+import com.otterworks.notification.service.NotificationTestFixtures.FILE_123
+import com.otterworks.notification.service.NotificationTestFixtures.FILE_SHARED
+import com.otterworks.notification.service.NotificationTestFixtures.NOTIFICATION_ID
+import com.otterworks.notification.service.NotificationTestFixtures.OWNER_1
+import com.otterworks.notification.service.NotificationTestFixtures.TIMESTAMP
+import com.otterworks.notification.service.NotificationTestFixtures.USER_1
+import com.otterworks.notification.service.NotificationTestFixtures.USER_2
+import com.otterworks.notification.service.NotificationTestFixtures.USER_3
+import com.otterworks.notification.service.NotificationTestFixtures.USER_MENTIONED
 import com.otterworks.notification.websocket.WebSocketManager
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -245,21 +258,5 @@ class NotificationServiceTest {
         service.processEvent(event)
 
         coVerify { webSocketManager.pushNotification(USER_3, any()) }
-    }
-
-    private companion object {
-        private const val TIMESTAMP = "2024-01-01T00:00:00Z"
-        private const val USER_1 = "user-1"
-        private const val USER_2 = "user-2"
-        private const val USER_3 = "user-3"
-        private const val FILE_SHARED = "file_shared"
-        private const val DOCUMENT_EDITED = "document_edited"
-        private const val COMMENT_ADDED = "comment_added"
-        private const val USER_MENTIONED = "user_mentioned"
-        private const val DOC_1 = "doc-1"
-        private const val DOC_OWNER = "doc-owner"
-        private const val OWNER_1 = "owner-1"
-        private const val FILE_123 = "file-123"
-        private const val NOTIFICATION_ID = "n-1"
     }
 }
