@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -15,7 +16,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { notificationsApi } from "@/lib/api";
 import { formatRelativeTime, cn, getInitials, generateColor } from "@/lib/utils";
-import type { Notification } from "@/types";
+import {
+  NOTIFICATION_TABS,
+  countUnread,
+  filterNotifications,
+  type NotificationTab,
+} from "@/lib/notification-filters";
+import type { Notification, PaginatedResponse } from "@/types";
 
 export default function NotificationsPage() {
   return (
@@ -29,6 +36,7 @@ export default function NotificationsPage() {
 
 function NotificationsContent() {
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<NotificationTab>("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["notifications"],
@@ -37,7 +45,25 @@ function NotificationsContent() {
 
   const markReadMutation = useMutation({
     mutationFn: notificationsApi.markRead,
-    onSuccess: () => {
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["notifications"] });
+      const previous = queryClient.getQueryData<PaginatedResponse<Notification>>([
+        "notifications",
+      ]);
+      if (previous) {
+        queryClient.setQueryData<PaginatedResponse<Notification>>(["notifications"], {
+          ...previous,
+          data: previous.data.map((n) => (n.id === id ? { ...n, read: true } : n)),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["notifications"], context.previous);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
@@ -50,7 +76,8 @@ function NotificationsContent() {
   });
 
   const notifications = data?.data || [];
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = countUnread(notifications);
+  const visibleNotifications = filterNotifications(notifications, activeTab);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -76,26 +103,81 @@ function NotificationsContent() {
         )}
       </div>
 
+      {/* Tabs */}
+      <div
+        role="tablist"
+        aria-label="Filter notifications"
+        className="flex gap-1 border-b border-gray-200"
+      >
+        {NOTIFICATION_TABS.map((tab) => {
+          const selected = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`notifications-tab-${tab.id}`}
+              aria-selected={selected}
+              aria-controls="notifications-panel"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 -mb-px text-sm font-medium border-b-2 transition",
+                selected
+                  ? "border-otter-600 text-otter-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              )}
+            >
+              {tab.label}
+              {tab.id === "unread" && (
+                <span
+                  data-testid="unread-tab-count"
+                  className={cn(
+                    "min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-xs leading-none",
+                    selected ? "bg-otter-100 text-otter-700" : "bg-gray-100 text-gray-600"
+                  )}
+                >
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Notifications */}
-      {isLoading ? (
-        <PageLoader />
-      ) : notifications.length === 0 ? (
-        <EmptyState
-          icon={Bell}
-          title="No notifications"
-          description="You&apos;re all caught up! New notifications will appear here."
-        />
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-          {notifications.map((notification) => (
-            <NotificationRow
-              key={notification.id}
-              notification={notification}
-              onMarkRead={() => markReadMutation.mutate(notification.id)}
+      <div
+        role="tabpanel"
+        id="notifications-panel"
+        aria-labelledby={`notifications-tab-${activeTab}`}
+      >
+        {isLoading ? (
+          <PageLoader />
+        ) : visibleNotifications.length === 0 ? (
+          activeTab === "unread" ? (
+            <EmptyState
+              icon={CheckCheck}
+              title="You're all caught up"
+              description="You have no unread notifications."
             />
-          ))}
-        </div>
-      )}
+          ) : (
+            <EmptyState
+              icon={Bell}
+              title="No notifications"
+              description="New notifications will appear here."
+            />
+          )
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+            {visibleNotifications.map((notification) => (
+              <NotificationRow
+                key={notification.id}
+                notification={notification}
+                onMarkRead={() => markReadMutation.mutate(notification.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
