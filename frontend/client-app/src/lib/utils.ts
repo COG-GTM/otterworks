@@ -40,13 +40,17 @@ export function getFileIcon(mimeType: string): string {
   return "file";
 }
 
-export function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+export function getInitials(name?: string | null, email?: string | null): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length > 0) {
+    return words
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  }
+  const trimmedEmail = (email ?? "").trim();
+  return trimmedEmail ? trimmedEmail[0].toUpperCase() : "?";
 }
 
 export function generateColor(seed: string): string {
