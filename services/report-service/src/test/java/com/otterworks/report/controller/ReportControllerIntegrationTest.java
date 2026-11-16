@@ -184,6 +184,13 @@ public class ReportControllerIntegrationTest {
                 .andExpect(jsonPath("$.reports").isArray());
     }
 
+    @Test
+    public void listReportsAcceptsTrailingSlash() throws Exception {
+        mockMvc.perform(get("/api/v1/reports/").param("status", "COMPLETED"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reports").isArray());
+    }
+
     // ---- GET /api/v1/reports/{id}/download ----
 
     @Test
