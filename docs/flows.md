@@ -18,7 +18,7 @@ flowchart LR
   G --> AN[Analytics Service]
   G --> R[Report Service]
   G --> AD[Admin Service]
-  W -->|/billing-api| B[Billing Service]
+  W -.->|/billing-api, Vite proxy| B["Billing Service<br/>(procs stack only, not deployed to tenants)"]
   F --> S3[S3]
   F --> DD[DynamoDB]
   D --> PG[PostgreSQL]

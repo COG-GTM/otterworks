@@ -19,7 +19,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
      |    Electron desktop        |                          +-------------+------------+
      +------+--------------+------+                                        |
             |              |                                               |
-            |              +--- /billing-api (bypasses gateway) ----------------------+
+            |              +--- /billing-api (Vite proxy, not via gateway) -----------+
             |                                                              |          |
      +------+--------------------------------------------------------------+-----+    |
      |                      API Gateway (Go / Chi)  :8080                        |    |
@@ -28,13 +28,14 @@ OtterWorks is a collaborative file storage and document editing platform (functi
      +--+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--+         +----------+--+
      |Auth ||File||Doc ||Co- ||No- ||Se- ||An- ||Ad- ||Au- ||Re- |         | Billing Svc |
      |Svc  ||Svc ||Svc ||llab||tif ||arch||alyt||min ||dit ||port|         | Py/FastAPI  |
-     |Java ||Rust||Py  ||TS  ||Kt  ||Py  ||Scal||Ruby||C#  ||Java|         | (procs      |
-     +--+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--+         |  target)    |
+     |Java ||Rust||Py  ||TS  ||Kt  ||Py  ||Scal||Ruby||C#  ||Java|         | NOT deployed|
+     +--+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--++-+--+         | to tenants  |
         |     |     |     |     |     |     |     |     |     |            +------+------+
-     +--+-----+-----+-----+-----+-----+-----+-----+-----+-----+-------------------+------+
-     |                     Data & Infrastructure                                         |
-     |  PostgreSQL | Redis | DynamoDB | S3 | MeiliSearch | SQS/SNS | Cognito              |
-     +-----------------------------------------------------------------------------------+
+     +--+-----+-----+-----+-----+-----+-----+-----+-----+-----+--------+          |
+     |                      Data & Infrastructure                      |   +------+------+
+     |  PostgreSQL | Redis | DynamoDB | S3 | MeiliSearch               |   | Billing PG  |
+     |  SQS/SNS | Cognito                                              |   | (procs only)|
+     +-----------------------------------------------------------------+   +-------------+
         Admin Svc --> Slack alerts + Devin incident-triage sessions
 
   Migration "before-state" fixtures (outside the Helm/EKS tenant path):
@@ -44,10 +45,16 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 ```
 
 The gateway routes `/api/v1/<prefix>` to the 10 backend services above
-(`services/api-gateway/internal/config/config.go`). The billing service is not behind the
-gateway: the web app reaches it at `/billing-api` (`frontend/client-app/vite.config.ts`).
-Each demo tenant runs all 11 deployable backends + both frontends in its own namespace; see
-`demo-platform/docs/architecture.md` and `demo-platform/docs/platform-vs-multitenant.png`.
+(`services/api-gateway/internal/config/config.go`). Each demo tenant runs the gateway, those
+10 services and both frontends in its own namespace (`BACKEND_SERVICES` / `FRONTEND_SERVICES`
+in `scripts/lib/tenant-common.sh`); see `demo-platform/docs/architecture.md` and
+`demo-platform/docs/platform-vs-multitenant.png`.
+
+The billing service is **not deployed to tenants**: it has no Helm chart and is not in
+`BACKEND_SERVICES`. It runs only in the stored-procedure parity stack
+(`docker-compose.procs.yml`) next to `legacy-billing`, against its own billing PostgreSQL, and
+the web app reaches it at `/billing-api` only through the Vite dev/preview proxy
+(`frontend/client-app/vite.config.ts`), not through the gateway.
 
 ## Services
 
