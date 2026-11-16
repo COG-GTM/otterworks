@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -15,7 +16,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { notificationsApi } from "@/lib/api";
 import { formatRelativeTime, cn, getInitials, generateColor } from "@/lib/utils";
+import { groupNotificationsByDay } from "@/lib/notification-groups";
 import type { Notification } from "@/types";
+
+type NotificationFilter = "all" | "unread";
+
+const FILTER_TABS: { key: NotificationFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "unread", label: "Unread" },
+];
 
 export default function NotificationsPage() {
   return (
@@ -29,6 +38,7 @@ export default function NotificationsPage() {
 
 function NotificationsContent() {
   const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<NotificationFilter>("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["notifications"],
@@ -49,8 +59,15 @@ function NotificationsContent() {
     },
   });
 
-  const notifications = data?.data || [];
+  const notifications = useMemo(() => data?.data ?? [], [data]);
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const groups = useMemo(
+    () =>
+      groupNotificationsByDay(
+        filter === "unread" ? notifications.filter((n) => !n.read) : notifications
+      ),
+    [notifications, filter]
+  );
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
@@ -76,26 +93,59 @@ function NotificationsContent() {
         )}
       </div>
 
+      {/* Filter tabs */}
+      <div role="tablist" aria-label="Filter notifications" className="flex gap-1 border-b border-gray-200">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={filter === tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={cn(
+              "px-4 py-2 text-sm font-medium -mb-px border-b-2 transition",
+              filter === tab.key
+                ? "border-otter-600 text-otter-600"
+                : "border-transparent text-gray-500 hover:text-gray-700"
+            )}
+          >
+            {tab.label}
+            {tab.key === "unread" && unreadCount > 0 && (
+              <span className="ml-1.5 text-xs text-gray-400">({unreadCount})</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Notifications */}
-      {isLoading ? (
-        <PageLoader />
-      ) : notifications.length === 0 ? (
+      {isLoading && <PageLoader />}
+      {!isLoading && groups.length === 0 && (
         <EmptyState
           icon={Bell}
-          title="No notifications"
+          title={filter === "unread" ? "No unread notifications" : "No notifications"}
           description="You&apos;re all caught up! New notifications will appear here."
         />
-      ) : (
-        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
-          {notifications.map((notification) => (
-            <NotificationRow
-              key={notification.id}
-              notification={notification}
-              onMarkRead={() => markReadMutation.mutate(notification.id)}
-            />
-          ))}
-        </div>
       )}
+      {!isLoading &&
+        groups.map((group) => (
+          <section key={group.key} aria-labelledby={`notifications-${group.key}`}>
+            <h2
+              id={`notifications-${group.key}`}
+              className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2"
+            >
+              {group.label}
+            </h2>
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+              {group.notifications.map((notification) => (
+                <NotificationRow
+                  key={notification.id}
+                  notification={notification}
+                  onMarkRead={() => markReadMutation.mutate(notification.id)}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
     </div>
   );
 }
