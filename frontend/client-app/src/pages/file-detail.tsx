@@ -22,6 +22,7 @@ import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ShareDialog } from "@/components/files/share-dialog";
+import { CopyLinkButton } from "@/components/files/copy-link-button";
 import { TextFilePreview, PdfFilePreview, ImageFilePreview } from "@/components/files/file-preview";
 import { filesApi, authApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime, getInitials, generateColor } from "@/lib/utils";
@@ -182,6 +183,7 @@ function FileDetailContent() {
             {isDownloading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
             {isDownloading ? "Downloading..." : "Download"}
           </button>
+          <CopyLinkButton />
           <button
             onClick={() => setShowShareDialog(true)}
             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
