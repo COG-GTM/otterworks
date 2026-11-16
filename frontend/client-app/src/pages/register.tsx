@@ -7,12 +7,16 @@ import { Eye, EyeOff, UserPlus } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/ui/logo";
+import { PasswordStrengthMeter } from "@/components/ui/password-strength-meter";
+import { MIN_PASSWORD_LENGTH } from "@/lib/password-strength";
 
 const registerSchema = z
   .object({
     displayName: z.string().min(2, "Name must be at least 2 characters"),
     email: z.string().email("Please enter a valid email"),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: z
+      .string()
+      .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`),
     confirmPassword: z.string().min(1, "Please confirm your password"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -33,10 +37,12 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
   });
+  const password = watch("password") ?? "";
 
   const onSubmit = async (data: RegisterForm) => {
     setLoading(true);
@@ -137,6 +143,7 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              <PasswordStrengthMeter password={password} />
               {errors.password && (
                 <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
               )}
