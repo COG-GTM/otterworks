@@ -53,7 +53,7 @@ documented in `README.md` (branch from `main`, open PR, CI must pass).
 `dorny/paths-filter` that fans out to **one job per service/language**, each running the idiomatic
 toolchain:
 - Go `go vet` + `go test -race` + build (`api-gateway`)
-- Java 17 `gradle check` (`auth-service`, `notification-service`), Java 8 `mvn` (`report-service`, legacy)
+- Java 17 `gradle check` (`auth-service`, `notification-service`), Java 17 `mvn verify` (`report-service`)
 - Rust `cargo fmt/clippy/test/build` (`file-service`)
 - Python `ruff` + `pytest --cov` (`document-service`, `search-service`)
 - Node `npm ci/lint/test/build` (`collab-service`, `web-app`)

@@ -68,7 +68,7 @@ public class ReportGenerationWorker {
     @SuppressWarnings("unchecked")
     public void generateReportAsync(Long reportId) {
         Optional<Report> optReport = reportRepository.findById(reportId);
-        if (!optReport.isPresent()) { // LEGACY: !isPresent() instead of isEmpty() (Java 11+)
+        if (optReport.isEmpty()) { // LEGACY: !isPresent() instead of isEmpty() (Java 11+)
             logger.error("Report not found for generation: {}", reportId);
             return;
         }
