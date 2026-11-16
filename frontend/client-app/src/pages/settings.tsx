@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlocker } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { User, Bell, Save } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { authApi, settingsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
@@ -69,6 +71,21 @@ function SettingsContent() {
       reset({ displayName: user.displayName, email: user.email });
     }
   }, [user, reset]);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname
+  );
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   if (settingsLoading) return <PageLoader />;
 
@@ -163,6 +180,17 @@ function SettingsContent() {
           />
         </div>
       </section>
+
+      <ConfirmDialog
+        open={blocker.state === "blocked"}
+        title="Discard unsaved changes?"
+        description="You have unsaved changes to your profile. If you leave this page, they will be lost."
+        confirmLabel="Leave page"
+        cancelLabel="Stay"
+        variant="destructive"
+        onConfirm={() => blocker.proceed?.()}
+        onCancel={() => blocker.reset?.()}
+      />
     </div>
   );
 }
