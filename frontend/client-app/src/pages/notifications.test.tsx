@@ -20,6 +20,7 @@ vi.mock("@/components/layout/app-shell", () => ({
 import NotificationsPage from "./notifications";
 
 let store: Notification[];
+let hasMore: boolean;
 
 function notification(id: string, read: boolean): Notification {
   return {
@@ -45,12 +46,13 @@ function renderPage() {
 
 beforeEach(() => {
   store = [notification("1", false), notification("2", true), notification("3", false)];
+  hasMore = false;
   api.list.mockImplementation(async () => ({
     data: store.map((n) => ({ ...n })),
     total: store.length,
     page: 1,
     pageSize: 20,
-    hasMore: false,
+    hasMore,
   }));
   api.markRead.mockImplementation(async (id: string) => {
     store = store.map((n) => (n.id === id ? { ...n, read: true } : n));
@@ -90,5 +92,38 @@ describe("Notifications page tabs", () => {
     fireEvent.click(screen.getByRole("tab", { name: /^Unread/ }));
     expect(screen.getByText("You're all caught up")).toBeInTheDocument();
     expect(screen.queryByText("Notification 2")).not.toBeInTheDocument();
+  });
+
+  it("does not claim everything is read when older pages exist", async () => {
+    store = [notification("2", true)];
+    hasMore = true;
+    renderPage();
+    await screen.findByText("Notification 2");
+    fireEvent.click(screen.getByRole("tab", { name: /^Unread/ }));
+    expect(screen.queryByText("You're all caught up")).not.toBeInTheDocument();
+    expect(screen.getByText("No unread notifications in your 20 most recent")).toBeInTheDocument();
+  });
+
+  it("supports arrow-key navigation between tabs", async () => {
+    renderPage();
+    await screen.findByText("Notification 1");
+    const allTab = screen.getByRole("tab", { name: /^All/ });
+    const unreadTab = screen.getByRole("tab", { name: /^Unread/ });
+    expect(allTab).toHaveAttribute("tabindex", "0");
+    expect(unreadTab).toHaveAttribute("tabindex", "-1");
+
+    fireEvent.keyDown(allTab, { key: "ArrowRight" });
+    expect(unreadTab).toHaveAttribute("aria-selected", "true");
+    expect(unreadTab).toHaveFocus();
+    expect(screen.queryByText("Notification 2")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(unreadTab, { key: "ArrowRight" });
+    expect(allTab).toHaveAttribute("aria-selected", "true");
+    expect(allTab).toHaveFocus();
+
+    fireEvent.keyDown(allTab, { key: "End" });
+    expect(unreadTab).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(unreadTab, { key: "Home" });
+    expect(allTab).toHaveAttribute("aria-selected", "true");
   });
 });

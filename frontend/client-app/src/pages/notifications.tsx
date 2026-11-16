@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
@@ -37,6 +37,27 @@ export default function NotificationsPage() {
 function NotificationsContent() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
+  const tabRefs = useRef<Partial<Record<NotificationTab, HTMLButtonElement | null>>>({});
+
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    const index = NOTIFICATION_TABS.findIndex((t) => t.id === activeTab);
+    const last = NOTIFICATION_TABS.length - 1;
+    const nextIndex =
+      event.key === "ArrowRight"
+        ? (index + 1) % NOTIFICATION_TABS.length
+        : event.key === "ArrowLeft"
+        ? (index - 1 + NOTIFICATION_TABS.length) % NOTIFICATION_TABS.length
+        : event.key === "Home"
+        ? 0
+        : event.key === "End"
+        ? last
+        : -1;
+    if (nextIndex < 0) return;
+    event.preventDefault();
+    const next = NOTIFICATION_TABS[nextIndex].id;
+    setActiveTab(next);
+    tabRefs.current[next]?.focus();
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ["notifications"],
@@ -117,9 +138,14 @@ function NotificationsContent() {
               type="button"
               role="tab"
               id={`notifications-tab-${tab.id}`}
+              ref={(el) => {
+                tabRefs.current[tab.id] = el;
+              }}
               aria-selected={selected}
               aria-controls="notifications-panel"
+              tabIndex={selected ? 0 : -1}
               onClick={() => setActiveTab(tab.id)}
+              onKeyDown={handleTabKeyDown}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 -mb-px text-sm font-medium border-b-2 transition",
                 selected
@@ -154,11 +180,19 @@ function NotificationsContent() {
           <PageLoader />
         ) : visibleNotifications.length === 0 ? (
           activeTab === "unread" ? (
-            <EmptyState
-              icon={CheckCheck}
-              title="You're all caught up"
-              description="You have no unread notifications."
-            />
+            data?.hasMore ? (
+              <EmptyState
+                icon={Bell}
+                title={`No unread notifications in your ${data.pageSize} most recent`}
+                description="Older notifications may still be unread."
+              />
+            ) : (
+              <EmptyState
+                icon={CheckCheck}
+                title="You're all caught up"
+                description="You have no unread notifications."
+              />
+            )
           ) : (
             <EmptyState
               icon={Bell}
