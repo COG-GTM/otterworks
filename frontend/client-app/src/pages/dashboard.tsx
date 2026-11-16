@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { AppShell } from "@/components/layout/app-shell";
 import { FileCard } from "@/components/files/file-card";
 import { DocumentCard } from "@/components/documents/document-card";
+import { StorageUsageBar } from "@/components/dashboard/storage-usage-bar";
 import { DashboardSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -114,24 +115,7 @@ function DashboardContent() {
       </div>
 
       {/* Storage progress */}
-      {storage && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-gray-700">Storage</span>
-            <span className="text-sm text-gray-500">
-              {formatFileSize(storage.used)} of {formatFileSize(storage.total)}
-            </span>
-          </div>
-          <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-otter-600 rounded-full transition-all"
-              style={{
-                width: `${storage.total > 0 ? Math.min((storage.used / storage.total) * 100, 100) : 0}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {storage && <StorageUsageBar used={storage.used} total={storage.total} />}
 
       {/* Recent files */}
       <section>
