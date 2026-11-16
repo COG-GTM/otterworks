@@ -17,10 +17,16 @@ flowchart LR
   G --> AU[Audit Service]
   G --> AN[Analytics Service]
   G --> R[Report Service]
+  G --> AD[Admin Service]
+  W -.->|/billing-api, Vite proxy| B["Billing Service<br/>(procs stack only, not deployed to tenants)"]
   F --> S3[S3]
   F --> DD[DynamoDB]
   D --> PG[PostgreSQL]
   A --> PG
+  AD --> PG
+  R --> PG
+  B --> BPG[Billing PostgreSQL]
+  AD --> SL[Slack / Devin triage]
   C --> RE[Redis]
   S --> MS[MeiliSearch]
   N --> Q[SQS/SNS]
