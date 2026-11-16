@@ -16,6 +16,12 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { documentsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_DOCUMENT_SORT,
+  DOCUMENT_SORT_OPTIONS,
+  filterAndSortDocuments,
+  type DocumentSortOption,
+} from "@/lib/document-sort";
 import type { Document, PaginatedResponse, ViewMode } from "@/types";
 
 export default function DocumentsPage() {
@@ -33,6 +39,7 @@ function DocumentsContent() {
   const queryClient = useQueryClient();
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortOption, setSortOption] = useState<DocumentSortOption>(DEFAULT_DOCUMENT_SORT);
 
   const { data, isLoading } = useQuery({
     queryKey: ["documents", "list"],
@@ -58,11 +65,7 @@ function DocumentsContent() {
 
   const raw = data as PaginatedResponse<Document> & { items?: Document[] } | undefined;
   const documents = raw?.items ?? raw?.data ?? [];
-  const filtered = searchQuery
-    ? documents.filter((doc) =>
-        doc.title.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : documents;
+  const visibleDocuments = filterAndSortDocuments(documents, searchQuery, sortOption);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -95,25 +98,39 @@ function DocumentsContent() {
         </div>
       </div>
 
-      {/* Search/filter */}
-      <div className="relative max-w-md">
-        <Search
-          size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-        />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Filter documents..."
-          className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent"
-        />
+      {/* Search/filter and sort */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[12rem] max-w-md">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Filter documents..."
+            className="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent"
+          />
+        </div>
+        <select
+          aria-label="Sort documents"
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value as DocumentSortOption)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-otter-500"
+        >
+          {DOCUMENT_SORT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Document listing */}
       <DocumentListing
         isLoading={isLoading}
-        documents={filtered}
+        documents={visibleDocuments}
         searchQuery={searchQuery}
         viewMode={viewMode}
         onCreate={() => createMutation.mutate("Untitled document")}

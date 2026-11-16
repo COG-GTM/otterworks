@@ -345,9 +345,9 @@ export const filesApi = {
 
 // ── Documents ─────────────────────────────────────────────────
 export const documentsApi = {
-  list: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
+  list: async (page = 1, pageSize = 100): Promise<PaginatedResponse<Document>> => {
     const { data } = await apiClient.get<PaginatedResponse<Document>>("/documents", {
-      params: { page, pageSize },
+      params: { page, size: pageSize },
     });
     return data;
   },
