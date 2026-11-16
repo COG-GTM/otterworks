@@ -13,6 +13,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { HighlightedText } from "@/components/ui/highlighted-text";
 import { searchApi } from "@/lib/api";
 import { formatRelativeTime, cn } from "@/lib/utils";
 
@@ -161,7 +162,7 @@ function SearchContent() {
             {data?.total || results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{submittedQuery}&rdquo;
           </p>
           {results.map((result) => (
-            <SearchResultRow key={result.id} result={result} />
+            <SearchResultRow key={result.id} result={result} query={submittedQuery} />
           ))}
         </div>
       ) : (
@@ -175,7 +176,10 @@ function SearchContent() {
   );
 }
 
-function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
+function SearchResultRow({
+  result,
+  query,
+}: Readonly<{ result: SearchResult; query: string }>) {
   const href =
     result.type === "document"
       ? `/documents/${result.id}`
@@ -211,7 +215,9 @@ function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
         <Icon size={20} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{result.name}</p>
+        <p className="text-sm font-medium text-gray-900">
+          <HighlightedText text={result.name} query={query} />
+        </p>
         {result.snippet && (
           <p
             className="text-xs text-gray-500 mt-0.5 line-clamp-2 [&>em]:font-semibold [&>em]:not-italic [&>em]:text-gray-700"
