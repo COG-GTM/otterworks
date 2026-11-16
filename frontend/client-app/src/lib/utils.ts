@@ -4,12 +4,17 @@ export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
 
+const FILE_SIZE_UNITS = ["B", "KB", "MB", "GB", "TB", "PB"];
+
 export function formatFileSize(bytes: number): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) return "\u2014";
   if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  const i = Math.min(
+    Math.max(Math.floor(Math.log(bytes) / Math.log(k)), 0),
+    FILE_SIZE_UNITS.length - 1,
+  );
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${FILE_SIZE_UNITS[i]}`;
 }
 
 export function formatRelativeTime(dateString: string): string {
