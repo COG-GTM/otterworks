@@ -16,8 +16,8 @@
 # reported unmeasured. `test` is the arguments appended to the resolved tool.
 modules:
   # report-service targets Java 17 (Spring Boot 3.2) and cannot compile on JDK 11.
-  # Its recorded attack-script-lookup case resolved via Nashorn (JDK <= 14), which
-  # JDK 17 no longer ships, so that case now errors instead of evaluating.
+  # JDK 17 ships no Nashorn, so the module carries the standalone nashorn-core as a
+  # test dependency to keep its recorded ${script:javascript:...} case resolvable.
   - id: report-service
     path: services/report-service
     build: maven
