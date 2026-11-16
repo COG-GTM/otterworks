@@ -15,6 +15,7 @@ import {
   Trash2,
   X,
   CheckSquare,
+  FilterX,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Breadcrumb, type BreadcrumbItem } from "@/components/layout/breadcrumb";
@@ -23,6 +24,7 @@ import { FolderCard } from "@/components/files/folder-card";
 import { FileUploadDropzone } from "@/components/files/file-upload-dropzone";
 import type { FileUploadDropzoneHandle } from "@/components/files/file-upload-dropzone";
 import { ShareDialog } from "@/components/files/share-dialog";
+import { FileTypeFilterBar } from "@/components/files/file-type-filter";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { FileGridSkeleton, FileListSkeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -30,6 +32,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
+import { FILE_TYPE_FILTERS, matchesFileTypeFilter, type FileTypeFilter } from "@/lib/file-type";
 import type { ViewMode, SortField } from "@/types";
 
 // Run a delete operation over a list of ids, tallying successes and failures
@@ -63,6 +66,7 @@ function FileBrowserContent() {
   const [shareFileId, setShareFileId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionActive, setSelectionActive] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<FileTypeFilter>("all");
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -183,8 +187,23 @@ function FileBrowserContent() {
     }
   });
 
-  const files = sortedFiles;
+  const files = sortedFiles.filter((f) => matchesFileTypeFilter(f.mimeType, typeFilter));
   const items = [...folders, ...files];
+  const isFolderEmpty = folders.length === 0 && rawFiles.length === 0;
+  const noFilterMatches = typeFilter !== "all" && files.length === 0;
+  const activeFilterLabel = FILE_TYPE_FILTERS.find((f) => f.value === typeFilter)?.label ?? "";
+
+  const changeTypeFilter = (next: FileTypeFilter) => {
+    setTypeFilter(next);
+    // Drop selected files that the new filter hides so bulk actions only touch visible items.
+    setSelectedIds((prev) => {
+      const visible = new Set([
+        ...folders.map((f) => f.id),
+        ...sortedFiles.filter((f) => matchesFileTypeFilter(f.mimeType, next)).map((f) => f.id),
+      ]);
+      return new Set([...prev].filter((id) => visible.has(id)));
+    });
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortConfig.field === field) {
@@ -426,10 +445,15 @@ function FileBrowserContent() {
         />
       )}
 
+      {/* File type filter */}
+      {!isLoading && !isFolderEmpty && (
+        <FileTypeFilterBar value={typeFilter} onChange={changeTypeFilter} />
+      )}
+
       {/* File listing */}
       {isLoading ? (
         viewMode === "list" ? <FileListSkeleton /> : <FileGridSkeleton />
-      ) : items.length === 0 ? (
+      ) : isFolderEmpty ? (
         <EmptyState
           icon={FolderOpen}
           title="This folder is empty"
@@ -438,7 +462,7 @@ function FileBrowserContent() {
         />
       ) : (
         <div className="space-y-6">
-          {viewMode === "list" && (
+          {viewMode === "list" && items.length > 0 && (
             <div className="flex items-center gap-4 px-4 py-2 text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200">
               {selectionActive && <div className="w-4" />}
               <div className="w-10" />
@@ -473,6 +497,16 @@ function FileBrowserContent() {
                 ))}
               </div>
             </section>
+          )}
+
+          {/* No files match the type filter */}
+          {noFilterMatches && (
+            <EmptyState
+              icon={FilterX}
+              title={`No files match "${activeFilterLabel}"`}
+              description="Try a different file type or clear the filter to see all files."
+              action={{ label: "Clear filter", onClick: () => changeTypeFilter("all") }}
+            />
           )}
 
           {/* Files */}
