@@ -322,7 +322,7 @@ function FileDetailContent() {
                           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
                           style={{ backgroundColor: generateColor(shared.userId) }}
                         >
-                          {getInitials(displayName)}
+                          {getInitials(displayName, displayEmail)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">
