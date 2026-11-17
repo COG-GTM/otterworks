@@ -259,6 +259,102 @@ impl MetadataClient {
         Ok(files)
     }
 
+    /// Returns one page of `list_files` plus the total match count. The scan
+    /// projects only `id`, so the total and ordering match `list_files` while
+    /// full items are fetched only for the requested page.
+    pub async fn list_files_page(
+        &self,
+        folder_id: Option<Uuid>,
+        owner_id: Option<Uuid>,
+        include_trashed: bool,
+        skip: usize,
+        take: usize,
+    ) -> Result<(Vec<FileMetadata>, usize), ServiceError> {
+        let mut scan_builder = self
+            .client
+            .scan()
+            .table_name(&self.files_table)
+            .projection_expression("#id")
+            .expression_attribute_names("#id", "id");
+
+        let mut filter_parts: Vec<String> = Vec::new();
+        if let Some(fid) = &folder_id {
+            filter_parts.push("folder_id = :folder_id".to_string());
+            scan_builder = scan_builder
+                .expression_attribute_values(":folder_id", AttributeValue::S(fid.to_string()));
+        }
+        if let Some(oid) = &owner_id {
+            filter_parts.push("owner_id = :owner_id".to_string());
+            scan_builder = scan_builder
+                .expression_attribute_values(":owner_id", AttributeValue::S(oid.to_string()));
+        }
+        if !include_trashed {
+            filter_parts.push("is_trashed = :trashed".to_string());
+            scan_builder =
+                scan_builder.expression_attribute_values(":trashed", AttributeValue::Bool(false));
+        }
+        if !filter_parts.is_empty() {
+            scan_builder = scan_builder.filter_expression(filter_parts.join(" AND "));
+        }
+
+        let mut ids: Vec<String> = Vec::new();
+        let mut paginator = scan_builder.into_paginator().send();
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            for item in page.items() {
+                ids.push(get_s(item, "id")?);
+            }
+        }
+
+        let total = ids.len();
+        let page_ids: Vec<String> = ids.into_iter().skip(skip).take(take).collect();
+        let files = self.batch_get_files(&page_ids).await?;
+        Ok((files, total))
+    }
+
+    /// Fetches files by id, returned in the order of `ids`. Ids that no longer
+    /// exist are skipped.
+    async fn batch_get_files(&self, ids: &[String]) -> Result<Vec<FileMetadata>, ServiceError> {
+        use aws_sdk_dynamodb::types::KeysAndAttributes;
+        use std::collections::HashMap;
+
+        let mut found: HashMap<String, FileMetadata> = HashMap::with_capacity(ids.len());
+        for chunk in ids.chunks(100) {
+            let keys = chunk
+                .iter()
+                .map(|id| HashMap::from([("id".to_string(), AttributeValue::S(id.clone()))]))
+                .collect::<Vec<_>>();
+            let mut request = Some(
+                KeysAndAttributes::builder()
+                    .set_keys(Some(keys))
+                    .build()
+                    .map_err(|e| ServiceError::DynamoError(e.to_string()))?,
+            );
+            while let Some(keys_and_attrs) = request.take() {
+                let result = self
+                    .client
+                    .batch_get_item()
+                    .request_items(&self.files_table, keys_and_attrs)
+                    .send()
+                    .await
+                    .map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+                if let Some(items) = result.responses().and_then(|r| r.get(&self.files_table)) {
+                    for item in items {
+                        let file = parse_file_metadata(item)?;
+                        found.insert(file.id.to_string(), file);
+                    }
+                }
+                request = result
+                    .unprocessed_keys()
+                    .and_then(|u| u.get(&self.files_table))
+                    .filter(|k| !k.keys().is_empty())
+                    .cloned();
+            }
+        }
+
+        Ok(ids.iter().filter_map(|id| found.remove(id)).collect())
+    }
+
     pub async fn list_files(
         &self,
         folder_id: Option<Uuid>,
