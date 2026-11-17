@@ -268,30 +268,24 @@ pub async fn list_files(
 ) -> Result<HttpResponse, ServiceError> {
     let include_trashed = query.include_trashed.unwrap_or(false);
     let owner_id = resolve_owner_id(&req, query.owner_id);
-    let mut files = meta
-        .list_files(query.folder_id, owner_id, include_trashed)
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(50).min(100);
+    let start = (page - 1).saturating_mul(page_size) as usize;
+    let take = page_size as usize;
+    let (mut paged, mut total) = meta
+        .list_files_page(query.folder_id, owner_id, include_trashed, start, take)
         .await?;
     // Seeding is only considered when the listing comes back empty, so the
     // common non-empty case costs no extra metadata reads.
-    if files.is_empty() && config.server.seed_demo_docs {
+    if total == 0 && config.server.seed_demo_docs {
         if let Some(owner) = owner_id {
             if crate::seed::maybe_seed_demo_docs(&meta, &s3, owner).await {
-                files = meta
-                    .list_files(query.folder_id, owner_id, include_trashed)
+                (paged, total) = meta
+                    .list_files_page(query.folder_id, owner_id, include_trashed, start, take)
                     .await?;
             }
         }
     }
-
-    let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(50).min(100);
-    let total = files.len();
-    let start = (page - 1).saturating_mul(page_size) as usize;
-    let paged: Vec<FileMetadata> = files
-        .into_iter()
-        .skip(start)
-        .take(page_size as usize)
-        .collect();
 
     Ok(HttpResponse::Ok().json(ListFilesResponse {
         files: paged,
