@@ -1,0 +1,6 @@
+[run]
+source = app
+branch = True
+
+[report]
+show_missing = True
