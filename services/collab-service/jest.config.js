@@ -6,17 +6,16 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
-    '!src/index.ts',
     '!src/**/__tests__/**',
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'clover'],
   coverageThreshold: {
     global: {
-      branches: 0,
-      functions: 0,
-      lines: 0,
-      statements: 0,
+      branches: 85,
+      functions: 90,
+      lines: 90,
+      statements: 90,
     },
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
