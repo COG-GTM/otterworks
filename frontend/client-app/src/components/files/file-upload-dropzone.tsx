@@ -230,6 +230,12 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
     setShowTooLargeBanner(false);
   };
 
+  const completedCount = uploadingFiles.filter((f) => f.status === "done").length;
+  const failedCount = uploadingFiles.filter((f) => f.status === "error").length;
+  const uploadSummary = `${completedCount} of ${uploadingFiles.length} uploaded${
+    failedCount > 0 ? `, ${failedCount} failed` : ""
+  }`;
+
   const oversizedNames = uploadingFiles
     .filter((f) => f.status === "error" && f.errorKind === "size")
     .map((f) => f.file.name);
@@ -303,13 +309,24 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
                   Upload complete — closing shortly
                 </span>
               ) : (
-                "Uploads"
+                <>
+                  Uploads
+                  <span
+                    className="ml-2 font-normal text-gray-500"
+                    data-testid="upload-summary"
+                    aria-live="polite"
+                  >
+                    {uploadSummary}
+                  </span>
+                </>
               )}
             </p>
             {!dismissing && (
               <button
+                type="button"
                 onClick={clearCompleted}
-                className="text-xs text-gray-500 hover:text-gray-700"
+                disabled={completedCount === 0}
+                className="text-xs text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-gray-500"
               >
                 Clear completed
               </button>
