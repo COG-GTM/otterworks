@@ -35,6 +35,7 @@ function TrashContent() {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<FileItem | null>(null);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
+  const [showRestoreAllConfirm, setShowRestoreAllConfirm] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["files", "trash"],
@@ -85,6 +86,32 @@ function TrashContent() {
     onError: () => toast.error("Failed to empty trash"),
   });
 
+  const restoreAllMutation = useMutation({
+    mutationFn: async () => {
+      const pageSize = 50;
+      let restored = 0;
+      let batch = await filesApi.getTrashed(1, pageSize);
+      while (batch.data.length > 0) {
+        await Promise.all(batch.data.map((item) => filesApi.restore(item.id)));
+        restored += batch.data.length;
+        batch = await filesApi.getTrashed(1, pageSize);
+      }
+      return restored;
+    },
+    onSuccess: (restored) => {
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["storage", "usage"] });
+      toast.success(`Restored ${restored} item${restored === 1 ? "" : "s"}`);
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["files"] });
+      toast.error("Failed to restore all items");
+    },
+  });
+
+  const isBulkActionRunning = emptyTrashMutation.isPending || restoreAllMutation.isPending;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -95,14 +122,24 @@ function TrashContent() {
           </p>
         </div>
         {items.length > 0 && (
-          <button
-            onClick={() => setShowEmptyTrashConfirm(true)}
-            disabled={emptyTrashMutation.isPending}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition disabled:opacity-50"
-          >
-            <Trash2 size={16} />
-            Empty Trash
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowRestoreAllConfirm(true)}
+              disabled={isBulkActionRunning}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-otter-600 bg-otter-50 rounded-lg hover:bg-otter-100 transition disabled:opacity-50"
+            >
+              <RotateCcw size={16} />
+              {restoreAllMutation.isPending ? "Restoring..." : "Restore all"}
+            </button>
+            <button
+              onClick={() => setShowEmptyTrashConfirm(true)}
+              disabled={isBulkActionRunning}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition disabled:opacity-50"
+            >
+              <Trash2 size={16} />
+              Empty Trash
+            </button>
+          </div>
         )}
       </div>
 
@@ -165,6 +202,19 @@ function TrashContent() {
           setShowEmptyTrashConfirm(false);
         }}
         onCancel={() => setShowEmptyTrashConfirm(false)}
+      />
+
+      {/* Confirm restore all */}
+      <ConfirmDialog
+        open={showRestoreAllConfirm}
+        title="Restore all"
+        description={`This will restore all ${totalTrashed} item${totalTrashed === 1 ? "" : "s"} in trash to their original locations.`}
+        confirmLabel="Restore all"
+        onConfirm={() => {
+          restoreAllMutation.mutate();
+          setShowRestoreAllConfirm(false);
+        }}
+        onCancel={() => setShowRestoreAllConfirm(false)}
       />
     </div>
   );
