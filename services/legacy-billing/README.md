@@ -66,3 +66,16 @@ models the legacy application running with its own PostgreSQL database.
 - `db/schema.sql` — tables and constraints
 - `db/procs/` — database entrypoints
 - `db/seed.sql` — deterministic starting state
+
+## Tests
+
+```bash
+pip install -r requirements-test.txt
+pytest --cov                    # HTTP-layer unit tests; DB tests skip
+./tests/run-with-postgres.sh    # full suite against a throwaway postgres:16
+```
+
+DB tests run when `LEGACY_BILLING_TEST_DSN` points at a disposable database
+(the `billing` schema is dropped and rebuilt). `LEGACY_BILLING_REQUIRE_DB=1`
+makes a missing DSN an error instead of a skip. Tests marked `xfail(strict=True)`
+document suspected defects and fail once the behavior changes.
