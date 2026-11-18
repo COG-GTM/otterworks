@@ -156,3 +156,12 @@ class AnalyticsServiceSpec extends AnyFlatSpec with Matchers with ScalaFutures:
     report.data.size shouldBe 2
     report.data.head.keys should contain allOf("event_id", "event_type", "user_id")
   }
+
+  "AnalyticsService.getDashboardSummary" should "fall back to a 7-day window for an unknown period" in {
+    val service = createService()
+    service.trackEvent(EventType.DocumentCreated, "user-1", "doc-1", "document", Map.empty).futureValue
+
+    val summary = service.getDashboardSummary("fortnight").futureValue
+    summary.period shouldBe "fortnight"
+    summary.documentsCreated shouldBe 1
+  }

@@ -67,3 +67,6 @@ lazy val root = project
       case _ => MergeStrategy.first
     },
   )
+
+// MainSpec drives Main through JVM system properties, which must not race with other suites loading config.
+Test / parallelExecution := false

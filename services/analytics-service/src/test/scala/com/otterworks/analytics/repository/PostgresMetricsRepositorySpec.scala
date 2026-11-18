@@ -161,3 +161,14 @@ class PostgresMetricsRepositorySpec extends AnyFlatSpec with Matchers with Scala
     val pg2 = new PostgresMetricsRepository(database)
     pg2.getEventCount.futureValue shouldBe before
   }
+
+  "AnalyticsDb" should "pin the analytics schema on JDBC URLs without query parameters" in {
+    requireDb()
+    val c = container.get
+    val plainUrl = c.jdbcUrl.takeWhile(_ != '?')
+    plainUrl should not include "?"
+    val database = new AnalyticsDb(PostgresConfig(plainUrl, c.username, c.password, maxPoolSize = 1))
+    try
+      Await.result(database.database.run(sql"SELECT current_schema()".as[String].head), 10.seconds) shouldBe "analytics"
+    finally database.close()
+  }
