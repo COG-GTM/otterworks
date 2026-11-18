@@ -11,10 +11,45 @@
 
 import configparser
 import json
+import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import boto3
+
+CONFIG_PATH = os.environ.get("ETL_CONFIG_PATH", "/opt/etl/config.ini")
+
+# file-service writes the S3 object before its DynamoDB metadata, so recently
+# written objects may be in-flight uploads rather than orphans.
+DEFAULT_ORPHAN_GRACE_HOURS = 24.0
+
+
+def get_orphan_grace_hours(config):
+    value = os.environ.get("ETL_ORPHAN_GRACE_HOURS")
+    if value is None:
+        value = config.get(
+            "storage_cleanup", "orphan_grace_hours", fallback=str(DEFAULT_ORPHAN_GRACE_HOURS)
+        )
+    hours = float(value)
+    if hours < 0:
+        raise ValueError("orphan_grace_hours must be >= 0, got %s" % value)
+    return hours
+
+
+def select_orphans(all_objects, referenced_keys, now, grace_hours):
+    """Return (orphans, skipped_recent): unreferenced objects older than the grace period,
+    and unreferenced objects still inside it."""
+    cutoff = now - timedelta(hours=grace_hours)
+    orphans = []
+    skipped_recent = []
+    for obj in all_objects:
+        if obj["key"] in referenced_keys:
+            continue
+        if obj["last_modified"] > cutoff:
+            skipped_recent.append(obj)
+        else:
+            orphans.append(obj)
+    return orphans, skipped_recent
 
 
 def main():
@@ -22,7 +57,7 @@ def main():
 
     # ---- Load config ----
     config = configparser.ConfigParser()
-    config.read("/opt/etl/config.ini")
+    config.read(CONFIG_PATH)
 
     aws_access_key = config.get("aws", "access_key")
     aws_secret_key = config.get("aws", "secret_key")
@@ -35,6 +70,7 @@ def main():
     files_prefix = "files/"
     quarantine_prefix = "quarantined"
     dynamodb_table_name = "otterworks-file-metadata"
+    grace_hours = get_orphan_grace_hours(config)
 
     ds = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
 
@@ -58,7 +94,7 @@ def main():
             all_objects.append({
                 "key": obj["Key"],
                 "size": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
+                "last_modified": obj["LastModified"],
             })
 
     total_objects = len(all_objects)
@@ -84,6 +120,7 @@ def main():
     referenced_keys = set()
     scan_kwargs = {
         "ProjectionExpression": "s3_key",
+        "ConsistentRead": True,
     }
 
     while True:
@@ -103,15 +140,15 @@ def main():
     ))
 
     # ---- Find orphaned objects ----
-    orphaned = []
-    orphaned_bytes = 0
-
-    for obj in all_objects:
-        if obj["key"] not in referenced_keys:
-            orphaned.append(obj)
-            orphaned_bytes += obj["size"]
-
+    orphaned, skipped_recent = select_orphans(
+        all_objects, referenced_keys, datetime.now(tz=timezone.utc), grace_hours
+    )
+    orphaned_bytes = sum(o["size"] for o in orphaned)
     orphaned_count = len(orphaned)
+
+    print("[%s] Skipped %d unreferenced objects modified within the last %g hours" % (
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), len(skipped_recent), grace_hours
+    ))
 
     print("[%s] Found %d orphaned objects (%.2f MB)" % (
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -129,6 +166,7 @@ def main():
         ))
 
     moved_count = 0
+    moved_bytes = 0
     failed_count = 0
 
     for obj in orphaned:
@@ -144,6 +182,7 @@ def main():
             )
             s3_client.delete_object(Bucket=file_storage_bucket, Key=source_key)
             moved_count += 1
+            moved_bytes += obj["size"]
         except Exception as e:
             print("[%s] WARNING: Failed to quarantine %s: %s" % (
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"), source_key, str(e)
@@ -158,7 +197,8 @@ def main():
         ))
 
     # ---- Generate storage cleanup report ----
-    savings_gb = orphaned_bytes / (1024 ** 3)
+    orphaned_gb = orphaned_bytes / (1024 ** 3)
+    savings_gb = moved_bytes / (1024 ** 3)
     estimated_monthly_savings = round(savings_gb * 0.023, 4)
 
     report = {
@@ -173,13 +213,16 @@ def main():
         "orphans": {
             "orphaned_objects": orphaned_count,
             "orphaned_bytes": orphaned_bytes,
-            "orphaned_size_gb": round(savings_gb, 4),
+            "orphaned_size_gb": round(orphaned_gb, 4),
             "orphan_percentage": round(
                 (orphaned_count / total_objects * 100) if total_objects else 0, 2
             ),
+            "grace_period_hours": grace_hours,
+            "skipped_recent_objects": len(skipped_recent),
         },
         "cleanup": {
             "objects_quarantined": moved_count,
+            "bytes_quarantined": moved_bytes,
             "objects_failed": failed_count,
             "quarantine_bucket": quarantine_bucket,
         },
@@ -206,12 +249,20 @@ def main():
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         moved_count, savings_gb, estimated_monthly_savings,
     ))
+    if failed_count > 0:
+        print("[%s] ERROR: storage_cleanup_daily.py completed with %d failed quarantines" % (
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), failed_count
+        ))
+        return 1
+
     print("[%s] storage_cleanup_daily.py completed successfully" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    return 0
 
 
 if __name__ == "__main__":
     try:
-        main()
+        exit_code = main()
     except Exception as e:
         print("[%s] FATAL: %s" % (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), str(e)))
         sys.exit(1)
+    sys.exit(exit_code)
