@@ -1,6 +1,8 @@
 [run]
 source = app
 omit = app/tests/*
+branch = true
+concurrency = greenlet,thread
 
 [report]
 show_missing = true
