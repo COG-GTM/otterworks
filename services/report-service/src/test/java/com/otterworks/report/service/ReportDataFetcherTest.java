@@ -10,6 +10,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -130,11 +131,18 @@ public class ReportDataFetcherTest {
         when(restTemplate.getForEntity(anyString(), eq(Map.class)))
                 .thenThrow(new ResourceAccessException("down"));
 
-        assertEquals(50, fetcher.fetchAnalyticsData(from, to, null).size());
-        assertEquals(50, fetcher.fetchAuditData(from, to, null).size());
+        List<Map<String, Object>> analytics = fetcher.fetchAnalyticsData(from, to, null);
+        List<Map<String, Object>> audit = fetcher.fetchAuditData(from, to, null);
         List<Map<String, Object>> activity = fetcher.fetchUserActivityData(from, to, null);
+        assertEquals(50, analytics.size());
+        assertEquals(50, audit.size());
         assertEquals(25, activity.size());
         assertTrue(String.valueOf(activity.get(0).get("user_id")).startsWith("user-"));
+        for (List<Map<String, Object>> rows : Arrays.asList(analytics, audit, activity)) {
+            for (Map<String, Object> row : rows) {
+                assertEquals(Boolean.TRUE, row.get("sample_data"));
+            }
+        }
     }
 
     private interface Fetch {

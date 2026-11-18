@@ -186,6 +186,7 @@ public class ReportDataFetcher {
             row.put("duration_ms", 100 + (i * 17) % 5000);
             row.put("status", i % 10 == 0 ? "error" : "success");
             row.put("metadata", "sample-analytics-row-" + i);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
@@ -206,6 +207,7 @@ public class ReportDataFetcher {
             row.put("timestamp", ReportDateUtils.toIsoString(new Date(dateFrom.getTime() + (long) i * 1800000)));
             row.put("resource", "/files/doc-" + (i % 20));
             row.put("details", "Audit entry " + i);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
@@ -224,6 +226,7 @@ public class ReportDataFetcher {
             row.put("storage_used_mb", 100 + i * 50);
             row.put("collaborations", i * 4);
             row.put("active", i % 5 != 0);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
