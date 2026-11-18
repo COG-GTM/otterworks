@@ -52,6 +52,7 @@ SELECT 'BLOCK|' || COUNT(*) || '|' || SUM(b.covered) || '|'
   FROM dbmspcc_units u
   JOIN dbmspcc_blocks b ON b.run_id = u.run_id AND b.object_id = u.object_id
  WHERE u.run_id = :cov_run AND u.owner = USER AND u.type = 'PACKAGE BODY' AND u.name = '${pkg}';
+ALTER PACKAGE ${pkg} COMPILE BODY PLSQL_OPTIMIZE_LEVEL = 2;
 EXIT
 SQL
   } > "${sql}"
