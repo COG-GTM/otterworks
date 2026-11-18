@@ -27,4 +27,19 @@ class PortalBrandingSettingsTest {
     void supportContactIsReadDirectly() {
         assertEquals("portal-support@otterworks.example", settings.supportContact());
     }
+
+    @Test
+    void interpolateResolvesSettingsKeys() {
+        assertEquals("env=on-prem", settings.interpolate("env=${portal.environment}"));
+    }
+
+    @Test
+    void interpolateResolvesDefaultBase64Lookup() {
+        assertEquals("INTERNAL", settings.interpolate("${portal.classification}"));
+    }
+
+    @Test
+    void interpolateLeavesUnknownKeysUnresolved() {
+        assertEquals("${portal.missing}", settings.interpolate("${portal.missing}"));
+    }
 }

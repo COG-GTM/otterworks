@@ -173,3 +173,43 @@ RSpec.describe Api::V1::Admin::SettingsController do
     end
   end
 end
+
+RSpec.describe Api::V1::Admin::SettingsController, 'auto_investigate' do
+  before { set_jwt_env(request) }
+
+  it 'reports the current toggle' do
+    allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(false)
+    get :auto_investigate
+    expect(JSON.parse(response.body)).to eq('enabled' => false)
+  end
+
+  it 'updates the toggle' do
+    allow(AdminSettingsService).to receive(:set_auto_investigate)
+    allow(AdminSettingsService).to receive(:auto_investigate_enabled?).and_return(false)
+
+    put :update_auto_investigate, params: { enabled: 'false' }
+
+    expect(AdminSettingsService).to have_received(:set_auto_investigate).with(false)
+    expect(JSON.parse(response.body)).to eq('enabled' => false)
+  end
+
+  it 'rejects a missing enabled param' do
+    allow(AdminSettingsService).to receive(:set_auto_investigate)
+    put :update_auto_investigate
+    expect(response).to have_http_status(:bad_request)
+    expect(AdminSettingsService).not_to have_received(:set_auto_investigate)
+  end
+
+  it 'forbids non-admins' do
+    set_jwt_env(request, role: 'viewer')
+    put :update_auto_investigate, params: { enabled: 'true' }
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it 'rejects an unparseable webhook URL' do
+    allow(AdminSettingsService).to receive(:set_slack_webhook_url)
+    put :update_slack_notifications, params: { webhook_url: 'https://exa mple.com/%%' }
+    expect(response).to have_http_status(:bad_request)
+    expect(AdminSettingsService).not_to have_received(:set_slack_webhook_url)
+  end
+end

@@ -265,6 +265,21 @@ impl EventPublisher {
 }
 
 #[cfg(test)]
+impl EventPublisher {
+    pub fn for_test(
+        client: aws_sdk_sns::Client,
+        topic_arn: Option<String>,
+        share_fail_topic_arn: Option<String>,
+    ) -> Self {
+        Self {
+            client,
+            topic_arn,
+            share_fail_topic_arn,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

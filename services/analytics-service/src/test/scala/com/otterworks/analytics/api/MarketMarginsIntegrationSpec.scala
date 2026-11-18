@@ -272,3 +272,54 @@ class MarketMarginsIntegrationSpec
       responseAs[MarginsResponse].rows should have size 40
     }
   }
+
+  "GET /margins/series" should "average margins per day for a category or across all SKUs" in {
+    requireStack()
+    Get("/api/v1/analytics/margins/series?category=Seafood&from=2025-01-01&to=2025-01-31") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      val body = responseAs[MarginSeriesResponse]
+      body.sku shouldBe None
+      body.category shouldBe Some("Seafood")
+      body.points should have size 31
+      body.points.map(_.marginDate) shouldBe body.points.map(_.marginDate).sorted
+    }
+    Get("/api/v1/analytics/margins/series?from=2025-01-01&to=2025-01-31") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      val body = responseAs[MarginSeriesResponse]
+      body.category shouldBe None
+      body.points should have size 31
+    }
+    Get("/api/v1/analytics/margins/series?category=No-Such-Category") ~> routes ~> check {
+      responseAs[MarginSeriesResponse].points shouldBe empty
+    }
+  }
+
+  "GET /margins/export" should "default to the JSON dashboard for non-CSV formats" in {
+    requireStack()
+    Get("/api/v1/analytics/margins/export") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[MarginsResponse].rows should have size 40
+    }
+    Get("/api/v1/analytics/margins/") ~> routes ~> check {
+      status shouldBe StatusCodes.OK
+    }
+  }
+
+  it should "quote CSV fields containing commas or quotes" in {
+    val (_, r, _) = requireStack()
+    val sku = "ZZZ-QUOTE"
+    Await.result(
+      r.upsertProduct(Product(sku, "Salmon \"Premium\", 1kg", "Seafood", "SALMON_NOK_KG",
+        BigDecimal(1), BigDecimal(1), BigDecimal(10), BigDecimal(20), "Nordic, AS")),
+      30.seconds
+    )
+    Await.result(
+      r.run(r.upsertMargin(MarginDaily(sku, LocalDate.now().toString, BigDecimal(5), BigDecimal(1),
+        BigDecimal(1), BigDecimal(7), BigDecimal(65)))),
+      30.seconds
+    )
+    Get("/api/v1/analytics/margins/export?format=csv") ~> routes ~> check {
+      val line = responseAs[String].linesIterator.find(_.startsWith(sku)).get
+      line should startWith(s"""$sku,"Salmon ""Premium"", 1kg",Seafood,"Nordic, AS",""")
+    }
+  }

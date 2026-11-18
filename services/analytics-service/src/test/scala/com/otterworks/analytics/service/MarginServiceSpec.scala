@@ -72,3 +72,10 @@ class MarginServiceSpec extends AnyFlatSpec with Matchers:
       "USD_NOK", LocalDate.parse("2026-06-30"), BigDecimal("10.5"), LocalDate.parse("2026-07-05"))
     full.take(5) shouldBe firstHalf
   }
+
+  it should "report a 0% margin instead of dividing by a zero list price" in {
+    val free = salmonProduct.copy(listPriceUsd = BigDecimal(0))
+    val m = MarginService.computeMargin(free, BigDecimal(100), "NOK", BigDecimal(10), BigDecimal(2500))
+    m.marginPct shouldBe BigDecimal(0)
+    m.cogsUsd should be > BigDecimal(0)
+  }
