@@ -13,6 +13,7 @@ import com.otterworks.auth.entity.User;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -172,5 +173,95 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.changePassword(testUser.getId(), request))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Current password is incorrect");
+  }
+
+  private RefreshToken storedToken(Instant expiresAt) {
+    RefreshToken token = new RefreshToken();
+    token.setUser(testUser);
+    token.setTokenId("jti-1");
+    token.setExpiresAt(expiresAt);
+    return token;
+  }
+
+  @Test
+  void refreshToken_shouldRevokeOldTokenAndIssueNewPair() {
+    RefreshToken stored = storedToken(Instant.now().plusSeconds(600));
+    when(jwtTokenProvider.extractJti("old")).thenReturn("jti-1", "jti-2");
+    when(jwtTokenProvider.validateRefreshTokenAndGetUserId("old"))
+        .thenReturn(testUser.getId().toString());
+    when(refreshTokenRepository.findByTokenIdAndRevokedFalse("jti-1"))
+        .thenReturn(Optional.of(stored));
+    when(userRepository.findById(testUser.getId())).thenReturn(Optional.of(testUser));
+    when(jwtTokenProvider.generateAccessToken(testUser)).thenReturn("access");
+    when(jwtTokenProvider.generateRefreshToken(testUser)).thenReturn("old");
+    when(jwtTokenProvider.getRefreshTokenExpiry()).thenReturn(60L);
+
+    AuthResponse response = authService.refreshToken("old");
+
+    assertThat(stored.isRevoked()).isTrue();
+    assertThat(response.getAccessToken()).isEqualTo("access");
+    verify(refreshTokenRepository).save(stored);
+    verify(refreshTokenRepository, times(2)).save(any(RefreshToken.class));
+  }
+
+  @Test
+  void refreshToken_shouldRejectRevokedOrUnknownToken() {
+    when(jwtTokenProvider.extractJti("tok")).thenReturn("jti-1");
+    when(jwtTokenProvider.validateRefreshTokenAndGetUserId("tok"))
+        .thenReturn(testUser.getId().toString());
+    when(refreshTokenRepository.findByTokenIdAndRevokedFalse("jti-1")).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> authService.refreshToken("tok"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Invalid or revoked refresh token");
+  }
+
+  @Test
+  void refreshToken_shouldRejectExpiredStoredToken() {
+    RefreshToken stored = storedToken(Instant.now().minusSeconds(1));
+    when(jwtTokenProvider.extractJti("tok")).thenReturn("jti-1");
+    when(jwtTokenProvider.validateRefreshTokenAndGetUserId("tok"))
+        .thenReturn(testUser.getId().toString());
+    when(refreshTokenRepository.findByTokenIdAndRevokedFalse("jti-1"))
+        .thenReturn(Optional.of(stored));
+
+    assertThatThrownBy(() -> authService.refreshToken("tok"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Refresh token expired");
+    assertThat(stored.isRevoked()).isFalse();
+    verify(refreshTokenRepository, never()).save(any());
+  }
+
+  @Test
+  void refreshToken_shouldRejectWhenUserNoLongerExists() {
+    RefreshToken stored = storedToken(Instant.now().plusSeconds(600));
+    when(jwtTokenProvider.extractJti("tok")).thenReturn("jti-1");
+    when(jwtTokenProvider.validateRefreshTokenAndGetUserId("tok"))
+        .thenReturn(testUser.getId().toString());
+    when(refreshTokenRepository.findByTokenIdAndRevokedFalse("jti-1"))
+        .thenReturn(Optional.of(stored));
+    when(userRepository.findById(testUser.getId())).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> authService.refreshToken("tok"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("User not found");
+  }
+
+  @Test
+  void changePassword_shouldThrowWhenUserMissing() {
+    UUID id = UUID.randomUUID();
+    when(userRepository.findById(id)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> authService.changePassword(id, new ChangePasswordRequest()))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("User not found");
+    verify(refreshTokenRepository, never()).revokeAllByUserId(any());
+  }
+
+  @Test
+  void logout_shouldRevokeAllRefreshTokens() {
+    authService.logout(testUser.getId());
+
+    verify(refreshTokenRepository).revokeAllByUserId(testUser.getId());
   }
 }
