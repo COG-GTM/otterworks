@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Link2, Copy, Check, UserPlus, Globe, Lock, ChevronDown, AlertCircle } from "lucide-react";
 import { isAxiosError } from "axios";
 import toast from "react-hot-toast";
@@ -44,6 +44,29 @@ export function ShareDialog({
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
+  // Captured on first render, before the dialog mounts, so it is the control that opened it.
+  const [returnFocusTo] = useState(() =>
+    document.activeElement instanceof HTMLElement ? document.activeElement : null
+  );
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (returnFocusTo?.isConnected) returnFocusTo.focus();
+    };
+  }, [returnFocusTo]);
 
   const handleShare = async () => {
     if (!email.trim()) return;
@@ -123,16 +146,28 @@ export function ShareDialog({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="fixed inset-0 bg-black/40 z-40" aria-hidden="true" />
+      <div
+        data-testid="share-dialog-backdrop"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="share-dialog-title"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg"
+        >
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
+            <h2 id="share-dialog-title" className="text-lg font-semibold text-gray-900">
               Share &ldquo;{fileName}&rdquo;
             </h2>
             <button
               onClick={onClose}
+              aria-label="Close"
               className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition"
             >
               <X size={18} />
