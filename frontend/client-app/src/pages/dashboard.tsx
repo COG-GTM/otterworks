@@ -18,6 +18,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { filesApi, documentsApi, activityApi, storageApi } from "@/lib/api";
 import { formatFileSize, formatRelativeTime } from "@/lib/utils";
+import { getGreeting } from "@/lib/greeting";
+import { useAuthStore } from "@/stores/auth-store";
 import type { ActivityItem } from "@/types";
 
 export default function DashboardPage() {
@@ -31,6 +33,7 @@ export default function DashboardPage() {
 }
 
 function DashboardContent() {
+  const user = useAuthStore((state) => state.user);
   const { data: recentFiles, isLoading: filesLoading } = useQuery({
     queryKey: ["files", "recent"],
     queryFn: () => filesApi.getRecent(6),
@@ -62,7 +65,7 @@ function DashboardContent() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Welcome back! Here&apos;s your latest activity.
+            {getGreeting(user?.displayName)}! Here&apos;s your latest activity.
           </p>
         </div>
         <div className="flex items-center gap-2">
