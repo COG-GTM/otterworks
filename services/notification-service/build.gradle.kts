@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.23"
     id("io.ktor.plugin") version "2.3.9"
     id("com.github.johnrengelman.shadow") version "8.1.1"
+    jacoco
 }
 
 group = "com.otterworks"
@@ -92,5 +93,22 @@ tasks.withType<Test> {
     // properties the emitter test skips itself.
     listOf("ow.deps.cases", "ow.deps.observed").forEach { key ->
         System.getProperty(key)?.let { systemProperty(key, it) }
+    }
+}
+
+jacoco {
+    toolVersion = "0.8.12"
+}
+
+tasks.test {
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        csv.required.set(true)
+        html.required.set(true)
     }
 }
