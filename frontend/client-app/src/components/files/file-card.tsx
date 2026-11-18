@@ -70,6 +70,15 @@ export function FileCard({
   onStarToggle,
 }: FileCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  // The menu unmounts on selection, so move focus to its trigger first; the share
+  // dialog then returns focus there when it closes.
+  const handleShare = onShare
+    ? (id: string) => {
+        menuButtonRef.current?.focus();
+        onShare(id);
+      }
+    : undefined;
   const { user } = useAuthStore();
   const userId = user?.id ?? "";
   const [starred, setStarred] = useState(() => userId ? starredApi.isStarred(userId, file.id) : false);
@@ -178,6 +187,7 @@ export function FileCard({
         </button>
         <div className="relative w-8">
           <button
+            ref={menuButtonRef}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -192,7 +202,7 @@ export function FileCard({
               file={file}
               onClose={() => setMenuOpen(false)}
               onDelete={onDelete}
-              onShare={onShare}
+              onShare={handleShare}
               onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
               onDownload={onDownload}
             />
@@ -235,6 +245,7 @@ export function FileCard({
             </button>
             <div className="relative">
               <button
+                ref={menuButtonRef}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -249,7 +260,7 @@ export function FileCard({
                   file={file}
                   onClose={() => setMenuOpen(false)}
                   onDelete={onDelete}
-                  onShare={onShare}
+                  onShare={handleShare}
                   onDownload={onDownload}
                   onRename={() => { renameDoneRef.current = false; setIsRenaming(true); setRenameValue(file.name); }}
                 />
