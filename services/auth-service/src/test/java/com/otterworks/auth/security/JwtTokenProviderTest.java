@@ -120,4 +120,30 @@ class JwtTokenProviderTest {
     user.setRoles(Set.of(User.Role.USER));
     return user;
   }
+
+  @Test
+  void validateTokenAndGetUserId_shouldRejectRefreshToken() {
+    String refresh = jwtTokenProvider.generateRefreshToken(createTestUser());
+
+    assertThatThrownBy(() -> jwtTokenProvider.validateTokenAndGetUserId(refresh))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void validateRefreshTokenAndGetUserId_shouldReturnSubjectForRefreshToken() {
+    User user = createTestUser();
+    String refresh = jwtTokenProvider.generateRefreshToken(user);
+
+    assertThat(jwtTokenProvider.validateRefreshTokenAndGetUserId(refresh))
+        .isEqualTo(user.getId().toString());
+  }
+
+  @Test
+  void validateRefreshTokenAndGetUserId_shouldRejectAccessToken() {
+    String access = jwtTokenProvider.generateAccessToken(createTestUser());
+
+    assertThatThrownBy(() -> jwtTokenProvider.validateRefreshTokenAndGetUserId(access))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Token is not a refresh token");
+  }
 }
