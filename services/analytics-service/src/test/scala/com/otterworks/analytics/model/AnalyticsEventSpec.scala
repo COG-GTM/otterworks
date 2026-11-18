@@ -94,3 +94,16 @@ class AnalyticsEventSpec extends AnyFlatSpec with Matchers:
     val instant = json.convertTo[Instant]
     instant shouldBe Instant.ofEpochMilli(1710504000000L)
   }
+
+  it should "reject values that are neither strings nor numbers" in {
+    a[DeserializationException] should be thrownBy JsBoolean(true).convertTo[Instant]
+  }
+
+  "Product JSON" should "round-trip with snake_case field names" in {
+    import com.otterworks.analytics.model.MarketJsonProtocol.given
+    val p = Product("SKU-1", "Name", "Cat", "SALMON_NOK_KG", BigDecimal("1.5"), BigDecimal("2"),
+      BigDecimal("10"), BigDecimal("30"), "Supplier")
+    val json = p.toJson.asJsObject
+    json.fields.keySet should contain allOf("commodity_series_code", "content_kg", "list_price_usd")
+    json.convertTo[Product] shouldBe p
+  }

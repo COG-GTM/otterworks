@@ -205,3 +205,14 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
       csv should include("document.created")
     }
   }
+
+  it should "quote CSV fields containing commas or quotes" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+
+    service.trackEvent("document.created", "user-1", "doc,\"7\"", "document", Map.empty).futureValue
+
+    Get("/api/v1/analytics/export?format=csv&period=7d") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[String] should include(",\"doc,\"\"7\"\"\",document,")
+    }
+  }

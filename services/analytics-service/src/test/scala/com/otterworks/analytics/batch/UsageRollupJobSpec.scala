@@ -69,3 +69,34 @@ class UsageRollupJobSpec extends AnyFlatSpec with Matchers:
       parsed.dayCount shouldBe 3L
     finally Files.deleteIfExists(tmp): Unit
   }
+
+  "EventLoader.load" should "read a filesystem path when one exists" in {
+    val tmp: Path = Files.createTempFile("usage-events", ".ndjson")
+    try
+      Files.write(tmp,
+        """{"eventId":"e1","eventType":"file.uploaded","userId":"u1","resourceId":"f1","resourceType":"file","metadata":{},"timestamp":"2024-03-01T00:00:00Z"}
+          |""".stripMargin.getBytes(StandardCharsets.UTF_8))
+      val events = EventLoader.load(tmp.toString)
+      events.map(_.eventId) shouldBe List("e1")
+      EventLoader.fromFile(tmp) shouldBe events
+    finally Files.deleteIfExists(tmp): Unit
+  }
+
+  it should "fail clearly for a reference that is neither a file nor a classpath resource" in {
+    val ex = the[IllegalArgumentException] thrownBy EventLoader.load("/does/not/exist.ndjson")
+    ex.getMessage should include("/does/not/exist.ndjson")
+  }
+
+  "UsageRollupJob.main" should "run the batch with the environment-derived config" in {
+    val config = UsageRollupJob.loadConfig()
+    config.input shouldBe sys.env.getOrElse("ROLLUP_INPUT", UsageRollupJob.DefaultInput)
+    config.output shouldBe sys.env.getOrElse("ROLLUP_OUTPUT", UsageRollupJob.DefaultOutput)
+    val out = java.nio.file.Paths.get(config.output)
+    assume(!Files.exists(out), s"refusing to overwrite existing ${config.output}")
+    try
+      UsageRollupJob.main(Array.empty)
+      val parsed = new String(Files.readAllBytes(out), StandardCharsets.UTF_8).parseJson.convertTo[UsageRollupReport]
+      parsed.source shouldBe config.input
+      parsed.dayCount should be > 0L
+    finally Files.deleteIfExists(out): Unit
+  }
