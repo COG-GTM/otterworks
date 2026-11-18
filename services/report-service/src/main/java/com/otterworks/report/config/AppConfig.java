@@ -45,6 +45,10 @@ public class AppConfig {
     @Value("${otterworks.report.read-timeout:30000}")
     private int readTimeout;
 
+    // Standalone/demo only: substitute generated sample rows when an upstream fetch fails.
+    @Value("${otterworks.report.sample-data-fallback.enabled:false}")
+    private boolean sampleDataFallbackEnabled;
+
     // LEGACY: RestTemplate with Apache HttpComponents 4.x connection pool
     @Bean
     public RestTemplate restTemplate() {
@@ -81,5 +85,9 @@ public class AppConfig {
 
     public int getMaxRows() {
         return maxRows;
+    }
+
+    public boolean isSampleDataFallbackEnabled() {
+        return sampleDataFallbackEnabled;
     }
 }
