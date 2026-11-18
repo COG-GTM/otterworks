@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, Suspense } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useState, useCallback, useEffect, useMemo, useRef, Suspense } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -48,18 +48,31 @@ function escapeHtml(text: string): string {
 }
 import type { SearchResult } from "@/types";
 
+function resultHref(result: SearchResult): string {
+  if (result.type === "document") return `/documents/${result.id}`;
+  if (result.type === "folder") return `/files?folder=${result.id}`;
+  return `/files/${result.id}`;
+}
+
 function SearchContent() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const initialQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(initialQuery);
   const [submittedQuery, setSubmittedQuery] = useState(initialQuery);
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const urlQuery = searchParams.get("q") || "";
     setQuery(urlQuery);
     setSubmittedQuery(urlQuery);
   }, [searchParams]);
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [query, submittedQuery, typeFilter]);
   const [showFilters, setShowFilters] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -80,10 +93,43 @@ function SearchContent() {
     [query]
   );
 
-  const results = data?.data || [];
+  const results = useMemo(() => data?.data ?? [], [data]);
+
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    const row = resultsRef.current?.querySelector<HTMLElement>(
+      `[data-result-index="${highlightedIndex}"]`
+    );
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [highlightedIndex]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (results.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.min(i + 1, results.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedIndex((i) => Math.max(i - 1, 0));
+      } else if (
+        e.key === "Enter" &&
+        highlightedIndex >= 0 &&
+        highlightedIndex < results.length &&
+        e.target instanceof HTMLInputElement
+      ) {
+        e.preventDefault();
+        navigate(resultHref(results[highlightedIndex]));
+      }
+    },
+    [results, highlightedIndex, navigate]
+  );
+
+  const highlightedResult =
+    highlightedIndex >= 0 ? results[highlightedIndex] : undefined;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6" onKeyDown={handleKeyDown}>
       <h1 className="text-2xl font-bold text-gray-900">Search</h1>
 
       {/* Search form */}
@@ -97,6 +143,11 @@ function SearchContent() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search files, documents, and folders..."
+          aria-label="Search query"
+          aria-controls="search-results"
+          aria-activedescendant={
+            highlightedResult ? `search-result-${highlightedResult.id}` : undefined
+          }
           className="w-full pl-12 pr-20 py-3 bg-white border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-otter-500 focus:border-transparent"
           autoFocus
         />
@@ -160,9 +211,22 @@ function SearchContent() {
           <p className="text-sm text-gray-500 mb-4">
             {data?.total || results.length} result{results.length !== 1 ? "s" : ""} for &ldquo;{submittedQuery}&rdquo;
           </p>
-          {results.map((result) => (
-            <SearchResultRow key={result.id} result={result} />
-          ))}
+          <div
+            id="search-results"
+            ref={resultsRef}
+            role="listbox"
+            aria-label="Search results"
+            className="space-y-1"
+          >
+            {results.map((result, index) => (
+              <SearchResultRow
+                key={result.id}
+                result={result}
+                index={index}
+                highlighted={index === highlightedIndex}
+              />
+            ))}
+          </div>
         </div>
       ) : (
         <EmptyState
@@ -175,13 +239,12 @@ function SearchContent() {
   );
 }
 
-function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
-  const href =
-    result.type === "document"
-      ? `/documents/${result.id}`
-      : result.type === "folder"
-      ? `/files?folder=${result.id}`
-      : `/files/${result.id}`;
+function SearchResultRow({
+  result,
+  index,
+  highlighted,
+}: Readonly<{ result: SearchResult; index: number; highlighted: boolean }>) {
+  const href = resultHref(result);
 
   const Icon =
     result.type === "document"
@@ -200,7 +263,14 @@ function SearchResultRow({ result }: Readonly<{ result: SearchResult }>) {
   return (
     <Link
       to={href}
-      className="flex items-start gap-4 px-4 py-3 rounded-lg hover:bg-gray-50 transition"
+      id={`search-result-${result.id}`}
+      role="option"
+      aria-selected={highlighted}
+      data-result-index={index}
+      className={cn(
+        "flex items-start gap-4 px-4 py-3 rounded-lg transition",
+        highlighted ? "bg-otter-100 ring-2 ring-otter-500" : "hover:bg-gray-50"
+      )}
     >
       <div
         className={cn(
