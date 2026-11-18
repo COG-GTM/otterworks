@@ -3,6 +3,7 @@ package com.otterworks.report.service;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.otterworks.report.config.AppConfig;
 import com.otterworks.report.util.ReportDateUtils;
 import org.apache.commons.lang.StringUtils;
@@ -21,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 /**
  * Fetches report data from analytics and audit services via REST.
@@ -92,9 +94,9 @@ public class ReportDataFetcher {
                 }
                 return Collections.emptyList();
             });
-        } catch (ExecutionException e) {
-            logger.error("Failed to fetch analytics data, using sample data: {}", e.getMessage());
-            return generateSampleAnalyticsData(dateFrom, dateTo);
+        } catch (ExecutionException | UncheckedExecutionException e) {
+            return handleFetchFailure("analytics", "analytics-service", unwrap(e),
+                    () -> generateSampleAnalyticsData(dateFrom, dateTo));
         }
     }
 
@@ -120,9 +122,9 @@ public class ReportDataFetcher {
                 }
                 return Collections.emptyList();
             });
-        } catch (ExecutionException e) {
-            logger.error("Failed to fetch audit data, using sample data: {}", e.getMessage());
-            return generateSampleAuditData(dateFrom, dateTo);
+        } catch (ExecutionException | UncheckedExecutionException e) {
+            return handleFetchFailure("audit", "audit-service", unwrap(e),
+                    () -> generateSampleAuditData(dateFrom, dateTo));
         }
     }
 
@@ -144,12 +146,31 @@ public class ReportDataFetcher {
             }
             return Collections.emptyList();
         } catch (RestClientException e) {
-            logger.error("Failed to fetch user activity data: {}", e.getMessage());
-            return generateSampleUserActivityData(dateFrom, dateTo);
+            return handleFetchFailure("user activity", "auth-service", e,
+                    () -> generateSampleUserActivityData(dateFrom, dateTo));
         }
     }
 
-    // ----- Sample data generators for standalone/demo mode -----
+    /**
+     * Fails the fetch with a {@link ReportDataFetchException} so the worker marks the report FAILED.
+     * Sample rows are returned instead only when the standalone/demo fallback flag is enabled.
+     */
+    private List<Map<String, Object>> handleFetchFailure(String dataSet, String upstream, Throwable cause,
+                                                         Supplier<List<Map<String, Object>>> sampleData) {
+        if (appConfig.isSampleDataFallbackEnabled()) {
+            logger.warn("Failed to fetch {} data from {}; sample-data fallback is enabled, returning SAMPLE rows: {}",
+                    dataSet, upstream, cause.getMessage());
+            return sampleData.get();
+        }
+        logger.error("Failed to fetch {} data from {}: {}", dataSet, upstream, cause.getMessage(), cause);
+        throw new ReportDataFetchException("Failed to fetch " + dataSet + " data from " + upstream, cause);
+    }
+
+    private static Throwable unwrap(Exception e) {
+        return e.getCause() != null ? e.getCause() : e;
+    }
+
+    // ----- Sample data generators for standalone/demo mode (otterworks.report.sample-data-fallback.enabled) -----
 
     private List<Map<String, Object>> generateSampleAnalyticsData(Date dateFrom, Date dateTo) {
         List<Map<String, Object>> data = new ArrayList<>();
@@ -165,6 +186,7 @@ public class ReportDataFetcher {
             row.put("duration_ms", 100 + (i * 17) % 5000);
             row.put("status", i % 10 == 0 ? "error" : "success");
             row.put("metadata", "sample-analytics-row-" + i);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
@@ -185,6 +207,7 @@ public class ReportDataFetcher {
             row.put("timestamp", ReportDateUtils.toIsoString(new Date(dateFrom.getTime() + (long) i * 1800000)));
             row.put("resource", "/files/doc-" + (i % 20));
             row.put("details", "Audit entry " + i);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
@@ -203,6 +226,7 @@ public class ReportDataFetcher {
             row.put("storage_used_mb", 100 + i * 50);
             row.put("collaborations", i * 4);
             row.put("active", i % 5 != 0);
+            row.put("sample_data", true);
             data.add(row);
         }
         return data;
