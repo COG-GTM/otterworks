@@ -91,10 +91,10 @@ describe('CollaborationManager', () => {
     });
   }, 15000);
 
-  afterAll((done) => {
-    manager.stop();
+  afterAll(async () => {
+    await manager.stop();
     io.close();
-    httpServer.close(done);
+    await new Promise((resolve) => httpServer.close(resolve));
   });
 
   afterEach(() => {
@@ -115,10 +115,15 @@ describe('CollaborationManager', () => {
         transports: ['websocket'],
       });
 
-      client.on('connect', () => resolve(client));
-      client.on('connect_error', (err) => reject(err));
-
-      setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      const timer = setTimeout(() => reject(new Error('Connection timeout')), 5000);
+      client.on('connect', () => {
+        clearTimeout(timer);
+        resolve(client);
+      });
+      client.on('connect_error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
     });
   }
 

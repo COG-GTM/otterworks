@@ -202,3 +202,37 @@ describe('AwarenessService', () => {
     });
   });
 });
+
+describe('AwarenessService socket moves', () => {
+  let awareness: AwarenessService;
+
+  beforeEach(() => {
+    awareness = new AwarenessService(mockLogger);
+  });
+
+  it('moves a socket between documents and drops the emptied old document', () => {
+    awareness.addUser('doc-1', 'socket-1', 'user-1', 'Alice', 'a@test.com');
+    awareness.addUser('doc-2', 'socket-1', 'user-1', 'Alice', 'a@test.com');
+
+    expect(awareness.getUserDocument('socket-1')).toBe('doc-2');
+    expect(awareness.getDocumentUserCount('doc-1')).toBe(0);
+    expect(awareness.getActiveDocumentIds()).toEqual(['doc-2']);
+  });
+
+  it('keeps the old document when other users remain after a move', () => {
+    awareness.addUser('doc-1', 'socket-1', 'user-1', 'Alice', 'a@test.com');
+    awareness.addUser('doc-1', 'socket-2', 'user-2', 'Bob', 'b@test.com');
+    awareness.addUser('doc-2', 'socket-1', 'user-1', 'Alice', 'a@test.com');
+
+    expect(awareness.getDocumentUsers('doc-1').map((u) => u.userId)).toEqual(['user-2']);
+    expect(awareness.getDocumentUserCount('doc-2')).toBe(1);
+  });
+
+  it('cycles through the color palette', () => {
+    const colors = new Set<string>();
+    for (let i = 0; i < 21; i++) {
+      colors.add(awareness.addUser('doc', `s${i}`, `u${i}`, 'U', 'u@test.com').color);
+    }
+    expect(colors.size).toBe(20);
+  });
+});
