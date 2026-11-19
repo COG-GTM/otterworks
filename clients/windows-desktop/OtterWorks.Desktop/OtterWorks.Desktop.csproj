@@ -16,6 +16,9 @@
     <NeutralLanguage>en-US</NeutralLanguage>
     <GenerateAssemblyConfigurationAttribute>false</GenerateAssemblyConfigurationAttribute>
     <GenerateAssemblyInformationalVersionAttribute>false</GenerateAssemblyInformationalVersionAttribute>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
 
@@ -27,6 +30,11 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Security" />
+  </ItemGroup>
+
+  <!-- .NET 10 ignores app.config runtime settings; their equivalents live in code (see OtterWorksApiClient). -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net48'">
+    <None Remove="app.config" />
   </ItemGroup>
 
   <ItemGroup>
