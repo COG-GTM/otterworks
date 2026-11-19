@@ -1,343 +1,166 @@
 # OtterWorks Architecture
 
-OtterWorks is a collaborative file storage and document editing platform (functionally equivalent to Google Drive + Google Docs). It is built as a polyglot microservices system to demonstrate a realistic enterprise technology stack with intentional variety across languages, frameworks, and infrastructure patterns.
+OtterWorks is a polyglot cloud file-storage and document-collaboration platform
+(Google Drive-like). This page describes what the code on `main` does today. The
+request-level sequence diagrams live in [docs/flows.md](docs/flows.md) and the hosted
+demo platform (EKS tenants, ops dashboard, reaper) in
+[demo-platform/docs/architecture.md](demo-platform/docs/architecture.md).
 
-## System Overview
+![OtterWorks architecture](docs/diagrams/architecture.png)
 
-```
-                                    +------------------+
-                                    |   CloudFront     |
-                                    |   CDN            |
-                                    +--------+---------+
-                                             |
-                                    +--------+---------+
-                                    |  NGINX Ingress   |
-                                    |  (L7 Router)     |
-                                    +--------+---------+
-                                             |
-                         +-------------------+-------------------+
-                         |                                       |
-                +--------+---------+                   +---------+--------+
-                |  Web Frontend    |                   |  Admin Dashboard |
-                |  (React/Next.js) |                   |  (Angular 17)    |
-                +--------+---------+                   +---------+--------+
-                         |                                       |
-                +--------+---------+                             |
-                |  API Gateway     +-----------------------------+
-                |  (Go / Chi)      |
-                +--------+---------+
-                         |
-     +---+---+---+---+---+---+---+---+---+
-     |   |   |   |   |   |   |   |   |   |
-  +--+--++--++--++--++--++--++--++--++--++--+
-  |Auth ||File||Doc ||Co-||No-||Se-||An-||Ad-||Au-|
-  |Svc  ||Svc ||Svc ||lab||tif||arc||aly||min||dit|
-  |Java ||Rust||Py  ||JS ||Kt ||Py ||Sc ||Rb ||C# |
-  +--+--++--++--++--++--++--++--++--++--++--+
-     |   |   |   |   |   |   |   |   |
-  +--+---+---+---+---+---+---+---+---+--+
-  |         Data & Infrastructure        |
-  | PostgreSQL | Redis | DynamoDB | S3   |
-  | MeiliSearch | SQS/SNS | Cognito     |
-  +-----------------------------------------+
-```
+The diagram source is [`docs/diagrams/architecture.dot`](docs/diagrams/architecture.dot)
+(Graphviz). Edit it and run `docs/diagrams/render.sh` to regenerate
+`architecture.png` and `architecture.svg`.
 
-## Services
+## Layers at a glance
 
-### 1. API Gateway (`services/api-gateway/`)
-- **Language**: Go 1.22
-- **Framework**: Chi router
-- **Purpose**: Central entry point for all client requests. Routes to backend services, handles rate limiting, request logging, CORS, and JWT validation.
-- **Port**: 8080
-- **Key Patterns**: Middleware chain, reverse proxy, circuit breaker (go-resilience), structured logging (zerolog)
+| Layer | What runs | Defined in |
+|-------|-----------|------------|
+| Clients | `client-app` web/mobile/desktop, `admin-dashboard`, Windows WPF client | `frontend/`, `clients/` |
+| Edge | `api-gateway` (Go) | `services/api-gateway` |
+| Core services | 10 services behind the gateway | `services/*`, `docker-compose.yml` |
+| Data and events | PostgreSQL, Redis, MeiliSearch, DynamoDB, S3, SNS/SQS | `docker-compose.infra.yml`, `scripts/localstack-init.sh`, `infrastructure/terraform` |
+| Batch | Cron-driven Python ETL jobs | `etl/` |
+| Modernization fixtures | Legacy billing + extracted billing service, legacy portal monolith, Oracle insurance package | `services/legacy-*`, `services/billing-service`, `services/industry-solutions`, `procs/` |
+| Ops | Observability, security gates, Helm/Terraform, demo platform | `docker-compose.infra.yml`, `security/`, `infrastructure/`, `platform/`, `demo-platform/` |
 
-### 2. Auth Service (`services/auth-service/`)
-- **Language**: Java 17
-- **Framework**: Spring Boot 3.2, Spring Security 6
-- **Database**: PostgreSQL (users, roles, sessions)
-- **Purpose**: User registration, login, JWT issuance/validation, OAuth2 integration, RBAC, MFA support. Integrates with AWS Cognito for identity federation.
-- **Port**: 8081
-- **Key Patterns**: Spring Security filter chain, BCrypt hashing, refresh token rotation, Flyway migrations, JPA/Hibernate, Micrometer metrics
+## Clients
 
-### 3. File Service (`services/file-service/`)
-- **Language**: Rust 1.77
-- **Framework**: Actix-Web 4
-- **Database**: DynamoDB (file metadata), S3 (file blobs)
-- **Purpose**: File upload (multipart + resumable), download, delete, folder management, file versioning, presigned URL generation. Handles large files efficiently with streaming.
-- **Port**: 8082
-- **Key Patterns**: Async Rust with Tokio, multipart streaming, AWS SDK for Rust, serde serialization, tower middleware, tracing crate
+| Client | Stack | Notes |
+|--------|-------|-------|
+| `frontend/client-app` | React 18, TypeScript, Vite, Tailwind, Zustand, TanStack Query | Served by nginx on `:3000` (compose service name `web-app`). Talks to the gateway at `VITE_API_URL` and to collab-service over WebSocket (`VITE_COLLAB_WS_URL`, `:8084`). The Vite dev server also proxies `/billing-api` to `billing-service`. |
+| Capacitor Android/iOS, Electron desktop | Same `client-app` bundle | Capacitor config in `capacitor.config.ts` + `mobile/`; Electron shell in `desktop/` |
+| `frontend/admin-dashboard` | Angular 17, Angular Material, NgRx | Served on `:4200`; calls `/api/v1/admin/*` and analytics/audit through the gateway. |
+| `clients/windows-desktop` | WPF, .NET Framework 4.8, MVVM | Native Windows client for the same gateway API (sign in, browse files, edit documents). Built on Windows only. |
 
-### 4. Document Service (`services/document-service/`)
-- **Language**: Python 3.12
-- **Framework**: FastAPI 0.110
-- **Database**: PostgreSQL (document metadata, content snapshots)
-- **Purpose**: Document CRUD operations, version history, content snapshots, template management. Stores document operational transforms and provides REST API for document metadata.
-- **Port**: 8083
-- **Key Patterns**: Pydantic models, SQLAlchemy async, Alembic migrations, dependency injection, background tasks, structlog
+## API gateway
 
-### 5. Collaboration Service (`services/collab-service/`)
-- **Language**: Node.js 20 (TypeScript)
-- **Framework**: Express 4 + Socket.io 4
-- **Database**: Redis (presence, cursors, operational transforms)
-- **Purpose**: Real-time collaborative editing via WebSockets. Implements Conflict-free Replicated Data Types (CRDT) for concurrent edits, cursor presence, and typing indicators.
-- **Port**: 8084 (HTTP), 8085 (WebSocket)
-- **Key Patterns**: CRDT (Yjs), WebSocket rooms, Redis pub/sub for multi-instance sync, Winston logging, event-driven architecture
+`services/api-gateway` (Go 1.22, Chi) is the single entry point on `:8080`. It
+validates JWTs, applies per-client rate limits, wraps each upstream in a circuit
+breaker, adds request IDs and CORS, and reverse-proxies by path prefix
+(`internal/config/config.go`):
 
-### 6. Notification Service (`services/notification-service/`)
-- **Language**: Kotlin 1.9
-- **Framework**: Ktor 2.3
-- **Database**: SQS (event queue), SNS (fan-out), DynamoDB (notification history)
-- **Purpose**: Processes domain events (file shared, comment added, document edited) and delivers notifications via email (SES), in-app (WebSocket push), and webhook. Event-driven consumer pattern.
-- **Port**: 8086
-- **Key Patterns**: Kotlin coroutines, Ktor routing, SQS long polling, SNS topic subscriptions, Exposed ORM, kotlinx.serialization
+| Prefix | Upstream |
+|--------|----------|
+| `/api/v1/auth`, `/api/v1/settings` | auth-service |
+| `/api/v1/files`, `/api/v1/folders` | file-service |
+| `/api/v1/documents`, `/api/v1/templates` | document-service |
+| `/api/v1/collab`, `/socket.io` | collab-service |
+| `/api/v1/notifications`, `/api/v1/preferences` | notification-service |
+| `/api/v1/search` | search-service |
+| `/api/v1/analytics` | analytics-service |
+| `/api/v1/admin` | admin-service |
+| `/api/v1/audit` | audit-service |
+| `/api/v1/reports` | report-service |
 
-### 7. Search Service (`services/search-service/`)
-- **Language**: Python 3.12
-- **Framework**: Flask 3.0
-- **Database**: MeiliSearch (full-text index)
-- **Purpose**: Full-text search across documents and file metadata. Indexes content from Document Service and File Service via event-driven ingestion. Supports faceted search, autocomplete, and relevance tuning.
-- **Port**: 8087
-- **Key Patterns**: MeiliSearch Python client, Flask-RESTful, SQS-based async indexing, marshmallow serialization, gunicorn
+## Core services
 
-### 8. Analytics Service (`services/analytics-service/`)
-- **Language**: Scala 3.4
-- **Framework**: Akka HTTP
-- **Database**: S3 (data lake), Spark (processing)
-- **Purpose**: Usage analytics collection (clickstream, API usage), aggregation pipelines, dashboard data API. Processes raw events from SQS into aggregated metrics stored in S3/Parquet.
-- **Port**: 8088
-- **Key Patterns**: Akka Streams, Spark batch jobs, Parquet columnar storage, circe JSON, cats-effect
+| Service | Port | Stack | Owns |
+|---------|------|-------|------|
+| auth-service | 8081 | Java 17, Spring Boot 3.2 | Registration, login, JWT issue/refresh, OAuth2, RBAC, user settings. PostgreSQL + Redis. |
+| file-service | 8082 | Rust, Actix-Web 4 | Upload/download, folders, versions, sharing, trash. Blobs in S3, metadata in DynamoDB; publishes file events to SNS; reports storage failures to admin-service. |
+| document-service | 8083 | Python 3.12, FastAPI, SQLAlchemy | Documents, templates, comments, version history. PostgreSQL; publishes document events to SNS. |
+| collab-service | 8084 | Node 20, TypeScript, Socket.io, Yjs | Real-time co-editing (CRDT), cursors and presence. Redis adapter for state and fan-out. |
+| notification-service | 8086 | Kotlin 1.9, Ktor 2.3 | Consumes the `otterworks-notifications` SQS queue, stores notifications and preferences in DynamoDB, pushes over WebSocket, sends alerts to admin-service. |
+| search-service | 8087 | Python 3.12, Flask 3 | Full-text search over MeiliSearch; indexes from the `otterworks-search-events` queue. |
+| analytics-service | 8088 | Scala 3, Akka HTTP | Usage metrics and dashboards from the shared PostgreSQL database. |
+| admin-service | 8089 | Ruby 3.3, Rails 7.1, Sidekiq | Users, quotas, feature flags, announcements, system health, incidents. Its incident path opens Devin triage sessions and Slack alerts. PostgreSQL + Redis. |
+| audit-service | 8090 | C#, ASP.NET Core 8 | Consumes `otterworks-audit-events`; audit log in DynamoDB, archives to S3. |
+| report-service | 8091 | Java 8, Spring Boot 2.5, JasperReports, Maven | **Legacy on purpose**: PDF/CSV/Excel reports over the `otterworks_reports` database, pulling data from analytics, audit and auth. Upgrade path in `services/report-service/UPGRADE_GUIDE.md`. |
 
-### 9. Admin Service (`services/admin-service/`)
-- **Language**: Ruby 3.3
-- **Framework**: Rails 7.1
-- **Database**: PostgreSQL (shared with auth DB, read replicas)
-- **Purpose**: Administrative dashboard backend. User management, content moderation, system health overview, feature flags, audit log viewer.
-- **Port**: 8089
-- **Key Patterns**: ActiveRecord, ActiveAdmin gem, Pundit authorization, Sidekiq background jobs, RSpec testing
+There is no service on 8085; collab-service serves HTTP and WebSocket on 8084.
 
-### 10. Audit Service (`services/audit-service/`)
-- **Language**: C# 12
-- **Framework**: ASP.NET 8 Minimal API
-- **Database**: DynamoDB (audit events), S3 (long-term archive)
-- **Purpose**: Immutable audit trail for all user and system actions. Compliance reporting, data retention policies, GDPR data export/deletion tracking.
-- **Port**: 8090
-- **Key Patterns**: Minimal API, DynamoDB document model, S3 lifecycle policies, Serilog structured logging, MediatR CQRS, xUnit testing
+## Data and events
 
-## Frontend Applications
+Locally, `docker-compose.infra.yml` runs PostgreSQL 15, Redis 7 and MeiliSearch 1.6;
+LocalStack emulates AWS and `scripts/localstack-init.sh` creates:
 
-### 11. Web Frontend (`frontend/web-app/`)
-- **Language**: TypeScript 5.4
-- **Framework**: React 18 + Next.js 14
-- **Purpose**: Main user-facing SPA. File browser, document editor (TipTap/ProseMirror), sharing dialogs, search, notifications panel.
-- **Key Patterns**: App Router, Server Components, TanStack Query, Zustand state management, Tailwind CSS, Playwright E2E tests
+- **S3**: `otterworks-files`, `otterworks-audit-archive`, `otterworks-data-lake`
+- **DynamoDB**: file metadata, file versions, folders, shares, notifications, preferences, audit events
+- **SNS → SQS**: topic `otterworks-events` fans out to `otterworks-notifications`,
+  `otterworks-audit-events` and `otterworks-search-events` (each with a DLQ).
 
-### 12. Admin Dashboard (`frontend/admin-dashboard/`)
-- **Language**: TypeScript 5.4
-- **Framework**: Angular 17
-- **Purpose**: Admin-facing dashboard. User management, system metrics, audit log viewer, feature flags.
-- **Key Patterns**: Standalone components, NgRx signals, Angular Material, RxJS, Karma/Jasmine tests
+`scripts/init-db.sql` creates the `otterworks` and `otterworks_reports` PostgreSQL
+databases. In AWS the same resources come from `infrastructure/terraform/modules`
+(`database`, `cache`, `search`, `storage`, `messaging`, `auth`, `irsa`, `monitoring`).
+Demo tenants run with SNS/SQS disabled (see [AGENTS.md](AGENTS.md)).
 
-## Data Infrastructure
+## Batch ETL
 
-### Databases
-| Store | Technology | Purpose |
-|-------|-----------|---------|
-| Primary RDBMS | PostgreSQL 15 (RDS) | Users, documents, admin data |
-| Cache/Sessions | Redis 7 (ElastiCache) | Sessions, CRDT state, presence, rate limiting |
-| NoSQL | DynamoDB | File metadata, audit events, notification history |
-| Search | MeiliSearch 1.6 | Full-text document search, autocomplete |
-| Object Storage | S3 | File blobs, document attachments, analytics data lake |
-| CDN | CloudFront | Static assets, presigned URL caching |
+`etl/` holds plain Python jobs run by cron through `etl/run.sh` (schedule in `etl/crontab`):
 
-### Event Bus
-- **SQS**: Point-to-point message queues (file events, notification delivery)
-- **SNS**: Fan-out topics (domain events published to multiple consumers)
-- **Redis Pub/Sub**: Real-time presence and collaboration sync
+| Job | Schedule (UTC) |
+|-----|----------------|
+| `analytics_daily.py` | daily 02:00 |
+| `storage_cleanup_daily.py` | daily 02:30 |
+| `user_activity_daily.py` | daily 05:00 |
+| `audit_archive_weekly.py` | Sunday 03:00 |
+| `search_reindex_weekly.py` | Sunday 04:00 |
 
-## Infrastructure
+`etl/ETL_UPGRADE_GUIDE.md` describes the move to an orchestrated pipeline.
 
-### AWS Resources (App-Specific - in this repo)
-Managed via Terraform in `infrastructure/terraform/`:
-- S3 buckets (file storage, analytics data lake, static assets)
-- RDS PostgreSQL instance
-- ElastiCache Redis cluster
-- DynamoDB tables (file_metadata, audit_events, notifications)
-- SQS queues and SNS topics
-- MeiliSearch instance
-- Cognito User Pool
-- CloudFront distribution
-- ECR repositories (one per service)
-- IAM roles and policies for EKS service accounts (IRSA)
+## Modernization fixtures
 
-### Kubernetes (App-Specific - in this repo)
-Each service has a Helm chart in `infrastructure/helm/<service-name>/`:
-- Deployment, Service, Ingress, NetworkPolicy, ServiceMonitor
-- Health probes at `/health`
-- Resource limits within namespace quotas
-- ConfigMaps and Secrets for service configuration
+These run from their own compose files, are not routed by the gateway and are not
+part of the Helm deploy. They exist to demo legacy-to-modern migrations.
 
-### Shared Platform (external - `platform-engineering-shared-services`)
-- EKS cluster (v1.31, t3.medium nodes)
-- VPC, subnets, NAT gateways
-- NGINX Ingress Controller
-- cert-manager + Let's Encrypt
-- Prometheus + Grafana (cluster-wide)
-- ArgoCD for GitOps
-- ExternalDNS for Route 53
-- Network policies (base)
+| Path | What it is | Run with |
+|------|-----------|----------|
+| `services/legacy-billing` (`:8096`) | Flask app whose billing logic lives in PL/pgSQL stored procedures (the "before" state) | `make procs-up` (`docker-compose.procs.yml`) |
+| `services/billing-service` (`:8097`) | FastAPI service the procedures are extracted into (the "after" state), with its own database | `make procs-up` |
+| `procs/` | Record/replay harness: scenarios, recorded transcripts and parity rules that prove `billing-service` matches `legacy-billing` (`procs-parity.yml` in CI) | `make procs-record`, `make procs-parity` |
+| `services/legacy-portal` (`:8095`) | Java 11 Spring Boot modular monolith (announcements, feedback, user preferences) for decomposition demos, deployed on-prem style | `services/legacy-portal/docker-compose.onprem.yml` |
+| `services/industry-solutions/insurance` | Oracle PL/SQL "Commission Pay" package with OLTP/OLAP schemas | `make insurance-up` (`docker-compose.insurance.yml`) |
 
 ## Observability
 
-### Logging
-- Each service uses its language-native structured logging library
-- All logs output JSON to stdout (12-factor app pattern)
-- Fluentd/Fluent Bit sidecar ships logs to CloudWatch Logs
-- Log correlation via trace IDs (OpenTelemetry)
+`docker-compose.infra.yml` also runs Prometheus, Grafana, Jaeger, an OpenTelemetry
+collector and Fluent Bit, configured from `observability/` (Prometheus scrape, alert and
+recording rules; Grafana provisioning and dashboards; OTel collector; Fluent Bit). Services
+export OTLP traces to the collector, and most expose Prometheus metrics.
 
-### Metrics
-- Each service exposes `/metrics` endpoint (Prometheus format)
-- ServiceMonitor CRDs for auto-discovery
-- Custom Grafana dashboards in `observability/grafana/dashboards/`
-- Key metrics: request rate, error rate, latency (RED), saturation
+## Security and quality gates
 
-### Tracing
-- OpenTelemetry SDK in each service
-- Traces exported to Jaeger (deployed in cluster)
-- Distributed trace propagation via W3C TraceContext headers
-- Service dependency map generation
+| Path | Purpose |
+|------|---------|
+| `security/scanning` | Trivy config used by `security-scan.yml` |
+| `security/dast` | OWASP ZAP baseline against the running stack (`dast-scan.yml`) |
+| `security/deps` | Dependency advisory cases and expected results (`deps-remediation.yml`) |
+| `security/equivalence` | Behavioural equivalence cases for refactors (`equivalence-gate.yml`) |
+| `security/policies` | Default-deny Kubernetes NetworkPolicies |
+| `tests/api`, `tests/contract` | Cross-service API flow tests (`make test-api-flows`) and consumer contracts |
 
-### Alerting
-- PrometheusRule CRDs for alerting rules
-- PagerDuty/Slack integration via Alertmanager
-- Runbooks in `docs/runbooks/`
+## Deployment
 
-## ETL & Data Pipeline
+- **Kubernetes**: one Helm chart per deployable in `infrastructure/helm/` (11 backend
+  services plus `web-app` and `admin-dashboard`); namespace, quota and limit range in
+  `infrastructure/k8s/`.
+- **AWS base**: `platform/terraform` (VPC, EKS, ECR) and
+  `infrastructure/terraform` (application data stores and IRSA).
+- **Demo platform**: `demo-platform/` runs per-attendee tenants on the shared
+  `otterworks-dev` cluster; see its [architecture doc](demo-platform/docs/architecture.md).
+- **CI/CD** (`.github/workflows`): `ci.yml` (path-filtered build and test per service),
+  `security-scan.yml`, `dast-scan.yml`, `deps-remediation.yml`, `equivalence-gate.yml`,
+  `procs-parity.yml`, `sast-auto-remediate.yml`, `docker-build.yml`, `cd-tenant.yml`
+  (tenant deploys for `workshop-*`/`demo-*` branches) and `mirror-demo.yml`.
 
-### Apache Airflow (`etl/airflow/`)
-- DAGs for daily/hourly analytics aggregation
-- Data quality checks
-- S3-to-MeiliSearch document indexing pipeline
-- User activity report generation
-
-### Spark Jobs (`etl/spark-jobs/`)
-- Scala Spark jobs for heavy analytics processing
-- Read from SQS/S3, write Parquet to data lake
-- Scheduled via Airflow
-
-## Security
-
-### Application Security
-- OWASP Top 10 compliance per service
-- Input validation and sanitization
-- CORS configuration per-service
-- Content Security Policy headers
-- Rate limiting at API Gateway
-- SQL injection prevention (parameterized queries)
-
-### Infrastructure Security
-- Pod security standards (restricted)
-- Network policies (default deny)
-- Secret management via Kubernetes Secrets + AWS Secrets Manager
-- Container image scanning (ECR scan-on-push)
-- IRSA (IAM Roles for Service Accounts) - no long-lived credentials in pods
-
-### DevSecOps
-- SAST scanning in CI (language-specific linters + Semgrep)
-- Dependency auditing (Dependabot, cargo-audit, pip-audit, npm audit)
-- Container scanning (Trivy)
-- OPA policies for Kubernetes admission control (`security/opa-policies/`)
-- SBOM generation per service
-
-## Cost Optimization
-- Single RDS instance (multi-schema) instead of per-service databases
-- DynamoDB on-demand billing
-- S3 Intelligent-Tiering for file storage
-- ElastiCache t3.micro for dev
-- MeiliSearch on ECS Fargate for dev
-- EKS managed node group with spot instances option
-- Teardown script to destroy all resources when not in use
-- CloudFront caching to reduce origin requests
-
-## Monorepo Structure
+## Repository layout
 
 ```
 otterworks/
-├── ARCHITECTURE.md                    # This file
-├── README.md                          # Project overview and quick start
-├── docker-compose.yml                 # Local development orchestration
-├── docker-compose.infra.yml           # Local infrastructure (Postgres, Redis, etc.)
-├── Makefile                           # Top-level build/deploy commands
-├── .github/
-│   └── workflows/                     # CI/CD pipelines
-│       ├── ci.yml                     # Lint, test, build all services
-│       ├── deploy-dev.yml             # Deploy to dev EKS
-│       └── security-scan.yml         # SAST/DAST/dependency scanning
-├── infrastructure/
-│   ├── terraform/                     # App-specific AWS resources
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   ├── outputs.tf
-│   │   ├── modules/
-│   │   │   ├── storage/              # S3, CloudFront
-│   │   │   ├── database/             # RDS, ElastiCache, DynamoDB
-│   │   │   ├── messaging/            # SQS, SNS
-│   │   │   ├── search/               # MeiliSearch
-│   │   │   ├── auth/                 # Cognito
-│   │   │   └── ecr/                  # ECR repositories
-│   │   └── environments/
-│   │       ├── dev.tfvars
-│   │       └── prod.tfvars
-│   └── helm/                          # Per-service Helm charts
-│       ├── api-gateway/
-│       ├── auth-service/
-│       ├── file-service/
-│       ├── document-service/
-│       ├── collab-service/
-│       ├── notification-service/
-│       ├── search-service/
-│       ├── analytics-service/
-│       ├── admin-service/
-│       └── audit-service/
-├── services/
-│   ├── api-gateway/                   # Go / Chi
-│   ├── auth-service/                  # Java / Spring Boot
-│   ├── file-service/                  # Rust / Actix-Web
-│   ├── document-service/              # Python / FastAPI
-│   ├── collab-service/                # Node.js / Socket.io
-│   ├── notification-service/          # Kotlin / Ktor
-│   ├── search-service/                # Python / Flask
-│   ├── analytics-service/             # Scala / Akka HTTP
-│   ├── admin-service/                 # Ruby / Rails
-│   └── audit-service/                 # C# / ASP.NET
+├── services/                 # api-gateway + 10 core services + modernization fixtures
 ├── frontend/
-│   ├── web-app/                       # React / Next.js
-│   └── admin-dashboard/               # Angular 17
-├── shared/
-│   ├── proto/                         # Protobuf/gRPC service definitions
-│   ├── openapi/                       # OpenAPI specs per service
-│   └── events/                        # Event schema definitions (JSON Schema)
-├── observability/
-│   ├── grafana/
-│   │   └── dashboards/               # Custom Grafana dashboards
-│   ├── prometheus/
-│   │   └── rules/                    # PrometheusRule alert definitions
-│   ├── jaeger/                        # Jaeger deployment config
-│   └── fluentd/                       # Log shipping config
-├── security/
-│   ├── opa-policies/                  # OPA/Gatekeeper policies
-│   ├── scanning/                      # SAST/DAST config files
-│   └── sbom/                          # SBOM generation scripts
-├── etl/
-│   ├── airflow/
-│   │   └── dags/                      # Airflow DAG definitions
-│   └── spark-jobs/                    # Scala Spark processing jobs
-├── scripts/
-│   ├── setup-local.sh                 # Local dev environment setup
-│   ├── deploy-dev.sh                  # Deploy all services to dev
-│   ├── teardown-dev.sh                # Tear down dev environment
-│   └── seed-data.sh                   # Seed development data
-└── docs/
-    ├── api/                           # API documentation
-    ├── runbooks/                      # SRE runbooks
-    └── adr/                           # Architecture Decision Records
+│   ├── client-app/           # React + Vite web app (+ Capacitor, Electron)
+│   └── admin-dashboard/      # Angular admin console
+├── clients/windows-desktop/  # WPF native client
+├── procs/                    # stored-procedure parity harness
+├── etl/                      # cron ETL jobs
+├── security/                 # SAST/DAST/deps/equivalence gates, network policies
+├── tests/                    # API flow and contract tests
+├── infrastructure/           # Helm charts, k8s base, app Terraform
+├── platform/terraform/       # VPC, EKS, ECR
+├── demo-platform/            # multi-tenant demo control plane
+├── observability/            # Prometheus, Grafana, OTel collector, Fluent Bit config
+├── scripts/                  # local init, deploy, tenant tooling
+└── docs/                     # flows, runbooks, diagrams
 ```

@@ -14,23 +14,21 @@ Individual service development may also require the language toolchains listed i
 ## Quick Start (Local Development)
 
 ```bash
-# Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
-make infra-up
-
-# Start all application services (builds images on first run)
-make up
+# Start infrastructure + all application services (builds images on first run)
+make up            # add seed=1 to load sample data once the services are up
 
 # Open the app
-open http://localhost:3000        # Web App (React / Next.js)
+open http://localhost:3000        # Web App (React / Vite)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
 Or without Make:
 
 ```bash
-docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
+
+`make infra-up` starts only the infrastructure, for running a service from source against it.
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
@@ -48,7 +46,7 @@ make down
 | Auth Service | Java 17 | Spring Boot 3 | 8081 | Authentication, authorization, user management |
 | File Service | Rust 1.77 | Actix-Web 4 | 8082 | File upload/download, S3 integration, versioning |
 | Document Service | Python 3.12 | FastAPI | 8083 | Document CRUD, version history, snapshots |
-| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP) / 8085 (WS) | Real-time collaborative editing (CRDT via Yjs) |
+| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP + WS) | Real-time collaborative editing (CRDT via Yjs) |
 | Notification Service | Kotlin 1.9 | Ktor 2.3 | 8086 | Event-driven notifications (email, in-app, webhook) |
 | Search Service | Python 3.12 | Flask 3.0 | 8087 | Full-text search via MeiliSearch |
 | Analytics Service | Scala 3.4 | Akka HTTP | 8088 | Usage analytics, data aggregation |
@@ -58,6 +56,15 @@ make down
 
 > **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
 
+The modernization fixtures below run from their own compose files and are not behind the gateway:
+
+| Fixture | Stack | Port | Description |
+|---------|-------|------|-------------|
+| Legacy Billing | Python / Flask + PL/pgSQL | 8096 | Billing logic in stored procedures (before state); `make procs-up` |
+| Billing Service | Python / FastAPI | 8097 | Extraction target, parity-checked against `procs/` transcripts; `make procs-up` |
+| Legacy Portal | Java 11 / Spring Boot | 8095 | Modular monolith for decomposition demos; `services/legacy-portal/docker-compose.onprem.yml` |
+| Insurance (Commission Pay) | Oracle PL/SQL | 51521 (host) | `services/industry-solutions/insurance`; `make insurance-up` |
+
 ## Frontend Applications
 
 | App | Framework | Port | Description |
@@ -65,10 +72,17 @@ make down
 | Web App | React 18 / Vite SPA | 3000 | Main user-facing application (served by nginx in production) |
 | Admin Dashboard | Angular 17 | 4200 | Administrative interface |
 | Mobile (Android/iOS) | Capacitor | — | Native shells wrapping the Web App SPA; see [`frontend/client-app`](frontend/client-app/) |
+| Desktop (macOS/Linux/Windows) | Electron | — | Desktop shell wrapping the same SPA (`make dev-electron`) |
+| Windows Desktop | WPF / .NET Framework 4.8 | — | Native Windows client for the gateway API; see [`clients/windows-desktop`](clients/windows-desktop/) |
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design, data flow, and infrastructure details.
+![OtterWorks architecture](docs/diagrams/architecture.png)
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): components, gateway routes, data and event flow, fixtures, deployment.
+- [docs/flows.md](docs/flows.md): request-level sequence diagrams.
+- [demo-platform/docs/architecture.md](demo-platform/docs/architecture.md): multi-tenant demo platform.
+- Diagram source: [docs/diagrams/architecture.dot](docs/diagrams/architecture.dot) (re-render with `docs/diagrams/render.sh`).
 
 ## Infrastructure
 
@@ -129,8 +143,12 @@ GitHub Actions workflows in `.github/workflows/`:
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
 | `ci.yml` | Push / PR to `main` | Lint, test, and build changed services (change-detection via path filters) |
-| `docker-build.yml` | Push to `main` / tags | Build and push Docker images to ECR |
 | `security-scan.yml` | Push / PR | SAST, dependency audit, and container scanning |
+| `dast-scan.yml`, `deps-remediation.yml`, `equivalence-gate.yml`, `sast-auto-remediate.yml` | See each file | DAST, dependency, behavioural-equivalence and SAST remediation gates (`security/`) |
+| `procs-parity.yml` | Changes to billing / `procs/` | Replays recorded stored-procedure transcripts against `billing-service` |
+| `docker-build.yml` | Manual (`workflow_dispatch`) | Build and push versioned Docker images to ECR |
+| `cd-tenant.yml` | Push to `workshop-*` / `demo-*` | Build and deploy that branch to its demo tenant |
+| `mirror-demo.yml` | Push to `main` | Rebase `demo-coggtm` onto `main` |
 
 ## Makefile Commands
 
@@ -138,8 +156,8 @@ Run `make help` to list all available commands. Key targets:
 
 | Command | Description |
 |---------|-------------|
-| `make infra-up` | Start local infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability) |
-| `make up` | Build and start all application services |
+| `make infra-up` | Start local infrastructure only (Postgres, Redis, LocalStack, MeiliSearch, observability) |
+| `make up` | Build and start infrastructure + all application services (`seed=1` to seed) |
 | `make down` | Stop all services and infrastructure |
 | `make build` | Build all service Docker images |
 | `make logs` | Tail logs for all services |
@@ -149,6 +167,9 @@ Run `make help` to list all available commands. Key targets:
 | `make dev-electron` | Backend in Docker + build and launch the Electron desktop app |
 | `make test` | Run tests for all services |
 | `make lint` | Lint all services |
+| `make test-api-flows` | Cross-service API flow tests against the running stack |
+| `make procs-up` / `make procs-parity` | Start the legacy/extracted billing stack / replay parity scenarios |
+| `make insurance-up` / `make insurance-test` | Start / test the Oracle insurance fixture |
 | `make tf-plan` | Plan Terraform changes (dev) |
 | `make deploy-dev` | Deploy all services to dev EKS |
 | `make teardown-dev` | Tear down the dev environment |
@@ -159,25 +180,37 @@ Per-service build targets are also available (e.g., `make build-gateway`, `make 
 
 ```
 otterworks/
-├── services/              # Backend microservices (11 services, 8 languages)
+├── services/              # api-gateway + 10 core services + modernization fixtures
 │   ├── api-gateway/       #   Go / Chi
-│   ├── auth-service/      #   Java / Spring Boot
+│   ├── auth-service/      #   Java 17 / Spring Boot 3
 │   ├── file-service/      #   Rust / Actix-Web
 │   ├── document-service/  #   Python / FastAPI
-│   ├── collab-service/    #   Node.js / Socket.io
+│   ├── collab-service/    #   Node.js / Socket.io + Yjs
 │   ├── notification-service/ # Kotlin / Ktor
 │   ├── search-service/    #   Python / Flask
 │   ├── analytics-service/ #   Scala / Akka HTTP
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
-│   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
-├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
+│   ├── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
+│   ├── legacy-billing/    #   Flask + PL/pgSQL stored procedures (fixture)
+│   ├── billing-service/   #   FastAPI extraction target (fixture)
+│   ├── legacy-portal/     #   Java 11 modular monolith (fixture)
+│   └── industry-solutions/ #  Oracle PL/SQL insurance package (fixture)
+├── frontend/
+│   ├── client-app/        #   React + Vite web app, Capacitor mobile, Electron desktop
+│   └── admin-dashboard/   #   Angular admin console
+├── clients/
+│   └── windows-desktop/   #   WPF / .NET Framework 4.8 native client
+├── procs/                 # Stored-procedure record/replay parity harness
+├── etl/                   # Cron-driven Python ETL jobs (etl/scripts, etl/crontab)
+├── tests/                 # Cross-service API flow and contract tests
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)
 │   ├── helm/              #   Per-service Helm charts
 │   └── k8s/               #   Base Kubernetes resources (namespace, quotas, limits)
+├── platform/terraform/    # Shared VPC, EKS and ECR
+├── demo-platform/         # Multi-tenant demo control plane (dashboard, runner, reaper)
 ├── shared/
-│   ├── proto/             #   Protobuf / gRPC service definitions
 │   ├── openapi/           #   OpenAPI specs per service
 │   └── events/            #   Event schema definitions (JSON Schema)
 ├── observability/
@@ -186,14 +219,10 @@ otterworks/
 │   ├── jaeger/            #   Jaeger deployment config
 │   ├── otel/              #   OpenTelemetry Collector config
 │   └── logging/           #   Fluent Bit config and parsers
-├── security/
-│   ├── policies/          #   Network policies (default-deny, DNS, namespace egress)
-│   └── scanning/          #   Trivy container scanning config
-├── etl/
-│   ├── airflow/           #   Airflow DAGs, plugins, and tests
-│   └── spark/             #   Scala Spark processing jobs
-├── scripts/               # Deploy and teardown scripts
-└── .github/workflows/     # CI/CD pipelines (ci, docker-build, security-scan)
+├── security/              # Trivy, DAST, deps, equivalence gates; network policies
+├── scripts/               # Local init, seed, deploy, tenant and teardown scripts
+├── docs/                  # Flows, runbooks, plans, architecture diagram source
+└── .github/workflows/     # CI/CD pipelines
 ```
 
 ## Contributing
@@ -228,7 +257,7 @@ otterworks/
 2. Add the service to `docker-compose.yml` with the shared environment block (`x-common-env`).
 3. Create a Helm chart in `infrastructure/helm/<service-name>/`.
 4. Add OpenAPI and event schemas to `shared/`.
-5. Update this README and `ARCHITECTURE.md`.
+5. Update this README, `ARCHITECTURE.md` and `docs/diagrams/architecture.dot` (then run `docs/diagrams/render.sh`).
 
 ## License
 
