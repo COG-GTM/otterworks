@@ -134,6 +134,11 @@ Or press **F5** in Visual Studio.
 4. Click **Log out**, then **Sign in** with the same credentials — the document is still
    there, proving it was persisted by the real backend.
 
+## QA flows
+
+The main user flows (D1–D11), their recorded `main` baseline and the known baseline bugs are in
+[docs/QA-FLOWS.md](docs/QA-FLOWS.md). Migration PRs and release candidates are compared against it.
+
 ## Verification screenshots
 
 Captured on Windows against the OtterWorks backend (auth-service, document-service and
