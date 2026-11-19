@@ -1,8 +1,9 @@
 # OtterWorks Desktop (Windows)
 
 A native **Windows desktop client** for the OtterWorks platform, built with **C# on .NET 8**
-(`net8.0-windows`) using **WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API
-through the API gateway using `HttpClient`.
+(`net8.0-windows`, with a `net48` target kept until the migration is signed off) using
+**WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API through the API
+gateway using `HttpClient`.
 
 > It started on the legacy .NET Framework 4.8 (classic `.csproj` + `packages.config`) as a
 > framework-upgrade target and is being moved to .NET 8. It mirrors the core flow of the
@@ -29,7 +30,8 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # SDK-style net8.0-windows WPF project (Newtonsoft.Json 13.0.3)
+    ├── OtterWorks.Desktop.csproj      # SDK-style WPF project, net8.0-windows;net48 (Newtonsoft.Json 13.0.3)
+    ├── app.config                     # net48 runtime/TLS settings
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
     ├── Models/                        # Auth (camelCase) + Document/File (snake_case) DTOs
@@ -42,8 +44,9 @@ clients/windows-desktop/
 ## Prerequisites
 
 - **Windows 10/11 or Windows Server 2019/2022**
-- **.NET 8 SDK** (includes the Windows Desktop / WPF targeting pack) to build, or the
-  **.NET 8 Desktop Runtime** to run a built copy.
+- **.NET 8 SDK** (includes the Windows Desktop / WPF targeting pack) and the
+  **.NET Framework 4.8 Developer Pack** (for the `net48` target) to build.
+- **.NET 8 Desktop Runtime** or **.NET Framework 4.8** to run a built copy.
 
 ## Configuration
 
@@ -92,7 +95,8 @@ Or open `OtterWorks.Desktop.sln` in Visual Studio 2022 (17.8 or later) and build
 ## Run
 
 ```powershell
-.\OtterWorks.Desktop\bin\Release\net8.0-windows\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net8.0-windows\OtterWorks.Desktop.exe   # .NET 8
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe            # .NET Framework 4.8
 ```
 
 Or press **F5** in Visual Studio.

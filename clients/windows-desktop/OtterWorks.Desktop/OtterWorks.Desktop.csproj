@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <UseWPF>true</UseWPF>
     <RootNamespace>OtterWorks.Desktop</RootNamespace>
     <AssemblyName>OtterWorks.Desktop</AssemblyName>
@@ -11,7 +11,7 @@
 
   <PropertyGroup>
     <AssemblyTitle>OtterWorks.Desktop</AssemblyTitle>
-    <Description>Native Windows desktop client for the OtterWorks platform (WPF, .NET 8)</Description>
+    <Description>Native Windows desktop client for the OtterWorks platform (WPF)</Description>
     <Company>OtterWorks</Company>
     <Product>OtterWorks.Desktop</Product>
     <Copyright>Copyright © OtterWorks</Copyright>
@@ -21,6 +21,11 @@
 
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Security" />
   </ItemGroup>
 
   <ItemGroup>
