@@ -126,6 +126,26 @@ automatically).
 
 Or press **F5** in Visual Studio.
 
+## WinUI 3 client (.NET 10, in progress)
+
+`OtterWorks.Desktop.WinUI/` is the WinUI 3 port of this client on .NET 10. It compiles the
+models, services and view models of the WPF project as linked files, so both clients share
+one implementation of the API, session and navigation logic; only the views and the small
+MVVM layer (`Mvvm/`, which replaces WPF's `CommandManager`) are WinUI-specific. Screens not
+ported yet show a placeholder. It is not part of `OtterWorks.Desktop.sln`, so the 4.8 build
+above is unchanged.
+
+Prerequisites: .NET SDK 10.0 (the Windows App SDK runtime is bundled with the app, no
+installer needed). Build and run from `clients/windows-desktop`:
+
+```powershell
+dotnet build OtterWorks.Desktop.WinUI\OtterWorks.Desktop.WinUI.csproj -c Release
+.\OtterWorks.Desktop.WinUI\bin\Release\net10.0-windows10.0.19041.0\win-x64\OtterWorks.Desktop.WinUI.exe
+```
+
+If the SDK was installed per-user (e.g. with `dotnet-install.ps1`), set `DOTNET_ROOT` to
+that install directory before starting the exe.
+
 ## End-to-end flow
 
 1. **Register** a new user (display name, email, password ≥ 8 chars).

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>false</SelfContained>
+    <RootNamespace>OtterWorks.Desktop.WinUI</RootNamespace>
+    <AssemblyName>OtterWorks.Desktop.WinUI</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>1.0.0.0</Version>
+    <Company>OtterWorks</Company>
+    <Product>OtterWorks.Desktop</Product>
+    <Description>Native Windows desktop client for the OtterWorks platform (WinUI 3, .NET 10)</Description>
+    <Copyright>Copyright © OtterWorks</Copyright>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260921001" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
+  </ItemGroup>
+
+  <!-- Models, services and view models are shared with the WPF client; only the UI layer is WinUI-specific. -->
+  <ItemGroup>
+    <Compile Include="..\OtterWorks.Desktop\Models\*.cs" Link="Shared\Models\%(Filename)%(Extension)" />
+    <Compile Include="..\OtterWorks.Desktop\Services\*.cs" Link="Shared\Services\%(Filename)%(Extension)" />
+    <Compile Include="..\OtterWorks.Desktop\ViewModels\*.cs" Link="Shared\ViewModels\%(Filename)%(Extension)" />
+    <Content Include="..\OtterWorks.Desktop\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

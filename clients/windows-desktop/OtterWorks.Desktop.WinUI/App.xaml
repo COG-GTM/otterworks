@@ -1,0 +1,90 @@
+<Application x:Class="OtterWorks.Desktop.WinUI.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             RequestedTheme="Light">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <SolidColorBrush x:Key="AccentBrush" Color="#2F6FEB" />
+            <SolidColorBrush x:Key="AccentBrushDark" Color="#2454C2" />
+            <SolidColorBrush x:Key="AccentBrushDisabled" Color="#9DB6F0" />
+            <SolidColorBrush x:Key="MutedBrush" Color="#6B7280" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#D64545" />
+            <SolidColorBrush x:Key="HeadingBrush" Color="#111827" />
+            <SolidColorBrush x:Key="CardBorderBrush" Color="#E5E7EB" />
+
+            <!-- Same look as the WPF PrimaryButton: accent fill, darker on hover, pale when disabled. -->
+            <Style x:Key="PrimaryButton" TargetType="Button">
+                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Padding" Value="14,8" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter x:Name="Content" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  Foreground="{TemplateBinding Foreground}" />
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource AccentBrushDark}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource AccentBrushDark}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource AccentBrushDisabled}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Text-only button used for the "Create one" / "Sign in" links. -->
+            <Style x:Key="LinkButton" TargetType="Button">
+                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter Background="Transparent" Padding="{TemplateBinding Padding}"
+                                              Foreground="{TemplateBinding Foreground}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="FieldLabel" TargetType="TextBlock">
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Margin" Value="0,14,0,4" />
+            </Style>
+
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="Background" Value="White" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="32" />
+                <Setter Property="Width" Value="380" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="BorderBrush" Value="{StaticResource CardBorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
