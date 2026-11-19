@@ -98,19 +98,18 @@ dotnet build OtterWorks.Desktop\OtterWorks.Desktop.csproj -c Release -f net48
 dotnet build OtterWorks.Desktop\OtterWorks.Desktop.csproj -c Release -f net10.0-windows
 ```
 
-Visual Studio 2022 (17.14+) or MSBuild from Build Tools also works.
+Opening `OtterWorks.Desktop.sln` in Visual Studio 2026 also works (.NET 10 needs a
+Visual Studio that ships the .NET 10 SDK).
 
 ## Run
 
 ```powershell
 # .NET 10
 dotnet run --project OtterWorks.Desktop -c Release -f net10.0-windows
-.\OtterWorks.Desktopin\Release
-et10.0-windows\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe
 
 # .NET Framework 4.8
-.\OtterWorks.Desktopin\Release
-et48\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe
 ```
 
 ## End-to-end flow
