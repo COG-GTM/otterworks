@@ -102,7 +102,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + TransportErrorText(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +139,17 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        // .NET Framework words every connection failure with this generic text; modern .NET
+        // reports the socket error there instead. Keep the user-facing message the same.
+        private static string TransportErrorText(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return "An error occurred while sending the request.";
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
