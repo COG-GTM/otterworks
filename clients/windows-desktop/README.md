@@ -1,14 +1,12 @@
 # OtterWorks Desktop (Windows)
 
-A native **Windows desktop client** for the OtterWorks platform, built with **C# on .NET
-Framework 4.8** using **WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API
+A native **Windows desktop client** for the OtterWorks platform, built with **C# on .NET 8**
+(`net8.0-windows`) using **WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API
 through the API gateway using `HttpClient`.
 
-> **Why .NET Framework 4.8?** This client is intentionally built on the *legacy* .NET
-> Framework (classic `.csproj` + `packages.config` + `Newtonsoft.Json`) so it can serve as a
-> realistic **framework-upgrade target** (net48 → .NET 8 / WinUI) alongside OtterWorks' other
-> upgrade candidates (e.g. the Java 8 `report-service`). It mirrors the core flow of the
-> `frontend/web-app` React client.
+> This client started on the legacy .NET Framework 4.8 (classic `.csproj` +
+> `packages.config`) as a framework-upgrade target and is being migrated to .NET 8. It is now
+> an SDK-style project; it mirrors the core flow of the `frontend/web-app` React client.
 
 ## Features
 
@@ -31,8 +29,7 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # classic .NET Framework 4.8 WPF project
-    ├── packages.config                # Newtonsoft.Json 13.0.3
+    ├── OtterWorks.Desktop.csproj      # SDK-style net8.0-windows WPF project
     ├── app.config
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
@@ -46,20 +43,10 @@ clients/windows-desktop/
 ## Prerequisites
 
 - **Windows 10/11 or Windows Server 2019/2022**
-- **.NET Framework 4.8 runtime** (preinstalled on current Windows) and the
-  **.NET Framework 4.8 Developer Pack** (targeting pack / reference assemblies), required to
-  *build* the project.
-- One of the following to build:
-  - **Visual Studio 2022** with the **.NET desktop development** workload, **or**
-  - **Visual Studio Build Tools 2022** with the **.NET desktop build tools** workload
-    (`Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools`), which provides MSBuild,
-    the WPF build targets, and the 4.8 targeting pack.
-- **NuGet** (bundled with Visual Studio / `nuget.exe`) to restore `Newtonsoft.Json`.
-
-> **Note on `dotnet build` / `dotnet format`:** those SDK commands target modern
-> `Microsoft.NET.Sdk` projects. This is a classic (legacy) `.csproj`, so it is built with
-> **MSBuild** as shown below. That is expected for a .NET Framework 4.8 app and is part of
-> what makes this a genuine upgrade exercise.
+- **.NET 8 SDK** (8.0.100 or later) to build, which includes the WPF build targets and
+  restores `Newtonsoft.Json` from NuGet.
+- **.NET 8 Desktop Runtime** to run (included with the SDK).
+- Optional: **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload.
 
 ## Configuration
 
@@ -98,30 +85,23 @@ curl http://localhost:8080/health      # -> {"status":"healthy",...}
 
 ## Build
 
-Restore packages and build in Release with MSBuild:
+The project is an SDK-style `Microsoft.NET.Sdk` project targeting `net8.0-windows`
+(`UseWPF`), with `Newtonsoft.Json` as a `PackageReference`. Build it with the
+**.NET 8 SDK**:
 
 ```powershell
 # From clients/windows-desktop
-nuget restore OtterWorks.Desktop.sln
-msbuild OtterWorks.Desktop.sln /p:Configuration=Release
+dotnet build OtterWorks.Desktop.sln -c Release
 ```
 
-Or simply open `OtterWorks.Desktop.sln` in Visual Studio 2022 and build (packages restore
-automatically).
-
-> **Note on `dotnet build` / `dotnet format`:** this is a *classic* (non-SDK-style)
-> .NET Framework 4.8 WPF project, chosen deliberately as an upgrade/modernization
-> baseline. The .NET SDK's `dotnet build` cannot compile classic WPF projects — it does
-> not run the XAML markup-compiler, so `InitializeComponent` is never generated and the
-> build fails with `CS0103`. **Full MSBuild** (from Visual Studio or Build Tools 2022) is
-> the authoritative build for this project and produces a clean Release build. This is
-> exactly the kind of friction a future migration to an SDK-style / modern .NET project
-> would remove.
+Or open `OtterWorks.Desktop.sln` in Visual Studio 2022 (17.8+) and build.
 
 ## Run
 
+Requires the **.NET 8 Desktop Runtime** (`Microsoft.WindowsDesktop.App` 8.0).
+
 ```powershell
-.\OtterWorks.Desktop\bin\Release\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net8.0-windows\OtterWorks.Desktop.exe
 ```
 
 Or press **F5** in Visual Studio.
