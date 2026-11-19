@@ -126,13 +126,12 @@ automatically).
 
 Or press **F5** in Visual Studio.
 
-## WinUI 3 client (.NET 10, in progress)
+## WinUI 3 client (.NET 10)
 
 `OtterWorks.Desktop.WinUI/` is the WinUI 3 port of this client on .NET 10. It compiles the
 models, services and view models of the WPF project as linked files, so both clients share
 one implementation of the API, session and navigation logic; only the views and the small
-MVVM layer (`Mvvm/`, which replaces WPF's `CommandManager`) are WinUI-specific. Screens not
-ported yet show a placeholder. It is not part of `OtterWorks.Desktop.sln`, so the 4.8 build
+MVVM layer (`Mvvm/`, which replaces WPF's `CommandManager`) are WinUI-specific. It is not part of `OtterWorks.Desktop.sln`, so the 4.8 build
 above is unchanged.
 
 Prerequisites: .NET SDK 10.0 (the Windows App SDK runtime is bundled with the app, no
