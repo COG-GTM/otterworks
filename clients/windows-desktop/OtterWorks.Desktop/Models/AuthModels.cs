@@ -1,27 +1,27 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OtterWorks.Desktop.Models
 {
     /// <summary>Request body for POST /auth/register.</summary>
     public class RegisterRequest
     {
-        [JsonProperty("displayName")]
+        [JsonPropertyName("displayName")]
         public string DisplayName { get; set; }
 
-        [JsonProperty("email")]
+        [JsonPropertyName("email")]
         public string Email { get; set; }
 
-        [JsonProperty("password")]
+        [JsonPropertyName("password")]
         public string Password { get; set; }
     }
 
     /// <summary>Request body for POST /auth/login.</summary>
     public class LoginRequest
     {
-        [JsonProperty("email")]
+        [JsonPropertyName("email")]
         public string Email { get; set; }
 
-        [JsonProperty("password")]
+        [JsonPropertyName("password")]
         public string Password { get; set; }
     }
 
@@ -30,31 +30,31 @@ namespace OtterWorks.Desktop.Models
     /// </summary>
     public class AuthResponse
     {
-        [JsonProperty("accessToken")]
+        [JsonPropertyName("accessToken")]
         public string AccessToken { get; set; }
 
-        [JsonProperty("refreshToken")]
+        [JsonPropertyName("refreshToken")]
         public string RefreshToken { get; set; }
 
-        [JsonProperty("tokenType")]
+        [JsonPropertyName("tokenType")]
         public string TokenType { get; set; }
 
-        [JsonProperty("expiresIn")]
+        [JsonPropertyName("expiresIn")]
         public long ExpiresIn { get; set; }
 
-        [JsonProperty("user")]
+        [JsonPropertyName("user")]
         public AuthUser User { get; set; }
     }
 
     public class AuthUser
     {
-        [JsonProperty("id")]
+        [JsonPropertyName("id")]
         public string Id { get; set; }
 
-        [JsonProperty("email")]
+        [JsonPropertyName("email")]
         public string Email { get; set; }
 
-        [JsonProperty("displayName")]
+        [JsonPropertyName("displayName")]
         public string DisplayName { get; set; }
     }
 }

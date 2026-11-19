@@ -3,8 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using OtterWorks.Desktop.Models;
 
 namespace OtterWorks.Desktop.Services
@@ -12,7 +11,7 @@ namespace OtterWorks.Desktop.Services
     /// <summary>
     /// Thin REST client for the OtterWorks API gateway. Auth payloads are camelCase and
     /// document/file payloads are snake_case; each model carries explicit
-    /// <c>[JsonProperty]</c> attributes so a single serializer handles both shapes.
+    /// <c>[JsonPropertyName]</c> attributes so a single serializer handles both shapes.
     /// </summary>
     public class OtterWorksApiClient
     {
@@ -79,7 +78,7 @@ namespace OtterWorks.Desktop.Services
         {
             using (var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(path)))
             {
-                string json = JsonConvert.SerializeObject(body);
+                string json = AppJson.Serialize(body, body.GetType());
                 request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 if (authenticated)
                 {
@@ -130,7 +129,7 @@ namespace OtterWorks.Desktop.Services
 
                 try
                 {
-                    return JsonConvert.DeserializeObject<T>(content);
+                    return JsonSerializer.Deserialize<T>(content, AppJson.Options);
                 }
                 catch (JsonException)
                 {
@@ -160,16 +159,18 @@ namespace OtterWorks.Desktop.Services
             {
                 try
                 {
-                    JToken token = JToken.Parse(content);
-                    if (token.Type == JTokenType.Object)
+                    using (JsonDocument document = JsonDocument.Parse(content, AppJson.DocumentOptions))
                     {
-                        var obj = (JObject)token;
-                        foreach (string key in new[] { "message", "error", "detail" })
+                        JsonElement root = document.RootElement;
+                        if (root.ValueKind == JsonValueKind.Object)
                         {
-                            JToken value = obj[key];
-                            if (value != null && value.Type != JTokenType.Null)
+                            foreach (string key in new[] { "message", "error", "detail" })
                             {
-                                return value.ToString();
+                                JsonElement value;
+                                if (root.TryGetProperty(key, out value) && value.ValueKind != JsonValueKind.Null)
+                                {
+                                    return AppJson.ToDisplayString(value);
+                                }
                             }
                         }
                     }

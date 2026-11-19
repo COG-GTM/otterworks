@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
-using Newtonsoft.Json;
+using System.Text.Json;
 using OtterWorks.Desktop.Models;
 
 namespace OtterWorks.Desktop.Services
@@ -77,7 +77,7 @@ namespace OtterWorks.Desktop.Services
                 byte[] protectedBytes = File.ReadAllBytes(_storePath);
                 byte[] plainBytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
                 string json = Encoding.UTF8.GetString(plainBytes);
-                PersistedSession session = JsonConvert.DeserializeObject<PersistedSession>(json);
+                PersistedSession session = JsonSerializer.Deserialize<PersistedSession>(json, AppJson.Options);
                 if (session != null && !string.IsNullOrEmpty(session.AccessToken))
                 {
                     AccessToken = session.AccessToken;
@@ -105,7 +105,7 @@ namespace OtterWorks.Desktop.Services
                     RefreshToken = RefreshToken,
                     User = User,
                 };
-                byte[] plainBytes = Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(session));
+                byte[] plainBytes = Encoding.UTF8.GetBytes(AppJson.Serialize(session, typeof(PersistedSession)));
                 byte[] protectedBytes = ProtectedData.Protect(plainBytes, null, DataProtectionScope.CurrentUser);
                 File.WriteAllBytes(_storePath, protectedBytes);
             }

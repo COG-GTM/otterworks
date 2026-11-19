@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace OtterWorks.Desktop.Models
 {
     /// <summary>Request body for POST /documents.</summary>
     public class CreateDocumentRequest
     {
-        [JsonProperty("title")]
+        [JsonPropertyName("title")]
         public string Title { get; set; }
     }
 
@@ -16,56 +16,56 @@ namespace OtterWorks.Desktop.Models
     /// </summary>
     public class Document
     {
-        [JsonProperty("id")]
+        [JsonPropertyName("id")]
         public string Id { get; set; }
 
-        [JsonProperty("title")]
+        [JsonPropertyName("title")]
         public string Title { get; set; }
 
-        [JsonProperty("content")]
+        [JsonPropertyName("content")]
         public string Content { get; set; }
 
-        [JsonProperty("content_type")]
+        [JsonPropertyName("content_type")]
         public string ContentType { get; set; }
 
-        [JsonProperty("owner_id")]
+        [JsonPropertyName("owner_id")]
         public string OwnerId { get; set; }
 
-        [JsonProperty("folder_id")]
+        [JsonPropertyName("folder_id")]
         public string FolderId { get; set; }
 
-        [JsonProperty("is_deleted")]
+        [JsonPropertyName("is_deleted")]
         public bool IsDeleted { get; set; }
 
-        [JsonProperty("word_count")]
+        [JsonPropertyName("word_count")]
         public int WordCount { get; set; }
 
-        [JsonProperty("version")]
+        [JsonPropertyName("version")]
         public int Version { get; set; }
 
-        [JsonProperty("created_at")]
+        [JsonPropertyName("created_at")]
         public DateTimeOffset? CreatedAt { get; set; }
 
-        [JsonProperty("updated_at")]
+        [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
     }
 
     /// <summary>Paged response for GET /documents.</summary>
     public class DocumentListResponse
     {
-        [JsonProperty("items")]
+        [JsonPropertyName("items")]
         public List<Document> Items { get; set; } = new List<Document>();
 
-        [JsonProperty("total")]
+        [JsonPropertyName("total")]
         public int Total { get; set; }
 
-        [JsonProperty("page")]
+        [JsonPropertyName("page")]
         public int Page { get; set; }
 
-        [JsonProperty("size")]
+        [JsonPropertyName("size")]
         public int Size { get; set; }
 
-        [JsonProperty("pages")]
+        [JsonPropertyName("pages")]
         public int Pages { get; set; }
     }
 }
