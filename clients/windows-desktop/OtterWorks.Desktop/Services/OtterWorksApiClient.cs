@@ -16,6 +16,10 @@ namespace OtterWorks.Desktop.Services
     /// </summary>
     public class OtterWorksApiClient
     {
+        // The detail .NET Framework puts in every HttpRequestException from SendAsync. .NET 8 puts the
+        // socket error there instead, so this text is shown on both runtimes to keep the screen the same.
+        private const string SendFailureDetail = "An error occurred while sending the request.";
+
         private readonly HttpClient _http;
         private readonly SessionState _session;
         private readonly string _baseUrl;
@@ -97,12 +101,12 @@ namespace OtterWorks.Desktop.Services
             {
                 response = await _http.SendAsync(request).ConfigureAwait(false);
             }
-            catch (HttpRequestException ex)
+            catch (HttpRequestException)
             {
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + SendFailureDetail);
             }
             catch (TaskCanceledException)
             {
