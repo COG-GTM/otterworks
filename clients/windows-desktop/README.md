@@ -140,8 +140,7 @@ installer needed). Build and run from `clients/windows-desktop`:
 
 ```powershell
 dotnet build OtterWorks.Desktop.WinUI\OtterWorks.Desktop.WinUI.csproj -c Release
-.\OtterWorks.Desktop.WinUIin\Release
-et10.0-windows10.0.19041.0\win-x64\OtterWorks.Desktop.WinUI.exe
+.\OtterWorks.Desktop.WinUI\bin\Release\net10.0-windows10.0.19041.0\win-x64\OtterWorks.Desktop.WinUI.exe
 ```
 
 If the SDK was installed per-user (e.g. with `dotnet-install.ps1`), set `DOTNET_ROOT` to
