@@ -1,0 +1,72 @@
+// OtterWorks system architecture (default branch). Render with ./render.sh.
+digraph otterworks {
+  graph [rankdir=TB, fontname="DejaVu Sans", fontsize=20, labelloc=t, nodesep=0.35, ranksep=0.6,
+         label="OtterWorks architecture (main): clients -> API gateway -> 10 services -> data and event bus", pad=0.3];
+  node  [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=16, fillcolor=white, color="#4a5568"];
+  edge  [color="#4a5568", fontname="DejaVu Sans", fontsize=12];
+
+  subgraph cluster_clients {
+    label="Clients"; style="rounded,filled"; fillcolor="#ebf8ff"; color="#3182ce"; fontsize=18;
+    web     [label="client-app (web-app)\nReact 18 + Vite, nginx :3000\nfrontend/client-app"];
+    native  [label="Capacitor Android/iOS\n+ Electron desktop\n(same client-app bundle)"];
+    admin   [label="admin-dashboard\nAngular 17, nginx :4200"];
+    win     [label="Windows desktop\nWPF, .NET Framework 4.8\nclients/windows-desktop"];
+    {rank=same; web; native; admin; win;}
+  }
+
+  gw [label="api-gateway  :8080\nGo 1.22 / Chi\nJWT, rate limit, circuit breaker, /api/v1/* proxy", fillcolor="#fefcbf", color="#b7791f"];
+
+  subgraph cluster_services {
+    label="Backend services (docker-compose.yml, one Helm chart each)"; style="rounded,filled"; fillcolor="#f0fff4"; color="#38a169"; fontsize=18;
+    auth   [label="auth-service :8081\nJava 17, Spring Boot 3.2"];
+    file   [label="file-service :8082\nRust, Actix-Web 4"];
+    doc    [label="document-service :8083\nPython 3.12, FastAPI"];
+    collab [label="collab-service :8084\nNode 20, Socket.io + Yjs"];
+    notif  [label="notification-service :8086\nKotlin 1.9, Ktor 2.3"];
+    search [label="search-service :8087\nPython 3.12, Flask 3"];
+    anl    [label="analytics-service :8088\nScala 3, Akka HTTP"];
+    adm    [label="admin-service :8089\nRuby 3.3, Rails 7.1\nincidents, Devin triage"];
+    aud    [label="audit-service :8090\nC#, ASP.NET 8"];
+    rep    [label="report-service :8091\nJava 8, Spring Boot 2.5\n(legacy upgrade target)"];
+    {rank=same; auth; file; doc; collab; notif;}
+    {rank=same; search; anl; adm; aud; rep;}
+  }
+
+  subgraph cluster_data {
+    label="Data and events (docker-compose.infra.yml; AWS via LocalStack locally)"; style="rounded,filled"; fillcolor="#faf5ff"; color="#805ad5"; fontsize=18;
+    pg    [label="PostgreSQL 15\notterworks, otterworks_reports", shape=cylinder];
+    redis [label="Redis 7\nsessions, chaos flags,\ncollab state", shape=cylinder];
+    meili [label="MeiliSearch 1.6", shape=cylinder];
+    dyn   [label="DynamoDB\nfile metadata/versions/shares,\nfolders, notifications, audit", shape=cylinder];
+    s3    [label="S3\nfile blobs, audit archive", shape=cylinder];
+    sns   [label="SNS otterworks-events\n-> SQS notifications /\naudit-events-queue / search-events"];
+    {rank=same; pg; redis; meili; dyn; s3; sns;}
+  }
+
+  subgraph cluster_side {
+    label="Standalone fixtures (own compose files, not behind the gateway)"; style="rounded,filled"; fillcolor="#fff5f5"; color="#c53030"; fontsize=18;
+    lb   [label="legacy-billing :8096\nFlask + PL/pgSQL procs\n(docker-compose.procs.yml)"];
+    bs   [label="billing-service :8097\nFastAPI extraction target\nparity vs procs/ transcripts"];
+    lp   [label="legacy-portal :8095\nJava 11 modular monolith\n(on-prem compose)"];
+    ins  [label="industry-solutions/insurance\nOracle PL/SQL Commission Pay\n(docker-compose.insurance.yml)"];
+    {rank=same; lb; bs; lp; ins;}
+  }
+
+  ext [label="External: Devin API, Slack", shape=note, fillcolor="#edf2f7"];
+
+  web -> gw; native -> gw; admin -> gw; win -> gw;
+  web -> bs [style=dashed, constraint=false, label="Vite dev /billing-api"];
+  meili -> lp [style=invis]; s3 -> lb [style=invis];
+  gw -> {auth file doc collab notif search anl adm aud rep};
+
+  auth -> pg; doc -> pg; adm -> pg; anl -> pg; rep -> pg;
+  auth -> redis; collab -> redis; adm -> redis;
+  file -> dyn; file -> s3; notif -> dyn; aud -> dyn; aud -> s3;
+  search -> meili;
+  file -> sns [label="publish"]; doc -> sns [label="publish"];
+  sns -> notif [label="consume"]; sns -> aud [label="consume"]; sns -> search [label="index"];
+  file -> adm [style=dashed, constraint=false, label="failure alerts"]; notif -> adm [style=dashed, constraint=false, label="alerts"];
+  rep -> {anl aud auth} [style=dashed, constraint=false];
+  adm -> ext [label="incident triage"];
+  lb -> bs [style=dotted, label="recorded parity"];
+}
