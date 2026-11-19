@@ -48,8 +48,7 @@ returns `HTTP/1.1 200 OK` with a 400 body.
 - Minimal backend: `docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build api-gateway auth-service document-service file-service redis` (pulls in postgres and localstack).
 - On a CRLF checkout, LocalStack can report healthy while its init script failed to run
   (`[Errno 2] No such file or directory` in its logs). Run it with CRs stripped:
-  `docker exec otterworks-localstack bash -c "sed 's/
-$//' /etc/localstack/init/ready.d/init.sh | bash"`.
+  `docker exec otterworks-localstack bash -c "sed 's/\r$//' /etc/localstack/init/ready.d/init.sh | bash"`.
 
 ## What counts as a regression
 
