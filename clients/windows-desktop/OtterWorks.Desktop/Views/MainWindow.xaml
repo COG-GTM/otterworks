@@ -4,21 +4,33 @@
         Title="OtterWorks Desktop" Height="640" Width="960"
         WindowStartupLocation="CenterScreen" Background="#F3F4F6">
     <DockPanel>
-        <Border DockPanel.Dock="Top" Background="{StaticResource AccentBrush}" Padding="18,12">
+        <Border DockPanel.Dock="Top" Background="{StaticResource ChromeBrush}" Padding="18,10">
             <Grid>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="OtterWorks" Foreground="White" FontSize="20" FontWeight="Bold" />
-                    <TextBlock Text="Desktop" Foreground="#DCE6FF" FontSize="20" Margin="6,0,0,0" />
+                    <Border Width="30" Height="30" CornerRadius="7" Background="{StaticResource BrandGradientBrush}">
+                        <TextBlock Text="O" Foreground="White" FontSize="16" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock Text="OtterWorks" Foreground="White" FontSize="17" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                    <TextBlock Text="Desktop" Foreground="{StaticResource ChromeMutedBrush}" FontSize="17"
+                               VerticalAlignment="Center" Margin="6,0,0,0" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"
                             Visibility="{Binding IsAuthenticated, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Foreground="White" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <TextBlock Foreground="{StaticResource ChromeMutedBrush}" VerticalAlignment="Center" Margin="0,0,10,0">
                         <Run Text="Signed in as " />
-                        <Run Text="{Binding CurrentUserName, Mode=OneWay}" FontWeight="SemiBold" />
+                        <Run Text="{Binding CurrentUserName, Mode=OneWay}" FontWeight="SemiBold" Foreground="White" />
                     </TextBlock>
+                    <Border Width="28" Height="28" CornerRadius="14" Background="#1E293B"
+                            BorderBrush="#334155" BorderThickness="1">
+                        <TextBlock Text="&#xE77B;" FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="#CBD5E1"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>
+        <Border DockPanel.Dock="Top" Height="2" Background="{StaticResource BrandGradientBrush}" />
 
         <ContentControl Content="{Binding CurrentViewModel}" />
     </DockPanel>
