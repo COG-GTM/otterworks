@@ -24,7 +24,7 @@ otherwise. Use a fresh email per run (e.g. `qa+<timestamp>@otterworks.test`). Fl
 | D8 | Refresh the documents list | Create a document for the same account through the API (`POST /api/v1/documents` with the user's Bearer token), then **Refresh** | Pass. The new document appears next to the desktop one; `2 document(s).` |
 | D9 | Files list | **Files** | Pass. Status `0 file(s).` with no error. The heading stays `Documents` and the document rows stay visible (baseline layout, not a regression) |
 | D10 | Backend unreachable | Stop api-gateway (or point `apiBaseUrl` at a closed port) → **Sign in** | Pass. Inline error `Could not reach the OtterWorks backend. Verify it is running and that the API base URL is correct.`, a blank line, then `An error occurred while sending the request.` |
-| D11 | Persisted session (DPAPI) | Set `persistTokens: true` in `bin\Releaseppsettings.json` → sign in → close → relaunch | Pass. `%APPDATA%\OtterWorks\session.dat` is written (no plaintext token or email); relaunch opens **Documents** as the same user; **Log out** deletes the file |
+| D11 | Persisted session (DPAPI) | Set `persistTokens: true` in `bin\Release\appsettings.json` → sign in → close → relaunch | Pass. `%APPDATA%\OtterWorks\session.dat` is written (no plaintext token or email); relaunch opens **Documents** as the same user; **Log out** deletes the file |
 
 ### Known baseline bug: D2 / D7 error text through the gateway
 
