@@ -1,6 +1,7 @@
 using System;
 using System.IO;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace OtterWorks.Desktop.Services
 {
@@ -13,10 +14,10 @@ namespace OtterWorks.Desktop.Services
     {
         private const string DefaultBaseUrl = "http://localhost:8080/api/v1";
 
-        [JsonProperty("apiBaseUrl")]
+        [JsonPropertyName("apiBaseUrl")]
         public string ApiBaseUrl { get; set; } = DefaultBaseUrl;
 
-        [JsonProperty("persistTokens")]
+        [JsonPropertyName("persistTokens")]
         public bool PersistTokens { get; set; }
 
         public static AppSettings Load()
@@ -27,7 +28,7 @@ namespace OtterWorks.Desktop.Services
                 if (File.Exists(path))
                 {
                     string json = File.ReadAllText(path);
-                    AppSettings settings = JsonConvert.DeserializeObject<AppSettings>(json);
+                    AppSettings settings = JsonSerializer.Deserialize<AppSettings>(json, AppJson.Options);
                     if (settings != null && !string.IsNullOrWhiteSpace(settings.ApiBaseUrl))
                     {
                         return settings;

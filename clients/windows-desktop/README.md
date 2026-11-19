@@ -30,7 +30,7 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # SDK-style WPF project, net8.0-windows;net48 (Newtonsoft.Json 13.0.3)
+    ├── OtterWorks.Desktop.csproj      # SDK-style WPF project, net8.0-windows;net48 (System.Text.Json)
     ├── app.config                     # net48 runtime/TLS settings
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
