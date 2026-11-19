@@ -31,8 +31,7 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # classic .NET Framework 4.8 WPF project
-    ├── packages.config                # Newtonsoft.Json 13.0.3
+    ├── OtterWorks.Desktop.csproj      # SDK-style WPF project (net10.0-windows + net48)
     ├── app.config
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
@@ -46,20 +45,12 @@ clients/windows-desktop/
 ## Prerequisites
 
 - **Windows 10/11 or Windows Server 2019/2022**
-- **.NET Framework 4.8 runtime** (preinstalled on current Windows) and the
-  **.NET Framework 4.8 Developer Pack** (targeting pack / reference assemblies), required to
-  *build* the project.
-- One of the following to build:
-  - **Visual Studio 2022** with the **.NET desktop development** workload, **or**
-  - **Visual Studio Build Tools 2022** with the **.NET desktop build tools** workload
-    (`Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools`), which provides MSBuild,
-    the WPF build targets, and the 4.8 targeting pack.
-- **NuGet** (bundled with Visual Studio / `nuget.exe`) to restore `Newtonsoft.Json`.
-
-> **Note on `dotnet build` / `dotnet format`:** those SDK commands target modern
-> `Microsoft.NET.Sdk` projects. This is a classic (legacy) `.csproj`, so it is built with
-> **MSBuild** as shown below. That is expected for a .NET Framework 4.8 app and is part of
-> what makes this a genuine upgrade exercise.
+- **.NET 10 SDK** — builds both targets with `dotnet build`. The .NET Framework 4.8
+  reference assemblies come from NuGet, so no separate Developer Pack is needed.
+- To run: the **.NET 10 Desktop Runtime** (`net10.0-windows` build) and/or the
+  **.NET Framework 4.8 runtime** (`net48` build, preinstalled on current Windows).
+- Optional: **Visual Studio 2022 17.14+** (or newer) with the **.NET desktop development**
+  workload, if you prefer the IDE.
 
 ## Configuration
 
@@ -98,33 +89,34 @@ curl http://localhost:8080/health      # -> {"status":"healthy",...}
 
 ## Build
 
-Restore packages and build in Release with MSBuild:
+The project is SDK-style and multi-targets **.NET 10** (`net10.0-windows`) and
+**.NET Framework 4.8** (`net48`). `Newtonsoft.Json` is a `PackageReference`, restored
+automatically.
 
 ```powershell
-# From clients/windows-desktop
-nuget restore OtterWorks.Desktop.sln
-msbuild OtterWorks.Desktop.sln /p:Configuration=Release
+# From clients/windows-desktop — builds both targets
+dotnet build OtterWorks.Desktop.sln -c Release
+
+# Or one target only
+dotnet build OtterWorks.Desktop.sln -c Release -f net10.0-windows
+dotnet build OtterWorks.Desktop.sln -c Release -f net48
 ```
 
-Or simply open `OtterWorks.Desktop.sln` in Visual Studio 2022 and build (packages restore
-automatically).
+Or open `OtterWorks.Desktop.sln` in Visual Studio and build.
 
-> **Note on `dotnet build` / `dotnet format`:** this is a *classic* (non-SDK-style)
-> .NET Framework 4.8 WPF project, chosen deliberately as an upgrade/modernization
-> baseline. The .NET SDK's `dotnet build` cannot compile classic WPF projects — it does
-> not run the XAML markup-compiler, so `InitializeComponent` is never generated and the
-> build fails with `CS0103`. **Full MSBuild** (from Visual Studio or Build Tools 2022) is
-> the authoritative build for this project and produces a clean Release build. This is
-> exactly the kind of friction a future migration to an SDK-style / modern .NET project
-> would remove.
+> Building on Linux/macOS (compile check only, the app does not run there) needs
+> `-p:EnableWindowsTargeting=true`.
 
 ## Run
 
 ```powershell
-.\OtterWorks.Desktop\bin\Release\OtterWorks.Desktop.exe
+# .NET 10
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe
+# .NET Framework 4.8
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe
 ```
 
-Or press **F5** in Visual Studio.
+Or press **F5** in Visual Studio (pick the target framework in the toolbar).
 
 ## End-to-end flow
 
