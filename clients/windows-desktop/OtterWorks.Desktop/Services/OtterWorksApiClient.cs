@@ -99,10 +99,12 @@ namespace OtterWorks.Desktop.Services
             }
             catch (HttpRequestException ex)
             {
+                // .NET Framework keeps the network cause in an inner exception behind a generic
+                // message; .NET 8 puts it in the outer message. The innermost one has it on both.
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + ex.GetBaseException().Message);
             }
             catch (TaskCanceledException)
             {
