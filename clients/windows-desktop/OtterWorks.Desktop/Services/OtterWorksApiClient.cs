@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -182,7 +183,27 @@ namespace OtterWorks.Desktop.Services
                 return content;
             }
 
-            return $"Request failed with status {(int)statusCode} ({statusCode}).";
+            return $"Request failed with status {(int)statusCode} ({FrameworkStatusName(statusCode)}).";
+        }
+
+        // HttpStatusCode names as .NET Framework 4.8 prints them. .NET 8 names these codes
+        // where 4.8 prints the number, and picks other names for 302 and 307.
+        private static string FrameworkStatusName(HttpStatusCode statusCode)
+        {
+            int code = (int)statusCode;
+            switch (code)
+            {
+                case 302:
+                    return "Redirect";
+                case 307:
+                    return "TemporaryRedirect";
+                case 102: case 103: case 207: case 208: case 226: case 308:
+                case 421: case 422: case 423: case 424: case 428: case 429: case 431: case 451:
+                case 506: case 507: case 508: case 510: case 511:
+                    return code.ToString(CultureInfo.InvariantCulture);
+                default:
+                    return statusCode.ToString();
+            }
         }
     }
 }
