@@ -56,6 +56,14 @@
                 </Setter>
             </Style>
 
+            <!-- Toolbar buttons: the WPF default button with a white fill and grey border. -->
+            <Style x:Key="SecondaryButton" TargetType="Button">
+                <Setter Property="Background" Value="White" />
+                <Setter Property="BorderBrush" Value="#D1D5DB" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="12,6" />
+            </Style>
+
             <!-- Text-only button used for the "Create one" / "Sign in" links. -->
             <Style x:Key="LinkButton" TargetType="Button">
                 <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
