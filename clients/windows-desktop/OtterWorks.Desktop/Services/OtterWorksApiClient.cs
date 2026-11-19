@@ -102,7 +102,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeSendFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +139,31 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        private const string SendFailedMessage = "An error occurred while sending the request.";
+
+        // .NET Framework 4.8 reports every failure to get a response as SendFailedMessage, while .NET 10
+        // reports socket, DNS, TLS and status-line details instead; map those back so both builds show the
+        // same text. Failures while reading the body already match on both ("Error while copying content...").
+        private static string DescribeSendFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            switch (ex.HttpRequestError)
+            {
+                case HttpRequestError.NameResolutionError:
+                case HttpRequestError.ConnectionError:
+                case HttpRequestError.SecureConnectionError:
+                case HttpRequestError.ProxyTunnelError:
+                    return SendFailedMessage;
+                case HttpRequestError.InvalidResponse when ex.InnerException == null:
+                    return SendFailedMessage;
+                default:
+                    return ex.Message;
+            }
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
