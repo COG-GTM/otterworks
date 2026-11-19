@@ -99,10 +99,8 @@ Visual Studio 2022 / `msbuild -restore` also work.
 ## Run
 
 ```powershell
-.\OtterWorks.Desktopin\Release
-et8.0-windows\OtterWorks.Desktop.exe   # .NET 8
-.\OtterWorks.Desktopin\Release
-et48\OtterWorks.Desktop.exe            # legacy .NET Framework 4.8
+.\OtterWorks.Desktop\bin\Release\net8.0-windows\OtterWorks.Desktop.exe   # .NET 8
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe            # legacy .NET Framework 4.8
 ```
 
 Or press **F5** in Visual Studio.
