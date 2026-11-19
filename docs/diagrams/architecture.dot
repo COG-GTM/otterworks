@@ -39,7 +39,7 @@ digraph otterworks {
     meili [label="MeiliSearch 1.6", shape=cylinder];
     dyn   [label="DynamoDB\nfile metadata/versions/shares,\nfolders, notifications, audit", shape=cylinder];
     s3    [label="S3\nfile blobs, audit archive", shape=cylinder];
-    sns   [label="SNS otterworks-events\n-> SQS notifications /\naudit-events / search-events"];
+    sns   [label="SNS otterworks-events\n-> SQS notifications /\naudit-events-queue / search-events"];
     {rank=same; pg; redis; meili; dyn; s3; sns;}
   }
 
@@ -60,7 +60,7 @@ digraph otterworks {
   gw -> {auth file doc collab notif search anl adm aud rep};
 
   auth -> pg; doc -> pg; adm -> pg; anl -> pg; rep -> pg;
-  auth -> redis; collab -> redis; adm -> redis; gw -> redis [style=dotted, label="rate limit"];
+  auth -> redis; collab -> redis; adm -> redis;
   file -> dyn; file -> s3; notif -> dyn; aud -> dyn; aud -> s3;
   search -> meili;
   file -> sns [label="publish"]; doc -> sns [label="publish"];

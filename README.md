@@ -56,14 +56,14 @@ make down
 
 > **Note:** The Report Service intentionally uses outdated dependencies (Java 8, Spring Boot 2.5, JUnit 4, javax.\*) and is a candidate for a framework-upgrade exercise. See `services/report-service/pom.xml` for details.
 
-The modernization fixtures below run from their own compose files and are not behind the gateway:
+The modernization fixtures below run from their own compose files and are not behind the gateway. Their Make targets need a namespace (`NS=<name>`) and offset the host ports per namespace; the ports listed are the compose defaults:
 
 | Fixture | Stack | Port | Description |
 |---------|-------|------|-------------|
-| Legacy Billing | Python / Flask + PL/pgSQL | 8096 | Billing logic in stored procedures (before state); `make procs-up` |
-| Billing Service | Python / FastAPI | 8097 | Extraction target, parity-checked against `procs/` transcripts; `make procs-up` |
+| Legacy Billing | Python / Flask + PL/pgSQL | 8096 | Billing logic in stored procedures (before state); `make procs-up NS=<name>` |
+| Billing Service | Python / FastAPI | 8097 | Extraction target, parity-checked against `procs/` transcripts; `make procs-up NS=<name>` |
 | Legacy Portal | Java 11 / Spring Boot | 8095 | Modular monolith for decomposition demos; `services/legacy-portal/docker-compose.onprem.yml` |
-| Insurance (Commission Pay) | Oracle PL/SQL | 51521 (host) | `services/industry-solutions/insurance`; `make insurance-up` |
+| Insurance (Commission Pay) | Oracle PL/SQL | 51521 (host) | `services/industry-solutions/insurance`; `make insurance-up NS=<name>` |
 
 ## Frontend Applications
 
@@ -168,8 +168,8 @@ Run `make help` to list all available commands. Key targets:
 | `make test` | Run tests for all services |
 | `make lint` | Lint all services |
 | `make test-api-flows` | Cross-service API flow tests against the running stack |
-| `make procs-up` / `make procs-parity` | Start the legacy/extracted billing stack / replay parity scenarios |
-| `make insurance-up` / `make insurance-test` | Start / test the Oracle insurance fixture |
+| `make procs-up NS=<name>` / `make procs-parity NS=<name>` | Start the legacy/extracted billing stack / replay parity scenarios |
+| `make insurance-up NS=<name>` / `make insurance-test NS=<name>` | Start / test the Oracle insurance fixture |
 | `make tf-plan` | Plan Terraform changes (dev) |
 | `make deploy-dev` | Deploy all services to dev EKS |
 | `make teardown-dev` | Tear down the dev environment |

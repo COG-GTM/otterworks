@@ -65,7 +65,7 @@ breaker, adds request IDs and CORS, and reverse-proxies by path prefix
 | search-service | 8087 | Python 3.12, Flask 3 | Full-text search over MeiliSearch; indexes from the `otterworks-search-events` queue. |
 | analytics-service | 8088 | Scala 3, Akka HTTP | Usage metrics and dashboards from the shared PostgreSQL database. |
 | admin-service | 8089 | Ruby 3.3, Rails 7.1, Sidekiq | Users, quotas, feature flags, announcements, system health, incidents. Its incident path opens Devin triage sessions and Slack alerts. PostgreSQL + Redis. |
-| audit-service | 8090 | C#, ASP.NET Core 8 | Consumes `otterworks-audit-events`; audit log in DynamoDB, archives to S3. |
+| audit-service | 8090 | C#, ASP.NET Core 8 | Consumes `otterworks-audit-events-queue`; audit log in DynamoDB, archives to S3. |
 | report-service | 8091 | Java 8, Spring Boot 2.5, JasperReports, Maven | **Legacy on purpose**: PDF/CSV/Excel reports over the `otterworks_reports` database, pulling data from analytics, audit and auth. Upgrade path in `services/report-service/UPGRADE_GUIDE.md`. |
 
 There is no service on 8085; collab-service serves HTTP and WebSocket on 8084.
@@ -78,7 +78,7 @@ LocalStack emulates AWS and `scripts/localstack-init.sh` creates:
 - **S3**: `otterworks-files`, `otterworks-audit-archive`, `otterworks-data-lake`
 - **DynamoDB**: file metadata, file versions, folders, shares, notifications, preferences, audit events
 - **SNS → SQS**: topic `otterworks-events` fans out to `otterworks-notifications`,
-  `otterworks-audit-events` and `otterworks-search-events` (each with a DLQ).
+  `otterworks-audit-events-queue` and `otterworks-search-events` (no DLQs are created locally).
 
 `scripts/init-db.sql` creates the `otterworks` and `otterworks_reports` PostgreSQL
 databases. In AWS the same resources come from `infrastructure/terraform/modules`
@@ -102,15 +102,18 @@ Demo tenants run with SNS/SQS disabled (see [AGENTS.md](AGENTS.md)).
 ## Modernization fixtures
 
 These run from their own compose files, are not routed by the gateway and are not
-part of the Helm deploy. They exist to demo legacy-to-modern migrations.
+part of the Helm deploy. They exist to demo legacy-to-modern migrations. The `procs-*` and
+`insurance-*` Make targets require a namespace (`NS=<name>`, e.g. `make procs-up NS=dev`)
+and shift host ports by a per-namespace offset; the ports below are the compose defaults
+when the compose file is run directly.
 
 | Path | What it is | Run with |
 |------|-----------|----------|
-| `services/legacy-billing` (`:8096`) | Flask app whose billing logic lives in PL/pgSQL stored procedures (the "before" state) | `make procs-up` (`docker-compose.procs.yml`) |
-| `services/billing-service` (`:8097`) | FastAPI service the procedures are extracted into (the "after" state), with its own database | `make procs-up` |
-| `procs/` | Record/replay harness: scenarios, recorded transcripts and parity rules that prove `billing-service` matches `legacy-billing` (`procs-parity.yml` in CI) | `make procs-record`, `make procs-parity` |
+| `services/legacy-billing` (`:8096`) | Flask app whose billing logic lives in PL/pgSQL stored procedures (the "before" state) | `make procs-up NS=<name>` (`docker-compose.procs.yml`) |
+| `services/billing-service` (`:8097`) | FastAPI service the procedures are extracted into (the "after" state), with its own database | `make procs-up NS=<name>` |
+| `procs/` | Record/replay harness: scenarios, recorded transcripts and parity rules that prove `billing-service` matches `legacy-billing` (`procs-parity.yml` in CI) | `make procs-record NS=<name>`, `make procs-parity NS=<name>` |
 | `services/legacy-portal` (`:8095`) | Java 11 Spring Boot modular monolith (announcements, feedback, user preferences) for decomposition demos, deployed on-prem style | `services/legacy-portal/docker-compose.onprem.yml` |
-| `services/industry-solutions/insurance` | Oracle PL/SQL "Commission Pay" package with OLTP/OLAP schemas | `make insurance-up` (`docker-compose.insurance.yml`) |
+| `services/industry-solutions/insurance` | Oracle PL/SQL "Commission Pay" package with OLTP/OLAP schemas | `make insurance-up NS=<name>` (`docker-compose.insurance.yml`) |
 
 ## Observability
 
