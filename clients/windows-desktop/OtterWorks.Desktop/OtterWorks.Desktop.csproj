@@ -2,14 +2,14 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>OtterWorks.Desktop</RootNamespace>
     <AssemblyName>OtterWorks.Desktop</AssemblyName>
     <Version>1.0.0.0</Version>
     <Company>OtterWorks</Company>
     <Product>OtterWorks.Desktop</Product>
-    <Description>Native Windows desktop client for the OtterWorks platform (WPF, .NET 8)</Description>
+    <Description>Native Windows desktop client for the OtterWorks platform (WPF, .NET 10)</Description>
     <Copyright>Copyright © OtterWorks</Copyright>
     <NeutralLanguage>en-US</NeutralLanguage>
     <Deterministic>true</Deterministic>

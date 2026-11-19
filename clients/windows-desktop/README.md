@@ -1,11 +1,11 @@
 # OtterWorks Desktop (Windows)
 
-A native **Windows desktop client** for the OtterWorks platform, built with **C# on .NET 8**
-(`net8.0-windows`) using **WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API
+A native **Windows desktop client** for the OtterWorks platform, built with **C# on .NET 10**
+(`net10.0-windows`) using **WPF** and the **MVVM** pattern. It talks to the OtterWorks REST API
 through the API gateway using `HttpClient`.
 
 > This client started on the legacy .NET Framework 4.8 (classic `.csproj` +
-> `packages.config`) as a framework-upgrade target and is being migrated to .NET 8. It is now
+> `packages.config`) as a framework-upgrade target and is being migrated to .NET 10. It is now
 > an SDK-style project; it mirrors the core flow of the `frontend/web-app` React client.
 
 ## Features
@@ -29,7 +29,7 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # SDK-style net8.0-windows WPF project
+    ├── OtterWorks.Desktop.csproj      # SDK-style net10.0-windows WPF project
     ├── app.config
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
@@ -43,10 +43,10 @@ clients/windows-desktop/
 ## Prerequisites
 
 - **Windows 10/11 or Windows Server 2019/2022**
-- **.NET 8 SDK** (8.0.100 or later) to build, which includes the WPF build targets and
+- **.NET 10 SDK** (10.0.100 or later) to build, which includes the WPF build targets and
   restores `Newtonsoft.Json` from NuGet.
-- **.NET 8 Desktop Runtime** to run (included with the SDK).
-- Optional: **Visual Studio 2022** (17.8+) with the **.NET desktop development** workload.
+- **.NET 10 Desktop Runtime** to run (included with the SDK).
+- Optional: a **Visual Studio** version that supports .NET 10, with the **.NET desktop development** workload.
 
 ## Configuration
 
@@ -85,23 +85,23 @@ curl http://localhost:8080/health      # -> {"status":"healthy",...}
 
 ## Build
 
-The project is an SDK-style `Microsoft.NET.Sdk` project targeting `net8.0-windows`
+The project is an SDK-style `Microsoft.NET.Sdk` project targeting `net10.0-windows`
 (`UseWPF`), with `Newtonsoft.Json` as a `PackageReference`. Build it with the
-**.NET 8 SDK**:
+**.NET 10 SDK**:
 
 ```powershell
 # From clients/windows-desktop
 dotnet build OtterWorks.Desktop.sln -c Release
 ```
 
-Or open `OtterWorks.Desktop.sln` in Visual Studio 2022 (17.8+) and build.
+Or open `OtterWorks.Desktop.sln` in a Visual Studio version that supports .NET 10 and build.
 
 ## Run
 
-Requires the **.NET 8 Desktop Runtime** (`Microsoft.WindowsDesktop.App` 8.0).
+Requires the **.NET 10 Desktop Runtime** (`Microsoft.WindowsDesktop.App` 10.0).
 
 ```powershell
-.\OtterWorks.Desktop\bin\Release\net8.0-windows\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe
 ```
 
 Or press **F5** in Visual Studio.
