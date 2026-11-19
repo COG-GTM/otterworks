@@ -39,6 +39,7 @@ namespace OtterWorks.Desktop.WinUI.Views
             {
                 LoginViewModel login => new LoginView(login),
                 RegisterViewModel register => new RegisterView(register),
+                DocumentsViewModel documents => new DocumentsView(documents),
                 _ => new TextBlock
                 {
                     Text = "This screen has not been ported to WinUI yet.",
