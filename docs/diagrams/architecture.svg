@@ -9,7 +9,7 @@
 <g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(21.6 826.85)">
 <title>otterworks</title>
 <polygon fill="white" stroke="transparent" points="-21.6,21.6 -21.6,-826.85 2529.14,-826.85 2529.14,21.6 -21.6,21.6"/>
-<text text-anchor="middle" x="1253.77" y="-785.25" font-family="DejaVu Sans" font-size="20.00">OtterWorks architecture (main): clients &#45;&gt; API gateway &#45;&gt; 11 services &#45;&gt; data and event bus</text>
+<text text-anchor="middle" x="1253.77" y="-785.25" font-family="DejaVu Sans" font-size="20.00">OtterWorks architecture (main): clients &#45;&gt; API gateway &#45;&gt; 10 services &#45;&gt; data and event bus</text>
 <g id="clust1" class="cluster">
 <title>cluster_clients</title>
 <path fill="#ebf8ff" stroke="#3182ce" d="M805.54,-633.25C805.54,-633.25 1784.54,-633.25 1784.54,-633.25 1790.54,-633.25 1796.54,-639.25 1796.54,-645.25 1796.54,-645.25 1796.54,-755.25 1796.54,-755.25 1796.54,-761.25 1790.54,-767.25 1784.54,-767.25 1784.54,-767.25 805.54,-767.25 805.54,-767.25 799.54,-767.25 793.54,-761.25 793.54,-755.25 793.54,-755.25 793.54,-645.25 793.54,-645.25 793.54,-639.25 799.54,-633.25 805.54,-633.25"/>

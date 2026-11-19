@@ -1,7 +1,7 @@
 // OtterWorks system architecture (default branch). Render with ./render.sh.
 digraph otterworks {
   graph [rankdir=TB, fontname="DejaVu Sans", fontsize=20, labelloc=t, nodesep=0.35, ranksep=0.6,
-         label="OtterWorks architecture (main): clients -> API gateway -> 11 services -> data and event bus", pad=0.3];
+         label="OtterWorks architecture (main): clients -> API gateway -> 10 services -> data and event bus", pad=0.3];
   node  [shape=box, style="rounded,filled", fontname="DejaVu Sans", fontsize=16, fillcolor=white, color="#4a5568"];
   edge  [color="#4a5568", fontname="DejaVu Sans", fontsize=12];
 
