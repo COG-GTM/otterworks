@@ -10,6 +10,7 @@ namespace OtterWorks.Desktop.WinUI.Views
         {
             ViewModel = viewModel;
             InitializeComponent();
+            DefaultButton.Attach(this, SignInButton);
         }
 
         public LoginViewModel ViewModel { get; }
