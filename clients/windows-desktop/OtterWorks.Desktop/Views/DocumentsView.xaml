@@ -12,17 +12,17 @@
         <!-- Toolbar -->
         <Grid Grid.Row="0" Margin="0,0,0,16">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="Documents" FontSize="22" FontWeight="Bold" Foreground="#111827" />
+                <TextBlock Text="Documents" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
                 <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource MutedBrush}"
                            VerticalAlignment="Bottom" Margin="12,0,0,3" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Refresh" Command="{Binding RefreshCommand}" Margin="0,0,8,0"
-                        Padding="12,6" Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Cursor="Hand" />
+                        Style="{StaticResource SecondaryButton}" />
                 <Button Content="Files" Command="{Binding LoadFilesCommand}" Margin="0,0,8,0"
-                        Padding="12,6" Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Cursor="Hand" />
+                        Style="{StaticResource SecondaryButton}" />
                 <Button Content="Log out" Command="{Binding LogoutCommand}"
-                        Padding="12,6" Background="White" BorderBrush="#D1D5DB" BorderThickness="1" Cursor="Hand" />
+                        Style="{StaticResource SecondaryButton}" />
             </StackPanel>
         </Grid>
 
