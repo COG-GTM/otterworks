@@ -16,6 +16,8 @@ namespace OtterWorks.Desktop.Services
     /// </summary>
     public class OtterWorksApiClient
     {
+        private const string SendRequestFailedMessage = "An error occurred while sending the request.";
+
         private readonly HttpClient _http;
         private readonly SessionState _session;
         private readonly string _baseUrl;
@@ -102,7 +104,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeSendFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +141,29 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        /// <summary>
+        /// .NET Framework 4.8 reports every failure to reach the server as
+        /// <see cref="SendRequestFailedMessage"/>; .NET 10 uses the socket error instead
+        /// (e.g. "Connection refused (localhost:8080)"), so keep the 4.8 wording there.
+        /// </summary>
+        private static string DescribeSendFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            switch (ex.HttpRequestError)
+            {
+                case HttpRequestError.NameResolutionError:
+                case HttpRequestError.ConnectionError:
+                case HttpRequestError.SecureConnectionError:
+                case HttpRequestError.ProxyTunnelError:
+                    return SendRequestFailedMessage;
+                default:
+                    return ex.Message;
+            }
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
