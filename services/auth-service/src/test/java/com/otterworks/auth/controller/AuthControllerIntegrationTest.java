@@ -264,6 +264,181 @@ class AuthControllerIntegrationTest {
         .andExpect(jsonPath("$.content").isArray());
   }
 
+  @Test
+  void refresh_shouldRejectReuseOfRotatedToken() throws Exception {
+    String refreshToken = register("rotate@otterworks.dev").get("refreshToken").asText();
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + refreshToken))
+        .andExpect(status().isOk());
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + refreshToken))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message").value("Invalid or revoked refresh token"));
+  }
+
+  @Test
+  void refresh_shouldRejectAccessToken() throws Exception {
+    String accessToken = register("access-as-refresh@otterworks.dev").get("accessToken").asText();
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.accessToken").doesNotExist());
+  }
+
+  @Test
+  void refresh_shouldRejectTamperedToken() throws Exception {
+    String refreshToken = register("tampered@otterworks.dev").get("refreshToken").asText();
+    String tampered = refreshToken.substring(0, refreshToken.length() - 4) + "AAAA";
+
+    mockMvc
+        .perform(post("/api/v1/auth/refresh").header("Authorization", "Bearer " + tampered))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void refreshToken_shouldNotAuthenticateApiRequests() throws Exception {
+    String refreshToken = register("refresh-as-access@otterworks.dev").get("refreshToken").asText();
+
+    mockMvc
+        .perform(get("/api/v1/auth/profile").header("Authorization", "Bearer " + refreshToken))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void profile_shouldNotExposePasswordHash() throws Exception {
+    String accessToken = register("nohash@otterworks.dev").get("accessToken").asText();
+
+    mockMvc
+        .perform(get("/api/v1/auth/profile").header("Authorization", "Bearer " + accessToken))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.passwordHash").doesNotExist())
+        .andExpect(jsonPath("$.password").doesNotExist());
+  }
+
+  @Test
+  void logout_shouldRevokeRefreshTokens() throws Exception {
+    JsonNode tokens = register("logout@otterworks.dev");
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/logout")
+                .header("Authorization", "Bearer " + tokens.get("accessToken").asText()))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .header("Authorization", "Bearer " + tokens.get("refreshToken").asText()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void changePassword_shouldRevokeExistingRefreshTokens() throws Exception {
+    JsonNode tokens = register("changepw-revoke@otterworks.dev");
+    String body =
+        """
+        {"currentPassword": "password123", "newPassword": "newpassword456"}
+        """;
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/change-password")
+                .header("Authorization", "Bearer " + tokens.get("accessToken").asText())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isNoContent());
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/refresh")
+                .header("Authorization", "Bearer " + tokens.get("refreshToken").asText()))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void changePassword_shouldRejectWrongCurrentPasswordAndKeepOldPassword() throws Exception {
+    String accessToken = register("changepw-wrong@otterworks.dev").get("accessToken").asText();
+    String body =
+        """
+        {"currentPassword": "not-my-password", "newPassword": "newpassword456"}
+        """;
+
+    mockMvc
+        .perform(
+            post("/api/v1/auth/change-password")
+                .header("Authorization", "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest());
+
+    String loginBody =
+        """
+        {"email": "changepw-wrong@otterworks.dev", "password": "password123"}
+        """;
+    mockMvc
+        .perform(
+            post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON).content(loginBody))
+        .andExpect(status().isOk());
+  }
+
+  @Test
+  void users_shouldRejectForgedAdminToken() throws Exception {
+    User user = new User();
+    user.setId(java.util.UUID.randomUUID());
+    user.setEmail("forger@otterworks.dev");
+    user.setDisplayName("Forger");
+    user.setRoles(Set.of(User.Role.ADMIN));
+    String forged =
+        new com.otterworks.auth.security.JwtTokenProvider(
+                "attacker-controlled-secret-that-is-also-32-bytes-long", 3600, 60)
+            .generateAccessToken(user);
+
+    mockMvc
+        .perform(get("/api/v1/auth/users").header("Authorization", "Bearer " + forged))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void userLookup_shouldRequireAuthentication() throws Exception {
+    register("lookup-target@otterworks.dev");
+
+    mockMvc
+        .perform(get("/api/v1/auth/users/lookup").param("email", "lookup-target@otterworks.dev"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void userLookup_shouldReturnOnlyPublicFieldsForAuthenticatedUser() throws Exception {
+    register("lookup-subject@otterworks.dev");
+    String accessToken = register("lookup-caller@otterworks.dev").get("accessToken").asText();
+
+    mockMvc
+        .perform(
+            get("/api/v1/auth/users/lookup")
+                .header("Authorization", "Bearer " + accessToken)
+                .param("email", "lookup-subject@otterworks.dev"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.email").value("lookup-subject@otterworks.dev"))
+        .andExpect(jsonPath("$.passwordHash").doesNotExist())
+        .andExpect(jsonPath("$.roles").doesNotExist());
+  }
+
+  private JsonNode register(String email) throws Exception {
+    String body =
+        String.format(
+            "{\"email\": \"%s\", \"password\": \"password123\", \"displayName\": \"Test\"}", email);
+    MvcResult result =
+        mockMvc
+            .perform(
+                post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isCreated())
+            .andReturn();
+    return objectMapper.readTree(result.getResponse().getContentAsString());
+  }
+
   private void createTestUser(String email, String password, String displayName) {
     User user = new User();
     user.setEmail(email);

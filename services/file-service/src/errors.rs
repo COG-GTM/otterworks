@@ -102,3 +102,112 @@ impl fmt::Display for ErrorResponse {
         write!(f, "{}: {}", self.error, self.message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::body::MessageBody;
+    use actix_web::http::StatusCode;
+
+    fn response_parts(err: ServiceError) -> (StatusCode, serde_json::Value) {
+        let resp = err.error_response();
+        let status = resp.status();
+        let bytes = resp
+            .into_body()
+            .try_into_bytes()
+            .expect("body is in memory");
+        (
+            status,
+            serde_json::from_slice(&bytes).expect("body is JSON"),
+        )
+    }
+
+    #[test]
+    fn maps_each_variant_to_status_and_error_code() {
+        let cases = [
+            (
+                ServiceError::FileNotFound("f".into()),
+                StatusCode::NOT_FOUND,
+                "file_not_found",
+            ),
+            (
+                ServiceError::FolderNotFound("f".into()),
+                StatusCode::NOT_FOUND,
+                "folder_not_found",
+            ),
+            (
+                ServiceError::VersionNotFound("v".into()),
+                StatusCode::NOT_FOUND,
+                "version_not_found",
+            ),
+            (
+                ServiceError::ShareNotFound("s".into()),
+                StatusCode::NOT_FOUND,
+                "share_not_found",
+            ),
+            (
+                ServiceError::BadRequest("b".into()),
+                StatusCode::BAD_REQUEST,
+                "bad_request",
+            ),
+            (
+                ServiceError::FileTooLarge {
+                    max_bytes: 10,
+                    actual_bytes: 20,
+                },
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "file_too_large",
+            ),
+            (
+                ServiceError::Unauthorized("u".into()),
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+            ),
+            (
+                ServiceError::Forbidden("f".into()),
+                StatusCode::FORBIDDEN,
+                "forbidden",
+            ),
+            (
+                ServiceError::S3Error("s".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "storage_error",
+            ),
+            (
+                ServiceError::DynamoError("d".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "metadata_error",
+            ),
+            (
+                ServiceError::SnsError("s".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "event_error",
+            ),
+            (
+                ServiceError::Internal("i".into()),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+            ),
+        ];
+
+        for (err, expected_status, expected_code) in cases {
+            let message = err.to_string();
+            let (status, body) = response_parts(err);
+            assert_eq!(status, expected_status, "{expected_code}");
+            assert_eq!(body["error"], expected_code);
+            assert_eq!(body["message"], message);
+        }
+    }
+
+    #[test]
+    fn file_too_large_message_reports_limits() {
+        let (_, body) = response_parts(ServiceError::FileTooLarge {
+            max_bytes: 100,
+            actual_bytes: 250,
+        });
+        assert_eq!(
+            body["message"],
+            "File too large: max 100 bytes, got 250 bytes"
+        );
+    }
+}

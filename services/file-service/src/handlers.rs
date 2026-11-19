@@ -839,4 +839,51 @@ mod tests {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
     }
+
+    fn request_with_user_header(value: &str) -> HttpRequest {
+        actix_web::test::TestRequest::default()
+            .insert_header(("X-User-ID", value))
+            .to_http_request()
+    }
+
+    #[test]
+    fn resolve_owner_id_prefers_gateway_header_over_query() {
+        let authenticated = Uuid::new_v4();
+        let spoofed = Uuid::new_v4();
+        let req = request_with_user_header(&authenticated.to_string());
+
+        assert_eq!(resolve_owner_id(&req, Some(spoofed)), Some(authenticated));
+    }
+
+    #[test]
+    fn resolve_owner_id_trims_header_whitespace() {
+        let authenticated = Uuid::new_v4();
+        let req = request_with_user_header(&format!("  {authenticated} "));
+
+        assert_eq!(resolve_owner_id(&req, None), Some(authenticated));
+    }
+
+    #[test]
+    fn resolve_owner_id_uses_query_without_header() {
+        let owner = Uuid::new_v4();
+        let req = actix_web::test::TestRequest::default().to_http_request();
+
+        assert_eq!(resolve_owner_id(&req, Some(owner)), Some(owner));
+    }
+
+    #[test]
+    fn resolve_owner_id_is_none_without_header_or_query() {
+        let req = actix_web::test::TestRequest::default().to_http_request();
+
+        assert_eq!(resolve_owner_id(&req, None), None);
+    }
+
+    #[test]
+    fn resolve_owner_id_ignores_malformed_header() {
+        let owner = Uuid::new_v4();
+        let req = request_with_user_header("not-a-uuid");
+
+        assert_eq!(resolve_owner_id(&req, Some(owner)), Some(owner));
+        assert_eq!(resolve_owner_id(&req, None), None);
+    }
 }
