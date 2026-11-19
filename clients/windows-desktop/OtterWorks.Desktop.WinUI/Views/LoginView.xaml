@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mvvm="using:OtterWorks.Desktop.Mvvm">
     <Grid>
-        <Border Style="{StaticResource Card}">
+        <Border Style="{StaticResource Card}" Translation="0,0,16">
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
