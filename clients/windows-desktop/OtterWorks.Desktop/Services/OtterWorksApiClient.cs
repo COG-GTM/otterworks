@@ -1,6 +1,9 @@
 using System;
 using System.Net;
 using System.Net.Http;
+#if NET
+using System.Security.Authentication;
+#endif
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
@@ -30,7 +33,14 @@ namespace OtterWorks.Desktop.Services
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _baseUrl = settings.ApiBaseUrl.TrimEnd('/');
 
+#if NET
+            // Mirrors app.config's Switch.System.Net.DontEnableSystemDefaultTlsVersions=false on net48:
+            // let the OS pick the TLS versions.
+            var handler = new HttpClientHandler { SslProtocols = SslProtocols.None };
+            _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+#else
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+#endif
         }
 
         public async Task<AuthResponse> RegisterAsync(string displayName, string email, string password)
