@@ -102,7 +102,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + ConnectionFailureDetail(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +139,17 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        // .NET words connection failures differently (e.g. "No connection could be made because
+        // the target machine actively refused it."); keep the .NET Framework 4.8 wording.
+        private static string ConnectionFailureDetail(HttpRequestException ex)
+        {
+#if NET
+            return "An error occurred while sending the request.";
+#else
+            return ex.Message;
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
