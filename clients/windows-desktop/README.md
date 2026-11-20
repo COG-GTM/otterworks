@@ -104,11 +104,9 @@ dotnet build OtterWorks.Desktop.sln -c Release -f net48
 
 ```powershell
 # .NET 10
-.\OtterWorks.Desktopin\Release
-et10.0-windows\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe
 # .NET Framework 4.8
-.\OtterWorks.Desktopin\Release
-et48\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe
 ```
 
 Or `dotnet run --project OtterWorks.Desktop -c Release -f net10.0-windows`, or press **F5**
