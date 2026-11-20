@@ -102,14 +102,24 @@ func (ml *MemoryLimiter) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 	for range ticker.C {
-		ml.mu.Lock()
-		now := ml.now()
-		for key, bucket := range ml.buckets {
-			if now.Sub(bucket.lastRefill) > 10*time.Minute {
-				delete(ml.buckets, key)
-			}
+		ml.evictIdle()
+	}
+}
+
+// evictIdle drops buckets idle long enough to have refilled completely, so
+// recreating one at full burst grants nothing the client wasn't owed.
+func (ml *MemoryLimiter) evictIdle() {
+	idle := 10 * time.Minute
+	if refill := time.Duration(ml.burst / ml.rate * float64(time.Second)); refill > idle {
+		idle = refill
+	}
+	ml.mu.Lock()
+	defer ml.mu.Unlock()
+	now := ml.now()
+	for key, bucket := range ml.buckets {
+		if now.Sub(bucket.lastRefill) > idle {
+			delete(ml.buckets, key)
 		}
-		ml.mu.Unlock()
 	}
 }
 

@@ -301,6 +301,30 @@ func TestClientKey_IPOnlyPaths(t *testing.T) {
 	}
 }
 
+func TestMemoryLimiter_EvictIdleWaitsForFullRefill(t *testing.T) {
+	ml := NewMemoryLimiter(0.001, 2) // full refill takes 2000s
+	now := time.Unix(1000, 0)
+	ml.now = func() time.Time { return now }
+	ctx := context.Background()
+
+	for i := 0; i < 2; i++ {
+		res, _ := ml.Take(ctx, "k")
+		require.True(t, res.Allowed)
+	}
+
+	now = now.Add(15 * time.Minute)
+	ml.evictIdle()
+	res, _ := ml.Take(ctx, "k")
+	assert.False(t, res.Allowed, "a depleted bucket must not be reset before it refills")
+
+	now = now.Add(2001 * time.Second)
+	ml.evictIdle()
+	ml.mu.Lock()
+	_, exists := ml.buckets["k"]
+	ml.mu.Unlock()
+	assert.False(t, exists)
+}
+
 func TestRetryAfterSeconds(t *testing.T) {
 	assert.Equal(t, 1, retryAfterSeconds(0))
 	assert.Equal(t, 1, retryAfterSeconds(10*time.Millisecond))
