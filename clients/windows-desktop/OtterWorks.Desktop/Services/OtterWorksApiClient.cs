@@ -16,6 +16,10 @@ namespace OtterWorks.Desktop.Services
     /// </summary>
     public class OtterWorksApiClient
     {
+        // .NET Framework 4.8's HttpRequestException.Message for every send failure; .NET 10
+        // reports the socket error instead (e.g. "No such host is known. (host:80)").
+        private const string SendFailedMessage = "An error occurred while sending the request.";
+
         private readonly HttpClient _http;
         private readonly SessionState _session;
         private readonly string _baseUrl;
@@ -97,12 +101,12 @@ namespace OtterWorks.Desktop.Services
             {
                 response = await _http.SendAsync(request).ConfigureAwait(false);
             }
-            catch (HttpRequestException ex)
+            catch (HttpRequestException)
             {
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + SendFailedMessage);
             }
             catch (TaskCanceledException)
             {
