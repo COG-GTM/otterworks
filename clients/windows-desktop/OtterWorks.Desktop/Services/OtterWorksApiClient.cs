@@ -102,7 +102,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeSendFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +139,18 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        // .NET Framework's HttpClient reports every send failure with this one message, while
+        // modern .NET surfaces the underlying socket/DNS error text. Keep the .NET Framework
+        // wording so users see the same text on every target.
+        private static string DescribeSendFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return "An error occurred while sending the request.";
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
