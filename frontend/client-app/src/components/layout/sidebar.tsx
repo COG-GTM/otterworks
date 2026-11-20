@@ -80,7 +80,7 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full bg-otter-700 text-white border-r border-otter-800 transition-transform duration-200 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]",
+          "fixed top-0 left-0 z-50 h-full bg-otter-700 text-white border-r border-otter-800 transition-transform duration-200 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
           "w-64",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-16"
         )}
