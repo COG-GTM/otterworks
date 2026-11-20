@@ -6,7 +6,7 @@ import { COMPANY } from "@/lib/corporate";
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-otter-50 flex flex-col">
-      <header className="bg-white border-b border-gray-300">
+      <header className="bg-white border-b border-gray-300 pt-[env(safe-area-inset-top)]">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-3">
           <Link to="/" className="flex items-center gap-2">
             <Logo size={28} />
