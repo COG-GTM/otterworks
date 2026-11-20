@@ -17,6 +17,8 @@ function ensureUploadErrorChannel(): Promise<void> {
     name: "Upload errors",
     description: "Alerts when a file fails to upload",
     importance: 4,
+  }).catch(() => {
+    // Channels need API 26+; older Android posts without one.
   });
   return uploadErrorChannelReady;
 }
