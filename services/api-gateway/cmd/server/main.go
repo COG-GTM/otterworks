@@ -163,7 +163,7 @@ func newRateLimitMiddleware(cfg *config.Config, logger zerolog.Logger) (func(htt
 		Limiter:        memory,
 		Backend:        "memory",
 		KeyFunc:        middleware.ClientKey(cfg.JWTSecret),
-		ExemptPrefixes: []string{"/health", "/metrics"},
+		ExemptPrefixes: []string{"/metrics"},
 		Logger:         logger,
 	}
 	closeFn := func() {}
