@@ -102,7 +102,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeSendFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +139,26 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        // .NET 10 puts the socket/DNS error in the message ("No connection could be made...");
+        // .NET Framework 4.8 reports transport failures with one generic sentence. Keep the 4.8 text.
+        private static string DescribeSendFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            switch (ex.HttpRequestError)
+            {
+                case HttpRequestError.NameResolutionError:
+                case HttpRequestError.ConnectionError:
+                case HttpRequestError.SecureConnectionError:
+                case HttpRequestError.ProxyTunnelError:
+                    return "An error occurred while sending the request.";
+                default:
+                    return ex.Message;
+            }
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
