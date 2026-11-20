@@ -67,7 +67,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
         )}
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className="tap-target p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
@@ -82,7 +82,8 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="More actions"
+            className="tap-target p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -108,7 +109,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
       <div className="h-32 bg-gradient-to-br from-blue-50 to-otter-50 p-4 flex items-start">
         <p className="text-xs text-gray-500 line-clamp-4 leading-relaxed">
           {document.content
-            ? document.content.replace(/<[^>]{0,2048}>/g, "").slice(0, 200)
+            ? document.content.replace(/<[^>]{0,2048}>/g, "").replace(/[#*_`>]+/g, "").replace(/\s+/g, " ").trim().slice(0, 200)
             : "Empty document"}
         </p>
       </div>
@@ -124,7 +125,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
           <div className="flex items-center gap-1">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className="tap-target p-1 rounded hover:bg-gray-100 transition"
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
@@ -139,7 +140,8 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                aria-label="More actions"
+                className="tap-target p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
               >
                 <MoreVertical size={16} />
               </button>

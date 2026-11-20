@@ -138,10 +138,11 @@ function FileDetailContent() {
       />
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={() => navigate(-1)}
+            aria-label="Back"
             className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"
           >
             <ArrowLeft size={20} />
@@ -149,8 +150,8 @@ function FileDetailContent() {
           <div className="w-12 h-12 rounded-xl bg-otter-50 flex items-center justify-center">
             <FileIcon mimeType={file.mimeType} />
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">{file.name}</h1>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900 break-words">{file.name}</h1>
             <p className="text-sm text-gray-500">
               {formatFileSize(file.size)} &middot; {formatRelativeTime(file.updatedAt)}
             </p>

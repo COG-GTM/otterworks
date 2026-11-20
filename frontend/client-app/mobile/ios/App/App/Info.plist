@@ -22,6 +22,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>OtterWorks uses the camera to take photos you upload.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>OtterWorks lets you choose photos and videos to upload.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

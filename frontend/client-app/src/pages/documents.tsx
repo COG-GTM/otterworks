@@ -198,8 +198,10 @@ function ViewBtn({
   return (
     <button
       onClick={onClick}
+      aria-label={`${current} view`}
+      aria-pressed={mode === current}
       className={cn(
-        "p-2 transition",
+        "tap-target p-2 transition",
         mode === current
           ? "bg-gray-100 text-gray-900"
           : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
