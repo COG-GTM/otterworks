@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export function Footer() {
   return (
-    <footer className="border-t border-gray-300 bg-white">
+    <footer className="border-t border-gray-300 bg-white pb-[env(safe-area-inset-bottom)]">
       <div className="mx-auto flex h-10 max-w-7xl items-center justify-center gap-2 px-4 text-xs text-gray-500">
         <span>© OtterWorks, Inc.</span>
         <span aria-hidden="true">·</span>

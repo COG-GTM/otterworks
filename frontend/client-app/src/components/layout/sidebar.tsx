@@ -65,7 +65,7 @@ const navGroups: NavGroup[] = [
 
 export function Sidebar() {
   const { pathname } = useLocation();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
   const { user, logout } = useAuthStore();
 
   return (
@@ -80,7 +80,7 @@ export function Sidebar() {
 
       <aside
         className={cn(
-          "fixed top-0 left-0 z-50 h-full bg-otter-700 text-white border-r border-otter-800 transition-transform duration-200 flex flex-col",
+          "fixed top-0 left-0 z-50 h-full bg-otter-700 text-white border-r border-otter-800 transition-transform duration-200 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
           "w-64",
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0 lg:w-16"
         )}
@@ -95,7 +95,7 @@ export function Sidebar() {
           )}
           <button
             onClick={toggleSidebar}
-            className="p-2 rounded hover:bg-otter-600 text-otter-200"
+            className="tap-target p-2 rounded hover:bg-otter-600 text-otter-200"
             aria-label="Toggle sidebar"
           >
             {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
@@ -132,6 +132,9 @@ export function Sidebar() {
                     <li key={item.href}>
                       <Link
                         to={item.href}
+                        onClick={() => {
+                          if (window.matchMedia?.("(max-width: 1023px)").matches) setSidebarOpen(false);
+                        }}
                         className={cn(
                           "flex items-center gap-3 px-3 py-1.5 rounded-sm text-sm font-medium transition border-l-2",
                           isActive
@@ -165,7 +168,7 @@ export function Sidebar() {
               </div>
               <button
                 onClick={logout}
-                className="p-1.5 rounded hover:bg-otter-600 text-otter-200 hover:text-white"
+                className="tap-target p-1.5 rounded hover:bg-otter-600 text-otter-200 hover:text-white"
                 aria-label="Sign out"
               >
                 <LogOut size={16} />

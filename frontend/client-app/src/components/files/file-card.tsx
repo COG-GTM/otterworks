@@ -168,7 +168,7 @@ export function FileCard({
         </Link>
         <button
           onClick={handleStarClick}
-          className="p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
+          className="tap-target p-1 rounded hover:bg-gray-200 transition flex-shrink-0"
           aria-label={starred ? "Unstar" : "Star"}
         >
           <Star
@@ -176,14 +176,15 @@ export function FileCard({
             className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
           />
         </button>
-        <div className="relative w-8">
+        <div className="relative w-8 ml-1">
           <button
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="More actions"
+            className="tap-target p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -222,10 +223,10 @@ export function FileCard({
           <div className="w-12 h-12 rounded-lg bg-otter-50 flex items-center justify-center">
             <Icon size={24} className="text-otter-600" />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-5">
             <button
               onClick={handleStarClick}
-              className="p-1 rounded hover:bg-gray-100 transition"
+              className="tap-target p-1 rounded hover:bg-gray-100 transition"
               aria-label={starred ? "Unstar" : "Star"}
             >
               <Star
@@ -240,7 +241,8 @@ export function FileCard({
                   e.stopPropagation();
                   setMenuOpen(!menuOpen);
                 }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+                aria-label="More actions"
+                className="tap-target p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
               >
                 <MoreVertical size={16} />
               </button>

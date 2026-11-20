@@ -7,6 +7,22 @@ let notificationId = 0;
 // audible while muting routine completion notices.
 const UPLOAD_ERROR_CHANNEL_ID = "upload-errors";
 
+let uploadErrorChannelReady: Promise<void> | null = null;
+
+// Android drops notifications posted to a channel that was never created.
+function ensureUploadErrorChannel(): Promise<void> {
+  if (Capacitor.getPlatform() !== "android") return Promise.resolve();
+  uploadErrorChannelReady ??= LocalNotifications.createChannel({
+    id: UPLOAD_ERROR_CHANNEL_ID,
+    name: "Upload errors",
+    description: "Alerts when a file fails to upload",
+    importance: 4,
+  }).catch(() => {
+    // Channels need API 26+; older Android posts without one.
+  });
+  return uploadErrorChannelReady;
+}
+
 async function hasDisplayPermission(): Promise<boolean> {
   const { display } = await LocalNotifications.checkPermissions();
   if (display === "granted") return true;
@@ -20,6 +36,7 @@ async function notify(title: string, body: string, channelId?: string): Promise<
   if (!Capacitor.isNativePlatform()) return;
   try {
     if (!(await hasDisplayPermission())) return;
+    if (channelId === UPLOAD_ERROR_CHANNEL_ID) await ensureUploadErrorChannel();
     await LocalNotifications.schedule({
       notifications: [{ id: ++notificationId, title, body, channelId }],
     });

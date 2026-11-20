@@ -315,7 +315,7 @@ function FileBrowserContent() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Files</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => {
               setSelectionActive(!selectionActive);
@@ -455,7 +455,7 @@ function FileBrowserContent() {
               <div
                 className={cn(
                   viewMode === "grid"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
+                    ? "grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
                     : "space-y-1"
                 )}
               >
@@ -482,7 +482,7 @@ function FileBrowserContent() {
               <div
                 className={cn(
                   viewMode === "grid"
-                    ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
+                    ? "grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
                     : "space-y-1"
                 )}
               >
@@ -554,8 +554,10 @@ function ViewModeButton({
   return (
     <button
       onClick={onClick}
+      aria-label={`${mode} view`}
+      aria-pressed={mode === current}
       className={cn(
-        "p-2 transition",
+        "tap-target p-2 transition",
         mode === current
           ? "bg-gray-100 text-gray-900"
           : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"

@@ -11,8 +11,12 @@ interface UIState {
   setSortConfig: (config: SortConfig) => void;
 }
 
+// The drawer starts closed on phones, where it overlays the page.
+const isWideScreen = () =>
+  typeof window === "undefined" || window.matchMedia?.("(min-width: 1024px)").matches !== false;
+
 export const useUIStore = create<UIState>((set) => ({
-  sidebarOpen: true,
+  sidebarOpen: isWideScreen(),
   viewMode: "grid",
   sortConfig: { field: "updatedAt", direction: "desc" },
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),

@@ -40,7 +40,7 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['"Segoe UI"', "Helvetica", "Arial", "sans-serif"],
+        sans: ["system-ui", "-apple-system", "BlinkMacSystemFont", '"Segoe UI"', "Roboto", "Helvetica", "Arial", "sans-serif"],
       },
     },
   },
