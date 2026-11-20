@@ -196,9 +196,18 @@ type KeyFunc func(r *http.Request) string
 
 // ClientKey identifies a client by the user in a valid bearer token, falling
 // back to the client IP. Invalid tokens are keyed by IP so they cannot be
-// used to spread requests across buckets.
-func ClientKey(jwtSecret string) KeyFunc {
+// used to spread requests across buckets. Requests to ipOnlyPaths (e.g.
+// login and register) are always keyed by IP, so tokens minted from fresh
+// sign-ups cannot multiply the allowance on those endpoints.
+func ClientKey(jwtSecret string, ipOnlyPaths ...string) KeyFunc {
+	ipOnly := make(map[string]bool, len(ipOnlyPaths))
+	for _, p := range ipOnlyPaths {
+		ipOnly[p] = true
+	}
 	return func(r *http.Request) string {
+		if ipOnly[r.URL.Path] {
+			return "ip:" + extractIP(r)
+		}
 		if tokenStr := extractBearerToken(r); tokenStr != "" && jwtSecret != "" {
 			if claims, err := validateToken(tokenStr, jwtSecret); err == nil {
 				userID := claims.Subject

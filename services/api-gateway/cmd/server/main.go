@@ -162,7 +162,7 @@ func newRateLimitMiddleware(cfg *config.Config, logger zerolog.Logger) (func(htt
 	rlCfg := middleware.RateLimitConfig{
 		Limiter:        memory,
 		Backend:        "memory",
-		KeyFunc:        middleware.ClientKey(cfg.JWTSecret),
+		KeyFunc:        middleware.ClientKey(cfg.JWTSecret, middleware.DefaultPublicPaths()...),
 		ExemptPrefixes: []string{"/metrics"},
 		Logger:         logger,
 	}

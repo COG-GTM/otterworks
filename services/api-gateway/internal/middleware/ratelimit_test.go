@@ -283,6 +283,24 @@ func TestClientKey(t *testing.T) {
 	}
 }
 
+func TestClientKey_IPOnlyPaths(t *testing.T) {
+	secret := "test-secret"
+	keyFunc := ClientKey(secret, "/api/v1/auth/login")
+	token := generateTestToken(t, secret, JWTClaims{RegisteredClaims: jwt.RegisteredClaims{
+		Subject: "u1", ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+	}})
+
+	for path, expected := range map[string]string{
+		"/api/v1/auth/login": "ip:10.0.0.1",
+		"/api/v1/files":      "user:u1",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req.RemoteAddr = "10.0.0.1:5678"
+		req.Header.Set("Authorization", "Bearer "+token)
+		assert.Equal(t, expected, keyFunc(req), path)
+	}
+}
+
 func TestRetryAfterSeconds(t *testing.T) {
 	assert.Equal(t, 1, retryAfterSeconds(0))
 	assert.Equal(t, 1, retryAfterSeconds(10*time.Millisecond))
