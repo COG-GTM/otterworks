@@ -181,6 +181,9 @@ func newRateLimitMiddleware(cfg *config.Config, logger zerolog.Logger) (func(htt
 			}
 			opts = parsed
 		}
+		// Without this, a stalled Redis holds each request for the 3s socket
+		// timeout instead of the limiter's RATE_LIMIT_REDIS_TIMEOUT_MS deadline.
+		opts.ContextTimeoutEnabled = true
 		client := redis.NewClient(opts)
 		closeFn = func() { _ = client.Close() }
 
