@@ -94,6 +94,7 @@ async fn main() -> std::io::Result<()> {
                     .route("", web::get().to(handlers::list_folders))
                     .route("", web::post().to(handlers::create_folder))
                     .route("/{folder_id}", web::get().to(handlers::get_folder))
+                    .route("/{folder_id}/stats", web::get().to(handlers::folder_stats))
                     .route("/{folder_id}", web::put().to(handlers::update_folder))
                     .route("/{folder_id}", web::delete().to(handlers::delete_folder)),
             )
