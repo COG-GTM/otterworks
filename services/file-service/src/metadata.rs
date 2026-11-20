@@ -442,6 +442,28 @@ impl MetadataClient {
         Ok(folders)
     }
 
+    pub async fn list_folders_by_owner(
+        &self,
+        owner_id: &Uuid,
+    ) -> Result<Vec<Folder>, ServiceError> {
+        let mut paginator = self
+            .client
+            .scan()
+            .table_name(&self.folders_table)
+            .filter_expression("owner_id = :owner_id")
+            .expression_attribute_values(":owner_id", AttributeValue::S(owner_id.to_string()))
+            .into_paginator()
+            .send();
+        let mut folders = Vec::new();
+        while let Some(page) = paginator.next().await {
+            let page = page.map_err(|e| ServiceError::DynamoError(e.to_string()))?;
+            for item in page.items() {
+                folders.push(parse_folder(item)?);
+            }
+        }
+        Ok(folders)
+    }
+
     // -- File Versions --
 
     pub async fn put_version(&self, version: &FileVersion) -> Result<(), ServiceError> {

@@ -18,10 +18,10 @@ use crate::metadata::MetadataClient;
 use crate::middleware;
 use crate::models::{
     ActivityItem, ActivityQuery, ActivityResponse, CreateFolderRequest, DownloadResponse,
-    FileDetailResponse, FileMetadata, FileShare, FileVersion, Folder, HealthResponse,
-    ListFilesQuery, ListFilesResponse, ListFoldersQuery, ListFoldersResponse, ListVersionsResponse,
-    MoveFileRequest, RenameFileRequest, ShareFileRequest, ShareFileResponse, UpdateFolderRequest,
-    UploadResponse,
+    FileDetailResponse, FileMetadata, FileShare, FileTypeStats, FileVersion, Folder,
+    FolderStatsResponse, HealthResponse, ListFilesQuery, ListFilesResponse, ListFoldersQuery,
+    ListFoldersResponse, ListVersionsResponse, MoveFileRequest, RenameFileRequest,
+    ShareFileRequest, ShareFileResponse, UpdateFolderRequest, UploadResponse,
 };
 use crate::storage::S3Client;
 
@@ -757,6 +757,112 @@ pub async fn delete_folder(
     Ok(HttpResponse::NoContent().finish())
 }
 
+/// File count and total size by file type for a folder and all of its
+/// subfolders. Folders the caller does not own are reported as not found so
+/// their existence is not leaked.
+pub async fn folder_stats(
+    req: HttpRequest,
+    meta: web::Data<MetadataClient>,
+    path: web::Path<String>,
+) -> Result<HttpResponse, ServiceError> {
+    let folder_id: Uuid = path
+        .into_inner()
+        .parse()
+        .map_err(|e| ServiceError::BadRequest(format!("invalid folder id: {e}")))?;
+    let user_id = req
+        .headers()
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<Uuid>().ok())
+        .ok_or_else(|| ServiceError::BadRequest("missing owner context".into()))?;
+
+    let folder = meta.get_folder(&folder_id).await?;
+    ensure_folder_access(&folder, &user_id)?;
+
+    let (folders, files) = futures_util::future::try_join(
+        meta.list_folders_by_owner(&user_id),
+        meta.list_files(None, Some(user_id), false),
+    )
+    .await?;
+
+    Ok(HttpResponse::Ok().json(compute_folder_stats(folder_id, &folders, &files)))
+}
+
+fn ensure_folder_access(folder: &Folder, user_id: &Uuid) -> Result<(), ServiceError> {
+    if folder.owner_id == *user_id {
+        Ok(())
+    } else {
+        Err(ServiceError::FolderNotFound(folder.id.to_string()))
+    }
+}
+
+fn normalize_file_type(mime_type: &str) -> String {
+    let essence = mime_type.split(';').next().unwrap_or("").trim();
+    if essence.is_empty() {
+        "application/octet-stream".into()
+    } else {
+        essence.to_ascii_lowercase()
+    }
+}
+
+fn compute_folder_stats(
+    root_id: Uuid,
+    folders: &[Folder],
+    files: &[FileMetadata],
+) -> FolderStatsResponse {
+    use std::collections::{BTreeMap, HashMap, HashSet};
+
+    let mut children: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
+    for f in folders {
+        if let Some(parent) = f.parent_id {
+            children.entry(parent).or_default().push(f.id);
+        }
+    }
+
+    // `update_folder` does not reject parent cycles, so track visited ids.
+    let mut subtree: HashSet<Uuid> = HashSet::from([root_id]);
+    let mut stack = vec![root_id];
+    while let Some(id) = stack.pop() {
+        for child in children.get(&id).into_iter().flatten() {
+            if subtree.insert(*child) {
+                stack.push(*child);
+            }
+        }
+    }
+
+    let mut by_type: BTreeMap<String, (u64, u64)> = BTreeMap::new();
+    for file in files {
+        if file.is_trashed || !file.folder_id.is_some_and(|id| subtree.contains(&id)) {
+            continue;
+        }
+        let entry = by_type
+            .entry(normalize_file_type(&file.mime_type))
+            .or_default();
+        entry.0 += 1;
+        entry.1 += file.size_bytes;
+    }
+
+    let mut by_type: Vec<FileTypeStats> = by_type
+        .into_iter()
+        .map(
+            |(file_type, (file_count, total_size_bytes))| FileTypeStats {
+                file_type,
+                file_count,
+                total_size_bytes,
+            },
+        )
+        .collect();
+    by_type.sort_by_key(|t| std::cmp::Reverse(t.total_size_bytes));
+
+    FolderStatsResponse {
+        folder_id: root_id,
+        folder_count: (subtree.len() - 1) as u64,
+        file_count: by_type.iter().map(|t| t.file_count).sum(),
+        total_size_bytes: by_type.iter().map(|t| t.total_size_bytes).sum(),
+        by_type,
+    }
+}
+
 // -- Activity Handler --
 
 pub async fn list_activity(
@@ -838,5 +944,145 @@ mod tests {
     async fn test_metrics_endpoint() {
         let resp = metrics().await;
         assert_eq!(resp.status(), actix_web::http::StatusCode::OK);
+    }
+
+    fn folder(owner: Uuid, parent: Option<Uuid>) -> Folder {
+        let now = Utc::now();
+        Folder {
+            id: Uuid::new_v4(),
+            name: "folder".into(),
+            parent_id: parent,
+            owner_id: owner,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn file(owner: Uuid, folder: Option<Uuid>, mime_type: &str, size_bytes: u64) -> FileMetadata {
+        let now = Utc::now();
+        let id = Uuid::new_v4();
+        FileMetadata {
+            id,
+            name: "file".into(),
+            mime_type: mime_type.into(),
+            size_bytes,
+            s3_key: format!("files/{owner}/{id}"),
+            folder_id: folder,
+            owner_id: owner,
+            version: 1,
+            is_trashed: false,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn test_folder_stats_includes_nested_subfolders() {
+        let owner = Uuid::new_v4();
+        let root = folder(owner, None);
+        let child = folder(owner, Some(root.id));
+        let grandchild = folder(owner, Some(child.id));
+        let sibling = folder(owner, None);
+        let mut trashed = file(owner, Some(child.id), "application/pdf", 9_000);
+        trashed.is_trashed = true;
+        let files = vec![
+            file(owner, Some(root.id), "application/pdf", 100),
+            file(owner, Some(child.id), "application/pdf", 200),
+            file(owner, Some(grandchild.id), "text/csv; charset=utf-8", 50),
+            file(owner, Some(grandchild.id), "TEXT/CSV", 25),
+            file(owner, Some(sibling.id), "image/png", 1_000),
+            file(owner, None, "image/png", 1_000),
+            trashed,
+        ];
+        let folders = vec![root.clone(), child, grandchild, sibling];
+
+        let stats = compute_folder_stats(root.id, &folders, &files);
+
+        assert_eq!(stats.folder_id, root.id);
+        assert_eq!(stats.folder_count, 2);
+        assert_eq!(stats.file_count, 4);
+        assert_eq!(stats.total_size_bytes, 375);
+        assert_eq!(
+            stats.by_type,
+            vec![
+                FileTypeStats {
+                    file_type: "application/pdf".into(),
+                    file_count: 2,
+                    total_size_bytes: 300,
+                },
+                FileTypeStats {
+                    file_type: "text/csv".into(),
+                    file_count: 2,
+                    total_size_bytes: 75,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_folder_stats_subfolder_scope_excludes_parent() {
+        let owner = Uuid::new_v4();
+        let root = folder(owner, None);
+        let child = folder(owner, Some(root.id));
+        let files = vec![
+            file(owner, Some(root.id), "application/pdf", 100),
+            file(owner, Some(child.id), "image/png", 10),
+        ];
+        let folders = vec![root, child.clone()];
+
+        let stats = compute_folder_stats(child.id, &folders, &files);
+
+        assert_eq!(stats.folder_count, 0);
+        assert_eq!(stats.file_count, 1);
+        assert_eq!(stats.total_size_bytes, 10);
+        assert_eq!(stats.by_type[0].file_type, "image/png");
+    }
+
+    #[test]
+    fn test_folder_stats_empty_folder_returns_zero_counts() {
+        let owner = Uuid::new_v4();
+        let root = folder(owner, None);
+        let child = folder(owner, Some(root.id));
+        let folders = vec![root.clone(), child];
+
+        let stats = compute_folder_stats(root.id, &folders, &[]);
+
+        assert_eq!(stats.folder_count, 1);
+        assert_eq!(stats.file_count, 0);
+        assert_eq!(stats.total_size_bytes, 0);
+        assert!(stats.by_type.is_empty());
+    }
+
+    #[test]
+    fn test_folder_stats_tolerates_parent_cycles() {
+        let owner = Uuid::new_v4();
+        let mut a = folder(owner, None);
+        let b = folder(owner, Some(a.id));
+        a.parent_id = Some(b.id);
+        let files = vec![file(owner, Some(b.id), "text/plain", 5)];
+        let folders = vec![a.clone(), b];
+
+        let stats = compute_folder_stats(a.id, &folders, &files);
+
+        assert_eq!(stats.folder_count, 1);
+        assert_eq!(stats.file_count, 1);
+    }
+
+    #[test]
+    fn test_folder_access_allows_owner() {
+        let owner = Uuid::new_v4();
+        assert!(ensure_folder_access(&folder(owner, None), &owner).is_ok());
+    }
+
+    #[test]
+    fn test_folder_access_denied_is_not_found() {
+        let owner = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let err = ensure_folder_access(&folder(owner, None), &other).unwrap_err();
+        assert!(matches!(err, ServiceError::FolderNotFound(_)));
+        assert_eq!(
+            actix_web::ResponseError::error_response(&err).status(),
+            actix_web::http::StatusCode::NOT_FOUND
+        );
     }
 }
