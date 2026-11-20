@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,8 +27,21 @@ type Config struct {
 	AuditServiceURL        string
 	ReportServiceURL       string
 
-	// Rate limiting
-	RateLimitRPS int
+	// Rate limiting (per-client token bucket)
+	RateLimitEnabled      bool
+	RateLimitBackend      string // "redis" or "memory"
+	RateLimitRPS          float64
+	RateLimitBurst        int
+	RateLimitKeyPrefix    string
+	RateLimitRedisTimeout time.Duration
+
+	// Redis (rate limit state). RedisURL, when set, takes precedence over
+	// the host/port/password/db fields.
+	RedisURL      string
+	RedisHost     string
+	RedisPort     string
+	RedisPassword string
+	RedisDB       int
 
 	// JWT
 	JWTSecret string
@@ -41,10 +56,10 @@ type Config struct {
 	ShutdownTimeout time.Duration
 
 	// Circuit breaker
-	CBMaxRequests   uint32
-	CBInterval      time.Duration
-	CBTimeout       time.Duration
-	CBFailureRatio  float64
+	CBMaxRequests  uint32
+	CBInterval     time.Duration
+	CBTimeout      time.Duration
+	CBFailureRatio float64
 }
 
 // Validate checks that required security-sensitive configuration is present.
@@ -52,11 +67,28 @@ func (c *Config) Validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
 	}
+	if c.RateLimitEnabled {
+		if !(c.RateLimitRPS > 0) || math.IsInf(c.RateLimitRPS, 0) {
+			return fmt.Errorf("RATE_LIMIT_RPS must be a finite number greater than 0")
+		}
+		if c.RateLimitBurst < 1 {
+			return fmt.Errorf("RATE_LIMIT_BURST must be at least 1")
+		}
+		if c.RateLimitBackend != "redis" && c.RateLimitBackend != "memory" {
+			return fmt.Errorf("RATE_LIMIT_BACKEND must be \"redis\" or \"memory\", got %q", c.RateLimitBackend)
+		}
+	}
 	return nil
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
+	rps := getEnvFloat("RATE_LIMIT_RPS", 100)
+	defaultBurst := int(math.Ceil(rps))
+	if defaultBurst < 1 {
+		defaultBurst = 1
+	}
+
 	return &Config{
 		Port:     getEnv("PORT", "8080"),
 		LogLevel: getEnv("LOG_LEVEL", "info"),
@@ -72,7 +104,18 @@ func Load() *Config {
 		AuditServiceURL:        getEnv("AUDIT_SERVICE_URL", "http://audit-service:8090"),
 		ReportServiceURL:       getEnv("REPORT_SERVICE_URL", "http://report-service:8091"),
 
-		RateLimitRPS: getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitEnabled:      getEnvBool("RATE_LIMIT_ENABLED", true),
+		RateLimitBackend:      strings.ToLower(getEnv("RATE_LIMIT_BACKEND", "redis")),
+		RateLimitRPS:          rps,
+		RateLimitBurst:        getEnvInt("RATE_LIMIT_BURST", defaultBurst),
+		RateLimitKeyPrefix:    getEnv("RATE_LIMIT_KEY_PREFIX", "otterworks:api-gateway:ratelimit:"),
+		RateLimitRedisTimeout: time.Duration(getEnvInt("RATE_LIMIT_REDIS_TIMEOUT_MS", 100)) * time.Millisecond,
+
+		RedisURL:      getEnv("RATE_LIMIT_REDIS_URL", ""),
+		RedisHost:     getEnv("REDIS_HOST", "redis"),
+		RedisPort:     getEnvPort("REDIS_PORT", "6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       getEnvInt("REDIS_DB", 0),
 
 		JWTSecret: getEnv("JWT_SECRET", ""),
 
@@ -123,6 +166,32 @@ func getEnvInt(key string, fallback int) int {
 		if i, err := strconv.Atoi(val); err == nil {
 			return i
 		}
+	}
+	return fallback
+}
+
+func getEnvBool(key string, fallback bool) bool {
+	if val, ok := os.LookupEnv(key); ok {
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+	}
+	return fallback
+}
+
+// getEnvPort reads a port number. Kubernetes injects Docker-link variables
+// for every Service in the namespace, so a Service named `redis` sets
+// REDIS_PORT=tcp://<ip>:6379; the port is taken from that form too.
+func getEnvPort(key, fallback string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok || val == "" {
+		return fallback
+	}
+	if _, err := strconv.Atoi(val); err == nil {
+		return val
+	}
+	if u, err := url.Parse(val); err == nil && u.Port() != "" {
+		return u.Port()
 	}
 	return fallback
 }
