@@ -31,8 +31,7 @@ clients/windows-desktop/
 ├── README.md
 ├── docs/screenshots/                 # verification screenshots (embedded below)
 └── OtterWorks.Desktop/
-    ├── OtterWorks.Desktop.csproj      # classic .NET Framework 4.8 WPF project
-    ├── packages.config                # Newtonsoft.Json 13.0.3
+    ├── OtterWorks.Desktop.csproj      # SDK-style WPF project (net48;net10.0-windows)
     ├── app.config
     ├── appsettings.json               # configurable backend base URL
     ├── App.xaml(.cs)                  # DI-free composition root + navigation templates
@@ -49,17 +48,8 @@ clients/windows-desktop/
 - **.NET Framework 4.8 runtime** (preinstalled on current Windows) and the
   **.NET Framework 4.8 Developer Pack** (targeting pack / reference assemblies), required to
   *build* the project.
-- One of the following to build:
-  - **Visual Studio 2022** with the **.NET desktop development** workload, **or**
-  - **Visual Studio Build Tools 2022** with the **.NET desktop build tools** workload
-    (`Microsoft.VisualStudio.Workload.ManagedDesktopBuildTools`), which provides MSBuild,
-    the WPF build targets, and the 4.8 targeting pack.
-- **NuGet** (bundled with Visual Studio / `nuget.exe`) to restore `Newtonsoft.Json`.
-
-> **Note on `dotnet build` / `dotnet format`:** those SDK commands target modern
-> `Microsoft.NET.Sdk` projects. This is a classic (legacy) `.csproj`, so it is built with
-> **MSBuild** as shown below. That is expected for a .NET Framework 4.8 app and is part of
-> what makes this a genuine upgrade exercise.
+- **.NET 10 SDK** (`dotnet --list-sdks` shows `10.0.x`), which builds both targets.
+  Visual Studio 2022 / MSBuild 17 cannot build the `net10.0-windows` target.
 
 ## Configuration
 
@@ -98,33 +88,21 @@ curl http://localhost:8080/health      # -> {"status":"healthy",...}
 
 ## Build
 
-Restore packages and build in Release with MSBuild:
+Build both targets (`net48` and `net10.0-windows`) in Release:
 
 ```powershell
 # From clients/windows-desktop
-nuget restore OtterWorks.Desktop.sln
-msbuild OtterWorks.Desktop.sln /p:Configuration=Release
+dotnet build OtterWorks.Desktop.sln -c Release
 ```
 
-Or simply open `OtterWorks.Desktop.sln` in Visual Studio 2022 and build (packages restore
-automatically).
-
-> **Note on `dotnet build` / `dotnet format`:** this is a *classic* (non-SDK-style)
-> .NET Framework 4.8 WPF project, chosen deliberately as an upgrade/modernization
-> baseline. The .NET SDK's `dotnet build` cannot compile classic WPF projects — it does
-> not run the XAML markup-compiler, so `InitializeComponent` is never generated and the
-> build fails with `CS0103`. **Full MSBuild** (from Visual Studio or Build Tools 2022) is
-> the authoritative build for this project and produces a clean Release build. This is
-> exactly the kind of friction a future migration to an SDK-style / modern .NET project
-> would remove.
+Add `-f net48` or `-f net10.0-windows` to build one target only.
 
 ## Run
 
 ```powershell
-.\OtterWorks.Desktop\bin\Release\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe   # .NET 10
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe             # .NET Framework 4.8
 ```
-
-Or press **F5** in Visual Studio.
 
 ## End-to-end flow
 
