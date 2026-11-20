@@ -1,6 +1,7 @@
 package config
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -59,6 +60,12 @@ func TestValidate_RateLimit(t *testing.T) {
 	c := base()
 	c.RateLimitRPS = 0
 	assert.ErrorContains(t, c.Validate(), "RATE_LIMIT_RPS")
+
+	for _, rps := range []float64{math.NaN(), math.Inf(1)} {
+		c = base()
+		c.RateLimitRPS = rps
+		assert.ErrorContains(t, c.Validate(), "RATE_LIMIT_RPS", rps)
+	}
 
 	c = base()
 	c.RateLimitBurst = 0

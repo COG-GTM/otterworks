@@ -67,8 +67,8 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("JWT_SECRET environment variable is required but not set")
 	}
 	if c.RateLimitEnabled {
-		if c.RateLimitRPS <= 0 {
-			return fmt.Errorf("RATE_LIMIT_RPS must be greater than 0")
+		if !(c.RateLimitRPS > 0) || math.IsInf(c.RateLimitRPS, 0) {
+			return fmt.Errorf("RATE_LIMIT_RPS must be a finite number greater than 0")
 		}
 		if c.RateLimitBurst < 1 {
 			return fmt.Errorf("RATE_LIMIT_BURST must be at least 1")
