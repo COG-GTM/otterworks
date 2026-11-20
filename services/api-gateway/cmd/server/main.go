@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -72,19 +74,23 @@ func main() {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Compress(5))
 
-	// Rate limiting
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPS)
-	r.Use(rateLimiter.Handler)
-
-	// CORS
+	// CORS runs before rate limiting so 429 responses carry CORS headers and
+	// browsers can read Retry-After.
 	r.Use(middleware.CORS(middleware.CORSConfig{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
 		AllowedMethods:   cfg.CORSAllowedMethods,
 		AllowedHeaders:   cfg.CORSAllowedHeaders,
-		ExposedHeaders:   []string{"Link", "X-Request-ID"},
+		ExposedHeaders:   []string{"Link", "X-Request-ID", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining"},
 		AllowCredentials: true,
 		MaxAge:           cfg.CORSMaxAge,
 	}))
+
+	// Per-client rate limiting
+	if cfg.RateLimitEnabled {
+		rlMiddleware, closeRedis := newRateLimitMiddleware(cfg, logger)
+		defer closeRedis()
+		r.Use(rlMiddleware)
+	}
 
 	// JWT validation
 	r.Use(middleware.JWTAuth(middleware.JWTConfig{
@@ -146,6 +152,55 @@ func main() {
 	}
 
 	logger.Info().Msg("server exited")
+}
+
+// newRateLimitMiddleware builds the rate limiter selected by RATE_LIMIT_BACKEND.
+// The Redis backend falls back to a per-replica in-memory bucket while Redis
+// is unreachable, so a Redis outage degrades the limit instead of the gateway.
+func newRateLimitMiddleware(cfg *config.Config, logger zerolog.Logger) (func(http.Handler) http.Handler, func()) {
+	memory := middleware.NewMemoryLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst)
+	rlCfg := middleware.RateLimitConfig{
+		Limiter:        memory,
+		Backend:        "memory",
+		KeyFunc:        middleware.ClientKey(cfg.JWTSecret),
+		ExemptPrefixes: []string{"/health", "/metrics"},
+		Logger:         logger,
+	}
+	closeFn := func() {}
+
+	if cfg.RateLimitBackend == "redis" {
+		opts := &redis.Options{
+			Addr:     net.JoinHostPort(cfg.RedisHost, cfg.RedisPort),
+			Password: cfg.RedisPassword,
+			DB:       cfg.RedisDB,
+		}
+		if cfg.RedisURL != "" {
+			parsed, err := redis.ParseURL(cfg.RedisURL)
+			if err != nil {
+				logger.Fatal().Err(err).Msg("invalid RATE_LIMIT_REDIS_URL")
+			}
+			opts = parsed
+		}
+		client := redis.NewClient(opts)
+		closeFn = func() { _ = client.Close() }
+
+		rlCfg.Limiter = middleware.NewRedisLimiter(client, cfg.RateLimitRPS, cfg.RateLimitBurst, cfg.RateLimitKeyPrefix, cfg.RateLimitRedisTimeout)
+		rlCfg.Backend = "redis"
+		rlCfg.Fallback = memory
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := client.Ping(ctx).Err(); err != nil {
+			logger.Warn().Err(err).Str("addr", opts.Addr).Msg("redis unreachable at startup; rate limiting falls back to in-memory until it recovers")
+		}
+		cancel()
+	}
+
+	logger.Info().
+		Str("backend", rlCfg.Backend).
+		Float64("rps", cfg.RateLimitRPS).
+		Int("burst", cfg.RateLimitBurst).
+		Msg("rate limiting enabled")
+	return middleware.RateLimit(rlCfg), closeFn
 }
 
 func routePrefixes(routes []proxy.Route) []string {
