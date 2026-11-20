@@ -80,3 +80,14 @@ func TestValidate_RateLimit(t *testing.T) {
 	c.RateLimitRPS = 0
 	assert.NoError(t, c.Validate())
 }
+
+func TestLoad_RedisPortServiceLink(t *testing.T) {
+	for val, expected := range map[string]string{
+		"6380":                     "6380",
+		"tcp://172.20.229.93:6379": "6379",
+		"garbage":                  "6379",
+	} {
+		t.Setenv("REDIS_PORT", val)
+		assert.Equal(t, expected, Load().RedisPort, val)
+	}
+}

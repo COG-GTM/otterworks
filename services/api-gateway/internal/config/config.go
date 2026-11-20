@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -112,7 +113,7 @@ func Load() *Config {
 
 		RedisURL:      getEnv("RATE_LIMIT_REDIS_URL", ""),
 		RedisHost:     getEnv("REDIS_HOST", "redis"),
-		RedisPort:     getEnv("REDIS_PORT", "6379"),
+		RedisPort:     getEnvPort("REDIS_PORT", "6379"),
 		RedisPassword: getEnv("REDIS_PASSWORD", ""),
 		RedisDB:       getEnvInt("REDIS_DB", 0),
 
@@ -174,6 +175,23 @@ func getEnvBool(key string, fallback bool) bool {
 		if b, err := strconv.ParseBool(val); err == nil {
 			return b
 		}
+	}
+	return fallback
+}
+
+// getEnvPort reads a port number. Kubernetes injects Docker-link variables
+// for every Service in the namespace, so a Service named `redis` sets
+// REDIS_PORT=tcp://<ip>:6379; the port is taken from that form too.
+func getEnvPort(key, fallback string) string {
+	val, ok := os.LookupEnv(key)
+	if !ok || val == "" {
+		return fallback
+	}
+	if _, err := strconv.Atoi(val); err == nil {
+		return val
+	}
+	if u, err := url.Parse(val); err == nil && u.Port() != "" {
+		return u.Port()
 	}
 	return fallback
 }
