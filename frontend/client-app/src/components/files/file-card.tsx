@@ -176,7 +176,7 @@ export function FileCard({
             className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
           />
         </button>
-        <div className="relative w-8">
+        <div className="relative w-8 ml-1">
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -223,7 +223,7 @@ export function FileCard({
           <div className="w-12 h-12 rounded-lg bg-otter-50 flex items-center justify-center">
             <Icon size={24} className="text-otter-600" />
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-5">
             <button
               onClick={handleStarClick}
               className="tap-target p-1 rounded hover:bg-gray-100 transition"

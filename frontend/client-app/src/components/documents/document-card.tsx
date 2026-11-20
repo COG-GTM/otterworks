@@ -75,7 +75,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
             className={starred ? "text-yellow-400 fill-yellow-400" : "text-gray-400 opacity-0 group-hover:opacity-100"}
           />
         </button>
-        <div className="relative">
+        <div className="relative ml-1">
           <button
             onClick={(e) => {
               e.preventDefault();
@@ -122,7 +122,7 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
               {formatRelativeTime(document.updatedAt)}
             </p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-5">
             <button
               onClick={handleStarClick}
               className="tap-target p-1 rounded hover:bg-gray-100 transition"
