@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -102,7 +103,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeSendFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +140,57 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        // .NET Framework reports every transport failure as "An error occurred while sending
+        // the request."; modern .NET surfaces the socket/DNS error instead. Keep the 4.8 text.
+        private static string DescribeSendFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return "An error occurred while sending the request.";
+#endif
+        }
+
+        // Keep the .NET Framework 4.8 HttpStatusCode names: modern .NET renamed 302/307 and
+        // names codes that 4.8's enum lacks, which 4.8 prints as the bare number.
+        private static string DescribeStatus(HttpStatusCode statusCode)
+        {
+#if NETFRAMEWORK
+            return statusCode.ToString();
+#else
+            int code = (int)statusCode;
+            switch (code)
+            {
+                case 302:
+                    return "Redirect";
+                case 307:
+                    return "TemporaryRedirect";
+                case 102:
+                case 103:
+                case 207:
+                case 208:
+                case 226:
+                case 308:
+                case 421:
+                case 422:
+                case 423:
+                case 424:
+                case 428:
+                case 429:
+                case 431:
+                case 451:
+                case 506:
+                case 507:
+                case 508:
+                case 510:
+                case 511:
+                    return code.ToString(CultureInfo.InvariantCulture);
+                default:
+                    return statusCode.ToString();
+            }
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
@@ -182,7 +234,7 @@ namespace OtterWorks.Desktop.Services
                 return content;
             }
 
-            return $"Request failed with status {(int)statusCode} ({statusCode}).";
+            return $"Request failed with status {(int)statusCode} ({DescribeStatus(statusCode)}).";
         }
     }
 }
