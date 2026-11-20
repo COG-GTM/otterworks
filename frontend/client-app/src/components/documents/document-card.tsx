@@ -103,10 +103,10 @@ export function DocumentCard({ document, onDelete, onShare, view = "grid", onSta
   return (
     <Link
       to={`/documents/${document.id}`}
-      className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition overflow-hidden"
+      className="group relative flex flex-col rounded-xl border border-gray-200 bg-white hover:shadow-md transition"
     >
       {/* Preview area */}
-      <div className="h-32 bg-gradient-to-br from-blue-50 to-otter-50 p-4 flex items-start">
+      <div className="h-32 rounded-t-xl overflow-hidden bg-gradient-to-br from-blue-50 to-otter-50 p-4 flex items-start">
         <p className="text-xs text-gray-500 line-clamp-4 leading-relaxed">
           {document.content
             ? document.content.replace(/<[^>]{0,2048}>/g, "").replace(/[#*_`>]+/g, "").replace(/\s+/g, " ").trim().slice(0, 200)
