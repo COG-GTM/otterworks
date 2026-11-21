@@ -28,18 +28,19 @@ open http://localhost:3000        # Web App (React / Vite)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
-To sign in to the web app, create an account with **Create Account** on the landing page (or **Create one** on the sign-in page). The admin dashboard sign-in is local-only: any email and a non-empty password work.
+To sign in to the web app, create an account with **Create Account** on the landing page (or **Create one** on the sign-in page). The admin dashboard uses a mock sign-in that checks no credentials: any email and a non-empty password work. Port 4200 binds on all host interfaces, so don't expose it beyond your machine.
 
 Or without Make:
 
 ```bash
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
+uv run scripts/seed.py   # optional demo data, once admin-service is healthy
 ```
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
-To load demo users, storage quotas, audit entries and feature flags into admin-service, run `make seed` once the services are up (or start with `make up seed=1`); it needs `uv`.
+To load demo users, storage quotas, audit entries and feature flags into admin-service, run `make seed` once admin-service reports healthy in `docker compose ps` (it needs `uv`). On a fresh database avoid `make up seed=1`: it only waits for Postgres, so it can run before admin-service has created its tables.
 
 To stop everything:
 
