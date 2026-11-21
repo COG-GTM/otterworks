@@ -27,7 +27,9 @@ URL is substituted from the `API_GATEWAY_URL` env var at container start.
 
 Build-time env vars (Vite): `VITE_COLLAB_WS_URL` (collab websocket URL; the code default is
 `ws://localhost:8085`, but collab-service listens on 8084, and `docker-compose.yml`
-builds with `ws://localhost:8084`; set it to `ws://localhost:8084` for a local stack; upgraded to `wss` when the page is served over https; native
+builds with `ws://localhost:8084`; set it to `ws://localhost:8084` for a local stack. Only the
+default is upgraded to `wss` when the page is served over https; an explicit value is used as
+given, so use a `wss://` URL for TLS endpoints; native
 defaults below), `VITE_API_BASE_URL` (native builds only, see below).
 
 ## Docker

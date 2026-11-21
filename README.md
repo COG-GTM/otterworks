@@ -35,7 +35,7 @@ Or without Make:
 ```bash
 docker compose -f docker-compose.infra.yml up -d
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
-uv run scripts/seed.py   # optional demo data, once admin-service is healthy
+# optional demo data, once admin-service is healthy (needs uv): uv run scripts/seed.py
 ```
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
