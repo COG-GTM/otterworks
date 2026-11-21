@@ -28,7 +28,7 @@ open http://localhost:3000        # Web App (React / Vite)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
 
-To sign in to the web app, create an account from **Sign up**. The admin dashboard sign-in is local-only: any email and a non-empty password work.
+To sign in to the web app, create an account with **Create Account** on the landing page (or **Create one** on the sign-in page). The admin dashboard sign-in is local-only: any email and a non-empty password work.
 
 Or without Make:
 
