@@ -6,7 +6,10 @@ A collaborative file storage and document editing platform — functionally equi
 
 - [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/) v2+
 - ~12 GB of available RAM (for running all infrastructure and services locally)
+- ~25 GB of free disk space (the first `make up` builds 13 images; images plus build cache take roughly 20 GB)
+- Free host ports: 3000, 3001, 4200, 4566, 5432, 6379, 7700, 8080–8084, 8086–8091, 9090, 16686 (plus the observability ports in `docker-compose.infra.yml`). Stop any local Postgres, Redis or Prometheus first, or `make infra-up` fails with `address already in use`.
 - GNU Make (optional, for shorthand commands)
+- [uv](https://docs.astral.sh/uv/) (optional, only for seeding demo data with `make seed`)
 - Runs on both x86_64 and Apple Silicon (ARM64) — no Rosetta required
 
 Individual service development may also require the language toolchains listed in the [Services](#services) table below.
@@ -17,13 +20,15 @@ Individual service development may also require the language toolchains listed i
 # Start infrastructure (Postgres, Redis, LocalStack, MeiliSearch, observability stack)
 make infra-up
 
-# Start all application services (builds images on first run)
+# Start all application services (builds images on first run; allow 15+ minutes)
 make up
 
-# Open the app
-open http://localhost:3000        # Web App (React / Next.js)
+# Open the app (on Linux, use xdg-open instead of open)
+open http://localhost:3000        # Web App (React / Vite)
 open http://localhost:4200        # Admin Dashboard (Angular)
 ```
+
+To sign in to the web app, create an account from **Sign up**. The admin dashboard sign-in is local-only: any email and a non-empty password work.
 
 Or without Make:
 
@@ -33,6 +38,8 @@ docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build
 ```
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
+
+To load demo users, storage quotas, audit entries and feature flags into admin-service, run `make seed` once the services are up (or start with `make up seed=1`); it needs `uv`.
 
 To stop everything:
 
@@ -48,7 +55,7 @@ make down
 | Auth Service | Java 17 | Spring Boot 3 | 8081 | Authentication, authorization, user management |
 | File Service | Rust 1.77 | Actix-Web 4 | 8082 | File upload/download, S3 integration, versioning |
 | Document Service | Python 3.12 | FastAPI | 8083 | Document CRUD, version history, snapshots |
-| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP) / 8085 (WS) | Real-time collaborative editing (CRDT via Yjs) |
+| Collaboration Service | Node.js 20 | Socket.io | 8084 (HTTP + WebSocket) | Real-time collaborative editing (CRDT via Yjs) |
 | Notification Service | Kotlin 1.9 | Ktor 2.3 | 8086 | Event-driven notifications (email, in-app, webhook) |
 | Search Service | Python 3.12 | Flask 3.0 | 8087 | Full-text search via MeiliSearch |
 | Analytics Service | Scala 3.4 | Akka HTTP | 8088 | Usage analytics, data aggregation |
@@ -171,7 +178,7 @@ otterworks/
 │   ├── admin-service/     #   Ruby / Rails
 │   ├── audit-service/     #   C# / ASP.NET
 │   └── report-service/    #   Java 8 / Spring Boot 2.5 (legacy)
-├── frontend/              # Web app (React/Next.js) + Admin dashboard (Angular)
+├── frontend/              # client-app (React/Vite, web + Capacitor mobile) + admin-dashboard (Angular)
 ├── infrastructure/
 │   ├── terraform/         #   App-specific AWS resources (S3, RDS, DynamoDB, etc.)
 │   ├── helm/              #   Per-service Helm charts
