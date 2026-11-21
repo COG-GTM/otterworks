@@ -8,7 +8,7 @@ through the API gateway using `HttpClient`.
 > Framework (classic `.csproj` + `packages.config` + `Newtonsoft.Json`) so it can serve as a
 > realistic **framework-upgrade target** (net48 → .NET 8 / WinUI) alongside OtterWorks' other
 > upgrade candidates (e.g. the Java 8 `report-service`). It mirrors the core flow of the
-> `frontend/web-app` React client.
+> `frontend/client-app` React client.
 
 ## Features
 

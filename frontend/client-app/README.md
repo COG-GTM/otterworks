@@ -25,8 +25,11 @@ URL is substituted from the `API_GATEWAY_URL` env var at container start.
 | `npm run test:e2e` | Playwright e2e (expects the backend stack running) |
 | `npm run test:bdd` | Cucumber BDD suite |
 
-Build-time env vars (Vite): `VITE_COLLAB_WS_URL` (collab websocket URL, default
-`ws://localhost:8085`, upgraded to `wss` when the page is served over https; native
+Build-time env vars (Vite): `VITE_COLLAB_WS_URL` (collab websocket URL; the code default is
+`ws://localhost:8085`, but collab-service listens on 8084, and `docker-compose.yml`
+builds with `ws://localhost:8084`; set it to `ws://localhost:8084` for a local stack. Only the
+default is upgraded to `wss` when the page is served over https; an explicit value is used as
+given, so use a `wss://` URL for TLS endpoints; native
 defaults below), `VITE_API_BASE_URL` (native builds only, see below).
 
 ## Docker
@@ -117,8 +120,9 @@ Runtime env vars (main process, not baked in at build time):
 - `ELECTRON_START_URL` - skip the embedded server and load this URL instead, e.g.
   `http://localhost:3000` to develop against the Vite dev server with HMR
 
-The collab editor websocket connects directly (same as the web build): default
-`ws://localhost:8085`, overridden with `VITE_COLLAB_WS_URL` when building `dist/`.
+The collab editor websocket connects directly (same as the web build): code default
+`ws://localhost:8085` (collab-service listens on 8084), so build `dist/` with
+`VITE_COLLAB_WS_URL=ws://localhost:8084` against a local stack.
 
 Note: launching Electron from an Electron-based IDE terminal exports
 `ELECTRON_RUN_AS_NODE=1`, which breaks it; the npm scripts go through

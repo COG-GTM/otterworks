@@ -19,7 +19,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
                          |                                       |
                 +--------+---------+                   +---------+--------+
                 |  Web Frontend    |                   |  Admin Dashboard |
-                |  (React/Next.js) |                   |  (Angular 17)    |
+                |  (React / Vite)  |                   |  (Angular 17)    |
                 +--------+---------+                   +---------+--------+
                          |                                       |
                 +--------+---------+                             |
@@ -80,7 +80,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Framework**: Express 4 + Socket.io 4
 - **Database**: Redis (presence, cursors, operational transforms)
 - **Purpose**: Real-time collaborative editing via WebSockets. Implements Conflict-free Replicated Data Types (CRDT) for concurrent edits, cursor presence, and typing indicators.
-- **Port**: 8084 (HTTP), 8085 (WebSocket)
+- **Port**: 8084 (HTTP and WebSocket)
 - **Key Patterns**: CRDT (Yjs), WebSocket rooms, Redis pub/sub for multi-instance sync, Winston logging, event-driven architecture
 
 ### 6. Notification Service (`services/notification-service/`)
@@ -125,11 +125,11 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 
 ## Frontend Applications
 
-### 11. Web Frontend (`frontend/web-app/`)
-- **Language**: TypeScript 5.4
-- **Framework**: React 18 + Next.js 14
+### 11. Web Frontend (`frontend/client-app/`)
+- **Language**: TypeScript 5
+- **Framework**: React 18 + Vite (web), Capacitor (iOS/Android), Electron (desktop)
 - **Purpose**: Main user-facing SPA. File browser, document editor (TipTap/ProseMirror), sharing dialogs, search, notifications panel.
-- **Key Patterns**: App Router, Server Components, TanStack Query, Zustand state management, Tailwind CSS, Playwright E2E tests
+- **Key Patterns**: React Router, TanStack Query, Zustand state management, Tailwind CSS, Playwright E2E tests
 
 ### 12. Admin Dashboard (`frontend/admin-dashboard/`)
 - **Language**: TypeScript 5.4
@@ -310,7 +310,7 @@ otterworks/
 │   ├── admin-service/                 # Ruby / Rails
 │   └── audit-service/                 # C# / ASP.NET
 ├── frontend/
-│   ├── web-app/                       # React / Next.js
+│   ├── client-app/                    # React / Vite (+ Capacitor, Electron)
 │   └── admin-dashboard/               # Angular 17
 ├── shared/
 │   ├── proto/                         # Protobuf/gRPC service definitions
