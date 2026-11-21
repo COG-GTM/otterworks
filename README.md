@@ -40,7 +40,7 @@ uv run scripts/seed.py   # optional demo data, once admin-service is healthy
 
 On first run, `scripts/init-db.sql` creates the required Postgres databases and `scripts/localstack-init.sh` provisions S3 buckets, SQS queues, SNS topics, and DynamoDB tables in LocalStack automatically.
 
-To load demo users, storage quotas, audit entries and feature flags into admin-service, run `make seed` once admin-service reports healthy in `docker compose ps` (it needs `uv`). On a fresh database avoid `make up seed=1`: it only waits for Postgres, so it can run before admin-service has created its tables.
+To load demo users, storage quotas, audit entries and feature flags into admin-service, run `make seed` once `docker ps --filter name=admin-service` shows it as `(healthy)` (it needs `uv`). On a fresh database avoid `make up seed=1`: it only waits for Postgres, so it can run before admin-service has created its tables.
 
 To stop everything:
 
