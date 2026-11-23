@@ -59,6 +59,11 @@ routes:
     auth: bearer JWT + admin role
     expect:
       - unauthenticated callers receive 401
+  - prefix: /api/v1/analytics/market/observations
+    service: analytics-service
+    auth: bearer JWT + ADMIN/OWNER role (gateway-forwarded X-User-Roles)
+    expect:
+      - standard users receive 403
   - prefix: /api/v1/audit
     service: audit-service
     auth: bearer JWT

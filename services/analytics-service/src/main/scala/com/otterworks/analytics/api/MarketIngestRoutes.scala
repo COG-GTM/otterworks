@@ -18,8 +18,10 @@ import spray.json.*
  *   GET  /api/v1/analytics/market/status
  *   POST /api/v1/analytics/market/observations   (manual Trading Economics pulls)
  *
- * Authentication is enforced by the API gateway's JWT middleware; requests
- * reaching this service have already presented a valid bearer token.
+ * The API gateway validates the bearer token on every route. Reads are open to
+ * any signed-in caller; posting observations overwrites prices and recomputes
+ * tenant-wide margins, so it additionally requires an operator role
+ * (ADMIN/OWNER, forwarded by the gateway as X-User-Roles).
  */
 class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository):
 
@@ -52,16 +54,19 @@ class MarketIngestRoutes(marginService: MarginService, repo: MarketRepository):
       },
       path("observations") {
         post {
-          entity(as[ObservationsRequest]) { request =>
-            onSuccess(marginService.ingest(request)) {
-              case Right(response) =>
-                complete(response)
-              case Left(rejected) =>
-                logger.info("Rejected all {} market observations", rejected.size)
-                complete(
-                  StatusCodes.BadRequest,
-                  ObservationsResponse(accepted = 0, rejected = rejected, recomputedSkus = 0, runId = 0L)
-                )
+          CallerAuth.adminOnly { caller =>
+            entity(as[ObservationsRequest]) { request =>
+              onSuccess(marginService.ingest(request)) {
+                case Right(response) =>
+                  logger.info("User {} ingested {} market observations", caller.userId, response.accepted)
+                  complete(response)
+                case Left(rejected) =>
+                  logger.info("Rejected all {} market observations", rejected.size)
+                  complete(
+                    StatusCodes.BadRequest,
+                    ObservationsResponse(accepted = 0, rejected = rejected, recomputedSkus = 0, runId = 0L)
+                  )
+              }
             }
           }
         }
