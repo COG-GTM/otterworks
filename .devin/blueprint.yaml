@@ -26,8 +26,15 @@ initialize: |
 
   # One JDK for everything: Capacitor 6 compiles at 17, as do report-service and
   # legacy-portal (Boot 3.2). Maven is not on the base image.
-  sudo apt-get update && sudo apt-get install -y openjdk-17-jdk-headless maven
-  echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $ENVRC
+  # The JDK is Temurin 17.0.21.1+2, pinned and checksum-verified: it is the Java4Shell
+  # (CVE-2026-114938) fixed build, and the distro's openjdk-17 package floats.
+  sudo apt-get update && sudo apt-get install -y maven
+  JDK17=/usr/lib/jvm/temurin-17.0.21.1-amd64
+  curl -fsSL -o /tmp/temurin17.tgz https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21.1%2B2/OpenJDK17U-jdk_x64_linux_hotspot_17.0.21.1_2.tar.gz
+  echo "0b0ac5eab6db6abaec68c9913bcddb31321e5da411c45073d520d9c125e6f7b4  /tmp/temurin17.tgz" | sha256sum -c -
+  sudo mkdir -p "$JDK17" && sudo tar -xzf /tmp/temurin17.tgz -C "$JDK17" --strip-components=1 && rm /tmp/temurin17.tgz
+  python3 scripts/security/check_java4shell.py runtime "$JDK17/bin/java"
+  echo "JAVA_HOME=$JDK17" >> $ENVRC
   sudo usermod -aG kvm "$(whoami)" || true
 
   # Vite 8 requires Node >=20.19.
@@ -123,7 +130,7 @@ initialize: |
   export ANDROID_HOME=$HOME/Android/Sdk ANDROID_SDK_ROOT=$HOME/Android/Sdk
   export PATH=$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
   # JAVA_HOME is only written to $ENVRC (for later sessions), so set it for assembleDebug.
-  export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+  export JAVA_HOME=/usr/lib/jvm/temurin-17.0.21.1-amd64
   nvm use default
   # Best-effort, like the Maven warm-ups below: a cold Gradle cache only makes the first
   # runtime `make dev-android` slow, whereas failing here aborts initialize and skips the

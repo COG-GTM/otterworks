@@ -94,6 +94,18 @@ jobs:
       - run: go test -race -coverprofile=coverage.out ./...
       - run: go build -o /dev/null ./cmd/server
 
+  # Java4Shell (CVE-2026-114938): fail on floating or affected JDK pins in any
+  # Dockerfile or setup-java step, whichever service changed.
+  java4shell-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s scripts/security -p 'test_*.py' -v
+      - run: python scripts/security/check_java4shell.py static
+
   # Java - Auth Service
   auth-service:
     needs: detect-changes
@@ -107,7 +119,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          # Temurin 17.0.21.1+2 (Java4Shell fix); setup-java's semver for it.
+          java-version: '17.0.21+100000002'
+      - name: Check JDK is not affected by Java4Shell
+        run: python3 "$GITHUB_WORKSPACE/scripts/security/check_java4shell.py" runtime
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.6'
@@ -180,7 +195,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          # Temurin 17.0.21.1+2 (Java4Shell fix); setup-java's semver for it.
+          java-version: '17.0.21+100000002'
+      - name: Check JDK is not affected by Java4Shell
+        run: python3 "$GITHUB_WORKSPACE/scripts/security/check_java4shell.py" runtime
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.6'
@@ -215,7 +233,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          # Temurin 17.0.21.1+2 (Java4Shell fix); setup-java's semver for it.
+          java-version: '17.0.21+100000002'
+      - name: Check JDK is not affected by Java4Shell
+        run: python3 "$GITHUB_WORKSPACE/scripts/security/check_java4shell.py" runtime
       - name: Install sbt
         run: |
           echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" | sudo tee /etc/apt/sources.list.d/sbt.list

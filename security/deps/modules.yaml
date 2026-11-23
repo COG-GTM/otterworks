@@ -49,6 +49,7 @@ modules:
     build: gradle
     java_home:
       - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/temurin-17.0.21.1-amd64
       - /usr/lib/jvm/java-17-openjdk-amd64
     # No wrapper in this module, so the `gradle` on PATH — which both ci.yml and the
     # dependency workflow pin to 8.6 with setup-gradle. `--rerun-tasks` because the
@@ -62,6 +63,7 @@ modules:
     build: gradle
     java_home:
       - $JAVA_HOME_17_X64
+      - /usr/lib/jvm/temurin-17.0.21.1-amd64
       - /usr/lib/jvm/java-17-openjdk-amd64
     # The wrapper pins 8.6 but ships no gradle-wrapper.jar, so it only resolves where
     # one has been generated; otherwise the pinned `gradle` on PATH measures it.
