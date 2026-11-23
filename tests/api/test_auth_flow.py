@@ -80,3 +80,23 @@ def test_auth_validation_and_protected_routes(api_client):
 
     non_admin_users = api_client.client.get("/api/v1/auth/users", headers=user.auth_headers)
     assert non_admin_users.status_code in {401, 403}
+
+
+def test_refresh_token_is_not_accepted_as_access_token(api_client):
+    user = api_client.register_user("refresh-as-access")
+    login_data = api_client.login_user(user)
+    refresh_headers = {"Authorization": f"Bearer {login_data['refreshToken']}"}
+
+    for route in ("/api/v1/files", "/api/v1/documents", "/api/v1/auth/profile"):
+        response = api_client.client.get(route, headers=refresh_headers)
+        assert response.status_code == 401, f"{route}: {response.status_code} {response.text}"
+
+    access_headers = {"Authorization": f"Bearer {login_data['accessToken']}"}
+    profile = api_client.client.get("/api/v1/auth/profile", headers=access_headers)
+    assert profile.status_code == 200, profile.text
+
+    access_on_refresh = api_client.client.post("/api/v1/auth/refresh", headers=access_headers)
+    assert access_on_refresh.status_code == 401, access_on_refresh.text
+
+    refreshed = api_client.client.post("/api/v1/auth/refresh", headers=refresh_headers)
+    assert refreshed.status_code == 200, refreshed.text

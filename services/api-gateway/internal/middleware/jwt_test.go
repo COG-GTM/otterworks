@@ -175,6 +175,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 
 	claims := JWTClaims{
 		UserID: "user-123",
+		Type:   AccessTokenType,
 		Email:  "test@otterworks.dev",
 		Roles:  []string{"user"},
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -212,6 +213,7 @@ func TestJWTAuth_ExpiredToken(t *testing.T) {
 
 	claims := JWTClaims{
 		UserID: "user-123",
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(-1 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
@@ -241,6 +243,7 @@ func TestJWTAuth_WrongSecret(t *testing.T) {
 
 	claims := JWTClaims{
 		UserID: "user-123",
+		Type:   AccessTokenType,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 		},
@@ -258,6 +261,94 @@ func TestJWTAuth_WrongSecret(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+}
+
+func serveWithToken(t *testing.T, path, tokenStr string) (int, *JWTClaims) {
+	t.Helper()
+	cfg := JWTConfig{
+		Secret:      testSecret,
+		PublicPath:  DefaultPublicPaths(),
+		PrefixPath:  DefaultPrefixPaths(),
+		RefreshPath: DefaultRefreshPaths(),
+	}
+
+	var captured *JWTClaims
+	handler := JWTAuth(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = GetJWTClaims(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec.Code, captured
+}
+
+func typedToken(t *testing.T, tokenType string) string {
+	t.Helper()
+	return generateTestToken(t, testSecret, JWTClaims{
+		Type: tokenType,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        "jti-1",
+			Subject:   "victim-user-id",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(30 * 24 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	})
+}
+
+func TestJWTAuth_RefreshTokenRejectedOnResourceRoutes(t *testing.T) {
+	refresh := typedToken(t, RefreshTokenType)
+	for _, path := range []string{"/api/v1/files", "/api/v1/files/list", "/api/v1/documents", "/api/v1/auth/profile", "/api/v1/auth/logout"} {
+		t.Run(path, func(t *testing.T) {
+			code, captured := serveWithToken(t, path, refresh)
+			assert.Equal(t, http.StatusUnauthorized, code)
+			assert.Nil(t, captured, "refresh token must not reach the backend")
+		})
+	}
+}
+
+func TestJWTAuth_AccessTokenAcceptedOnResourceRoutes(t *testing.T) {
+	code, captured := serveWithToken(t, "/api/v1/files", typedToken(t, AccessTokenType))
+	assert.Equal(t, http.StatusOK, code)
+	require.NotNil(t, captured)
+	assert.Equal(t, "victim-user-id", captured.Subject)
+}
+
+func TestJWTAuth_UntypedOrUnknownTokensRejected(t *testing.T) {
+	for _, tokenType := range []string{"", "ACCESS", "id"} {
+		t.Run("type="+tokenType, func(t *testing.T) {
+			code, captured := serveWithToken(t, "/api/v1/files", typedToken(t, tokenType))
+			assert.Equal(t, http.StatusUnauthorized, code)
+			assert.Nil(t, captured)
+		})
+	}
+}
+
+func TestJWTAuth_RefreshPathTakesOnlyRefreshTokens(t *testing.T) {
+	code, captured := serveWithToken(t, "/api/v1/auth/refresh", typedToken(t, RefreshTokenType))
+	assert.Equal(t, http.StatusOK, code)
+	require.NotNil(t, captured)
+
+	code, captured = serveWithToken(t, "/api/v1/auth/refresh", typedToken(t, AccessTokenType))
+	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Nil(t, captured)
+}
+
+func TestJWTAuth_RefreshPathIsExactMatch(t *testing.T) {
+	code, _ := serveWithToken(t, "/api/v1/auth/refresh/extra", typedToken(t, RefreshTokenType))
+	assert.Equal(t, http.StatusUnauthorized, code)
+}
+
+func TestJWTAuth_TokenWithoutExpiryRejected(t *testing.T) {
+	tokenStr := generateTestToken(t, testSecret, JWTClaims{
+		Type:             AccessTokenType,
+		RegisteredClaims: jwt.RegisteredClaims{Subject: "user-123"},
+	})
+	code, captured := serveWithToken(t, "/api/v1/files", tokenStr)
+	assert.Equal(t, http.StatusUnauthorized, code)
+	assert.Nil(t, captured)
 }
 
 func TestJWTAuth_MalformedAuthHeader(t *testing.T) {

@@ -92,6 +92,7 @@ func main() {
 		PublicPath:          middleware.DefaultPublicPaths(),
 		PrefixPath:          middleware.DefaultPrefixPaths(),
 		ProtectedPrefixPath: routePrefixes(routes),
+		RefreshPath:         middleware.DefaultRefreshPaths(),
 	}))
 
 	// Health check
