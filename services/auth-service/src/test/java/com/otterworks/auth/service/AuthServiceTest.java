@@ -10,6 +10,7 @@ import com.otterworks.auth.dto.LoginRequest;
 import com.otterworks.auth.dto.RegisterRequest;
 import com.otterworks.auth.entity.RefreshToken;
 import com.otterworks.auth.entity.User;
+import com.otterworks.auth.exception.LoginThrottledException;
 import com.otterworks.auth.repository.RefreshTokenRepository;
 import com.otterworks.auth.repository.UserRepository;
 import com.otterworks.auth.security.JwtTokenProvider;
@@ -31,6 +32,7 @@ class AuthServiceTest {
   @Mock private PasswordEncoder passwordEncoder;
   @Mock private JwtTokenProvider jwtTokenProvider;
   @Mock private RefreshTokenRepository refreshTokenRepository;
+  @Mock private LoginAttemptThrottle loginAttemptThrottle;
 
   @InjectMocks private AuthService authService;
 
@@ -114,6 +116,8 @@ class AuthServiceTest {
 
     assertThat(response.getAccessToken()).isEqualTo("access-token");
     assertThat(response.getUser().getEmail()).isEqualTo("test@otterworks.dev");
+    verify(loginAttemptThrottle).beginAttempt("test@otterworks.dev");
+    verify(loginAttemptThrottle).recordSuccess("test@otterworks.dev");
   }
 
   @Test
@@ -141,6 +145,44 @@ class AuthServiceTest {
     assertThatThrownBy(() -> authService.login(request))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Invalid credentials");
+  }
+
+  @Test
+  void login_shouldCountAttemptsForWrongPasswordAndUnknownEmail() {
+    LoginRequest wrongPassword = new LoginRequest();
+    wrongPassword.setEmail("test@otterworks.dev");
+    wrongPassword.setPassword("wrongpassword");
+    LoginRequest unknown = new LoginRequest();
+    unknown.setEmail("nonexistent@otterworks.dev");
+    unknown.setPassword("password123");
+
+    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(userRepository.findByEmail("nonexistent@otterworks.dev")).thenReturn(Optional.empty());
+    when(passwordEncoder.matches("wrongpassword", testUser.getPasswordHash())).thenReturn(false);
+
+    assertThatThrownBy(() -> authService.login(wrongPassword))
+        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> authService.login(unknown))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    verify(loginAttemptThrottle).beginAttempt("test@otterworks.dev");
+    verify(loginAttemptThrottle).beginAttempt("nonexistent@otterworks.dev");
+    verify(loginAttemptThrottle, never()).recordSuccess(any());
+  }
+
+  @Test
+  void login_shouldNotCheckPasswordWhileAccountIsThrottled() {
+    LoginRequest request = new LoginRequest();
+    request.setEmail("test@otterworks.dev");
+    request.setPassword("password123");
+
+    doThrow(new LoginThrottledException(60))
+        .when(loginAttemptThrottle)
+        .beginAttempt("test@otterworks.dev");
+
+    assertThatThrownBy(() -> authService.login(request))
+        .isInstanceOf(LoginThrottledException.class);
+    verifyNoInteractions(userRepository, passwordEncoder, jwtTokenProvider);
   }
 
   @Test
