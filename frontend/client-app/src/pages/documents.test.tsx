@@ -75,7 +75,9 @@ function renderPage() {
   return queryClient;
 }
 
-beforeEach(() => useAuthStore.setState({ user: user("alice"), isAuthenticated: true }));
+beforeEach(() =>
+  useAuthStore.setState({ user: user("alice"), isAuthenticated: true, isLoading: false }),
+);
 
 describe("Documents page", () => {
   it("lists more than 20 documents", async () => {
@@ -119,15 +121,23 @@ describe("Documents page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("waits for the signed-in user before fetching", async () => {
-    useAuthStore.setState({ user: null, isAuthenticated: false });
+  it("waits for the profile to load before fetching", async () => {
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: true });
     const requests = serveDocuments(3);
     renderPage();
 
-    act(() => useAuthStore.setState({ user: user("alice"), isAuthenticated: true }));
+    act(() => useAuthStore.setState({ user: user("alice"), isAuthenticated: true, isLoading: false }));
 
     expect(await screen.findByText("Doc 3")).toBeInTheDocument();
     expect(requests).toHaveLength(1);
+  });
+
+  it("still lists documents when the profile request fails", async () => {
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+    serveDocuments(3);
+    renderPage();
+
+    expect(await screen.findByText("Doc 3")).toBeInTheDocument();
   });
 
   it("keeps Load more disabled while the list is refreshing", async () => {

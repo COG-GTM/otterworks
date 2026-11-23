@@ -34,7 +34,8 @@ function DocumentsContent() {
   const queryClient = useQueryClient();
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
-  const userId = useAuthStore((state) => state.user?.id);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+  const authLoading = useAuthStore((state) => state.isLoading);
 
   const {
     data,
@@ -47,7 +48,7 @@ function DocumentsContent() {
   } = useInfiniteQuery({
     queryKey: ["documents", "list", userId],
     queryFn: ({ pageParam }) => documentsApi.list(pageParam),
-    enabled: !!userId,
+    enabled: !authLoading,
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.page + 1 : undefined,
