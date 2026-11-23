@@ -344,12 +344,27 @@ export const filesApi = {
 };
 
 // ── Documents ─────────────────────────────────────────────────
+// document-service list envelope (after the camelCase interceptor)
+interface DocumentListResponse {
+  items: Document[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
 export const documentsApi = {
   list: async (page = 1, pageSize = 50): Promise<PaginatedResponse<Document>> => {
-    const { data } = await apiClient.get<PaginatedResponse<Document>>("/documents", {
-      params: { page, pageSize },
+    const { data } = await apiClient.get<DocumentListResponse>("/documents", {
+      params: { page, size: pageSize },
     });
-    return data;
+    return {
+      data: data.items,
+      total: data.total,
+      page: data.page,
+      pageSize: data.size,
+      hasMore: data.page < data.pages,
+    };
   },
   get: async (id: string): Promise<Document> => {
     const { data } = await apiClient.get<Document>(`/documents/${id}`);
