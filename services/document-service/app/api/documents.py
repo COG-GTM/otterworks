@@ -26,7 +26,7 @@ from app.schemas.document import (
 from app.services.document_query_repository import DocumentQueryRepository
 from app.services.document_service import DocumentService
 from app.services.export_archive import ExportArchive
-from app.services.share_link import ShareLinkService
+from app.services.share_link import ShareLinkService, ShareLinkUnavailableError
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -183,6 +183,14 @@ async def read_export(name: str = Query(..., min_length=1)):
         raise HTTPException(status_code=404, detail="Export not found") from exc
 
 
+def _share_links() -> ShareLinkService:
+    try:
+        return ShareLinkService()
+    except ShareLinkUnavailableError as exc:
+        logger.error("share_link_secret_missing")
+        raise HTTPException(status_code=503, detail="Share links are not configured") from exc
+
+
 @router.get("/shared", response_model=DocumentResponse)
 async def get_shared_document(
     document_id: UUID,
@@ -190,7 +198,7 @@ async def get_shared_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Return a document through its read-only share link."""
-    if not ShareLinkService().verify_token(str(document_id), token):
+    if not _share_links().verify_token(str(document_id), token):
         raise HTTPException(status_code=403, detail="Invalid share token")
     document = await DocumentService(db).get(document_id)
     if not document:
@@ -473,7 +481,7 @@ async def create_share_link(
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
     _ensure_owner(document, user_id)
-    token = ShareLinkService().mint_token(str(document_id))
+    token = _share_links().mint_token(str(document_id))
     logger.info("share_link_created", document_id=str(document_id))
     return {"document_id": str(document_id), "token": token}
 
