@@ -38,7 +38,10 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          # Temurin 17.0.21.1+2 (Java4Shell fix); setup-java's semver for it.
+          java-version: '17.0.21+100000002'
+      - name: Check JDK is not affected by Java4Shell
+        run: python3 "$GITHUB_WORKSPACE/scripts/security/check_java4shell.py" runtime
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.6'
@@ -115,6 +118,21 @@ jobs:
         uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
 
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      # Build locally first so a JVM image on a Java4Shell (CVE-2026-114938) affected
+      # JDK fails here instead of reaching ECR; the push below reuses the layer cache.
+      - name: Build JVM image for JDK check
+        if: contains(fromJSON('["auth-service","notification-service","analytics-service","report-service"]'), matrix.service.name)
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: ${{ matrix.service.context }}
+          load: true
+          platforms: linux/amd64
+          tags: jdk-check/${{ matrix.service.name }}:${{ github.sha }}
+
+      - name: Check image JDK is not affected by Java4Shell
+        if: contains(fromJSON('["auth-service","notification-service","analytics-service","report-service"]'), matrix.service.name)
+        run: python3 scripts/security/check_java4shell.py image "jdk-check/${{ matrix.service.name }}:${{ github.sha }}"
 
       - name: Build and push image
         uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5

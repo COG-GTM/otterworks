@@ -31,8 +31,9 @@ jobs:
       - uses: actions/setup-java@8df1039502a15bceb9433410b1a100fbe190c53b # v4
         with:
           distribution: temurin
+          # 17 is Temurin 17.0.21.1+2, the Java4Shell (CVE-2026-114938) fixed build.
           java-version: |
-            17
+            17.0.21+100000002
             11
       # notification-service ships no Gradle wrapper, so the harness invokes the
       # `gradle` on PATH — the runner image does not carry one.
