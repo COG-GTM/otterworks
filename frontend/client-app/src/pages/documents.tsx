@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -16,7 +16,7 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { documentsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
-import type { Document, PaginatedResponse, ViewMode } from "@/types";
+import type { Document, ViewMode } from "@/types";
 
 export default function DocumentsPage() {
   return (
@@ -34,10 +34,14 @@ function DocumentsContent() {
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["documents", "list"],
-    queryFn: () => documentsApi.list(),
-  });
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useInfiniteQuery({
+      queryKey: ["documents", "list"],
+      queryFn: ({ pageParam }) => documentsApi.list(pageParam),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage) =>
+        lastPage.hasMore ? lastPage.page + 1 : undefined,
+    });
 
   const createMutation = useMutation({
     mutationFn: (title: string) => documentsApi.create(title),
@@ -56,8 +60,8 @@ function DocumentsContent() {
     },
   });
 
-  const raw = data as PaginatedResponse<Document> & { items?: Document[] } | undefined;
-  const documents = raw?.items ?? raw?.data ?? [];
+  const documents = data?.pages.flatMap((page) => page.data) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
   const filtered = searchQuery
     ? documents.filter((doc) =>
         doc.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -119,6 +123,21 @@ function DocumentsContent() {
         onCreate={() => createMutation.mutate("Untitled document")}
         onDelete={(id) => deleteMutation.mutate(id)}
       />
+
+      {hasNextPage && (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <p className="text-xs text-gray-500">
+            Showing {documents.length} of {total} documents
+          </p>
+          <button
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
+          >
+            {isFetchingNextPage ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
