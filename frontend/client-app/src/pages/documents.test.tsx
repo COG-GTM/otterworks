@@ -158,9 +158,12 @@ describe("Documents page", () => {
     const requests = serveDocuments(3, { token: "stored-token" });
     renderPage({ withAuth: true });
 
-    await waitFor(() => expect(profileRequests).toHaveLength(1));
-    expect(requests).toHaveLength(0);
-    failProfile();
+    try {
+      await waitFor(() => expect(profileRequests).toHaveLength(1));
+      expect(requests).toHaveLength(0);
+    } finally {
+      failProfile();
+    }
 
     expect(await screen.findByText("Doc 3")).toBeInTheDocument();
     expect(requests).toHaveLength(1);
