@@ -80,7 +80,7 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
         "/api/v1/analytics/events",
         headers=user.auth_headers,
         json={
-            "eventType": "document_viewed",
+            "eventType": "document.viewed",
             "userId": user.id,
             "resourceId": resource_id,
             "resourceType": "document",
@@ -89,38 +89,50 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
     )
     assert track_response.status_code in {200, 201, 202}, track_response.text
 
-    dashboard_response = api_client.client.get(
-        "/api/v1/analytics/dashboard",
-        headers=user.auth_headers,
-        params={"period": "7d"},
+    other = api_client.register_user("analytics-victim")
+    forged_response = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers={**user.auth_headers, "X-User-ID": other.id},
+        json={
+            "eventType": "document.viewed",
+            "userId": other.id,
+            "resourceId": resource_id,
+            "resourceType": "document",
+        },
     )
-    assert dashboard_response.status_code == 200, dashboard_response.text
+    assert forged_response.status_code == 403, forged_response.text
+
+    forged_storage = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=user.auth_headers,
+        json={
+            "eventType": "storage.allocated",
+            "resourceId": resource_id,
+            "resourceType": "file",
+            "metadata": {"bytes": "999999999"},
+        },
+    )
+    assert forged_storage.status_code == 400, forged_storage.text
+
+    unknown_type = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=user.auth_headers,
+        json={"eventType": "admin.pwned", "resourceId": resource_id, "resourceType": "document"},
+    )
+    assert unknown_type.status_code == 400, unknown_type.text
 
     activity_response = api_client.client.get(
         f"/api/v1/analytics/users/{user.id}/activity",
         headers=user.auth_headers,
     )
     assert activity_response.status_code == 200, activity_response.text
+    assert activity_response.json()["userId"] == user.id
 
     document_stats_response = api_client.client.get(
         f"/api/v1/analytics/documents/{resource_id}/stats",
         headers=user.auth_headers,
     )
     assert document_stats_response.status_code == 200, document_stats_response.text
-
-    top_content_response = api_client.client.get(
-        "/api/v1/analytics/top-content",
-        headers=user.auth_headers,
-        params={"type": "documents", "period": "7d", "limit": 5},
-    )
-    assert top_content_response.status_code == 200, top_content_response.text
-
-    active_users_response = api_client.client.get(
-        "/api/v1/analytics/active-users",
-        headers=user.auth_headers,
-        params={"period": "daily"},
-    )
-    assert active_users_response.status_code == 200, active_users_response.text
 
     storage_response = api_client.client.get(
         "/api/v1/analytics/storage",
@@ -129,12 +141,37 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
     )
     assert storage_response.status_code == 200, storage_response.text
 
-    export_response = api_client.client.get(
-        "/api/v1/analytics/export",
-        headers=user.auth_headers,
-        params={"format": "json", "period": "7d"},
+    own_storage_response = api_client.client.get("/api/v1/analytics/storage", headers=user.auth_headers)
+    assert own_storage_response.status_code == 200, own_storage_response.text
+    assert own_storage_response.json()["userId"] == user.id
+
+
+def test_analytics_queries_are_scoped_to_the_caller(api_client):
+    owner = api_client.register_user("analytics-owner")
+    other = api_client.register_user("analytics-other")
+
+    other_activity = api_client.client.get(
+        f"/api/v1/analytics/users/{owner.id}/activity",
+        headers=other.auth_headers,
     )
-    assert export_response.status_code == 200, export_response.text
+    assert other_activity.status_code == 403, other_activity.text
+
+    other_storage = api_client.client.get(
+        "/api/v1/analytics/storage",
+        headers=other.auth_headers,
+        params={"user_id": owner.id},
+    )
+    assert other_storage.status_code == 403, other_storage.text
+
+    for path, params in (
+        ("/api/v1/analytics/dashboard", {"period": "7d"}),
+        ("/api/v1/analytics/top-content", {"type": "documents", "period": "7d", "limit": 5}),
+        ("/api/v1/analytics/active-users", {"period": "daily"}),
+        ("/api/v1/analytics/export", {"format": "csv", "period": "30d"}),
+        ("/api/v1/analytics/export", {"format": "json", "period": "7d"}),
+    ):
+        response = api_client.client.get(path, headers=other.auth_headers, params=params)
+        assert response.status_code == 403, f"{path}: {response.status_code} {response.text}"
 
 
 def test_report_generation_lifecycle_and_gateway_route(api_client):
