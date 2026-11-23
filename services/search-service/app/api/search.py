@@ -9,6 +9,7 @@ import structlog
 from flask import Blueprint, current_app, jsonify, request
 
 from app.api.health import SEARCH_COUNT
+from app.middleware.auth import has_service_token
 from app.services.meilisearch_client import MeiliSearchService, get_search_analytics
 
 logger = structlog.get_logger()
@@ -85,9 +86,12 @@ def suggest() -> tuple:
     """Autocomplete suggestions based on prefix.
 
     Query params: q (required, min 2 chars)
+    Suggestions are scoped to the authenticated user via the ``X-User-ID``
+    header set by the API gateway; without it no suggestions are returned.
     """
     prefix = request.args.get("q", "")
-    if not prefix or len(prefix) < 2:
+    owner_id = request.headers.get("X-User-ID", "").strip()
+    if not prefix or len(prefix) < 2 or not owner_id:
         return jsonify({"suggestions": [], "query": prefix}), 200
 
     # CHAOS: when this flag is active the ranking-score enrichment path runs.
@@ -97,7 +101,7 @@ def suggest() -> tuple:
     # KeyError and crashes the handler with a 500.
     if _chaos_active("chaos:search-service:suggest_500"):
         service = _get_service()
-        raw_suggestions = service.suggest(prefix)
+        raw_suggestions = service.suggest(prefix, owner_id)
         if not raw_suggestions:
             # Simulate the same KeyError that fires when results exist but
             # _rankingScore is missing — ensures chaos fires even with an
@@ -109,7 +113,7 @@ def suggest() -> tuple:
 
     try:
         service = _get_service()
-        suggestions = service.suggest(prefix)
+        suggestions = service.suggest(prefix, owner_id)
         return jsonify({"suggestions": suggestions, "query": prefix}), 200
     except Exception:
         logger.exception("suggest_failed", prefix=prefix)
@@ -159,9 +163,21 @@ def advanced_search() -> tuple:
 
 @search_bp.route("/analytics", methods=["GET"])
 def search_analytics() -> tuple:
-    """Search analytics: popular queries, zero-result queries."""
+    """Search analytics: popular queries, zero-result queries.
+
+    Service-token callers get global analytics across all users. A
+    gateway-authenticated user only gets analytics for their own queries,
+    and a caller with neither identity is rejected.
+    """
+    if has_service_token(current_app.config["APP_CONFIG"].auth.service_token):
+        owner_id = None
+    else:
+        owner_id = request.headers.get("X-User-ID", "").strip()
+        if not owner_id:
+            logger.warning("analytics_forbidden", path=request.path)
+            return jsonify({"error": "forbidden"}), 403
     try:
-        analytics = get_search_analytics()
+        analytics = get_search_analytics(owner_id=owner_id)
         return jsonify(analytics.to_dict()), 200
     except Exception:
         logger.exception("analytics_failed")
