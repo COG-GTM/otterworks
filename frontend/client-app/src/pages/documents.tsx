@@ -14,6 +14,7 @@ import { PageLoader } from "@/components/ui/loading-spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { documentsApi } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
 import { cn } from "@/lib/utils";
 import type { Document, ViewMode } from "@/types";
@@ -33,15 +34,23 @@ function DocumentsContent() {
   const queryClient = useQueryClient();
   const { viewMode, setViewMode } = useUIStore();
   const [searchQuery, setSearchQuery] = useState("");
+  const userId = useAuthStore((state) => state.user?.id);
 
-  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
-    useInfiniteQuery({
-      queryKey: ["documents", "list"],
-      queryFn: ({ pageParam }) => documentsApi.list(pageParam),
-      initialPageParam: 1,
-      getNextPageParam: (lastPage) =>
-        lastPage.hasMore ? lastPage.page + 1 : undefined,
-    });
+  const {
+    data,
+    isLoading,
+    isFetching,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+  } = useInfiniteQuery({
+    queryKey: ["documents", "list", userId],
+    queryFn: ({ pageParam }) => documentsApi.list(pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.page + 1 : undefined,
+  });
 
   const createMutation = useMutation({
     mutationFn: (title: string) => documentsApi.create(title),
@@ -127,11 +136,16 @@ function DocumentsContent() {
       {hasNextPage && (
         <div className="flex flex-col items-center gap-2 pt-2">
           <p className="text-xs text-gray-500">
-            Showing {documents.length} of {total} documents
+            Loaded {documents.length} of {total} documents
           </p>
+          {isFetchNextPageError && (
+            <p role="alert" className="text-xs text-red-600">
+              Couldn&apos;t load more documents. Please try again.
+            </p>
+          )}
           <button
             onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
+            disabled={isFetching}
             className="px-4 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition"
           >
             {isFetchingNextPage ? "Loading..." : "Load more"}
