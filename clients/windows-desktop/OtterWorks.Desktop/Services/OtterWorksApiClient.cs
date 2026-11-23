@@ -90,6 +90,17 @@ namespace OtterWorks.Desktop.Services
             }
         }
 
+        // .NET Framework 4.8 reports every connection failure with this generic message, while
+        // .NET reports the underlying socket error instead; keep the 4.8 wording on both.
+        private static string NetworkErrorText(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return "An error occurred while sending the request.";
+#endif
+        }
+
         private async Task<T> SendAsync<T>(HttpRequestMessage request)
         {
             HttpResponseMessage response;
@@ -102,7 +113,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + NetworkErrorText(ex));
             }
             catch (TaskCanceledException)
             {
