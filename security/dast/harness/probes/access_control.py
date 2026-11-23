@@ -363,6 +363,40 @@ def unauthenticated_admin(ctx: ScanContext) -> Result:
 
 
 @probe(
+    finding_id="DAST-MARKET-OBSERVATIONS-WRITE",
+    title="Any signed-in user can overwrite market prices (POST /analytics/market/observations)",
+    severity=Severity.MEDIUM,
+    owasp="API5:2023 Broken Function Level Authorization",
+    cwe="CWE-285",
+    service="analytics-service",
+    remediation=(
+        "Forward the JWT roles from the gateway and require an ADMIN/OWNER role in "
+        "analytics-service before ingesting market observations."
+    ),
+)
+def market_observations_write(ctx: ScanContext) -> Result:
+    """A self-registered standard user posts to the operator-only market ingest route."""
+    self = market_observations_write.probe
+    path = "/api/v1/analytics/market/observations"
+    # An empty batch: reaching the handler is the finding, and it writes nothing.
+    response = ctx.request("POST", path, identity=ctx.attacker, json={"observations": []})
+    evidence = [Evidence.from_response(response, note=f"POST {path} as a standard user")]
+    if unavailable(response):
+        return self.result(
+            Verdict.INCONCLUSIVE,
+            f"analytics-service did not answer ({response.status_code})",
+            evidence,
+        )
+    if response.status_code in (401, 403):
+        return self.result(Verdict.SECURE, "the standard user was refused", evidence)
+    return self.result(
+        Verdict.VULNERABLE,
+        f"the standard user's batch reached the ingest handler ({response.status_code})",
+        evidence,
+    )
+
+
+@probe(
     finding_id="DAST-SEARCH-TENANT-LEAK",
     title="Search results leak documents owned by another tenant",
     severity=Severity.HIGH,

@@ -2,6 +2,7 @@ package com.otterworks.analytics.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport.*
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, StatusCodes}
+import akka.http.scaladsl.model.headers.RawHeader
 import akka.http.scaladsl.testkit.ScalatestRouteTest
 import com.dimafeng.testcontainers.PostgreSQLContainer
 import com.otterworks.analytics.batch.MarketSeeder
@@ -135,6 +136,8 @@ class MarketMarginsIntegrationSpec
     count(database, "product_margin_daily") shouldBe margins
   }
 
+  private val operator = List(RawHeader("X-User-ID", "operator-1"), RawHeader("X-User-Roles", "USER,ADMIN"))
+
   private def routes =
     val (_, r, svc) = requireStack()
     akka.http.scaladsl.server.Directives.concat(
@@ -208,7 +211,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = Some("integration test manual pull")
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, request.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, request.toJson.compactPrint)).withHeaders(operator) ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 3
@@ -239,7 +242,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = None
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, allInvalid.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, allInvalid.toJson.compactPrint)).withHeaders(operator) ~> routes ~> check {
       status shouldBe StatusCodes.BadRequest
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 0
@@ -253,7 +256,7 @@ class MarketMarginsIntegrationSpec
       ),
       sourceNote = None
     )
-    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, mixed.toJson.compactPrint)) ~> routes ~> check {
+    Post("/api/v1/analytics/market/observations", HttpEntity(ContentTypes.`application/json`, mixed.toJson.compactPrint)).withHeaders(operator) ~> routes ~> check {
       status shouldBe StatusCodes.OK
       val body = responseAs[ObservationsResponse]
       body.accepted shouldBe 1
