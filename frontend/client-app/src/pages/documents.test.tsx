@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import DocumentsPage from "./documents";
 import { billingServer } from "../test-setup";
+import { AuthProvider } from "@/providers/auth-provider";
 import { useAuthStore } from "@/stores/auth-store";
 import type { User } from "@/types";
 
@@ -17,15 +18,19 @@ interface ServeOptions {
   title?: (n: number) => string;
   failPage?: number;
   delayMs?: number;
+  token?: string;
 }
 
 // Mirrors document-service's GET /documents: `size` (default 20, max 100), other params ignored.
-function serveDocuments(count: number, { title = (n) => `Doc ${n}`, failPage, delayMs }: ServeOptions = {}) {
+function serveDocuments(count: number, { title = (n) => `Doc ${n}`, failPage, delayMs, token }: ServeOptions = {}) {
   const requests: URLSearchParams[] = [];
   billingServer.use(
     http.get("http://localhost:3000/api/v1/documents", async ({ request }) => {
       const params = new URL(request.url).searchParams;
       requests.push(params);
+      if (token && request.headers.get("Authorization") !== `Bearer ${token}`) {
+        return HttpResponse.json({ detail: "unauthorized" }, { status: 401 });
+      }
       const page = Number(params.get("page") ?? 1);
       if (delayMs) await delay(delayMs);
       if (page === failPage) return HttpResponse.json({ detail: "boom" }, { status: 500 });
@@ -61,15 +66,20 @@ function user(id: string): User {
   return { id, email: `${id}@example.com`, displayName: id };
 }
 
-function renderPage() {
+function renderPage({ withAuth = false } = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
+  const page = withAuth ? (
+    <AuthProvider>
+      <DocumentsPage />
+    </AuthProvider>
+  ) : (
+    <DocumentsPage />
+  );
   render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <DocumentsPage />
-      </MemoryRouter>
+      <MemoryRouter>{page}</MemoryRouter>
     </QueryClientProvider>,
   );
   return queryClient;
@@ -133,11 +143,22 @@ describe("Documents page", () => {
   });
 
   it("still lists documents when the profile request fails", async () => {
-    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
-    serveDocuments(3);
-    renderPage();
+    localStorage.setItem("otter_access_token", "stored-token");
+    useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: true });
+    const profileRequests: Request[] = [];
+    billingServer.use(
+      http.get("http://localhost:3000/api/v1/auth/profile", ({ request }) => {
+        profileRequests.push(request);
+        return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
+      }),
+    );
+    const requests = serveDocuments(3, { token: "stored-token" });
+    renderPage({ withAuth: true });
 
     expect(await screen.findByText("Doc 3")).toBeInTheDocument();
+    expect(profileRequests).toHaveLength(1);
+    expect(requests).toHaveLength(1);
+    localStorage.removeItem("otter_access_token");
   });
 
   it("keeps Load more disabled while the list is refreshing", async () => {
