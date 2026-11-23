@@ -42,6 +42,10 @@ class AnalyticsService(repository: MetricsRepository)(using ec: ExecutionContext
     logger.debug("Fetching stats for document={}", documentId)
     repository.getDocumentStats(documentId)
 
+  /** The user who created the document, per its first `document.created` event. */
+  def getDocumentCreator(documentId: String): Future[Option[String]] =
+    repository.getDocumentCreator(documentId)
+
   /** Get top content ranked by activity. */
   def getTopContent(contentType: String, period: String, limit: Int = 10): Future[TopContentResponse] =
     logger.debug("Fetching top content: type={}, period={}, limit={}", contentType, period, limit.toString)

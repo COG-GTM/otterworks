@@ -90,6 +90,9 @@ class PostgresMetricsRepository(db: AnalyticsDb)(using ec: ExecutionContext) ext
   def getDocumentStats(documentId: String): Future[DocumentStats] =
     loadAll().map(MetricsAggregator.documentStats(_, documentId))
 
+  def getDocumentCreator(documentId: String): Future[Option[String]] =
+    loadAll().map(MetricsAggregator.documentCreator(_, documentId))
+
   def getTopContent(contentType: String, period: String, limit: Int): Future[TopContentResponse] =
     loadAll().map(MetricsAggregator.topContent(_, contentType, period, limit))
 

@@ -76,6 +76,10 @@ object MetricsAggregator:
       lastEditedAt = edits.sortBy(_.timestamp)(using Ordering[Instant].reverse).headOption.map(_.timestamp.toString)
     )
 
+  /** The user who first recorded `document.created` for the document, if any. */
+  def documentCreator(events: Seq[AnalyticsEvent], documentId: String): Option[String] =
+    events.find(e => e.resourceId == documentId && e.eventType == EventType.DocumentCreated).map(_.userId)
+
   def topContent(events: Seq[AnalyticsEvent], contentType: String, period: String, limit: Int): TopContentResponse =
     val cutoff = periodToCutoff(period)
     val resourceTypeFilter = contentType match
