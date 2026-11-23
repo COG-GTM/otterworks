@@ -155,15 +155,17 @@ async def create_document_no_slash(
 
 @router.get("/search", response_model=DocumentListResponse)
 async def search_documents(
+    request: Request,
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """Search documents by title or content."""
+    """Search the caller's documents by title or content."""
     await _maybe_inject_latency()
+    user_id = _require_user_id(request)
     service = DocumentService(db)
-    items, total = await service.search(q, page=page, size=size)
+    items, total = await service.search(q, owner_id=user_id, page=page, size=size)
     return DocumentListResponse(
         items=items,
         total=total,
@@ -199,13 +201,12 @@ async def get_shared_document(
 
 
 async def _do_list_documents(
-    owner_id: UUID | None,
+    owner_id: UUID,
     folder_id: UUID | None,
     page: int,
     size: int,
     db: AsyncSession,
 ) -> DocumentListResponse:
-    await _maybe_inject_latency()
     service = DocumentService(db)
     items, total = await service.list_documents(
         owner_id=owner_id, folder_id=folder_id, page=page, size=size
@@ -220,7 +221,7 @@ async def _do_list_documents(
 
 
 async def _do_filter_documents(
-    owner_id: UUID | None,
+    owner_id: UUID,
     folder_id: UUID | None,
     title: str | None,
     content_type: str | None,
@@ -230,10 +231,9 @@ async def _do_filter_documents(
     size: int,
     db: AsyncSession,
 ) -> DocumentListResponse:
-    await _maybe_inject_latency()
     repo = DocumentQueryRepository(db)
     filters = {
-        "owner_id": str(owner_id) if owner_id else None,
+        "owner_id": str(owner_id),
         "title_contains": title,
         "content_type": content_type,
         "folder_id": str(folder_id) if folder_id else None,
@@ -255,6 +255,12 @@ async def _do_filter_documents(
         page=page,
         size=size,
         pages=DocumentService.paginate(total, page, size),
+    )
+
+
+def _empty_list(page: int, size: int) -> DocumentListResponse:
+    return DocumentListResponse(
+        items=[], total=0, page=page, size=size, pages=DocumentService.paginate(0, page, size)
     )
 
 
@@ -288,10 +294,13 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    await _maybe_inject_latency()
+    user_id = _require_user_id(request)
+    if owner_id is not None and owner_id != user_id:
+        return _empty_list(page, size)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
-            effective_owner,
+            user_id,
             folder_id,
             title,
             content_type,
@@ -301,7 +310,7 @@ async def list_documents(
             size,
             db,
         )
-    return await _do_list_documents(effective_owner, folder_id, page, size, db)
+    return await _do_list_documents(user_id, folder_id, page, size, db)
 
 
 @router.get(
@@ -322,10 +331,13 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    await _maybe_inject_latency()
+    user_id = _require_user_id(request)
+    if owner_id is not None and owner_id != user_id:
+        return _empty_list(page, size)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
-            effective_owner,
+            user_id,
             folder_id,
             title,
             content_type,
@@ -335,7 +347,7 @@ async def list_documents_no_slash(
             size,
             db,
         )
-    return await _do_list_documents(effective_owner, folder_id, page, size, db)
+    return await _do_list_documents(user_id, folder_id, page, size, db)
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
