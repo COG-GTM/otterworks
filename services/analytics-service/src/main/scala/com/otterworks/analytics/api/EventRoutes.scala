@@ -57,4 +57,4 @@ class EventRoutes(analyticsService: AnalyticsService):
   }
 
 object EventRoutes:
-  val UserIdHeader = "X-User-ID"
+  val UserIdHeader: String = CallerAuth.UserIdHeader
