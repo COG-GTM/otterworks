@@ -20,15 +20,9 @@ paths:
       summary: List notifications for a user
       description: |
         Returns a paginated list of notifications for the specified user.
-        User is identified via X-User-ID header or user_id query parameter.
+        User is identified only by the gateway-set X-User-ID header.
       parameters:
         - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          description: User ID (alternative to X-User-ID header)
-          schema:
-            type: string
         - name: page
           in: query
           required: false
@@ -65,14 +59,14 @@ paths:
                 page: 1
                 pageSize: 20
                 hasMore: true
-        "400":
-          description: Missing user_id
+        "401":
+          description: Missing X-User-ID header
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+                error: "X-User-ID header is required"
 
   /api/v1/notifications/unread-count:
     get:
@@ -80,11 +74,6 @@ paths:
       summary: Get unread notification count
       parameters:
         - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: Unread count
@@ -95,20 +84,21 @@ paths:
               example:
                 userId: "user-001"
                 unreadCount: 7
-        "400":
-          description: Missing user_id
+        "401":
+          description: Missing X-User-ID header
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+                error: "X-User-ID header is required"
 
   /api/v1/notifications/{id}:
     get:
       operationId: getNotification
       summary: Get a single notification by ID
       parameters:
+        - $ref: "#/components/parameters/XUserID"
         - name: id
           in: path
           required: true
@@ -129,8 +119,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Notification ID is required"
+        "401":
+          description: Missing X-User-ID header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "X-User-ID header is required"
         "404":
-          description: Notification not found
+          description: Notification not found, or owned by another user
           content:
             application/json:
               schema:
@@ -141,6 +139,7 @@ paths:
       operationId: deleteNotification
       summary: Delete a notification
       parameters:
+        - $ref: "#/components/parameters/XUserID"
         - name: id
           in: path
           required: true
@@ -157,8 +156,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Notification ID is required"
+        "401":
+          description: Missing X-User-ID header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "X-User-ID header is required"
         "404":
-          description: Notification not found
+          description: Notification not found, or owned by another user
           content:
             application/json:
               schema:
@@ -171,6 +178,7 @@ paths:
       operationId: markAsRead
       summary: Mark a notification as read
       parameters:
+        - $ref: "#/components/parameters/XUserID"
         - name: id
           in: path
           required: true
@@ -187,8 +195,16 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
                 error: "Notification ID is required"
+        "401":
+          description: Missing X-User-ID header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "X-User-ID header is required"
         "404":
-          description: Notification not found
+          description: Notification not found, or owned by another user
           content:
             application/json:
               schema:
@@ -202,11 +218,6 @@ paths:
       summary: Mark all notifications as read for a user
       parameters:
         - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: All notifications marked as read
@@ -216,14 +227,14 @@ paths:
                 $ref: "#/components/schemas/MarkAllReadResponse"
               example:
                 markedCount: 12
-        "400":
-          description: Missing user_id
+        "401":
+          description: Missing X-User-ID header
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+                error: "X-User-ID header is required"
 
   /api/v1/preferences:
     get:
@@ -231,11 +242,6 @@ paths:
       summary: Get notification preferences for a user
       parameters:
         - $ref: "#/components/parameters/XUserID"
-        - name: user_id
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
           description: User notification preferences
@@ -250,17 +256,21 @@ paths:
                   comment_added: ["IN_APP", "PUSH"]
                   document_edited: ["IN_APP"]
                   user_mentioned: ["EMAIL", "IN_APP", "PUSH"]
-        "400":
-          description: Missing user_id
+        "401":
+          description: Missing X-User-ID header
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
               example:
-                error: "user_id is required (via X-User-ID header or query parameter)"
+                error: "X-User-ID header is required"
     put:
       operationId: updatePreferences
-      summary: Update notification preferences
+      summary: Update notification preferences for the caller
+      description: |
+        Always updates the X-User-ID caller's preferences; a userId in the body is ignored.
+      parameters:
+        - $ref: "#/components/parameters/XUserID"
       requestBody:
         required: true
         content:
@@ -268,12 +278,19 @@ paths:
             schema:
               $ref: "#/components/schemas/NotificationPreferenceRequest"
             example:
-              userId: "user-001"
               eventType: "comment_added"
               channels: ["EMAIL", "IN_APP"]
       responses:
         "204":
           description: Preferences updated
+        "401":
+          description: Missing X-User-ID header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "X-User-ID header is required"
 
   /health:
     get:
@@ -325,8 +342,8 @@ components:
     XUserID:
       name: X-User-ID
       in: header
-      required: false
-      description: User ID for tenant identification (set by API gateway)
+      required: true
+      description: Caller's user ID, set by the API gateway from the validated JWT
       schema:
         type: string
 
@@ -443,12 +460,13 @@ components:
     NotificationPreferenceRequest:
       type: object
       required:
-        - userId
         - eventType
         - channels
       properties:
         userId:
           type: string
+          deprecated: true
+          description: Ignored; preferences are updated for the X-User-ID caller.
         eventType:
           type: string
           description: Event type to configure
