@@ -3,7 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import DocumentsPage from "./documents";
 import { billingServer } from "../test-setup";
 import { useAuthStore } from "@/stores/auth-store";
@@ -75,7 +75,7 @@ function renderPage() {
   return queryClient;
 }
 
-afterEach(() => useAuthStore.setState({ user: null, isAuthenticated: false }));
+beforeEach(() => useAuthStore.setState({ user: user("alice"), isAuthenticated: true }));
 
 describe("Documents page", () => {
   it("lists more than 20 documents", async () => {
@@ -119,6 +119,17 @@ describe("Documents page", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("waits for the signed-in user before fetching", async () => {
+    useAuthStore.setState({ user: null, isAuthenticated: false });
+    const requests = serveDocuments(3);
+    renderPage();
+
+    act(() => useAuthStore.setState({ user: user("alice"), isAuthenticated: true }));
+
+    expect(await screen.findByText("Doc 3")).toBeInTheDocument();
+    expect(requests).toHaveLength(1);
+  });
+
   it("keeps Load more disabled while the list is refreshing", async () => {
     serveDocuments(60);
     const queryClient = renderPage();
@@ -135,7 +146,6 @@ describe("Documents page", () => {
   });
 
   it("does not show the previous account's documents after switching accounts", async () => {
-    useAuthStore.setState({ user: user("alice"), isAuthenticated: true });
     serveDocuments(3, { title: (n) => `Alice doc ${n}` });
     renderPage();
     expect(await screen.findByText("Alice doc 3")).toBeInTheDocument();

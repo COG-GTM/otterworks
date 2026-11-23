@@ -38,7 +38,7 @@ function DocumentsContent() {
 
   const {
     data,
-    isLoading,
+    isPending,
     isFetching,
     hasNextPage,
     fetchNextPage,
@@ -47,6 +47,7 @@ function DocumentsContent() {
   } = useInfiniteQuery({
     queryKey: ["documents", "list", userId],
     queryFn: ({ pageParam }) => documentsApi.list(pageParam),
+    enabled: !!userId,
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.page + 1 : undefined,
@@ -125,7 +126,7 @@ function DocumentsContent() {
 
       {/* Document listing */}
       <DocumentListing
-        isLoading={isLoading}
+        isLoading={isPending}
         documents={filtered}
         searchQuery={searchQuery}
         viewMode={viewMode}
