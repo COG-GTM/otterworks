@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Date;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * JPA repository for Report entities.
@@ -23,6 +24,10 @@ import java.util.List;
 public interface ReportRepository extends JpaRepository<Report, Long> {
 
     List<Report> findByRequestedByOrderByCreatedAtDesc(String requestedBy);
+
+    Optional<Report> findByIdAndRequestedBy(Long id, String requestedBy);
+
+    List<Report> findByRequestedByAndStatusOrderByCreatedAtDesc(String requestedBy, ReportStatus status);
 
     List<Report> findByStatusOrderByCreatedAtAsc(ReportStatus status);
 
