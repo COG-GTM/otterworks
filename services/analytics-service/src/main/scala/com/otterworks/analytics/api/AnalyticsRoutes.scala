@@ -9,11 +9,13 @@ import com.otterworks.analytics.service.AnalyticsService
 import spray.json.*
 
 import java.time.Instant
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
  * Analytics query routes. Callers are identified by the gateway's X-User-ID /
  * X-User-Roles headers (see [[CallerAuth]]): per-user activity and storage are
- * limited to the caller's own data unless the caller is an admin, and the
+ * limited to the caller's own data unless the caller is an admin, document
+ * stats to the document's creator (first `document.created` event) or an admin, and the
  * cross-user aggregates (dashboard, top-content, active-users, export) are
  * admin-only.
  *
@@ -61,8 +63,17 @@ class AnalyticsRoutes(analyticsService: AnalyticsService):
       pathPrefix("documents") {
         path(Segment / "stats") { documentId =>
           get {
-            onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
-              complete(stats)
+            CallerAuth.authenticated { caller =>
+              val allowed =
+                if caller.isAdmin then Future.successful(true)
+                else analyticsService.getDocumentCreator(documentId).map(_.contains(caller.userId))(ExecutionContext.parasitic)
+              onSuccess(allowed) { ok =>
+                if !ok then CallerAuth.forbidden
+                else
+                  onSuccess(analyticsService.getDocumentStats(documentId)) { stats =>
+                    complete(stats)
+                  }
+              }
             }
           }
         }

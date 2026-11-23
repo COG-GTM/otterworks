@@ -9,7 +9,9 @@ Query routes identify the caller from the gateway's `X-User-ID` / `X-User-Roles`
 headers (derived from the validated JWT; client-supplied copies are stripped).
 `users/{id}/activity` and `storage?user_id=` return only the caller's own data
 unless the caller has the `ADMIN` or `OWNER` role (`storage` without `user_id`
-defaults to the caller for non-admins); `dashboard`, `top-content`,
+defaults to the caller for non-admins); `documents/{id}/stats` is limited to
+the user who recorded the document's first `document.created` event and admins;
+`dashboard`, `top-content`,
 `active-users` and `export` are admin-only. A missing identity answers 401, an
 unauthorized request 403.
 

@@ -76,6 +76,19 @@ def test_analytics_event_ingestion_queries_and_export(api_client):
     user = api_client.register_user("analytics-flow")
     resource_id = f"analytics-resource-{api_client.run_id}"
 
+    created_response = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=user.auth_headers,
+        json={
+            "eventType": "document.created",
+            "userId": user.id,
+            "resourceId": resource_id,
+            "resourceType": "document",
+            "metadata": {"source": "api-flow-test"},
+        },
+    )
+    assert created_response.status_code in {200, 201, 202}, created_response.text
+
     track_response = api_client.client.post(
         "/api/v1/analytics/events",
         headers=user.auth_headers,
@@ -130,6 +143,26 @@ def test_analytics_queries_are_scoped_to_the_caller(api_client):
         params={"user_id": owner.id},
     )
     assert other_storage.status_code == 403, other_storage.text
+
+    owner_doc = f"analytics-owner-doc-{api_client.run_id}"
+    created = api_client.client.post(
+        "/api/v1/analytics/events",
+        headers=owner.auth_headers,
+        json={
+            "eventType": "document.created",
+            "userId": owner.id,
+            "resourceId": owner_doc,
+            "resourceType": "document",
+            "metadata": {"source": "api-flow-test"},
+        },
+    )
+    assert created.status_code in {200, 201, 202}, created.text
+
+    other_doc_stats = api_client.client.get(
+        f"/api/v1/analytics/documents/{owner_doc}/stats",
+        headers=other.auth_headers,
+    )
+    assert other_doc_stats.status_code == 403, other_doc_stats.text
 
     for path, params in (
         ("/api/v1/analytics/dashboard", {"period": "7d"}),

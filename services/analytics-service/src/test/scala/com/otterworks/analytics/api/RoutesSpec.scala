@@ -121,9 +121,10 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
   "GET /api/v1/analytics/documents/{id}/stats" should "return document stats" in {
     val (_, analyticsRoutes, service) = createRoutes()
 
-    service.trackEvent("document.viewed", "user-1", "doc-99", "document", Map.empty).futureValue
+    service.trackEvent("document.created", "user-1", "doc-99", "document", Map.empty).futureValue
+    service.trackEvent("document.viewed", "user-2", "doc-99", "document", Map.empty).futureValue
 
-    Get("/api/v1/analytics/documents/doc-99/stats") ~> analyticsRoutes.routes ~> check {
+    Get("/api/v1/analytics/documents/doc-99/stats") ~> asUser("user-1") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
       val stats = responseAs[DocumentStats]
       stats.documentId shouldBe "doc-99"
@@ -218,6 +219,7 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val paths = Seq(
       "/api/v1/analytics/dashboard",
       "/api/v1/analytics/users/user-1/activity",
+      "/api/v1/analytics/documents/doc-1/stats",
       "/api/v1/analytics/top-content",
       "/api/v1/analytics/active-users",
       "/api/v1/analytics/storage",
@@ -299,5 +301,24 @@ class RoutesSpec extends AnyFlatSpec with Matchers with ScalatestRouteTest with 
     val (_, analyticsRoutes, _) = createRoutes()
     Get("/api/v1/analytics/export?format=json") ~> asAdmin("owner-1", " user , owner ") ~> analyticsRoutes.routes ~> check {
       status shouldBe StatusCodes.OK
+    }
+  }
+
+  it should "forbid document stats to users other than the document's creator" in {
+    val (_, analyticsRoutes, service) = createRoutes()
+    service.trackEvent("document.created", "alice", "doc-alice", "document", Map.empty).futureValue
+    service.trackEvent("document.viewed", "alice", "doc-alice", "document", Map.empty).futureValue
+    // A later forged "created" event must not transfer ownership.
+    service.trackEvent("document.created", "mallory", "doc-alice", "document", Map.empty).futureValue
+
+    Get("/api/v1/analytics/documents/doc-alice/stats") ~> asUser("mallory") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.Forbidden
+    }
+    Get("/api/v1/analytics/documents/doc-unknown/stats") ~> asUser("mallory") ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.Forbidden
+    }
+    Get("/api/v1/analytics/documents/doc-alice/stats") ~> asAdmin() ~> analyticsRoutes.routes ~> check {
+      status shouldBe StatusCodes.OK
+      responseAs[DocumentStats].views shouldBe 1
     }
   }
