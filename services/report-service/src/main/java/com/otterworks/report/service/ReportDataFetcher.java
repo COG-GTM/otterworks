@@ -4,6 +4,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.otterworks.report.config.AppConfig;
+import com.otterworks.report.model.ReportRequest;
 import com.otterworks.report.util.ReportDateUtils;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
@@ -12,7 +13,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -68,19 +71,16 @@ public class ReportDataFetcher {
      */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> fetchAnalyticsData(Date dateFrom, Date dateTo, Map<String, String> parameters) {
-        String metric = (parameters != null) ? parameters.get("metric") : null;
+        String metric = (parameters != null) ? StringUtils.trimToNull(parameters.get(ReportRequest.METRIC_PARAMETER)) : null;
+        if (metric != null && !ReportRequest.isValidMetric(metric)) {
+            throw new IllegalArgumentException("Invalid analytics metric parameter");
+        }
         String cacheKey = "analytics:" + ReportDateUtils.toIsoString(dateFrom) + ":" + ReportDateUtils.toIsoString(dateTo)
                 + (metric != null ? ":metric=" + metric : "");
 
         try {
             return dataCache.get(cacheKey, () -> {
-                String url = appConfig.getAnalyticsServiceUrl() + "/api/v1/analytics/events"
-                        + "?from=" + ReportDateUtils.toIsoString(dateFrom)
-                        + "&to=" + ReportDateUtils.toIsoString(dateTo);
-
-                if (parameters != null && StringUtils.isNotBlank(parameters.get("metric"))) {
-                    url += "&metric=" + parameters.get("metric");
-                }
+                URI url = buildAnalyticsEventsUri(dateFrom, dateTo, metric);
 
                 logger.info("Fetching analytics data from: {}", url);
 
@@ -96,6 +96,23 @@ public class ReportDataFetcher {
             logger.error("Failed to fetch analytics data, using sample data: {}", e.getMessage());
             return generateSampleAnalyticsData(dateFrom, dateTo);
         }
+    }
+
+    URI buildAnalyticsEventsUri(Date dateFrom, Date dateTo, String metric) {
+        Map<String, String> queryValues = new HashMap<>();
+        queryValues.put("from", ReportDateUtils.toIsoString(dateFrom));
+        queryValues.put("to", ReportDateUtils.toIsoString(dateTo));
+
+        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(appConfig.getAnalyticsServiceUrl())
+                .path("/api/v1/analytics/events")
+                .queryParam("from", "{from}")
+                .queryParam("to", "{to}");
+        if (metric != null) {
+            builder.queryParam(ReportRequest.METRIC_PARAMETER, "{metric}");
+            queryValues.put("metric", metric);
+        }
+        // encode() before expansion strictly encodes each value, so reserved characters cannot add query parameters.
+        return builder.encode().buildAndExpand(queryValues).toUri();
     }
 
     /**

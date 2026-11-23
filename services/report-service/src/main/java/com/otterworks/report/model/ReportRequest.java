@@ -1,12 +1,16 @@
 package com.otterworks.report.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import org.apache.commons.lang.StringUtils;
 
+import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.util.Date;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * Request DTO for creating a new report.
@@ -19,6 +23,10 @@ import java.util.Map;
  */
 @ApiModel(description = "Request to generate a new report")
 public class ReportRequest {
+
+    public static final String METRIC_PARAMETER = "metric";
+
+    private static final Pattern METRIC_PATTERN = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}");
 
     @NotBlank(message = "Report name is required")
     @ApiModelProperty(value = "Human-readable name for the report", required = true, example = "Monthly Usage Report")
@@ -48,6 +56,19 @@ public class ReportRequest {
     private Map<String, String> parameters;
 
     public ReportRequest() {
+    }
+
+    /** Analytics metric names are event-type tokens such as {@code file_upload} or {@code document.created}. */
+    public static boolean isValidMetric(String metric) {
+        return metric != null && METRIC_PATTERN.matcher(metric).matches();
+    }
+
+    @JsonIgnore
+    @ApiModelProperty(hidden = true)
+    @AssertTrue(message = "parameters.metric must be 1-64 characters: letters, digits, '_', '.' or '-'")
+    public boolean isMetricParameterValid() {
+        String metric = parameters != null ? parameters.get(METRIC_PARAMETER) : null;
+        return StringUtils.isBlank(metric) || isValidMetric(metric);
     }
 
     public String getReportName() {

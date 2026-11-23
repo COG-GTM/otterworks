@@ -16,6 +16,7 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.Collections;
 import java.util.Date;
 
 import static org.junit.Assert.assertEquals;
@@ -138,6 +139,30 @@ public class ReportControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void createReportWithInjectedMetricReturns400() throws Exception {
+        ReportRequest request = buildRequest("Injected Metric Report",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV, "integration-user-7");
+        request.setParameters(Collections.singletonMap("metric", "x&from=2000-01-01&user_id=alice"));
+
+        mockMvc.perform(post("/api/v1/reports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void createReportWithValidMetricReturns202() throws Exception {
+        ReportRequest request = buildRequest("Valid Metric Report",
+                ReportCategory.USAGE_ANALYTICS, ReportType.CSV, "integration-user-8");
+        request.setParameters(Collections.singletonMap("metric", "file_upload"));
+
+        mockMvc.perform(post("/api/v1/reports")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isAccepted());
     }
 
     // ---- GET /api/v1/reports/{id} ----
