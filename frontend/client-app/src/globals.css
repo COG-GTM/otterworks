@@ -26,6 +26,19 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Notched iPhones: keep scrolled content from showing behind the status bar. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background-color: var(--surface);
+  z-index: 35;
+  pointer-events: none;
+}
+
 /* Touch devices: no hover, larger text and hit areas. */
 @media (hover: none) {
   .group-hover\:opacity-100 {
