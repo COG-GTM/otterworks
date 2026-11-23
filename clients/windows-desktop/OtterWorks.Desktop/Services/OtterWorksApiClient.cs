@@ -90,6 +90,18 @@ namespace OtterWorks.Desktop.Services
             }
         }
 
+        // .NET Framework reports every send failure as "An error occurred while sending the
+        // request."; .NET Core and later report the socket error instead (e.g. "No connection
+        // could be made because the target machine actively refused it. (localhost:8080)").
+        private static string SendFailureMessage(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return "An error occurred while sending the request.";
+#endif
+        }
+
         private async Task<T> SendAsync<T>(HttpRequestMessage request)
         {
             HttpResponseMessage response;
@@ -102,7 +114,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + SendFailureMessage(ex));
             }
             catch (TaskCanceledException)
             {
