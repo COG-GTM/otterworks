@@ -25,8 +25,9 @@ jobs:
           version: latest
       # The harness shells into the module and runs its emitter and its suite with
       # the module's own toolchain, so document-service must be installed.
+      # pipx runs on the image's system Python, so pin the module venv to 3.12.
       - run: pipx install poetry==1.8.5
-      - run: poetry install --no-interaction
+      - run: poetry env use python3.12 && poetry install --no-interaction
         working-directory: services/document-service
       - run: uv run --with ruff==0.9.10 ruff check --config security/equivalence/harness/ruff.toml security/equivalence/harness
       - run: make eq-list
