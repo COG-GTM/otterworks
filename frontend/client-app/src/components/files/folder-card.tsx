@@ -107,7 +107,8 @@ export function FolderCard({
               e.stopPropagation();
               setMenuOpen(!menuOpen);
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+            aria-label="More actions"
+            className="tap-target p-1 rounded hover:bg-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 transition"
           >
             <MoreVertical size={16} />
           </button>
@@ -152,7 +153,8 @@ export function FolderCard({
                 e.stopPropagation();
                 setMenuOpen(!menuOpen);
               }}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
+              aria-label="More actions"
+                className="tap-target p-1 rounded hover:bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100 transition"
             >
               <MoreVertical size={16} />
             </button>

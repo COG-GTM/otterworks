@@ -8,6 +8,9 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageLoader } from "@/components/ui/loading-spinner";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { authApi, settingsApi } from "@/lib/api";
+import { Capacitor } from "@capacitor/core";
+
+const isNative = Capacitor.isNativePlatform();
 import { useAuthStore } from "@/stores/auth-store";
 
 const profileSchema = z.object({
@@ -154,8 +157,8 @@ function SettingsContent() {
             }
           />
           <ToggleRow
-            label="Desktop notifications"
-            description="Show browser push notifications"
+            label={isNative ? "Push notifications" : "Desktop notifications"}
+            description={isNative ? "Show notifications on this device" : "Show browser push notifications"}
             checked={settings?.notificationDesktop ?? false}
             onChange={(checked) =>
               settingsMutation.mutate({ notificationDesktop: checked })
@@ -186,8 +189,11 @@ function ToggleRow({
       </div>
       <button
         type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+        className={`tap-target relative inline-flex h-6 w-11 items-center rounded-full transition ${
           checked ? "bg-otter-600" : "bg-gray-300"
         }`}
       >

@@ -27,12 +27,12 @@ export function AppShell({ children }: AppShellProps) {
         )}
       >
         {/* Top utility bar */}
-        <header className="sticky top-0 z-30 bg-white border-b border-gray-300 h-12">
-          <div className="flex items-center justify-between h-full px-3 lg:px-4">
+        <header className="sticky top-0 z-30 bg-white border-b border-gray-300 pt-[env(safe-area-inset-top)]">
+          <div className="flex items-center justify-between h-12 px-3 lg:px-4">
             <div className="flex items-center gap-3 flex-1">
               <button
                 onClick={toggleSidebar}
-                className="p-2 rounded hover:bg-gray-100 text-gray-500 lg:hidden"
+                className="tap-target p-2 rounded hover:bg-gray-100 text-gray-500 lg:hidden"
                 aria-label="Open menu"
               >
                 <Menu size={18} />
@@ -47,7 +47,7 @@ export function AppShell({ children }: AppShellProps) {
             <div className="flex items-center gap-1 ml-4">
               <a
                 href="/terms"
-                className="p-2 rounded hover:bg-gray-100 text-gray-500"
+                className="tap-target p-2 rounded hover:bg-gray-100 text-gray-500"
                 aria-label="Help"
                 title="Help & legal"
               >

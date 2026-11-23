@@ -14,7 +14,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-otter-50 text-gray-800">
       {/* Top utility bar */}
-      <header className="bg-white border-b border-gray-300">
+      <header className="bg-white border-b border-gray-300 pt-[env(safe-area-inset-top)]">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Logo size={36} />

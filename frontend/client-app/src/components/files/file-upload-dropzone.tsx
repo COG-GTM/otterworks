@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef, useEffect, useImperativeHandle, forwardRef } from "react";
 import type { Ref } from "react";
 import { useDropzone } from "react-dropzone";
+import { Capacitor } from "@capacitor/core";
 import { isAxiosError } from "axios";
 import { Upload, X, FileIcon, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { cn, formatFileSize } from "@/lib/utils";
@@ -284,7 +285,7 @@ export const FileUploadDropzone = forwardRef(function FileUploadDropzone(
         ) : (
           <>
             <p className="text-sm text-gray-600 font-medium">
-              Drag & drop files here, or click to browse
+              {Capacitor.isNativePlatform() ? "Tap to choose files" : "Drag & drop files here, or click to browse"}
             </p>
             <p className="text-xs text-gray-400 mt-1">
               Any file type, up to 100MB per file

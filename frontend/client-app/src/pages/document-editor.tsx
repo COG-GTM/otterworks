@@ -129,6 +129,7 @@ function DocumentEditorContent() {
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
             onClick={() => navigate(-1)}
+            aria-label="Back"
             className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 flex-shrink-0"
           >
             <ArrowLeft size={20} />
@@ -153,10 +154,10 @@ function DocumentEditorContent() {
               autoFocus
             />
           ) : (
-            <h1 className="text-xl font-bold truncate">
+            <h1 className="text-xl font-bold min-w-0 break-words">
               <button
                 type="button"
-                className="text-gray-900 cursor-pointer hover:text-otter-700 truncate bg-transparent border-0 p-0 text-left"
+                className="text-gray-900 cursor-pointer hover:text-otter-700 bg-transparent border-0 p-0 text-left"
                 onClick={() => {
                   setTitle(document.title);
                   setIsTitleEditing(true);

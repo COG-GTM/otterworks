@@ -1,4 +1,5 @@
-import { Link, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { QueryProvider } from "@/providers/query-provider";
 import { AuthProvider } from "@/providers/auth-provider";
@@ -39,10 +40,22 @@ function NotFound() {
   );
 }
 
+function ScrollToTopOnNavigate() {
+  const { pathname } = useLocation();
+  const navigationType = useNavigationType();
+
+  useEffect(() => {
+    if (navigationType !== "POP") window.scrollTo(0, 0);
+  }, [pathname, navigationType]);
+
+  return null;
+}
+
 export default function App() {
   return (
     <QueryProvider>
       <AuthProvider>
+        <ScrollToTopOnNavigate />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/dashboard" element={<DashboardPage />} />

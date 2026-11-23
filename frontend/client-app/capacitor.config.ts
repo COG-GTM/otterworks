@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: "com.otterworks.app",
   appName: "OtterWorks",
   webDir: "dist",
+  backgroundColor: "#f4f5f7",
   android: {
     path: "mobile/android",
     // WebView-level gate: lets the https-scheme webview issue requests to
@@ -18,6 +19,12 @@ const config: CapacitorConfig = {
   },
   ios: {
     path: "mobile/ios",
+  },
+  plugins: {
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: "#FDBB6F",
+    },
   },
 };
 
