@@ -20,7 +20,10 @@ description: How to test OtterWorks' failed-upload → admin-service → Slack a
 - Alternative: `FILE_UPLOAD_ALWAYS_FAIL=true` compose env.
 - Upload-failure alerts carry `dedup=false`, so every failed upload opens a new incident and a
   new Slack message (unlike Grafana-ingested alerts, which dedupe against an open incident for
-  the same service) — safe to repeat for multiple test runs.
+  the same service) — safe to repeat for multiple test runs (capped at
+  `ALERT_MAX_INCIDENTS_PER_SERVICE_PER_HOUR`, default 20, per service per hour).
+- admin-service rejects every alert unless `ALERT_WEBHOOK_SECRET` is set (no compose
+  default): put a random value in `.env` before `make up`, or alerts 401.
 
 ## Users / logins
 - Web app registration is open at http://localhost:3000/register (min 8-char password).

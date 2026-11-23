@@ -123,6 +123,14 @@ fi
 
 log "Configuring kubectl for EKS cluster ${EKS_CLUSTER}..."
 aws eks update-kubeconfig --name "${EKS_CLUSTER}" --region "${AWS_REGION}" --alias "${EKS_CLUSTER}"
+# Shared secret for admin-service's alert webhook (rejects every request
+# without it). Reused from the running release, else generated. Read only
+# once kubectl points at the cluster, so a redeploy does not rotate it.
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(kubectl -n "${NAMESPACE}" get secret admin-service-secrets \
+  -o jsonpath='{.data.ALERT_WEBHOOK_SECRET}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+# admin-service rejects the old compose default; replace it instead of reusing it.
+[ "${ALERT_WEBHOOK_SECRET:-}" = "demo-alert-secret" ] && ALERT_WEBHOOK_SECRET=""
+ALERT_WEBHOOK_SECRET="${ALERT_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
 
 # ---------- Step 4: Create namespace ----------
 
@@ -335,6 +343,13 @@ build_helm_args() {
     case "$service" in
       api-gateway|auth-service|document-service|collab-service|admin-service)
         add_secret JWT_SECRET "${JWT_SECRET}" ;;
+    esac
+  fi
+
+  if [ -n "${ALERT_WEBHOOK_SECRET:-}" ]; then
+    case "$service" in
+      admin-service|file-service|notification-service)
+        add_secret ALERT_WEBHOOK_SECRET "${ALERT_WEBHOOK_SECRET}" ;;
     esac
   fi
 
