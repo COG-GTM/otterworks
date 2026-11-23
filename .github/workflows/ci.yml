@@ -297,6 +297,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      # NGINX2Root regression check: the runtime image must ship a fixed nginx.
+      - run: docker build -t otterworks/web-app:ci .
+      - run: ../../scripts/check-nginx-version.sh otterworks/web-app:ci
 
   # Angular - Admin Dashboard
   admin-dashboard:
@@ -315,6 +318,9 @@ jobs:
       - run: npm run lint || true
       - run: npm test || true
       - run: npm run build
+      # NGINX2Root regression check: the runtime image must ship a fixed nginx.
+      - run: docker build -t otterworks/admin-dashboard:ci .
+      - run: ../../scripts/check-nginx-version.sh otterworks/admin-dashboard:ci
 
   # Java 8 / Maven - Report Service (LEGACY)
   report-service:

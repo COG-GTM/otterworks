@@ -21,6 +21,13 @@
 
 INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
 
+# Pinned so a deploy never picks up an unreviewed chart. 4.15.1 (controller
+# v1.15.1) is the final ingress-nginx release and still bundles nginx 1.27.1,
+# which is affected by NGINX2Root (HTTP/2, fixed in nginx 1.30.7 / 1.31.9);
+# no fixed chart exists, so closing that exposure needs a separate change
+# (disable HTTP/2 at the edge or move to another controller).
+INGRESS_NGINX_CHART_VERSION="${INGRESS_NGINX_CHART_VERSION:-4.15.1}"
+
 # Reuse the caller's logging when it has some, so output stays consistent with
 # the script that sourced this one.
 ing_log()  { if declare -F log  >/dev/null; then log  "$@"; else echo "[ingress] $*"; fi; }
@@ -53,6 +60,7 @@ ensure_ingress_nginx() {
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
   # is ever scaled to zero. It costs one port and one ClusterIP Service.
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+    --version "${INGRESS_NGINX_CHART_VERSION}" \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     "${reuse[@]}" \
     --set controller.service.type=LoadBalancer \
