@@ -71,3 +71,63 @@ async def test_export_endpoint_404s_for_unreadable_file(client, monkeypatch, tmp
     resp = await client.get("/api/v1/documents/exports", params={"name": "locked.md"})
 
     assert resp.status_code == 404
+
+
+@pytest.fixture
+def secret_outside_archive(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secrets.env").write_text("JWT_SECRET=x\n", encoding="utf-8")
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir()
+    (archive_dir / "report.md").write_text("# Report\n", encoding="utf-8")
+    return archive_dir, outside / "secrets.env"
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["../outside/secrets.env", "reports/../../outside/secrets.env", ".", "", "/etc/passwd"],
+)
+def test_rejects_names_outside_archive(secret_outside_archive, name):
+    archive_dir, _ = secret_outside_archive
+    with pytest.raises(FileNotFoundError):
+        ExportArchive(base_dir=str(archive_dir)).read_export(name)
+
+
+def test_rejects_absolute_path(secret_outside_archive):
+    archive_dir, secret = secret_outside_archive
+    with pytest.raises(FileNotFoundError):
+        ExportArchive(base_dir=str(archive_dir)).read_export(str(secret))
+
+
+def test_rejects_symlink_escaping_archive(secret_outside_archive):
+    archive_dir, secret = secret_outside_archive
+    (archive_dir / "link.env").symlink_to(secret)
+    with pytest.raises(FileNotFoundError):
+        ExportArchive(base_dir=str(archive_dir)).read_export("link.env")
+
+
+def test_rejects_sibling_directory_sharing_prefix(tmp_path):
+    archive_dir = tmp_path / "exports"
+    archive_dir.mkdir()
+    sibling = tmp_path / "exports-private"
+    sibling.mkdir()
+    (sibling / "secret.md").write_text("secret\n", encoding="utf-8")
+    with pytest.raises(FileNotFoundError):
+        ExportArchive(base_dir=str(archive_dir)).read_export("../exports-private/secret.md")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name",
+    ["../../../../etc/passwd", "/etc/passwd", "../../../../proc/self/environ", "/proc/self/environ"],
+)
+async def test_export_endpoint_404s_for_traversal(client, monkeypatch, tmp_path, name):
+    (tmp_path / "dast-control.txt").write_text("export archive reachable\n", encoding="utf-8")
+    monkeypatch.setenv("EXPORT_ARCHIVE_DIR", str(tmp_path))
+
+    resp = await client.get("/api/v1/documents/exports", params={"name": name})
+    assert resp.status_code == 404
+
+    ok = await client.get("/api/v1/documents/exports", params={"name": "dast-control.txt"})
+    assert ok.status_code == 200
