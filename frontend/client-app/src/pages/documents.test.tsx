@@ -146,17 +146,23 @@ describe("Documents page", () => {
     localStorage.setItem("otter_access_token", "stored-token");
     useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: true });
     const profileRequests: Request[] = [];
+    let failProfile = () => {};
+    const profileHeld = new Promise<void>((resolve) => (failProfile = resolve));
     billingServer.use(
-      http.get("http://localhost:3000/api/v1/auth/profile", ({ request }) => {
+      http.get("http://localhost:3000/api/v1/auth/profile", async ({ request }) => {
         profileRequests.push(request);
+        await profileHeld;
         return HttpResponse.json({ detail: "unavailable" }, { status: 503 });
       }),
     );
     const requests = serveDocuments(3, { token: "stored-token" });
     renderPage({ withAuth: true });
 
+    await waitFor(() => expect(profileRequests).toHaveLength(1));
+    expect(requests).toHaveLength(0);
+    failProfile();
+
     expect(await screen.findByText("Doc 3")).toBeInTheDocument();
-    expect(profileRequests).toHaveLength(1);
     expect(requests).toHaveLength(1);
     localStorage.removeItem("otter_access_token");
   });
