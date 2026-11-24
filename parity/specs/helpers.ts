@@ -57,3 +57,16 @@ export async function expectChartsDrawn(page: Page, min: number): Promise<void> 
     )
     .toBeGreaterThanOrEqual(min);
 }
+
+/** Clicks a mat-sort-header twice and checks the visible page re-orders ascending, then descending. */
+export async function expectSortsBy(page: Page, header: string, cells: string): Promise<void> {
+  const texts = async () => (await page.locator(cells).allInnerTexts()).map((t) => t.trim());
+  const sorted = (values: string[], dir: 1 | -1) => [...values].sort((a, b) => (a < b ? -dir : a > b ? dir : 0));
+  const headerCell = page.getByRole('columnheader', { name: header });
+  await headerCell.click();
+  await expect(headerCell).toHaveAttribute('aria-sort', 'ascending');
+  await expect.poll(async () => { const v = await texts(); return v.length > 1 && v.join('|') === sorted(v, 1).join('|'); }).toBe(true);
+  await headerCell.click();
+  await expect(headerCell).toHaveAttribute('aria-sort', 'descending');
+  await expect.poll(async () => { const v = await texts(); return v.length > 1 && v.join('|') === sorted(v, -1).join('|'); }).toBe(true);
+}

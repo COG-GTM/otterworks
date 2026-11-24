@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { expectChartsDrawn, pickOption, signIn, typeFilter, waitForSpinners } from './helpers';
+import { expectChartsDrawn, expectSortsBy, pickOption, signIn, typeFilter, waitForSpinners } from './helpers';
 
 async function open(page: Page, label: string, heading: string) {
   await signIn(page);
@@ -14,6 +14,7 @@ test('audit logs paginate and filter', async ({ page }) => {
   await expect(rows).toHaveCount(10);
   const label = page.locator('.mat-mdc-paginator-range-label');
   await expect(label).toHaveText(/1 . 10 of \d+/);
+  await expectSortsBy(page, 'Action', 'table[mat-table] tbody tr td.mat-column-action');
   await page.getByRole('button', { name: 'Next page' }).click();
   await expect(label).toHaveText(/11 . \d+ of \d+/);
 
@@ -77,6 +78,7 @@ test('storage quotas list and search', async ({ page }) => {
   await open(page, 'Storage Quotas', 'Storage Quotas');
   const rows = page.locator('table[mat-table] tbody tr');
   await expect(rows).toHaveCount(5);
+  await expectSortsBy(page, 'User', 'table[mat-table] tbody tr .user-name');
   await typeFilter(page, 'Search users', 'james');
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText('James Park');
