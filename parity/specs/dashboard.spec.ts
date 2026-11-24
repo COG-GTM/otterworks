@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signIn, waitForSpinners } from './helpers';
+import { expectChartsDrawn, signIn, waitForSpinners } from './helpers';
 
 test('dashboard shows the four stat cards and charts', async ({ page }) => {
   await signIn(page);
@@ -11,5 +11,6 @@ test('dashboard shows the four stat cards and charts', async ({ page }) => {
   await expect(totalUsers).toHaveText(/^\d[\d,]*$/);
   expect(Number((await totalUsers.innerText()).replace(/,/g, ''))).toBeGreaterThan(0);
   await expect(page.getByText('User Signups')).toBeVisible();
-  expect(await page.locator('canvas').count()).toBeGreaterThan(0);
+  await expect(page.getByText('Document Activity')).toBeVisible();
+  await expectChartsDrawn(page, 2);
 });

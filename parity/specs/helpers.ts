@@ -39,3 +39,21 @@ export async function pickOption(page: Page, option: string): Promise<void> {
   await page.getByRole('option', { name: option }).click();
   await expect(page.getByRole('listbox')).toHaveCount(0);
 }
+
+/** Waits until at least `min` canvases have painted pixels (Chart.js rendered, not just mounted). */
+export async function expectChartsDrawn(page: Page, min: number): Promise<void> {
+  await expect
+    .poll(() =>
+      page.locator('canvas').evaluateAll((canvases) =>
+        canvases.filter((c) => {
+          const canvas = c as HTMLCanvasElement;
+          const ctx = canvas.getContext('2d');
+          if (!ctx || !canvas.width || !canvas.height) return false;
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          for (let i = 3; i < data.length; i += 4) if (data[i]) return true;
+          return false;
+        }).length,
+      ),
+    )
+    .toBeGreaterThanOrEqual(min);
+}
