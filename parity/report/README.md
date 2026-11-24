@@ -77,7 +77,7 @@ between the baseline pass and the upgraded pass a minute later.
 
 ```bash
 # backend shared by both apps (admin-service on :8089 + Postgres), then seed it
-docker compose up -d postgres redis localstack admin-service
+docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build postgres redis localstack admin-service
 uv run scripts/seed.py
 
 # baseline: main before the upgrade, in a separate worktree, on :4000
