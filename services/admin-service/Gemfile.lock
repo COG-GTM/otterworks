@@ -262,7 +262,7 @@ GEM
     psych (5.3.1)
       date
       stringio
-    puma (6.6.1)
+    puma (7.2.3)
       nio4r (~> 2.0)
     racc (1.8.1)
     rack (3.2.6)
@@ -431,7 +431,7 @@ DEPENDENCIES
   opentelemetry-sdk (~> 1.4)
   pg (~> 1.5)
   prometheus_exporter (~> 2.1)
-  puma (~> 6.4)
+  puma (~> 7.2)
   rack-attack (~> 6.7)
   rack-cors (~> 2.0)
   rails (~> 7.1.3)
