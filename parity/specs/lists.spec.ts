@@ -89,5 +89,7 @@ test('analytics renders all charts', async ({ page }) => {
   for (const t of titles) {
     await expect(page.getByText(t, { exact: true })).toBeVisible();
   }
-  await expectChartsDrawn(page, titles.length);
+  await expect(page.locator('canvas')).toHaveCount(titles.length);
+  // The seed has no file-type data, so the Top File Types pie stays blank on both apps.
+  await expectChartsDrawn(page, titles.length - 1);
 });
