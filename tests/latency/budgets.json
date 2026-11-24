@@ -1,12 +1,36 @@
 {
   "endpoints": {
-    "auth_register":        { "request": "POST /api/v1/auth/register",  "p95_ms": 100000 },
-    "auth_login":           { "request": "POST /api/v1/auth/login",     "p95_ms": 100000 },
-    "auth_profile":         { "request": "GET /api/v1/auth/profile",    "p95_ms": 100000 },
-    "audit_record_event":   { "request": "POST /api/v1/audit/events",   "p95_ms": 100000 },
-    "audit_query_events":   { "request": "GET /api/v1/audit/events?user_id=…", "p95_ms": 100000 },
-    "gateway_health":       { "request": "GET /health (gateway)",       "p95_ms": 100000 },
-    "gateway_profile":      { "request": "GET /api/v1/auth/profile via gateway", "p95_ms": 100000 },
-    "gateway_audit_record": { "request": "POST /api/v1/audit/events via gateway", "p95_ms": 100000 }
+    "auth_register": {
+      "request": "POST /api/v1/auth/register",
+      "p95_ms": 100
+    },
+    "auth_login": {
+      "request": "POST /api/v1/auth/login",
+      "p95_ms": 100
+    },
+    "auth_profile": {
+      "request": "GET /api/v1/auth/profile",
+      "p95_ms": 25
+    },
+    "audit_record_event": {
+      "request": "POST /api/v1/audit/events",
+      "p95_ms": 25
+    },
+    "audit_query_events": {
+      "request": "GET /api/v1/audit/events?user_id=…",
+      "p95_ms": 50
+    },
+    "gateway_health": {
+      "request": "GET /health (gateway)",
+      "p95_ms": 10
+    },
+    "gateway_profile": {
+      "request": "GET /api/v1/auth/profile via gateway",
+      "p95_ms": 25
+    },
+    "gateway_audit_record": {
+      "request": "POST /api/v1/audit/events via gateway",
+      "p95_ms": 25
+    }
   }
 }
