@@ -21,6 +21,15 @@
 
 INGRESS_NAMESPACE="${INGRESS_NAMESPACE:-ingress-nginx}"
 
+# HTTP/2 is off on the shared controller because of NGINX2Root: five bugs in
+# nginx's HTTP/2 module (nginx 1.9.5-1.31.8; fixed in 1.30.7 stable and 1.31.9
+# mainline). ingress-nginx is retired and every controller it ever released
+# (v1.15.1 is the last) bundles nginx 1.27.1, so no chart or image bump fixes
+# it. With use-http2=false the HTTPS listeners are plain HTTP/1.1, the vulnerable
+# code is never reached, and clients that offer h2 fall back via ALPN.
+# Set to "true" only once the controller ships nginx >= 1.30.7 / 1.31.9.
+INGRESS_USE_HTTP2="${INGRESS_USE_HTTP2:-false}"
+
 # Reuse the caller's logging when it has some, so output stays consistent with
 # the script that sourced this one.
 ing_log()  { if declare -F log  >/dev/null; then log  "$@"; else echo "[ingress] $*"; fi; }
@@ -52,6 +61,9 @@ ensure_ingress_nginx() {
   # decides which tenants are idle from this controller's per-namespace request
   # counter -- with no metrics endpoint the idle scan fails closed and nothing
   # is ever scaled to zero. It costs one port and one ClusterIP Service.
+  #
+  # use-http2 is passed on every run, also with --reuse-values, so the shared
+  # controller is put back to HTTP/1.1 on each deploy (see INGRESS_USE_HTTP2).
   helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
     --namespace "${INGRESS_NAMESPACE}" --create-namespace \
     "${reuse[@]}" \
@@ -62,6 +74,7 @@ ensure_ingress_nginx() {
     --set controller.resources.requests.memory=128Mi \
     --set controller.metrics.enabled=true \
     --set controller.config.proxy-body-size=100m \
+    --set-string controller.config.use-http2="${INGRESS_USE_HTTP2}" \
     --wait --timeout 5m || ing_warn "ingress-nginx install reported an issue; continuing."
 
   kubectl label namespace "${INGRESS_NAMESPACE}" \

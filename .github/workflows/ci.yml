@@ -398,6 +398,10 @@ jobs:
       - run: ./demo-platform/reaper/test-idle-suspend.sh
       - run: ./demo-platform/reaper/test-infra-sweep.sh
       - run: ./demo-platform/reaper/test-orphan-sweep.sh
+      # NGINX2Root: the shared ingress-nginx controller bundles nginx 1.27.1, so
+      # its install script must keep HTTP/2 off.
+      - run: shellcheck scripts/lib/ingress-nginx.sh scripts/check-ingress-http2.sh scripts/test-ingress-nginx.sh
+      - run: ./scripts/test-ingress-nginx.sh
 
   # Terraform validation for the demo control plane's own stack
   demo-platform-terraform:
