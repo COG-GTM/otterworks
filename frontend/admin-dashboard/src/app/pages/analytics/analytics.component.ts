@@ -4,7 +4,8 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
-import { BaseChartDirective, provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { BaseChartDirective } from 'ng2-charts';
+import { provideAppCharts } from '../../shared/charts';
 import { ChartConfiguration } from 'chart.js';
 import { AdminApiService } from '../../core/services/admin-api.service';
 import { AnalyticsReport } from '../../core/models/analytics.model';
@@ -18,7 +19,7 @@ import { AnalyticsReport } from '../../core/models/analytics.model';
     MatButtonModule,
     BaseChartDirective
 ],
-    providers: [provideCharts(withDefaultRegisterables())],
+    providers: [provideAppCharts()],
     template: `
     <div class="page-container">
       <h1 class="page-title">Analytics</h1>
