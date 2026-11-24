@@ -18,6 +18,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+  static final int MIN_BCRYPT_STRENGTH = 10;
+  static final int MAX_BCRYPT_STRENGTH = 14;
+
   private final JwtAuthFilter jwtAuthFilter;
 
   public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
@@ -53,6 +56,19 @@ public class SecurityConfig {
 
   @Bean
   public PasswordEncoder passwordEncoder(@Value("${security.bcrypt-strength:10}") int strength) {
-    return new BCryptPasswordEncoder(strength);
+    return new BCryptPasswordEncoder(requireValidStrength(strength));
+  }
+
+  static int requireValidStrength(int strength) {
+    if (strength < MIN_BCRYPT_STRENGTH || strength > MAX_BCRYPT_STRENGTH) {
+      throw new IllegalArgumentException(
+          "security.bcrypt-strength must be between "
+              + MIN_BCRYPT_STRENGTH
+              + " and "
+              + MAX_BCRYPT_STRENGTH
+              + ", got "
+              + strength);
+    }
+    return strength;
   }
 }

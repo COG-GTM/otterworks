@@ -38,7 +38,8 @@ class AuthServiceTest {
   @BeforeEach
   void setUp() {
     authService =
-        new AuthService(userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
     testUser = new User();
     testUser.setId(UUID.randomUUID());
     testUser.setEmail("test@otterworks.dev");
@@ -120,7 +121,8 @@ class AuthServiceTest {
   @Test
   void login_shouldRehashPasswordStoredAtHigherCost() {
     authService =
-        new AuthService(userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 10);
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 10);
     LoginRequest request = new LoginRequest();
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
@@ -140,7 +142,8 @@ class AuthServiceTest {
   @Test
   void login_shouldKeepPasswordHashAtConfiguredCost() {
     authService =
-        new AuthService(userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
     LoginRequest request = new LoginRequest();
     request.setEmail("test@otterworks.dev");
     request.setPassword("password123");
