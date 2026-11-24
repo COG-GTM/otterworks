@@ -46,8 +46,9 @@ clients/windows-desktop/
 
 - **Windows 10/11 or Windows Server 2019/2022**
 - **.NET 10 SDK** (`dotnet --list-sdks` shows `10.0.x`). It builds both targets.
-- To build the `net48` target: the **.NET Framework 4.8 Developer Pack** (targeting pack /
-  reference assemblies), installed with Visual Studio's *.NET desktop development* workload.
+  The `net48` reference assemblies are restored from NuGet
+  (`Microsoft.NETFramework.ReferenceAssemblies`) when the .NET Framework 4.8 Developer Pack
+  is not installed, so neither the Developer Pack nor Visual Studio is required.
 - To run: the **.NET 10 Desktop Runtime** for the `net10.0-windows` build, the
   **.NET Framework 4.8 runtime** (preinstalled on current Windows) for the `net48` build.
 

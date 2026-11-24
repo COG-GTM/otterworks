@@ -30,7 +30,12 @@ namespace OtterWorks.Desktop.Services
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _baseUrl = settings.ApiBaseUrl.TrimEnd('/');
 
+#if NET
+            var handler = new HttpClientHandler { Proxy = new LoopbackBypassProxy(HttpClient.DefaultProxy) };
+            _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+#else
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+#endif
         }
 
         public async Task<AuthResponse> RegisterAsync(string displayName, string email, string password)
