@@ -1,0 +1,5 @@
+{
+  "default_p95_ms": 100,
+  "max_error_rate": 0.01,
+  "endpoints": {}
+}

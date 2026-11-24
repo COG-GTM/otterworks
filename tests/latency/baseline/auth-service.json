@@ -1,0 +1,28 @@
+{
+  "service": "auth-service",
+  "rate_per_sec": 10,
+  "duration": "30s",
+  "endpoints": {
+    "auth_login": {
+      "p50": 254,
+      "p95": 261.2,
+      "p99": 272.7,
+      "count": 300,
+      "error_rate": 0
+    },
+    "auth_get_profile": {
+      "p50": 3.1,
+      "p95": 4.3,
+      "p99": 5.3,
+      "count": 301,
+      "error_rate": 0
+    },
+    "auth_update_profile": {
+      "p50": 2.8,
+      "p95": 4.1,
+      "p99": 7.5,
+      "count": 301,
+      "error_rate": 0
+    }
+  }
+}

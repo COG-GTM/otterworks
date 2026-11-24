@@ -1,0 +1,28 @@
+{
+  "service": "api-gateway",
+  "rate_per_sec": 10,
+  "duration": "30s",
+  "endpoints": {
+    "gateway_health": {
+      "p50": 0.5,
+      "p95": 0.9,
+      "p99": 1,
+      "count": 301,
+      "error_rate": 0
+    },
+    "gateway_proxy_get_profile": {
+      "p50": 3.2,
+      "p95": 6,
+      "p99": 9.6,
+      "count": 301,
+      "error_rate": 0
+    },
+    "gateway_proxy_record_audit": {
+      "p50": 8.7,
+      "p95": 20,
+      "p99": 31.4,
+      "count": 301,
+      "error_rate": 0
+    }
+  }
+}
