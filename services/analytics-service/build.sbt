@@ -1,4 +1,4 @@
-val scala3Version = "3.4.0"
+val scala3Version = "3.9.0"
 
 lazy val root = project
   .in(file("."))
@@ -24,8 +24,8 @@ lazy val root = project
       "io.circe" %% "circe-parser" % "0.14.17",
 
       // Database - Slick for PostgreSQL
-      "com.typesafe.slick" %% "slick" % "3.5.2" cross CrossVersion.for3Use2_13,
-      "com.typesafe.slick" %% "slick-hikaricp" % "3.5.2" cross CrossVersion.for3Use2_13,
+      "com.typesafe.slick" %% "slick" % "3.6.1" cross CrossVersion.for3Use2_13,
+      "com.typesafe.slick" %% "slick-hikaricp" % "3.6.1" cross CrossVersion.for3Use2_13,
       "org.postgresql" % "postgresql" % "42.7.15",
 
       // Schema migrations (Flyway bundles PostgreSQL support in the 9.x line)
