@@ -14,8 +14,8 @@
   {
     "name": "03-dashboard.png",
     "size": "1440x900 / 1440x900",
-    "changed": 951,
-    "percent": "0.073"
+    "changed": 928,
+    "percent": "0.072"
   },
   {
     "name": "04-users.png",
@@ -26,14 +26,14 @@
   {
     "name": "05-user-detail.png",
     "size": "1440x976 / 1440x976",
-    "changed": 9037,
+    "changed": 9038,
     "percent": "0.643"
   },
   {
     "name": "06-audit.png",
     "size": "1440x1694 / 1440x1694",
-    "changed": 13565,
-    "percent": "0.556"
+    "changed": 11913,
+    "percent": "0.488"
   },
   {
     "name": "07-features.png",
@@ -44,8 +44,8 @@
   {
     "name": "08-health.png",
     "size": "1440x1003 / 1440x1003",
-    "changed": 576,
-    "percent": "0.040"
+    "changed": 476,
+    "percent": "0.033"
   },
   {
     "name": "09-announcements.png",
@@ -74,13 +74,13 @@
   {
     "name": "13-announcement-form.png",
     "size": "1440x1071 / 1440x1071",
-    "changed": 756,
-    "percent": "0.049"
+    "changed": 708,
+    "percent": "0.046"
   },
   {
     "name": "14-incident-form.png",
     "size": "1440x1425 / 1440x1425",
-    "changed": 445,
-    "percent": "0.022"
+    "changed": 396,
+    "percent": "0.019"
   }
 ]

@@ -52,18 +52,18 @@ between the baseline pass and the upgraded pass a minute later.
 | --- | --- | --- | --- |
 | [01-login.png](compare/01-login.png) | 1440x900 / 1440x900 | 0 | 0.000% |
 | [02-login-validation.png](compare/02-login-validation.png) | 1440x900 / 1440x900 | 0 | 0.000% |
-| [03-dashboard.png](compare/03-dashboard.png) | 1440x900 / 1440x900 | 951 | 0.073% |
+| [03-dashboard.png](compare/03-dashboard.png) | 1440x900 / 1440x900 | 928 | 0.072% |
 | [04-users.png](compare/04-users.png) | 1440x900 / 1440x900 | 2468 | 0.190% |
-| [05-user-detail.png](compare/05-user-detail.png) | 1440x976 / 1440x976 | 9037 | 0.643% |
-| [06-audit.png](compare/06-audit.png) | 1440x1694 / 1440x1694 | 13565 | 0.556% |
+| [05-user-detail.png](compare/05-user-detail.png) | 1440x976 / 1440x976 | 9038 | 0.643% |
+| [06-audit.png](compare/06-audit.png) | 1440x1694 / 1440x1694 | 11913 | 0.488% |
 | [07-features.png](compare/07-features.png) | 1440x900 / 1440x900 | 609 | 0.047% |
-| [08-health.png](compare/08-health.png) | 1440x1003 / 1440x1003 | 576 | 0.040% |
+| [08-health.png](compare/08-health.png) | 1440x1003 / 1440x1003 | 476 | 0.033% |
 | [09-announcements.png](compare/09-announcements.png) | 1440x900 / 1440x900 | 24 | 0.002% |
 | [10-quotas.png](compare/10-quotas.png) | 1440x900 / 1440x900 | 58 | 0.004% |
 | [11-incidents.png](compare/11-incidents.png) | 1440x973 / 1440x973 | 197 | 0.014% |
 | [12-analytics.png](compare/12-analytics.png) | 1440x2697 / 1440x2697 | 0 | 0.000% |
-| [13-announcement-form.png](compare/13-announcement-form.png) | 1440x1071 / 1440x1071 | 756 | 0.049% |
-| [14-incident-form.png](compare/14-incident-form.png) | 1440x1425 / 1440x1425 | 445 | 0.022% |
+| [13-announcement-form.png](compare/13-announcement-form.png) | 1440x1071 / 1440x1071 | 708 | 0.046% |
+| [14-incident-form.png](compare/14-incident-form.png) | 1440x1425 / 1440x1425 | 396 | 0.019% |
 
 ## Build (production `ng build`)
 
@@ -86,12 +86,12 @@ git worktree add ../otterworks-baseline cc23bf19   # main before this upgrade (A
 cd ../otterworks-baseline/frontend/admin-dashboard && npm ci
 API_GATEWAY_URL=http://localhost:8089 npx ng serve --port 4000
 
-# upgraded: this branch on :4200 (Node >= 20.19)
+# upgraded: this branch on :4200 (Node ^20.19, ^22.12 or >= 24, per @angular/cli 21 engines)
 cd frontend/admin-dashboard && npm ci
 API_GATEWAY_URL=http://localhost:8089 npx ng serve --port 4200
 
 # parity suite + report
 cd parity && npm ci && npx playwright install chromium
-npx playwright test          # or --project=baseline / --project=upgraded
+npx playwright test          # both projects in one run; compose-report only diffs shots from that run
 node compose-report.mjs
 ```
