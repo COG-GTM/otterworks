@@ -78,10 +78,11 @@ between the baseline pass and the upgraded pass a minute later.
 ```bash
 # backend shared by both apps (admin-service on :8089 + Postgres), then seed it
 docker compose -f docker-compose.infra.yml -f docker-compose.yml up -d --build postgres redis localstack admin-service
+until curl -sf http://localhost:8089/health; do sleep 2; done   # wait for admin-service migrations
 uv run scripts/seed.py
 
 # baseline: main before the upgrade, in a separate worktree, on :4000
-git worktree add ../otterworks-baseline main
+git worktree add ../otterworks-baseline cc23bf19   # main before this upgrade (Angular 17.3)
 cd ../otterworks-baseline/frontend/admin-dashboard && npm ci
 API_GATEWAY_URL=http://localhost:8089 npx ng serve --port 4000
 
