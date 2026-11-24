@@ -32,14 +32,7 @@ namespace OtterWorks.Desktop.Services
 
 #if NET
             UseWindowsProxySettingsOnly();
-            var handler = new HttpClientHandler();
-            Uri baseUri;
-            if (Uri.TryCreate(_baseUrl, UriKind.Absolute, out baseUri) && baseUri.IsLoopback)
-            {
-                handler.Proxy = new LoopbackBypassProxy(HttpClient.DefaultProxy);
-            }
-
-            _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
+            _http = new HttpClient(new ProxyRoutingHandler()) { Timeout = TimeSpan.FromSeconds(30) };
 #else
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
 #endif
@@ -167,9 +160,7 @@ namespace OtterWorks.Desktop.Services
         /// settings and never proxies loopback, while .NET's <c>HttpClient.DefaultProxy</c>
         /// prefers the proxy environment variables. Clearing them for this process before the
         /// first request leaves the default proxy on the Windows settings (PAC, bypass list,
-        /// failover). The Windows proxy does not skip loopback, so a loopback gateway gets
-        /// <see cref="LoopbackBypassProxy"/>, which still proxies remote redirect targets;
-        /// a remote gateway keeps the default proxy and its failover.
+        /// failover). <see cref="ProxyRoutingHandler"/> keeps loopback direct.
         /// </summary>
         private static void UseWindowsProxySettingsOnly()
         {
