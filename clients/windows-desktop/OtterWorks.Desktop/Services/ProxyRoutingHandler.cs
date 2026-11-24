@@ -11,7 +11,8 @@ namespace OtterWorks.Desktop.Services
     /// Picks the proxy for every request and redirect hop the way .NET Framework does:
     /// loopback goes direct, anything else uses the default (Windows) proxy with its PAC
     /// and failover. A handler's proxy choice applies to all of its hops, so redirects are
-    /// followed here, using the same rules as <see cref="HttpClientHandler"/>.
+    /// followed here, using the rules of <see cref="HttpClientHandler"/> except that a 308 is
+    /// returned rather than followed, as on .NET Framework.
     /// </summary>
     internal sealed class ProxyRoutingHandler : HttpMessageHandler
     {
@@ -72,7 +73,6 @@ namespace OtterWorks.Desktop.Services
                 case HttpStatusCode.Found:
                 case HttpStatusCode.SeeOther:
                 case HttpStatusCode.TemporaryRedirect:
-                case HttpStatusCode.PermanentRedirect:
                     break;
                 default:
                     return null;
