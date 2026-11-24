@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -452,6 +452,10 @@ const CHAOS_STATE_KEY = 'ow_admin_chaos_state';
   `]
 })
 export class IncidentsComponent implements OnInit, OnDestroy {
+  private api = inject(AdminApiService);
+  private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+
   incidents: Incident[] = [];
   loading = true;
   creating = false;
@@ -475,12 +479,6 @@ export class IncidentsComponent implements OnInit, OnDestroy {
   }
 
   private pollSub?: Subscription;
-
-  constructor(
-    private api: AdminApiService,
-    private snackBar: MatSnackBar,
-    private dialog: MatDialog,
-  ) {}
 
   ngOnInit(): void {
     this.loadChaosState();

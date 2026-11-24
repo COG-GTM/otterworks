@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -164,6 +164,8 @@ import { AuditEvent } from '../../core/models/audit.model';
   `]
 })
 export class AuditComponent implements OnInit {
+  private api = inject(AdminApiService);
+
   displayedColumns = ['timestamp', 'userName', 'action', 'resourceName', 'severity', 'details'];
   dataSource = new MatTableDataSource<AuditEvent>([]);
   loading = true;
@@ -177,8 +179,6 @@ export class AuditComponent implements OnInit {
   @ViewChild(MatSort) set matSort(sort: MatSort) {
     this.dataSource.sort = sort;
   }
-
-  constructor(private api: AdminApiService) {}
 
   ngOnInit(): void {
     this.api.getAuditEvents().subscribe(events => {

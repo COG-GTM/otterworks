@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from './layout/sidebar/sidebar.component';
@@ -45,7 +45,7 @@ import { AuthService } from './core/services/auth.service';
   `]
 })
 export class AppComponent {
-  sidebarCollapsed = false;
+  authService = inject(AuthService);
 
-  constructor(public authService: AuthService) {}
+  sidebarCollapsed = false;
 }

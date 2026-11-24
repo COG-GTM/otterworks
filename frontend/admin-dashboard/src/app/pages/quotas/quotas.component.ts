@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -131,6 +131,9 @@ import { User } from '../../core/models/user.model';
   `]
 })
 export class QuotasComponent implements OnInit {
+  private api = inject(AdminApiService);
+  private snackBar = inject(MatSnackBar);
+
   displayedColumns = ['displayName', 'storageUsed', 'storageQuota', 'usage', 'actions'];
   dataSource = new MatTableDataSource<User>([]);
   loading = true;
@@ -142,8 +145,6 @@ export class QuotasComponent implements OnInit {
   @ViewChild(MatSort) set matSort(sort: MatSort) {
     this.dataSource.sort = sort;
   }
-
-  constructor(private api: AdminApiService, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
     this.api.getUsers().subscribe(users => {

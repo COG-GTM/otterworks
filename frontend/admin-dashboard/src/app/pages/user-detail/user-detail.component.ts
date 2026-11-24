@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -216,19 +216,17 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
   `]
 })
 export class UserDetailComponent implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private api = inject(AdminApiService);
+  private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+
   user: User | null = null;
   activities: UserActivity[] = [];
   loading = true;
   storagePercentage = 0;
   activityColumns = ['timestamp', 'action', 'resource', 'ipAddress'];
-
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private api: AdminApiService,
-    private snackBar: MatSnackBar,
-    private dialog: MatDialog,
-  ) {}
 
   ngOnInit(): void {
     const userId = this.route.snapshot.paramMap.get('id');

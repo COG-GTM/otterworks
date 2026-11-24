@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -114,11 +114,12 @@ import { FeatureFlag } from '../../core/models/feature-flag.model';
   `]
 })
 export class FeaturesComponent implements OnInit {
+  private api = inject(AdminApiService);
+  private snackBar = inject(MatSnackBar);
+
   flags: FeatureFlag[] = [];
   loading = true;
   searchTerm = '';
-
-  constructor(private api: AdminApiService, private snackBar: MatSnackBar) {}
 
   ngOnInit(): void {
     this.api.getFeatureFlags().subscribe(flags => {

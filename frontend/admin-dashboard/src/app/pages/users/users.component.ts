@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild } from '@angular/core';
+import { Component, OnInit, ViewChild, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -176,6 +176,11 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
   `]
 })
 export class UsersComponent implements OnInit {
+  private api = inject(AdminApiService);
+  private router = inject(Router);
+  private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+
   displayedColumns = ['displayName', 'role', 'status', 'department', 'lastLogin', 'actions'];
   dataSource = new MatTableDataSource<User>([]);
   loading = true;
@@ -189,13 +194,6 @@ export class UsersComponent implements OnInit {
   @ViewChild(MatSort) set matSort(sort: MatSort) {
     this.dataSource.sort = sort;
   }
-
-  constructor(
-    private api: AdminApiService,
-    private router: Router,
-    private snackBar: MatSnackBar,
-    private dialog: MatDialog,
-  ) {}
 
   ngOnInit(): void {
     this.loadUsers();

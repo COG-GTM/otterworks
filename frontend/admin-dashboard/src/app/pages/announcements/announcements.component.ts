@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -187,16 +187,14 @@ import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog.c
   `]
 })
 export class AnnouncementsComponent implements OnInit {
+  private api = inject(AdminApiService);
+  private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
+
   announcements: Announcement[] = [];
   loading = true;
   showCreateForm = false;
   newAnnouncement: Partial<Announcement> = { priority: 'medium', targetAudience: 'all' };
-
-  constructor(
-    private api: AdminApiService,
-    private snackBar: MatSnackBar,
-    private dialog: MatDialog,
-  ) {}
 
   ngOnInit(): void {
     this.loadAnnouncements();

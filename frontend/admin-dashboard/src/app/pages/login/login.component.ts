@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -137,13 +137,16 @@ import { AuthService } from '../../core/services/auth.service';
   `]
 })
 export class LoginComponent {
+  private authService = inject(AuthService);
+  private router = inject(Router);
+
   email = '';
   password = '';
   hidePassword = true;
   loading = false;
   errorMessage = '';
 
-  constructor(private authService: AuthService, private router: Router) {
+  constructor() {
     if (this.authService.isAuthenticated) {
       this.router.navigate(['/']);
     }

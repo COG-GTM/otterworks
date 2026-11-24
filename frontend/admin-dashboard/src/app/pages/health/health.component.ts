@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -172,12 +172,12 @@ import { ServiceHealth } from '../../core/models/system-health.model';
   `]
 })
 export class HealthComponent implements OnInit {
+  private api = inject(AdminApiService);
+
   services: ServiceHealth[] = [];
   loading = true;
   error = false;
   healthyCounts = { healthy: 0, degraded: 0, down: 0 };
-
-  constructor(private api: AdminApiService) {}
 
   ngOnInit(): void {
     this.loadHealth();
