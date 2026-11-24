@@ -1,7 +1,7 @@
 plugins {
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.serialization") version "1.9.23"
-    id("io.ktor.plugin") version "2.3.9"
+    id("io.ktor.plugin") version "2.3.13"
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
@@ -16,14 +16,25 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "2.3.9"
+val ktorVersion = "2.3.13"
 val awsSdkVersion = "1.0.70"
 val coroutinesVersion = "1.8.0"
 val koinVersion = "3.5.3"
 val micrometerVersion = "1.12.4"
-val commonsTextVersion = "1.9"
+val nettyVersion = "4.1.141.Final"
+val jacksonVersion = "2.22.4"
+val openTelemetryVersion = "1.68.0"
+val commonsTextVersion = "1.15.0"
 
 dependencies {
+    // Transitive security floors: Netty (via Ktor), Jackson (via logstash-logback-encoder),
+    // org.json (via Jedis) carry published CVEs at the versions their parents pull.
+    implementation(platform("io.netty:netty-bom:$nettyVersion"))
+    implementation(platform("com.fasterxml.jackson:jackson-bom:$jacksonVersion"))
+    constraints {
+        implementation("org.json:json:20260814")
+    }
+
     // Ktor Server
     implementation("io.ktor:ktor-server-core-jvm:$ktorVersion")
     implementation("io.ktor:ktor-server-netty-jvm:$ktorVersion")
@@ -60,15 +71,15 @@ dependencies {
     implementation("io.insert-koin:koin-logger-slf4j:$koinVersion")
 
     // Logging
-    implementation("ch.qos.logback:logback-classic:1.5.3")
+    implementation("ch.qos.logback:logback-classic:1.5.38")
     implementation("net.logstash.logback:logstash-logback-encoder:7.4")
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.5")
 
     // Metrics & Tracing
     implementation("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
-    implementation("io.opentelemetry:opentelemetry-api:1.36.0")
-    implementation("io.opentelemetry:opentelemetry-sdk:1.36.0")
-    implementation("io.opentelemetry:opentelemetry-exporter-otlp:1.36.0")
+    implementation("io.opentelemetry:opentelemetry-api:$openTelemetryVersion")
+    implementation("io.opentelemetry:opentelemetry-sdk:$openTelemetryVersion")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:$openTelemetryVersion")
 
     // Redis (chaos flag checks)
     implementation("redis.clients:jedis:5.1.3")
