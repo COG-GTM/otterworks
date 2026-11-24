@@ -24,12 +24,21 @@ const resultsPath = path.join(root, 'results.json');
 const runStart = existsSync(resultsPath) ? Date.parse(JSON.parse(readFileSync(resultsPath, 'utf8')).stats.startTime) : 0;
 const isStale = (file) => statSync(file).mtimeMs < runStart;
 
-const names = existsSync(shots('baseline')) ? readdirSync(shots('baseline')).filter((f) => f.endsWith('.png')).sort() : [];
+const list = (p) => (existsSync(shots(p)) ? readdirSync(shots(p)).filter((f) => f.endsWith('.png')) : []);
+const names = [...new Set([...list('baseline'), ...list('upgraded')])].sort();
+if (names.length === 0) {
+  console.error('No screenshots under report/shots; run `npx playwright test` (both projects) first.');
+  process.exit(1);
+}
 const rows = [];
 for (const name of names) {
   const upgradedPath = path.join(shots('upgraded'), name);
+  if (!existsSync(path.join(shots('baseline'), name))) {
+    rows.push({ name, missing: 'baseline' });
+    continue;
+  }
   if (!existsSync(upgradedPath)) {
-    rows.push({ name, missing: true });
+    rows.push({ name, missing: 'upgraded' });
     continue;
   }
   if (isStale(path.join(shots('baseline'), name)) || isStale(upgradedPath)) {
@@ -64,7 +73,7 @@ const md = [
   '| Screen | Baseline / upgraded size | Changed pixels | Diff % |',
   '| --- | --- | --- | --- |',
   ...rows.map((r) =>
-    r.missing ? `| ${r.name} | missing upgraded shot | - | - |` :
+    r.missing ? `| ${r.name} | missing ${r.missing} shot | - | - |` :
     r.stale ? `| ${r.name} | stale shot (not from the last run) | - | - |` : `| [${r.name}](compare/${r.name}) | ${r.size} | ${r.changed} | ${r.percent}% |`,
   ),
 ].join('\n');
