@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { HttpClient } from '@angular/common/http';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { tap, delay, map } from 'rxjs/operators';
@@ -24,15 +25,12 @@ export class AuthService {
 
   private readonly TOKEN_KEY = 'ow_admin_token';
   private readonly USER_KEY = 'ow_admin_user';
-  private currentUserSubject = new BehaviorSubject<AuthUser | null>(this.getStoredUser());
-  currentUser$ = this.currentUserSubject.asObservable();
+  private readonly currentUserSubject = new BehaviorSubject<AuthUser | null>(this.getStoredUser());
+  readonly currentUser$ = this.currentUserSubject.asObservable();
+  readonly currentUser = toSignal(this.currentUser$, { requireSync: true });
 
   get isAuthenticated(): boolean {
     return !!this.getToken();
-  }
-
-  get currentUser(): AuthUser | null {
-    return this.currentUserSubject.value;
   }
 
   getToken(): string | null {

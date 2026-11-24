@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 
 import { RouterOutlet } from '@angular/router';
 import { SidebarComponent } from './layout/sidebar/sidebar.component';
@@ -14,7 +14,7 @@ import { AuthService } from './core/services/auth.service';
         <app-sidebar [(collapsed)]="sidebarCollapsed"></app-sidebar>
         <div class="main-area">
           <app-toolbar></app-toolbar>
-          <main class="content" [class.sidebar-collapsed]="sidebarCollapsed">
+          <main class="content" [class.sidebar-collapsed]="sidebarCollapsed()">
             <router-outlet></router-outlet>
           </main>
         </div>
@@ -47,5 +47,5 @@ import { AuthService } from './core/services/auth.service';
 export class AppComponent {
   authService = inject(AuthService);
 
-  sidebarCollapsed = false;
+  readonly sidebarCollapsed = signal(false);
 }

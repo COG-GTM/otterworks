@@ -13,7 +13,7 @@ import { AuthService } from '../../core/services/auth.service';
     <mat-toolbar class="app-toolbar">
       <span class="toolbar-title">Admin Dashboard</span>
       <span class="spacer"></span>
-      @if (authService.currentUser; as user) {
+      @if (authService.currentUser(); as user) {
         <span class="user-info">
           <mat-icon>account_circle</mat-icon>
           <span class="user-name">{{ user.displayName }}</span>

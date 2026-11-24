@@ -29,7 +29,7 @@ describe('AuthService', () => {
 
   it('should not be authenticated initially', () => {
     expect(service.isAuthenticated).toBeFalse();
-    expect(service.currentUser).toBeNull();
+    expect(service.currentUser()).toBeNull();
   });
 
   it('should login successfully with valid credentials', fakeAsync(() => {
@@ -42,7 +42,7 @@ describe('AuthService', () => {
     expect(loggedInUser!.email).toBe('admin@otterworks.io');
     expect(loggedInUser!.role).toBe('admin');
     expect(service.isAuthenticated).toBeTrue();
-    expect(service.currentUser).toBeTruthy();
+    expect(service.currentUser()).toBeTruthy();
   }));
 
   it('should store token in localStorage after login', fakeAsync(() => {
@@ -58,7 +58,7 @@ describe('AuthService', () => {
     spyOn(router, 'navigate');
     service.logout();
     expect(service.isAuthenticated).toBeFalse();
-    expect(service.currentUser).toBeNull();
+    expect(service.currentUser()).toBeNull();
     expect(localStorage.getItem('ow_admin_token')).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   }));
