@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { pickOption, signIn, snap, typeFilter, waitForSpinners } from './helpers';
+import { expectSortsBy, pickOption, signIn, snap, typeFilter, waitForSpinners } from './helpers';
 
 async function openUsers(page: Page) {
   await signIn(page);
@@ -24,6 +24,7 @@ test('users list paginates', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Next page' })).toBeDisabled();
   await page.getByRole('button', { name: 'First page' }).click();
   await expect(rangeLabel(page)).toHaveText(new RegExp(`1 . 5 of ${total}`));
+  await expectSortsBy(page, 'Name', 'tr.table-row .user-name');
 });
 
 test('users search, role and status filters', async ({ page }) => {
@@ -37,6 +38,7 @@ test('users search, role and status filters', async ({ page }) => {
 
   await page.getByRole('combobox', { name: 'Role' }).click();
   await pickOption(page, 'Viewer');
+  await expect(rows(page).first()).toBeVisible();
   const viewerCount = await rows(page).count();
   for (let i = 0; i < viewerCount; i++) await expect(rows(page).nth(i)).toContainText(/viewer/i);
 
@@ -44,6 +46,7 @@ test('users search, role and status filters', async ({ page }) => {
   await pickOption(page, 'All Roles');
   await page.getByRole('combobox', { name: 'Status' }).click();
   await pickOption(page, 'Suspended');
+  await expect(rows(page).first()).toBeVisible();
   const suspended = await rows(page).count();
   for (let i = 0; i < suspended; i++) await expect(rows(page).nth(i)).toContainText(/suspended/i);
 });
