@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the latency scripts and checks the results against budgets.json.
 #   tests/latency/run.sh [auth|audit|gateway ...]   (default: all three)
-# Env: RATE (req/s per endpoint, default 10), DURATION (default 30s), WARMUP (default 10s),
+# Env: RATE (req/s per endpoint, default 10), DURATION (default 30s), WARMUP (default 5s),
 #      AUTH_URL, AUDIT_URL, GATEWAY_URL, SEED_EVENTS, OUT_DIR.
 set -euo pipefail
 cd "$(dirname "$0")/../.."

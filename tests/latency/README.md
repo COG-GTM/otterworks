@@ -22,7 +22,7 @@ tests/latency/run.sh                 # all three; or: tests/latency/run.sh audit
 Each script writes `results/<service>.json` with p50/p95/p99 per endpoint, then
 `check_budget.py` compares p95 to `budgets.json` and exits 1 if any endpoint is over.
 
-Knobs: `RATE` (req/s per endpoint, default 10), `DURATION` (30s), `WARMUP` (10s),
+Knobs: `RATE` (req/s per endpoint, default 10), `DURATION` (30s), `WARMUP` (5s),
 `SEED_EVENTS` (audit events seeded before the run, 500), `AUTH_URL`, `AUDIT_URL`,
 `GATEWAY_URL`, `OUT_DIR`, and `CHECK_ARGS` (extra flags for the check, e.g.
 `CHECK_ARGS="--exclude auth_login"`).
@@ -37,7 +37,9 @@ Notes:
 ## Budgets
 
 `budgets.json` sets `default_p95_ms` for every endpoint, with optional per-endpoint
-`p95_ms` overrides. An entry with a `"waiver"` (an approved release exception) is reported
+`p95_ms` overrides. p95 counts successful responses only; an endpoint fails as `ERRORS` when
+its error rate is over `max_error_rate` (1%), and as `NO DATA` when it has no successful sample.
+An entry with a `"waiver"` (an approved release exception) is reported
 as `WAIVED` and does not fail the check. Baseline numbers are in `baseline/`.
 
 ```bash

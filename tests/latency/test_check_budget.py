@@ -39,6 +39,26 @@ class EvaluateTest(unittest.TestCase):
         _, failed = check_budget.evaluate([result(a=1)], None, {})
         self.assertTrue(failed)
 
+    def test_unmeasured_endpoint_fails_and_sorts_first(self):
+        res = result(a=40)
+        res["endpoints"]["silent"] = {"p50": None, "p95": None, "p99": None, "count": 0, "error_rate": None}
+        rows, failed = check_budget.evaluate([res], 100, {})
+        self.assertTrue(failed)
+        self.assertEqual(rows[0][:1] + rows[0][3:], ("silent", "NO DATA"))
+
+    def test_fast_errors_fail(self):
+        res = result(a=5)
+        res["endpoints"]["a"]["error_rate"] = 0.5
+        rows, failed = check_budget.evaluate([res], 100, {})
+        self.assertTrue(failed)
+        self.assertEqual(rows[0][3], "ERRORS")
+
+    def test_error_rate_within_limit_passes(self):
+        res = result(a=5)
+        res["endpoints"]["a"]["error_rate"] = 0.005
+        _, failed = check_budget.evaluate([res], 100, {})
+        self.assertFalse(failed)
+
     def test_main_exit_code(self):
         with tempfile.TemporaryDirectory() as d:
             budgets = Path(d, "b.json")
@@ -47,6 +67,8 @@ class EvaluateTest(unittest.TestCase):
             res.write_text(json.dumps(result(a=50)))
             self.assertEqual(check_budget.main(["--budgets", str(budgets), str(res)]), 0)
             res.write_text(json.dumps(result(a=150)))
+            self.assertEqual(check_budget.main(["--budgets", str(budgets), str(res)]), 1)
+            res.write_text(json.dumps({"endpoints": {"a": {"p95": None, "count": 0, "error_rate": 1}}}))
             self.assertEqual(check_budget.main(["--budgets", str(budgets), str(res)]), 1)
 
 

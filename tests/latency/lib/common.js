@@ -5,7 +5,7 @@ import { Trend, Rate } from 'k6/metrics';
 
 export const RATE = Number(__ENV.RATE || 10);          // requests/second per endpoint
 export const DURATION = __ENV.DURATION || '30s';       // measured window per endpoint
-export const WARMUP = __ENV.WARMUP || '10s';           // unmeasured warmup per endpoint
+export const WARMUP = __ENV.WARMUP || '5s';             // unmeasured warmup per endpoint
 export const OUT_DIR = __ENV.OUT_DIR || 'tests/latency/results';
 
 // Builds one warmup + one measured scenario per endpoint. Endpoints run one
@@ -56,7 +56,8 @@ export function record(name, res, expectedStatus) {
   const ok = check(res, { [`${name} status ${expectedStatus}`]: (r) => r.status === expectedStatus });
   if (__ENV.MEASURE !== '1') return;
   const [trend, err] = trendFor(name);
-  trend.add(res.timings.duration);
+  // Only successful responses count toward latency, so fast errors can't pass a budget.
+  if (ok) trend.add(res.timings.duration);
   err.add(!ok);
 }
 
@@ -86,17 +87,18 @@ export function summarize(service, endpoints) {
     for (const name of endpoints) {
       const t = data.metrics[`latency_${name}`];
       const e = data.metrics[`errors_${name}`];
-      if (!t) continue;
+      // Every endpoint gets a row; count 0 means no successful sample, which the check rejects.
       out.endpoints[name] = {
-        p50: round(t.values['p(50)']),
-        p95: round(t.values['p(95)']),
-        p99: round(t.values['p(99)']),
-        count: t.values.count,
+        p50: t ? round(t.values['p(50)']) : null,
+        p95: t ? round(t.values['p(95)']) : null,
+        p99: t ? round(t.values['p(99)']) : null,
+        count: t ? t.values.count : 0,
         error_rate: e ? round(e.values.rate, 4) : null,
       };
     }
     const lines = Object.entries(out.endpoints).map(([n, v]) =>
-      `${n.padEnd(34)} p50=${v.p50}ms p95=${v.p95}ms p99=${v.p99}ms n=${v.count} err=${v.error_rate}`);
+      v.count ? `${n.padEnd(34)} p50=${v.p50}ms p95=${v.p95}ms p99=${v.p99}ms n=${v.count} err=${v.error_rate}`
+        : `${n.padEnd(34)} no successful samples err=${v.error_rate}`);
     return {
       [`${OUT_DIR}/${service}.json`]: JSON.stringify(out, null, 2) + '\n',
       stdout: `\n${service}\n${lines.join('\n')}\n`,
