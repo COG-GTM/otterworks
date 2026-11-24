@@ -1,4 +1,4 @@
-import { Component, OnInit, ViewChild, inject } from '@angular/core';
+import { Component, OnInit, effect, inject, viewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -139,11 +139,16 @@ export class QuotasComponent implements OnInit {
   loading = true;
   gb = 1024 * 1024 * 1024;
 
-  @ViewChild(MatPaginator) set matPaginator(paginator: MatPaginator) {
-    this.dataSource.paginator = paginator;
-  }
-  @ViewChild(MatSort) set matSort(sort: MatSort) {
-    this.dataSource.sort = sort;
+  private readonly paginator = viewChild(MatPaginator);
+  private readonly sort = viewChild(MatSort);
+
+  constructor() {
+    effect(() => {
+      this.dataSource.paginator = this.paginator() ?? null;
+    });
+    effect(() => {
+      this.dataSource.sort = this.sort() ?? null;
+    });
   }
 
   ngOnInit(): void {

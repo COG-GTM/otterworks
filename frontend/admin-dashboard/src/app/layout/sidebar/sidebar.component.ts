@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, model } from '@angular/core';
 
 import { RouterModule } from '@angular/router';
 import { MatListModule } from '@angular/material/list';
@@ -15,21 +15,21 @@ interface NavItem {
     selector: 'app-sidebar',
     imports: [RouterModule, MatListModule, MatIconModule, MatTooltipModule],
     template: `
-    <div class="sidebar" [class.collapsed]="collapsed">
+    <div class="sidebar" [class.collapsed]="collapsed()">
       <div class="sidebar-header">
-        @if (!collapsed) {
+        @if (!collapsed()) {
           <div class="logo">
             <img class="logo-icon" src="assets/otter-logo.png" alt="OtterWorks logo" width="28" height="28" />
             <span class="logo-text">OtterWorks</span>
           </div>
         }
-        @if (collapsed) {
+        @if (collapsed()) {
           <div class="logo logo-collapsed">
             <img class="logo-icon" src="assets/otter-logo.png" alt="OtterWorks logo" width="28" height="28" />
           </div>
         }
-        <button class="toggle-btn" (click)="toggleCollapsed()" [matTooltip]="collapsed ? 'Expand' : 'Collapse'">
-          <mat-icon>{{ collapsed ? 'chevron_right' : 'chevron_left' }}</mat-icon>
+        <button class="toggle-btn" (click)="toggleCollapsed()" [matTooltip]="collapsed() ? 'Expand' : 'Collapse'">
+          <mat-icon>{{ collapsed() ? 'chevron_right' : 'chevron_left' }}</mat-icon>
         </button>
       </div>
     
@@ -39,10 +39,10 @@ interface NavItem {
             [routerLink]="item.route"
             routerLinkActive="active-link"
             [routerLinkActiveOptions]="{ exact: item.route === '/' }"
-            [matTooltip]="collapsed ? item.label : ''"
+            [matTooltip]="collapsed() ? item.label : ''"
             matTooltipPosition="right">
             <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
-            @if (!collapsed) {
+            @if (!collapsed()) {
               <span matListItemTitle>{{ item.label }}</span>
             }
           </a>
@@ -163,8 +163,7 @@ interface NavItem {
   `]
 })
 export class SidebarComponent {
-  @Input() collapsed = false;
-  @Output() collapsedChange = new EventEmitter<boolean>();
+  readonly collapsed = model(false);
 
   navItems: NavItem[] = [
     { label: 'Dashboard', icon: 'dashboard', route: '/' },
@@ -179,7 +178,6 @@ export class SidebarComponent {
   ];
 
   toggleCollapsed(): void {
-    this.collapsed = !this.collapsed;
-    this.collapsedChange.emit(this.collapsed);
+    this.collapsed.update(collapsed => !collapsed);
   }
 }
