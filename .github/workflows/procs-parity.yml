@@ -3,6 +3,7 @@ name: Stored procedure parity
 on:
   push:
     paths:
+      - ".github/workflows/procs-parity.yml"
       - "procs/**"
       - "services/legacy-billing/**"
       - "services/billing-service/**"
@@ -16,6 +17,7 @@ on:
       - "Makefile"
   pull_request:
     paths:
+      - ".github/workflows/procs-parity.yml"
       - "procs/**"
       - "services/legacy-billing/**"
       - "services/billing-service/**"
@@ -36,6 +38,7 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           version: latest
+          python-version: "3.12"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
