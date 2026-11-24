@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signIn, typeFilter, waitForSpinners } from './helpers';
+import { pickOption, signIn, typeFilter, waitForSpinners } from './helpers';
 
 async function open(page: Page, label: string, heading: string) {
   await signIn(page);
@@ -22,7 +22,7 @@ test('audit logs paginate and filter', async ({ page }) => {
   await typeFilter(page, 'Search audit events', '');
 
   await page.getByLabel('Severity').click();
-  await page.getByRole('option', { name: 'Critical' }).click();
+  await pickOption(page, 'Critical');
   const n = await rows.count();
   for (let i = 0; i < n; i++) await expect(rows.nth(i)).toContainText(/critical/i);
 });

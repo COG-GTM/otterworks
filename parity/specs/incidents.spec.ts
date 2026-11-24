@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { runId, signIn, snap, waitForSpinners } from './helpers';
+import { pickOption, runId, signIn, snap, waitForSpinners } from './helpers';
 
 // Submitting would launch a real Devin session, so only the form and its validation are checked.
 test('incident form validation', async ({ page }, info) => {
@@ -17,6 +17,6 @@ test('incident form validation', async ({ page }, info) => {
   await page.getByLabel('Description').fill('Form validation check only.');
   await expect(submit).toBeEnabled();
   await page.getByLabel('Severity').click();
-  await page.getByRole('option', { name: 'High' }).click();
+  await pickOption(page, 'High');
   await snap(page, info, '14-incident-form');
 });

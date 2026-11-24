@@ -33,3 +33,9 @@ export async function typeFilter(page: Page, label: string, value: string): Prom
   await input.fill(value);
   await input.press('End');
 }
+
+/** Picks a mat-select option and waits for the panel to close before the next interaction. */
+export async function pickOption(page: Page, option: string): Promise<void> {
+  await page.getByRole('option', { name: option }).click();
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+}

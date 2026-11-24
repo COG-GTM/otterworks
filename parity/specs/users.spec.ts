@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { signIn, snap, typeFilter, waitForSpinners } from './helpers';
+import { pickOption, signIn, snap, typeFilter, waitForSpinners } from './helpers';
 
 async function openUsers(page: Page) {
   await signIn(page);
@@ -36,14 +36,14 @@ test('users search, role and status filters', async ({ page }) => {
   await typeFilter(page, 'Search users', '');
 
   await page.getByRole('combobox', { name: 'Role' }).click();
-  await page.getByRole('option', { name: 'Viewer' }).click();
+  await pickOption(page, 'Viewer');
   const viewerCount = await rows(page).count();
   for (let i = 0; i < viewerCount; i++) await expect(rows(page).nth(i)).toContainText(/viewer/i);
 
   await page.getByRole('combobox', { name: 'Role' }).click();
-  await page.getByRole('option', { name: 'All Roles' }).click();
+  await pickOption(page, 'All Roles');
   await page.getByRole('combobox', { name: 'Status' }).click();
-  await page.getByRole('option', { name: 'Suspended' }).click();
+  await pickOption(page, 'Suspended');
   const suspended = await rows(page).count();
   for (let i = 0; i < suspended; i++) await expect(rows(page).nth(i)).toContainText(/suspended/i);
 });
