@@ -19,7 +19,6 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,12 +31,15 @@ class AuthServiceTest {
   @Mock private JwtTokenProvider jwtTokenProvider;
   @Mock private RefreshTokenRepository refreshTokenRepository;
 
-  @InjectMocks private AuthService authService;
+  private AuthService authService;
 
   private User testUser;
 
   @BeforeEach
   void setUp() {
+    authService =
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
     testUser = new User();
     testUser.setId(UUID.randomUUID());
     testUser.setEmail("test@otterworks.dev");
@@ -114,6 +116,48 @@ class AuthServiceTest {
 
     assertThat(response.getAccessToken()).isEqualTo("access-token");
     assertThat(response.getUser().getEmail()).isEqualTo("test@otterworks.dev");
+  }
+
+  @Test
+  void login_shouldRehashPasswordStoredAtHigherCost() {
+    authService =
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 10);
+    LoginRequest request = new LoginRequest();
+    request.setEmail("test@otterworks.dev");
+    request.setPassword("password123");
+
+    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("password123", "$2a$12$encodedpassword")).thenReturn(true);
+    when(passwordEncoder.encode("password123")).thenReturn("$2a$10$rehashed");
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    when(jwtTokenProvider.generateRefreshToken(testUser)).thenReturn("refresh-token");
+    when(jwtTokenProvider.extractJti("refresh-token")).thenReturn("jti-789");
+
+    authService.login(request);
+
+    assertThat(testUser.getPasswordHash()).isEqualTo("$2a$10$rehashed");
+  }
+
+  @Test
+  void login_shouldKeepPasswordHashAtConfiguredCost() {
+    authService =
+        new AuthService(
+            userRepository, passwordEncoder, jwtTokenProvider, refreshTokenRepository, 12);
+    LoginRequest request = new LoginRequest();
+    request.setEmail("test@otterworks.dev");
+    request.setPassword("password123");
+
+    when(userRepository.findByEmail("test@otterworks.dev")).thenReturn(Optional.of(testUser));
+    when(passwordEncoder.matches("password123", "$2a$12$encodedpassword")).thenReturn(true);
+    when(userRepository.save(any(User.class))).thenReturn(testUser);
+    when(jwtTokenProvider.generateRefreshToken(testUser)).thenReturn("refresh-token");
+    when(jwtTokenProvider.extractJti("refresh-token")).thenReturn("jti-790");
+
+    authService.login(request);
+
+    verify(passwordEncoder, never()).encode(any());
+    assertThat(testUser.getPasswordHash()).isEqualTo("$2a$12$encodedpassword");
   }
 
   @Test

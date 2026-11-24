@@ -13,8 +13,11 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,21 +26,25 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
   private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+  private static final Pattern BCRYPT_COST = Pattern.compile("^\\$2[aby]?\\$(\\d{2})\\$");
 
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
   private final JwtTokenProvider jwtTokenProvider;
   private final RefreshTokenRepository refreshTokenRepository;
+  private final int bcryptStrength;
 
   public AuthService(
       UserRepository userRepository,
       PasswordEncoder passwordEncoder,
       JwtTokenProvider jwtTokenProvider,
-      RefreshTokenRepository refreshTokenRepository) {
+      RefreshTokenRepository refreshTokenRepository,
+      @Value("${security.bcrypt-strength:10}") int bcryptStrength) {
     this.userRepository = userRepository;
     this.passwordEncoder = passwordEncoder;
     this.jwtTokenProvider = jwtTokenProvider;
     this.refreshTokenRepository = refreshTokenRepository;
+    this.bcryptStrength = bcryptStrength;
   }
 
   @Transactional
@@ -68,6 +75,9 @@ public class AuthService {
       throw new IllegalArgumentException("Invalid credentials");
     }
 
+    if (hashCost(user.getPasswordHash()) > bcryptStrength) {
+      user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+    }
     user.setLastLoginAt(Instant.now());
     userRepository.save(user);
 
@@ -123,6 +133,11 @@ public class AuthService {
   public void logout(UUID userId) {
     refreshTokenRepository.revokeAllByUserId(userId);
     log.info("User logged out: {}", userId);
+  }
+
+  private static int hashCost(String hash) {
+    Matcher m = hash == null ? null : BCRYPT_COST.matcher(hash);
+    return m != null && m.find() ? Integer.parseInt(m.group(1)) : 0;
   }
 
   private AuthResponse buildAuthResponse(User user) {

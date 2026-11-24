@@ -1,6 +1,7 @@
 package com.otterworks.auth.config;
 
 import com.otterworks.auth.security.JwtAuthFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -16,6 +17,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+  static final int MIN_BCRYPT_STRENGTH = 10;
+  static final int MAX_BCRYPT_STRENGTH = 14;
 
   private final JwtAuthFilter jwtAuthFilter;
 
@@ -51,7 +55,20 @@ public class SecurityConfig {
   }
 
   @Bean
-  public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder(12);
+  public PasswordEncoder passwordEncoder(@Value("${security.bcrypt-strength:10}") int strength) {
+    return new BCryptPasswordEncoder(requireValidStrength(strength));
+  }
+
+  static int requireValidStrength(int strength) {
+    if (strength < MIN_BCRYPT_STRENGTH || strength > MAX_BCRYPT_STRENGTH) {
+      throw new IllegalArgumentException(
+          "security.bcrypt-strength must be between "
+              + MIN_BCRYPT_STRENGTH
+              + " and "
+              + MAX_BCRYPT_STRENGTH
+              + ", got "
+              + strength);
+    }
+    return strength;
   }
 }
