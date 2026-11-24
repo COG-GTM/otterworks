@@ -30,17 +30,19 @@
         <!-- LEGACY: SpringFox 3.0 (dead project). Upgrade target: springdoc-openapi 2.x -->
         <springfox.version>3.0.0</springfox.version>
         <!-- LEGACY: Apache POI 4.1.2 (2020). Upgrade target: 5.2+ -->
-        <poi.version>4.1.2</poi.version>
+        <poi.version>5.4.1</poi.version>
         <!-- LEGACY: iText 5.5.13.3 (AGPL, pre-license-change). Upgrade target: OpenPDF or iText 7+ -->
         <itext.version>5.5.13.3</itext.version>
         <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
         <commons-lang.version>2.6</commons-lang.version>
         <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
-        <commons-io.version>2.6</commons-io.version>
+        <commons-io.version>2.22.0</commons-io.version>
         <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
-        <guava.version>28.0-jre</guava.version>
+        <guava.version>33.4.8-jre</guava.version>
         <!-- Commons Text 1.9 — report banner/footer interpolation -->
         <commons-text.version>1.9</commons-text.version>
+        <!-- Mockito 4.x needs a newer Byte Buddy than Boot 2.5 manages -->
+        <byte-buddy.version>1.14.19</byte-buddy.version>
     </properties>
 
     <dependencies>
@@ -152,7 +154,7 @@
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
-            <version>4.6</version>
+            <version>5.11.1</version>
         </dependency>
 
         <!-- Testing -->
@@ -183,7 +185,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>3.12.4</version>
+            <version>4.11.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
