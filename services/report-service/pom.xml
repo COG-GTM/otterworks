@@ -35,12 +35,12 @@
         <itext.version>5.5.13.3</itext.version>
         <!-- LEGACY: Commons Lang 2.6 (EOL). Upgrade target: commons-lang3 -->
         <commons-lang.version>2.6</commons-lang.version>
-        <!-- LEGACY: Commons IO 2.6 (2018). Upgrade target: 2.15+ -->
-        <commons-io.version>2.6</commons-io.version>
+        <!-- Commons IO 2.x (CVE-2021-29425, CVE-2024-47554 fixed) -->
+        <commons-io.version>2.22.0</commons-io.version>
         <!-- LEGACY: Guava 28.0 (2019, many CVEs). Upgrade target: 33+ -->
         <guava.version>28.0-jre</guava.version>
-        <!-- Commons Text 1.9 — report banner/footer interpolation -->
-        <commons-text.version>1.9</commons-text.version>
+        <!-- Commons Text — report banner/footer interpolation (1.10.0+ fixes CVE-2022-42889) -->
+        <commons-text.version>1.15.0</commons-text.version>
     </properties>
 
     <dependencies>
@@ -121,7 +121,7 @@
             <version>${commons-text.version}</version>
         </dependency>
 
-        <!-- LEGACY: Commons IO 2.6 (outdated) -->
+        <!-- Commons IO -->
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
