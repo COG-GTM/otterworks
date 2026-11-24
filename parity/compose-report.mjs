@@ -1,6 +1,6 @@
 // Builds side-by-side (baseline | upgraded | diff) composites and pixel-diff stats
 // from report/shots/{baseline,upgraded}/*.png into report/compare/ and report/summary.md.
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pixelmatch from 'pixelmatch';
@@ -19,12 +19,21 @@ const pad = (img, width, height) => {
   return out;
 };
 
+// Only compare shots written by the last `npx playwright test` run (report/results.json).
+const resultsPath = path.join(root, 'results.json');
+const runStart = existsSync(resultsPath) ? Date.parse(JSON.parse(readFileSync(resultsPath, 'utf8')).stats.startTime) : 0;
+const isStale = (file) => statSync(file).mtimeMs < runStart;
+
 const names = existsSync(shots('baseline')) ? readdirSync(shots('baseline')).filter((f) => f.endsWith('.png')).sort() : [];
 const rows = [];
 for (const name of names) {
   const upgradedPath = path.join(shots('upgraded'), name);
   if (!existsSync(upgradedPath)) {
     rows.push({ name, missing: true });
+    continue;
+  }
+  if (isStale(path.join(shots('baseline'), name)) || isStale(upgradedPath)) {
+    rows.push({ name, stale: true });
     continue;
   }
   const a0 = PNG.sync.read(readFileSync(path.join(shots('baseline'), name)));
@@ -55,8 +64,10 @@ const md = [
   '| Screen | Baseline / upgraded size | Changed pixels | Diff % |',
   '| --- | --- | --- | --- |',
   ...rows.map((r) =>
-    r.missing ? `| ${r.name} | missing upgraded shot | - | - |` : `| [${r.name}](compare/${r.name}) | ${r.size} | ${r.changed} | ${r.percent}% |`,
+    r.missing ? `| ${r.name} | missing upgraded shot | - | - |` :
+    r.stale ? `| ${r.name} | stale shot (not from the last run) | - | - |` : `| [${r.name}](compare/${r.name}) | ${r.size} | ${r.changed} | ${r.percent}% |`,
   ),
 ].join('\n');
 writeFileSync(path.join(root, 'summary.md'), md + '\n');
 console.log(md);
+if (rows.some((r) => r.missing || r.stale)) process.exitCode = 1;
