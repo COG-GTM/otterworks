@@ -435,8 +435,8 @@ export const notificationsApi = {
     await apiClient.post("/notifications/read-all");
   },
   getUnreadCount: async (): Promise<number> => {
-    const { data } = await apiClient.get<{ count: number }>("/notifications/unread-count");
-    return data.count;
+    const { data } = await apiClient.get<{ unreadCount: number }>("/notifications/unread-count");
+    return data.unreadCount;
   },
 };
 
