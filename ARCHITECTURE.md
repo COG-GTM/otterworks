@@ -97,7 +97,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Database**: MeiliSearch (full-text index)
 - **Purpose**: Full-text search across documents and file metadata. Indexes content from Document Service and File Service via event-driven ingestion. Supports faceted search, autocomplete, and relevance tuning.
 - **Port**: 8087
-- **Key Patterns**: MeiliSearch Python client, Flask-RESTful, SQS-based async indexing, marshmallow serialization, gunicorn
+- **Key Patterns**: MeiliSearch Python client, Flask-RESTful, SQS-based async indexing, gunicorn
 
 ### 8. Analytics Service (`services/analytics-service/`)
 - **Language**: Scala 3.4

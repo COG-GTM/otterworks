@@ -1,7 +1,6 @@
 flask==3.0.2
 flask-restful==0.3.10
 flask-cors==4.0.2
-marshmallow==3.21.1
 meilisearch==0.31.6
 boto3==1.34.69
 gunicorn==22.0.0
