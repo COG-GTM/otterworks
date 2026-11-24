@@ -35,7 +35,19 @@
         <logback.version>1.2.13</logback.version>
         <snakeyaml.version>1.33</snakeyaml.version>
         <postgresql.version>42.3.10</postgresql.version>
+        <!-- CVE-2022-42889: pin commons-configuration2's transitive commons-text to the nearest fix -->
+        <commons-text.version>1.10.0</commons-text.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-text</artifactId>
+                <version>${commons-text.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
