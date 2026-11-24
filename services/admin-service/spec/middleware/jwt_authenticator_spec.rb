@@ -1,7 +1,7 @@
 require 'rails_helper'
 
 RSpec.describe JwtAuthenticator do
-  let(:secret) { Rails.application.secrets.jwt_secret }
+  let(:secret) { Rails.application.config.x.jwt_secret }
   let(:app) { ->(env) { [200, {}, [env['jwt.user_email'].to_s]] } }
   let(:payload) { { sub: SecureRandom.uuid, email: 'admin@otterworks.com', role: 'super_admin' } }
 
