@@ -184,7 +184,7 @@
     },
     {
       "title": "Admin Dashboard (Angular)",
-      "purpose": "Documentation of the Angular 17 admin dashboard: component structure (dashboard, incidents, users, health, audit, quotas, features, login), AdminApiService as the gateway to the admin-service backend, AuthService with JWT localStorage persistence, mock data for development, proxy configuration, and Karma/Jasmine test setup.",
+      "purpose": "Documentation of the Angular 21 admin dashboard: component structure (dashboard, incidents, users, health, audit, quotas, features, login), AdminApiService as the gateway to the admin-service backend, AuthService with JWT localStorage persistence, mock data for development, proxy configuration, and Karma/Jasmine test setup.",
       "parent": "Frontend Applications",
       "page_notes": [
         {
