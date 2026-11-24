@@ -30,7 +30,12 @@ namespace OtterWorks.Desktop.Services
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _baseUrl = settings.ApiBaseUrl.TrimEnd('/');
 
+#if NET
+            UseWindowsProxySettingsOnly();
+            _http = new HttpClient(new ProxyRoutingHandler()) { Timeout = TimeSpan.FromSeconds(30) };
+#else
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+#endif
         }
 
         public async Task<AuthResponse> RegisterAsync(string displayName, string email, string password)
@@ -149,6 +154,23 @@ namespace OtterWorks.Desktop.Services
             }
         }
 
+#if NET
+        /// <summary>
+        /// Matches .NET Framework proxy selection: it uses only the Windows (WinINet) proxy
+        /// settings and never proxies loopback, while .NET's <c>HttpClient.DefaultProxy</c>
+        /// prefers the proxy environment variables. Clearing them for this process before the
+        /// first request leaves the default proxy on the Windows settings (PAC, bypass list,
+        /// failover). <see cref="ProxyRoutingHandler"/> keeps loopback direct.
+        /// </summary>
+        private static void UseWindowsProxySettingsOnly()
+        {
+            foreach (string name in new[] { "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY" })
+            {
+                Environment.SetEnvironmentVariable(name, null);
+            }
+        }
+
+#endif
         private Uri BuildUri(string path)
         {
             return new Uri(_baseUrl + "/" + path.TrimStart('/'));
