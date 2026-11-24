@@ -53,8 +53,12 @@ clients/windows-desktop/
 
 ## Configuration
 
-The backend base URL is read from `OtterWorks.Desktop/appsettings.json` (copied next to the
-executable on build):
+The backend base URL is read from `appsettings.json` next to the running executable. The
+source file `OtterWorks.Desktop/appsettings.json` is copied into each target's output folder
+on build (`bin\<Configuration>\net10.0-windows\` and `bin\<Configuration>\net48\`), so change
+settings in the source file to apply them to both builds. A copy edited by hand inside an
+output folder applies only to that build; a copy left in `bin\<Configuration>\` from a
+pre-SDK-style build is no longer read.
 
 ```json
 {
@@ -107,11 +111,9 @@ Visual Studio needs a version that supports the .NET 10 SDK to open the solution
 
 ```powershell
 # .NET 10
-.\OtterWorks.Desktopin\Release
-et10.0-windows\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net10.0-windows\OtterWorks.Desktop.exe
 # .NET Framework 4.8
-.\OtterWorks.Desktopin\Release
-et48\OtterWorks.Desktop.exe
+.\OtterWorks.Desktop\bin\Release\net48\OtterWorks.Desktop.exe
 ```
 
 Or `dotnet run --project OtterWorks.Desktop -f net10.0-windows`.
