@@ -9,10 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.303.6" />
-    <PackageReference Include="AWSSDK.S3" Version="3.7.307.2" />
-    <PackageReference Include="AWSSDK.SQS" Version="3.7.300.64" />
-    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="3.7.301.26" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.513.4" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.511.8" />
+    <PackageReference Include="AWSSDK.SQS" Version="3.7.502.57" />
+    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="3.7.502.61" />
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.1" />
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
     <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0" />
