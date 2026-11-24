@@ -421,6 +421,17 @@ export const searchApi = {
 };
 
 // ── Notifications ─────────────────────────────────────────────
+// Shape returned by notification-service GET /notifications/unread-count
+export interface UnreadCountResponse {
+  userId: string;
+  unreadCount: number;
+}
+
+export function toUnreadCount(data: Partial<UnreadCountResponse> | null | undefined): number {
+  const count = data?.unreadCount;
+  return typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 0;
+}
+
 export const notificationsApi = {
   list: async (page = 1, pageSize = 20): Promise<PaginatedResponse<Notification>> => {
     const { data } = await apiClient.get<PaginatedResponse<Notification>>("/notifications", {
@@ -435,8 +446,8 @@ export const notificationsApi = {
     await apiClient.post("/notifications/read-all");
   },
   getUnreadCount: async (): Promise<number> => {
-    const { data } = await apiClient.get<{ count: number }>("/notifications/unread-count");
-    return data.count;
+    const { data } = await apiClient.get<UnreadCountResponse>("/notifications/unread-count");
+    return toUnreadCount(data);
   },
 };
 
