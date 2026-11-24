@@ -63,7 +63,7 @@ make down
 | App | Framework | Port | Description |
 |-----|-----------|------|-------------|
 | Web App | React 18 / Vite SPA | 3000 | Main user-facing application (served by nginx in production) |
-| Admin Dashboard | Angular 17 | 4200 | Administrative interface |
+| Admin Dashboard | Angular 21 | 4200 | Administrative interface |
 | Mobile (Android/iOS) | Capacitor | — | Native shells wrapping the Web App SPA; see [`frontend/client-app`](frontend/client-app/) |
 
 ## Architecture

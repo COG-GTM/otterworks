@@ -19,7 +19,7 @@ OtterWorks is a collaborative file storage and document editing platform (functi
                          |                                       |
                 +--------+---------+                   +---------+--------+
                 |  Web Frontend    |                   |  Admin Dashboard |
-                |  (React/Next.js) |                   |  (Angular 17)    |
+                |  (React/Next.js) |                   |  (Angular 21)    |
                 +--------+---------+                   +---------+--------+
                          |                                       |
                 +--------+---------+                             |
@@ -132,8 +132,8 @@ OtterWorks is a collaborative file storage and document editing platform (functi
 - **Key Patterns**: App Router, Server Components, TanStack Query, Zustand state management, Tailwind CSS, Playwright E2E tests
 
 ### 12. Admin Dashboard (`frontend/admin-dashboard/`)
-- **Language**: TypeScript 5.4
-- **Framework**: Angular 17
+- **Language**: TypeScript 5.9
+- **Framework**: Angular 21
 - **Purpose**: Admin-facing dashboard. User management, system metrics, audit log viewer, feature flags.
 - **Key Patterns**: Standalone components, NgRx signals, Angular Material, RxJS, Karma/Jasmine tests
 
@@ -311,7 +311,7 @@ otterworks/
 │   └── audit-service/                 # C# / ASP.NET
 ├── frontend/
 │   ├── web-app/                       # React / Next.js
-│   └── admin-dashboard/               # Angular 17
+│   └── admin-dashboard/               # Angular 21
 ├── shared/
 │   ├── proto/                         # Protobuf/gRPC service definitions
 │   ├── openapi/                       # OpenAPI specs per service

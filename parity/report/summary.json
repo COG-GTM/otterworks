@@ -1,0 +1,86 @@
+[
+  {
+    "name": "01-login.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 0,
+    "percent": "0.000"
+  },
+  {
+    "name": "02-login-validation.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 0,
+    "percent": "0.000"
+  },
+  {
+    "name": "03-dashboard.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 928,
+    "percent": "0.072"
+  },
+  {
+    "name": "04-users.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 2468,
+    "percent": "0.190"
+  },
+  {
+    "name": "05-user-detail.png",
+    "size": "1440x976 / 1440x976",
+    "changed": 9038,
+    "percent": "0.643"
+  },
+  {
+    "name": "06-audit.png",
+    "size": "1440x1694 / 1440x1694",
+    "changed": 11913,
+    "percent": "0.488"
+  },
+  {
+    "name": "07-features.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 609,
+    "percent": "0.047"
+  },
+  {
+    "name": "08-health.png",
+    "size": "1440x1003 / 1440x1003",
+    "changed": 476,
+    "percent": "0.033"
+  },
+  {
+    "name": "09-announcements.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 24,
+    "percent": "0.002"
+  },
+  {
+    "name": "10-quotas.png",
+    "size": "1440x900 / 1440x900",
+    "changed": 58,
+    "percent": "0.004"
+  },
+  {
+    "name": "11-incidents.png",
+    "size": "1440x973 / 1440x973",
+    "changed": 197,
+    "percent": "0.014"
+  },
+  {
+    "name": "12-analytics.png",
+    "size": "1440x2697 / 1440x2697",
+    "changed": 0,
+    "percent": "0.000"
+  },
+  {
+    "name": "13-announcement-form.png",
+    "size": "1440x1071 / 1440x1071",
+    "changed": 708,
+    "percent": "0.046"
+  },
+  {
+    "name": "14-incident-form.png",
+    "size": "1440x1425 / 1440x1425",
+    "changed": 396,
+    "percent": "0.019"
+  }
+]

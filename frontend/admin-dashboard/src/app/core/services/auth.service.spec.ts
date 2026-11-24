@@ -1,8 +1,9 @@
 import { TestBed, fakeAsync, tick } from '@angular/core/testing';
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { RouterTestingModule } from '@angular/router/testing';
 import { Router } from '@angular/router';
 import { AuthService, AuthUser } from './auth.service';
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -11,8 +12,9 @@ describe('AuthService', () => {
   beforeEach(() => {
     localStorage.clear();
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule, RouterTestingModule],
-    });
+    imports: [RouterTestingModule],
+    providers: [provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting()]
+});
     service = TestBed.inject(AuthService);
     router = TestBed.inject(Router);
   });
@@ -27,7 +29,7 @@ describe('AuthService', () => {
 
   it('should not be authenticated initially', () => {
     expect(service.isAuthenticated).toBeFalse();
-    expect(service.currentUser).toBeNull();
+    expect(service.currentUser()).toBeNull();
   });
 
   it('should login successfully with valid credentials', fakeAsync(() => {
@@ -40,7 +42,7 @@ describe('AuthService', () => {
     expect(loggedInUser!.email).toBe('admin@otterworks.io');
     expect(loggedInUser!.role).toBe('admin');
     expect(service.isAuthenticated).toBeTrue();
-    expect(service.currentUser).toBeTruthy();
+    expect(service.currentUser()).toBeTruthy();
   }));
 
   it('should store token in localStorage after login', fakeAsync(() => {
@@ -56,7 +58,7 @@ describe('AuthService', () => {
     spyOn(router, 'navigate');
     service.logout();
     expect(service.isAuthenticated).toBeFalse();
-    expect(service.currentUser).toBeNull();
+    expect(service.currentUser()).toBeNull();
     expect(localStorage.getItem('ow_admin_token')).toBeNull();
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   }));

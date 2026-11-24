@@ -1,0 +1,16 @@
+{
+  "name": "@otterworks/admin-dashboard-parity",
+  "private": true,
+  "description": "Before/after Playwright parity suite for the Angular admin dashboard upgrade",
+  "scripts": {
+    "test": "playwright test",
+    "test:baseline": "playwright test --project=baseline",
+    "test:upgraded": "playwright test --project=upgraded",
+    "report": "node compose-report.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
+  }
+}

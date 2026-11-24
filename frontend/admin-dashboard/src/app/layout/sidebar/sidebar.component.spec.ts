@@ -26,7 +26,7 @@ describe('SidebarComponent', () => {
   });
 
   it('should start expanded', () => {
-    expect(component.collapsed).toBeFalse();
+    expect(component.collapsed()).toBeFalse();
   });
 
   it('should have navigation items', () => {
@@ -46,11 +46,11 @@ describe('SidebarComponent', () => {
   });
 
   it('should toggle collapsed state', () => {
-    expect(component.collapsed).toBeFalse();
+    expect(component.collapsed()).toBeFalse();
     component.toggleCollapsed();
-    expect(component.collapsed).toBeTrue();
+    expect(component.collapsed()).toBeTrue();
     component.toggleCollapsed();
-    expect(component.collapsed).toBeFalse();
+    expect(component.collapsed()).toBeFalse();
   });
 
   it('should render the sidebar element', () => {

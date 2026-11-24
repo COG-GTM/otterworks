@@ -109,7 +109,7 @@ dev-web: dev-backend ## Start the client-app web dev server (HMR) on :3000
 
 dev-admin: dev-backend ## Start the admin dashboard dev server (HMR) on :4200
 	@$(COMPOSE) stop admin-dashboard 2>/dev/null || true
-	cd frontend/admin-dashboard && { [ -d node_modules ] || npm ci; } && npm start
+	cd frontend/admin-dashboard && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; } && npm start
 
 dev-android: dev-backend ## Build the web bundle and run the Android app on an emulator/device
 	cd frontend/client-app && { [ -d node_modules ] || npm ci; } && \
@@ -157,7 +157,7 @@ build-web: ## Build Web Frontend
 	cd frontend/web-app && npm run build
 
 build-admin-dash: ## Build Admin Dashboard
-	cd frontend/admin-dashboard && npm run build
+	cd frontend/admin-dashboard && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; } && npm run build
 
 # --- Testing ---
 
