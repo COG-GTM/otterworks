@@ -16,6 +16,11 @@ namespace OtterWorks.Desktop.Services
     /// </summary>
     public class OtterWorksApiClient
     {
+        // .NET Framework 4.8 reports every HttpClient transport failure with one of these two
+        // messages; .NET 10 surfaces the socket, DNS, TLS or parser detail instead.
+        private const string SendFailureMessage = "An error occurred while sending the request.";
+        private const string ContentCopyFailureMessage = "Error while copying content to a stream.";
+
         private readonly HttpClient _http;
         private readonly SessionState _session;
         private readonly string _baseUrl;
@@ -102,7 +107,7 @@ namespace OtterWorks.Desktop.Services
                 throw new ApiException(
                     0,
                     "Could not reach the OtterWorks backend. Verify it is running and that the " +
-                    "API base URL is correct.\n\n" + ex.Message);
+                    "API base URL is correct.\n\n" + DescribeTransportFailure(ex));
             }
             catch (TaskCanceledException)
             {
@@ -139,6 +144,15 @@ namespace OtterWorks.Desktop.Services
                         "The OtterWorks backend returned an unexpected (non-JSON) response.");
                 }
             }
+        }
+
+        private static string DescribeTransportFailure(HttpRequestException ex)
+        {
+#if NETFRAMEWORK
+            return ex.Message;
+#else
+            return ex.Message == ContentCopyFailureMessage ? ContentCopyFailureMessage : SendFailureMessage;
+#endif
         }
 
         private void ApplyAuth(HttpRequestMessage request)
