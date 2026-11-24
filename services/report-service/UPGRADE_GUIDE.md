@@ -450,7 +450,7 @@ grep -rn "org.apache.commons.lang\." src/main/java/ | grep -v "lang3"
 
 ---
 
-## Axis 8 -- Commons IO (2.6 to 2.15+)
+## Axis 8 -- Commons IO (2.6 to 2.22.0)
 
 ### What changes
 
@@ -463,17 +463,17 @@ In `pom.xml`:
 <commons-io.version>2.6</commons-io.version>
 
 <!-- AFTER -->
-<commons-io.version>2.15.1</commons-io.version>
+<commons-io.version>2.22.0</commons-io.version>
 ```
 
 No import changes needed. `org.apache.commons.io.FileUtils.readFileToByteArray` has
-the same signature in 2.15. The upgrade addresses known CVEs in 2.6.
+the same signature in 2.22. The upgrade addresses known CVEs in 2.6.
 
 ### How to verify
 
 ```bash
 mvn dependency:tree | grep commons-io
-# Should show commons-io:commons-io:jar:2.15.1
+# Should show commons-io:commons-io:jar:2.22.0
 mvn test
 ```
 
