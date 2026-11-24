@@ -33,6 +33,19 @@ after another so they do not compete). `audit.js` first seeds the audit table up
 JSON results go to `RESULTS_DIR` (default `tests/latency/results/`, git-ignored), and the run
 ends with a slowest-first table and `PASS` or `FAIL`.
 
+An endpoint fails the check when its p95 is at or over budget, more than 1% of its requests
+error, or k6 drops any scheduled request because all `MAX_VUS` (default 100) are busy, since
+dropped requests would otherwise be left out of the p95. `run.sh` exits 1 on a failed check
+and 2 before starting k6 when a service name or an `ENDPOINTS` entry is unknown, or when
+`ENDPOINTS` names nothing (entries are trimmed, so `auth_profile, gateway_health` works).
+
+To reset the audit table between runs (each run adds about 600 events, which slows the
+query path), recreate it in LocalStack:
+
+```bash
+docker exec otterworks-localstack sh -c 'awslocal dynamodb delete-table --table-name otterworks-audit-events && awslocal dynamodb create-table --table-name otterworks-audit-events --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --billing-mode PAY_PER_REQUEST'
+```
+
 | Endpoint | Request |
 |---|---|
 | auth_register | `POST /api/v1/auth/register` (new user each call) |
