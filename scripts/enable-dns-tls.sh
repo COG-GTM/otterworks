@@ -99,8 +99,12 @@ if helm status "${INGRESS_RELEASE}" -n "${INGRESS_NS}" >/dev/null 2>&1; then
     | sed 's/.*-//')"
   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
   helm repo update >/dev/null 2>&1 || true
+  # use-http2 is restated rather than left to --reuse-values: after a failed
+  # upgrade helm reuses the last *deployed* revision's values, which can predate
+  # HTTP/2 being turned off (NGINX2Root, see lib/ingress-nginx.sh).
   up_args=(-n "${INGRESS_NS}" --reuse-values
-           --set-string "controller.extraArgs.default-ssl-certificate=${WILDCARD_SECRET}")
+           --set-string "controller.extraArgs.default-ssl-certificate=${WILDCARD_SECRET}"
+           --set-string "controller.config.use-http2=${INGRESS_USE_HTTP2:-false}")
   if [ -n "${cur_ver}" ]; then
     up_args+=(--version "${cur_ver}")
   else
