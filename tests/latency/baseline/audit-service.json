@@ -1,0 +1,42 @@
+{
+  "service": "audit-service",
+  "rate_per_sec": 10,
+  "duration": "30s",
+  "endpoints": {
+    "audit_record_event": {
+      "p50": 6.6,
+      "p95": 11,
+      "p99": 19.3,
+      "count": 301,
+      "error_rate": 0
+    },
+    "audit_query_events": {
+      "p50": 72.6,
+      "p95": 447.5,
+      "p99": 642,
+      "count": 300,
+      "error_rate": 0
+    },
+    "audit_get_event": {
+      "p50": 4.6,
+      "p95": 7.3,
+      "p99": 9.5,
+      "count": 300,
+      "error_rate": 0
+    },
+    "audit_resource_history": {
+      "p50": 36.4,
+      "p95": 176.6,
+      "p99": 390.3,
+      "count": 301,
+      "error_rate": 0
+    },
+    "audit_user_report": {
+      "p50": 58.3,
+      "p95": 384.9,
+      "p99": 626.5,
+      "count": 301,
+      "error_rate": 0
+    }
+  }
+}
