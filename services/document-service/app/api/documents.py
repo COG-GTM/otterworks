@@ -243,7 +243,7 @@ async def _do_filter_documents(
     await _maybe_inject_latency()
     repo = DocumentQueryRepository(db)
     filters = {
-        "owner_id": owner_id.hex if owner_id else None,
+        "owner_id": str(owner_id) if owner_id else None,
         "title_contains": title,
         "content_type": content_type,
         "folder_id": str(folder_id) if folder_id else None,
