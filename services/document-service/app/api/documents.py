@@ -77,7 +77,7 @@ def _extract_user_id(request: Request) -> UUID | None:
         secret = _get_jwt_secret()
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384", "HS512"])
                 user_id_str = payload.get("user_id") or payload.get("sub")
                 if user_id_str:
                     return UUID(str(user_id_str))
@@ -99,6 +99,14 @@ def _require_user_id(request: Request) -> UUID:
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user_id
+
+
+def _list_owner(request: Request, owner_id: UUID | None) -> UUID:
+    """Owner whose documents a list request may see: always the caller."""
+    caller = _require_user_id(request)
+    if owner_id is not None and owner_id != caller:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return caller
 
 
 def _ensure_owner(document: object, user_id: UUID) -> None:
@@ -233,7 +241,7 @@ async def _do_filter_documents(
     await _maybe_inject_latency()
     repo = DocumentQueryRepository(db)
     filters = {
-        "owner_id": str(owner_id) if owner_id else None,
+        "owner_id": owner_id.hex if owner_id else None,
         "title_contains": title,
         "content_type": content_type,
         "folder_id": str(folder_id) if folder_id else None,
@@ -288,7 +296,7 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -322,7 +330,7 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
