@@ -72,12 +72,14 @@ def _get_jwt_secret() -> str:
 def _extract_user_id(request: Request) -> UUID | None:
     """Extract user ID from the Authorization JWT."""
     auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
+    scheme, _, token = (auth_header or "").partition(" ")
+    if scheme.lower() == "bearer" and token:
         secret = _get_jwt_secret()
         if secret:
             try:
-                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384"])
+                payload = jwt.decode(token, secret, algorithms=["HS256", "HS384", "HS512"])
+                if payload.get("type", "access") != "access":
+                    return None
                 user_id_str = payload.get("user_id") or payload.get("sub")
                 if user_id_str:
                     return UUID(str(user_id_str))
@@ -99,6 +101,14 @@ def _require_user_id(request: Request) -> UUID:
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user_id
+
+
+def _list_owner(request: Request, owner_id: UUID | None) -> UUID:
+    """Owner whose documents a list request may see: always the caller."""
+    caller = _require_user_id(request)
+    if owner_id is not None and owner_id != caller:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return caller
 
 
 def _ensure_owner(document: object, user_id: UUID) -> None:
@@ -288,7 +298,7 @@ async def list_documents(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents with optional filtering and pagination."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
@@ -322,7 +332,7 @@ async def list_documents_no_slash(
     db: AsyncSession = Depends(get_db),
 ):
     """List documents (no trailing slash)."""
-    effective_owner = owner_id or _extract_user_id(request)
+    effective_owner = _list_owner(request, owner_id)
     if _is_filtered(title, content_type, sort, direction):
         return await _do_filter_documents(
             effective_owner,
