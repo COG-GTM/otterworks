@@ -30,7 +30,9 @@ async def two_users(client: AsyncClient) -> tuple[uuid.UUID, uuid.UUID]:
 
 
 def _bearer(user_id: uuid.UUID, algorithm: str) -> dict[str, str]:
-    token = jwt.encode({"sub": str(user_id)}, TEST_JWT_SECRET, algorithm=algorithm)
+    token = jwt.encode(
+        {"sub": str(user_id), "type": "access"}, TEST_JWT_SECRET, algorithm=algorithm
+    )
     return {"Authorization": f"Bearer {token}"}
 
 
