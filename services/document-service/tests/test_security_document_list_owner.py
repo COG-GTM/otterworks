@@ -104,3 +104,11 @@ async def test_refresh_token_is_not_accepted_as_access_token(client, two_users):
     token = jwt.encode({"sub": str(bob), "type": "refresh"}, TEST_JWT_SECRET, algorithm="HS512")
     resp = await client.get("/api/v1/documents/", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_bearer_scheme_is_case_insensitive(client, two_users):
+    _, bob = two_users
+    token = _bearer(bob, "HS512")["Authorization"].split(" ", 1)[1]
+    resp = await client.get("/api/v1/documents/", headers={"Authorization": f"bearer {token}"})
+    assert resp.status_code == 200

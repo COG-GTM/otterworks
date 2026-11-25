@@ -72,8 +72,8 @@ def _get_jwt_secret() -> str:
 def _extract_user_id(request: Request) -> UUID | None:
     """Extract user ID from the Authorization JWT."""
     auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[len("Bearer "):]
+    scheme, _, token = (auth_header or "").partition(" ")
+    if scheme.lower() == "bearer" and token:
         secret = _get_jwt_secret()
         if secret:
             try:
