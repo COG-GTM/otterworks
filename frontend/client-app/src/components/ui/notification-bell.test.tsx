@@ -1,5 +1,5 @@
 import { http, HttpResponse } from "msw";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -17,13 +17,14 @@ function respondWithUnreadCount(unreadCount: number) {
 
 function renderBell() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <NotificationBell />
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return queryClient;
 }
 
 describe("NotificationBell", () => {
@@ -42,8 +43,11 @@ describe("NotificationBell", () => {
 
   it("shows no badge when there are no unread notifications", async () => {
     respondWithUnreadCount(0);
-    renderBell();
-    expect(await screen.findByRole("link", { name: "Notifications" })).toBeInTheDocument();
+    const queryClient = renderBell();
+    await waitFor(() =>
+      expect(queryClient.getQueryState(["notifications", "unread-count"])?.status).toBe("success")
+    );
+    expect(screen.getByRole("link")).toHaveAccessibleName("Notifications");
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });
