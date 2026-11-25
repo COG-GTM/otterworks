@@ -19,8 +19,8 @@ paths:
       operationId: listDocuments
       summary: List documents with optional filtering and pagination
       description: |
-        Returns a paginated list of documents. If no owner_id is specified,
-        the user is extracted from the JWT token.
+        Returns a paginated list of the authenticated caller's documents.
+        owner_id is optional and must equal the caller's user id.
       parameters:
         - name: owner_id
           in: query
@@ -58,6 +58,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentListResponse"
+        "401":
+          description: Missing, invalid or non-access bearer token
+        "403":
+          description: owner_id names a different user
     post:
       operationId: createDocument
       summary: Create a new document
