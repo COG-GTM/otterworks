@@ -424,15 +424,15 @@ export const searchApi = {
 export const notificationsApi = {
   list: async (page = 1, pageSize = 20): Promise<PaginatedResponse<Notification>> => {
     const { data } = await apiClient.get<PaginatedResponse<Notification>>("/notifications", {
-      params: { page, pageSize },
+      params: { page, page_size: pageSize },
     });
     return data;
   },
   markRead: async (id: string): Promise<void> => {
-    await apiClient.patch(`/notifications/${id}/read`);
+    await apiClient.put(`/notifications/${id}/read`);
   },
   markAllRead: async (): Promise<void> => {
-    await apiClient.post("/notifications/read-all");
+    await apiClient.put("/notifications/read-all");
   },
   getUnreadCount: async (): Promise<number> => {
     const { data } = await apiClient.get<{ count: number }>("/notifications/unread-count");
