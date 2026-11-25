@@ -94,3 +94,11 @@ async def test_unauthenticated_list_is_401_not_unfiltered(client, two_users, pat
     resp = await client.get(path, headers=headers, auth=None)
     assert resp.status_code == 401
     assert "PRIVATE" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_is_not_accepted_as_access_token(client, two_users):
+    _, bob = two_users
+    token = jwt.encode({"sub": str(bob), "type": "refresh"}, TEST_JWT_SECRET, algorithm="HS512")
+    resp = await client.get("/api/v1/documents/", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
