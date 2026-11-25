@@ -7,8 +7,9 @@ pytestmark = pytest.mark.api_flow
 def test_notification_listing_read_preferences_and_route_gaps(api_client):
     user = api_client.register_user("notification-flow")
 
-    missing_user_response = api_client.client.get("/api/v1/notifications", headers=user.auth_headers)
-    assert missing_user_response.status_code == 400
+    # The gateway derives X-User-ID from the JWT, so no user_id query parameter is needed.
+    header_user_response = api_client.client.get("/api/v1/notifications", headers=user.auth_headers)
+    assert header_user_response.status_code == 200, header_user_response.text
 
     list_response = api_client.client.get(
         "/api/v1/notifications",
@@ -41,6 +42,7 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
         headers=user.auth_headers,
     )
     assert mark_missing_read_response.status_code == 404, mark_missing_read_response.text
+    assert mark_missing_read_response.json()["error"] == "Notification not found"
 
     missing_notification = api_client.client.get(
         "/api/v1/notifications/00000000-0000-0000-0000-000000000000",
