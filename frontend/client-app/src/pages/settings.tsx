@@ -10,8 +10,11 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { authApi, settingsApi } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth-store";
 
-const profileSchema = z.object({
-  displayName: z.string().min(2, "Name must be at least 2 characters"),
+export const profileSchema = z.object({
+  displayName: z
+    .string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must be at most 100 characters"),
   email: z.string().email("Please enter a valid email"),
 });
 
@@ -126,6 +129,9 @@ function SettingsContent() {
 
           {profileMutation.isSuccess && (
             <p className="text-sm text-green-600">Profile updated successfully.</p>
+          )}
+          {profileMutation.isError && (
+            <p role="alert" className="text-sm text-red-600">Couldn't save your profile. Please try again.</p>
           )}
         </form>
       </section>
