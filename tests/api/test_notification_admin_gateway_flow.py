@@ -36,6 +36,12 @@ def test_notification_listing_read_preferences_and_route_gaps(api_client):
     assert mark_all_response.status_code == 200, mark_all_response.text
     assert "markedCount" in mark_all_response.json()
 
+    mark_missing_read_response = api_client.client.put(
+        "/api/v1/notifications/00000000-0000-0000-0000-000000000000/read",
+        headers=user.auth_headers,
+    )
+    assert mark_missing_read_response.status_code == 404, mark_missing_read_response.text
+
     missing_notification = api_client.client.get(
         "/api/v1/notifications/00000000-0000-0000-0000-000000000000",
         headers=user.auth_headers,
